@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MapPin, MessageCircle, Users } from 'lucide-react';
-import { plans } from '@pantopus/api';
+import { blocks, plans } from '@pantopus/api';
 import { KindGlyph, kindColors } from '@/components/plans/planKind';
 import {
   buttonClass,
@@ -17,9 +17,14 @@ import {
   usePlansArea,
 } from '@/components/plans/PlansWorkspace';
 
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { toast } from '@/components/ui/toast-store';
 import { ages, labelFor } from '@/components/plans/PlanKindFields';
 import PlanDatePoll, { type ParticipationProps } from '@/components/plans/PlanDatePoll';
 import PlanInvitations, { InviteFriend } from '@/components/plans/PlanInvitations';
+import { BringList, ChipInCard, GiftCard, downloadCalendar } from '@/app/(site)/plans/[id]/GuestAnswer';
+import PlanPhotoAlbum from '@/components/plans/PlanPhotoAlbum';
+import { PlanAfterActions, isPlanToday } from '@/components/plans/PlanFollowUp';
 import PayToJoin from '@/app/(site)/plans/[id]/PayToJoin';
 import { PlanChecks, TipLater } from '@/components/plans/PlanChecks';
 import { PlanPaymentReturn } from '@/components/plans/PlanPayment';
@@ -36,6 +41,8 @@ const reasons: Record<string, string> = {
 
 export default function PlanPage() {
   const { id } = useParams<{ id: string }>();
+  const previousId = useSearchParams().get('peopleFrom') || undefined;
+  const router = useRouter();
   const { gps, refreshGPS } = usePlansArea();
   const client = useQueryClient();
   const detail = useQuery({
@@ -48,6 +55,17 @@ export default function PlanPage() {
     refetchInterval: 30_000,
   });
   const plan = detail.isError ? undefined : detail.data;
+  const refresh = useCallback(() => {
+    void client.invalidateQueries({ queryKey: ['plans'] });
+  }, [client]);
+  const samePeople = useFeatureFlag('plans_same_people');
+  const past = useQuery({
+    queryKey: ['plans', 'past-people'],
+    queryFn: plans.pastPlans,
+    gcTime: 0,
+    retry: false,
+    enabled: samePeople && plan?.state === 'ended' && plan.viewer.role === 'host' && !plan.business,
+  });
   const isHost = plan?.viewer.role === 'host';
   const action = useMutation({
     mutationFn: (perform: () => Promise<unknown>) => perform(),
@@ -102,9 +120,6 @@ export default function PlanPage() {
         : plans.withdraw(id),
     );
   };
-  const refresh = () => {
-    void client.invalidateQueries({ queryKey: ['plans'] });
-  };
   const businessPath = plan.business?.page_url?.match(/\/b\/[\w.-]+\/?$/)?.[0];
   return (
     <article className="space-y-5">
@@ -139,7 +154,7 @@ export default function PlanPage() {
           {plan.audience === 'invited' ? ' · Private plan' : ''}
         </p>
       </header>
-      {plan.business && <PlanPaymentReturn key={id} id={id} onComplete={refresh} />}
+      {plan.business && <PlanPaymentReturn key={'PlanPaymentReturn-' + id} id={id} onComplete={refresh} />}
       {plan.deal && (
         <section className="space-y-1 rounded-xl bg-surface-muted p-3">
           <h3 className="font-semibold">{plan.deal.text}</h3>
@@ -229,6 +244,54 @@ export default function PlanPage() {
             {plan.place.note && <p className="whitespace-pre-wrap break-words text-sm">{plan.place.note}</p>}
           </section>
         )}
+      {isIn && active && !plan.dates && plan.starts_at && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={secondaryClass}
+            onClick={() =>
+              downloadCalendar(
+                id,
+                plan,
+                plan.place?.link || plan.place?.address || plan.place?.name || '',
+                window.location.origin + detailPath(id),
+              )
+            }
+          >
+            Add to calendar
+          </button>
+          {role === 'guest' && isPlanToday(plan) && plan.place_kind !== 'online' && (
+            <button
+              className={secondaryClass}
+              disabled={busy || plan.my_request?.on_my_way}
+              onClick={() => action.mutate(() => plans.onMyWay(id))}
+            >
+              {plan.my_request?.on_my_way ? 'On the way' : 'On my way'}
+            </button>
+          )}
+        </div>
+      )}
+      {isIn && active && plan.bring && (
+        <BringList
+          key={'bring-' + id}
+          planId={id}
+          initial={plan.bring}
+          isHost={isHost}
+          hostFirst={plan.host.display_name.split(' ')[0]}
+          onChanged={refresh}
+        />
+      )}
+      {isIn && active && plan.chip_in && (
+        <ChipInCard key={'chip-' + id} planId={id} initial={plan.chip_in} onChanged={refresh} />
+      )}
+      {isIn && active && plan.gift && (
+        <GiftCard key={'gift-' + id} planId={id} initial={plan.gift} onChanged={refresh} isHost={isHost} />
+      )}
+      {isIn && plan.state === 'ended' && plan.photos && (
+        <PlanPhotoAlbum key={'photos-' + id} id={id} summary={plan.photos} />
+      )}
+      {isIn && plan.state === 'ended' && (
+        <PlanAfterActions card={plan} samePeople={!!past.data?.plans.some((p) => p.post_id === id)} />
+      )}
       {isIn && (
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 font-semibold">
@@ -240,6 +303,18 @@ export default function PlanPage() {
               <li className="py-1" key={person.user_id || person.guest_id}>
                 {person.display_name}
                 {person.is_host ? ' · Host' : ''}
+                {person.on_my_way && ' · On the way'}
+                {isHost && person.chip_in && plan.state !== 'cancelled' && (
+                  <button
+                    className="ml-2 text-primary-700"
+                    disabled={busy}
+                    onClick={() =>
+                      action.mutate(() => plans.chipPaid(id, !person.chip_in!.paid, person.chip_in!.who))
+                    }
+                  >
+                    {person.chip_in.paid ? 'Paid · Undo' : 'Mark paid'}
+                  </button>
+                )}
                 {person.party_size > 1 ? ' · Party of ' + person.party_size : ''}
                 {person.kids_count ? ' · Kids: ' + person.kids_count : ''}
                 {person.paid && ' · Paid ' + person.paid.text}
@@ -310,9 +385,9 @@ export default function PlanPage() {
         plan.invites.invited ||
         plan.invites.said_yes ||
         plan.invites.cant_make_it) ? (
-        <PlanInvitations key={id} plan={plan} />
+        <PlanInvitations key={'PlanInvitations-' + id} plan={plan} previousId={previousId} />
       ) : null}
-      {role === 'guest' && active && <InviteFriend key={id} plan={plan} />}
+      {role === 'guest' && active && <InviteFriend key={'InviteFriend-' + id} plan={plan} />}
       {plan.paid && (
         <div className="space-y-2">
           <p className="font-semibold">{plan.paid.text}</p>
@@ -352,8 +427,12 @@ export default function PlanPage() {
           )}
         </section>
       )}
-      {plan.pay_here && (role === 'guest' || (isHost && plan.business?.can_manage)) && <PlanChecks key={id} plan={plan} />}
-      {plan.business && role === 'guest' && plan.state === 'ended' && <TipLater key={id} plan={plan} onComplete={refresh} />}
+      {plan.pay_here && (role === 'guest' || (isHost && plan.business?.can_manage)) && (
+        <PlanChecks key={'PlanChecks-' + id} plan={plan} />
+      )}
+      {plan.business && role === 'guest' && plan.state === 'ended' && (
+        <TipLater key={'TipLater-' + id} plan={plan} onComplete={refresh} />
+      )}
       {isHost && active && <HostTools plan={plan} busy={busy} run={action.mutate} />}
       {isHost && active && !plan.dates && <JoinRequests plan={plan} busy={busy} run={action.mutate} />}
       {role === 'guest' && active && (
@@ -442,7 +521,7 @@ export default function PlanPage() {
             onChanged={refresh}
           />
         ) : (
-          <AskForm key={id} plan={plan} busy={busy} run={action.mutate} />
+          <AskForm key={'AskForm-' + id} plan={plan} busy={busy} run={action.mutate} />
         ))}
       {role === 'none' && invited && active && !plan.dates && (
         <div className="flex flex-wrap gap-2">
@@ -477,6 +556,61 @@ export default function PlanPage() {
             </button>
           )}
         </div>
+      )}
+      {!isHost && (
+        <details className="space-y-2 border-t border-app pt-3">
+          <summary className="cursor-pointer text-sm font-medium">Report or block</summary>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const reason = String(new FormData(e.currentTarget).get('reason'));
+              action.mutate(async () => {
+                await plans.report(id, reason);
+                toast.success('Thanks. We’ll look into it.');
+              });
+            }}
+          >
+            <label className="block text-sm">
+              Reason for reporting
+              <select required name="reason" className={fieldClass} defaultValue="">
+                <option value="" disabled>
+                  Choose a reason
+                </option>
+                {Object.entries({
+                  safety: 'Something unsafe',
+                  harassment: 'Harassment',
+                  inappropriate: 'Inappropriate',
+                  spam: 'Spam or a scam',
+                  misinformation: 'Not a real plan',
+                  other: 'Something else',
+                }).map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button disabled={busy} className={secondaryClass}>
+              Report this plan
+            </button>
+          </form>
+          <button
+            disabled={busy}
+            className={secondaryClass}
+            onClick={() => {
+              if (
+                window.confirm('Block ' + plan.host.display_name + '? Their plans will be hidden from you.')
+              )
+                action.mutate(async () => {
+                  await blocks.blockUser(plan.host.user_id);
+                  router.replace(plansPath);
+                });
+            }}
+          >
+            Block {plan.host.display_name}
+          </button>
+        </details>
       )}
     </article>
   );

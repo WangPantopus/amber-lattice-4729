@@ -1,4 +1,4 @@
-import { del, get, patch, post, put } from '../client';
+import { del, get, patch, post, put, uploadFile } from '../client';
 
 export const kindNames = {
   watch_party: 'Watch party',
@@ -91,7 +91,7 @@ export interface Card {
   area: { label: string; city: string | null };
   audience: 'nearby' | 'invited';
   place_kind: 'home' | 'public' | 'online';
-  host: { display_name: string };
+  host: { user_id: string; display_name: string };
   business?: { user_id: string; name: string; verified: boolean; page_url: string | null; can_manage?: boolean };
   label?: string | null;
   label_text?: string | null;
@@ -144,10 +144,12 @@ export interface Card {
     request_status: RequestStatus | null;
     waitlist_position: number | null;
     friend_invite?: { can_invite: boolean; used: boolean } | null;
+    feedback_given?: boolean;
     can_ask: boolean;
     cannot_ask_reason: string | null;
   };
   my_request?: {
+    on_my_way?: boolean;
     reconfirm_needed: boolean;
     party_size: number;
     kids_count?: number;
@@ -173,11 +175,17 @@ export interface Detail extends Card {
     reconfirm_needed?: boolean;
     display_name: string;
     is_host: boolean;
+    on_my_way?: boolean;
+    chip_in?: { who: string; paid: boolean };
     paid?: { text: string };
     deal?: { state: string };
     party_size: number;
     kids_count?: number | null;
   }[];
+  bring?: Bring;
+  chip_in?: ChipIn;
+  gift?: Gift;
+  photos?: PhotoSummary;
   chat_room_id?: string | null;
   chat_open?: boolean;
   cancel_note?: string | null;
@@ -232,12 +240,86 @@ export interface RepeatRule {
   month_days?: ({ day: number } | { week: number; weekday: number })[];
   count?: number | null;
   until?: string | null;
-  text?: string;
+  text?: string; index?: number; total?: number; last_on?: string;
 }
 export type MeetingPlace =
   | (Point & { kind: 'public'; name: string; address: string; place_id?: string })
   | { kind: 'online'; link: string }
   | { kind: 'home'; home_id: string };
+export type Gift = {
+  budget_cents: number;
+  budget_text: string;
+  draw_at: string;
+  draw_text: string;
+  state: 'open' | 'drawn';
+  joined: number;
+  joined_text: string;
+  can_join: boolean;
+  mine: {
+    in: boolean;
+    wish: string | null;
+    giving_to: { name: string; wish: string | null } | null;
+    wish_text?: string | null;
+    secret_text?: string;
+  };
+};
+
+export type ChipIn = {
+  text: string;
+  amount_cents: number;
+  note: string;
+  service: string;
+  link: string;
+  paid_count: number;
+  of: number;
+  paid_text: string;
+  pay_text: string;
+  straight_text: string;
+  mine: { paid: boolean } | null;
+};
+
+export type Bring = {
+  rev: number;
+  guests_can_add: boolean;
+  open_count: number;
+  items: { id: string; label: string; note: string | null; claim: { name: string; mine: boolean } | null }[];
+};
+
+export interface BringInput {
+  guests_can_add: boolean;
+  items: { id?: string; label: string; note?: string; mine?: boolean }[];
+}
+export interface Occasion {
+  key: string;
+  text: string;
+  kind: Kind;
+  details: KindDetails;
+  fills: {
+    title: string;
+    audience: 'invited';
+    spots: number;
+    place_kind: 'home' | null;
+    kids_welcome: boolean;
+    bring: BringInput | null;
+    starts_at: string | null;
+    ends_at: string | null;
+  };
+}
+export interface PhotoSummary {
+  text: string;
+  can_add: boolean;
+  note: string;
+}
+export interface Album extends PhotoSummary {
+  expires_in: number;
+  photos: {
+    id: string;
+    url: string | null;
+    thumb_url: string | null;
+    by_name: string;
+    can_remove: boolean;
+  }[];
+}
 export interface NewPlan extends TimeOption {
   kind: Kind;
   title: string;
@@ -253,6 +335,11 @@ export interface NewPlan extends TimeOption {
   kids_welcome?: boolean;
   date_options?: TimeOption[];
   repeat?: RepeatRule | null;
+  hosted_again_from?: string;
+  occasion?: string;
+  bring?: BringInput | null;
+  chip_in?: Pick<ChipIn, 'amount_cents' | 'note' | 'link'> | null;
+  gift?: Pick<Gift, 'budget_cents'> & { draw_at?: string } | null;
   gps?: GPS;
 }
 export interface BusinessFields {
@@ -326,10 +413,12 @@ export function nearby(
   kind: Kind | '',
   cursor?: string,
   host: HostFilter = 'all',
+  gps?: GPS,
 ) {
   return get<{ items: Card[]; next_cursor: string | null }>(root, {
     ...capabilities,
     ...point,
+    ...deviceQuery(gps),
     window,
     host,
     kinds: kind || undefined,
@@ -352,13 +441,15 @@ export function pins(bounds: Bounds, window: TimeWindow, kind: Kind | '', host: 
     host,
   });
 }
-export function detail(id: string, gps?: GPS) {
-  return get<Detail>(path(id), {
-    ...capabilities,
+function deviceQuery(gps?: GPS) {
+  return {
     gps_latitude: gps?.latitude,
     gps_longitude: gps?.longitude,
     gps_timestamp: gps?.timestamp,
-  });
+  };
+}
+export function detail(id: string, gps?: GPS) {
+  return get<Detail>(path(id), { ...capabilities, ...deviceQuery(gps) });
 }
 export function hostAs() {
   return get<{ businesses: BusinessHost[] }>(root + '/host-as', capabilities);
@@ -374,10 +465,11 @@ export interface PublicPlace extends Point {
   name: string;
   address: string | null;
 }
-export function places(point: Point, kind: Kind) {
+export function places(point: Point, kind: Kind, q = '') {
   return get<{ places: PublicPlace[]; loading: boolean; attribution: string }>(root + '/places/nearby', {
     ...point,
     kind,
+    q: q || undefined,
     wait: '0',
   });
 }
@@ -585,4 +677,103 @@ export function startTip(id: string, amount_cents: number) {
 }
 export function confirmTip(id: string) {
   return post<{ state: string; text: string }>(path(id) + '/tip/confirm', {}, config);
+}
+
+export function occasions() {
+  return get<{ occasions: Occasion[] }>(root + '/occasions', capabilities);
+}
+export function album(id: string) {
+  return get<Album>(path(id) + '/photos', capabilities);
+}
+export function addPhoto(id: string, file: File) {
+  return uploadFile<Album>(path(id) + '/photos', file, undefined, config);
+}
+export function removePhoto(id: string, photoId: string) {
+  return del<Album>(path(id) + '/photos/' + encodeURIComponent(photoId), undefined, config);
+}
+export function chipPaid(id: string, paid: boolean, who?: string) {
+  return (paid ? post : del)<{ chip_in: ChipIn }>(path(id) + '/chip-in/paid', { who }, config);
+}
+export function bringAction(
+  id: string,
+  item: string,
+  method: 'POST' | 'DELETE',
+  body?: Record<string, unknown>,
+) {
+  return (method === 'POST' ? post : del)<{ bring: Bring }>(path(id) + '/bring' + item, body, config);
+}
+export function giftAction(
+  id: string,
+  action: '/join' | '/mine' | '/draw',
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+) {
+  const send = method === 'DELETE' ? del : method === 'PATCH' ? patch : post;
+  return send<{ gift: Gift }>(path(id) + '/gift' + action, body, config);
+}
+export function onMyWay(id: string) {
+  return post(path(id) + '/on-my-way', {}, config);
+}
+export function feedback(id: string, answer: 'great' | 'ok' | 'not_right') {
+  return post(path(id) + '/feedback', { answer }, config);
+}
+export function report(id: string, reason: string) {
+  return post(path(id) + '/report', { reason }, config);
+}
+
+export function dealPreview(
+  business_user_id: string,
+  draft: BusinessFields & { spots: number; starts_at: string },
+) {
+  return post<{
+    ok: boolean;
+    text?: string;
+    condition_text?: string;
+    if_short_text?: string;
+    claim_text?: string;
+    errors: Record<string, string>;
+  }>(
+    root + '/deal-preview',
+    {
+      business_user_id,
+      deal: draft.deal,
+      spots: draft.spots,
+      starts_at: draft.starts_at,
+      price_cents: draft.price_cents,
+      pay_here: draft.pay_here,
+    },
+    config,
+  );
+}
+
+export interface Game {
+  id: string;
+  label: string;
+  starts_at: string;
+  ends_at?: string;
+  team?: string;
+  opponent?: string;
+  home?: boolean;
+}
+export interface Team {
+  id: string;
+  name: string;
+  label: string;
+  league: string;
+}
+export function games(purpose: 'sheet' | 'composer', point: Point | null, gps?: GPS) {
+  return get<{
+    games: Game[];
+    sports?: { state: 'off' | 'on' | 'unset'; can_choose: boolean; attribution?: string };
+  }>(root + '/games', { ...capabilities, ...point, ...deviceQuery(gps), v: '2', for: purpose });
+}
+export function teams(q: string, point: Point | null) {
+  return get<{ suggested: Team[]; results: Team[] }>(root + '/teams', { ...capabilities, ...point, q });
+}
+export function suggestPlaces(point: Point, kind: Kind, form: Partial<NewPlan>, ask: string) {
+  return post<{ picks: (PublicPlace & { why: string })[]; loading: boolean; source: string }>(
+    root + '/places/suggest',
+    { ...point, kind, ...form, ask },
+    config,
+  );
 }

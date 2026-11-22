@@ -1,3 +1,4 @@
+import { GameField } from './PlanSports';
 import { plans } from '@pantopus/api';
 import { fieldClass } from './PlansWorkspace';
 
@@ -46,7 +47,10 @@ export function readKindDetails(kind: plans.Kind, data: FormData, original: plan
   }
   if (kind === 'watch_party') {
     const label = String(data.get('game') || '').trim();
-    if (label !== (original.game?.label || '')) details.game = label ? { label } : undefined;
+    const selected = data.get('scheduledGame');
+    if (selected) details.game = JSON.parse(String(selected)) as plans.Game;
+    else if (label !== (original.game?.label || '') || data.has('manualGame'))
+      details.game = label ? { label } : undefined;
   }
   return details;
 }
@@ -72,12 +76,7 @@ export default function PlanKindFields({
           </select>
         </label>
       ))}
-      {kind === 'watch_party' && (
-        <label className="block text-sm font-medium">
-          What are you watching? (optional)
-          <input name="game" className={fieldClass} maxLength={60} defaultValue={details.game?.label} />
-        </label>
-      )}
+      {kind === 'watch_party' && <GameField original={details.game} />}
       {kind === 'study_group' && (
         <label className="block text-sm font-medium">
           What are you studying?

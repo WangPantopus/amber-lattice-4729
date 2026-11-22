@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { plans } from '@pantopus/api';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
@@ -70,18 +70,22 @@ export function InviteFriend({ plan }: { plan: plans.Detail }) {
   );
 }
 
-export default function PlanInvitations({ plan }: { plan: plans.Detail }) {
-  const [open, setOpen] = useState(false);
+export default function PlanInvitations({ plan, previousId }: { plan: plans.Detail; previousId?: string }) {
+  const [open, setOpen] = useState(!!previousId);
+  const section = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (previousId && window.location.hash === '#invitations') section.current?.scrollIntoView();
+  }, [previousId]);
   return (
-    <section className="space-y-3 border-t border-app pt-4">
+    <section ref={section} id="invitations" className="space-y-3 border-t border-app pt-4">
       <button className={secondaryClass} aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? 'Close invitations' : 'Manage invitations'}
       </button>
-      {open && <Invitations plan={plan} />}
+      {open && <Invitations plan={plan} previousId={previousId} />}
     </section>
   );
 }
-function Invitations({ plan }: { plan: plans.Detail }) {
+function Invitations({ plan, previousId }: { plan: plans.Detail; previousId?: string }) {
   const id = plan.id,
     client = useQueryClient();
   const [search, setSearch] = useState(''),
@@ -89,7 +93,7 @@ function Invitations({ plan }: { plan: plans.Detail }) {
     [email, setEmail] = useState('');
   const [link, setLink] = useState(''),
     [message, setMessage] = useState(''),
-    [previous, setPrevious] = useState(''),
+    [previous, setPrevious] = useState(previousId || ''),
     [skip, setSkip] = useState<string[]>([]);
   const pastEnabled = useFeatureFlag('plans_same_people');
   const list = useQuery({
@@ -116,7 +120,7 @@ function Invitations({ plan }: { plan: plans.Detail }) {
   const pastPeople = useQuery({
     queryKey: ['plans', 'past-people', previous],
     queryFn: () => plans.pastPeople(previous),
-    enabled: !!previous,
+    enabled: canSend && pastEnabled && !!past.data?.plans.some((p) => p.post_id === previous),
     gcTime: 0,
   });
   const action = useMutation({

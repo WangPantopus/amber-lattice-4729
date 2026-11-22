@@ -1,3 +1,4 @@
+import type { plans } from '@pantopus/api';
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import type { CardJourneyGoal } from '@pantopus/api';
@@ -278,23 +279,7 @@ export type PublicPlanForGuest = {
   gift?: PublicPlanGift | null;
 };
 
-export type PublicPlanGift = {
-  budget_cents: number;
-  budget_text: string;
-  draw_at: string;
-  draw_text: string;
-  state: 'open' | 'drawn';
-  joined: number;
-  joined_text: string;
-  can_join: boolean;
-  mine: {
-    in: boolean;
-    wish: string | null;
-    giving_to: { name: string; wish: string | null } | null;
-    wish_text?: string | null;
-    secret_text?: string;
-  };
-};
+export type PublicPlanGift = plans.Gift;
 
 export type PublicPlanDates = {
   state: 'picking';
@@ -309,26 +294,9 @@ export type PublicPlanDates = {
   mine?: { answered: boolean };
 };
 
-export type PublicPlanChipIn = {
-  text: string;
-  amount_cents: number;
-  note: string;
-  service: string;
-  link: string;
-  paid_count: number;
-  of: number;
-  paid_text: string;
-  pay_text: string;
-  straight_text: string;
-  mine: { paid: boolean } | null;
-};
+export type PublicPlanChipIn = plans.ChipIn;
 
-export type PublicPlanBring = {
-  rev: number;
-  guests_can_add: boolean;
-  open_count: number;
-  items: { id: string; label: string; note: string | null; claim: { name: string; mine: boolean } | null }[];
-};
+export type PublicPlanBring = plans.Bring;
 
 export type PublicPlanBusiness = {
   name: string;
