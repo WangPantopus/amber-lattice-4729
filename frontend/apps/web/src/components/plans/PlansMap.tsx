@@ -161,13 +161,14 @@ export default function PlansMap({
   selectedId?: string;
 }) {
   const router = useRouter();
+  const { host } = usePlansArea();
   const [view, setView] = useState<{ bounds: plans.Bounds; zoom: number } | null>(null);
   const onBounds = useCallback((bounds: plans.Bounds, zoom: number) => setView({ bounds, zoom }), []);
   const box = view?.bounds;
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const pins = useQuery({
-    queryKey: ['plans', 'pins', box, time, kind],
-    queryFn: () => plans.pins(box!, time, kind),
+    queryKey: ['plans', 'pins', box, time, kind, host],
+    queryFn: () => plans.pins(box!, time, kind, host),
     enabled: !!box,
     gcTime: 0,
     refetchOnWindowFocus: 'always',

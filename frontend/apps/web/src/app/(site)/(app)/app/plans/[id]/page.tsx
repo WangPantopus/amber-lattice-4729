@@ -20,6 +20,9 @@ import {
 import { ages, labelFor } from '@/components/plans/PlanKindFields';
 import PlanDatePoll, { type ParticipationProps } from '@/components/plans/PlanDatePoll';
 import PlanInvitations, { InviteFriend } from '@/components/plans/PlanInvitations';
+import PayToJoin from '@/app/(site)/plans/[id]/PayToJoin';
+import { PlanChecks, TipLater } from '@/components/plans/PlanChecks';
+import { PlanPaymentReturn } from '@/components/plans/PlanPayment';
 
 const reasons: Record<string, string> = {
   too_far: 'You can ask to join when you’re closer to this plan.',
@@ -88,11 +91,21 @@ export default function PlanPage() {
     );
 
   const cancel = () => {
-    if (role === 'guest' && !window.confirm('Leave this plan and its chat?')) return;
+    if (
+      role === 'guest' &&
+      !window.confirm(['Leave this plan and its chat?', plan.paid?.leave_text].filter(Boolean).join(' '))
+    )
+      return;
     action.mutate(() =>
-      role === 'guest' && plan.my_invite ? plans.answerInvitation(id, 'decline') : plans.withdraw(id),
+      role === 'guest' && plan.my_invite && !plan.price
+        ? plans.answerInvitation(id, 'decline')
+        : plans.withdraw(id),
     );
   };
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ['plans'] });
+  };
+  const businessPath = plan.business?.page_url?.match(/\/b\/[\w.-]+\/?$/)?.[0];
   return (
     <article className="space-y-5">
       {back}
@@ -102,18 +115,41 @@ export default function PlanPage() {
           className="inline-flex items-center gap-2 rounded-full bg-[var(--plan-cs)] px-3 py-1 text-sm font-semibold text-[var(--plan-c)]"
         >
           <KindGlyph className="h-4 w-4" kind={plan.kind} />
-          {plans.kindNames[plan.kind]}
+          {plan.label_text || plans.kindNames[plan.kind]}
         </span>
         <h2 className="break-words text-2xl font-bold">{plan.title}</h2>
         <p className="font-medium">{planTime(plan, true)}</p>
         <p className="text-sm text-app-secondary">
-          {plan.place_kind === 'online' ? 'Online' : plan.area.label} · Hosted by {plan.host.display_name}
+          {plan.place_kind === 'online' ? 'Online' : plan.area.label} · Hosted by{' '}
+          {businessPath ? (
+            <Link className="text-primary-700" href={businessPath}>
+              {plan.host.display_name}
+            </Link>
+          ) : (
+            plan.host.display_name
+          )}
         </p>
+        {plan.business && (
+          <p className="text-sm font-medium">
+            {plan.business.verified ? 'Verified business' : 'Business'} · {plan.price?.text || 'Free'}
+          </p>
+        )}
         <p className="text-sm text-app-muted">
           {plan.spots_left} {plan.spots_left === 1 ? 'spot' : 'spots'} left
           {plan.audience === 'invited' ? ' · Private plan' : ''}
         </p>
       </header>
+      {plan.business && <PlanPaymentReturn key={id} id={id} onComplete={refresh} />}
+      {plan.deal && (
+        <section className="space-y-1 rounded-xl bg-surface-muted p-3">
+          <h3 className="font-semibold">{plan.deal.text}</h3>
+          {[plan.deal.condition_text, plan.deal.state_text, plan.deal.if_short_text, plan.deal.mine?.text]
+            .filter(Boolean)
+            .map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+        </section>
+      )}
       {plan.repeat?.text && <p className="text-sm">{plan.repeat.text}</p>}
       {plan.details && (
         <p className="text-sm text-app-secondary">
@@ -154,6 +190,7 @@ export default function PlanPage() {
         </p>
       )}
       {(isIn ||
+        !!plan.business ||
         (plan.kind !== 'playdate' &&
           plan.audience === 'invited' &&
           plan.place_kind === 'public' &&
@@ -205,13 +242,31 @@ export default function PlanPage() {
                 {person.is_host ? ' · Host' : ''}
                 {person.party_size > 1 ? ' · Party of ' + person.party_size : ''}
                 {person.kids_count ? ' · Kids: ' + person.kids_count : ''}
+                {person.paid && ' · Paid ' + person.paid.text}
+                {plan.business?.can_manage && person.deal?.state === 'ready' && person.request_id && (
+                  <button
+                    className="ml-2 text-sm text-primary-700"
+                    disabled={busy}
+                    onClick={() => action.mutate(() => plans.markDealUsed(id, person.request_id!))}
+                  >
+                    Mark deal used
+                  </button>
+                )}
+                {person.deal?.state === 'used' && ' · Deal used'}
                 {isHost && person.reconfirm_needed && ' · Reconfirmation requested'}
                 {isHost && active && person.request_id && (
                   <button
                     className="ml-3 text-sm text-primary-700"
                     disabled={busy}
                     onClick={() => {
-                      if (window.confirm('Remove ' + person.display_name + ' from this plan and its chat?'))
+                      if (
+                        window.confirm(
+                          'Remove ' +
+                            person.display_name +
+                            ' from this plan and its chat?' +
+                            (person.paid ? ' Their paid spot will be refunded.' : ''),
+                        )
+                      )
                         action.mutate(() => plans.decide(id, person.request_id!, 'remove'));
                     }}
                   >
@@ -258,6 +313,47 @@ export default function PlanPage() {
         <PlanInvitations key={id} plan={plan} />
       ) : null}
       {role === 'guest' && active && <InviteFriend key={id} plan={plan} />}
+      {plan.paid && (
+        <div className="space-y-2">
+          <p className="font-semibold">{plan.paid.text}</p>
+          {plan.paid.receipt?.link && (
+            <Link className="text-primary-700" href={plan.paid.receipt.link}>
+              View booking receipt
+            </Link>
+          )}
+        </div>
+      )}
+      {plan.group_pay && (
+        <section className="space-y-2">
+          <h3 className="font-semibold">{plan.group_pay.text}</h3>
+          <p>{[plan.group_pay.taken_text, plan.group_pay.note].filter(Boolean).join(' · ')}</p>
+          {plan.group_pay.url && (
+            <label className="block text-sm">
+              Share prepaid spots
+              <input
+                className={fieldClass}
+                value={plan.group_pay.url}
+                readOnly
+                onFocus={(e) => e.target.select()}
+              />
+            </label>
+          )}
+          {plan.group_pay.give_back && (
+            <button
+              className={secondaryClass}
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(plan.group_pay!.give_back!.text))
+                  action.mutate(() => plans.giveBackSpots(id));
+              }}
+            >
+              {plan.group_pay.give_back.label}
+            </button>
+          )}
+        </section>
+      )}
+      {plan.pay_here && (role === 'guest' || (isHost && plan.business?.can_manage)) && <PlanChecks key={id} plan={plan} />}
+      {plan.business && role === 'guest' && plan.state === 'ended' && <TipLater key={id} plan={plan} onComplete={refresh} />}
       {isHost && active && <HostTools plan={plan} busy={busy} run={action.mutate} />}
       {isHost && active && !plan.dates && <JoinRequests plan={plan} busy={busy} run={action.mutate} />}
       {role === 'guest' && active && (
@@ -272,7 +368,7 @@ export default function PlanPage() {
               I’m still coming
             </button>
           )}
-          {plan.my_invite && typeof plan.kids_welcome === 'boolean' && (
+          {plan.my_invite && !plan.price && typeof plan.kids_welcome === 'boolean' && (
             <button
               className={secondaryClass}
               disabled={busy}
@@ -287,6 +383,7 @@ export default function PlanPage() {
           <button className={secondaryClass} disabled={busy} onClick={cancel}>
             {plan.my_invite ? 'Can’t make it' : 'Leave plan'}
           </button>
+          {plan.paid?.leave_text && <p className="text-sm text-app-muted">{plan.paid.leave_text}</p>}
         </div>
       )}
       {role === 'none' && (status === 'pending' || status === 'waitlisted') && (
@@ -295,7 +392,11 @@ export default function PlanPage() {
             {status === 'pending' ? 'Requested' : 'On the waitlist'}
             {plan.viewer.waitlist_position ? ' · #' + plan.viewer.waitlist_position : ''}
           </p>
-          <p className="text-sm">Meeting details and chat will appear when you’re in.</p>
+          <p className="text-sm">
+            {plan.business
+              ? 'Chat opens when you’re in.'
+              : 'Meeting details and chat will appear when you’re in.'}
+          </p>
           {active && (
             <button className={secondaryClass} disabled={busy} onClick={cancel}>
               Withdraw request
@@ -317,9 +418,32 @@ export default function PlanPage() {
         active &&
         status !== 'pending' &&
         status !== 'waitlisted' &&
-        (plan.viewer.can_ask || waitlist || (invited && plan.my_invite?.status === 'declined')) && (
+        (plan.viewer.can_ask ||
+          status === 'paying' ||
+          waitlist ||
+          (invited && plan.my_invite?.status === 'declined')) &&
+        (plan.price ? (
+          <PayToJoin
+            key={id}
+            planId={id}
+            plan={plan}
+            gps={gps}
+            signedIn
+            joinNow={false}
+            priceText={plan.price.text}
+            refundText={plan.price.refund_text ?? null}
+            returnPath={detailPath(id)}
+            title={plan.title}
+            startsAt={plan.starts_at}
+            endsAt={plan.ends_at}
+            place={plan.place?.name || ''}
+            paid={null}
+            waiting={false}
+            onChanged={refresh}
+          />
+        ) : (
           <AskForm key={id} plan={plan} busy={busy} run={action.mutate} />
-        )}
+        ))}
       {role === 'none' && invited && active && !plan.dates && (
         <div className="flex flex-wrap gap-2">
           {typeof plan.kids_welcome === 'boolean' && plan.my_invite?.status !== 'maybe' && (
@@ -342,7 +466,7 @@ export default function PlanPage() {
           )}
         </div>
       )}
-      {role === 'none' && reason && !waitlist && active && !plan.dates && !invited && (
+      {role === 'none' && reason && status !== 'paying' && !waitlist && active && !plan.dates && !invited && (
         <div className="space-y-2">
           <p className="text-sm text-app-muted">
             {reasons[reason] || 'You can’t ask to join this plan right now.'}
@@ -404,6 +528,7 @@ function HostTools({ plan, busy, run }: ParticipationProps) {
             Note for guests (optional)
             <textarea className={fieldClass} name="note" maxLength={280} />
           </label>
+          {plan.price && <p className="text-sm">Cancelling refunds guests’ paid spots.</p>}
           <button disabled={busy} className={buttonClass}>
             Confirm cancellation
           </button>
