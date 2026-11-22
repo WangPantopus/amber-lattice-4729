@@ -389,9 +389,9 @@ async function composeForHome(home, { now = new Date(), windowDays = WINDOW_DAYS
   };
 }
 
-/** Whose general (not the household's) date an event is, in words for the assistant and the glance. */
+/** Whose general (not the household's) date an event is, in words for the assistant and the glance, naming its source. */
 function generalPickupWords(entry) {
-  if (entry.scope === 'county') return "the county's collection schedule";
+  if (entry.scope === 'county') return entry.source ? `the county's collection schedule (${entry.source})` : "the county's collection schedule";
   if (entry.scope === 'state') return "the state's schedule";
   return entry.confidence === 'official' ? "the city's published schedule" : "the city's schedule";
 }
