@@ -43,6 +43,9 @@ public struct PlansTabRoot: View {
     @State private var askTopic: AIAskTopic?
     /// Whether the list was last laid out beside the map.
     @State private var listBesideMap = false
+    /// The tab's first screen has appeared, and a moment later is showing: a handed-over plan waits for that.
+    @State private var rootAppeared = false
+    @State private var rootHasShown = false
 
     public init() {}
 
@@ -126,6 +129,22 @@ public struct PlansTabRoot: View {
             }
         }
         .guidanceScreen(.plans)
+        .onAppear(perform: rootShown)
+    }
+
+    /// The tab's first screen came on for the first time. A plan handed over before that (a link's, or a new
+    /// account's first plan, opening this tab for the first time) is pushed only once that screen is really
+    /// showing, and as a tap on it would push it. Put on the stack before its first screen had ever been on screen,
+    /// or without the push's animation, the plan did not go back with a swipe from the left edge.
+    private func rootShown() {
+        guard !rootAppeared else { return }
+        rootAppeared = true
+        Task { @MainActor in
+            // Appearing is not yet showing: the stack puts its first screen on screen in the next moments.
+            try? await Task.sleep(for: .milliseconds(150))
+            rootHasShown = true
+            consumePlansHandOff()
+        }
     }
 
     /// Two columns: regular width, with room for the phone-width column beside the narrowest iPhone's width (as
@@ -210,8 +229,8 @@ public struct PlansTabRoot: View {
     /// A plan link, a push or a Today card asked for a Plans screen.
     private func consumePlansHandOff() {
         guard rootTabs.selected == .plans, plansFlags.plans else { return }
-        // Not under the composer: it waits until the composer is gone.
-        if let route = plans.pending, hostRequest == nil {
+        // Not under the composer: it waits until the composer is gone. Nor before the first screen is showing.
+        if let route = plans.pending, hostRequest == nil, rootHasShown {
             plans.pending = nil
             plansPath = [route]
         }
