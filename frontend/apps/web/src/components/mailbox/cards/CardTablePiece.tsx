@@ -107,7 +107,8 @@ export default function CardTablePiece({
   const original = replyPiece ? exchange?.original ?? null : null;
   const card: TableCard = piece.card ?? original?.card ?? {
     design: replyPiece?.design ?? '', number: replyPiece?.number ?? null, caption: replyPiece?.caption ?? null,
-    paper: replyPiece?.paper ?? '#f7f0e2', table: replyPiece?.table ?? null, year: replyPiece?.year ?? new Date().getFullYear(), sealed: false,
+    paper: replyPiece?.paper ?? '#f7f0e2', table: replyPiece?.table ?? null, mood: replyPiece?.mood ?? null,
+    year: replyPiece?.year ?? new Date().getFullYear(), sealed: false,
   };
   const from = piece.sender_display || 'Someone';
   const action = useMailAction(piece.id);

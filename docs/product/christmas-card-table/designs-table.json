@@ -1594,6 +1594,278 @@
    "warm": 0.177,
    "band": 259,
    "painting_top": 155
+  },
+  {
+   "id": "christmas-2026-90",
+   "number": 90,
+   "caption": "Bundle up. It’s a long night.",
+   "slug": "bundle-up-its-a-long-night",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.368,
+   "warm": 0.274
+  },
+  {
+   "id": "christmas-2026-91",
+   "number": 91,
+   "caption": "Save some for the reindeer.",
+   "slug": "save-some-for-the-reindeer",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.367,
+   "warm": 0.428
+  },
+  {
+   "id": "christmas-2026-92",
+   "number": 92,
+   "caption": "One more lap, then it’s yours.",
+   "slug": "one-more-lap-then-its-yours",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.417,
+   "warm": 0.374
+  },
+  {
+   "id": "christmas-2026-93",
+   "number": 93,
+   "caption": "For everyone working tonight.",
+   "slug": "for-everyone-working-tonight",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.386,
+   "warm": 0.09
+  },
+  {
+   "id": "christmas-2026-94",
+   "number": 94,
+   "caption": "He won’t tell if you don’t.",
+   "slug": "he-wont-tell-if-you-dont",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.31,
+   "warm": 0.301
+  },
+  {
+   "id": "christmas-2026-95",
+   "number": 95,
+   "caption": "And away he goes.",
+   "slug": "and-away-he-goes",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.302,
+   "warm": -0.072
+  },
+  {
+   "id": "christmas-2026-96",
+   "number": 96,
+   "caption": "Christmas Eve in the city.",
+   "slug": "christmas-eve-in-the-city",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.428,
+   "warm": 0.083
+  },
+  {
+   "id": "christmas-2026-97",
+   "number": 97,
+   "caption": "The whole city’s lit up.",
+   "slug": "the-whole-citys-lit-up",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.415,
+   "warm": 0.125
+  },
+  {
+   "id": "christmas-2026-98",
+   "number": 98,
+   "caption": "Remember the windows downtown?",
+   "slug": "remember-the-windows-downtown",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.302,
+   "warm": 0.198
+  },
+  {
+   "id": "christmas-2026-99",
+   "number": 99,
+   "caption": "Meet me under the tree.",
+   "slug": "meet-me-under-the-tree",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.398,
+   "warm": 0.19
+  },
+  {
+   "id": "christmas-2026-100",
+   "number": 100,
+   "caption": "Skate with me till the lights come on.",
+   "slug": "skate-with-me-till-the-lights-come-on",
+   "table": "#3b4c6e",
+   "tone": "slate",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.465,
+   "warm": 0.032
+  },
+  {
+   "id": "christmas-2026-101",
+   "number": 101,
+   "caption": "The whole street’s lit up for you.",
+   "slug": "the-whole-streets-lit-up-for-you",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.371,
+   "warm": -0.061
+  },
+  {
+   "id": "christmas-2026-102",
+   "number": 102,
+   "caption": "The porch light’s on.",
+   "slug": "the-porch-lights-on",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.41,
+   "warm": 0.051
+  },
+  {
+   "id": "christmas-2026-103",
+   "number": 103,
+   "caption": "Follow our footprints home.",
+   "slug": "follow-our-footprints-home",
+   "table": "#3b4c6e",
+   "tone": "slate",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.476,
+   "warm": -0.09
+  },
+  {
+   "id": "christmas-2026-104",
+   "number": 104,
+   "caption": "I had help with the wrapping.",
+   "slug": "i-had-help-with-the-wrapping",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.433,
+   "warm": 0.299
+  },
+  {
+   "id": "christmas-2026-105",
+   "number": 105,
+   "caption": "Come to the window. It’s starting.",
+   "slug": "come-to-the-window-its-starting",
+   "table": "#3b4c6e",
+   "tone": "slate",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.389,
+   "warm": 0.006
   }
  ]
 }

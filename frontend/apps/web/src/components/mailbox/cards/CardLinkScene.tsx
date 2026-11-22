@@ -60,7 +60,7 @@ export default function CardLinkScene({
               <div className={styles.addressed} aria-hidden="true" data-testid="cardLinkPostmarks">
                 {/* eslint-disable @next/next/no-img-element */}
                 <img src={art('env-front.webp')} alt="" />
-                <img src={cardStampFile(null, front.design)} alt="" className={styles.addressedStamp} />
+                <img src={cardStampFile(null, front.design, front.mood)} alt="" className={styles.addressedStamp} />
                 {/* eslint-enable @next/next/no-img-element */}
                 <span className={styles.addressedKind}>Christmas card</span>
                 <TravelPostmarks marks={postmarks} />

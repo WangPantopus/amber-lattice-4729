@@ -897,7 +897,7 @@ function WriteStep({
   const record = () => { if (needsStamp) { onGetStamps?.(); return; } listen.stop(); void recorder.start(); };
   const choosePhoto = () => { if (needsStamp) { onGetStamps?.(); return; } photoInput.current?.click(); };
   // Christmas with Jesus Christ: a gift tag, as the reader will see it (wave 4 drawing 4).
-  const gift = cardMood(design.number, design.id) === 'reverence';
+  const gift = cardMood(design.number, design.id, design.mood) === 'reverence';
   return (
     <div className="mt-3 px-4">
       <CardFlip
@@ -2186,8 +2186,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     if (!to || !data) return;
     const piece = checked !== undefined ? checked : to.kind === 'list' ? listLook?.piece : look?.piece;
     const card: TableCard | null = piece?.card ?? (design ? {
-      design: design.id, number: design.number, caption: design.caption, paper: design.paper, table: design.table ?? null, year: data.year, sealed: false,
-      signature,
+      design: design.id, number: design.number, caption: design.caption, paper: design.paper, table: design.table ?? null,
+      mood: design.mood ?? null, year: data.year, sealed: false, signature,
     } : null);
     if (!card) return;
     setLinkSaid(null);

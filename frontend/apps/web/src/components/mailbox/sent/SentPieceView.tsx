@@ -299,7 +299,7 @@ export default function SentPieceView({ id }: { id: string }) {
                             width={card.photo.width}
                             height={card.photo.height}
                             alt={card.photo.alt}
-                            datedOn={cardMood(card.number, card.design) === 'nostalgia' ? (piece.envelope.postmarked_on ?? piece.sent_at) : null}
+                            datedOn={cardMood(card.number, card.design, card.mood) === 'nostalgia' ? (piece.envelope.postmarked_on ?? piece.sent_at) : null}
                             className="w-full"
                             opens
                             live={card.photo.live ? { sent: piece.id, fileId: card.photo.live.file_id } : null}
@@ -313,7 +313,7 @@ export default function SentPieceView({ id }: { id: string }) {
                             durationMs={card.voice.duration_ms}
                             forName={first}
                             fromName={piece.envelope.from}
-                            gift={cardMood(card.number, card.design) === 'reverence'}
+                            gift={cardMood(card.number, card.design, card.mood) === 'reverence'}
                           />
                         </div>
                       ) : null}

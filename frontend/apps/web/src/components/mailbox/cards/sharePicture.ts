@@ -20,6 +20,8 @@ export type ShareCard = {
   caption: string | null;
   paper: string;
   table?: string | null;
+  /** The table it opens on, as the server names it (absent: by its number). */
+  mood?: string | null;
   year: number;
   sealed: boolean;
 };
@@ -502,7 +504,7 @@ async function loadTravelArt(details: ShareDetails): Promise<TravelArt | null> {
   const svg = postmarksSvgString(details.travel.postmarks);
   const [front, stamp, marks] = await Promise.all([
     artImage('env-front.webp'),
-    image(cardStampFile(details.card.number, details.card.design)),
+    image(cardStampFile(details.card.number, details.card.design, details.card.mood)),
     image(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`),
   ]);
   return { front, stamp, marks };
