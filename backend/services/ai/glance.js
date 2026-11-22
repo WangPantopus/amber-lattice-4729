@@ -10,7 +10,7 @@
  */
 
 const { DateTime } = require('luxon');
-const { composeForHomeId } = require('../addressCalendarService');
+const { composeForHomeId, generalPickupWords } = require('../addressCalendarService');
 const { isFeatureEnabled } = require('../featureFlagService');
 const { runReadTool } = require('./readTools');
 const { catchUpNearby } = require('./readToolsNearby');
@@ -95,18 +95,18 @@ async function pickup(userId, home, zone) {
   const upcoming = (calendar.upcoming || []).filter((entry) => PICKUP_KINDS.some(([kind]) => kind === entry.kind));
   const next = PICKUP_KINDS.map(([kind, label]) => {
     const entry = upcoming.filter((candidate) => candidate.kind === kind).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
-    return entry ? { kind, label, date: entry.date, confirmed: entry.scope === 'home' } : null;
+    return entry ? { kind, label, date: entry.date, confirmed: entry.scope === 'home', whose: entry.scope === 'home' ? null : generalPickupWords(entry) } : null;
   }).filter(Boolean);
   if (!next.length) throw new GlanceError('NO_PICKUP', "Pantopus doesn't know your pickup days yet.", 'pantopus://today');
-  const days = byDay([...next].sort((a, b) => String(a.date).localeCompare(String(b.date))), (item) => `${item.date}|${item.confirmed}`);
+  const days = byDay([...next].sort((a, b) => String(a.date).localeCompare(String(b.date))), (item) => `${item.date}|${item.whose}`);
   const sentences = days.slice(0, 3).map((group) => {
     const subject = kindsSaid(group.map((item) => item.label));
     const many = group.length > 1;
     return group[0].confirmed
       ? `${subject} ${many ? 'go' : 'goes'} out ${dayWords(group[0].date, zone)}, the day your household set.`
-      : `${subject} ${many ? 'are' : 'is'} ${dayWords(group[0].date, zone)} on the city's schedule, not confirmed for your home.`;
+      : `${subject} ${many ? 'are' : 'is'} ${dayWords(group[0].date, zone)} on ${group[0].whose}, not confirmed for your home.`;
   });
-  const lines = next.map((item) => ({ label: item.label, value: `${shortDay(item.date, zone)} · ${item.confirmed ? "your household's day" : "city's schedule, not confirmed"}` }));
+  const lines = next.map((item) => ({ label: item.label, value: `${shortDay(item.date, zone)} · ${item.confirmed ? "your household's day" : `${item.whose.replace(/^the /, '')}, not confirmed`}` }));
   return answer('pickup', 'Next pickup', sentences, lines, 'pantopus://today');
 }
 

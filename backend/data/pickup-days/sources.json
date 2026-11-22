@@ -1,0 +1,15 @@
+{
+  "53011": {
+    "state": "WA",
+    "county": "Clark County",
+    "source": "Clark County, from Waste Connections",
+    "source_url": "https://gis.clark.wa.gov/arcgisfed2/rest/services/MapCatalog/Boundaries/MapServer/63",
+    "map_words": "Clark County's collection map",
+    "layer": "https://gis.clark.wa.gov/arcgisfed2/rest/services/MapCatalog/Boundaries/MapServer/63",
+    "day_field": "DAY",
+    "provider_field": "ServiceProvider",
+    "downloaded_field": "Download",
+    "published_field": "PublishDt",
+    "file": "53011.json.gz"
+  }
+}

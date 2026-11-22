@@ -23,8 +23,9 @@ function seedCamas() {
     { id: 'r-tax1', scope_type: 'state', scope_key: 'WA', kind: 'property_tax', title: 'Property tax — first half due', detail: null, rrule: 'FREQ=YEARLY;BYMONTH=4;BYMONTHDAY=30', dtstart: '2026-04-30', until: null, all_day: true, lead_days: 14, source: 'Washington State', source_url: null, confidence: 'official' },
     { id: 'r-tax2', scope_type: 'state', scope_key: 'WA', kind: 'property_tax', title: 'Property tax — second half due', detail: null, rrule: 'FREQ=YEARLY;BYMONTH=10;BYMONTHDAY=31', dtstart: '2026-10-31', until: null, all_day: true, lead_days: 14, source: 'Washington State', source_url: null, confidence: 'official' },
     { id: 'r-council', scope_type: 'city', scope_key: 'WA:Camas', kind: 'council', title: 'Camas City Council meeting', detail: null, rrule: 'FREQ=MONTHLY;BYDAY=1MO,3MO', dtstart: '2026-09-07', until: null, all_day: false, lead_days: 2, source: 'City of Camas', source_url: null, confidence: 'unverified' },
-    { id: 'r-garbage', scope_type: 'city', scope_key: 'WA:Camas', kind: 'garbage', title: 'Garbage day', detail: null, rrule: 'FREQ=WEEKLY;BYDAY=TU', dtstart: '2026-09-01', until: null, all_day: true, lead_days: 1, source: 'City of Camas', source_url: null, confidence: 'unverified' },
-    { id: 'r-recycle', scope_type: 'city', scope_key: 'WA:Camas', kind: 'recycling', title: 'Recycling day', detail: null, rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', dtstart: '2026-09-01', until: null, all_day: true, lead_days: 1, source: 'City of Camas', source_url: null, confidence: 'unverified' },
+    // A city-wide pickup schedule shows only when official (a hand-set guess never does; see the first test).
+    { id: 'r-garbage', scope_type: 'city', scope_key: 'WA:Camas', kind: 'garbage', title: 'Garbage day', detail: null, rrule: 'FREQ=WEEKLY;BYDAY=TU', dtstart: '2026-09-01', until: null, all_day: true, lead_days: 1, source: 'City of Camas', source_url: null, confidence: 'official' },
+    { id: 'r-recycle', scope_type: 'city', scope_key: 'WA:Camas', kind: 'recycling', title: 'Recycling day', detail: null, rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', dtstart: '2026-09-01', until: null, all_day: true, lead_days: 1, source: 'City of Camas', source_url: null, confidence: 'official' },
     // Another city's rule must never leak in.
     { id: 'r-other', scope_type: 'city', scope_key: 'WA:Vancouver', kind: 'garbage', title: 'Vancouver garbage', detail: null, rrule: 'FREQ=WEEKLY;BYDAY=FR', dtstart: '2026-09-04', until: null, all_day: true, lead_days: 1, source: null, source_url: null, confidence: 'unverified' },
   ]);
@@ -63,8 +64,14 @@ describe('composeForHome', () => {
     expect(byKind('council')).toEqual(['2026-09-07']);            // 1st Monday; the 3rd (Sep 21) is past the window
     expect(byKind('property_tax')).toEqual([]);                   // Oct 31 is outside 14 days
     expect(cal.next).toMatchObject({ kind: 'council', date: '2026-09-07', days_until: 4 });
-    expect(cal.upcoming.find((e) => e.kind === 'garbage')).toMatchObject({ days_until: 5, scope: 'city', confidence: 'unverified' });
+    expect(cal.upcoming.find((e) => e.kind === 'garbage')).toMatchObject({ days_until: 5, scope: 'city', confidence: 'official' });
     expect(cal.upcoming.some((e) => e.title === 'Vancouver garbage')).toBe(false);
+    // The same schedule set by hand and not confirmed is never a home's day: the household is asked instead.
+    for (const rule of getTable('AddressCalendarRule')) if (rule.scope_type === 'city') rule.confidence = 'unverified';
+    const guessed = await svc.composeForHome(home, { now: NOW });
+    expect(guessed.upcoming.filter((e) => ['garbage', 'recycling'].includes(e.kind))).toEqual([]);
+    expect(guessed.upcoming.some((e) => e.kind === 'council')).toBe(true);
+    expect(guessed.needs_pickup_day).toBe(true);
   });
 
   it('a rule seeded twice is one line on the card, never two (migration 198 + service guard)', async () => {
@@ -178,8 +185,8 @@ describe('composeForHome', () => {
     expect(cal.upcoming.find(e => e.kind === 'pickup_holiday')).toMatchObject({ date: '2026-11-26', source: holiday.source, source_url: holiday.source_url, confidence: 'official' });
     const after = await svc.composeForHome(home, { rules, now: new Date('2026-11-27T18:00:00Z') });
     expect(after.upcoming.find(e => e.kind === 'garbage')).toMatchObject({ date: '2026-11-27', days_until: 0, moved_from: '2026-11-26' });
-    const city = await svc.composeForHome(home, { rules: [{ ...garbage, scope_type: 'city', scope_key: 'WA:Camas', confidence: 'unverified' }, holiday], now: new Date('2026-11-25T18:00:00Z') });
-    expect(city.upcoming.find(e => e.kind === 'garbage')).toMatchObject({ date: '2026-11-27', scope: 'city', confidence: 'unverified', moved_from: '2026-11-26' });
+    const city = await svc.composeForHome(home, { rules: [{ ...garbage, scope_type: 'city', scope_key: 'WA:Camas', confidence: 'official' }, holiday], now: new Date('2026-11-25T18:00:00Z') });
+    expect(city.upcoming.find(e => e.kind === 'garbage')).toMatchObject({ date: '2026-11-27', scope: 'city', confidence: 'official', moved_from: '2026-11-26' });
     const unverified = await svc.composeForHome(home, { rules: [garbage, { ...holiday, confidence: 'unverified' }], now: new Date('2026-11-25T18:00:00Z') });
     expect(unverified.upcoming.find(e => e.kind === 'garbage').date).toBe('2026-11-26');
     expect(unverified.upcoming.some(e => e.kind === 'pickup_holiday')).toBe(true);
