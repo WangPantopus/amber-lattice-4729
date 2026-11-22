@@ -64,11 +64,13 @@ struct GuidanceTipRow: View {
 }
 
 extension GuidanceCenter {
-    /// The tab cards that are on for this account (1, 3, 4, 5, 6, 7; 2 once Place has shown an address).
+    /// The tab cards that are on for this account (1, 3, 4, 5, 6, 7; 2 once Place has shown an address; not 3
+    /// while the house is on Today).
     var tipCards: [GuidanceCardID] {
         var ids: [GuidanceCardID] = [.welcome]
         if record.has(.placeHasAddress) || record.hasSeen(.placeSaved) { ids.append(.placeSaved) }
-        ids.append(.tabToday)
+        // Not while the house is on Today: its picture says what the card said.
+        if !TodayHouseSwitch.shared.isOn { ids.append(.tabToday) }
         if LaunchFeatures.mailbox { ids.append(.tabMail) }
         ids.append(.tabPulse)
         if MomentsFlags.shared.moments { ids.append(.tabMoments) }

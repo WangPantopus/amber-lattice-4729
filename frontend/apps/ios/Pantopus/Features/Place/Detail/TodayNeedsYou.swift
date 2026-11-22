@@ -13,6 +13,12 @@
 //  router (a task opens over Today, as the agenda's do). Parity twin of
 //  Android's Today Needs you card.
 //
+//  With the house on Today (JOURNEYS section 3) the card sits directly under
+//  the picture and says the same things in words: a first row while mail
+//  waits ("Mail came today"), its items as before, a last row on a pickup
+//  evening ("Pickup is tomorrow"), and for a person with a home one line
+//  instead of hiding: "Nothing needs you today."
+//
 
 import Observation
 import SwiftUI
@@ -58,27 +64,66 @@ final class TodayNeedsYouModel {
     }
 }
 
+/// The house on Today: what the card says besides the server's items.
+struct TodayNeedsYouHouse {
+    /// Unopened mail (the count on the Mail tab's badge); over 0 shows the first row.
+    var unopenedMail = 0
+    var onMail: () -> Void = {}
+    /// On a pickup evening, tomorrow's kinds ("Garbage and recycling"): the last row.
+    var pickupKinds: String?
+    /// The pickup schedule, as the bins open it.
+    var onPickup: () -> Void = {}
+    /// A person with a home: "Nothing needs you today." instead of hiding.
+    var hasHome = false
+}
+
 struct TodayNeedsYouCard: View {
     let model: TodayNeedsYouModel
     /// Tasks "Coming up at home" already shows on this screen.
     var hiddenTaskIds: Set<String> = []
     /// Opens a task over Today, so Back comes back here.
     var onOpenTask: ((_ homeId: String, _ taskId: String) -> Void)?
+    /// The house on Today's rows and quiet line; nil is the card as it was.
+    var house: TodayNeedsYouHouse?
     @State private var showsAll = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let firstRows = 3
 
+    /// A row of the card: the mail row, one of the server's items, or the pickup row.
+    private enum Entry: Identifiable {
+        case mail(Int)
+        case item(AINeedsYouItemDTO)
+        case pickup(String)
+
+        var id: String {
+            switch self {
+            case .mail: "house.mail"
+            case let .item(item): item.id
+            case .pickup: "house.pickup"
+            }
+        }
+    }
+
+    private var entries: [Entry] {
+        var rows = model.shown(hidingTaskIds: hiddenTaskIds).map(Entry.item)
+        if let house, house.unopenedMail > 0 { rows.insert(.mail(house.unopenedMail), at: 0) }
+        if let kinds = house?.pickupKinds { rows.append(.pickup(kinds)) }
+        return rows
+    }
+
     var body: some View {
-        let rows = model.shown(hidingTaskIds: hiddenTaskIds)
-        if !rows.isEmpty {
+        let rows = entries
+        if rows.isEmpty, house?.hasHome == true {
+            quietLine
+        } else if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 PlaceSectionHeading(title: "Needs you")
                 PlaceGroupSurface {
                     let visible = showsAll ? rows : Array(rows.prefix(Self.firstRows))
-                    ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { index, entry in
                         if index > 0 { PlaceRowDivider() }
-                        row(item)
+                        row(entry)
                     }
                     if rows.count > Self.firstRows {
                         PlaceRowDivider()
@@ -96,9 +141,51 @@ struct TodayNeedsYouCard: View {
         }
     }
 
-    private func row(_ item: AINeedsYouItemDTO) -> some View {
-        let look = Self.look(item.type)
-        return Button { open(item) } label: {
+    /// A quiet day, for a person with a home (board H5).
+    private var quietLine: some View {
+        PlaceGroupSurface {
+            HStack(spacing: 10) {
+                Icon(.check, size: 17, strokeWidth: 2.4, color: Theme.Color.success)
+                    .accessibilityHidden(true)
+                Text("Nothing needs you today.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .padding(.top, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today.house.quiet")
+    }
+
+    @ViewBuilder
+    private func row(_ entry: Entry) -> some View {
+        switch entry {
+        case let .mail(count):
+            row(
+                look: Look(icon: .mail, tint: Theme.Color.error, background: Theme.Color.errorBg),
+                title: "Mail came today",
+                subtitle: "\(count) unopened",
+                identifier: "today.house.mailRow"
+            ) { house?.onMail() }
+        case let .item(item):
+            row(look: Self.look(item.type), title: item.title, subtitle: item.subtitle, identifier: "needsYou.row.\(item.type)") {
+                Self.open(item, onOpenTask: onOpenTask)
+            }
+        case let .pickup(kinds):
+            row(
+                look: Look(icon: .trash, tint: Theme.Color.home, background: Theme.Color.homeBg),
+                title: "Pickup is tomorrow",
+                subtitle: kinds,
+                identifier: "today.house.pickupRow"
+            ) { house?.onPickup() }
+        }
+    }
+
+    private func row(look: Look, title: String, subtitle: String?, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(alignment: .center, spacing: 12) {
                 RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
                     .fill(look.background)
@@ -106,11 +193,11 @@ struct TodayNeedsYouCard: View {
                     .overlay(Icon(look.icon, size: 17, strokeWidth: 2.2, color: look.tint))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
+                    Text(title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let subtitle = item.subtitle, !subtitle.isEmpty {
+                    if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.Color.appTextSecondary)
@@ -128,11 +215,12 @@ struct TodayNeedsYouCard: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("needsYou.row.\(item.type)")
+        .accessibilityIdentifier(identifier)
     }
 
-    /// A task opens over Today; everything else through the deep-link router.
-    private func open(_ item: AINeedsYouItemDTO) {
+    /// A task opens over Today; everything else through the deep-link router. (The note on the house's door opens
+    /// the first item the same way.)
+    static func open(_ item: AINeedsYouItemDTO, onOpenTask: ((_ homeId: String, _ taskId: String) -> Void)?) {
         if let onOpenTask, let subject = item.subject, subject.type == "task",
            let homeId = subject.homeId, let taskId = subject.id {
             onOpenTask(homeId, taskId)

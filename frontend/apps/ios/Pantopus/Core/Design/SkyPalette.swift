@@ -193,6 +193,11 @@ public enum SkyPalette {
     /// A pool beside the house, blended into the silhouette.
     public static let pool = SkyRGB(0x7DD3FC)
 
+    /// The house on Today: the mailbox's flag, the note on the door and the lantern on the far hill.
+    public static let mailFlag = SkyRGB(0xEF4444)
+    public static let doorNote = SkyRGB(0xFFFFFF)
+    public static let lantern = SkyRGB(0xF59E0B)
+
     /// Bins at the curb: garbage, recycling, yard waste.
     public static let binGarbage = SkyRGB(0x4B5563)
     public static let binRecycling = SkyRGB(0x2563EB)

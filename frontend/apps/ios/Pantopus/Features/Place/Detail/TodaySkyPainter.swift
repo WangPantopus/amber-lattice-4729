@@ -35,6 +35,9 @@ struct TodaySkyPainter {
     /// A shared clip's frame, in seconds: rain and snow fall to it while the
     /// rest of a `still` scene holds (`SkyShareCard`).
     var falling: Double?
+    /// The house on Today (`TodaySkyHouseSpots.swift`): the ground is drawn larger and the
+    /// mailbox, the note and the lantern join it. Nil draws the card as it always was.
+    var things: SkyHouseThings?
 
     private var weather: SkyPalette.Weather {
         SkyPalette.Weather(condition)
@@ -47,7 +50,9 @@ struct TodaySkyPainter {
     /// `rise` (0...1) lifts the sun or moon into its place as the card loads;
     /// `drift` lowers the stars, sun or moon and clouds as the card scrolls away.
     func paint(_ context: GraphicsContext, size: CGSize, time: Double, rise: Double = 1, drift: Double = 0) {
-        let scene = Scene(size: size, time: still ? 2 : time, sky: SkyPalette.sky(moment.phase, weather), rise: rise)
+        let spots = things.map { _ in SkyHouseSpots(size: size, home: home) }
+        let sky = SkyPalette.sky(moment.phase, weather)
+        let scene = Scene(size: size, time: still ? 2 : time, sky: sky, rise: rise, ground: spots?.horizon)
         let clear = weather == .clear || weather == .partly
         paintSky(context, scene)
         var far = context
@@ -61,6 +66,22 @@ struct TodaySkyPainter {
         if wind.streaks > 0 { paintWind(context, scene) }
         if weather == .storm, !still { paintLightning(context, scene) }
         if smoke > 0 { paintSmoke(context, scene) }
+        if let spots {
+            // The same ground, larger: hills, home, trees and bins in a scene `spots.scale` times smaller.
+            var larger = context
+            larger.scaleBy(x: spots.scale, y: spots.scale)
+            ground(spots.scaled(scene)).paint(larger)
+        } else {
+            ground(scene).paint(context)
+        }
+        // Fog hugs the ground, in front of the house and below the reading.
+        paintFog(context, scene)
+        paintScrim(context, scene)
+        if let spots, let things { ground(scene).paintThings(context, things, at: spots) }
+        if temperature <= 32 { paintFrost(context, scene) }
+    }
+
+    private func ground(_ scene: Scene) -> TodaySkyGround {
         TodaySkyGround(
             scene: scene,
             weather: weather,
@@ -72,11 +93,7 @@ struct TodaySkyPainter {
             home: home,
             streetLights: streetLights,
             wind: wind
-        ).paint(context)
-        // Fog hugs the ground, in front of the house and below the reading.
-        paintFog(context, scene)
-        paintScrim(context, scene)
-        if temperature <= 32 { paintFrost(context, scene) }
+        )
     }
 
     /// One cloud of the overcast deck: where it starts (fraction of its
@@ -96,6 +113,10 @@ struct TodaySkyPainter {
         let sky: SkyPalette.Sky
         /// 0 below its place, 1 in it.
         var rise = 1.0
+        /// The house on Today: where the horizon is (else 34 points above the bottom) and where
+        /// the home's door stands (else 70% across).
+        var ground: Double?
+        var door: Double?
 
         var width: Double {
             size.width
@@ -106,7 +127,7 @@ struct TodaySkyPainter {
         }
 
         var horizon: Double {
-            size.height - 34
+            ground ?? size.height - 34
         }
 
         /// A position that drifts at `speed` points a second and wraps over `span`.
