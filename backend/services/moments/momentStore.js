@@ -188,16 +188,26 @@ function ringKey(row, point) {
  * muted (everywhere, or in Moments only) and, for connections-only Moments, who they're connected to. Throws when the
  * blocks or mutes can't be read, so nothing shows unfiltered.
  */
-async function viewerContext(viewerId, authorIds = []) {
-  const filters = await feedService.getMuteAndHideFilters(viewerId);
+async function viewerContext(viewerId, authorIds = [], shared = null) {
+  // `shared` (sharedViewerReads): the viewer's filters already being read for this request, used instead of reading
+  // them again; a failed read throws here, as its own would have.
+  const filters = shared ? await used(shared.filters) : await feedService.getMuteAndHideFilters(viewerId);
   const others = [...new Set(authorIds.filter((id) => id && id !== viewerId))];
-  const links = await readInBatches(others, (batch) => supabaseAdmin
-    .from('Relationship')
-    .select('requester_id, addressee_id')
-    .eq('status', 'accepted')
-    .or(`and(requester_id.eq.${viewerId},addressee_id.in.(${batch.join(',')})),and(addressee_id.eq.${viewerId},requester_id.in.(${batch.join(',')}))`),
-  'connections');
-  const connected = new Set(links.map((r) => (r.requester_id === viewerId ? r.addressee_id : r.requester_id)));
+  let connected;
+  if (shared?.connections) {
+    // These authors all come from the viewer's connections (shared.connections, read in full for this request), so
+    // each one is connected: the same answer the read below gives for them.
+    const all = new Set(shared.connections.map(String));
+    connected = new Set(others.filter((id) => all.has(String(id))));
+  } else {
+    const links = await readInBatches(others, (batch) => supabaseAdmin
+      .from('Relationship')
+      .select('requester_id, addressee_id')
+      .eq('status', 'accepted')
+      .or(`and(requester_id.eq.${viewerId},addressee_id.in.(${batch.join(',')})),and(addressee_id.eq.${viewerId},requester_id.in.(${batch.join(',')}))`),
+    'connections');
+    connected = new Set(links.map((r) => (r.requester_id === viewerId ? r.addressee_id : r.requester_id)));
+  }
   return {
     viewerId,
     blocked: filters.blockedUserIds,
@@ -527,11 +537,28 @@ async function reportedIds(viewerId) {
   return new Set((data || []).map((report) => report.post_id));
 }
 
+// A read's outcome held until it is used ({ value } or { error }), so a read nobody ends up needing never rejects.
+const settled = (read) => read.then((value) => ({ value }), (error) => ({ error }));
+async function used(read) {
+  const { value, error } = await read;
+  if (error) throw error;
+  return value;
+}
+
+/**
+ * The viewer's own reads that one request needs in more than one place (the Moments in view and the ones with no
+ * location): their mute, hide and block filters and their recent reports, started at once and read once. reportedIds
+ * never fails (an unreadable list is empty).
+ */
+function sharedViewerReads(viewerId) {
+  return { filters: settled(feedService.getMuteAndHideFilters(viewerId)), reported: reportedIds(viewerId) };
+}
+
 /**
  * The live Moments shown in the box that `viewerId` may see (blocks, mutes, audience) and hasn't reported, newest
  * first, each with the point everyone sees: [{ row, point }]. The map and the tab's dot both read this.
  */
-async function shownInBox(viewerId, { south, west, north, east }) {
+async function shownInBox(viewerId, { south, west, north, east }, shared = null) {
   if (north - south > MAX_MAP_SPAN_DEGREES || east - west > MAX_MAP_SPAN_DEGREES) return [];
   // An area pin's displayed point can be up to MAX_DISPLAY_OFFSET_DEGREES from its stored point: read the stored points
   // in a box that wide, on whole cells (so the rows read never depend on where an edge falls between stored points),
@@ -554,8 +581,8 @@ async function shownInBox(viewerId, { south, west, north, east }) {
   if (error) throw new Error(`Failed to load Moments: ${error.message}`);
   const rows = (data || []).filter((row) => momentState(row) === 'live');
   const [ctx, reported] = await Promise.all([
-    viewerContext(viewerId, rows.map((r) => r.user_id)),
-    rows.length ? reportedIds(viewerId) : new Set(),
+    viewerContext(viewerId, rows.map((r) => r.user_id), shared),
+    rows.length ? (shared ? shared.reported : reportedIds(viewerId)) : new Set(),
   ]);
   const shown = [];
   for (const row of rows) {
@@ -579,8 +606,9 @@ async function connectionIds(viewerId) {
  * The live Moments with no location that `viewerId` may see: their connections' and their own, whatever the map shows
  * (blocks, mutes and reports apply), newest first, as [{ row, point }] with an empty point.
  */
-async function shownUnplaced(viewerId) {
-  const people = [String(viewerId), ...await connectionIds(viewerId)];
+async function shownUnplaced(viewerId, shared = null) {
+  const connections = await connectionIds(viewerId);
+  const people = [String(viewerId), ...connections];
   const nowIso = new Date().toISOString();
   const rows = (await readInBatches(people, (batch) => supabaseAdmin.from('Post').select(MOMENT_SELECT)
     .eq('is_story', true)
@@ -592,7 +620,10 @@ async function shownUnplaced(viewerId) {
     .eq('post_metadata->moment->>state', 'live')
     .limit(MAX_MAP_ROWS), 'unplaced Moments')).filter((row) => momentState(row) === 'live');
   if (!rows.length) return [];
-  const [ctx, reported] = await Promise.all([viewerContext(viewerId, rows.map((r) => r.user_id)), reportedIds(viewerId)]);
+  const [ctx, reported] = await Promise.all([
+    viewerContext(viewerId, rows.map((r) => r.user_id), shared && { ...shared, connections }),
+    shared ? shared.reported : reportedIds(viewerId),
+  ]);
   return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
     .sort((a, b) => Date.parse(shownAt(b)) - Date.parse(shownAt(a)))
     .map((row) => ({ row, point: { latitude: null, longitude: null } }));
@@ -607,9 +638,9 @@ async function mapRings(viewerId, box) {
  * shownUnplaced, or none when it can't be read: the Moments with no location never stop the map or the tab's dot
  * from working.
  */
-async function unplacedOrNone(viewerId) {
+async function unplacedOrNone(viewerId, shared = null) {
   try {
-    return await shownUnplaced(viewerId);
+    return await shownUnplaced(viewerId, shared);
   } catch (error) {
     logger.warn('moments.unplaced_read_failed', { error: error.message });
     return [];
@@ -741,9 +772,11 @@ function wentLiveAt(row) {
  * dot never lights for something it can't show.
  */
 async function unseenPeople(viewerId, box, since = null, { includeUnplaced = false } = {}) {
+  // The viewer's filters and recent reports are read once, alongside the Moments, for both halves below.
+  const shared = sharedViewerReads(viewerId);
   const [inBox, unplaced] = await Promise.all([
-    shownInBox(viewerId, box),
-    includeUnplaced ? unplacedOrNone(viewerId) : [],
+    shownInBox(viewerId, box, shared),
+    includeUnplaced ? unplacedOrNone(viewerId, shared) : [],
   ]);
   const fresh = [...inBox, ...unplaced].map(({ row }) => row)
     .filter((row) => row.user_id !== viewerId && (since == null || wentLiveAt(row) > since));
