@@ -163,3 +163,23 @@ Table colours: the rule above, on the painting (which gives 59–67's recorded c
 Card 71 is John 3:16, which card 61 already carries, so its public page is `/cards/john-3-16-nicodemus`.
 
 The scripts are in the launch kit, `streams/JESUSCARDS/tools` (and the work folder `/Volumes/Studio-Extended/jesus-cards-work/tools`): `band.cjs` sets a verse band in Chrome, `jobs.py` builds the bands from the checked text, `compose.py` joins painting and band and checks the painting's pixels are copied unchanged, `make_art.py` writes the card, older and thumbnail files, `render-links.cjs` writes the link previews, `designs_table.py` writes the rows here, and `check_server_verses.cjs` checks the server's text against the checked verses word for word.
+
+## Pictures 90–105: more Santa, Christmas in the City, Memories and As a Kid (November 21, 2026)
+
+The founder's own paintings, approved with the card shelves design ([card shelves](../card-shelves-2026-11-21/README.md), A1): six more for Christmas with Santa (90–95), five for a new collection, Christmas in the City (96–100), four for Christmas Memories (101–104) and one for Christmas as a Kid (105). They are borderless paintings like 50–58, 1214 × 1295, already 15:16, so nothing is trimmed: each `crop` in `designs-table.json` is the whole picture. A seventeenth picture (a second painting of the toy-train scene) stays out, and no number is reused.
+
+The founder renamed the new collection so that it doesn't say which city it is: no shop, hotel, rink or city name goes into a caption, a slug, a file name, alt text, a link preview, a document here or a commit message. The pictures carry no lettering of their own.
+
+From each picture, the way 50–58 were made, with the founder's rule from the last batch ("do not reduce image quality"):
+
+| File | How |
+|---|---|
+| `card/<id>.jpg` | The picture as it is, never resampled, JPEG quality 92 with no chroma subsampling (452–917 KB) |
+| `<id>.jpg`, `<id>-thumb.jpg` (older apps) | 960 and 360 wide: the picture inside a 16-pixel border of the card's paper (`#f7f0e2`, as for 50–58), quality 88 and 85, so the card is 960 × 1022 |
+| `share/<id>-link.jpg` | Rendered from the layout of every earlier link preview (card 59 rendered again with it matches the one on the website to within JPEG noise) |
+
+Table colours: the rule above gives umber to the warm rooms and Santa's red (90, 91, 92, 94, 97, 98, 99 and 104), wine to the diner (93), the doorway in the snow (96) and the brick house (102), dusk to the sleigh's night sky (95) and slate to the snowy park (100), the street of lit houses (101), the walk to church (103) and the window (105). Three evening scenes are picked by eye, as 54 was: dusk for the angels on the walk to the great tree (97), the skaters under the tree (99) and the street of lit houses (101).
+
+**The table's mood** comes from the card's collection, named by the server on every card (`mood`, card shelves SPEC A4): 90–95 open on Santa's table. Apps that don't read it decide by number, and the website, iPhone and Android builds from November 21 on put 90–95 in Santa's range; app builds already in the stores open 90–95 on the everyday snowy table until the next builds.
+
+The scripts are in the launch kit, `streams/CARDSHELF/tools`: `make_art.py` writes the card, older and thumbnail files, `render-links.cjs` writes the link previews, `sheet-shots.cjs` shoots each card in the web card rack and `sheet.py` makes the sheet the design session reviewed. The captions, slugs and cloths are in `/Volumes/Studio-Extended/cardshelf-work/tools/cards-final.json`.
