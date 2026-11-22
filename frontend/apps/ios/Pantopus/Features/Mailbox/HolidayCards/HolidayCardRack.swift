@@ -50,14 +50,17 @@ struct HolidayCardRack: View {
 
     /// The room kept under the card for its words, the same for every card in the collection so the card stays put
     /// while they're swiped (card shelves E3: the card as large as the screen allows). What the collection's tallest
-    /// words need at this width, never more than before (a verse 200, the pen 96; longer words scroll in it, as they
-    /// did). Without verses, less again where that lets the card reach 90% of a phone's width with a line to spare.
+    /// words need at this width, never more than before (a verse 200, the pen 96). On a phone, less again where that
+    /// lets the card reach 90% of the width with a line to spare, or a verse card 85% with room for its reference (the
+    /// design session's answer of Nov 22: on a short screen the card wins, and the verse is read on the card).
     private func wordsRoom(height available: CGFloat, width: CGFloat) -> CGFloat {
         let verses = designs.contains { $0.verse?.isEmpty == false }
         var room = min((wordsNeed ?? .infinity) + 4, verses ? 200 : 96)
-        if !verses, width < 560 {
-            let besideNinety = available - width * 0.9 / CardTableShape.aspect
-            if besideNinety >= 44 { room = min(room, besideNinety) }
+        if width < 560 {
+            let share: CGFloat = verses ? 0.85 : 0.9
+            let least: CGFloat = verses ? 36 : 44
+            let beside = available - width * share / CardTableShape.aspect
+            if beside >= least { room = min(room, beside) }
         }
         return room
     }
@@ -266,12 +269,17 @@ struct HolidayCardRack: View {
     /// the room (the largest text sizes), it scrolls.
     private var words: some View {
         ZStack {
-            // Smaller before it scrolls, so the words show whole under a card that takes the screen (card shelves E3).
+            // Smaller before anything else, so the words show whole under a card that takes the screen (card shelves E3);
+            // then a verse card shows only its reference (the verse is printed on the card), and nothing scrolls.
             ViewThatFits(in: .vertical) {
                 HolidayCardRackWords(design: shown)
                 HolidayCardRackWords(design: shown, scale: 0.82)
                 HolidayCardRackWords(design: shown, scale: 0.68)
-                ScrollView { HolidayCardRackWords(design: shown) }
+                if shown.verse?.isEmpty == false {
+                    HolidayCardRackWords(design: shown, referenceOnly: true)
+                } else {
+                    ScrollView { HolidayCardRackWords(design: shown) }
+                }
             }
             // At the largest sizes the pen and the verse stop growing at the first accessibility size, so more than
             // a word shows before it scrolls.
@@ -362,6 +370,8 @@ private struct HolidayCardRackWords: View {
     let design: HolidayCardDesign
     /// Smaller where the room under the card is short.
     var scale: CGFloat = 1
+    /// A verse card where even the smaller verse doesn't fit: its reference alone (VoiceOver still reads the verse).
+    var referenceOnly = false
 
     @ScaledMetric(relativeTo: .title3) private var verseSize: CGFloat = 19
     @ScaledMetric(relativeTo: .title2) private var penSize: CGFloat = 28
@@ -369,7 +379,12 @@ private struct HolidayCardRackWords: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if let verse = design.verse?.trimmingCharacters(in: .whitespacesAndNewlines), !verse.isEmpty {
+            if referenceOnly {
+                Text(design.caption)
+                    .font(.system(size: referenceSize + 4, design: .serif).italic())
+                    .foregroundStyle(MailPaper.tableCream)
+                    .accessibilityLabel("\(design.verse ?? "") \(design.caption)")
+            } else if let verse = design.verse?.trimmingCharacters(in: .whitespacesAndNewlines), !verse.isEmpty {
                 Text(verse)
                     .font(.system(size: verseSize * scale, design: .serif))
                     .lineSpacing(verseSize * scale * 0.22)
