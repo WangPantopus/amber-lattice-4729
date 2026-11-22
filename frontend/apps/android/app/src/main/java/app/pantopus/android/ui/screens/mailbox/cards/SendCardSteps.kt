@@ -519,7 +519,17 @@ internal fun PickBar(
     onChoose: (String) -> Unit,
     onNext: () -> Unit,
 ) {
-    val picked = cards.designOf(chosen)
+    PickBarBody(cards.designOf(chosen), onLarge = onLarge, onNext = onNext)
+    PickRack(cards, large = large, onLarge = onLarge, onChoose = onChoose, onNext = onNext)
+}
+
+/** The bar itself: [picked] small with its caption and "See it larger" (or how to choose one), and "Write on this card". */
+@Composable
+internal fun PickBarBody(
+    picked: HolidayCardDesign?,
+    onLarge: (String?) -> Unit,
+    onNext: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk).testTag("sendCardPickBar")) {
         HorizontalDivider(color = PantopusColors.cardNoteEdge)
         Row(
@@ -569,6 +579,17 @@ internal fun PickBar(
                     .testTag("sendCardWriteOn"),
         )
     }
+}
+
+/** The card rack over Pick a card while a picture is open large ([large]), among the other cards of its collection. */
+@Composable
+internal fun PickRack(
+    cards: HolidayCardsResponse,
+    large: String?,
+    onLarge: (String?) -> Unit,
+    onChoose: (String) -> Unit,
+    onNext: () -> Unit,
+) {
     cards.designOf(large)?.let { design ->
         val collection = cards.collections.firstOrNull { design.id in it.designs }
         CardRack(
@@ -724,7 +745,6 @@ private fun DesignTile(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(3.dp)
     Column(
         modifier =
             modifier
@@ -735,38 +755,7 @@ private fun DesignTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
-                    .shadow(if (selected) 6.dp else 4.dp, shape)
-                    .clip(shape)
-                    .background(HolidayCardArt.paper(design.paper))
-                    // A zero-width border would still draw a hairline: the ring only when it's chosen.
-                    .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
-        ) {
-            AsyncImage(
-                model = HolidayCardArt.picture(design.id, thumb = true),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
-            )
-            if (selected) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(PantopusColors.cardWax),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
-                }
-            }
-        }
+        PickPicture(design, selected)
         // Two across, a caption has two full lines; at the largest text it wraps on rather than being cut.
         Text(
             design.caption,
@@ -777,6 +766,62 @@ private fun DesignTile(
             textAlign = TextAlign.Center,
             modifier = Modifier.heightIn(min = 36.dp),
         )
+    }
+}
+
+/**
+ * A picture as Pick a card draws it, at its own shape on its paper, in a shadow: chosen, a wax-red ring and a check.
+ * [thumb]: the small copy only, as the grid uses. Otherwise (the shelves' larger cards) the small copy first and the
+ * large one over it once it's loaded, except while Data Saver holds the app back.
+ */
+@Composable
+internal fun PickPicture(
+    design: HolidayCardDesign,
+    selected: Boolean,
+    thumb: Boolean = true,
+) {
+    val context = LocalContext.current
+    val large = !thumb && !HolidayCardArt.dataSaverOn(context)
+    val shape = RoundedCornerShape(3.dp)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
+                .shadow(if (selected) 6.dp else 4.dp, shape)
+                .clip(shape)
+                .background(HolidayCardArt.paper(design.paper))
+                // A zero-width border would still draw a hairline: the ring only when it's chosen.
+                .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
+    ) {
+        AsyncImage(
+            model = HolidayCardArt.picture(design.id, thumb = true),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+        )
+        if (large) {
+            AsyncImage(
+                model = HolidayCardArt.picture(design.id, thumb = false),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+            )
+        }
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(PantopusColors.cardWax),
+                contentAlignment = Alignment.Center,
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
+            }
+        }
     }
 }
 

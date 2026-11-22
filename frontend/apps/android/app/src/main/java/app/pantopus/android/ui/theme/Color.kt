@@ -309,6 +309,9 @@ object PantopusColors {
     /** Lettering on wax red — `#FFF7ED`. */
     val cardWaxText = Color(0xFFFFF7ED)
 
+    /** The edge of a chip that says something in wax red (Pick a card's stamps, card shelves) — `#D9B9B0`. */
+    val cardWaxEdge = Color(0xFFD9B9B0)
+
     /** The desk's words: strong `#111827`, body `#374151`, quiet `#4E5563`, a problem `#A81A1A`. */
     val cardTextStrong = Color(0xFF111827)
     val cardTextBody = Color(0xFF374151)
