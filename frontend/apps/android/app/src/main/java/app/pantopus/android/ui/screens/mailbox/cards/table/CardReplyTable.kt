@@ -112,6 +112,7 @@ internal fun CardExchange.joined(viewerWrote: Boolean): JoinedCard? {
             daysUntilOpen = null,
             verse = face.verse,
             signature = face.signature?.takeIf { it.drawable },
+            mood = face.mood,
         )
     val writer = back.fromName.orEmpty().trim().substringBefore(' ').ifEmpty { "Someone" }
     val words = if (viewerWrote) "You wrote back to ${card.fromFirst}." else "$writer wrote back."

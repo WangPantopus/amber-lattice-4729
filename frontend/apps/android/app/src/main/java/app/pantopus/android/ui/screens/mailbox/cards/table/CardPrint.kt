@@ -427,7 +427,7 @@ internal fun LetterCardPrint(
     modifier: Modifier = Modifier,
 ) {
     if (card.photo == null && card.voice == null) return
-    val mood = CardMood.of(card.number, card.design)
+    val mood = CardMood.of(card.number, card.design, card.mood)
     // Their own photo opens over the whole screen, in a window of its own: there's no table under it here.
     var opened by remember(card.photo?.url) { mutableStateOf<CardPhotoOpened?>(null) }
     opened?.let { photo ->

@@ -350,7 +350,7 @@ internal class CardSharePictures(
 
         fun lay(target: Canvas) {
             target.drawBitmap(art.front, null, RectF(0f, 0f, w, h), bitmaps)
-            cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.let { stamp ->
+            cardStamp(art.stamps, art.star, card.stamp, card.number, card.design, card.mood)?.let { stamp ->
                 val left = w * 0.755f
                 val stampTop = h * 0.0345f
                 val stampWidth = w * 0.2017f

@@ -635,7 +635,7 @@ private fun drawPostage(
 ) {
     // A passed-on card's envelope already carries its stamp, cancelled by its first postmark (travelling card Part 4).
     val stampOn = if (card.travels) 1f else reveal.stamp
-    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.takeIf { stampOn > 0f }?.let { stamp ->
+    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design, card.mood)?.takeIf { stampOn > 0f }?.let { stamp ->
         val left = width * 0.755f
         val top = height * 0.0345f
         val stampWidth = width * 0.2017f

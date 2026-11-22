@@ -78,6 +78,8 @@ data class MailLetterCard(
     val voice: CardGreetingVoice? = null,
     /** A travelling card (the server's switch `card_travel`): its postmarks and how far it came; null for every other. */
     val travel: CardTravel? = null,
+    /** The table it opens on, from the server (`reverence`, `santa`, `nostalgia`); null: decided by its number. */
+    val mood: String? = null,
 )
 
 /**
@@ -207,6 +209,7 @@ data class MailLetter(
                 photo = card.photo?.takeIf { !card.sealed }?.let { CardPrintPhoto.received(detail.id, it) },
                 voice = card.voice?.takeIf { !card.sealed }?.let { CardGreetingVoice.received(detail.id, it) },
                 travel = card.travel?.let(CardTravel::of),
+                mood = card.mood,
             )
         }
 

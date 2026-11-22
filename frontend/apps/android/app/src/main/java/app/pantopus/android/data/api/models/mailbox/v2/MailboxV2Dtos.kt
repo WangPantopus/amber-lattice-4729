@@ -113,6 +113,8 @@ data class MailCard(
     val slug: String? = null,
     /** The picture's table colour, a colour like `#3b4c6e` (launch key `card_table`). */
     val table: String? = null,
+    /** The table it opens on: `reverence`, `santa` or `nostalgia` (absent from older servers: decided by number). */
+    val mood: String? = null,
     /** The whole verse printed on a Christmas with Jesus Christ picture, once it isn't sealed ("Read the verse"). */
     val verse: String? = null,
     /** Signed beside FROM (plan 8.2): null while it's sealed and for a card with the name typed. */

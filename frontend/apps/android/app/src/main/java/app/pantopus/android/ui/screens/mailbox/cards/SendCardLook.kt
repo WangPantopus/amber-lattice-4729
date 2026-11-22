@@ -918,6 +918,7 @@ internal fun lookCard(
         // The sender's own upload, as it will go: never covered for them.
         photo = card?.photo?.let { CardPrintPhoto.own(it) },
         voice = card?.voice?.let { CardGreetingVoice.own(it) },
+        mood = card?.mood ?: design.mood,
     )
 }
 

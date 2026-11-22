@@ -46,6 +46,11 @@ data class HolidayCardsResponse(
     @Json(name = "note_help") val noteHelp: Boolean = false,
     /** "Let it travel" (the server's switch `card_travel`, travelling card plan Part 2); absent while it's off: no switch. */
     val travel: HolidayCardTravelRules? = null,
+    /**
+     * "Pick a card" as shelves (the server's switch `card_shelves`, card shelves SPEC Part B): one large card from each
+     * collection, then a shelf per collection. Absent while it's off, and from older servers: today's screen.
+     */
+    val shelves: Boolean = false,
 )
 
 /**
@@ -268,6 +273,11 @@ data class HolidayCardDesign(
     val table: String? = null,
     /** The whole verse printed on a Christmas with Jesus Christ picture (59-67), shown under the card; others have none. */
     val verse: String? = null,
+    /**
+     * The table it opens on (card shelves SPEC A4): `reverence`, `santa` or `nostalgia`, from its collection. Absent from
+     * older servers: the app decides by its number ([app.pantopus.android.ui.screens.mailbox.cards.table.CardMood]).
+     */
+    val mood: String? = null,
 )
 
 /** A collection on "Pick a card" (Christmas as a Kid …): its name, who it's for, and its pictures in order. */
@@ -278,6 +288,21 @@ data class HolidayCardCollection(
     /** Who it's for, in a line under the row of names. */
     val line: String = "",
     /** Its pictures' ids, in the order the grid shows them. */
+    val designs: List<String> = emptyList(),
+    /** Its short name ("Jesus Christ"), for the website's row of collections. Absent from older servers. */
+    val short: String? = null,
+    /** Its public name in a link (`/cards/collection/<slug>`). Absent from older servers. */
+    val slug: String? = null,
+    /** The design id of the card that stands for it in "One from each collection"; absent: no large card for it. */
+    val pick: String? = null,
+    /** Its parts in story order (Christmas with Jesus Christ only); together they are [designs], in order. */
+    val parts: List<HolidayCardPart> = emptyList(),
+)
+
+/** A part of a collection ("The first Christmas"): its name and its pictures' ids, in order. */
+@JsonClass(generateAdapter = true)
+data class HolidayCardPart(
+    val name: String = "",
     val designs: List<String> = emptyList(),
 )
 
@@ -731,6 +756,8 @@ data class SentCardFace(
     /** The picture's name on its public page and its table colour (launch key `card_table`). */
     val slug: String? = null,
     val table: String? = null,
+    /** The table it opens on: `reverence`, `santa` or `nostalgia` (absent from older servers: decided by number). */
+    val mood: String? = null,
     /** The whole verse on a Christmas with Jesus Christ picture, not while it's sealed ("Read the verse"). */
     val verse: String? = null,
     /** The sender's own signature beside FROM (plan 8.2; the card's page only), also while it's sealed for them. */

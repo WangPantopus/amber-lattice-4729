@@ -343,4 +343,5 @@ internal fun MailLetterCard.tableCard(
         photo = photo,
         voice = voice,
         travel = travel,
+        mood = mood,
     )
