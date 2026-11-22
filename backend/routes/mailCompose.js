@@ -79,10 +79,18 @@ async function getConnectionUserIds(userId) {
  * account's and Local Profile's search visibility, and a profile that isn't private (or, when
  * it is for connections, a connection).
  */
-async function isFindableBy(senderId, user, localProfile) {
-  if (await hasBlocked(user.id, senderId)) return false;
-  if (!(await isSearchable(senderId, user.id))) return false;
-  if (await isScopedBlocked(senderId, user.id, 'search_only')) return false;
+async function isFindableBy(senderId, user, localProfile, started = {}) {
+  // `started`: any of these three checks a caller already started (settled: { value } or { error }), used here in the
+  // same order; a failed one throws where its own call would have.
+  const used = async (read, ask) => {
+    if (!read) return ask();
+    const { value, error } = await read;
+    if (error) throw error;
+    return value;
+  };
+  if (await used(started.blockedByUser, () => hasBlocked(user.id, senderId))) return false;
+  if (!(await used(started.searchable, () => isSearchable(senderId, user.id)))) return false;
+  if (await used(started.scopedBlocked, () => isScopedBlocked(senderId, user.id, 'search_only'))) return false;
   const searchVisibility = localProfile?.search_visibility || 'everyone';
   const profileVisibility = await localProfileVisibilityFor(localProfile || { user_id: user.id }, senderId, user);
   if (searchVisibility === 'nobody' || profileVisibility === 'private') return false;
@@ -98,10 +106,42 @@ async function isFindableBy(senderId, user, localProfile) {
  * Neither may have blocked the other. Throws on a read error.
  */
 async function personFindableBy(senderId, userId) {
-  const { data: user, error } = await supabaseAdmin.from('User').select('id, account_type, profile_visibility')
-    .eq('id', userId).maybeSingle();
+  // The reads below depend only on the two ids, so they start together (one round trip instead of about ten). Each
+  // answer is used in the order the checks always ran, only once the checks before it have passed, and a read that
+  // failed throws there and nowhere else; until then its outcome is held (settled). The row of the account's own
+  // block on the sender is read once, here and in isFindableBy. A stored account id is lower case, so the reads use
+  // the id in that form, as they did when they read it from the account's row.
+  const settle = (read) => read.then((value) => ({ value }), (error) => ({ error }));
+  const used = async (read) => {
+    const { value, error } = await read;
+    if (error) throw error;
+    return value;
+  };
+  const id = String(userId).toLowerCase();
+  const userRead = settle(supabaseAdmin.from('User').select('id, account_type, profile_visibility').eq('id', userId)
+    .maybeSingle());
+  const blockedByUser = settle(hasBlocked(id, senderId));
+  const blockedBySender = settle(hasBlocked(senderId, id));
+  const connectionsRead = settle(getConnectionUserIds(senderId));
+  const profileRead = settle(supabaseAdmin.from('LocalProfile')
+    .select('user_id, search_visibility, profile_visibility').eq('user_id', id).maybeSingle());
+  const searchable = settle(isSearchable(senderId, id));
+  const scopedBlocked = settle(isScopedBlocked(senderId, id, 'search_only'));
+
+  const { data: user, error } = await used(userRead);
   if (error) throw error;
   if (!user || user.account_type === 'business') return false;
+  // An id written another way (braces) asked the early reads about a different string: check it the old way, one
+  // read after another, by the stored id.
+  if (user.id !== id) return findableByStoredId(senderId, user);
+  if (await used(blockedByUser) || await used(blockedBySender)) return false;
+  if ((await used(connectionsRead)).has(user.id)) return true;
+  const { data: localProfile, error: profileError } = await used(profileRead);
+  if (profileError) throw profileError;
+  return isFindableBy(senderId, user, localProfile, { blockedByUser, searchable, scopedBlocked });
+}
+
+async function findableByStoredId(senderId, user) {
   if (await hasBlocked(user.id, senderId) || await hasBlocked(senderId, user.id)) return false;
   if ((await getConnectionUserIds(senderId)).has(user.id)) return true;
   const { data: localProfile, error: profileError } = await supabaseAdmin.from('LocalProfile')
