@@ -51,6 +51,11 @@ data class HolidayCardsResponse(
      * collection, then a shelf per collection. Absent while it's off, and from older servers: today's screen.
      */
     val shelves: Boolean = false,
+    /**
+     * The collections' ids in the order "One from each collection" draws them (card shelves SPEC E2); the shelves keep
+     * [collections]' order. Absent from older servers: the collections' order.
+     */
+    val opening: List<String> = emptyList(),
 )
 
 /**
