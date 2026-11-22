@@ -633,21 +633,27 @@ private fun CollectionRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         collections.forEach { collection ->
-            CollectionChip(collection, selected = collection.id == shown, onSelect = { onShow(collection.id) })
+            CardPill(
+                collection.name,
+                selected = collection.id == shown,
+                onSelect = { onShow(collection.id) },
+                tag = "sendCardCollection.${collection.id}",
+            )
         }
     }
 }
 
 /**
- * A collection's name on a pill: card stock, or wax red while it's shown, and then scrolled into view. It's drawn 36 dp
- * tall and takes touches across 48.
+ * A collection's name (or a part's, on a collection's page) on a pill: card stock, or wax red while it's shown, and then
+ * scrolled into view. It's drawn 36 dp tall and takes touches across 48.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CollectionChip(
-    collection: HolidayCardCollection,
+internal fun CardPill(
+    name: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    tag: String,
 ) {
     val inView = remember { BringIntoViewRequester() }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -668,11 +674,11 @@ private fun CollectionChip(
                 .then(if (selected) Modifier else Modifier.border(1.dp, PantopusColors.cardFieldEdge, CircleShape))
                 .selectable(selected = selected, role = Role.Tab, onClick = onSelect)
                 .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
-                .testTag("sendCardCollection.${collection.id}"),
+                .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            collection.name,
+            name,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.SemiBold,
