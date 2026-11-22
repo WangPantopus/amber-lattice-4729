@@ -43,6 +43,7 @@ import {
   Palette,
   Clock,
   CalendarClock,
+  CalendarDays,
   Plane,
   MailOpen,
   Archive,
@@ -82,6 +83,7 @@ const ChristmasMail = createLucideIcon('ChristmasMail', [
 
 // ── Navigation icons (sidebar, header, tabs) ─────────────────
 export const NavIcons = {
+  plans: CalendarDays,
   place: Home,
   hub: LayoutDashboard,
   // The phone tabs: Place · Today · Mail · Pulse (Mail third, founder decision 2026-11-13).

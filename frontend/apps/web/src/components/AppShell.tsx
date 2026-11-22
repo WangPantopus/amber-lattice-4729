@@ -719,7 +719,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {/* The tabs on phone-width web: Place · Today · (Mail ·) Pulse as a
+      {/* The tabs on phone-width web: Place · Today · (Mail ·) Pulse · (Moments ·) (Plans) as a
           bottom bar (Mail third, founder decision 2026-11-13; the sidebar
           carries them at md+ in its own order, with Messages). Business context
           keeps its own navigation, and a conversation has the whole window. */}
@@ -815,6 +815,7 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
   // Christmas cards (TABCARD): the red envelope on Mail and "Send a Christmas card" under it, while cards are open.
   const christmasMail = useChristmasMail();
   const cardsOpen = useCardsOpenInChrome();
+  const plansOn = useFeatureFlagState('plans').enabled;
   const momentsOn = useMomentsAccess().data?.enabled;
   const newMoments = useMomentBadge(!!momentsOn);
   const onCards = currentPath === '/app/mailbox/cards';
@@ -892,6 +893,7 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
       {/* The Pulse tab, named Nearby until the founder's November 7 decision (its test id stays). */}
       <SidebarItem icon={NavIcons.pulse} label="Pulse" active={startsWith('/app/feed') || startsWith('/app/beacons') || startsWith('/app/gigs') || startsWith('/app/marketplace')} onClick={() => go('/app/feed')} onPrefetch={prefetchNearby} showLabel={showLabels} testId="sidebar-nearby" />
       {momentsOn && <SidebarItem icon={NavIcons.moments} label="Moments" active={startsWith('/app/moments')} onClick={() => go('/app/moments')} onPrefetch={() => router.prefetch('/app/moments')} showLabel={showLabels} accent="teal" accessory={newMoments ? <span aria-label="New Moments" className="h-2 w-2 rounded-full bg-teal-500"/> : undefined} testId="sidebar-moments" />}
+      {plansOn && <SidebarItem icon={NavIcons.plans} label="Plans" active={startsWith('/app/plans')} onClick={() => go('/app/plans')} onPrefetch={() => router.prefetch('/app/plans')} showLabel={showLabels} testId="sidebar-plans" />}
       {launchFeatures.mailbox ? <SidebarItem icon={christmasMail ? NavIcons.christmasMail : NavIcons.mail} label="Mail" active={startsWith('/app/mailbox') && !(cardsOpen && onCards)} onClick={() => go('/app/mailbox/personal')} onPrefetch={prefetchMail} showLabel={showLabels} count={mailUnread} countLabel="unopened" testId="sidebar-mail" /> : null}
       {/* While Christmas cards are open (Mail's "Send a Christmas card" row shows), the send flow is one step away,
           right under Mail (TABCARD 2d, founder 2026-11-13). */}

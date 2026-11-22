@@ -1,6 +1,4 @@
-// What the Pulse map's two renderers (the 3D Mapbox GL map, PulseGlMap, and the flat Leaflet
-// map in FeedMap) share with FeedMap: the view they report, the camera FeedMap moves, and the
-// markers they draw.
+// The view, camera and accessible markers shared by Pulse and Plans on both map renderers.
 
 import { boundsChangedSignificantly, type Bounds } from '@/components/map/useMapBounds';
 
@@ -16,6 +14,7 @@ export interface PulseView {
 
 /** The map's own moves. Zoom on Leaflet's scale. */
 export interface PulseCamera {
+  getCenter(): { lat: number; lng: number };
   /** Flies there; `onEnd` gets the view it lands on. */
   flyTo(lat: number, lng: number, zoom: number, durationSec: number, onEnd?: (view: PulseView) => void): void;
   fitBounds(bounds: Bounds, paddingPx: number): void;
