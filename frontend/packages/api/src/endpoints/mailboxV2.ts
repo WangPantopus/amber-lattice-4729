@@ -144,6 +144,8 @@ export interface MailCard {
   /** Its public page, /cards/<slug>, and the colour of the cloth it lies on (launch key card_table). */
   slug?: string | null;
   table?: string | null;
+  /** The table it opens on (absent from servers before it: decide by number). */
+  mood?: 'reverence' | 'santa' | 'nostalgia' | null;
   /** The card's own photo and voice (launch key holiday_card_memories) on an opened piece and Look it over; null while sealed. */
   photo?: {
     file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean;
@@ -197,6 +199,7 @@ export interface MailCardReply {
   height?: number | null;
   slug?: string | null;
   table?: string | null;
+  mood?: 'reverence' | 'santa' | 'nostalgia' | null;
   year: number;
   /** The replier's signature beside FROM (detail reads); null: their typed first name. */
   signature?: { w: number; h: number; strokes: number[][] } | null;

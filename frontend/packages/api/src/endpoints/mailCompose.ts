@@ -13,7 +13,7 @@ import type { StructuredMailSendPayload } from './mailbox';
 // ─── Escrow types ──────────────────────────────────────────
 
 /** A card's front on its link's page: the stock picture, its printed caption, its paper and the cloth it lies on. */
-export interface CardLinkFront { design: string; caption: string; paper: string; table: string | null }
+export interface CardLinkFront { design: string; caption: string; paper: string; table: string | null; mood?: 'reverence' | 'santa' | 'nostalgia' | null }
 
 /**
  * The public preview of a letter sent to someone who isn't on Pantopus: who it is from and a short preview,

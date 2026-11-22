@@ -628,18 +628,31 @@ export interface HolidayCardDesign {
   slug?: string | null;
   /** The colour of the cloth it lies on (launch key card_table). */
   table?: string | null;
+  /** The table it opens on (from its collection). Absent from servers before it: decide by number (cardMood). */
+  mood?: HolidayCardMood | null;
   /** The whole verse printed on a Christmas with Jesus Christ picture ("Read the verse"); only those nine have it. */
   verse?: string | null;
 }
+
+/** The table a card opens on: candlelit (Christmas with Jesus Christ), Santa's, or the snowy everyday one. */
+export type HolidayCardMood = 'reverence' | 'santa' | 'nostalgia';
 
 /** A collection "Pick a card" shows: its name, who it's for, and its pictures in grid order. */
 export interface HolidayCardCollection {
   id: string;
   name: string;
+  /** Its short name, for the website's row of collections ("Jesus Christ"). Absent from older servers. */
+  short?: string;
+  /** Its public name in a link: /cards/collection/<slug>. Absent from older servers. */
+  slug?: string;
   /** One line under the row of collections. */
   line: string;
   /** Design ids, in grid order. */
   designs: string[];
+  /** The design id of the card that stands for it in "One from each collection" (never one of its first three). */
+  pick?: string;
+  /** Its parts in story order (Christmas with Jesus Christ only); together they are `designs`, in order. */
+  parts?: { name: string; designs: string[] }[];
 }
 
 /**
@@ -776,6 +789,8 @@ export interface HolidayCards {
   designs: HolidayCardDesign[];
   /** The collections "Pick a card" shows, in order (none from a server before collections: one grid of every design). */
   collections?: HolidayCardCollection[];
+  /** "Pick a card" as shelves (server key card_shelves). Absent: today's screen. */
+  shelves?: boolean;
   /** The arrivals open now, to a person and by email. */
   /**
    * `email` is the two choices older apps word for a card by email (now, sealed until Christmas); `email_all` (when the
@@ -1038,6 +1053,8 @@ export interface SentPiece {
     /** Its public page, and the colour of the cloth it lies on (launch key card_table). */
     slug?: string | null;
     table?: string | null;
+    /** The table it opens on (absent from servers before it: decide by number). */
+    mood?: HolidayCardMood | null;
     /** The whole verse on a Christmas with Jesus Christ picture ("Read the verse"); not while it's sealed. */
     verse?: string | null;
     /** Their own signature beside FROM (GET /sent/:id only; also while it's sealed for the other person). */
@@ -1268,7 +1285,8 @@ export interface CardJourneyStop {
 /** A card's public journey: towns and dates only. */
 export interface CardJourney {
   id: string;
-  card: { design: string; number: number; caption: string; slug: string; table: string; paper: string; height: number } | null;
+  card: { design: string; number: number; caption: string; slug: string; table: string; mood?: HolidayCardMood | null; paper: string;
+    height: number } | null;
   stops: CardJourneyStop[];
   miles: number;
   towns: number;

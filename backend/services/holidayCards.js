@@ -37,23 +37,44 @@ const designIdOf = (number) => `christmas-2026-${String(number).padStart(2, '0')
 // and moved to the front the same day; 22 more of the founder's pictures of Jesus's life after them, 2026-11-21). A
 // picture can move to another collection; its number stays. The collection's id stays first-christmas: nothing but this
 // list reads it.
+// Each also has what the card shelves draw (docs/product/card-shelves-2026-11-21, SPEC A3; the layout itself is launch
+// key card_shelves, but these are sent whatever it says and older apps ignore them): `short`, its name in the website's
+// row; `slug`, its public name in a link (/cards/collection/<slug>); `pick`, the number of the card that stands for it in
+// "One from each collection", never one of the first three of its own shelf (so one picture never shows twice on one
+// phone screen); and, for Christmas with Jesus Christ, its `parts` in story order, each a name and a range of numbers.
 const COLLECTIONS = [
-  ['first-christmas', 'Christmas with Jesus Christ', 'For the faithful, and anyone who loves the Christmas story.',
-    [59, 60, 61, 62, 63, 64, 65, 66, 67,
-      68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89]],
-  ['as-a-kid', 'Christmas as a Kid', 'For families with kids, and anyone who misses being one.',
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]],
-  ['with-friends', 'Christmas with Friends', 'For the friends who feel like family.', [18, 19, 20, 21, 22, 26, 31]],
-  ['love-stories', 'Christmas Love Stories', 'For the one you love, near or far.', [23, 24, 25, 27, 28, 29, 30]],
-  ['in-your-twenties', 'Christmas in Your Twenties', 'For first apartments, old roommates and long trips home.',
-    [32, 33, 34, 35, 36, 37]],
-  ['memories', 'Christmas Memories', 'For anyone who misses the little things.', [38, 39, 40, 41, 42, 43]],
-  ['grandmas-house', 'Christmas at Grandma’s House', 'For grandparents, and the grandkids who still come home.',
-    [44, 45, 46, 47, 48, 49]],
-  ['with-santa', 'Christmas with Santa', 'For anyone who still believes, and anyone who used to.',
-    [50, 51, 52, 53, 54, 55, 56, 57, 58]],
-].map(([id, name, line, numbers]) => ({ id, name, line, designs: numbers.map(designIdOf) }));
+  { id: 'first-christmas', name: 'Christmas with Jesus Christ', short: 'Jesus Christ', slug: 'jesus-christ',
+    line: 'For the faithful, and anyone who loves the Christmas story.',
+    numbers: [59, 60, 61, 62, 63, 64, 65, 66, 67,
+      68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
+    pick: 65,
+    parts: [['The first Christmas', 59, 68], ['His life and teaching', 69, 80], ['The cross and the empty tomb', 81, 89]] },
+  { id: 'as-a-kid', name: 'Christmas as a Kid', short: 'As a Kid', slug: 'as-a-kid',
+    line: 'For families with kids, and anyone who misses being one.',
+    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], pick: 9 },
+  { id: 'with-friends', name: 'Christmas with Friends', short: 'Friends', slug: 'friends',
+    line: 'For the friends who feel like family.', numbers: [18, 19, 20, 21, 22, 26, 31], pick: 22 },
+  { id: 'love-stories', name: 'Christmas Love Stories', short: 'Love Stories', slug: 'love-stories',
+    line: 'For the one you love, near or far.', numbers: [23, 24, 25, 27, 28, 29, 30], pick: 27 },
+  { id: 'in-your-twenties', name: 'Christmas in Your Twenties', short: 'Your Twenties', slug: 'your-twenties',
+    line: 'For first apartments, old roommates and long trips home.', numbers: [32, 33, 34, 35, 36, 37], pick: 37 },
+  { id: 'memories', name: 'Christmas Memories', short: 'Memories', slug: 'memories',
+    line: 'For anyone who misses the little things.', numbers: [38, 39, 40, 41, 42, 43], pick: 42 },
+  { id: 'grandmas-house', name: 'Christmas at Grandma’s House', short: 'Grandma’s House', slug: 'grandmas-house',
+    line: 'For grandparents, and the grandkids who still come home.', numbers: [44, 45, 46, 47, 48, 49], pick: 47 },
+  { id: 'with-santa', name: 'Christmas with Santa', short: 'Santa', slug: 'santa',
+    line: 'For anyone who still believes, and anyone who used to.', numbers: [50, 51, 52, 53, 54, 55, 56, 57, 58], pick: 55 },
+].map(({ id, name, short, slug, line, numbers, pick, parts }) => {
+  if (numbers.indexOf(pick) < 3) throw new Error(`Collection ${id}: its pick ${pick} must be on its shelf, after the first three`);
+  return {
+    id, name, short, slug, line, designs: numbers.map(designIdOf), pick: designIdOf(pick),
+    ...(parts ? { parts: parts.map(([partName, from, to]) => ({
+      name: partName, designs: numbers.filter((n) => n >= from && n <= to).map(designIdOf),
+    })) } : {}),
+  };
+});
 const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((design) => [design, c.id])));
+const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'santa' };
 
 // The pictures by number, with the caption printed under each, the colour of its paper, its height in px at 960 px wide
 // (an app keeps a picture's shape while it loads it), its name on the public card pages (/cards/<slug>) and the colour of
@@ -63,7 +84,10 @@ const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((d
 // painting, so the caption is the verse's reference (its book and numbers joined by a no-break space). 68–89 are 22 more
 // of the founder's pictures, from Jesus's birth to the Great Commission (2026-11-21), made the same way; a passage of
 // two or three verses has an en dash in its reference ("Matthew 4:10–11 (KJV)").
-// A number is never reused: every app picks the card's stamp from it.
+// A number is never reused: every app picks the card's stamp from it. Each picture's `mood` is the table it opens on
+// (SPEC A4, 2026-11-21): candlelit for Christmas with Jesus Christ, Santa's for Christmas with Santa, snowy for every
+// other; it comes from the collection, so a picture that moves takes its table with it. Apps that don't read it decide
+// by number.
 // The whole King James verse printed under each Christmas with Jesus Christ picture (59–89), by its public page, as the
 // apps show it below the card in readable type ("Read the verse", design plan 6.2, 2026-11-09). The text is Project
 // Gutenberg's KJV, ebook 10 (public domain in the US), word for word as printed on the picture, with two changes: a
@@ -198,6 +222,7 @@ const DESIGNS = [
   const id = designIdOf(index + 1);
   return {
     id, number: index + 1, caption, paper, collection: COLLECTION_OF_DESIGN.get(id) || null, height, slug, table,
+    mood: MOOD_OF_COLLECTION[COLLECTION_OF_DESIGN.get(id)] || 'nostalgia',
     // Only the verse pictures carry it; apps read it when present (older apps ignore it).
     ...(VERSES.has(slug) ? { verse: VERSES.get(slug) } : {}),
   };
@@ -483,6 +508,8 @@ function cardView(mail, now = new Date()) {
     // The card's public page (/cards/<slug>) and the colour of the cloth it lies on (launch key card_table).
     slug: design?.slug || null,
     table: design?.table || null,
+    // The table it opens on: reverence, santa or nostalgia (apps without it decide by number).
+    mood: design?.mood || null,
     holiday: card.holiday || SEASON.holiday,
     year: card.year || SEASON.year,
     arrival: card.arrival || null,
@@ -518,6 +545,7 @@ function replyView(mail) {
     height: design?.height ?? null,
     slug: design?.slug || null,
     table: design?.table || null,
+    mood: design?.mood || null,
     year: reply.year || SEASON.year,
     signature: mail.card_signature || signatureOf(mail.object_payload) || null,
     photo: null,
@@ -659,7 +687,8 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, travel
       opens_on: null, sealed: false, can_take_back: false, take_back_until: null,
       envelope: { from: senderName, postmarked_on: null },
       card: { design: view.design || null, number: view.number ?? null, caption: view.caption || null, paper: view.paper || null,
-        year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null, verse: null },
+        year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null,
+        mood: view.mood || null, verse: null },
     };
   }
   const isHolidayCard = isCard(mail);
@@ -695,6 +724,7 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, travel
     envelope: { from: senderName, postmarked_on: status === 'waiting' ? null : dayIn(mail.created_at, zone) },
     card: { design: view.design || null, number: view.number ?? null, caption: view.caption || null, paper: view.paper || null,
       year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null,
+      mood: view.mood || null,
       // The whole verse on a Christmas with Jesus Christ picture ("Read the verse"), not while it's sealed (cardView).
       verse: view.verse || null },
     // A reply they wrote (card_replies): the card it answers, and its own take-back, which goes through

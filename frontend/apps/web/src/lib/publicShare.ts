@@ -52,9 +52,15 @@ export async function fetchPublicJson<T>(
 
 export type PublicCardDesigns = {
   year: number;
-  collections?: { id: string; name: string; designs: string[] }[];
-  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null }[];  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
+  /** In shelf order; `short`, `slug`, `line`, `pick` and `parts` as on HolidayCardCollection. */
+  collections?: { id: string; name: string; short?: string; slug?: string; line?: string; designs: string[]; pick?: string;
+    parts?: { name: string; designs: string[] }[] }[];
+  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string;
+    mood?: 'reverence' | 'santa' | 'nostalgia' | null; verse?: string | null }[];
+  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
   free_cards?: number;
+  /** The shelves and a page per collection (server key card_shelves). Absent: today's pages. */
+  shelves?: boolean;
 };
 
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */
