@@ -7,9 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import androidx.compose.foundation.background
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -3433,6 +3433,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     androidx.activity.compose.BackHandler(enabled = todayFirst && topRoute == PantopusRoute.Today.path) {
                         activity?.moveTaskToBack(true)
                     }
+
                     // Today's plan cards open in the Plans tab, as on iOS: the tab comes back on its map with [routes] on
                     // top, so Back lands on the map. Other Plans pages left open there give way; a plan being composed
                     // stays under them, so its draft isn't lost.

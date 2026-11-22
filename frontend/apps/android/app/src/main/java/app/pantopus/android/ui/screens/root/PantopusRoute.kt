@@ -120,7 +120,14 @@ sealed class PantopusRoute(
             todayFirst: Boolean = false,
         ): List<PantopusRoute> {
             val tabs = entries.filter { (it != Plans || plansOn) && (it != Moments || momentsOn) }
-            return if (todayFirst) tabs.map { if (it == Place) Today else if (it == Today) Place else it } else tabs
+            if (!todayFirst) return tabs
+            return tabs.map {
+                when (it) {
+                    Place -> Today
+                    Today -> Place
+                    else -> it
+                }
+            }
         }
 
         /** Every root destination, bar tabs first — for `fromPath` lookups off the bar. */
