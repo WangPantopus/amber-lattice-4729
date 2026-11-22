@@ -16,7 +16,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { cardPicture, isVerseReference, TABLE_ART, tableEdge, tableTint } from './cardArt';
 import { cardHand } from './cardFont';
 import { PaperFront } from './CardPaper';
-import { Row, useNearPicture } from './CardShelves';
+import { Row, scrollToStart, useNearPicture } from './CardShelves';
 import styles from './PublicCards.module.css';
 
 const art = (name: string) => `${TABLE_ART}${name}`;
@@ -208,22 +208,24 @@ function PublicTile({ design, inviteCode, eager = false }: { design: PublicDesig
   const picture = useNearPicture(design.id, eager);
   return (
     <Link href={withRef(`/cards/${design.slug}`, inviteCode)} className={styles.tile} data-testid={`publicCard.${design.slug}`}>
+      {/* The first cards come in the page from the server and load at once, being on screen. loading="lazy" keeps React
+          from adding a preload for them, which Safari fetches a second time. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img ref={picture.ref} src={picture.src} alt="" fetchPriority={eager ? 'high' : undefined} decoding="async" />
+      <img ref={picture.ref} src={picture.src} alt="" loading="lazy" decoding="async" />
       <span>{design.caption}</span>
     </Link>
   );
 }
 
 const shelfAnchor = (slug: string) => `shelf-${slug}`;
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** A tap on a collection's name (or the line under its large card) goes to its shelf, below the row of names. */
 function goToShelf(event: MouseEvent<HTMLAnchorElement>, slug: string) {
   const shelf = document.getElementById(shelfAnchor(slug));
   if (!shelf) return;
   event.preventDefault();
-  shelf.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+  const index = document.querySelector<HTMLElement>('[data-testid="publicShelvesIndex"]');
+  scrollToStart(shelf, (index?.offsetHeight ?? 0) + 12, true);
   window.history.replaceState(window.history.state, '', `#${shelfAnchor(slug)}`);
 }
 
