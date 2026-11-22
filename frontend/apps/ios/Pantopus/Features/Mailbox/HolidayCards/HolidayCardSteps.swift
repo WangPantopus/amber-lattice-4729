@@ -558,7 +558,9 @@ struct HolidayCardPickBar: View {
         .padding(.horizontal, Spacing.s4)
         .padding(.vertical, Spacing.s3)
         .frame(maxWidth: .infinity)
-        .background(HolidayCardDesk.background(scheme).ignoresSafeArea(edges: .bottom))
+        // Out into the side margins too (the closed iPhone Duo's strip): the card shelves' rows run there, and would
+        // show beside the bar. The same desk either way.
+        .background(HolidayCardDesk.background(scheme).ignoresSafeArea(edges: [.bottom, .horizontal]))
         .overlay(alignment: .top) {
             Rectangle().fill(MailPaper.cardRowLine).frame(height: 1)
         }
