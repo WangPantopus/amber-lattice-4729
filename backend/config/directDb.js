@@ -9,6 +9,14 @@
 //   on                 the direct read decides, and any failure falls back to the Data API.
 // Every connection is read-only and time-limited. Only a read's name, timings and error codes are logged, never
 // its values.
+//
+// A direct read takes 2-10 ms, about 160 ms on a new connection, so its limits are short: a read that can't get a
+// connection in 0.5 s or an answer in 0.8 s gives up, and the caller's Data API path answers. A read that failed
+// without an answer from the database (a timeout, a connection that broke or couldn't be made) usually means the
+// database or the way to it is struggling, so direct reads then step aside for 30 seconds: read() throws at once,
+// without touching the pool, and every caller goes straight to the Data API ("on") or counts a failed comparison
+// ("shadow"). An error the database answered (bad SQL, a permission, a refused password) pauses nothing, except the
+// database cancelling a statement at its 0.6 s limit (57014), which is a timeout too (`stepsAside`).
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
 const dbTiming = require('../utils/dbTiming');
@@ -16,6 +24,7 @@ const dbTiming = require('../utils/dbTiming');
 const MODES = new Set(['off', 'shadow', 'on']);
 const SUMMARY_EVERY = 200;
 const QUIET_MS = 60 * 1000;
+const PAUSE_MS = 30 * 1000;
 
 function mode() {
   const value = String(process.env.DIRECT_DB_READS || 'off').trim().toLowerCase();
@@ -34,16 +43,38 @@ function getPool() {
     idleTimeoutMillis: 0,
     keepAlive: true,
     keepAliveInitialDelayMillis: 30 * 1000,
-    connectionTimeoutMillis: 1500,
-    statement_timeout: 2000,
-    query_timeout: 2500,
+    connectionTimeoutMillis: 500,
+    statement_timeout: 600,
+    query_timeout: 800,
   });
   pool.on('error', (error) => logger.warn('directDb: idle connection failed', { error: error.message, code: error.code }));
   return pool;
 }
 
+// While direct reads step aside (until this time, in ms), read() throws at once.
+let pausedUntil = 0;
+
+// A failure without an answer from the database (no severity: a timeout, a broken or refused connection), or the
+// database cancelling the statement at its time limit (57014), steps aside. Any other database error doesn't.
+function stepsAside(error) {
+  return !error?.severity || error.code === '57014';
+}
+
+function pause(name, error) {
+  const now = Date.now();
+  if (now < pausedUntil) return; // one pause, and one log line, for failures that come together
+  pausedUntil = now + PAUSE_MS;
+  // The logger redacts keys named "code", so the error's code travels as errorCode.
+  logger.warn('directDb: direct reads paused after a failure', {
+    read: name, error: error.message, errorCode: error.code || null, pause_ms: PAUSE_MS,
+  });
+}
+
 /** Rows of one read-only query, counted in the request's database ledger as "SQL <name>". Throws on any failure. */
 async function read(name, text, values) {
+  if (Date.now() < pausedUntil) {
+    throw Object.assign(new Error('Direct reads are paused after a failure'), { code: 'DIRECT_READS_PAUSED' });
+  }
   const call = dbTiming.startCall(new URL(`sql://direct/${name}`), 'SQL');
   let client = null;
   try {
@@ -61,6 +92,7 @@ async function read(name, text, values) {
     // A database error (it has a severity) leaves the connection usable; anything else retires it.
     if (client) client.release(error.severity ? undefined : error);
     dbTiming.endCall(call, null);
+    if (stepsAside(error)) pause(name, error);
     throw error;
   }
 }
