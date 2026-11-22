@@ -338,8 +338,10 @@ public struct RootTabView: View {
             .modifier(MomentsDotUpdates(account: signedInUserID, isOn: momentsFlags.moments, onTab: model.selected == .moments))
             // A new account's first look: the Christmas card it joined for, once.
             .modifier(WaitingCardLanding(account: signedInUserID, tabs: model) {
-                router.pending.map(WaitingCardLanding.opens) == true || pendingInviteToken != nil
+                linkIsOpening || PlanFirstOpen.shared.planId != nil
             })
+            // And the plan that brought the person, once (JOURNEYS section 2, change 3).
+            .modifier(PlanFirstOpenLanding(account: signedInUserID, tabs: model) { linkIsOpening || model.selected != .place })
             .onChange(of: model.selected) { _, selected in
                 // A tab that isn't kept (Plans or Moments switched off, Mail
                 // without the Mailbox) lands on the nearest one that is.
@@ -611,6 +613,11 @@ public struct RootTabView: View {
         model.selected = .place
     }
 
+    /// A link is waiting to open in the signed-in tabs, or its invitation is showing.
+    private var linkIsOpening: Bool {
+        router.pending.map(WaitingCardLanding.opens) == true || pendingInviteToken != nil
+    }
+
     private var signedInUserName: String {
         if case let .signedIn(user) = auth.state { user.displayName ?? "" } else { "" }
     }
@@ -644,7 +651,9 @@ public struct RootTabView: View {
     /// on its own root (not under "Keep this address handy", nor a plan or post
     /// opened by a link, nor the verify sheet a new Home opens with), or Today.
     private var briefingNoticeMayShow: Bool {
-        switch model.selected {
+        // A new account's plan may still open over the first screen: the notice waits for the answer.
+        guard !PlanFirstOpen.shared.deciding else { return false }
+        return switch model.selected {
         case .place: model.placeAtRoot && !model.placeVerifySheetUp
         case .today: true
         default: false
@@ -747,6 +756,8 @@ extension RootTabView {
     /// A tap on the drawn bar. Tapping the tab you're on takes its stack back
     /// to its root; on Place's root, or the feed, it scrolls to the top.
     private func select(_ tab: RootTab) {
+        // The person chose where to go: Back from a new account's first plan is the Plans tab's own again.
+        PlanFirstOpen.shared.forget()
         guard tab == model.selected else {
             model.selected = tab
             return
