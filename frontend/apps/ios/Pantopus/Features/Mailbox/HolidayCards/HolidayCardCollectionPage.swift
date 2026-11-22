@@ -193,6 +193,7 @@ struct HolidayCardCollectionPage: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(HolidayCardHoldPreview(design: design) { viewModel.largeDesign = design })
         .accessibilityLabel(design.caption)
         .accessibilityValue("\(place) of \(all.count)")
         .accessibilityHint("Shows it large.")

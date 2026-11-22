@@ -332,6 +332,7 @@ struct HolidayCardShelves: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(HolidayCardHoldPreview(design: design) { viewModel.largeDesign = design })
         .accessibilityLabel(design.caption)
         .accessibilityValue(sharp ? "\(collection.name), \(place) of \(all.count)" : "\(place) of \(all.count)")
         .accessibilityHint("Shows it large.")
@@ -386,5 +387,29 @@ struct HolidayCardShelfRow<Content: View>: View {
         // Not on under the closed iPhone Duo's clock and Wi-Fi beside the screen.
         .stopsBeforeOcclusion()
         .onChange(of: position) { viewModel.shelfRowPlaces[rowId] = position }
+    }
+}
+
+/// Press and hold a card on the card shelves for a large preview of it (card shelves B8), with "See it larger" under it
+/// (the card rack). The picture itself once it's at hand, over its smaller copy.
+struct HolidayCardHoldPreview: ViewModifier {
+    let design: HolidayCardDesign
+    let onLarger: () -> Void
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Button("See it larger", action: onLarger)
+        } preview: {
+            HolidayCardPictureView(design: design.id, paper: design.paper, height: design.height, thumb: true)
+                .overlay {
+                    HolidayCardPictureImage(design: design.id) { image in
+                        if let image {
+                            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                        }
+                    }
+                }
+                .clipped()
+                .frame(width: 340)
+        }
     }
 }
