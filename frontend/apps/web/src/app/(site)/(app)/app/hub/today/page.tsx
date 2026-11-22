@@ -292,13 +292,13 @@ export default function HubTodayPage() {
   // Tomorrow's pickup, from 4 pm: the household's own days only, as the bins are.
   const pickupKinds = hydrated && upcoming ? pickupTomorrow(upcoming, location?.timezone, Date.now()) : [];
   const houseRows: NeedsYouRow[] = houseOn ? [
-    ...(mailWaiting > 0 ? [{ key: 'mail', testId: 'today.house.mailRow', type: 'mail', title: 'Mail came today', subtitle: `${mailWaiting} unopened`, onOpen: () => router.push('/app/mailbox/personal') }] : []),
+    ...(mailWaiting > 0 ? [{ key: 'mail', testId: 'today.house.mailRow', type: 'mail', title: 'You have mail', subtitle: `${mailWaiting} unopened`, onOpen: () => router.push('/app/mailbox/personal') }] : []),
     ...needsRows,
     ...(pickupKinds.length > 0 ? [{ key: 'pickup', testId: 'today.house.pickupRow', type: 'pickup', title: 'Pickup is tomorrow', subtitle: pickupKindsLine(pickupKinds), onOpen: showPickups }] : []),
   ] : [];
   const firstNeed = needsRows.find((row) => row.onOpen) ?? null;
   const presses: SkyHousePresses | null = houseOn ? {
-    mail: { label: 'Mail came today. Opens Mail.', onPress: () => router.push('/app/mailbox/personal') },
+    mail: { label: 'You have mail. Opens Mail.', onPress: () => router.push('/app/mailbox/personal') },
     note: firstNeed?.onOpen ? { label: `${firstNeed.title}${/[.?!]$/.test(firstNeed.title) ? '' : '.'} Opens it.`, onPress: firstNeed.onOpen } : null,
     bins: { label: 'Pickup is tomorrow. Shows your pickup schedule.', onPress: showPickups },
   } : null;
