@@ -30,6 +30,7 @@ const windows: Record<plans.TimeWindow, string> = {
 };
 
 export function planTime(plan: plans.Card, includeEnd = false) {
+  if (plan.time_text) return plan.time_text;
   if (!plan.starts_at) return [plan.starts_on, plan.day_part].filter(Boolean).join(' · ');
   const formatter = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
@@ -96,7 +97,7 @@ function Workspace({ pathname, children }: { pathname: string; children: ReactNo
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const onList = pathname === plansPath;
-  const composing = pathname === plansPath + '/new';
+  const composing = pathname === plansPath + '/new' || pathname.endsWith('/edit');
   const latitude = area.viewingLat ?? area.userLat;
   const longitude = area.viewingLng ?? area.userLng;
   const point = latitude != null && longitude != null ? { latitude, longitude } : null;

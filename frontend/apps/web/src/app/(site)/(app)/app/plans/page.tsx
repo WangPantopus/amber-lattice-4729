@@ -72,7 +72,10 @@ export default function PlansList() {
         ids.add(card.id);
         return true;
       })
-      .map((card) => ({ card, status: groups[group] }));
+      .map((card) => ({
+        card,
+        status: group === 'invited' && card.my_invite?.status === 'maybe' ? 'Maybe' : groups[group],
+      }));
   });
   const cards = nearby.isError
     ? []
