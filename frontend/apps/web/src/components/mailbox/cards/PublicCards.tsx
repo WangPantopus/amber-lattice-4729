@@ -137,9 +137,9 @@ export function PublicCardPage({ design, year, inviteCode, store = null }: { des
  * free cards an account starts with (the server's `free_cards`); a sender also gets one for each person their card
  * brings in. Without stamps a card is simply free.
  */
-function HowSendingWorks({ freeCards }: { freeCards: number | null }) {
+function HowSendingWorks({ freeCards, className = '' }: { freeCards: number | null; className?: string }) {
   return (
-    <ul className={styles.how} data-testid="publicCardsHow">
+    <ul className={`${styles.how} ${className}`} data-testid="publicCardsHow">
       <li>
         {freeCards
           ? `Your first ${freeCards} cards are free, plus one more each time someone joins from your card.`
@@ -284,13 +284,14 @@ export function PublicShelvesPage({ designs, collections, inviteCode, store = nu
             <h1>Christmas cards</h1>
             <p>Pick one and send it to someone. It arrives with their morning mail, and they open it like real mail.</p>
           </div>
-          <HowSendingWorks freeCards={freeCards} />
+          {/* On a phone the cards come first: what sending costs and the goal follow "One from each collection". */}
+          <HowSendingWorks freeCards={freeCards} className={styles.wideOnly} />
           {store ? (
             <div className={styles.allApp}>
               <GetTheApp store={store} label="Send a card with the Pantopus app" testId="publicCardsGetApp" />
             </div>
           ) : null}
-          {goal}
+          {goal ? <div className={`${styles.goalSlot} ${styles.wideOnly}`}>{goal}</div> : null}
         </header>
         <nav ref={indexRef} className={styles.index} aria-label="Collections" data-testid="publicShelvesIndex">
           {shelves.map((shelf) => (
@@ -322,6 +323,10 @@ export function PublicShelvesPage({ designs, collections, inviteCode, store = nu
             </Row>
           </section>
         ) : null}
+        <div className={`${styles.afterPicks} ${styles.phoneOnly}`}>
+          <HowSendingWorks freeCards={freeCards} />
+          {goal}
+        </div>
         {shelves.map((shelf) => (
           <section key={shelf.id} id={shelfAnchor(shelf.slug)} className={styles.shelfRow} aria-labelledby={`${shelfAnchor(shelf.slug)}-name`} data-testid={`publicShelf.${shelf.slug}`}>
             <div className={styles.shelfHead}>
