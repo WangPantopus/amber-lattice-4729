@@ -3,6 +3,10 @@
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { fetchMe } from '@/lib/me';
+import { loadChatDraft, saveChatDraft } from '@/components/chat/chatDrafts';
+import { personConversationDraftKey } from '@/hooks/useChatMessages';
 import { plans } from '@pantopus/api';
 import { buttonClass, fieldClass, secondaryClass } from './PlansWorkspace';
 import { cents } from './PlanBusinessFields';
@@ -271,7 +275,7 @@ function OpenCheck({ id, check, onChange }: { id: string; check: plans.Check; on
   );
 }
 
-function GuestCheck({ id }: { id: string }) {
+function GuestCheck({ id, businessId }: { id: string; businessId: string }) {
   const client = useQueryClient();
   const [another, setAnother] = useState(false);
   const key = ['plans', 'my-check', id];
@@ -280,6 +284,29 @@ function GuestCheck({ id }: { id: string }) {
     queryFn: () => plans.myCheck(id),
     refetchInterval: 10_000,
     retry: false,
+  });
+  const router = useRouter();
+  const problem = useMutation({
+    mutationFn: async (check: plans.Check) => {
+      const me = await fetchMe();
+      const draft = await loadChatDraft(me.id, personConversationDraftKey(me.id, businessId));
+      if (!draft.draft) {
+        const day = check.paid_text?.split(' · ')[0];
+        await saveChatDraft(draft.snapshot, {
+          text: 'About my payment of ' + check.total_text + (day ? ' on ' + day : '') + ': ',
+          files: [],
+          reply: null,
+          edit: null,
+          editText: '',
+        });
+      }
+      router.push(
+        '/app/chat/conversation/' +
+          encodeURIComponent(businessId) +
+          '?returnTo=' +
+          encodeURIComponent('/app/plans/' + id),
+      );
+    },
   });
   const create = useMutation({
     mutationFn: (amount: number) => plans.startCheck(id, amount),
@@ -304,6 +331,14 @@ function GuestCheck({ id }: { id: string }) {
               <p className="font-semibold">{check.paid_total_text}</p>
               <p>{[check.paid_text, check.method_text].filter(Boolean).join(' · ')}</p>
               {check.refunded_text && <p>{check.refunded_text}</p>}
+              <button
+                className="block text-primary-700"
+                disabled={problem.isPending}
+                onClick={() => problem.mutate(check)}
+              >
+                Something’s wrong with this payment
+              </button>
+              <ErrorMessage error={problem.error} />
               {check.receipt?.link && (
                 <Link className="text-primary-700" href={check.receipt.link}>
                   View receipt
@@ -355,7 +390,12 @@ export function PlanChecks({ plan }: { plan: plans.Detail }) {
       <button className={secondaryClass} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         {plan.viewer.role === 'host' ? 'Guest checks and refunds' : plan.pay_here?.text}
       </button>
-      {expanded && (plan.viewer.role === 'host' ? <StaffChecks id={plan.id} /> : <GuestCheck id={plan.id} />)}
+      {expanded &&
+        (plan.viewer.role === 'host' ? (
+          <StaffChecks id={plan.id} />
+        ) : (
+          plan.business && <GuestCheck id={plan.id} businessId={plan.business.user_id} />
+        ))}
     </section>
   );
 }

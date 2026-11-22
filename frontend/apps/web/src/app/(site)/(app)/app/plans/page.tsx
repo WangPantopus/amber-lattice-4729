@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
+import { PlanSports } from '@/components/plans/PlanSports';
 import { plans } from '@pantopus/api';
 import { kindColors, KindGlyph } from '@/components/plans/planKind';
 import { detailPath, planTime, secondaryClass, usePlansArea } from '@/components/plans/PlansWorkspace';
@@ -70,7 +71,7 @@ const groups = {
 } as const;
 
 export default function PlansList() {
-  const { point, time, kind, host } = usePlansArea();
+  const { point, gps, time, kind, host } = usePlansArea();
   const mine = useQuery({
     queryKey: ['plans', 'mine'],
     queryFn: plans.mine,
@@ -79,9 +80,9 @@ export default function PlansList() {
     refetchInterval: 30_000,
   });
   const nearby = useInfiniteQuery({
-    queryKey: ['plans', 'nearby', point, time, kind, host],
+    queryKey: ['plans', 'nearby', point, time, kind, host, gps],
     enabled: !!point,
-    queryFn: ({ pageParam }) => plans.nearby(point!, time, kind, pageParam, host),
+    queryFn: ({ pageParam }) => plans.nearby(point!, time, kind, pageParam, host, gps),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     gcTime: 0,
@@ -127,6 +128,7 @@ export default function PlansList() {
           <p className="mt-1 text-sm text-app-muted">Plans you host or join will appear here.</p>
         )}
       </section>
+      {(!kind || kind === 'watch_party') && <PlanSports />}
       <section>
         <h2 className="text-lg font-semibold">Nearby plans</h2>
         {!point ? (

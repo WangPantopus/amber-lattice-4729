@@ -2,22 +2,53 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { plans } from '@pantopus/api';
-import { fieldClass, usePlansArea } from './PlansWorkspace';
+import { readKindDetails } from './PlanKindFields';
+import { readTimes } from './PlanScheduleFields';
+import { fieldClass, secondaryClass, usePlansArea } from './PlansWorkspace';
 
 const MeetingMap = dynamic(() => import('./PlansMap').then((m) => m.MeetingMap), { ssr: false });
 
-export default function PlanPublicPlace({ kind }: { kind: plans.Kind }) {
+export default function PlanPublicPlace({
+  kind,
+  previous,
+}: {
+  kind: plans.Kind;
+  previous?: plans.Detail['place'];
+}) {
   const { point, refreshGPS } = usePlansArea();
   const [locationError, setLocationError] = useState('');
-  const [venue, setVenue] = useState('');
-  const [address, setAddress] = useState('');
-  const [pin, setPin] = useState<plans.Point | null>(null);
+  const [venue, setVenue] = useState(previous?.name || '');
+  const [address, setAddress] = useState(previous?.address || '');
+  const [pin, setPin] = useState<plans.Point | null>(
+    previous?.latitude != null && previous.longitude != null
+      ? { latitude: previous.latitude, longitude: previous.longitude }
+      : null,
+  );
   const [placeId, setPlaceId] = useState<string>();
+  const [search, setSearch] = useState('');
+  const suggestions = useMutation({
+    mutationFn: (form: HTMLFormElement) => {
+      const data = new FormData(form);
+      const times = data.get('start') ? readTimes(data)[0] : {};
+      return plans.suggestPlaces(
+        point!,
+        kind,
+        {
+          ...times,
+          title: String(data.get('title') || ''),
+          about: String(data.get('about') || ''),
+          spots: Number(data.get('spots')),
+          details: readKindDetails(kind, data),
+        },
+        search,
+      );
+    },
+  });
   const choices = useQuery({
-    queryKey: ['plans', 'places', point, kind],
-    queryFn: () => plans.places(point!, kind),
+    queryKey: ['plans', 'places', point, kind, search],
+    queryFn: () => plans.places(point!, kind, search),
     enabled: !!point,
     refetchInterval: (q) => (q.state.data?.loading && q.state.dataUpdateCount < 6 ? 4_000 : false),
   });
@@ -32,6 +63,56 @@ export default function PlanPublicPlace({ kind }: { kind: plans.Kind }) {
       <input type="hidden" name="latitude" value={pin?.latitude ?? ''} />
       <input type="hidden" name="longitude" value={pin?.longitude ?? ''} />
       <input type="hidden" name="placeId" value={placeId ?? ''} />
+      {point && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">
+            Find a public place
+            <input
+              className={fieldClass}
+              value={search}
+              maxLength={100}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                suggestions.reset();
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={secondaryClass}
+            disabled={suggestions.isPending}
+            onClick={(e) => {
+              if (e.currentTarget.form) suggestions.mutate(e.currentTarget.form);
+            }}
+          >
+            {suggestions.isPending
+              ? 'Finding places…'
+              : search
+                ? 'Ask Pantopus about these places'
+                : 'Suggest places'}
+          </button>
+          {suggestions.isError && <p role="alert">{suggestions.error.message}</p>}
+          {suggestions.data && (
+            <div className="space-y-2" role="status">
+              {suggestions.data.loading
+                ? 'Gathering nearby places. Try again in a moment.'
+                : !suggestions.data.picks.length
+                  ? 'No matching public places.'
+                  : null}
+              {suggestions.data.picks.map((place) => (
+                <button
+                  key={place.place_id}
+                  type="button"
+                  className="block text-left text-sm text-primary-700"
+                  onClick={() => choose(place)}
+                >
+                  <strong>{place.name}</strong> · {place.why}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {!!choices.data?.places.length && (
         <label className="block text-sm font-medium">
           Nearby places

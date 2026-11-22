@@ -140,6 +140,10 @@ function conversationCacheKey(roomId?: string, otherUserId?: string, topicId?: s
   return null;
 }
 
+export function personConversationDraftKey(accountId: string, otherUserId: string) {
+  return accountId + ':' + JSON.stringify(conversationCacheKey(undefined, otherUserId, null, undefined, accountId));
+}
+
 const messageTime = (m: ChatMessage) => (m?.created_at ? timeKey(m.created_at).ms : 0);
 const isUnsent = (m: ChatMessage) => Boolean((m as Record<string, any>)._failed || (m as Record<string, any>)._optimistic);
 

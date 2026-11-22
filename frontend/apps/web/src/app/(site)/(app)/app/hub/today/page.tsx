@@ -1,5 +1,6 @@
 'use client';
 
+import TodayPlans from '@/components/plans/PlanFollowUp';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -413,6 +414,7 @@ export default function HubTodayPage() {
 
         {/* At home: Today as it was. It stays mounted under Around you, so coming back is instant. */}
         <div className={showAround ? 'hidden' : undefined} data-testid="todayAtHome">
+        {!loading && !showAround && <TodayPlans />}
         {/* Loading skeleton */}
         {loading && (
           <div className="rounded-2xl border border-app bg-surface dark:bg-surface-dark p-6 animate-pulse space-y-5">

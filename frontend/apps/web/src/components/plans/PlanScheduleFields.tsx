@@ -29,11 +29,13 @@ export function readRepeat(data: FormData): plans.RepeatRule | null | undefined 
 }
 export default function PlanScheduleFields({
   initial,
+  suggested,
   poll,
   canRepeat,
   onTimesChange,
 }: {
   initial?: plans.Detail;
+  suggested?: plans.TimeOption;
   poll: boolean;
   canRepeat: boolean;
   onTimesChange: () => void;
@@ -43,7 +45,11 @@ export default function PlanScheduleFields({
     offered.length
       ? offered.map((o, i) => ({ key: i, start: o.starts_at, end: o.ends_at }))
       : [
-          { key: 0, start: initial?.starts_at, end: initial?.ends_at },
+          {
+            key: 0,
+            start: initial?.starts_at || suggested?.starts_at,
+            end: initial?.ends_at || suggested?.ends_at,
+          },
           { key: 1, start: null, end: null },
         ],
   );
