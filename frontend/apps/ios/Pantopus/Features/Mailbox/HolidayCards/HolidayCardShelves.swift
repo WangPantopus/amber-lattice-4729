@@ -14,7 +14,8 @@ import SwiftUI
 
 /// How large the shelves draw their cards (card shelves B2, B3 and the "Big cards" rule): the opening row's large card
 /// about 76% of the screen's width (no wider than 340), a shelf's card about 56% (190 to 240), and neither smaller
-/// than a tile of today's two-across grid in the same column.
+/// than a tile of today's two-across grid in the same column. Where that makes a shelf card wide (a wide window), a
+/// large card stays at least 1.3 times as wide, up to 60% of the window (the design session's answer of Nov 21).
 struct HolidayCardShelfSizes: Equatable {
     /// A grid tile's picture: half the column less the grid's gap and the tile's padding.
     let grid: CGFloat
@@ -23,8 +24,9 @@ struct HolidayCardShelfSizes: Equatable {
 
     init(screen: CGFloat, column: CGFloat) {
         grid = max(0, (column - Spacing.s3) / 2 - Spacing.s1 * 2)
-        opening = max(grid, min(screen * 0.76, 340))
         shelf = max(grid, min(max(screen * 0.56, 190), 240))
+        let large = max(grid, min(screen * 0.76, 340))
+        opening = max(large, min(shelf * 1.3, screen * 0.6))
     }
 }
 
