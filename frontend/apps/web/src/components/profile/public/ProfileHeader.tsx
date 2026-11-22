@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { CalendarDays, MapPin, ShieldCheck } from 'lucide-react';
 import BottomSheet from '@/components/ui/BottomSheet';
+import { MomentAvatar } from '@/components/moments/MomentLinks';
 import ProfileAvatar from './atoms/ProfileAvatar';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -140,7 +141,7 @@ export default function ProfileHeader({
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <ProfileAvatar name={hasName ? name : null} seed={colorSeed} photoUrl={photoUrl} size={84} />
+        <MomentAvatar id={colorSeed} name={name}><ProfileAvatar name={hasName ? name : null} seed={colorSeed} photoUrl={photoUrl} size={84} /></MomentAvatar>
         <div className="min-w-0 flex-1 basis-[11rem] flex flex-col gap-0.5">
           <h1 className="text-[1.75rem] leading-[2.125rem] font-bold text-app [overflow-wrap:anywhere]">{name}</h1>
           {handle ? <p className="text-[0.9375rem] leading-5 text-app-muted [overflow-wrap:anywhere]">@{handle}</p> : null}

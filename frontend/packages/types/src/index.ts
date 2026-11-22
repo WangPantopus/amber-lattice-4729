@@ -1051,7 +1051,17 @@ export interface ReactionSummary {
   reacted_by_me: boolean;
 }
 
+export interface ChatMomentQuote {
+  id: string;
+  kind: 'text' | 'photo' | 'video';
+  thumb_url: string | null;
+  ended: boolean;
+  background?: string | null;
+  excerpt?: string | null;
+}
+
 export interface ChatMessage {
+  moment?: ChatMomentQuote | null;
   id: string;
   room_id: string;
   sender_id: string;
@@ -1127,6 +1137,7 @@ export interface ConversationTopic {
 }
 
 export interface ConversationSummary {
+  last_message_moment?: (ChatMomentQuote & { from_me: boolean }) | null;
   other_participant_id: string;
   other_participant_name: string;
   other_participant_username: string;
@@ -1141,6 +1152,7 @@ export interface ConversationSummary {
 }
 
 export interface GroupRoomSummary {
+  last_message_moment?: (ChatMomentQuote & { from_me: boolean }) | null;
   id: string;
   room_type: 'group' | 'home';
   room_name: string;

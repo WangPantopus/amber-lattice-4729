@@ -1,5 +1,7 @@
 'use client';
 
+import { MomentAvatar, inboxMomentLabel } from '@/components/moments/MomentLinks';
+
 import { useEffect, useState, useCallback, useId, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -250,6 +252,7 @@ export default function ChatListPage() {
   }, [newChatOpen, newChatQuery]);
 
   const getLastMessagePreview = (conv: UnifiedConversationItem) => {
+    if (conv.last_message_moment) return inboxMomentLabel(conv.last_message_moment);
     const raw = conv?.last_message_preview ?? '';
     if (/^\[[^\]]*attachment\]$/i.test(String(raw).trim())) return 'Media';
     return raw;
@@ -443,13 +446,13 @@ export default function ChatListPage() {
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <button
+                      <div
                         onClick={() => handleConversationPress(conv)}
                         className={`w-full text-left px-4 py-3 hover-bg-app transition-colors border-b border-app ${unread > 0 ? 'bg-blue-50/40' : ''}`}
                       >
                         <div className="flex items-start gap-3">
                           {/* Avatar */}
-                          {isRoom ? (
+                          <MomentAvatar id={isRoom ? null : conv.other_participant_id} name={title}>{isRoom ? (
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg flex-shrink-0 ${isHome ? 'bg-amber-100' : 'bg-emerald-100'}`}>
                               {isHome ? <Home className="w-5 h-5 text-amber-600" /> : <Users className="w-5 h-5 text-emerald-600" />}
                             </div>
@@ -459,14 +462,12 @@ export default function ChatListPage() {
                             <div className={`w-12 h-12 rounded-full ${getColor(title)} text-white flex items-center justify-center text-sm font-bold flex-shrink-0`}>
                               {initials}
                             </div>
-                          )}
+                          )}</MomentAvatar>
 
                           <div className="min-w-0 flex-1">
                             {/* Name + time */}
                             <div className="flex items-center justify-between gap-2">
-                              <div className={`truncate ${unread > 0 ? 'font-bold text-app' : 'font-semibold text-app'}`}>
-                                {title}
-                              </div>
+                              <button className={`truncate text-left ${unread > 0 ? 'font-bold text-app' : 'font-semibold text-app'}`} onClick={event => { event.stopPropagation(); handleConversationPress(conv); }}>{title}</button>
                               <div className={`text-xs flex-shrink-0 ${unread > 0 ? 'text-primary-600 font-semibold' : 'text-app-muted'}`}>
                                 {timeStr}
                               </div>
@@ -507,7 +508,7 @@ export default function ChatListPage() {
                             )}
                           </div>
                         </div>
-                      </button>
+                      </div>
                     </div>
                   );
                 })}

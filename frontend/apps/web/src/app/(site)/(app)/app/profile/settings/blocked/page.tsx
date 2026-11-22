@@ -290,10 +290,11 @@ function MutedSection({ getInitials }: { getInitials: (name: string) => string }
     const mine = generation.current;
     setUnmuting(entry.entity_id);
     try {
-      await api.posts.unmuteEntity({ entityType: entry.entity_type, entityId: entry.entity_id });
+      if (entry.surface === 'moments') await api.moments.unmute(entry.entity_id);
+      else await api.posts.unmuteEntity({ entityType: entry.entity_type, entityId: entry.entity_id });
       if (mine !== generation.current) return;
       setMuted((prev) => prev.filter((m) => m.entity_id !== entry.entity_id));
-      toast.success(`${entry.name} unmuted — their posts can show in your Pulse again`);
+      toast.success(entry.surface === 'moments' ? `${entry.name}’s Moments are unmuted` : `${entry.name} unmuted — their posts can show in your Pulse again`);
     } catch (err: unknown) {
       if (mine === generation.current) toast.error(err instanceof Error && err.message ? err.message : 'Failed to unmute');
     } finally {
@@ -328,6 +329,7 @@ function MutedSection({ getInitials }: { getInitials: (name: string) => string }
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-app-text truncate">{entry.name}</p>
+                {entry.surface === 'moments' && <p className="text-xs text-app-text-secondary">Moments muted</p>}
                 {usernameHandle(entry.username) && <p className="text-xs text-app-text-secondary">{usernameHandle(entry.username)}</p>}
               </div>
               <button onClick={() => void unmute(entry)} disabled={!!unmuting}

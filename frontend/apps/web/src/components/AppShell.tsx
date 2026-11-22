@@ -12,6 +12,8 @@ import { BadgeProvider, useBadges } from '@/contexts/BadgeContext';
 import { SocketProvider } from '@/contexts/SocketContext';
 import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { NavIcons, HomeIcons, BusinessIcons } from '@/lib/icons';
+import { useMomentBadge } from './moments/useMomentBadge';
+import { useMomentsAccess } from './moments/useMomentsAccess';
 import MobileTabBar, { hidesMobileTabs, isConversation } from '@/components/MobileTabBar';
 import { PantopusMark } from '@/components/brand/PantopusMark';
 import UnifiedFAB, { routeHasFab } from '@/components/UnifiedFAB';
@@ -724,7 +726,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
-      <FloatingChatWidget />
+      {!pathname.startsWith('/app/moments') && <FloatingChatWidget />}
       {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
       <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
       {/* Asked once of an account with no name (sign-up didn't ask before October 2026). */}
@@ -809,6 +811,8 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
   // Christmas cards (TABCARD): the red envelope on Mail and "Send a Christmas card" under it, while cards are open.
   const christmasMail = useChristmasMail();
   const cardsOpen = useCardsOpenInChrome();
+  const momentsOn = useMomentsAccess().data?.enabled;
+  const newMoments = useMomentBadge(!!momentsOn);
   const onCards = currentPath === '/app/mailbox/cards';
 
   // ── Prefetch on hover/focus of primary nav items ──────────
@@ -883,6 +887,7 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
       <SidebarItem icon={NavIcons.today} label="Today" active={startsWith('/app/today') || startsWith('/app/hub/today')} onClick={() => go('/app/today')} onPrefetch={prefetchToday} showLabel={showLabels} testId="sidebar-today" />
       {/* The Pulse tab, named Nearby until the founder's November 7 decision (its test id stays). */}
       <SidebarItem icon={NavIcons.pulse} label="Pulse" active={startsWith('/app/feed') || startsWith('/app/beacons') || startsWith('/app/gigs') || startsWith('/app/marketplace')} onClick={() => go('/app/feed')} onPrefetch={prefetchNearby} showLabel={showLabels} testId="sidebar-nearby" />
+      {momentsOn && <SidebarItem icon={NavIcons.moments} label="Moments" active={startsWith('/app/moments')} onClick={() => go('/app/moments')} onPrefetch={() => router.prefetch('/app/moments')} showLabel={showLabels} accent="teal" accessory={newMoments ? <span aria-label="New Moments" className="h-2 w-2 rounded-full bg-teal-500"/> : undefined} testId="sidebar-moments" />}
       {launchFeatures.mailbox ? <SidebarItem icon={christmasMail ? NavIcons.christmasMail : NavIcons.mail} label="Mail" active={startsWith('/app/mailbox') && !(cardsOpen && onCards)} onClick={() => go('/app/mailbox/personal')} onPrefetch={prefetchMail} showLabel={showLabels} count={mailUnread} countLabel="unopened" testId="sidebar-mail" /> : null}
       {/* While Christmas cards are open (Mail's "Send a Christmas card" row shows), the send flow is one step away,
           right under Mail (TABCARD 2d, founder 2026-11-13). */}

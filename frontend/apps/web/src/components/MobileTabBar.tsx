@@ -12,6 +12,8 @@
 // which made the app read as a single long page. Desktop keeps the sidebar
 // (AppShell), in its own order. No Plans tab: Plans on the web comes later (founder, 2026-10-27).
 
+import { useMomentBadge } from './moments/useMomentBadge';
+import { useMomentsAccess } from './moments/useMomentsAccess';
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { NavIcons } from '@/lib/icons';
@@ -20,7 +22,7 @@ import { afterInboxRows } from '@/lib/shellReads';
 import { useChristmasMail } from '@/components/mailbox/cards/cardDoors';
 
 type Tab = {
-  key: 'place' | 'today' | 'nearby' | 'mail';
+  key: 'place' | 'today' | 'nearby' | 'mail' | 'moments';
   label: string;
   href: string;
   icon: typeof NavIcons.place;
@@ -43,6 +45,9 @@ export const MOBILE_TABS: Tab[] = [
   { key: 'nearby', label: 'Pulse', href: '/app/feed', icon: NavIcons.pulse, matches: (p) => starts(p, '/app/feed', '/app/beacons', '/app/gigs', '/app/marketplace') },
 ];
 
+const momentTab: Tab = { key: 'moments', label: 'Moments', href: '/app/moments', icon: NavIcons.moments, matches: p => starts(p, '/app/moments') };
+const tabsWithMoments = [...MOBILE_TABS, momentTab];
+
 // With the Mailbox on, Mail's badge is the drawings' red count (Mail tab
 // design, 2026-10-27).
 const BADGE_CLASS = launchFeatures.mailbox
@@ -50,7 +55,7 @@ const BADGE_CLASS = launchFeatures.mailbox
   : 'absolute right-[calc(50%-18px)] top-1 min-w-[16px] rounded-full bg-primary-600 px-1 text-center text-[10px] font-bold leading-4 text-white';
 
 export function activeMobileTab(pathname: string): Tab['key'] | null {
-  return MOBILE_TABS.find((t) => t.matches(pathname))?.key ?? null;
+  return tabsWithMoments.find((t) => t.matches(pathname))?.key ?? null;
 }
 
 // A conversation has the whole window on a phone (founder, 2026-11-06), a
@@ -71,6 +76,9 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const active = activeMobileTab(pathname);
+  const enabled = useMomentsAccess().data?.enabled;
+  const newMoments = useMomentBadge(!!enabled);
+  const tabs = enabled ? tabsWithMoments : MOBILE_TABS;
   const christmasMail = useChristmasMail();
 
   // The sidebar prefetches each tab on hover; phones have no hover, so
@@ -78,8 +86,8 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
   // coldest navigation. A cold Messages inbox paints its rows first (lib/shellReads.ts), and AppShell
   // prefetches Messages for the top bar's chat button.
   useEffect(() => afterInboxRows(() => {
-    MOBILE_TABS.forEach((tab) => router.prefetch(tab.href));
-  }), [router]);
+    tabs.forEach((tab) => router.prefetch(tab.href));
+  }), [router, tabs]);
 
   return (
     <nav
@@ -87,8 +95,8 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
       data-testid="mobile-tab-bar"
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-app bg-surface pb-[env(safe-area-inset-bottom)]"
     >
-      <ul className="grid" style={{ gridTemplateColumns: `repeat(${MOBILE_TABS.length}, minmax(0, 1fr))` }}>
-        {MOBILE_TABS.map((tab) => {
+      <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((tab) => {
           // The red envelope keeps its own colours, selected or not; the label keeps the tab's.
           const Icon = tab.key === 'mail' && christmasMail ? NavIcons.christmasMail : tab.icon;
           const isActive = active === tab.key;
@@ -109,6 +117,7 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
               >
                 <Icon className="h-6 w-6" strokeWidth={isActive ? 2.25 : 1.75} aria-hidden />
                 <span className="max-w-full truncate px-0.5">{tab.label}</span>
+                {tab.key === 'moments' && newMoments && <span aria-label="New Moments" className="absolute left-1/2 top-1 ml-2 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white"/>}
                 {count > 0 ? (
                   <span aria-hidden className={BADGE_CLASS}>
                     {count > 99 ? '99+' : count}

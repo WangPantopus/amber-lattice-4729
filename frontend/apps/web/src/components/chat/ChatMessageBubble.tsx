@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { Copy, MoreHorizontal, Reply, Pencil, Trash2 } from 'lucide-react';
+import { MomentQuote } from '@/components/moments/MomentLinks';
 import type { ChatMessage } from '@pantopus/types';
 import { chatPersonAvatar, chatPersonHandle, chatPersonName, extractAttachments, resolveMessageType } from '../../hooks/useChatMessages';
 import ChatRichCard from './ChatRichCard';
@@ -109,6 +110,8 @@ function ChatMessageBubble({ msg, currentUserId, isMine, showSender = false, rep
   const ts = msg.created_at
     ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
+  const quotedId = msg.metadata?.moment?.id;
+  const moment = msg.moment ?? (typeof quotedId === 'string' && /^[a-f0-9-]{36}$/i.test(quotedId) ? { id: quotedId } : null);
   const msgText = msg.message_text || msg.message || msg.content || '';
   const allAttachments = extractAttachments(msg);
   const attachments = allAttachments.filter(a => !(a.id && a.live_photo_file_id && allAttachments.some(still => still.id && still.live_video_file_id === a.id && a.live_photo_file_id === still.id)));
@@ -333,6 +336,7 @@ function ChatMessageBubble({ msg, currentUserId, isMine, showSender = false, rep
           {reactionTrigger}
           {actionsTrigger}
           {reactionOverlays}
+          {moment && <MomentQuote quote={moment} own={isMine} />}
           {emojiOnly ? (
             <>{renderReply()}<div className={`text-4xl leading-snug ${isOptimistic ? 'opacity-60' : ''} ${isFailed ? 'opacity-70 ring-1 ring-red-400' : ''}`}>
               {msgText}

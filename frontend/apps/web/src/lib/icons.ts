@@ -62,6 +62,7 @@ import {
   ListTodo,
   HandCoins,
   ShieldCheck,
+  CircleDashed,
   Radio,
   Trash2,
   createLucideIcon,
@@ -87,6 +88,7 @@ export const NavIcons = {
   today: Sun,
   /** The Pulse tab (named Nearby until the founder's November 7 decision). */
   pulse: Activity,
+  moments: CircleDashed,
   nearby: Compass,
   mail: Mail,
   /** Mail from November 1 to December 25 while Christmas cards are open (cardDoors useChristmasMail). */

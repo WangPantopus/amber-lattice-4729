@@ -82,6 +82,7 @@ export function currentScreen(): GuidanceScreenReport | null {
 export function screenForPath(pathname: string): GuidanceScreenName | null {
   if (pathname === '/app/place') return 'place';
   if (pathname === '/app/today' || pathname === '/app/hub/today') return 'today';
+  if (pathname === '/app/moments') return 'moments';
   if (pathname === '/app/feed') return 'pulse';
   if (/^\/app\/mailbox\/(?:personal|home|business|earn|counter|vault)$/.test(pathname)) return 'mail';
   if (pathname === '/app/chat') return 'messages';

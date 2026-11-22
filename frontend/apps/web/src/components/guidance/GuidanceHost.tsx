@@ -30,7 +30,7 @@ import { FEED_POST_CREATED_EVENT } from '@/lib/feedComposerEvents';
 import {
   ACTIVE_INTRODUCTIONS, CENTRE_CARD_IDS, KNOWN_CARD_IDS, POINTERS, REMINDER_IDS, TAB_CARD_IDS, addAddressCard,
   connectedCard, firstLetterCard, firstPostCard, homeSetUpCard, householdCard, introductionCard, inviteCard, mailCard,
-  placeSavedCard, pointerById, pulseCard, setUpHomeCard, todayCard, verifiedCard, verifyReminderCard, welcomeCard,
+  placeSavedCard, pointerById, momentsCard, pulseCard, setUpHomeCard, todayCard, verifiedCard, verifyReminderCard, welcomeCard,
   type CentreCardContent, type PointerContent,
 } from './cards';
 import { PICKUP_EDITOR_HASH } from '@/components/place/detail/pickupSaved';
@@ -123,6 +123,7 @@ function tabCardFor(userId: string, screen: GuidanceScreenReport, computer: bool
       return todayHouseOn() || isSeen(userId, 'tab_today') ? null : todayCard({ aroundYou: !!findAnchor('todayHalfToggle') });
     case 'mail':
       return !launchFeatures.mailbox || isSeen(userId, 'tab_mail') ? null : mailCard({ letters: launchFeatures.mailExtras });
+    case 'moments': return isSeen(userId, 'tab_moments') ? null : momentsCard();
     case 'pulse':
       return isSeen(userId, 'tab_pulse') ? null : pulseCard();
     default:
@@ -137,6 +138,7 @@ function centreCardById(id: string, screen: GuidanceScreenReport, computer: bool
     case 'place_saved': return placeSavedCard();
     case 'tab_today': return todayCard({ aroundYou: !!findAnchor('todayHalfToggle') });
     case 'tab_mail': return mailCard({ letters: launchFeatures.mailExtras });
+    case 'tab_moments': return momentsCard();
     case 'tab_pulse': return pulseCard();
     case 'done_home_setup': return homeSetUpCard({ needsPickupDay: !!screen.facts.home?.needsPickupDay });
     case 'done_verified': return verifiedCard({ mailbox: launchFeatures.mailbox });

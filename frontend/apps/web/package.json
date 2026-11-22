@@ -34,6 +34,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.575.0",
     "mapbox-gl": "3.29.0",
+    "mediabunny": "1.66.2",
     "next": "^15.5.28",
     "pdfjs-dist": "6.4.299",
     "qrcode": "1.5.4",
