@@ -419,7 +419,7 @@ function cardLinkFront(card) {
   if (!card || card.arrival === 'sealed_christmas') return null;
   const design = holidayCards.designById(card.design);
   if (!design) return null;
-  return { design: design.id, caption: design.caption, paper: design.paper, table: design.table || null };
+  return { design: design.id, caption: design.caption, paper: design.paper, table: design.table || null, mood: design.mood || null };
 }
 
 // Who a letter a person sent in their own name is from on its link's page (GET /claim/:mailId), and on a card's look
@@ -1806,6 +1806,9 @@ const cardListSchema = Joi.object({
 
 const cardsOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards']);
 const cardTableOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_table']);
+// "Pick a card" and pantopus.com/cards as shelves (launch key card_shelves, server only): the two list answers say so
+// with `shelves: true`, and the apps and the website draw the shelves only then.
+const cardShelvesOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_shelves']);
 // "Help me write it" on the write step (POST /api/ai/draft/card-note): its launch key, and a Claude key to call with.
 const cardNoteHelpOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_note_help'])
   && Boolean(process.env.ANTHROPIC_API_KEY);
@@ -2214,7 +2217,10 @@ router.get('/cards', verifyToken, async (req, res) => {
         ? { ...controls, bought_stamp: await boughtStampControls(senderId, postage, stamps) } : controls,
       // A long passage's verse isn't printed under its card on "Pick a card" (holidayCards.pickACardDesign).
       designs: holidayCards.DESIGNS.map(holidayCards.pickACardDesign),
+      // Each with its short name, public name, opening card and (Christmas with Jesus Christ) parts: older apps ignore them.
       collections: holidayCards.COLLECTIONS,
+      // The shelves (launch key card_shelves). Absent: today's "Pick a card".
+      ...(cardShelvesOn() ? { shelves: true } : {}),
       // By email, `email` is the two choices older apps word; `email_all` the four (an email at your next 7 a.m. or on
       // Christmas morning, next_round_at and christmas_morning_at below), for apps that word them.
       arrivals: { person: arrivals(false), email: arrivals(true), email_all: arrivals(true, true) },
@@ -2314,8 +2320,10 @@ router.get('/cards/designs', (req, res) => {
   return res.json({
     year: holidayCards.SEASON.year,
     collections: holidayCards.COLLECTIONS,
-    designs: holidayCards.DESIGNS.map(({ id, number, slug, caption, paper, collection, table, verse }) =>
-      ({ id, number, slug, caption, paper, collection, table, ...(verse ? { verse } : {}) })),
+    designs: holidayCards.DESIGNS.map(({ id, number, slug, caption, paper, collection, table, mood, verse }) =>
+      ({ id, number, slug, caption, paper, collection, table, mood, ...(verse ? { verse } : {}) })),
+    // The shelves, a page per collection (launch key card_shelves). Absent: today's pages.
+    ...(cardShelvesOn() ? { shelves: true } : {}),
     // With digital stamps on for everyone: the free cards an account starts with, for the pages' "first 3 are free".
     ...(mailStamps.enabled() ? { free_cards: mailStamps.FREE_CARDS } : {}),
   });

@@ -582,7 +582,7 @@ async function publicJourney(journey, now = new Date()) {
   return {
     id: String(journey),
     card: design ? { design: design.id, number: design.number, caption: design.caption, slug: design.slug, table: design.table,
-      paper: design.paper, height: design.height } : null,
+      mood: design.mood, paper: design.paper, height: design.height } : null,
     stops: tree.stops.map((s, i) => ({ town: s.town, state: s.state, lat: s.lat, lon: s.lon, on: s.on, from: s.from,
       holding: leaves.has(i) })),
     miles: sum.miles,
