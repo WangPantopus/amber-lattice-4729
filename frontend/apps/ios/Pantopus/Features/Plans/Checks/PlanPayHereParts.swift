@@ -138,14 +138,3 @@ struct PlanChecksEntryCard: View {
         }
     }
 }
-
-/// The Going list on the host page, with C3's totals on top while guests can pay here.
-struct PlanHostGoingWithMoney<Going: View>: View {
-    let card: PlanCardDTO
-    @ViewBuilder let going: () -> Going
-
-    var body: some View {
-        if card.payHere != nil, card.state != .cancelled { PlanChecksEntryCard(card: card) }
-        going()
-    }
-}

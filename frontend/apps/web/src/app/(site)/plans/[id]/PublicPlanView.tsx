@@ -31,7 +31,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
 import OpenPlanOnWeb from '@/components/plans/OpenPlanOnWeb';
-import PayToJoin from './PayToJoin';
+import PayToJoin, { type BookingPlan } from './PayToJoin';
 import ClaimSpot, { SpotUnread, type SpotView } from './ClaimSpot';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
@@ -56,6 +56,7 @@ type Kind = PublicPlan['kind'];
  * business plan what they paid (B3).
  */
 type PlanViewer = {
+  booking: BookingPlan;
   role: 'host' | 'guest' | 'none';
   requestStatus: string | null;
   requestsWaiting: number;
@@ -86,6 +87,13 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
     if (role !== 'host' && role !== 'guest' && role !== 'none') return null;
     return {
       role,
+      booking: {
+        kind: plan.kind,
+        kids_welcome: plan.kids_welcome,
+        is_full: plan.is_full,
+        viewer: { request_status: plan.viewer.request_status },
+        my_request: plan.my_request ? { party_size: plan.my_request.party_size, kids_count: plan.my_request.kids_count } : null,
+      },
       requestStatus: typeof plan.viewer.request_status === 'string' ? plan.viewer.request_status : null,
       requestsWaiting: Number(plan.requests_count) || 0,
       paid: plan.paid && typeof plan.paid.text === 'string' ? plan.paid : null,
@@ -1005,6 +1013,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
           {paysHere && plan.price?.text ? (
             <PayToJoin
               planId={id}
+              plan={viewer?.booking}
               signedIn={Boolean(viewer)}
               joinNow={joinNow}
               priceText={plan.price.text}
@@ -1048,7 +1057,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           )}
 
-          {!business && <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />}
+          <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />
           <OpenInAppButton
             appUrl={appUrl}
             linkHref={linkHref}

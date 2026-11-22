@@ -362,13 +362,8 @@ async function pay(user, postId, checkId, body = {}) {
     }).eq('id', check.id).neq('status', 'paid');
     if (error) throw new Error(`Failed to save the payment: ${error.message}`);
   }
-  const { data: payment } = await supabaseAdmin.from('Payment').select('stripe_customer_id').eq('id', paymentId).maybeSingle();
-  const ephemeral = await svc.createEphemeralKey(payment.stripe_customer_id);
   return {
-    payment: {
-      payment_id: paymentId, amount_cents: priced.totalCents, amount_text: money(priced.totalCents), client_secret: clientSecret,
-      customer_id: payment.stripe_customer_id, ephemeral_key: ephemeral?.secret || null, publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null,
-    },
+    payment: await planPaid().paymentSheet(paymentId, priced.totalCents, clientSecret),
     check: await checkView(plan, { ...check, payment_id: paymentId }, request, { tipCents: tip, tipLabel: tipLabelOf(check.subtotal_cents, tip) }),
   };
 }
@@ -544,10 +539,7 @@ async function tipLater(user, postId, body = {}) {
     paymentId = made.paymentId;
     clientSecret = made.clientSecret;
   }
-  const { data: payment } = await supabaseAdmin.from('Payment').select('stripe_customer_id').eq('id', paymentId).maybeSingle();
-  const ephemeral = await svc.createEphemeralKey(payment.stripe_customer_id);
-  return { payment: { payment_id: paymentId, amount_cents: amount, amount_text: money(amount), client_secret: clientSecret,
-    customer_id: payment.stripe_customer_id, ephemeral_key: ephemeral?.secret || null, publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null } };
+  return { payment: await planPaid().paymentSheet(paymentId, amount, clientSecret) };
 }
 
 /** The tip's card was accepted: captured, its card fee fixed. Answers 'paid' or 'not_paid'. */

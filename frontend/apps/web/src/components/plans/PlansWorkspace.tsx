@@ -53,6 +53,7 @@ interface BrowseContext {
   refreshGPS: () => Promise<plans.GPS | null>;
   time: plans.TimeWindow;
   kind: plans.Kind | '';
+  host: plans.HostFilter;
 }
 const Browse = createContext<BrowseContext | null>(null);
 export function usePlansArea() {
@@ -94,6 +95,9 @@ function Workspace({ pathname, children }: { pathname: string; children: ReactNo
   const area = useAreaPicker(say);
   const [time, setTime] = useState<plans.TimeWindow>('week');
   const [kind, setKind] = useState<plans.Kind | ''>('');
+  const businessFlag = useFeatureFlagState('plans_business');
+  const [chosenHost, setHost] = useState<plans.HostFilter>('all');
+  const host = businessFlag.enabled ? chosenHost : 'all';
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const onList = pathname === plansPath;
@@ -119,7 +123,7 @@ function Workspace({ pathname, children }: { pathname: string; children: ReactNo
   }, [client, socket]);
 
   return (
-    <Browse.Provider value={{ point, gps, refreshGPS: area.refreshDeviceLocation, time, kind }}>
+    <Browse.Provider value={{ point, gps, refreshGPS: area.refreshDeviceLocation, time, kind, host }}>
       <section className="mx-auto flex min-h-0 max-w-[1600px] flex-col text-app">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-app bg-surface px-4 py-3 lg:px-6">
           <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -209,6 +213,20 @@ function Workspace({ pathname, children }: { pathname: string; children: ReactNo
                 ))}
               </select>
             </label>
+            {businessFlag.enabled && (
+              <label className="text-sm font-medium">
+                Hosted by
+                <select
+                  className={fieldClass}
+                  value={host}
+                  onChange={(e) => setHost(e.target.value as plans.HostFilter)}
+                >
+                  <option value="all">Everyone</option>
+                  <option value="neighbors">People</option>
+                  <option value="businesses">Businesses</option>
+                </select>
+              </label>
+            )}
           </div>
         )}
         <div

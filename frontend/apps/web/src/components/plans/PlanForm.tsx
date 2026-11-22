@@ -11,6 +11,7 @@ import { buttonClass, detailPath, fieldClass, plansPath, usePlansArea } from './
 import PlanKindFields, { readKindDetails } from './PlanKindFields';
 import PlanPublicPlace from './PlanPublicPlace';
 import PlanScheduleFields, { readRepeat, readTimes } from './PlanScheduleFields';
+import PlanBusinessFields, { readBusinessFields } from './PlanBusinessFields';
 
 const newer: plans.Kind[] = ['food_drinks', 'game_night', 'outdoors', 'something_else'];
 const onlineKinds: plans.Kind[] = [
@@ -25,8 +26,48 @@ type PlaceMode = plans.MeetingPlace['kind'] | 'keep';
 type Changes = Parameters<typeof plans.edit>[1];
 const inputLabel = 'block text-sm font-medium';
 
-export default function PlanForm({ initial: current }: { initial?: plans.Detail }) {
+export default function PlanForm({ initial }: { initial?: plans.Detail }) {
+  const [hostId, setHostId] = useState(initial?.business?.user_id || '');
+  const choices = useQuery({
+    queryKey: ['plans', 'host-as'],
+    queryFn: plans.hostAs,
+    enabled: !initial || !!initial.business,
+  });
+  const business = choices.data?.businesses.find((item) => item.user_id === hostId);
+  return (
+    <>
+      {!initial && !!choices.data?.businesses.length && (
+        <label className="mb-4 block text-sm font-medium">
+          Host as
+          <select className={fieldClass} value={hostId} onChange={(e) => setHostId(e.target.value)}>
+            <option value="">Myself</option>
+            {choices.data.businesses.map((item) => (
+              <option key={item.user_id} value={item.user_id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {choices.isError && (
+        <button className="mb-3 text-sm text-primary-700" onClick={() => void choices.refetch()}>
+          Retry business hosting options
+        </button>
+      )}
+      <PlanEditor key={hostId || 'personal'} initial={initial} business={business} />
+    </>
+  );
+}
+
+function PlanEditor({
+  initial: current,
+  business,
+}: {
+  initial?: plans.Detail;
+  business?: plans.BusinessHost;
+}) {
   const [initial] = useState(current);
+  const isBusiness = !!business || !!initial?.business;
   const router = useRouter();
   const client = useQueryClient();
   const { gps, refreshGPS } = usePlansArea();
@@ -37,7 +78,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
   const guestAnswers = useFeatureFlag('plans_guest_answers');
   const datePolls = useFeatureFlag('plans_find_date');
   const repeats = useFeatureFlag('plans_repeat');
-  const [kind, setKind] = useState<plans.Kind>(initial?.kind || 'walk_coffee');
+  const [kind, setKind] = useState<plans.Kind>(initial?.kind || business?.kinds[0]?.kind || 'walk_coffee');
   const [audience, setAudience] = useState(initial?.audience || 'nearby');
   const [placeMode, setPlaceMode] = useState<PlaceMode>(initial ? 'keep' : 'public');
   const [offerDates, setOfferDates] = useState(!!initial?.dates);
@@ -58,10 +99,12 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
     gcTime: 0,
   });
   const save = useMutation({
-    mutationFn: async (input: { changes: Changes } | { create: plans.NewPlan }) => {
+    mutationFn: async (input: { changes: Changes } | { create: plans.NewPlan | plans.NewBusinessPlan }) => {
+      if ('create' in input && 'host_as' in input.create) return plans.create(input.create);
+      if ('changes' in input && isBusiness) return plans.edit(initial!.id, input.changes);
       const needsLocation =
         'create' in input
-          ? input.create.audience === 'nearby'
+          ? 'audience' in input.create && input.create.audience === 'nearby'
           : !!input.changes.place && initial?.audience === 'nearby';
       const fix =
         needsLocation && (!gps || Date.now() - Date.parse(gps.timestamp) > 240_000)
@@ -86,7 +129,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
       const repeat = readRepeat(data);
       const details = readKindDetails(kind, data, initial?.details);
       let place: plans.MeetingPlace | undefined;
-      if (effectivePlace === 'public') {
+      if (!isBusiness && effectivePlace === 'public') {
         if (!value('latitude') || !value('longitude'))
           throw new Error('Choose the meeting point on the map or use your current location.');
         place = {
@@ -105,8 +148,31 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
         guest_note = value('note');
       const guests_can_invite = data.has('friend'),
         kids_welcome = data.has('kidsWelcome');
-      const auto_rules = data.getAll('rule').map(String);
-      if (!initial && place) {
+      const auto_rules = isBusiness
+        ? data.get('admission') === 'open' || data.has('price')
+          ? ['open']
+          : []
+        : data.getAll('rule').map(String);
+      const businessFields = isBusiness ? readBusinessFields(data, initial, dirty.current) : {};
+      if (business && !initial) {
+        save.mutate({
+          create: {
+            ...businessFields,
+            host_as: { business_user_id: business.user_id },
+            business_location_id: value('businessLocation'),
+            label: value('label'),
+            kind,
+            title,
+            about,
+            spots,
+            details,
+            guest_note,
+            auto_rules,
+            join_requirement: 'located',
+            ...times[0],
+          },
+        });
+      } else if (!initial && place) {
         save.mutate({
           create: {
             kind,
@@ -126,7 +192,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
           },
         });
       } else if (initial) {
-        const changes: Changes = {};
+        const changes: Changes = { ...businessFields };
         if (title !== initial.title) changes.title = title;
         if (about !== (initial.about || '')) changes.about = about;
         if (spots !== initial.spots) changes.spots = spots;
@@ -143,9 +209,10 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
         if (repeat !== undefined && (repeat || initial.repeat)) changes.repeat = repeat;
         if (dirty.current.has('friend')) changes.guests_can_invite = guests_can_invite;
         if (dirty.current.has('kidsWelcome')) changes.kids_welcome = kids_welcome;
-        if (dirty.current.has('rule')) changes.auto_rules = auto_rules;
+        if (dirty.current.has('rule') || dirty.current.has('admission')) changes.auto_rules = auto_rules;
         const moved =
           changes.place ||
+          changes.business_location_id ||
           (changes.starts_at &&
             Math.abs(Date.parse(changes.starts_at) - Date.parse(initial.starts_at || '')) > 30 * 60_000);
         if (
@@ -191,17 +258,23 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
               value={kind}
               onChange={(e) => setKind(e.target.value as plans.Kind)}
             >
-              {(Object.keys(plans.kindNames) as plans.Kind[])
-                .filter((k) => (k !== 'playdate' || playdates) && (!newer.includes(k) || more))
-                .map((k) => (
-                  <option key={k} value={k}>
-                    {plans.kindNames[k]}
-                  </option>
-                ))}
+              {business
+                ? business.kinds.map((k) => (
+                    <option key={k.kind} value={k.kind}>
+                      {k.name}
+                    </option>
+                  ))
+                : (Object.keys(plans.kindNames) as plans.Kind[])
+                    .filter((k) => (k !== 'playdate' || playdates) && (!newer.includes(k) || more))
+                    .map((k) => (
+                      <option key={k} value={k}>
+                        {plans.kindNames[k]}
+                      </option>
+                    ))}
             </select>
           </label>
         )}
-        {!initial && privatePlans && (
+        {!initial && !isBusiness && privatePlans && (
           <label className={inputLabel}>
             Who can see this plan?
             <select
@@ -225,7 +298,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
           About the plan (optional)
           <textarea className={fieldClass} name="about" maxLength={500} defaultValue={initial?.about} />
         </label>
-        {!initial && datePolls && audience === 'invited' && kind !== 'playdate' && (
+        {!initial && !isBusiness && datePolls && audience === 'invited' && kind !== 'playdate' && (
           <label className="block">
             <input type="checkbox" checked={offerDates} onChange={(e) => setOfferDates(e.target.checked)} />{' '}
             Find a date together
@@ -234,7 +307,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
         <PlanScheduleFields
           initial={initial}
           poll={poll}
-          canRepeat={repeats}
+          canRepeat={!isBusiness && repeats}
           onTimesChange={() => dirty.current.add('times')}
         />
         <label className={inputLabel}>
@@ -244,12 +317,12 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
             type="number"
             name="spots"
             min="1"
-            max={audience === 'invited' && guestAnswers ? 100 : 30}
+            max={business?.limits.spots_max ?? (audience === 'invited' && guestAnswers ? 100 : 30)}
             defaultValue={initial?.spots ?? 4}
             required
           />
         </label>
-        {kind !== 'playdate' && guestAnswers && (
+        {!isBusiness && kind !== 'playdate' && guestAnswers && (
           <label className="block">
             <input type="checkbox" name="kidsWelcome" defaultChecked={initial?.kids_welcome} /> Kids welcome
           </label>
@@ -262,55 +335,61 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
         )}
         <fieldset className="space-y-3 border-t border-app pt-4">
           <legend className="font-semibold">Meeting details</legend>
-          <label className={inputLabel}>
-            Where are you meeting?
-            <select
-              className={fieldClass}
-              value={effectivePlace}
-              onChange={(e) => setPlaceMode(e.target.value as PlaceMode)}
-            >
-              {initial && <option value="keep">Keep current meeting place</option>}
-              <option value="public">At a public place</option>
-              {atHome && <option value="home">At my home</option>}
-              {onlineAllowed && <option value="online">Online</option>}
-            </select>
-          </label>
-          {effectivePlace === 'keep' && (
-            <p className="text-sm text-app-secondary">
-              {initial?.place?.name || initial?.place?.link_host || initial?.area.label}
-            </p>
-          )}
-          {effectivePlace === 'public' && <PlanPublicPlace kind={kind} />}
-          {effectivePlace === 'online' && (
-            <label className={inputLabel}>
-              Meeting link
-              <input
-                className={fieldClass}
-                type="url"
-                name="link"
-                placeholder="https://"
-                maxLength={300}
-                defaultValue={initial?.place?.link ?? ''}
-                required
-              />
-              <span className="text-xs text-app-muted">Only confirmed guests see the link.</span>
-            </label>
-          )}
-          {effectivePlace === 'home' && (
-            <label className={inputLabel}>
-              Your home
-              <select className={fieldClass} name="home" defaultValue="" required>
-                <option value="">Choose your home</option>
-                {myHomes.data?.homes
-                  .filter((h) => h.location && h.access_kind !== 'verification')
-                  .map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name || h.address || h.city}
-                    </option>
-                  ))}
-              </select>
-              <span className="text-xs text-app-muted">Guests see the address after they’re in.</span>
-            </label>
+          {isBusiness ? (
+            <PlanBusinessFields key={kind} business={business} kind={kind} initial={initial} />
+          ) : (
+            <>
+              <label className={inputLabel}>
+                Where are you meeting?
+                <select
+                  className={fieldClass}
+                  value={effectivePlace}
+                  onChange={(e) => setPlaceMode(e.target.value as PlaceMode)}
+                >
+                  {initial && <option value="keep">Keep current meeting place</option>}
+                  <option value="public">At a public place</option>
+                  {atHome && <option value="home">At my home</option>}
+                  {onlineAllowed && <option value="online">Online</option>}
+                </select>
+              </label>
+              {effectivePlace === 'keep' && (
+                <p className="text-sm text-app-secondary">
+                  {initial?.place?.name || initial?.place?.link_host || initial?.area.label}
+                </p>
+              )}
+              {effectivePlace === 'public' && <PlanPublicPlace kind={kind} />}
+              {effectivePlace === 'online' && (
+                <label className={inputLabel}>
+                  Meeting link
+                  <input
+                    className={fieldClass}
+                    type="url"
+                    name="link"
+                    placeholder="https://"
+                    maxLength={300}
+                    defaultValue={initial?.place?.link ?? ''}
+                    required
+                  />
+                  <span className="text-xs text-app-muted">Only confirmed guests see the link.</span>
+                </label>
+              )}
+              {effectivePlace === 'home' && (
+                <label className={inputLabel}>
+                  Your home
+                  <select className={fieldClass} name="home" defaultValue="" required>
+                    <option value="">Choose your home</option>
+                    {myHomes.data?.homes
+                      .filter((h) => h.location && h.access_kind !== 'verification')
+                      .map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name || h.address || h.city}
+                        </option>
+                      ))}
+                  </select>
+                  <span className="text-xs text-app-muted">Guests see the address after they’re in.</span>
+                </label>
+              )}
+            </>
           )}
           <label className={inputLabel}>
             Note for approved guests (optional)
@@ -322,7 +401,7 @@ export default function PlanForm({ initial: current }: { initial?: plans.Detail 
             />
           </label>
         </fieldset>
-        {audience === 'nearby' && kind !== 'playdate' && (
+        {!isBusiness && audience === 'nearby' && kind !== 'playdate' && (
           <fieldset className="space-y-2 border-t border-app pt-4">
             <legend className="font-semibold">Joining this plan</legend>
             <p className="text-sm">You approve requests. Who can join automatically?</p>

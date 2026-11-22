@@ -907,6 +907,7 @@ function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
 function addBusinessFields(card, plan, viewer, ctx) {
   const exact = exactPoint(plan);
   card.business = planBusiness.publicBusiness(plan, { plansHosted: ctx.hostedCount.get(String(plan.host_user_id)) || 0 });
+  if (card.viewer.role === 'host') card.business.can_manage = viewer.businessManage?.has(String(plan.business_user_id)) === true;
   const label = planBusiness.labelView(plan);
   card.label = label ? label.key : null;
   card.label_text = label ? label.text : null;

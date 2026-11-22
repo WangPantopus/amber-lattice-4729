@@ -14,6 +14,7 @@ export const kindNames = {
 
 export type Kind = keyof typeof kindNames;
 export type TimeWindow = 'now' | 'today' | 'week' | 'weekend';
+export type HostFilter = 'all' | 'neighbors' | 'businesses';
 export interface Point {
   latitude: number;
   longitude: number;
@@ -27,7 +28,56 @@ export interface Bounds {
   north: number;
   east: number;
 }
-type RequestStatus = 'pending' | 'accepted' | 'waitlisted' | 'withdrawn' | 'left' | 'declined' | 'removed';
+type RequestStatus =
+  | 'pending'
+  | 'paying'
+  | 'expired'
+  | 'accepted'
+  | 'waitlisted'
+  | 'withdrawn'
+  | 'left'
+  | 'declined'
+  | 'removed';
+export interface BusinessHost {
+  user_id: string;
+  name: string;
+  locations: { id: string; label: string | null; address: string; is_primary: boolean }[];
+  kinds: { kind: Kind; name: string; labels: { key: string; text: string }[] }[];
+  limits: { spots_max: number; days_ahead: number };
+  can?: { price: boolean; pay_here: boolean; deals: boolean };
+  payouts_ready?: boolean;
+}
+export interface DealBenefit {
+  kind: 'free_item' | 'percent' | 'amount';
+  item?: string;
+  value?: number;
+  applies_to?: string;
+}
+export interface DealInput extends DealBenefit {
+  scope: 'everyone' | 'group';
+  group_size?: number;
+  group_by?: string;
+  if_short?: DealBenefit | null;
+}
+interface Receipt {
+  link: string;
+}
+export interface PaidSpot {
+  text: string;
+  leave_text?: string | null;
+  leave_back_cents?: number;
+  receipt?: Receipt | null;
+}
+export interface TipChoice {
+  label: string;
+  tip_text: string;
+  tip_cents: number;
+}
+export interface PlanPayment {
+  client_secret: string;
+  publishable_key?: string | null;
+  amount_text: string;
+}
 export interface Card {
   id: string;
   kind: Kind;
@@ -42,6 +92,35 @@ export interface Card {
   audience: 'nearby' | 'invited';
   place_kind: 'home' | 'public' | 'online';
   host: { display_name: string };
+  business?: { user_id: string; name: string; verified: boolean; page_url: string | null; can_manage?: boolean };
+  label?: string | null;
+  label_text?: string | null;
+  price?: { cents: number; text: string; was_cents?: number; refund_text?: string } | null;
+  paid?: PaidSpot;
+  more_times?: {
+    count: number;
+    items: { id: string; title: string; starts_at: string; timezone: string }[];
+  } | null;
+  pay_here?: { tips_on: boolean; text: string };
+  tip_later?: { choices: TipChoice[] };
+  deal?: {
+    text: string;
+    tag: string;
+    condition_text?: string;
+    state_text?: string;
+    if_short_text?: string;
+    mine?: { text?: string; short?: string };
+    form?: DealInput;
+    can_change?: boolean;
+  };
+  group_pay?: {
+    text: string;
+    taken_text?: string;
+    note?: string;
+    url?: string;
+    open: boolean;
+    give_back?: { label: string; text: string };
+  };
   spots: number;
   spots_left: number;
   details: KindDetails;
@@ -68,7 +147,13 @@ export interface Card {
     can_ask: boolean;
     cannot_ask_reason: string | null;
   };
-  my_request?: { reconfirm_needed: boolean; party_size: number; kids_count?: number; note?: string } | null;
+  my_request?: {
+    reconfirm_needed: boolean;
+    party_size: number;
+    kids_count?: number;
+    note?: string;
+    hold_expires_at?: string;
+  } | null;
 }
 
 export interface Detail extends Card {
@@ -88,6 +173,8 @@ export interface Detail extends Card {
     reconfirm_needed?: boolean;
     display_name: string;
     is_host: boolean;
+    paid?: { text: string };
+    deal?: { state: string };
     party_size: number;
     kids_count?: number | null;
   }[];
@@ -168,6 +255,20 @@ export interface NewPlan extends TimeOption {
   repeat?: RepeatRule | null;
   gps?: GPS;
 }
+export interface BusinessFields {
+  label?: string;
+  business_location_id?: string;
+  price_cents?: number | null;
+  pay_here?: boolean;
+  tips_on?: boolean;
+  deal?: DealInput | null;
+}
+export type NewBusinessPlan = Omit<NewPlan, 'place' | 'audience'> &
+  BusinessFields & {
+    host_as: { business_user_id: string };
+    business_location_id: string;
+    label: string;
+  };
 export interface InviteRow {
   id: string;
   channel: string;
@@ -214,17 +315,23 @@ export interface Ask {
   stays_with_kids?: boolean;
 }
 
-// Personal plan kinds, guest answers, and date polls use the same contracts as mobile.
-const capabilities = { more: '1', guests: '1', extras: '1' };
+const capabilities = { biz: '1', more: '1', guests: '1', extras: '1' };
 const root = '/api/plans';
 const path = (id: string) => root + '/' + encodeURIComponent(id);
 const config = { params: capabilities };
 
-export function nearby(point: Point, window: TimeWindow, kind: Kind | '', cursor?: string) {
+export function nearby(
+  point: Point,
+  window: TimeWindow,
+  kind: Kind | '',
+  cursor?: string,
+  host: HostFilter = 'all',
+) {
   return get<{ items: Card[]; next_cursor: string | null }>(root, {
     ...capabilities,
     ...point,
     window,
+    host,
     kinds: kind || undefined,
     cursor,
   });
@@ -235,13 +342,14 @@ export function mine() {
     capabilities,
   );
 }
-export function pins(bounds: Bounds, window: TimeWindow, kind: Kind | '') {
+export function pins(bounds: Bounds, window: TimeWindow, kind: Kind | '', host: HostFilter = 'all') {
   return get<{ markers: (Point & Pick<Card, 'id' | 'kind' | 'title'>)[] }>('/api/posts/map', {
     ...capabilities,
     ...bounds,
     window,
     kinds: kind || undefined,
     layers: 'plans',
+    host,
   });
 }
 export function detail(id: string, gps?: GPS) {
@@ -252,7 +360,13 @@ export function detail(id: string, gps?: GPS) {
     gps_timestamp: gps?.timestamp,
   });
 }
-export function create(input: NewPlan) {
+export function hostAs() {
+  return get<{ businesses: BusinessHost[] }>(root + '/host-as', capabilities);
+}
+export function forBusiness(id: string) {
+  return get<{ items: Card[] }>('/api/businesses/' + encodeURIComponent(id) + '/plans', capabilities);
+}
+export function create(input: NewPlan | NewBusinessPlan) {
   return post<Detail>(root, input, config);
 }
 export interface PublicPlace extends Point {
@@ -292,7 +406,7 @@ export function stillComing(id: string, coming: boolean) {
   return post(path(id) + '/still-coming', { coming }, config);
 }
 
-export function edit(id: string, changes: Partial<Omit<NewPlan, 'kind' | 'audience'>>) {
+export function edit(id: string, changes: Partial<Omit<NewPlan, 'kind' | 'audience'>> & BusinessFields) {
   return patch<Detail>(path(id), changes, config);
 }
 export function cancel(id: string, note: string, repeat?: 'keep' | 'stop') {
@@ -374,4 +488,101 @@ export function vote(id: string, options: string[], party_size: number, kids_cou
 }
 export function pickDate(id: string, option_id: string) {
   return post<Detail>(path(id) + '/dates/pick', { option_id }, config);
+}
+
+export type Booking = Partial<Ask> & { for?: 'link'; spots?: number };
+export interface SpotQuote {
+  spots_text: string;
+  each_text: string;
+  total_text: string;
+  refund_text?: string;
+  group?: { text: string; state: string; in: number; size: number };
+  group_pay?: { max_spots: number; title: string; for: { id: string; label: string }[] };
+}
+export function quoteSpot(id: string, input: Booking) {
+  return post<SpotQuote>(path(id) + '/requests/quote', input, config);
+}
+export function holdSpot(id: string, input: Booking) {
+  return post<{
+    payment?: PlanPayment & Partial<Pick<SpotQuote, 'spots_text' | 'each_text'>>;
+    request?: { status: RequestStatus; hold_expires_at?: string };
+    plan: Detail;
+  }>(path(id) + '/requests', input, config);
+}
+export function confirmSpot(id: string) {
+  return post<Detail>(path(id) + '/requests/mine/confirm', {}, config);
+}
+export function giveBackSpots(id: string) {
+  return post<Detail>(path(id) + '/requests/mine/give-back-spots', {}, config);
+}
+export function markDealUsed(id: string, requestId: string) {
+  return post(path(id) + '/requests/' + encodeURIComponent(requestId) + '/deal-used', {}, config);
+}
+export interface Check {
+  id: string;
+  state: 'open' | 'paid' | 'refunded';
+  heading: string;
+  amount_cents: number;
+  total_text: string;
+  lines: { key: string; label: string; text: string }[];
+  tips_on: boolean;
+  tip_choices?: TipChoice[];
+  tip_base_text?: string;
+  note_text?: string;
+  paid_text?: string;
+  paid_total_text?: string;
+  method_text?: string;
+  refunded_text?: string;
+  receipt?: Receipt | null;
+}
+export interface CheckRow {
+  request_id: string;
+  name: string;
+  brought_by_text?: string;
+  state: 'none' | 'sent' | 'paid' | 'refunded';
+  check?: {
+    id: string;
+    text: string;
+    state_text: string;
+    total_cents: number;
+    refunded_cents: number;
+  } | null;
+}
+export interface CheckList {
+  totals: { in_text: string; paid_text: string; tips_text: string };
+  rows: CheckRow[];
+  deal_on_bill: boolean;
+  refund_until: string;
+}
+const checksPath = (id: string) => path(id) + '/checks';
+const checkPath = (id: string, checkId: string) => checksPath(id) + '/' + encodeURIComponent(checkId);
+export function staffChecks(id: string) {
+  return get<CheckList>(checksPath(id), capabilities);
+}
+export function sendCheck(id: string, request_id: string, amount_cents: number, no_deal_cents: number) {
+  return post<{ check: Check }>(checksPath(id), { request_id, amount_cents, no_deal_cents }, config);
+}
+export function myCheck(id: string) {
+  return get<{ check: Check | null; can_start: boolean }>(checksPath(id) + '/mine', capabilities);
+}
+export function startCheck(id: string, amount_cents: number) {
+  return post<{ check: Check }>(checksPath(id) + '/mine', { amount_cents }, config);
+}
+export function quoteCheck(id: string, checkId: string, tip_cents: number) {
+  return post<{ check: Check }>(checkPath(id, checkId) + '/quote', { tip_cents }, config);
+}
+export function payCheck(id: string, checkId: string, tip_cents: number) {
+  return post<{ check: Check; payment: PlanPayment }>(checkPath(id, checkId) + '/pay', { tip_cents }, config);
+}
+export function confirmCheck(id: string, checkId: string) {
+  return post<{ check: Check }>(checkPath(id, checkId) + '/confirm', {}, config);
+}
+export function refundCheck(id: string, checkId: string, amount_cents?: number) {
+  return post(checkPath(id, checkId) + '/refund', { amount_cents }, config);
+}
+export function startTip(id: string, amount_cents: number) {
+  return post<{ payment: PlanPayment }>(path(id) + '/tip', { amount_cents }, config);
+}
+export function confirmTip(id: string) {
+  return post<{ state: string; text: string }>(path(id) + '/tip/confirm', {}, config);
 }

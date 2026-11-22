@@ -22,6 +22,13 @@ function Row({ card, status }: { card: plans.Card; status?: string }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-semibold">{card.title}</span>
+          {card.business && (
+            <span className="block text-sm">
+              {[card.business.name, card.label_text, card.price?.text || 'Free', card.deal?.tag]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          )}
           <span className="block text-sm text-app-secondary">{planTime(card)}</span>
           <span className="block text-xs text-app-muted">
             {status ||
@@ -32,6 +39,23 @@ function Row({ card, status }: { card: plans.Card; status?: string }) {
         </span>
         <ChevronRight size={16} className="text-app-muted" />
       </Link>
+      {!!card.more_times?.items.length && (
+        <details className="ml-12 pb-2 text-sm">
+          <summary className="cursor-pointer font-medium text-primary-700">
+            More times at {card.business?.name}
+          </summary>
+          {card.more_times.items.map((time) => (
+            <Link key={time.id} className="block py-1" href={detailPath(time.id)}>
+              {time.title} ·{' '}
+              {new Date(time.starts_at).toLocaleString(undefined, {
+                timeZone: time.timezone,
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            </Link>
+          ))}
+        </details>
+      )}
     </li>
   );
 }
@@ -46,7 +70,7 @@ const groups = {
 } as const;
 
 export default function PlansList() {
-  const { point, time, kind } = usePlansArea();
+  const { point, time, kind, host } = usePlansArea();
   const mine = useQuery({
     queryKey: ['plans', 'mine'],
     queryFn: plans.mine,
@@ -55,9 +79,9 @@ export default function PlansList() {
     refetchInterval: 30_000,
   });
   const nearby = useInfiniteQuery({
-    queryKey: ['plans', 'nearby', point, time, kind],
+    queryKey: ['plans', 'nearby', point, time, kind, host],
     enabled: !!point,
-    queryFn: ({ pageParam }) => plans.nearby(point!, time, kind, pageParam),
+    queryFn: ({ pageParam }) => plans.nearby(point!, time, kind, pageParam, host),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     gcTime: 0,
@@ -69,6 +93,8 @@ export default function PlansList() {
     return rows
       .filter((card) => {
         if ((kind && card.kind !== kind) || ids.has(card.id)) return false;
+        if ((host === 'businesses' && !card.business) || (host === 'neighbors' && card.business))
+          return false;
         ids.add(card.id);
         return true;
       })
