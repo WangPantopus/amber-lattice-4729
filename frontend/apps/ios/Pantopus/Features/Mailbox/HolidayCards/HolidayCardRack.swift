@@ -48,12 +48,18 @@ struct HolidayCardRack: View {
         designs.firstIndex { $0.id == shownId } ?? 0
     }
 
-    /// The room kept under the card for its words: what the collection's tallest words need at this width (card
-    /// shelves E3: the card as large as the screen allows), the same for every card in the collection, so the card
-    /// stays put while they're swiped. Before they're measured: room for a verse, or two lines in the pen.
-    private var wordsRoom: CGFloat {
-        if let wordsNeed { return wordsNeed + 4 }
-        return designs.contains { $0.verse?.isEmpty == false } ? 200 : 96
+    /// The room kept under the card for its words, the same for every card in the collection so the card stays put
+    /// while they're swiped (card shelves E3: the card as large as the screen allows). What the collection's tallest
+    /// words need at this width, never more than before (a verse 200, the pen 96; longer words scroll in it, as they
+    /// did). Without verses, less again where that lets the card reach 90% of a phone's width with a line to spare.
+    private func wordsRoom(height available: CGFloat, width: CGFloat) -> CGFloat {
+        let verses = designs.contains { $0.verse?.isEmpty == false }
+        var room = min((wordsNeed ?? .infinity) + 4, verses ? 200 : 96)
+        if !verses, width < 560 {
+            let besideNinety = available - width * 0.9 / CardTableShape.aspect
+            if besideNinety >= 44 { room = min(room, besideNinety) }
+        }
+        return room
     }
 
     /// Room above (6) and below (30) the card for its shadow.
@@ -117,8 +123,10 @@ struct HolidayCardRack: View {
         let width = screen.width - insets.leading - insets.trailing
         let top = insets.top + 10 + 40 + 6
         let bottom = buttonRoom + 12 + max(insets.bottom, 12) + 12
-        // The words get what's left under the card, at least `wordsRoom`; the card stays put while it's swiped.
-        let card = cardWidth(room: CGSize(width: width, height: screen.height - top - bottom - wordsRoom - shadowRoom), cap: cap)
+        // The words get what's left under the card, at least their room; the card stays put while it's swiped.
+        let available = screen.height - top - bottom - shadowRoom
+        let underCard = wordsRoom(height: available, width: width)
+        let card = cardWidth(room: CGSize(width: width, height: available - underCard), cap: cap)
         return VStack(spacing: 0) {
             topRow
                 .padding(.horizontal, 16)
