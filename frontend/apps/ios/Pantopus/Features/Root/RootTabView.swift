@@ -6,6 +6,8 @@
 //  above every signed-in screen (Pulse S3, founder decision 2026-10-13: the
 //  Nearby tab is gone; its Pulse, Connections and neighborhood meter live in
 //  the Pulse tab). Place is selected at launch. Today is the daily briefing.
+//  (Since 2026-11-21 a person with a Home gets Today first and opens on it:
+//  the note at the end of this header.)
 //  Plans shows only while the `plans` switch is on, so the bar has four
 //  tabs or five and follows the switch while the app runs. The last tab is
 //  Messages, the conversation list with the unread badge.
@@ -53,6 +55,12 @@
 //  and later the floating Liquid Glass capsule. It slides away while a page
 //  scrolls down, for more room to read, and comes back on a scroll up
 //  (`RootTabBarScrollWatcher`).
+//
+//  Founder decision 2026-11-21: a person with a Home gets Today · Place as the
+//  first two tabs and the app opens on Today; without one the bar keeps
+//  Place · Today and opens on Place. Only those two swap. The order is read
+//  once, when the tabs are made, from what the phone kept (`RootTabOrder`), so
+//  the bar never moves while the app is in use.
 //
 
 // swiftlint:disable file_length
@@ -120,12 +128,13 @@ public enum RootTab: Hashable, CaseIterable {
         LaunchFeatures.pulseRedesign ? .pulse : .nearby
     }
 
-    /// The bar's tabs in order: Mail third while the Mailbox is on (launch
-    /// cut #10; founder decision 2026-11-13), then Pulse, and Moments and
-    /// Plans while their switches are on. Messages isn't on the bar: the chat
-    /// button opens it (founder, 2026-11-08).
-    static func barTabs(plans: Bool, moments: Bool = false) -> [RootTab] {
-        var tabs: [RootTab] = [.place, .today]
+    /// The bar's tabs in order: Place and Today, Today first for a person
+    /// with a Home (`todayFirst`; founder decision 2026-11-21); Mail third
+    /// while the Mailbox is on (launch cut #10; founder decision 2026-11-13),
+    /// then Pulse, and Moments and Plans while their switches are on. Messages
+    /// isn't on the bar: the chat button opens it (founder, 2026-11-08).
+    static func barTabs(plans: Bool, moments: Bool = false, todayFirst: Bool = false) -> [RootTab] {
+        var tabs: [RootTab] = todayFirst ? [.today, .place] : [.place, .today]
         if LaunchFeatures.mailbox { tabs.append(.mail) }
         tabs.append(pulseHome)
         if moments { tabs.append(.moments) }
@@ -134,8 +143,8 @@ public enum RootTab: Hashable, CaseIterable {
     }
 
     /// The tabs the container keeps: the bar's and Messages.
-    static func hostedTabs(plans: Bool, moments: Bool = false) -> [RootTab] {
-        barTabs(plans: plans, moments: moments) + [.messages]
+    static func hostedTabs(plans: Bool, moments: Bool = false, todayFirst: Bool = false) -> [RootTab] {
+        barTabs(plans: plans, moments: moments, todayFirst: todayFirst) + [.messages]
     }
 }
 
@@ -152,7 +161,17 @@ enum MailTabRequest: Equatable {
 @Observable
 @MainActor
 public final class RootTabModel {
-    /// Currently selected tab. Starts at `.place`.
+    /// Today is the bar's first tab and the one the app opened on: the person
+    /// had a Home when these tabs were made (`RootTabOrder`). Fixed for the
+    /// life of the tabs, so the bar doesn't move while the app is in use.
+    public let todayFirst: Bool
+
+    /// The tab the app opens on: the bar's first.
+    public var openingTab: RootTab {
+        todayFirst ? .today : .place
+    }
+
+    /// Currently selected tab. Starts at `openingTab`.
     public var selected: RootTab = .place {
         didSet {
             // Messages opens over the tab it was opened from (the chat
@@ -214,7 +233,13 @@ public final class RootTabModel {
     /// A screen from your own profile's "Your account" list, asked for where
     /// the profile was pushed in another tab: the profile cover opens on it.
     var profileCoverDestination: ProfileOwnerDestination?
-    public init() {}
+    public init(todayFirst: Bool = false) {
+        self.todayFirst = todayFirst
+        if todayFirst {
+            selected = .today
+            messagesReturnTab = .today
+        }
+    }
 
     /// The chat button: Messages over the tab you're on.
     func openMessages() {
@@ -245,7 +270,8 @@ public final class RootTabModel {
 /// Root tab container for signed-in users. Each tab hosts its own
 /// NavigationStack so deep navigation within a tab survives tab switches.
 public struct RootTabView: View {
-    @State private var model = RootTabModel()
+    /// Made once, for the signed-in account, in the order its last home list on this phone decides (`RootTabOrder`).
+    @State private var model = RootTabModel(todayFirst: RootTabOrder.todayFirstForSignedInAccount())
     private let chatBadgeStore = ChatBadgeStore.shared
     @State private var router = DeepLinkRouter.shared
     @State private var pendingInviteToken: InviteSheetToken?
@@ -341,12 +367,12 @@ public struct RootTabView: View {
                 linkIsOpening || PlanFirstOpen.shared.planId != nil
             })
             // And the plan that brought the person, once (JOURNEYS section 2, change 3).
-            .modifier(PlanFirstOpenLanding(account: signedInUserID, tabs: model) { linkIsOpening || model.selected != .place })
+            .modifier(PlanFirstOpenLanding(account: signedInUserID, tabs: model) { linkIsOpening || model.selected != model.openingTab })
             .onChange(of: model.selected) { _, selected in
                 // A tab that isn't kept (Plans or Moments switched off, Mail
                 // without the Mailbox) lands on the nearest one that is.
                 // Messages is always kept, off the bar.
-                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
+                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
                 if !hosted.contains(selected) { model.selected = Self.nearestTab(to: selected, on: hosted) }
             }
             .onChange(of: chatBadgeStore.unreadMessages) { _, unread in
@@ -675,8 +701,8 @@ extension RootTabView {
     /// container; the bar is drawn above it. Messages is kept but not drawn on
     /// the bar, which lights the tab it was opened from.
     private var drawnTabs: some View {
-        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
-        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
+        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
+        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
         let showsBar = model.barHiders.isEmpty
         return RootTabBarPlacementReader { verticalEdge in
             ZStack(alignment: verticalEdge.map { $0 == .leading ? .leading : .trailing } ?? .bottom) {

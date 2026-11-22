@@ -8,7 +8,8 @@ import app.pantopus.android.ui.theme.PantopusIcon
  * by the NavHost and the label / icon that render in [PantopusBottomBar].
  *
  * Listed in display order — new tabs must keep the ordering stable so the
- * bar doesn't shuffle between releases.
+ * bar doesn't shuffle between releases. One order depends on the person: with a
+ * Home, Today comes before Place ([barTabs], founder decision 2026-11-21).
  */
 sealed class PantopusRoute(
     val path: String,
@@ -110,12 +111,17 @@ sealed class PantopusRoute(
 
         /**
          * The tabs the bar draws: the [entries] tabs, without Plans while the `plans` switch is off ([plansOn]) and
-         * without Moments while the `moments` switch is off ([momentsOn]).
+         * without Moments while the `moments` switch is off ([momentsOn]). For a person with a Home ([todayFirst];
+         * founder decision 2026-11-21) Today and Place swap, so the bar starts Today · Place; the rest keep their order.
          */
         fun barTabs(
             plansOn: Boolean,
             momentsOn: Boolean = false,
-        ): List<PantopusRoute> = entries.filter { (it != Plans || plansOn) && (it != Moments || momentsOn) }
+            todayFirst: Boolean = false,
+        ): List<PantopusRoute> {
+            val tabs = entries.filter { (it != Plans || plansOn) && (it != Moments || momentsOn) }
+            return if (todayFirst) tabs.map { if (it == Place) Today else if (it == Today) Place else it } else tabs
+        }
 
         /** Every root destination, bar tabs first — for `fromPath` lookups off the bar. */
         val all: List<PantopusRoute>

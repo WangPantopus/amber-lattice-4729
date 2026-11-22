@@ -51,6 +51,13 @@ PRs, screenshots and chat. Preserve unrelated local work.
   person's repost may show one to their connections in Pulse. The switch shows only
   where there is something to list, and all of it is behind the backend's
   `AROUND_YOU` switch (on for staging, off in production until set).
+  On November 21 the founder put Today first for a person with a home: the
+  bar starts Today · Place on iOS, Android and phone-width web, and the iOS
+  and Android apps open on Today. Until a person has a home it stays
+  Place · Today and the apps open on Place. Each app reads the order once,
+  when it opens, from what it kept on the device the last time it read the
+  person's homes, so the bar never moves while the app is in use; the desktop
+  web sidebar keeps its order, and the web still opens on Place.
   The founder doesn't want "Neighborhood" as a name in the app. The side menu
   (☰) is on the top screen of every tab on iOS and Android; web keeps its
   sidebar and menu. New tabs and redesigned tab screens keep the menu button,

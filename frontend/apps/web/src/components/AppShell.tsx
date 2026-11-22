@@ -724,10 +724,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* The tabs on phone-width web: Place · Today · (Mail ·) Pulse · (Moments ·) (Plans) as a
-          bottom bar (Mail third, founder decision 2026-11-13; the sidebar
+          bottom bar, Today before Place for a person with a home (founder decision
+          2026-11-21) (Mail third, founder decision 2026-11-13; the sidebar
           carries them at md+ in its own order, with Messages). Business context
           keeps its own navigation, and a conversation has the whole window. */}
-      {showMobileTabs && <MobileTabBar unreadMail={mailUnread} />}
+      {showMobileTabs && <MobileTabBar unreadMail={mailUnread} accountId={user?.id} />}
 
       {/* ═══════════════════════════════════════════════════════
        *  UNIFIED FAB + COMPOSER

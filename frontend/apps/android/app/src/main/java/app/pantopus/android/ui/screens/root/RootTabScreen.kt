@@ -8,6 +8,8 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -2279,6 +2281,13 @@ private fun EmailFallbackDialog(
 
 private fun NavHostController.isOnBackStack(route: String): Boolean = runCatching { getBackStackEntry(route) }.isSuccess
 
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
 private fun NavHostController.navigateToRootTab(
     route: PantopusRoute,
     restoreState: Boolean = true,
@@ -2582,7 +2591,28 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val momentsGate: MomentsGateViewModel = hiltViewModel()
     val momentsOn by momentsGate.on.collectAsStateWithLifecycle()
     val momentsSettled by momentsGate.settled.collectAsStateWithLifecycle()
-    val barTabs = remember(plansFlags.plans, momentsOn) { PantopusRoute.barTabs(plansFlags.plans, momentsOn) }
+    // A person with a Home gets Today as the first tab and opens on it; until then Place is first (founder decision
+    // 2026-11-21). Read once, when the tabs are made, from what the phone kept, so the bar never moves while the app
+    // is in use: a home set up now shows Today first the next time the app opens. As on iPhone.
+    val tabOrder: RootTabOrderViewModel = hiltViewModel()
+    val todayFirst = rememberSaveable { tabOrder.todayFirst() }
+    val barTabs = remember(plansFlags.plans, momentsOn) { PantopusRoute.barTabs(plansFlags.plans, momentsOn, todayFirst) }
+    // Opening on Today: Place stays the start of the stack (its host holds the session's home, and links, the homes
+    // sheet and Add Home reach it there), and Today opens over it as a tap on its tab does. Until the person first
+    // goes to Place it draws nothing and reads nothing ([todayOpening]). A link that is already opening goes first.
+    var todayOpening by rememberSaveable { mutableStateOf(todayFirst) }
+    var todayReached by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!todayOpening || todayReached) return@LaunchedEffect
+        if (DeepLinkRouter.pending.value != null) {
+            todayOpening = false
+            return@LaunchedEffect
+        }
+        // Once the stack has its start (Place): the tabs' NavHost is laid out after this effect is first scheduled.
+        navController.currentBackStackEntryFlow.first()
+        navController.navigateToRootTab(PantopusRoute.Today, restoreState = false)
+        todayReached = true
+    }
     // Christmas cards (TABCARD): while they're open (the Mailbox's "Send a Christmas card" row shows), Mail wears the
     // red envelope from November 1 to Christmas Day, and the side menu, Today, profiles and chats offer a card.
     val christmasCards: ChristmasCardDoorsViewModel = hiltViewModel()
@@ -2635,7 +2665,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     // screen but Mail's opens it, carrying the unread count, and its Back returns to the tab it was opened from, which
     // stays lit on the bar meanwhile. That's the last bar tab shown, however Messages opened (the chat button, a chat
     // push or link, a "Message" button), as on iPhone.
-    var messagesReturnPath by rememberSaveable { mutableStateOf(PantopusRoute.Place.path) }
+    var messagesReturnPath by rememberSaveable {
+        mutableStateOf(if (todayFirst) PantopusRoute.Today.path else PantopusRoute.Place.path)
+    }
     LaunchedEffect(currentRoute, barTabs) { if (currentRoute in barTabs) messagesReturnPath = currentRoute.path }
     val messagesReturnTab = PantopusRoute.fromPath(messagesReturnPath)?.takeIf { it in barTabs } ?: PantopusRoute.Place
     val onMessages = currentRoute == PantopusRoute.messagesTab && currentRoute !in barTabs
@@ -3362,7 +3394,19 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 startDestination = PantopusRoute.Place.path,
                 modifier = Modifier.padding(padding).nestedScroll(tabBarScrollConnection),
             ) {
-                composable(PantopusRoute.Place.path) {
+                composable(
+                    PantopusRoute.Place.path,
+                    // Today opening over Place at launch: no fade from a screen that was never shown.
+                    exitTransition = { if (todayOpening) ExitTransition.None else null },
+                ) {
+                    if (todayOpening) {
+                        // The app opened on Today and the person hasn't come to Place yet.
+                        if (!todayReached || navController.currentDestination?.route != PantopusRoute.Place.path) {
+                            Box(Modifier.fillMaxSize())
+                            return@composable
+                        }
+                        SideEffect { todayOpening = false }
+                    }
                     PlaceTabRoot(
                         navController = navController,
                         scrollToTop = placeReselects,
@@ -3377,7 +3421,18 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 }
                 // ── The bar (founder decision 2026-11-13: Mail is third): Place · Today · Mail · Pulse · Moments · Plans
                 // (Place · Today · Mail · Nearby · Moments · Plans with the Pulse redesign off) ──
-                composable(PantopusRoute.Today.path) {
+                composable(
+                    PantopusRoute.Today.path,
+                    enterTransition = {
+                        if (todayOpening && initialState.destination.route == PantopusRoute.Place.path) EnterTransition.None else null
+                    },
+                ) {
+                    // Today is the first tab for a person with a Home: Back on it leaves the app, as Back on Place does
+                    // for everyone else, instead of stepping to Place underneath.
+                    val activity = androidx.compose.ui.platform.LocalContext.current.findActivity()
+                    androidx.activity.compose.BackHandler(enabled = todayFirst && topRoute == PantopusRoute.Today.path) {
+                        activity?.moveTaskToBack(true)
+                    }
                     // Today's plan cards open in the Plans tab, as on iOS: the tab comes back on its map with [routes] on
                     // top, so Back lands on the map. Other Plans pages left open there give way; a plan being composed
                     // stays under them, so its draft isn't lost.

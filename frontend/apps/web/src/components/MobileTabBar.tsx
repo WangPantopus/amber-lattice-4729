@@ -2,16 +2,20 @@
 
 // Phone-width web follows the native order: Place, Today, Mail, Pulse, Moments, Plans.
 // Mail, Moments, and Plans appear while their respective switches are on. Desktop keeps its sidebar.
+// A person with a home gets Today before Place (founder decision 2026-11-21; lib/tabOrder.ts).
 
 import { useMomentBadge } from './moments/useMomentBadge';
 import { useMomentsAccess } from './moments/useMomentsAccess';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { usePathname, useRouter } from 'next/navigation';
 import { NavIcons } from '@/lib/icons';
 import { launchFeatures } from '@/lib/featureFlags';
 import { afterInboxRows } from '@/lib/shellReads';
 import { useChristmasMail } from '@/components/mailbox/cards/cardDoors';
+import { myHomesQuery } from '@/lib/myHomes';
+import { keptTabOrder, noteTabOrder, todayIsFirst } from '@/lib/tabOrder';
 
 type Tab = {
   key: 'place' | 'today' | 'nearby' | 'mail' | 'moments' | 'plans';
@@ -41,8 +45,13 @@ const momentTab: Tab = { key: 'moments', label: 'Moments', href: '/app/moments',
 const planTab: Tab = { key: 'plans', label: 'Plans', href: '/app/plans', icon: NavIcons.plans, matches: p => starts(p, '/app/plans') };
 const allTabs = [...MOBILE_TABS, momentTab, planTab];
 
-export function availableMobileTabs(moments: boolean, plans: boolean): Tab[] {
-  return allTabs.filter(tab => (tab.key !== 'moments' || moments) && (tab.key !== 'plans' || plans));
+const placeTab = allTabs.find(tab => tab.key === 'place')!;
+const todayTab = allTabs.find(tab => tab.key === 'today')!;
+
+// `todayFirst`: Today and Place swap for a person with a home; the rest keep their order.
+export function availableMobileTabs(moments: boolean, plans: boolean, todayFirst = false): Tab[] {
+  const tabs = allTabs.filter(tab => (tab.key !== 'moments' || moments) && (tab.key !== 'plans' || plans));
+  return todayFirst ? tabs.map(tab => (tab === placeTab ? todayTab : tab === todayTab ? placeTab : tab)) : tabs;
 }
 
 // With the Mailbox on, Mail's badge is the drawings' red count (Mail tab
@@ -69,14 +78,23 @@ export function hidesMobileTabs(pathname: string): boolean {
   return isConversation(pathname) || (launchFeatures.cardTable && pathname === '/app/mailbox/cards');
 }
 
-export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }) {
+export default function MobileTabBar({ unreadMail = 0, accountId }: { unreadMail?: number; accountId?: string | null }) {
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const active = activeMobileTab(pathname);
   const enabled = useMomentsAccess().data?.enabled;
   const newMoments = useMomentBadge(!!enabled);
   const plansEnabled = useFeatureFlag('plans');
-  const tabs = useMemo(() => availableMobileTabs(!!enabled, plansEnabled), [enabled, plansEnabled]);
+  // Read once, when the bar mounts: the order doesn't move while the app is in use.
+  const [keptOrder] = useState(keptTabOrder);
+  const todayFirst = todayIsFirst(keptOrder, accountId);
+  const tabs = useMemo(() => availableMobileTabs(!!enabled, plansEnabled, todayFirst), [enabled, plansEnabled, todayFirst]);
+  // The home list as the pages read it (the bar asks for nothing itself): its answer is kept for the next load.
+  // An older server sends no primary_home; nothing is kept then.
+  const primaryHome = useQuery({ ...myHomesQuery(), enabled: false }).data?.primary_home;
+  useEffect(() => {
+    if (accountId && primaryHome !== undefined) noteTabOrder(accountId, primaryHome !== null);
+  }, [accountId, primaryHome]);
   const christmasMail = useChristmasMail();
 
   // The sidebar prefetches each tab on hover; phones have no hover, so
