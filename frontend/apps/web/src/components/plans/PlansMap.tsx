@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import L from 'leaflet';
-import { Marker, useMapEvents } from 'react-leaflet';
+import { Marker, useMapEvents, ZoomControl } from 'react-leaflet';
+import { ChevronRight, Map as MapIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { plans } from '@pantopus/api';
 import { BaseMap } from '@/components/map/BaseMap';
@@ -13,6 +14,8 @@ import { useCluster } from '@/components/map/useCluster';
 import { initialMapRenderer, MAP_PUBLIC_TOKEN, StandardGlMap } from '@/components/map/mapRenderer';
 import type { PulseCamera, PulseMarker } from '@/components/map/mapView';
 import { useReducedMotion } from '@/components/scheduling/polish/a11y';
+import BottomSheet from '@/components/ui/BottomSheet';
+import { kindColors, KindGlyph } from './planKind';
 import { detailPath, secondaryClass, usePlansArea } from './PlansWorkspace';
 
 type Pin = plans.Point & Pick<plans.Card, 'id' | 'kind' | 'title'>;
@@ -36,20 +39,16 @@ function marker(
   id: string,
   point: plans.Point,
   label: string,
-  count: number,
+  content: string,
   selected: boolean,
 ): PulseMarker {
-  // Only the numeric count goes into the marker HTML. User titles are plain accessible labels.
-  const cls =
-    'grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-primary-700 text-sm font-bold text-white shadow-md';
-  const badge = selected ? cls + ' ring-4 ring-primary-300' : cls;
   return {
     id,
     lat: point.latitude,
     lng: point.longitude,
     label,
     selected,
-    html: '<span class="' + badge + '">' + count + '</span>',
+    html: `<span class="plans-pin${selected ? ' plans-pin-selected' : ''}">${content}</span>`,
     animCls: '',
     exiting: false,
   };
@@ -62,11 +61,13 @@ function MapSurface({
   onMarkerClick,
   onPick,
   onBounds,
+  onShowList,
 }: {
   center: plans.Point;
   zoom: number;
   markers: PulseMarker[];
   onMarkerClick: (id: string) => void;
+  onShowList?: () => void;
 } & MapActions) {
   const [renderer, setRenderer] = useState(initialMapRenderer);
   const flat = useRef<L.Map | null>(null);
@@ -84,12 +85,15 @@ function MapSurface({
 
   if (!MAP_PUBLIC_TOKEN)
     return (
-      <div
-        className="grid h-full place-items-center rounded-xl bg-surface-muted p-4 text-sm text-app-muted"
-        role="status"
-      >
-        Map imagery is unavailable.{' '}
-        {onPick ? 'Choose a nearby place or use your current location.' : 'Browse plans in the list.'}
+      <div className="flex h-full flex-col items-center justify-center gap-2 bg-surface-muted p-4 text-center text-sm text-app-secondary">
+        <MapIcon size={28} aria-hidden />
+        <p role="status">Map imagery is unavailable.</p>
+        {onPick && <p>Choose a nearby place or use your current location.</p>}
+        {onShowList && (
+          <button className={secondaryClass} onClick={onShowList}>
+            Browse plans in the list
+          </button>
+        )}
       </div>
     );
 
@@ -101,6 +105,7 @@ function MapSurface({
           center={[center.latitude, center.longitude]}
           zoom={zoom}
           markers={markers}
+          showZoomControls={!onPick}
           cameraRef={gl}
           reducedMotion={reducedMotion}
           onUnavailable={fallback}
@@ -118,6 +123,7 @@ function MapSurface({
           onBoundsChange={onBounds}
         >
           <FlatMapEvents onPick={onPick} />
+          {!onPick && <ZoomControl position="topright" />}
           {markers.map((m) => (
             <Marker
               key={m.id}
@@ -154,14 +160,17 @@ export default function PlansMap({
   time,
   kind,
   selectedId,
+  onShowList,
 }: {
   point: plans.Point;
   time: plans.TimeWindow;
   kind: plans.Kind | '';
   selectedId?: string;
+  onShowList?: () => void;
 }) {
   const router = useRouter();
   const { host } = usePlansArea();
+  const glyphPrefix = useId();
   const [view, setView] = useState<{ bounds: plans.Bounds; zoom: number } | null>(null);
   const onBounds = useCallback((bounds: plans.Bounds, zoom: number) => setView({ bounds, zoom }), []);
   const box = view?.bounds;
@@ -180,23 +189,43 @@ export default function PlansMap({
     box ?? null,
     { maxZoom: 24 },
   );
-  const markers = groups.map((group) =>
-    marker(
+  const markers = groups.map((group) => {
+    const pin = group.items[0];
+    const kind = Object.hasOwn(plans.kindNames, pin.kind) ? pin.kind : 'something_else';
+    // Only a known glyph reference or a numeric count enters the marker's HTML.
+    const content =
+      group.count === 1
+        ? `<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><use href="#${glyphPrefix}-${kind}"/></svg>`
+        : String(group.count);
+    return marker(
       group.id,
       group,
-      group.count === 1 ? group.items[0].title : group.count + ' plans here',
-      group.count,
-      group.items.some((pin) => pin.id === selectedId),
-    ),
-  );
+      group.count === 1 ? pin.title : group.count + ' plans here',
+      content,
+      group.items.some((item) => item.id === selectedId),
+    );
+  });
   const opened = openGroup && groups.find((group) => group.items.some((pin) => pin.id === openGroup));
   return (
-    <div className="relative h-full" aria-label="Nearby plans map">
+    <div className="plans-map relative h-full" role="region" aria-label="Nearby plans map">
+      <svg width="0" height="0" className="pointer-events-none absolute" aria-hidden="true">
+        <defs>
+          {Object.keys(plans.kindNames).map((kind) => (
+            <g key={kind} id={glyphPrefix + '-' + kind} style={kindColors(kind)}>
+              <circle cx="14" cy="14" r="14" fill="var(--plan-cs)" />
+              <g transform="translate(5 5)" color="var(--plan-c)">
+                <KindGlyph kind={kind} className="h-[18px] w-[18px]" />
+              </g>
+            </g>
+          ))}
+        </defs>
+      </svg>
       <MapSurface
         center={point}
         zoom={14}
         markers={markers}
         onBounds={onBounds}
+        onShowList={onShowList}
         onMarkerClick={(key) => {
           const group = groups.find((g) => g.id === key);
           if (!group) return;
@@ -206,33 +235,50 @@ export default function PlansMap({
           } else setOpenGroup(group.items[0].id);
         }}
       />
-      {opened && (
-        <div className="absolute inset-x-3 bottom-5 z-[450] max-h-40 overflow-y-auto rounded-xl border border-app bg-surface p-3 shadow-lg">
-          <div className="flex items-center justify-between">
-            <strong>Plans here</strong>
-            <button aria-label="Close plans here" onClick={() => setOpenGroup(null)}>
-              Close
-            </button>
-          </div>
-          {opened.items.map((pin) => (
-            <Link
-              className="block py-1 text-primary-700"
-              href={detailPath(pin.id)}
-              key={pin.id}
-              onClick={() => setOpenGroup(null)}
-            >
-              {pin.title}
-            </Link>
-          ))}
-        </div>
-      )}
-      {pins.isError && (
-        <button
-          className={secondaryClass + ' absolute left-3 top-3 z-[450]'}
-          onClick={() => void pins.refetch()}
-        >
+      <BottomSheet
+        open={!!opened}
+        onClose={() => setOpenGroup(null)}
+        title="Plans here"
+        className="flex max-h-dvh flex-col"
+      >
+        {opened && (
+          <ul className="divide-y divide-app">
+            {opened.items.map((pin) => (
+              <li key={pin.id}>
+                <Link
+                  className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 font-medium text-app hover-bg-app"
+                  href={detailPath(pin.id)}
+                  onClick={() => setOpenGroup(null)}
+                >
+                  <span
+                    style={kindColors(pin.kind)}
+                    className="rounded-lg bg-[var(--plan-cs)] p-2 text-[var(--plan-c)]"
+                  >
+                    <KindGlyph kind={pin.kind} className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">{pin.title}</span>
+                  <ChevronRight size={16} className="shrink-0 text-app-muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </BottomSheet>
+      {pins.isError ? (
+        <button className={'plans-map-feedback ' + secondaryClass} onClick={() => void pins.refetch()}>
           Retry map pins
         </button>
+      ) : (
+        onShowList &&
+        pins.isSuccess &&
+        groups.length === 0 && (
+          <p
+            className="plans-map-feedback plans-map-empty plans-surface rounded-full px-3 py-1 text-xs font-medium text-app-secondary"
+            role="status"
+          >
+            No plans in this view
+          </p>
+        )
       )}
     </div>
   );
@@ -258,7 +304,11 @@ export function MeetingMap({
         <MapSurface
           center={center}
           zoom={16}
-          markers={value ? [marker('meeting', value, 'Meeting point', 1, true)] : []}
+          markers={
+            value
+              ? [marker('meeting', value, 'Meeting point', '<span class="plans-pin-dot"></span>', true)]
+              : []
+          }
           onMarkerClick={() => {}}
           onPick={onPick}
         />

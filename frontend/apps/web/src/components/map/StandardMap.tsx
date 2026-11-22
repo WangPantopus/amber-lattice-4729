@@ -37,6 +37,8 @@ export interface StandardMapProps {
   center: [number, number];
   zoom: number;
   markers: PulseMarker[];
+  /** Show the built-in zoom buttons alongside the compass. */
+  showZoomControls?: boolean;
   onMarkerClick: (id: string) => void;
   /** The post whose card is open, if any. */
   popupPin?: MapMarker | null;
@@ -135,7 +137,11 @@ export default function StandardMap(props: StandardMapProps) {
     }
 
     // A compass that shows the tilt and turns it back north (clear of My location and the cards).
-    instance.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
+    const { showZoomControls = false } = latest.current;
+    instance.addControl(
+      new mapboxgl.NavigationControl({ showZoom: showZoomControls, visualizePitch: true }),
+      showZoomControls ? 'top-right' : 'bottom-left',
+    );
 
     let styleLoaded = false;
     let settled = false;

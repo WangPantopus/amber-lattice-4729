@@ -292,10 +292,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // A conversation on a phone is exactly the window the browser shows: only its
   // thread scrolls, so the page can't slide its header under the top bar.
   const isMomentsPage = pathname === '/app/moments' || pathname.startsWith('/app/moments/');
-  const fillsWindow = isMomentsPage || (isMobile && isConversation(pathname));
-  // Moments places the tab bar in the page flow so the map can use the remaining height.
+  const isMapWorkspace = isMomentsPage || pathname === '/app/plans';
+  const fillsWindow = isMapWorkspace || (isMobile && isConversation(pathname));
+  // The map workspaces use the space left by the actual tab bar, including its safe area.
   const mobileTabPadding =
-    !showMobileTabs || isMomentsPage ? '' : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
+    !showMobileTabs || isMapWorkspace ? '' : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
 
   const currentTab = searchParams.get('tab') || 'overview';
 
@@ -486,7 +487,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     // `--fab-lift` raises every fixed bottom-anchored control (FABs, the
     // chat launcher) clear of the mobile tab bar; 0 wherever the bar is absent.
     <div
-      data-moments-shell={isMomentsPage ? '' : undefined}
+      data-map-shell={isMapWorkspace ? '' : undefined}
       className={`${fillsWindow ? 'min-h-dvh' : 'min-h-screen'} bg-app text-app`}
       style={{ '--fab-lift': showMobileTabs ? '64px' : '0px' } as CSSProperties}
     >
@@ -735,7 +736,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
-      {!isMomentsPage && <FloatingChatWidget />}
+      {!isMapWorkspace && <FloatingChatWidget />}
       {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
       <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
       {/* Asked once of an account with no name (sign-up didn't ask before October 2026). */}
