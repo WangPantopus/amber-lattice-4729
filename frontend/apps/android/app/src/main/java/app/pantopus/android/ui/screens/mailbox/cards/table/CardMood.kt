@@ -57,19 +57,22 @@ internal enum class CardMood {
             design: String,
             /** The server's `mood` for the picture, when it sent one. */
             mood: String? = null,
-        ): CardMood {
+        ): CardMood =
             when (mood) {
-                "reverence" -> return Reverence
-                "santa" -> return Santa
-                "nostalgia" -> return Nostalgia
+                "reverence" -> Reverence
+                "santa" -> Santa
+                "nostalgia" -> Nostalgia
+                else -> byNumber(number ?: design.substringAfterLast('-').toIntOrNull())
             }
-            val picture = number ?: design.substringAfterLast('-').toIntOrNull() ?: return Nostalgia
-            return when (picture) {
+
+        /** Without the server's word: by the picture's number. */
+        private fun byNumber(picture: Int?): CardMood =
+            when (picture) {
+                null -> Nostalgia
                 in 59..89 -> Reverence
                 in 50..58, in 90..95 -> Santa
                 else -> Nostalgia
             }
-        }
     }
 }
 
