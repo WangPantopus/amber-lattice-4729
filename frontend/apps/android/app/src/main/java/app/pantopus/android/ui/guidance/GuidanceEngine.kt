@@ -89,6 +89,8 @@ data class GuidanceHomeFacts(
     val setUpAt: String? = null,
     /** The household's members, with the person; null until read. */
     val members: Int? = null,
+    /** The home has no pickup schedule yet (Your Place's address calendar); null when it doesn't say. */
+    val needsPickupDay: Boolean? = null,
 )
 
 /** Everything one decision reads. */
@@ -231,7 +233,7 @@ object GuidanceEngine {
         val home = input.home?.takeIf { spot.place == GuidancePlaceShows.Home && it.homeId == spot.homeId } ?: return null
         val fresh = { id: String -> !input.state.hasSeen(id) }
         return when {
-            !home.invited && fresh(GuidanceIds.DONE_HOME_SETUP) -> GuidanceCatalog.doneHomeSetup()
+            !home.invited && fresh(GuidanceIds.DONE_HOME_SETUP) -> GuidanceCatalog.doneHomeSetup(home.needsPickupDay == true)
             home.verified && fresh(GuidanceIds.DONE_VERIFIED) -> GuidanceCatalog.doneVerified(input.mailbox)
             (home.members ?: 0) >= 2 && fresh(GuidanceIds.DONE_HOUSEHOLD) -> GuidanceCatalog.doneHousehold()
             else -> null
@@ -368,6 +370,7 @@ object GuidanceEngine {
             GuidanceIds.TAB_TODAY -> GuidanceCatalog.tabToday(input.spot.showsAroundYou)
             GuidanceIds.TAB_MAIL -> GuidanceCatalog.tabMail(input.writesLetters)
             GuidanceIds.DONE_VERIFIED -> GuidanceCatalog.doneVerified(input.mailbox)
+            GuidanceIds.DONE_HOME_SETUP -> GuidanceCatalog.doneHomeSetup(input.home?.needsPickupDay == true)
             else ->
                 plainCards[id]?.invoke()
                     ?: GuidanceIntroductions.card(id)
@@ -381,7 +384,6 @@ object GuidanceEngine {
             GuidanceIds.TAB_PULSE to GuidanceCatalog::tabPulse,
             GuidanceIds.TAB_MOMENTS to GuidanceCatalog::tabMoments,
             GuidanceIds.TAB_PLANS to GuidanceCatalog::tabPlans,
-            GuidanceIds.DONE_HOME_SETUP to GuidanceCatalog::doneHomeSetup,
             GuidanceIds.DONE_FIRST_POST to GuidanceCatalog::doneFirstPost,
             GuidanceIds.DONE_FIRST_MOMENT to GuidanceCatalog::doneFirstMoment,
             GuidanceIds.DONE_FIRST_PLAN to GuidanceCatalog::doneFirstPlan,

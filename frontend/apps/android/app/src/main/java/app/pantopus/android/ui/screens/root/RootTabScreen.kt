@@ -389,6 +389,7 @@ import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.place.PLACE_DASHBOARD_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.PlaceDashboardScreen
 import app.pantopus.android.ui.screens.place.PlaceDashboardSkeleton
+import app.pantopus.android.ui.screens.place.PlaceDetailGroup
 import app.pantopus.android.ui.screens.place.PlaceHomeShortcut
 import app.pantopus.android.ui.screens.place.PlaceRootBar
 import app.pantopus.android.ui.screens.place.PlaceRootViewed
@@ -396,6 +397,7 @@ import app.pantopus.android.ui.screens.place.SavedPlaceRootScreen
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_SAVED_ID_KEY
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_SLUG_KEY
+import app.pantopus.android.ui.screens.place.detail.PickupJourney
 import app.pantopus.android.ui.screens.place.detail.PlaceDetailScreen
 import app.pantopus.android.ui.screens.place.detail.SkySharePantopus
 import app.pantopus.android.ui.screens.place.detail.skyShareFile
@@ -2538,6 +2540,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         radonHomeId = homeId
         navController.navigateToRootTab(PantopusRoute.Today)
     }
+    // The pickup-day journey. Tip card 16's "Set pickup day" opens this Home's "Today at this address" with the pickup
+    // editor open, once; its saved box's "See it in Today" opens the Today tab with the next pickup's entry lit, once.
+    var pickupEditorHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    var todayPickupHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openPickupEditor: (String) -> Unit = { homeId ->
+        pickupEditorHomeId = homeId
+        navController.navigate(ChildRoutes.placeDetail(homeId, PlaceDetailGroup.TODAY.slug))
+    }
     // Child screens keep the tab they were opened from lit (they used to fall
     // back to Place, which also swallowed taps on Place from those screens).
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -3343,6 +3353,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onBallotOpened = { ballotHomeId = null },
                         onOpenMenu = openMenu,
                         onOpenTodayRadon = openTodayRadon,
+                        onSetPickupDay = openPickupEditor,
                         verifyHomeId = verifyHomeId,
                         onVerifyOpened = { verifyHomeId = null },
                     )
@@ -3375,6 +3386,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         scrollToTop = todayReselects,
                         radonHomeId = radonHomeId,
                         onRadonShown = { radonHomeId = null },
+                        pickupHomeId = todayPickupHomeId,
+                        onPickupShown = { todayPickupHomeId = null },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         onOpenMenu = openMenu,
                         skyShare = skyShare,
@@ -3825,6 +3838,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenVerificationStatus = { navController.navigate(ChildRoutes.waitingRoom(homeId)) },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         skyShare = skyShare,
+                        pickup =
+                            PickupJourney(
+                                editorRequested = pickupEditorHomeId == homeId,
+                                onEditorOpened = { pickupEditorHomeId = null },
+                                onSeeInToday = {
+                                    todayPickupHomeId = homeId
+                                    navController.navigateToRootTab(PantopusRoute.Today)
+                                },
+                            ),
                     )
                 }
                 composable(
@@ -8232,6 +8254,8 @@ private fun PlaceTabRoot(
     onBallotOpened: () -> Unit,
     onOpenMenu: () -> Unit,
     onOpenTodayRadon: (homeId: String) -> Unit = {},
+    /** Tip card 16's "Set pickup day": the pickup editor for this Home. */
+    onSetPickupDay: (homeId: String) -> Unit = {},
     verifyHomeId: String? = null,
     onVerifyOpened: () -> Unit = {},
     host: HomeTabHostViewModel = hiltViewModel(),
@@ -8250,7 +8274,7 @@ private fun PlaceTabRoot(
         host.refreshUnread()
     }
     val openNotifications = { navController.navigate(ChildRoutes.NOTIFICATIONS) }
-    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController)
+    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController, onSetPickupDay)
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,
@@ -8359,14 +8383,16 @@ private fun PlaceTabRoot(
 
 /**
  * Guidance cards on Place's root: what it shows (cards 1, 2, 8, 11, 12 and 16–27), not ready while it loads, fails or
- * the arrival step covers it; and a reminder's button (24, 25 and 27), its next step on what Place shows (26 is Your
- * Place's own). Returns the address box's focus, for 24.
+ * the arrival step covers it; and a reminder's button (24, 25 and 27) or card 16's "Set pickup day", its next step on
+ * what Place shows (26 is Your Place's own). Returns the address box's focus, for 24.
  */
 @Composable
+@Suppress("CyclomaticComplexMethod")
 private fun rememberPlaceGuidance(
     root: HomeLanding,
     arrivalOpen: Boolean,
     navController: NavHostController,
+    onSetPickupDay: (homeId: String) -> Unit,
 ): FocusRequester {
     val shows =
         when (root) {
@@ -8396,7 +8422,11 @@ private fun rememberPlaceGuidance(
             is HomeLanding.SavedPlace ->
                 if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(root.place.label))
             is HomeLanding.Home ->
-                if (host.takeAction(GuidanceAction.Invite)) navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+                if (host.takeAction(GuidanceAction.Invite)) {
+                    navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+                } else if (host.takeAction(GuidanceAction.SetPickupDay)) {
+                    onSetPickupDay(root.homeId)
+                }
             else -> Unit
         }
     }

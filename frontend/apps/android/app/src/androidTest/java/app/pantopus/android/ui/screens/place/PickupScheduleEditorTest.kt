@@ -52,12 +52,11 @@ class PickupScheduleEditorTest {
         }
     }
 
+    // A home with no schedule opens with Garbage on and weekly; choosing its day fills the start date.
     @Test fun unknownRecyclingSavesOnlyAfterExplicitConfirmation() {
         show()
         compose.onNodeWithText("Save schedule").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Garbage").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Garbage Thursday: Not selected").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Garbage: choose the collection date").performScrollTo().performClick()
         assertTrue(requests.isEmpty())
         compose.onNodeWithText("Save schedule").performScrollTo().performClick()
         assertEquals(
@@ -68,11 +67,10 @@ class PickupScheduleEditorTest {
         )
     }
 
+    // Every other week the start date says which week it is, so the person still chooses it.
     @Test fun recyclingRequiresAnActualDateAndCanUseADifferentDay() {
         show()
-        compose.onNodeWithContentDescription("Garbage").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Garbage Thursday: Not selected").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Garbage: choose the collection date").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Recycling").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Recycling repeats: Every week").performScrollTo().performClick()
         compose.onNodeWithText("Every 2 weeks").performClick()

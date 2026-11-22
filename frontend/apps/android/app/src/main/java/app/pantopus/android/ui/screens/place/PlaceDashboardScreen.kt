@@ -401,8 +401,10 @@ internal fun PlaceDashboardContent(
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))
     // The guidance cards read the same (16, 17, 23, 26 and 27).
     val guidance = LocalGuidance.current
-    LaunchedEffect(homeId, isVerified, showsVerify, claim) {
-        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null)
+    // Card 16's button is “Set pickup day” while the household has no pickup schedule.
+    val needsPickupDay = intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay
+    LaunchedEffect(homeId, isVerified, showsVerify, claim, needsPickupDay) {
+        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null, needsPickupDay = needsPickupDay)
     }
     val ballot = BallotPlacement.ballot(intel)
     var ballotGovernments by remember { mutableStateOf<BallotGovernments?>(null) }
@@ -504,8 +506,7 @@ internal fun PlaceDashboardContent(
                         onOpenMailDay = onOpenMailDay,
                         modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp),
                         // Ticks "Set your pickup day" itself once the calendar runs on the household's own day.
-                        needsPickupDay =
-                            intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay,
+                        needsPickupDay = needsPickupDay,
                     )
                 }
             }

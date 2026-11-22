@@ -41,8 +41,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,7 +77,7 @@ private const val MAX_BEDROOMS = 10
 // letters, claims, fridge cards, the mailbox check, the rate watch, the
 // rent report, and the block founders panel. The count grows one wave
 // at a time; splitting it would fragment a single screen's state.
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 @HiltViewModel
 class PlaceDetailViewModel
     @Inject
@@ -98,6 +101,9 @@ class PlaceDetailViewModel
         private val keyguard = context.getSystemService(KeyguardManager::class.java)
         override val calendarHomeId: String? get() = homeId.takeIf { savedPlaceId == null && it.isNotBlank() }
 
+        /** The Today tab shows this Home (the person's default one), so "See it in Today" lands on this schedule. */
+        val isTodaysHome: Boolean get() = calendarHomeId != null && homesRepo.myHomesCopy()?.defaultHomeId == homeId
+
         val group: PlaceDetailGroup =
             PlaceDetailGroup.fromSlug(savedStateHandle[PLACE_DETAIL_SLUG_KEY])
                 ?: PlaceDetailGroup.TODAY
@@ -112,6 +118,8 @@ class PlaceDetailViewModel
 
         private val _pickupPrimerHomeId = MutableStateFlow<String?>(null)
         override val pickupPrimerHomeId = _pickupPrimerHomeId.asStateFlow()
+        private val _pickupSaved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        override val pickupSaved: Flow<Unit> = _pickupSaved.asSharedFlow()
 
         override fun dismissPickupPrimer() {
             _pickupPrimerHomeId.value = null
@@ -197,6 +205,7 @@ class PlaceDetailViewModel
         ) {
             if (!pickupCurrent()) return
             if (offerPrimer && !calendar.needsPickupDay) _pickupPrimerHomeId.value = homeId
+            if (!calendar.needsPickupDay) _pickupSaved.tryEmit(Unit)
             refresh()
         }
 

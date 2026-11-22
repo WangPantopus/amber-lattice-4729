@@ -37,7 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -74,14 +76,20 @@ private val WEEKDAYS =
     )
 private val FREQUENCIES = listOf("not_set" to "Not sure yet", "weekly" to "Every week", "biweekly" to "Every other week")
 
-/** Dates come from the home's local today; the device timezone never chooses a pickup week. */
+/**
+ * Dates come from the home's local today; the device timezone never chooses a pickup week. A home with no schedule
+ * opens with Garbage on and weekly, so the first choice is the day. [onSave] gets the collections a save sends.
+ */
 @Composable
 internal fun PickupScheduleEditor(
     data: PlaceAddressCalendarData,
     actions: AddressCalendarActions,
     busy: Boolean,
+    onSave: (List<PickupCollection>) -> Unit = {},
 ) {
-    var collections by remember(data.pickupSchedule, data.pickupVersion) { mutableStateOf(data.pickupSchedule?.collections.orEmpty()) }
+    var collections by remember(data.pickupSchedule, data.pickupVersion) {
+        mutableStateOf(data.pickupSchedule?.let { it.collections.orEmpty() } ?: listOf(PickupCollection("garbage")))
+    }
     val openedVersion = data.pickupVersion
     var readingFlyer by remember { mutableStateOf(false) }
     val locked = busy || readingFlyer
@@ -119,6 +127,7 @@ internal fun PickupScheduleEditor(
                     it.anchorDate.isNotEmpty() && (it.frequency != "weekly" || it.weekdays.isNotEmpty())
                 },
         onClick = {
+            onSave(collections)
             actions.setPickupDay(
                 SetPickupDayRequest(collections = collections, expectedVersion = openedVersion),
                 offerPrimer = data.needsPickupDay || data.pickupSchedule == null,
@@ -127,6 +136,36 @@ internal fun PickupScheduleEditor(
     ) { Text(if (busy) "Saving…" else "Save schedule") }
     if (data.pickupSchedule != null) {
         TextButton(enabled = !locked, onClick = { actions.clearPickupDay(openedVersion) }) { Text("Clear household schedule") }
+    }
+}
+
+/** The collections a household can set, in the order the saved box names them, with its words for each. */
+private val PICKUP_KIND_NAMES =
+    listOf(
+        "garbage" to "Garbage pickup",
+        "recycling" to "Recycling pickup",
+        "yard_waste" to "Yard waste pickup",
+        "bulk_pickup" to "Bulk collection",
+    )
+
+/** The kinds of date a household's pickup schedule sets. */
+internal val PICKUP_ENTRY_KINDS = PICKUP_KIND_NAMES.map { it.first }.toSet()
+
+/**
+ * The saved box's title, from the first collection in the order garbage, recycling, yard waste, bulk: "Garbage pickup
+ * is Tuesday", "… is Tuesday and Friday", "… is every other Tuesday", or "… is saved" for any other pattern. Null with
+ * no collection.
+ */
+internal fun pickupSavedTitle(collections: List<PickupCollection>): String? {
+    val (kind, name) = PICKUP_KIND_NAMES.firstOrNull { (kind, _) -> collections.any { it.kind == kind } } ?: return null
+    val first = collections.first { it.kind == kind }
+    val days = WEEKDAYS.filter { it.first in first.weekdays }.map { it.second }
+    val weekly = first.frequency == "weekly"
+    return when {
+        weekly && first.interval == 1 && days.size == 1 -> "$name is ${days.single()}"
+        weekly && first.interval == 1 && days.size > 1 -> "$name is ${days.dropLast(1).joinToString(", ")} and ${days.last()}"
+        weekly && first.interval == 2 && days.size == 1 -> "$name is every other ${days.single()}"
+        else -> "$name is saved"
     }
 }
 
@@ -150,7 +189,11 @@ private fun CollectionFields(
     ScheduleChoice("$label repeats", pattern, choices, locked) { value ->
         onChange(
             when {
-                value.startsWith("weekly-") -> row.copy(frequency = "weekly", interval = value.removePrefix("weekly-").toInt())
+                value.startsWith("weekly-") -> {
+                    val weekly = row.copy(frequency = "weekly", interval = value.removePrefix("weekly-").toInt())
+                    // Back to every week with a start date off the chosen days: it follows them again.
+                    if (weekly.everyWeek && weekly.startOffDay() != null) weekly.withSuggestedStart(today) else weekly
+                }
                 value.startsWith(
                     "monthly-",
                 ) ->
@@ -174,7 +217,7 @@ private fun CollectionFields(
         }
     }
     if (row.frequency == "weekly") {
-        CollectionWeekdays(row, label, locked, onChange)
+        CollectionWeekdays(row, label, today, locked, onChange)
     }
     CollectionDates(row, label, today, locked, onChange)
     if (row.frequency == "weekly" && row.interval > 1) {
@@ -216,6 +259,15 @@ private fun CollectionDates(
             val day = picked.toString()
             // The end date can't precede the start.
             onChange(row.copy(anchorDate = day, untilDate = row.untilDate?.let { maxOf(it, day) }))
+        }
+        // Every other week the start date is the person's: when it is off the chosen days, say so before they save.
+        row.startOffDay()?.let { words ->
+            Text(
+                words,
+                fontSize = 12.sp,
+                color = PantopusColors.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
     }
     if (row.frequency != "once") {
@@ -266,6 +318,33 @@ private fun PickupDateButton(
     )
 }
 
+/**
+ * Every week: the start date follows the chosen days (the server refuses a start date that isn't on one of them). Every
+ * other week, and monthly, the date says which week or date it is, so it is never changed for the person.
+ */
+private val PickupCollection.everyWeek: Boolean get() = frequency == "weekly" && interval == 1
+
+/** The start date on the next of the chosen days; none while no day is chosen. An end date never precedes it. */
+private fun PickupCollection.withSuggestedStart(today: String): PickupCollection {
+    val day = if (weekdays.isEmpty()) "" else suggestedDay(this, today)
+    return copy(anchorDate = day, untilDate = untilDate?.let { maxOf(it, day) })
+}
+
+/**
+ * What to say beside a weekly collection's start date while it isn't on one of the chosen days: "This date is a
+ * Tuesday. Choose a first collection date that is a Thursday." ("Tuesday or Friday", "Monday, Wednesday or Friday").
+ * Null when it fits.
+ */
+private fun PickupCollection.startOffDay(): String? {
+    if (frequency != "weekly" || weekdays.isEmpty()) return null
+    val start = runCatching { LocalDate.parse(anchorDate) }.getOrNull() ?: return null
+    val (code, name) = WEEKDAYS[start.dayOfWeek.value - 1]
+    if (code in weekdays) return null
+    val days = WEEKDAYS.filter { it.first in weekdays }.map { it.second }
+    val list = if (days.size > 1) "${days.dropLast(1).joinToString(", ")} or ${days.last()}" else days.single()
+    return "This date is a $name. Choose a first collection date that is a $list."
+}
+
 /** Where choosing a date starts: the home's today, or for a weekly collection the first of its days from today. */
 private fun suggestedDay(
     row: PickupCollection,
@@ -281,13 +360,18 @@ private fun suggestedDay(
 private fun CollectionWeekdays(
     row: PickupCollection,
     label: String,
+    today: String,
     locked: Boolean,
     onChange: (PickupCollection) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         WEEKDAYS.forEach { (code, day) ->
             TextButton(
-                onClick = { onChange(row.copy(weekdays = if (code in row.weekdays) row.weekdays - code else row.weekdays + code)) },
+                onClick = {
+                    val picked = row.copy(weekdays = if (code in row.weekdays) row.weekdays - code else row.weekdays + code)
+                    // Every week, the start date follows the chosen days, also on a schedule already saved.
+                    onChange(if (picked.everyWeek) picked.withSuggestedStart(today) else picked)
+                },
                 enabled = !locked,
                 contentPadding = PaddingValues(0.dp),
                 modifier =
@@ -471,6 +555,7 @@ private fun PickupPrimerContent(
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TextButton(onClick = onDismiss, enabled = !busy) { Text("Close") }
+        Text("Your schedule is saved.", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.success)
         Text("Get a reminder the night before?", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
         Text(
             "One notification the evening before each pickup. Nothing on other days.",
