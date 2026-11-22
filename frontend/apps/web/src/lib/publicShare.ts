@@ -61,6 +61,8 @@ export type PublicCardDesigns = {
   free_cards?: number;
   /** The shelves and a page per collection (server key card_shelves). Absent: today's pages. */
   shelves?: boolean;
+  /** The order "One from each collection" draws the collections in (SPEC E2); absent: the collections' order. */
+  opening?: string[];
 };
 
 /** The shelves are on (server key card_shelves, card shelves SPEC Part D) and the collections carry their facts. */

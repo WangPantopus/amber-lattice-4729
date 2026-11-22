@@ -568,6 +568,8 @@ type ShelvesState = {
   /** The collection whose page is open, or null for the shelves. */
   open: Shelf | null;
   onOpenCollection: (shelf: Shelf) => void;
+  /** The opening row's order of collections (the server's `opening`, SPEC E2). */
+  opening: string[] | null;
   /** Where the shelves were scrolled when a collection's page opened (null: start at the chosen card's shelf). */
   restoreTop: number | null;
 };
@@ -605,7 +607,7 @@ function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }
       {shelving.open ? (
         <CollectionPage key={shelving.open.id} shelf={shelving.open} chosen={chosen} onOpen={(id) => open(id, shelving.open as Shelf)} />
       ) : (
-        <CardShelves shelves={shelving.shelves} chosen={chosen} restoreTop={shelving.restoreTop} onOpen={open} onAll={shelving.onOpenCollection} />
+        <CardShelves shelves={shelving.shelves} opening={shelving.opening} chosen={chosen} restoreTop={shelving.restoreTop} onOpen={open} onAll={shelving.onOpenCollection} />
       )}
       {/* Hidden until a card is chosen; then it comes up from the bottom, and the page ends above it. */}
       {picked ? (
@@ -2582,7 +2584,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           chosen={designId}
           onChoose={setDesignId}
           onNext={() => { leavePick(); setStep('write'); }}
-          shelving={shelves ? { shelves, open: openShelf, onOpenCollection: openCollection, restoreTop: shelvesTop } : null}
+          shelving={shelves ? { shelves, open: openShelf, onOpenCollection: openCollection, opening: data.opening ?? null, restoreTop: shelvesTop } : null}
         />
       ) : null}
       {/* From Write on the back onward, you are at the table (design plan Part 9): the chosen card's cloth. */}

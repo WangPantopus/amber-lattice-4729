@@ -16,7 +16,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { cardPicture, isVerseReference, TABLE_ART, tableEdge, tableTint } from './cardArt';
 import { cardHand } from './cardFont';
 import { PaperFront } from './CardPaper';
-import { Row, scrollToStart, useNearPicture } from './CardShelves';
+import { openingPicks, Row, scrollToStart, useNearPicture } from './CardShelves';
 import styles from './PublicCards.module.css';
 
 const art = (name: string) => `${TABLE_ART}${name}`;
@@ -234,19 +234,18 @@ function goToShelf(event: MouseEvent<HTMLAnchorElement>, slug: string) {
  * short names that stays at the top of the window (the shelf in view is the marked one), "One from each collection",
  * then a shelf per collection with its first 12 cards and "See all <N>", which opens the collection's own page.
  */
-export function PublicShelvesPage({ designs, collections, inviteCode, store = null, freeCards = null, goal = null }: {
+export function PublicShelvesPage({ designs, collections, opening = null, inviteCode, store = null, freeCards = null, goal = null }: {
   designs: PublicDesign[];
   collections: PublicCollection[];
+  /** The opening row's order of collections (the server's `opening`, SPEC E2). */
+  opening?: string[] | null;
   inviteCode: string | null;
   store?: PublicCardsStore | null;
   freeCards?: number | null;
   goal?: ReactNode;
 }) {
   const shelves = shelvesFrom(designs, collections);
-  const picks = shelves.flatMap((shelf) => {
-    const card = shelf.pick ? shelf.cards.find((c) => c.id === shelf.pick) : undefined;
-    return card ? [{ shelf, card }] : [];
-  });
+  const picks = openingPicks(shelves, opening);
   const indexRef = useRef<HTMLElement>(null);
   const [inView, setInView] = useState<string | null>(null);
   useEffect(() => {
