@@ -85,12 +85,20 @@ async function lookup(address, { serves = router.serves } = {}) {
     if (suppressions?.hashes?.includes(suppressionHash(suppressions.salt, fips, query))) return { match: 'restricted', ...facts };
     const stored = await reader.recordsAt(fips, county.release, sortKey(parsed));
     const records = router.listedUnitsFor(fips) ? identity.withListedUnits(stored) : stored;
-    const answer = identity.resolve(query, records, { sharedFacts: router.sharedFactsFor(fips) });
+    const answer = identity.resolve(query, records, {
+      sharedFacts: router.sharedFactsFor(fips), protectUnitSites: identity.protectsUnitSites(fips),
+    });
     const municipality = router.municipalityFor(fips);
     if (!municipality) return { ...answer, ...facts };
 
     return exactMunicipalAnswer(answer, query, fips, county, municipality);
   }));
+  // Another county routed by this ZIP cannot disambiguate accounts at the protected unit.
+  const protectedSite = answers.find((answer) => answer.reason === 'restricted_unit_site');
+  if (protectedSite) {
+    const { reason: _reason, ...restricted } = protectedSite;
+    return restricted;
+  }
   answers.sort((a, b) => MATCH_RANK[a.match] - MATCH_RANK[b.match]);
   // A ZIP across a county line: two counties each claiming this address can't both be right.
   if (answers.length > 1 && answers[0].match === answers[1].match && ['exact', 'building_only', 'parcel_only'].includes(answers[0].match)) {
