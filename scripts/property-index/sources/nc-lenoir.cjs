@@ -1,7 +1,7 @@
 'use strict';
 // Lenoir County, North Carolina: NC OneMap's parcels (nc-onemap.cjs), with each home's bedrooms, baths, finished area and year built from
 // the county GIS office's own public parcel layer (OpenGov, the Tax Department's tax-year records). No terms are posted on it or on the
-// county's site. Only the parcel numbers, the first improvement's counts and area, the improvement count and the tax year are asked for:
+// county's site. The source supplies parcel numbers, first-improvement facts, the improvement count, the tax year and the county use codes and descriptions:
 // the owner and mailing columns never are. A parcel with more than one improvement takes nothing, since its counts may be another
 // building's. OneMap's Lenoir file gives no property city or ZIP, so the ZIP codes that reach into the county (the Census Bureau's
 // ZCTA-to-county file) are where a person's ZIP looks, as for Carteret: a list of places to look, never a fact on a record.

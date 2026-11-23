@@ -34,6 +34,34 @@ function typed({ number, pre, name, suffix, post, unit, building }) {
   };
 }
 
+function releaseBlocks(manifestBytes, data) {
+  const { keys, lengths } = JSON.parse(zlib.gunzipSync(manifestBytes).toString('utf8'));
+  const offsets = [];
+  lengths.reduce((at, length, i) => { offsets[i] = at; return at + length; }, 0);
+  const block = (i) => JSON.parse(zlib.gunzipSync(data.subarray(offsets[i], offsets[i] + lengths[i])).toString('utf8'));
+  return { keys, block };
+}
+
+// During Lenoir's use-column transition, keep every old street/number's candidates together, including exact
+// units, buildings and ambiguous addresses. New keys may be added. Compare groups independently of block boundaries.
+function identityGroups(manifestBytes, data) {
+  const { keys, block } = releaseBlocks(manifestBytes, data);
+  const groups = new Map();
+  for (let i = 0; i < keys.length; i += 1) {
+    for (const record of block(i)) {
+      const group = groups.get(record.key) || [];
+      group.push(JSON.stringify([
+        record.id, record.kind, record.home_type, record.parent, record.restricted,
+        Object.entries(record.address).sort(), [...(record.roster || [])].sort(),
+        record.facts?.parcel_number, record.facts?.address_on_record,
+      ]));
+      groups.set(record.key, group);
+    }
+  }
+  for (const [key, group] of groups) groups.set(key, JSON.stringify(group.sort()));
+  return groups;
+}
+
 /**
  * @param {Buffer} manifestBytes  the release's manifest.json.gz
  * @param {Buffer} data           its data.bin
@@ -41,10 +69,7 @@ function typed({ number, pre, name, suffix, post, unit, building }) {
  * @returns {{ asked: number, found: number, ambiguous: number, unreadable: number, no_record: number, other: number, share: number|null }}
  */
 function selfFind(manifestBytes, data, { state, zips = [] }) {
-  const { keys, lengths } = JSON.parse(zlib.gunzipSync(manifestBytes).toString('utf8'));
-  const offsets = [];
-  lengths.reduce((at, length, i) => { offsets[i] = at; return at + length; }, 0);
-  const block = (i) => JSON.parse(zlib.gunzipSync(data.subarray(offsets[i], offsets[i] + lengths[i])).toString('utf8'));
+  const { keys, block } = releaseBlocks(manifestBytes, data);
   const counts = { asked: 0, found: 0, ambiguous: 0, unreadable: 0, no_record: 0, other: 0 };
   const picks = Math.min(BLOCKS, keys.length);
   const take = Math.ceil(SAMPLES / Math.max(1, picks));
@@ -79,4 +104,4 @@ function described({ asked, found, ambiguous, unreadable, no_record: none, other
   return `${found} of ${asked - ambiguous} sampled homes find themselves through the app's reader (unreadable ${unreadable}, no record ${none}, another answer ${other}; ${ambiguous} more share their address)`;
 }
 
-module.exports = { selfFind, described, MIN_SELF_FIND };
+module.exports = { selfFind, described, MIN_SELF_FIND, identityGroups };

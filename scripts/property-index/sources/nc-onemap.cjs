@@ -235,7 +235,8 @@ async function countyEntry(work, lists, name, { key, date, older }, useDescripti
   let noAddress = 0;
   const read = async (earlier) => {
     const columns = useDescriptions ? [...COLUMNS, 'PARUSEDSC2'] : COLUMNS;
-    for await (const row of dbfRows(zip, member, columns, OPTIONAL)) {
+    const options = useDescriptions ? { optional: [...OPTIONAL.optional, 'PARUSEDSC2'] } : OPTIONAL;
+    for await (const row of dbfRows(zip, member, columns, options)) {
       // Lenoir's November export moved the primary description into its secondary column.
       // Older files used that column for a different classification. Only use words the county confirms for this primary code.
       if (useDescriptions && !row.PARUSEDESC) {
