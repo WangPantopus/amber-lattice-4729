@@ -173,7 +173,12 @@ async function checkLive() {
   const missing = [];
   for (const state of new Set(live.map(stateOfCounty))) {
     const stateFile = await reader.stateFile(state);
-    missing.push(...live.filter((fips) => stateOfCounty(fips) === state && !stateFile?.jurisdictions?.[fips]));
+    for (const fips of live) {
+      if (stateOfCounty(fips) !== state) continue;
+      const county = stateFile?.jurisdictions?.[fips];
+      const municipality = counties[fips]?.municipality;
+      if (!county || (municipality && !county.municipal_rolls?.[municipality])) missing.push(fips);
+    }
   }
   if (missing.join() !== missingLive.join() && missing.length) logger.warn('property_records.live_county_missing', { counties: missing });
   missingLive = missing;
@@ -203,7 +208,7 @@ if (config.enabled()) {
   setInterval(follow, CHECK_EVERY_MS).unref();
 }
 
-/** 'off', 'shadow' or 'live' for a county. Nothing is on without an index to read. */
+/** The county's mode (off, shadow, live or municipal). Nothing is on without an index to read. */
 const modeFor = (fips) => (config.enabled() ? modes.get(fips) || 'off' : 'off');
 /** Whether a state has a live county, so a Home elsewhere never touches storage. */
 const liveState = (state) => config.enabled() && liveStates.has(state);
