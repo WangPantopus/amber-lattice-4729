@@ -57,7 +57,8 @@ const crypto = require('crypto');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
 const reader = require('./reader');
-const { stateOfCounty } = require('./addressKey');
+const { servesRecords, municipalRelease } = require('./format');
+const { city, stateOfCounty } = require('./addressKey');
 
 const READ_EVERY_MS = 60 * 1000;
 const CHECK_EVERY_MS = 10 * 1000;
@@ -92,7 +93,7 @@ function apply(file) {
   modes = config.listedModes();
   for (const [fips, entry] of Object.entries(counties)) modes.set(fips, entry.mode);
   const listed = [...modes];
-  liveStates = new Set(listed.filter(([, mode]) => mode === 'live').map(([fips]) => stateOfCounty(fips)));
+  liveStates = new Set(listed.filter(([, mode]) => servesRecords(mode)).map(([fips]) => stateOfCounty(fips)));
   anyShadowCounty = listed.some(([, mode]) => mode === 'shadow');
   const named = listed.filter(([, mode]) => mode !== 'off').sort();
   const shared = [...sharedFacts].sort();
@@ -108,6 +109,8 @@ function apply(file) {
   if (units.length) now = [named, shared, similar, packets, heldLists, units];
   const past = [...pastDates].sort();
   if (past.length) now = [named, shared, similar, packets, heldLists, units, past];
+  const municipal = municipalScopes();
+  if (municipal.length) now = [...now, municipal];
   now = JSON.stringify(now);
   if (now !== loggedAs && config.enabled()) {
     loggedAs = now;
@@ -115,6 +118,7 @@ function apply(file) {
       live: listed.filter(([, mode]) => mode === 'live').map(([fips]) => fips),
       shadow: listed.filter(([, mode]) => mode === 'shadow').map(([fips]) => fips),
       from_file: Object.keys(counties).length,
+      ...(municipal.length ? { municipal } : {}),
       ...(shared.length ? { shared_facts: shared } : {}),
       ...(similar.length ? { similar_homes: similar } : {}),
       ...(packets.length ? { appeal_packet: packets } : {}),
@@ -130,13 +134,22 @@ function heldNamed() {
   return HELD.map((name) => [name, [...(held[name] || [])].sort()]).filter(([, named]) => named.length);
 }
 
+function municipalScopes() {
+  return Object.entries(counties).filter(([, entry]) => entry.mode === 'municipal')
+    .map(([fips, entry]) => [fips, entry.municipality]).sort();
+}
+
 /** Only well-formed entries count: a slip in one county's line can't change another's. */
 function parseFile(bytes) {
   const data = JSON.parse(bytes.toString('utf8'));
   if (data?.v !== 1 || typeof data.counties !== 'object' || !data.counties) throw new Error('A switch file this server can\'t read');
   const found = {};
   for (const [fips, entry] of Object.entries(data.counties)) {
-    if (/^\d{5}$/.test(fips) && MODES.has(entry?.mode)) {
+    // A municipal roll serves exact homes in one municipality. Older readers ignore this mode.
+    if (/^\d{5}$/.test(fips) && entry?.mode === 'municipal') {
+      const municipality = typeof entry.municipality === 'string' && city(entry.municipality);
+      found[fips] = { mode: municipality ? 'municipal' : 'off', municipality, withheld: new Set(Array.isArray(entry.withheld) ? entry.withheld : []) };
+    } else if (/^\d{5}$/.test(fips) && MODES.has(entry?.mode)) {
       found[fips] = { mode: entry.mode, withheld: new Set(Array.isArray(entry.withheld) ? entry.withheld : []), estimates: entry.estimates === true };
     }
   }
@@ -156,11 +169,16 @@ const readFile = reader.switchesFile(config.switchesName, parseFile, READ_EVERY_
  * published. Read on the reader's own schedule, so after a restart a lookup finds its state's file already held.
  */
 async function checkLive() {
-  const live = [...modes].filter(([, mode]) => mode === 'live').map(([fips]) => fips);
+  const live = [...modes].filter(([, mode]) => servesRecords(mode)).map(([fips]) => fips);
   const missing = [];
   for (const state of new Set(live.map(stateOfCounty))) {
     const stateFile = await reader.stateFile(state);
-    missing.push(...live.filter((fips) => stateOfCounty(fips) === state && !stateFile?.jurisdictions?.[fips]));
+    for (const fips of live) {
+      if (stateOfCounty(fips) !== state) continue;
+      const county = stateFile?.jurisdictions?.[fips];
+      const municipality = counties[fips]?.municipality;
+      if (!county || (municipality && !municipalRelease(county, municipality))) missing.push(fips);
+    }
   }
   if (missing.join() !== missingLive.join() && missing.length) logger.warn('property_records.live_county_missing', { counties: missing });
   missingLive = missing;
@@ -190,13 +208,16 @@ if (config.enabled()) {
   setInterval(follow, CHECK_EVERY_MS).unref();
 }
 
-/** 'off', 'shadow' or 'live' for a county. Nothing is on without an index to read. */
+/** The county's mode (off, shadow, live or municipal). Nothing is on without an index to read. */
 const modeFor = (fips) => (config.enabled() ? modes.get(fips) || 'off' : 'off');
 /** Whether a state has a live county, so a Home elsewhere never touches storage. */
 const liveState = (state) => config.enabled() && liveStates.has(state);
+const switchesKnown = () => fileRead;
+const municipalityFor = (fips) => counties[fips]?.municipality || null;
 const anyShadow = () => config.enabled() && anyShadowCounty;
 /** Whether a county's stored copies are on screens now. */
-const showsCopies = (fips) => modeFor(fips) === 'live' || (config.enabled() && !fileRead);
+const serves = (fips) => servesRecords(modeFor(fips));
+const showsCopies = (fips) => serves(fips) || (config.enabled() && !fileRead);
 
 /** Whether a county's owners see a Pantopus estimate: only a live county whose line says so. */
 const estimatesFor = (fips) => modeFor(fips) === 'live' && counties[fips]?.estimates === true;
@@ -233,6 +254,7 @@ const listed = () => new Map(modes);
 /** This server's lists, short enough to write down, so servers that disagree can be told apart. */
 function summary() {
   const named = [...modes].filter(([, mode]) => mode !== 'off').sort();
+  const municipal = municipalScopes();
   const withheld = Object.entries(counties).filter(([, entry]) => entry.withheld.size).map(([fips, entry]) => [fips, [...entry.withheld].sort()]).sort();
   const estimates = Object.entries(counties).filter(([, entry]) => entry.estimates).map(([fips]) => fips).sort();
   const shared = [...sharedFacts].sort();
@@ -248,8 +270,10 @@ function summary() {
   if (units.length) lists = [named, withheld, estimates, shared, similar, packets, heldLists, units];
   const past = [...pastDates].sort();
   if (past.length) lists = [named, withheld, estimates, shared, similar, packets, heldLists, units, past];
+  if (municipal.length) lists = [...lists, municipal];
   return {
     live: named.filter(([, mode]) => mode === 'live').length,
+    ...(municipal.length ? { municipal: municipal.length } : {}),
     shadow: named.filter(([, mode]) => mode === 'shadow').length,
     estimates: estimates.length,
     ...(shared.length ? { shared_facts: shared.length } : {}),
@@ -264,7 +288,10 @@ function summary() {
 }
 
 /** The held facts' lists naming this county, in the order they apply: only a live county. */
-const heldFor = (fips) => (modeFor(fips) === 'live' ? HELD.filter((name) => held[name]?.has(fips)) : []);
+function heldFor(fips) {
+  if (municipalityFor(fips)) return ['bath_totals', 'mapped_lots'];
+  return modeFor(fips) === 'live' ? HELD.filter((name) => held[name]?.has(fips)) : [];
+}
 
 /**
  * A copy's held facts (format.js `held`) as its county's lists let them show, with `held` and `held_from` left out:
@@ -276,13 +303,13 @@ const heldFor = (fips) => (modeFor(fips) === 'live' ? HELD.filter((name) => held
  * whose words need a year it doesn't have isn't served. bath_totals takes facts out instead: the copy's full and half
  * baths split from a bare total, which its facts (and its building's) hold as before until the county is on the list.
  * mapped_lots adds words only: `copy.mapped` ({ from }) names each lot fact the copy (or its building) still states with the
- * value marked, in the county's words, for Property details and Place to say where it came from.
+ * value marked, in the county's words. A county that requires a label serves newly filled house lots only as measured rows.
  * @param {object} copy     a stored copy
  * @param {string[]} names  the lists that show, in order
  */
 function joinHeld(copy, names) {
   if (!copy || (!copy.held && !copy.held_from)) return copy;
-  const { held: kept = {}, held_from: words = {}, ...out } = copy;
+  const { held: kept = {}, held_from: words = {}, require_mapped_lot_label: requireLotLabel, ...out } = copy;
   if (names.includes('new_columns') && kept.new_columns) {
     out.facts = { ...copy.facts, ...(kept.new_columns.facts || {}) };
     if (copy.building) out.building = { ...copy.building, ...(kept.new_columns.building || {}) };
@@ -312,12 +339,26 @@ function joinHeld(copy, names) {
       if (split && out[part]) out[part] = Object.fromEntries(Object.entries(out[part]).filter(([name]) => !(name in split)));
     }
   }
-  if (names.includes('mapped_lots') && kept.mapped_lots) {
+  const showMapLabel = names.includes('mapped_lots');
+  if (kept.mapped_lots && (showMapLabel || requireLotLabel)) {
     const from = {};
     for (const part of ['facts', 'building']) {
       for (const [name, value] of Object.entries(kept.mapped_lots[part] || {})) {
         const said = words.mapped_lots?.[name];
-        if (typeof said === 'string' && out[part]?.[name] === value) from[name] = said;
+        if (out[part]?.[name] !== value) continue;
+        const labeled = showMapLabel && typeof said === 'string' && said.trim();
+        if (requireLotLabel) {
+          // Dallas fills a missing house lot. Keep it out of raw facts (also used by Add Home and older clients).
+          // The measured row is drawn only by clients that can show its source, with recorded facts taking precedence.
+          out[part] = { ...out[part] };
+          delete out[part][name];
+          if (labeled && part === 'facts') {
+            out.measured = {
+              facts: { ...out.measured?.facts, [name]: value },
+              from: { ...out.measured?.from, [name]: said },
+            };
+          }
+        } else if (labeled) from[name] = said;
       }
     }
     if (Object.keys(from).length) out.mapped = { from };
@@ -339,4 +380,4 @@ function served(stored) {
   };
 }
 
-module.exports = { modeFor, liveState, anyShadow, showsCopies, served, joinHeld, heldFor, withholding, estimatesFor, sharedFactsFor, similarHomesFor, similarHomesCounties, appealPacketFor, listedUnitsFor, pastDateFor, listed, summary, health };
+module.exports = { municipalityFor, serves, switchesKnown, modeFor, liveState, anyShadow, showsCopies, served, joinHeld, heldFor, withholding, estimatesFor, sharedFactsFor, similarHomesFor, similarHomesCounties, appealPacketFor, listedUnitsFor, pastDateFor, listed, summary, health };

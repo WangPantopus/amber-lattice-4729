@@ -29,7 +29,8 @@ const { changeNicheData } = require('../homeNicheData');
 const config = require('../../config/propertyRecords');
 const logger = require('../../utils/logger');
 const { FACTS } = require('./facts');
-const { parse, zip5, stateCode } = require('./addressKey');
+const { municipalRelease } = require('./format');
+const { city: cityKey, parse, zip5, stateCode } = require('./addressKey');
 const { lookup, StorageUnavailable } = require('./index');
 const reader = require('./reader');
 const registryUnits = require('./registryUnits');
@@ -101,6 +102,8 @@ function copyFromAnswer(answer, address) {
     reason: answer.reason || null,
     requested_subject: answer.requested_subject,
     subject: answer.subject,
+    ...(county.municipal_rolls && !answer.municipality ? { has_municipal_rolls: true } : {}),
+    ...(answer.municipality ? { municipal_match: { municipality: answer.municipality, city: cityKey(address.city), state: stateCode(address.state) } } : {}),
     home_type: record.home_type || null,
     jurisdiction: answer.jurisdiction,
     release: county.release,
@@ -113,6 +116,7 @@ function copyFromAnswer(answer, address) {
     ...(county.notice ? { notice: county.notice } : {}),
     // Where each held fact of a list came from, in words, when it isn't the county's own column (format.js `held_from`).
     ...(county.held_from ? { held_from: county.held_from } : {}),
+    ...(county.require_mapped_lot_label && held?.mapped_lots ? { require_mapped_lot_label: true } : {}),
     stored_at: new Date().toISOString(),
     address_stamp: addressStamp(address),
     facts,
@@ -172,7 +176,8 @@ function dateLabel(iso) {
 
 /** Where a copy's facts come from, in the shape the apps read (services/recordVocabulary.js). */
 function provenanceOf(copy) {
-  const source = `From ${copy.publisher}'s records, updated ${dateLabel(copy.as_of)}${copy.notice ? ` \u00b7 ${copy.notice}` : ''}`;
+  const origin = copy.municipal_match ? `${copy.dataset}, assessed as of` : 'records, updated';
+  const source = `From ${copy.publisher}'s ${origin} ${dateLabel(copy.as_of)}${copy.notice ? ` \u00b7 ${copy.notice}` : ''}`;
   let lead = '';
   if (copy.match === 'building_only') {
     lead = copy.reason === 'unit_needed'
@@ -197,6 +202,16 @@ function provenanceOf(copy) {
 function storedCopy(home) {
   const copy = home?.niche_data?.property_record;
   if (!copy || copy.schema !== SCHEMA) return null;
+  // A previous county-wide copy has no proof of the requested town. Re-read it on narrowing.
+  // The original Suffolk release predates the municipal marker. A cold server cannot assume the whole county serves.
+  if (!router.switchesKnown() && (copy.has_municipal_rolls || copy.municipal_match || copy.jurisdiction === '25025')) return null;
+  const municipality = router.municipalityFor(copy.jurisdiction);
+  if (municipality || copy.municipal_match) {
+    const match = copy.municipal_match;
+    const county = municipalRelease(countyNow(home, copy), municipality);
+    if (!county || county.release !== copy.release || Date.now() > Date.parse(county.stale_after)) return null;
+    if (!match || match.municipality !== municipality || match.city !== cityKey(home.city) || match.state !== stateCode(home.state)) return null;
+  }
   return copy.address_stamp === addressStamp(homeAddress(home)) ? copy : null;
 }
 
@@ -243,7 +258,7 @@ const saysNothing = (answer) => answer.match === 'stale' || answer.reason === 'u
  * Only while the county is known to be live: before a server has read the switch file, copies stay as they are.
  */
 function refreshSoon(home, copy) {
-  if (!home.id || router.modeFor(copy.jurisdiction) !== 'live') return null;
+  if (!home.id || !router.serves(copy.jurisdiction)) return null;
   const county = countyNow(home, copy);
   if (!county || (county.release === copy.release && county.status !== 'withdrawn')) return null;
   // Once for each release a county moves to, so a refresh that finds nothing new doesn't run on every read.

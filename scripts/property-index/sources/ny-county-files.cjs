@@ -23,7 +23,7 @@ const { positive, word } = require('../lib/values.cjs');
 const { fillHomes, bathFacts, describe } = require('../lib/fill.cjs');
 const { keepSplit } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
-const { COUNTIES, publishedOn, countyRelease } = require('./ny-parcels.cjs');
+const { COUNTIES, publishedOn, countyRelease, erieArchive } = require('./ny-parcels.cjs');
 
 // The Assessor's Manual's one-family classes: a year-round house, a rural residence, an estate, a seasonal home, a mobile home. A file
 // gives the class's code ("210") or the manual's short words for it ("1 Family Res").
@@ -111,10 +111,17 @@ const agreesWithTotal = (facts, found) => agrees(facts, found) && (found.bathroo
 
 async function* build({ work }) {
   const only = (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
-  const asOf = await publishedOn();
+  // For a local Erie build, point this at the extracted NYS-Tax-Parcels.zip geodatabase.
+  // Buffalo and Erie County still supply their respective bath counts through the usual joins.
+  const dir = process.env.PROPERTY_INDEX_NY_ERIE_GDB;
+  if (dir && (only.length !== 1 || only[0] !== COUNTIES.Erie)) {
+    throw new Error('PROPERTY_INDEX_NY_ERIE_GDB requires PROPERTY_INDEX_ONLY=36029');
+  }
+  const archive = dir ? erieArchive(dir) : null;
+  const asOf = archive?.asOf ?? await publishedOn();
   for (const [name, file] of Object.entries(FILES)) {
     if (only.length && !only.includes(COUNTIES[name])) continue;
-    const release = await countyRelease(work, name, asOf);
+    const release = await countyRelease(work, name, asOf, archive?.rows);
     const files = [].concat(file);
     for (const each of files) {
       const dwellings = new Map();

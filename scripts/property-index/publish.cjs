@@ -29,9 +29,9 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
-const { FORMAT, statePath, releasePath, switchesPath } = require('../../backend/services/propertyRecords/format');
+const { FORMAT, statePath, releasePath, switchesPath, servesRecords } = require('../../backend/services/propertyRecords/format');
 const { log } = require('./lib/log.cjs');
-const { selfFind, described, MIN_SELF_FIND } = require('./lib/self-find.cjs');
+const { selfFind, described, MIN_SELF_FIND, identityGroups } = require('./lib/self-find.cjs');
 const { sameSources } = require('./lib/registry.cjs');
 
 // A new release may lose this much without someone looking at it.
@@ -118,9 +118,29 @@ function problems(store, entry, previous, out, minRetention = MIN_ID_RETENTION, 
   const report = JSON.parse(fs.readFileSync(path.join(dir, 'report.json'), 'utf8'));
   if (report.records === 0) found.push('no records');
   // Its homes, looked up from the address a person would type with the reader the servers run.
-  const own = selfFind(fs.readFileSync(path.join(dir, 'manifest.json.gz')), fs.readFileSync(path.join(dir, 'data.bin')), entry);
+  const manifest = fs.readFileSync(path.join(dir, 'manifest.json.gz'));
+  const data = fs.readFileSync(path.join(dir, 'data.bin'));
+  const own = selfFind(manifest, data, entry);
   log(`${entry.fips} ${entry.release}: ${described(own)}`);
   if (records && own.share !== null && own.share < MIN_SELF_FIND) falls.push(`only ${own.found} of ${own.asked - own.ambiguous} sampled homes find themselves through the app's reader`);
+  // The November 18 Lenoir file passes the aggregate thresholds after its use descriptions are restored,
+  // even though existing addresses stop finding their homes. Compare every old key on the first new-layout release.
+  if (records && entry.source === 'nc-lenoir' && entry.as_of >= '2026-11-18' && !(previous?.as_of >= '2026-11-18')) {
+    const prior = previous?.release && releasePath(entry.fips, previous.release);
+    const oldManifest = prior && store.get(`${prior}/manifest.json.gz`);
+    const oldData = oldManifest && store.get(`${prior}/data.bin`);
+    if (!oldData) {
+      found.push('cannot verify the serving addresses across the OneMap layout change');
+    } else {
+      const old = identityGroups(oldManifest, oldData);
+      const next = identityGroups(manifest, data);
+      let changed = 0;
+      for (const [key, group] of old) if (next.get(key) !== group) changed += 1;
+      if (changed) found.push(`${changed} existing street and number groups changed across the OneMap layout change`);
+      const lostRoute = ['zips', 'cities'].some((field) => previous[field]?.some((place) => !entry[field]?.includes(place)));
+      if (lostRoute) found.push('lost a county lookup route across the OneMap layout change');
+    }
+  }
   if (!previous) return { found, falls };
   const before = previous.records || 0;
   const addressesBefore = addresses(previous);
@@ -179,7 +199,7 @@ function liveCounties(store) {
   for (const name of ['production', 'staging']) {
     const bytes = store.get(switchesPath(name));
     if (!bytes) continue;
-    for (const [fips, county] of Object.entries(JSON.parse(bytes.toString('utf8')).counties || {})) if (county.mode === 'live') live.add(fips);
+    for (const [fips, county] of Object.entries(JSON.parse(bytes.toString('utf8')).counties || {})) if (servesRecords(county.mode)) live.add(fips);
   }
   return live;
 }

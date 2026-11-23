@@ -8,8 +8,9 @@
 const path = require('node:path');
 const { parts, zip5 } = require('../../../backend/services/propertyRecords/addressKey');
 const { download, zipDates, zipTable } = require('../lib/tables.cjs');
-const { positive, put, word } = require('../lib/values.cjs');
+const { number, positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
+const { fillDallasLots } = require('../lib/dallas-lots.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '48113';
@@ -31,15 +32,22 @@ async function build({ work, today = new Date() }) {
   const dir = path.join(work, 'tx-dallas');
   // Certification is in July: until then the last certified year is the one before.
   const year = today.getMonth() >= 7 ? today.getFullYear() : today.getFullYear() - 1;
-  const zip = path.join(dir, 'DCAD_CURRENT.zip');
-  download(zipUrl(year), zip);
+  const zip = path.join(dir, `DCAD${year}_CURRENT.zip`);
+  download(zipUrl(year), zip, {}, { retries: 0 });
   const asOf = zipDates(zip).get('ACCOUNT_INFO.CSV');
   if (!asOf) throw new Error('The district\'s file no longer dates its account table');
 
   const records = new Map();
   const accounts = new Map();
+  const ambiguousAccounts = new Set();
+  const seenAccounts = new Set();
+  const restrictedAccounts = new Set();
+  const parcelAccounts = new Map();
   let noAddress = 0;
   for await (const row of zipTable(zip, 'ACCOUNT_INFO.CSV', ['ACCOUNT_NUM', 'DIVISION_CD', 'EXCLUDE_OWNER', 'STREET_NUM', 'STREET_HALF_NUM', 'FULL_STREET_NAME', 'BLDG_ID', 'UNIT_ID', 'PROPERTY_CITY', 'PROPERTY_ZIPCODE', 'LEGAL1', 'LEGAL2'])) {
+    if (seenAccounts.has(row.ACCOUNT_NUM)) ambiguousAccounts.add(row.ACCOUNT_NUM);
+    seenAccounts.add(row.ACCOUNT_NUM);
+    if (row.EXCLUDE_OWNER === 'Y') restrictedAccounts.add(row.ACCOUNT_NUM);
     if (!['RES', 'COM'].includes(row.DIVISION_CD)) continue;
     const address = parts({ number: row.STREET_NUM, numberSuffix: row.STREET_HALF_NUM, name: row.FULL_STREET_NAME, unit: row.UNIT_ID, building: row.BLDG_ID });
     if (!address) {
@@ -49,18 +57,21 @@ async function build({ work, today = new Date() }) {
     const legal = [row.LEGAL1, row.LEGAL2].map(word).filter(Boolean).join(' ').slice(0, 300);
     accounts.set(row.ACCOUNT_NUM, {
       address: { ...address, city: String(row.PROPERTY_CITY || '').trim().toUpperCase(), zip: zip5(row.PROPERTY_ZIPCODE) },
-      restricted: row.EXCLUDE_OWNER === 'Y',
       line: [row.STREET_NUM, row.STREET_HALF_NUM, row.FULL_STREET_NAME, row.BLDG_ID && `BLDG ${row.BLDG_ID}`, row.UNIT_ID && `#${row.UNIT_ID}`].filter(Boolean).join(' '),
       legal,
     });
   }
+  seenAccounts.clear();
   log(`accounts with an address: ${accounts.size}, without: ${noAddress}`);
 
-  for await (const row of zipTable(zip, 'ACCOUNT_APPRL_YEAR.CSV', ['ACCOUNT_NUM', 'APPRAISAL_YR', 'IMPR_VAL', 'LAND_VAL', 'TOT_VAL', 'PREV_MKT_VAL', 'CITY_JURIS_DESC', 'ISD_JURIS_DESC', 'COUNTY_TAXABLE_VAL', 'SPTD_CODE'])) {
+  for await (const row of zipTable(zip, 'ACCOUNT_APPRL_YEAR.CSV', ['ACCOUNT_NUM', 'APPRAISAL_YR', 'GIS_PARCEL_ID', 'IMPR_VAL', 'LAND_VAL', 'TOT_VAL', 'PREV_MKT_VAL', 'CITY_JURIS_DESC', 'ISD_JURIS_DESC', 'COUNTY_TAXABLE_VAL', 'SPTD_CODE'])) {
+    // Count every claim, including suppressed, non-residential and unaddressed accounts.
+    if (row.GIS_PARCEL_ID) parcelAccounts.set(row.GIS_PARCEL_ID, parcelAccounts.has(row.GIS_PARCEL_ID) ? null : row.ACCOUNT_NUM);
+    if (records.has(row.ACCOUNT_NUM)) ambiguousAccounts.add(row.ACCOUNT_NUM);
     const account = accounts.get(row.ACCOUNT_NUM);
     if (!account) continue;
     const [kind, homeType] = USES[row.SPTD_CODE] || ['other', null];
-    if (account.restricted) {
+    if (restrictedAccounts.has(row.ACCOUNT_NUM)) {
       records.set(row.ACCOUNT_NUM, { id: `pp:${kind}:${FIPS}:${row.ACCOUNT_NUM}`, kind, address: account.address, facts: {}, restricted: true });
       continue;
     }
@@ -79,6 +90,7 @@ async function build({ work, today = new Date() }) {
     records.set(row.ACCOUNT_NUM, { id: `pp:${kind}:${FIPS}:${row.ACCOUNT_NUM}`, kind, home_type: homeType, address: account.address, facts });
   }
 
+  accounts.clear();
   const usable = (id) => {
     const record = records.get(id);
     return record && !record.restricted ? record : null;
@@ -87,7 +99,13 @@ async function build({ work, today = new Date() }) {
   for await (const row of zipTable(zip, 'RES_DETAIL.CSV', ['ACCOUNT_NUM', 'YR_BUILT', 'EFF_YR_BUILT', 'CDU_RATING_DESC', 'TOT_MAIN_SF', 'TOT_LIVING_AREA_SF', 'PCT_COMPLETE', 'NUM_STORIES_DESC', 'CONSTR_FRAM_TYP_DESC', 'FOUNDATION_TYP_DESC', 'HEATING_TYP_DESC', 'AC_TYP_DESC', 'EXT_WALL_DESC', 'ROOF_TYP_DESC', 'ROOF_MAT_DESC', 'NUM_FIREPLACES', 'NUM_FULL_BATHS', 'NUM_HALF_BATHS', 'NUM_BEDROOMS', 'POOL_IND', 'NUM_UNITS'])) {
     const record = usable(row.ACCOUNT_NUM);
     // A few accounts list a second building: the first is the main one.
-    if (!record || seenMain.has(row.ACCOUNT_NUM)) continue;
+    if (!record) continue;
+    // A single-family classification can still describe multiple dwellings on one parcel.
+    if (number(row.NUM_UNITS) > 1) ambiguousAccounts.add(row.ACCOUNT_NUM);
+    if (seenMain.has(row.ACCOUNT_NUM)) {
+      ambiguousAccounts.add(row.ACCOUNT_NUM);
+      continue;
+    }
     seenMain.add(row.ACCOUNT_NUM);
     const { facts } = record;
     put(facts, 'year_built', positive(row.YR_BUILT));
@@ -112,11 +130,17 @@ async function build({ work, today = new Date() }) {
     const half = positive(row.NUM_HALF_BATHS);
     put(facts, 'full_baths', full);
     put(facts, 'half_baths', half);
-    if (full || half) facts.bathrooms = (full || 0) + 0.5 * (half || 0);
+    // A stated zero half-bath count completes a total. An absent or invalid component does not.
+    const fullCount = number(row.NUM_FULL_BATHS);
+    const halfCount = number(row.NUM_HALF_BATHS);
+    if ([fullCount, halfCount].every((count) => Number.isInteger(count) && count >= 0)) {
+      put(facts, 'bathrooms', positive(fullCount + 0.5 * halfCount));
+    }
     if (row.POOL_IND === 'Y') facts.pool = 'Yes';
     if (record.kind === 'building') put(facts, 'units', positive(row.NUM_UNITS));
   }
 
+  seenMain.clear();
   for await (const row of zipTable(zip, 'COM_DETAIL.CSV', ['ACCOUNT_NUM', 'YEAR_BUILT', 'GROSS_BLDG_AREA', 'NUM_STORIES', 'NUM_UNITS', 'HEATING_TYP_DESC', 'AC_TYP_DESC', 'FOUNDATION_TYP_DESC', 'CONSTR_TYP_DESC'])) {
     const record = usable(row.ACCOUNT_NUM);
     if (!record) continue;
@@ -178,11 +202,15 @@ async function build({ work, today = new Date() }) {
     if (record && label && !record.facts.exemptions.includes(label)) record.facts.exemptions.push(label);
   }
 
+  const mapLabel = `Measured from Dallas Central Appraisal District’s ${year} certified parcel map`;
   const output = [...records.values()];
   output.push(...condoBuildings(output, { fips: FIPS, county: COUNTY }));
+  await fillDallasLots(dir, year, parcelAccounts, records, ambiguousAccounts, output);
 
   return [{
     fips: FIPS, state: 'TX', name: COUNTY, publisher: 'Dallas Central Appraisal District', dataset: 'certified data files', method: 'county', source: 'tx-dallas',
+    require_mapped_lot_label: true,
+    held_from: { mapped_lots: { lot_sqft: mapLabel, lot_acres: mapLabel } },
     title: 'Appraisal district records', as_of: asOf, stale_after_days: 540, records: output,
   }];
 }

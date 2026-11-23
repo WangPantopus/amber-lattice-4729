@@ -166,6 +166,9 @@ async function main() {
       if (address.zip) zips.add(address.zip);
       if (address.city) cities.add(address.city);
     }
+    for (const roll of Object.values(about.municipal_rolls || {})) {
+      roll.stale_after = addDays(roll.file_revised, staleAfterDays);
+    }
     fs.writeFileSync(path.join(opts.out, 'counties', `${about.fips}.json`), JSON.stringify({
       ...about,
       release,
