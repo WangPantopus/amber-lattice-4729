@@ -223,7 +223,7 @@ const fipsOfFile = (name) => {
 };
 
 /** One county's entry from its newest file (or an older one that still has street numbers). Null when no parcel has a street number. */
-async function countyEntry(work, lists, name, { key, date, older }) {
+async function countyEntry(work, lists, name, { key, date, older }, useDescriptions) {
   const fips = fipsOfFile(name);
   const buildings = await buildingsOf(work, fips, lists);
   const zip = path.join(work, 'nc-onemap', `${name}.zip`);
@@ -234,7 +234,20 @@ async function countyEntry(work, lists, name, { key, date, older }) {
   const county = `${name.replace(/-/g, ' ').replace(/(^|\s)\S/g, (first) => first.toUpperCase()).replace(/^Mc(\w)/, (_, next) => `Mc${next.toUpperCase()}`)} County`;
   let noAddress = 0;
   const read = async (earlier) => {
-    for await (const row of dbfRows(zip, member, COLUMNS, OPTIONAL)) {
+    const columns = useDescriptions ? [...COLUMNS, 'PARUSEDSC2'] : COLUMNS;
+    const options = useDescriptions ? { optional: [...OPTIONAL.optional, 'PARUSEDSC2'] } : OPTIONAL;
+    for await (const row of dbfRows(zip, member, columns, options)) {
+      // Lenoir's November export moved the primary description into its secondary column.
+      // Older files used that column for a different classification. Only use words the county confirms for this primary code.
+      if (useDescriptions && !row.PARUSEDESC) {
+        const code = positive(row.PARUSECODE);
+        if (code && row.PARUSEDSC2 && useDescriptions.get(code) === row.PARUSEDSC2) {
+          row.PARUSEDESC = row.PARUSEDSC2;
+          row.PARUSECODE = row.PARUSECODE.padStart(2, '0');
+        } else if (row.PARUSECODE === '0' && !row.PARUSEDSC2) {
+          row.PARUSECODE = '';
+        }
+      }
       const record = fromRow(earlier ? { ...earlier.get(parcelOf(row)), ...filled(row) } : row, fips, county, buildings);
       if (!record) noAddress += 1;
       else if (!seen.has(record.id)) {
@@ -278,11 +291,11 @@ async function* build({ work, compare = null }) {
 }
 
 /** One county's entry from OneMap's parcels, for a connector that adds the county's own building facts to it. */
-async function countyParcels(work, fips) {
+async function countyParcels(work, fips, useDescriptions) {
   const { files, lists } = await stateFiles();
   const name = [...files.keys()].find((file) => fipsOfFile(file) === fips);
   if (!name) throw new Error(`OneMap no longer lists a file for ${fips}`);
-  const entry = await countyEntry(work, lists, name, files.get(name));
+  const entry = await countyEntry(work, lists, name, files.get(name), useDescriptions);
   if (!entry) throw new Error(`${fips}'s OneMap parcels have no street numbers`);
   return entry;
 }
