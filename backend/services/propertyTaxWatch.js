@@ -64,7 +64,7 @@ async function evaluate() {
     }
     for (const home of page || []) {
       homes += 1;
-      const found = await similarHomes.forHome(home, homeRecords.liveCopy(home));
+      const found = await similarHomes.forHome(home, await homeRecords.liveCopy(home));
       if (!found || found.stance !== 'above') continue;
       above += 1;
       // Null when this year's notice was already written (or the owner turned home reminders off).

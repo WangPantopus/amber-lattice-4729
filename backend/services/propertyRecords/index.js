@@ -21,15 +21,11 @@ const router = require('./router');
 const counts = require('./counts');
 const reader = require('./reader');
 const identity = require('./identity');
+const { suppressionHash, addressSuppressed, parcelSuppressed } = require('./suppressions');
 const { municipalRelease } = require('./format');
 const { parse, sortKey, zip5, city: cityKey, stateCode } = require('./addressKey');
 
 const MATCH_RANK = { exact: 0, building_only: 1, parcel_only: 2, ambiguous: 3, restricted: 4, unsupported: 5, stale: 6 };
-
-function suppressionHash(salt, fips, query) {
-  return crypto.createHash('sha256')
-    .update([salt, fips, query.number, query.pre, query.name, query.suffix, query.post, query.unit].join('|')).digest('hex');
-}
 
 /** Counties a state's file says this address can be in: by ZIP, else by city. */
 function countiesFor(stateFile, zip, city) {
@@ -74,7 +70,6 @@ async function lookup(address, { serves = router.serves } = {}) {
   if (!counties.length) return { match: 'unsupported', reason: 'no_release' };
 
   const query = { ...parsed, zip, city: cityKey(address.city) };
-  const suppressions = await reader.suppressions();
   const answers = await Promise.all(counties.map(async (fips) => {
     const county = stateFile.jurisdictions[fips];
     const facts = { jurisdiction: fips, county };
@@ -82,9 +77,14 @@ async function lookup(address, { serves = router.serves } = {}) {
     // Past its date a county's answer can't be vouched for, unless its past_date switch keeps it answering from the
     // release it serves (router.js): homeRecord.js then says how old that release is.
     if (county.stale_after && Date.now() > Date.parse(county.stale_after) && !router.pastDateFor(fips)) return { match: 'stale', reason: 'release_past_date', ...facts };
-    if (suppressions?.hashes?.includes(suppressionHash(suppressions.salt, fips, query))) return { match: 'restricted', ...facts };
+    const suppressions = await reader.suppressions(fips);
+    if (addressSuppressed(suppressions, fips, query)) return { match: 'restricted', ...facts };
     const stored = await reader.recordsAt(fips, county.release, sortKey(parsed));
-    const records = router.listedUnitsFor(fips) ? identity.withListedUnits(stored) : stored;
+    // Keep a protected candidate in identity resolution so removing it cannot select a different home.
+    const candidates = suppressions?.parcel_hashes?.[fips]?.length
+      ? stored.map(record => parcelSuppressed(suppressions, fips, record.facts?.parcel_number) ? { ...record, restricted: true } : record)
+      : stored;
+    const records = router.listedUnitsFor(fips) ? identity.withListedUnits(candidates) : candidates;
     const answer = identity.resolve(query, records, { sharedFacts: router.sharedFactsFor(fips) });
     const municipality = router.municipalityFor(fips);
     if (!municipality) return { ...answer, ...facts };

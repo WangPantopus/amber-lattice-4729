@@ -55,7 +55,7 @@ router.put('/:id/rent-report', verifyToken, async (req, res) => {
 
     const report = await realRentService.setReport({
       // The report's size is the Home's bedrooms as every other screen shows them (householdFacts.shownColumns).
-      home: { ...home, ...householdFacts.shownColumns(home, homeRecords.liveCopy(home)) },
+      home: { ...home, ...householdFacts.shownColumns(home, await homeRecords.liveCopy(home)) },
       userId,
       monthlyRent: req.body && req.body.monthly_rent,
       bedrooms: req.body && req.body.bedrooms,

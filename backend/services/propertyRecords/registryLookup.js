@@ -6,18 +6,13 @@
  * asks (registry.js; scripts/property-index/registry-t2.cjs).
  */
 
-const crypto = require('crypto');
+const { suppressionHash } = require('./suppressions');
 const identity = require('./identity');
 const { registryId } = require('./registryFormat');
 const { parse, parts, sortKey, zip5, city: cityKey, stateCode } = require('./addressKey');
 
 const MATCH_RANK = { exact: 0, building_only: 1, ambiguous: 2, restricted: 3, unsupported: 4, stale: 5 };
 const REGISTRY_IDENTITY = { requireRequestedBuilding: true };
-
-function suppressionHash(salt, fips, query) {
-  return crypto.createHash('sha256')
-    .update([salt, fips, query.number, query.pre, query.name, query.suffix, query.post, query.unit].join('|')).digest('hex');
-}
 
 /** Each record's ID, and a unit's point when it shares its building's. */
 function complete(fips, records) {
