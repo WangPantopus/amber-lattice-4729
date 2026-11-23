@@ -59,6 +59,8 @@ const switchesPath = (name) => `switches/${name}.json`;
 /** The municipal evidence and the earlier deadline of the two files. Old releases lack the municipal dates. */
 function municipalRelease(county, municipality) {
   const roll = county?.municipal_rolls?.[municipality];
+  // Older Boston releases treated every CD account as a residence, including storage.
+  if (municipality === 'BOSTON' && roll?.dwelling_descriptions_checked !== true) return null;
   if (!roll?.publisher || !roll.dataset || ![roll.as_of, roll.file_revised, roll.stale_after].every(
     (date) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)),
   )) return null;
