@@ -19,6 +19,7 @@ const logger = require('../../utils/logger');
 const reader = require('./reader');
 const router = require('./router');
 const counts = require('./counts');
+const { municipalRelease } = require('./format');
 const { stateOfCounty } = require('./addressKey');
 
 const UNANSWERED = ['off', 'no_record', 'ambiguous'];
@@ -123,12 +124,15 @@ async function loadReport({ days = 7, until = new Date() } = {}) {
   const names = await namesFor(list.filter((row) => row.fips).map((row) => row.fips));
   for (const row of list.filter((entry) => entry.fips)) {
     row.mode = router.modeFor(row.fips);
-    const county = states.get(row.state)?.jurisdictions?.[row.fips];
-    row.name = county?.name || names.get(row.fips) || null;
+    if (row.mode === 'municipal') row.municipality = router.municipalityFor(row.fips);
+    const stored = states.get(row.state)?.jurisdictions?.[row.fips];
+    const county = row.municipality ? municipalRelease(stored, row.municipality) : stored;
+    row.name = stored?.name || names.get(row.fips) || null;
     // Unknown when the index can't be read here, which isn't the same as no release.
     row.has_release = states.has(row.state) ? Boolean(county) : null;
     if (county) {
       Object.assign(row, { release: county.release, as_of: county.as_of, stale_after: county.stale_after || null, source: county.source || null, records: county.records ?? null, source_status: county.status });
+      if (county.file_revised) row.file_revised = county.file_revised;
       if (county.stale_after) row.days_left = daysLeft(county.stale_after, new Date());
     }
   }
@@ -146,8 +150,8 @@ async function loadReport({ days = 7, until = new Date() } = {}) {
     vendors,
     attom_calls: vendors.attom || 0,
     queue: asked.filter((row) => row.has_release === false),
-    ready: asked.filter((row) => row.has_release && row.mode !== 'live'),
-    stale_soon: counties.filter((row) => row.mode === 'live' && Number.isFinite(row.days_left) && row.days_left <= STALE_SOON_DAYS).sort((a, b) => a.days_left - b.days_left),
+    ready: asked.filter((row) => row.has_release && !router.serves(row.fips)),
+    stale_soon: counties.filter((row) => router.serves(row.fips) && Number.isFinite(row.days_left) && row.days_left <= STALE_SOON_DAYS).sort((a, b) => a.days_left - b.days_left),
     counties,
     no_county: list.filter((row) => !row.fips).sort(byUnanswered),
   };

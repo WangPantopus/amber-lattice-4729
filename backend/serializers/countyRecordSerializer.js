@@ -569,7 +569,8 @@ function withAge(sections, copy) {
 function recordFooter(copy) {
   const date = dateLabel(copy.as_of);
   const source = `From ${copy.publisher}\u2019s ${copy.dataset}`;
-  const line = date ? `${source} \u00b7 updated ${date}` : source;
+  const dated = copy.municipal_match ? 'assessed as of' : 'updated';
+  const line = date ? `${source} \u00b7 ${dated} ${date}` : source;
   // A publisher whose terms ask for it: its notice goes wherever it's named as the source (homeRecord.js copyFromAnswer).
   return copy.notice ? `${line} \u00b7 ${copy.notice}` : line;
 }
