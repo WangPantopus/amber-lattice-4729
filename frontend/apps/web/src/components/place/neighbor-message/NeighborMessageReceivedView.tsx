@@ -67,7 +67,7 @@ function AnonSender({ time }: { time: string }) {
         <ShieldCheck size={23} strokeWidth={2} />
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-base font-bold text-app-text -tracking-[0.012em]">From a verified neighbor nearby</div>
+        <div className="text-base font-bold text-app-text -tracking-[0.012em]">From a verified home nearby</div>
         <div className="text-[12.5px] text-app-text-muted mt-px">On your block · {time}</div>
       </div>
       <Chip label="Verified" variant="success" icon={ShieldCheck} />
@@ -217,9 +217,9 @@ export default function NeighborMessageReceivedView({
       key: 'blocked',
       icon: Ban,
       tone: 'neutral',
-      title: 'Block this neighbor',
+      title: 'Block this sender',
       sub: "Stop messages from this verified home. They won't be notified.",
-      doneTitle: 'Neighbor blocked',
+      doneTitle: 'Sender blocked',
       onClick: onBlock,
     },
     {
@@ -235,7 +235,7 @@ export default function NeighborMessageReceivedView({
 
   return (
     <div>
-      <DetailHeader title="Message" address="Inbox · verified neighbors" backHref="/app/place" />
+      <DetailHeader title="Message" address="Inbox · verified homes" backHref="/app/place" />
 
       <div className="px-4 sm:px-5 pt-2 pb-10">
         <ReceivedCard message={message} />
@@ -248,7 +248,7 @@ export default function NeighborMessageReceivedView({
         ) : (
           <div className="flex items-start gap-2 px-3.5 py-3 rounded-xl border bg-app-surface border-app-border text-[12.5px] text-app-text-muted leading-[18px]">
             <Ban size={14} strokeWidth={2} className="mt-px shrink-0" />
-            <span>Replies are off for this neighbor.</span>
+            <span>Replies are off for this sender.</span>
           </div>
         )}
 
@@ -262,7 +262,7 @@ export default function NeighborMessageReceivedView({
         <div className="flex items-start gap-2 mt-3.5 px-0.5 text-[12.5px] text-app-text-muted leading-[18px]">
           <Shield size={14} strokeWidth={2} className="mt-px shrink-0" />
           <span>
-            You&apos;re in control. This neighbor doesn&apos;t know who you are, and you can stop messages from them at
+            You&apos;re in control. This sender doesn&apos;t know who you are, and you can stop messages from them at
             any time.
           </span>
         </div>

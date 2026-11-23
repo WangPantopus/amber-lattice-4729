@@ -25,7 +25,7 @@ public final class VerificationCenterViewModel: GroupedListDataSource {
     }
 
     public var footerCaption: String? {
-        "Verified neighbors can find you in search and reach you with confidence."
+        "People with a verified home can find you in search and reach you with confidence."
     }
 
     public private(set) var state: GroupedListState = .loading

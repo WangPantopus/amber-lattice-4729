@@ -206,10 +206,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pantopus.app
         PRODUCT_NAME: Pantopus
-        # iPhone only: no screen has an iPad layout, and an iPad build needs its own
-        # App Store screenshots. iPads still run the app in iPhone compatibility mode.
-        # Set per target: XcodeGen's iOS preset sets "1,2" on every target.
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone and iPad (founder, 2026-11-21): the layouts follow the width the
+        # window has (readable column, side-by-side columns, Place's two columns), and
+        # iPad windows of any size keep clear of the window buttons. iPad support can't
+        # be taken back on the App Store once released, and needs iPad screenshots.
+        # Set per target, the same on the app and both extensions.
+        TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         DEVELOPMENT_ASSET_PATHS: '"Pantopus/Preview Content"'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -288,6 +290,7 @@ targets:
       - path: Pantopus/Features/Place/Detail/TodaySkyMoments.swift
       - path: Pantopus/Features/Place/Detail/TodaySkyHomes.swift
       - path: Pantopus/Features/Place/Detail/TodaySkyHouse.swift
+      - path: Pantopus/Features/Place/Detail/TodaySkyHouseSpots.swift
       - path: Pantopus/Features/Place/Detail/SkyWind.swift
       # First-launch scope: the "Tasks near me" widget reads the same
       # launch-feature switches as the app (open_gigs).
@@ -313,7 +316,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pantopus.app.widgets
         PRODUCT_NAME: PantopusWidgets
-        TARGETED_DEVICE_FAMILY: "1" # matches the app
+        TARGETED_DEVICE_FAMILY: "1,2" # matches the app
         SKIP_INSTALL: YES
       configs:
         Debug:
@@ -357,7 +360,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pantopus.app.notifications
         PRODUCT_NAME: PantopusNotificationService
-        TARGETED_DEVICE_FAMILY: "1" # matches the app
+        TARGETED_DEVICE_FAMILY: "1,2" # matches the app
         SKIP_INSTALL: YES
       configs:
         Debug:

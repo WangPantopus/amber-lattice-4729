@@ -1,7 +1,8 @@
 # Plans for the holidays: the build plan
 
-November 15, 2026. Nothing is built. The founder starts the build; this plan
-says what starts when, what waits, who builds what and how each step is checked.
+November 15, 2026. What is built so far is in the [README](README.md), under
+Status. The founder starts each part of the build; this plan says what starts
+when, what waits, who builds what and how each step is checked.
 The steps are named in [03-build-contract.md](03-build-contract.md), section 1.
 
 ## 1. Two tracks
@@ -44,6 +45,19 @@ answers, a guest can answer one in a browser with no account. The open link, the
 counts, Kids welcome, the bring list and occasions need new store builds.
 
 ## 3. The business track and its gates
+
+**Changed on November 16.** The founder said to keep every session working
+until everything discussed and designed is built and verified, without asking
+before each piece. The business track is therefore being built now, in the
+order B0 to B6 ([briefs 5 to 7](05-session-briefs.md)). The gates in the table
+below no longer hold the build: they hold switching a step on. Every step is
+built behind a switch that stays off, and turning one on for real people or
+real money stays the founder's, after the gate beside it.
+
+One risk is accepted with this: the accountant's answer on Washington sales
+tax, or the lawyer's read, may change the bill at the place after it is built.
+
+### The gates
 
 | Step | Gate | Who clears it |
 | --- | --- | --- |
@@ -109,10 +123,13 @@ The "Done when" lists in the contract, section 16, are the bar. In short:
       `plans_business` on for testers; run the by-hand trial; send the terms to
       a lawyer and the sales-tax question to an accountant.
 
-## 7. Later, not planned here
+## 7. The extras
 
-Find a date, Chip in, Gift exchange, Photos afterwards, Groups, and one person
-paying for a group. Each needs its boards drawn and confirmed before it gets a
-contract. Find a date and Gift exchange fit the bring list's pattern (one JSON
-value on the plan, changed by revision number), so they are not expected to need
-a new table.
+Find a date, chip in, gift exchange, photos afterwards, the same people again,
+and one person paying for a group were drawn and written up on November 16 and
+are being built: [08-extras.md](08-extras.md) holds their design, contract,
+screens and "Done when", and its section 8 the order and who builds what
+([brief 8](05-session-briefs.md)). None adds a table.
+
+Still later, and needing the founder's word: a named group kept between plans,
+which would need a new table.

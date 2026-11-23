@@ -17,6 +17,7 @@ import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.identity.ProfileChanges
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.data.api.models.feed.FeedCursor
+import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.posts.MyPostDto
 import app.pantopus.android.data.api.models.posts.MyPostsResponse
 import app.pantopus.android.data.api.models.posts.PostReactionKind
@@ -32,6 +33,7 @@ import app.pantopus.android.ui.screens.feed.pulse.PostStatus
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
 import app.pantopus.android.ui.screens.feed.pulse.icon
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import app.pantopus.android.ui.screens.shared.activity_filter_sheet.ActivityFilter
 import app.pantopus.android.ui.screens.shared.activity_filter_sheet.ActivitySortOrder
 import app.pantopus.android.ui.screens.shared.filter_sheet.FilterOption
@@ -106,6 +108,10 @@ data class MyPostsDeleteTarget(
  * Mutations:
  *   - archive / unarchive — POST /:id/archive and /:id/unarchive with
  *     optimistic rollback on failure.
+ *
+ * Each post is drawn as its Pulse card ([cards], the profile's card model), as on the Pulse tab: photos, reactions,
+ * Save, Repost. The card's ⋯ opens this screen's own menu (Edit, Pin, Archive or Restore, Delete); the rows stand in
+ * for a post the build can't read as a card.
  */
 @HiltViewModel
 class MyPostsViewModel
@@ -142,6 +148,32 @@ class MyPostsViewModel
         private var openPostHandler: (MyPostDto) -> Unit = {}
         private var composeHandler: () -> Unit = {}
         private var editPostHandler: (MyPostDto) -> Unit = {}
+
+        private val _cardToast = MutableStateFlow<String?>(null)
+
+        /** A card's Save, Repost or reaction says how it went ("Saved."), as on a profile. */
+        val cardToast: StateFlow<String?> = _cardToast.asStateFlow()
+
+        /** Your posts as Pulse cards and what your taps on them did. */
+        val cards =
+            ProfilePostCards(
+                scope = viewModelScope,
+                posts = postsRepo,
+                viewerId = ::currentUserId,
+                onToast = { _cardToast.value = it },
+                // As in Pulse: your posts keep their feed look.
+                profileColors = false,
+            )
+
+        /** Each of your posts as the feed's, for its card. */
+        private val feedById = mutableMapOf<String, FeedPost>()
+
+        /** The tap count when the read that just landed started; -1 when the cards' rows come from no new read. */
+        private var cardReadRevision = -1
+
+        fun dismissCardToast() {
+            _cardToast.value = null
+        }
 
         val postChanges = postsRefresh.ticks
 
@@ -326,6 +358,7 @@ class MyPostsViewModel
             if (!loadedAtLeastOnce) {
                 postsRepo.userPostsCopy(userId, PAGE_SIZE, includeArchived = true).data?.let { copy ->
                     posts = copy.posts
+                    keep(copy)
                     nextPage = nextPageAfter(copy)
                     loadedAtLeastOnce = true
                     applyState()
@@ -335,6 +368,7 @@ class MyPostsViewModel
             // Keep the rows already paged in (bounded) rather than collapsing
             // the list to its first page on every refresh.
             val depth = posts.size.coerceIn(PAGE_SIZE, MAX_REFRESH_DEPTH)
+            val revision = cards.actionRevision
             viewModelScope.launch {
                 val result = postsRepo.userPosts(userId, depth, includeArchived = true, force = force)
                 val copy = postsRepo.userPostsCopy(userId, depth, includeArchived = true)
@@ -344,6 +378,8 @@ class MyPostsViewModel
                 when (result) {
                     is NetworkResult.Success -> {
                         val retained = replaceRefreshedHead(result.data)
+                        keep(result.data)
+                        cardReadRevision = revision
                         loadedAtLeastOnce = true
                         applyState()
                         if (retained > 0 && !readPending) recheckRetainedTail(result.data, retained, generation)
@@ -414,6 +450,7 @@ class MyPostsViewModel
                     when (val page = postsRepo.userPosts(userId, PAGE_SIZE, cursor.createdAt, cursor.id, includeArchived = true)) {
                         is NetworkResult.Success -> {
                             tail += page.data.posts
+                            keep(page.data)
                             next = nextPageAfter(page.data)
                         }
                         is NetworkResult.Failure -> {
@@ -446,6 +483,7 @@ class MyPostsViewModel
             if (result is NetworkResult.Success) {
                 val known = posts.mapTo(HashSet()) { it.id }
                 posts = posts + result.data.posts.filterNot { it.id in known }
+                keep(result.data)
                 nextPage = nextPageAfter(result.data)
                 applyState()
             }
@@ -484,7 +522,15 @@ class MyPostsViewModel
 
         private fun currentUserId(): String? = (authRepo.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
+        /** Keeps a reply's posts as the feed's, for their cards. */
+        private fun keep(response: MyPostsResponse) {
+            response.feedPosts.forEach { feedById[it.id] = it }
+        }
+
         private fun applyState() {
+            // The cards follow the rows: the same posts in the same order (each tab draws the ones it lists).
+            cards.show(posts.mapNotNull { feedById[it.id] }, cardReadRevision)
+            cardReadRevision = -1
             val now = nowProvider()
             val projections =
                 posts.map { dto ->
@@ -555,7 +601,7 @@ class MyPostsViewModel
                         headline = "You haven’t posted yet",
                         subcopy =
                             "Ask a question, recommend a spot, or share a local heads-up. " +
-                                "Your neighbors will see it on the Pulse.",
+                                "People near you will see it on the Pulse.",
                         ctaTitle = "Write a post",
                         onCta = { composeHandler() },
                     )
@@ -590,6 +636,22 @@ class MyPostsViewModel
                     profilePinned = dto.profilePinned.takeUnless { archived },
                     isPlanPost = dto.isPlanPost,
                 )
+        }
+
+        /** A post card's ⋯ on Active or Archived: this screen's menu for that post. */
+        fun requestKebab(postId: String) {
+            posts.firstOrNull { it.id == postId }?.let(::requestKebab)
+        }
+
+        /** "Edit post" in the menu: the compose flow with the post filled in (the old row's Edit). */
+        fun editPost(postId: String) {
+            _kebabTarget.value = null
+            posts.firstOrNull { it.id == postId }?.let(editPostHandler)
+        }
+
+        /** Opens a post's page by id (a card's quoted post). */
+        fun openPost(postId: String) {
+            openPostHandler(posts.firstOrNull { it.id == postId } ?: MyPostDto(id = postId, createdAt = ""))
         }
 
         fun cancelKebab() {

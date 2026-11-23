@@ -35,7 +35,8 @@ function scopeAccessForHomes(userId, homes = { areas: [], verifiedAreaIds: new S
     if (areaIds.size) clauses.push(`and(${scope}.eq.verified_area,${field('area_id')}.in.(${[...areaIds].join(',')}))`);
     return q.or(clauses.join(','), referencedTable ? { referencedTable } : {});
   }
-  return { allows, canRead, query };
+  // townIds and areaIds are what query() grants, for a caller that applies the same rule in SQL.
+  return { allows, canRead, query, townIds, areaIds };
 }
 
 module.exports = { scopeAccessForHomes };

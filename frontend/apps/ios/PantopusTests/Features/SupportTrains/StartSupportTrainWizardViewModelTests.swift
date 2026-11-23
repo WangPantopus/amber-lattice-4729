@@ -41,11 +41,14 @@ final class StartSupportTrainWizardViewModelTests: XCTestCase {
         XCTFail("Timed out waiting for \(description)")
     }
 
+    /// A week from today (a start date that has passed can't be picked), at a home the organizer chose.
     private func makeVM(routes: [String: [SequencedURLProtocol.Response]] = [:]) -> StartSupportTrainWizardViewModel {
-        let calendar = Calendar(identifier: .gregorian)
-        let start = calendar.date(from: DateComponents(year: 2026, month: 5, day: 19))!
-        let end = calendar.date(from: DateComponents(year: 2026, month: 5, day: 25))!
-        return StartSupportTrainWizardViewModel(api: makeAPI(routes: routes), startDate: start, endDate: end)
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let end = calendar.date(byAdding: .day, value: 6, to: start)!
+        let vm = StartSupportTrainWizardViewModel(api: makeAPI(routes: routes), startDate: start, endDate: end)
+        vm.whereModel.selectHome("home-1")
+        return vm
     }
 
     // MARK: - Step gating

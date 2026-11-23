@@ -489,9 +489,34 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
         onOpenVacationHoldHandler()
     }
 
-    /// A piece tapped in the list.
+    /// The mantel at the top of the personal list (experience plan Part 7): this season's opened Christmas cards the
+    /// list has loaded; none on other drawers and tabs, in Sent, and after January 6.
+    var mantelCards: [HolidayCardMantel.Card] {
+        guard LaunchFeatures.cardTable, isLive, selectedDrawer == .me, currentTab == .incoming, !showsSent else { return [] }
+        return HolidayCardMantel.cards(in: loadedMail, viewed: viewedMailIds)
+    }
+
+    /// A piece tapped in the list. A Christmas card takes the list's other waiting cards with it, for "Open the next
+    /// card" (experience plan Part 4).
     public func openMail(_ mailId: String) {
+        HolidayCardWaiting.hand(from: mailId, waiting: waitingCardIds)
         onOpenMail(mailId)
+    }
+
+    /// The cards in the list that can be opened now: delivered, not opened, and not sealed (a seal that has lifted
+    /// counts), oldest first.
+    private var waitingCardIds: [String] {
+        loadedMail
+            .filter { mail in
+                guard let card = mail.item.card, !card.sealed else { return false }
+                return !mail.item.viewed && !viewedMailIds.contains(mail.id)
+            }
+            .sorted { first, second in
+                let one = MailDates.parse(first.item.deliveredAt) ?? MailDates.parse(first.item.createdAt) ?? .distantPast
+                let two = MailDates.parse(second.item.deliveredAt) ?? MailDates.parse(second.item.createdAt) ?? .distantPast
+                return one < two
+            }
+            .map(\.id)
     }
 
     /// The header's search: every piece this person can read, on the server.
@@ -588,6 +613,15 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
             rebuildFromSample()
             return
         }
+        // A pull's reads run in a task of their own. SwiftUI on iOS 18 (and an app built with its SDK) cancels the
+        // pull's task whenever this screen draws again during it, as it does once the badges answer: the list, Sent
+        // and the cards were never asked for, and the cards row went with the failed read.
+        await Task { await readAgain() }.value
+    }
+
+    /// Everything a pull reads again: the badges and today's round, the routing queue, the list on screen (or Sent),
+    /// and the Christmas cards.
+    private func readAgain() async {
         await fetchDrawerBadges()
         await fetchPendingRouting()
         if showsSent {
@@ -826,20 +860,19 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
     }
 
     /// Christmas cards (`holiday_cards` + `mailbox`): whether sending is open
-    /// and today's card, for the row at the top of Me. Off, closed, or not
-    /// answering: no row.
+    /// and today's card, for the row at the top of Me. Off or closed: no row.
+    /// Not answering: no row at first, and a row already shown stays.
     private func fetchChristmasCards() async {
         guard LaunchFeatures.holidayCards, LaunchFeatures.mailbox, onOpenChristmasCards != nil else {
             christmasCards = nil
             return
         }
         let response: HolidayCardsResponse? = try? await api.request(HolidayCardEndpoints.cards())
-        christmasCards = response?.open == true ? response : nil
-        if let response {
-            HolidayCardWords.postageOn = response.postageEnabled
-            // The other ways into a card (the tab's envelope, Today, profiles, the side menu) follow this answer.
-            if case let .signedIn(user) = AuthManager.shared.state { HolidayCardDoors.shared.note(response, account: user.id) }
-        }
+        guard let response else { return }
+        christmasCards = response.open ? response : nil
+        HolidayCardWords.postageOn = response.postageEnabled
+        // The other ways into a card (the tab's envelope, Today, profiles, the side menu) follow this answer.
+        if case let .signedIn(user) = AuthManager.shared.state { HolidayCardDoors.shared.note(response, account: user.id) }
     }
 
     /// The row's tap: the card flow, or today's card.

@@ -28,7 +28,8 @@ public enum MomentAudience: String, Codable, Sendable, Hashable, CaseIterable {
 
 /// Where a Moment is on its way to the map.
 public enum MomentState: String, Sendable, Hashable {
-    case uploading, checking, live, held, ended
+    /// `scheduled`: shared later, waiting for its time; only its author sees it (v4.0).
+    case uploading, checking, live, held, ended, scheduled
 }
 
 /// Who posted: a person, a business, or the Pantopus curator.
@@ -146,9 +147,13 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
     /// `MomentHeightDTOs.swift`); none unless heights are on for you and its author showed it.
     public let altitudeFt: Int?
     public let flying: Bool
+    /// The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail.
+    public let floating: Bool
+    /// Live until then (v4.1, `MomentLiveDTOs.swift`): the dot and "Live now". The map clears it once it passes.
+    public var liveUntil: Date?
 
     private enum CodingKeys: String, CodingKey {
-        case id, author, latitude, longitude, moments, mine, preview, flying
+        case id, author, latitude, longitude, moments, mine, preview, flying, floating
         case altitudeFt = "altitude_ft"
         case placeLabel = "place_label"
         case newestAt = "newest_at"
@@ -171,6 +176,8 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         preview = try? c.decodeIfPresent(MomentRingPreviewDTO.self, forKey: .preview)
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
+        floating = (try? c.decodeIfPresent(Bool.self, forKey: .floating)) ?? false
+        liveUntil = Self.liveUntil(from: decoder)
     }
 
     /// One Moment as a ring of its own: opened from a chat quote, with no map behind it.
@@ -194,6 +201,8 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         preview = nil
         altitudeFt = moment.altitudeFt
         flying = moment.flying
+        floating = moment.sky.floating
+        liveUntil = moment.live.liveUntil
     }
 }
 
@@ -233,6 +242,10 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// How high it was made, in feet above sea level, and whether in flight (contract v3.8); `height` is the picture's.
     public let altitudeFt: Int?
     public let flying: Bool
+    /// Floating over an area, shared later, when it shares (v4.0, `MomentSkyDTOs.swift`).
+    public let sky: MomentSkyStateDTO
+    /// Taken here, live until when, and the weather (v4.1, `MomentLiveDTOs.swift`).
+    public let live: MomentLiveStateDTO
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -281,6 +294,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         noLocation = (try? c.decodeIfPresent(Bool.self, forKey: .noLocation)) ?? false
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
+        sky = MomentSkyStateDTO(from: decoder)
+        live = MomentLiveStateDTO(from: decoder)
     }
 
     public var media: URL? {
@@ -318,9 +333,11 @@ public struct MomentsMapResponse: Decodable, Sendable {
     /// from a server before it.
     public let floatOn: Bool
     public let sun: MomentSunDTO?
+    /// The Sky: your own Moments waiting to share later, for your row only; empty while the Sky is off for you.
+    public let scheduled: [MomentDTO]
 
     private enum CodingKeys: String, CodingKey {
-        case rings, unplaced, sun
+        case rings, unplaced, sun, scheduled
         case heightsOn = "heights_on"
         case floatOn = "float_on"
     }
@@ -332,6 +349,7 @@ public struct MomentsMapResponse: Decodable, Sendable {
         heightsOn = (try? c.decodeIfPresent(Bool.self, forKey: .heightsOn)) ?? false
         floatOn = (try? c.decodeIfPresent(Bool.self, forKey: .floatOn)) ?? false
         sun = try? c.decodeIfPresent(MomentSunDTO.self, forKey: .sun)
+        scheduled = ((try? c.decodeIfPresent([MomentDTO].self, forKey: .scheduled)) ?? []).filter { $0.state == .scheduled }
     }
 }
 
@@ -371,6 +389,8 @@ public struct MomentPlacePreviewDTO: Decodable, Sendable, Hashable {
     public let hasConnections: Bool?
     /// The sheet may offer "Show elevation" here (contract v3.8): heights are on for you and it isn't your home.
     public let canShowHeight: Bool
+    /// The Sky's fields, only when the server answers `sky: true` (v4.0, `MomentSkyDTOs.swift`).
+    public let sky: MomentSkyPreviewDTO?
 
     private enum CodingKeys: String, CodingKey {
         case places
@@ -395,6 +415,7 @@ public struct MomentPlacePreviewDTO: Decodable, Sendable, Hashable {
         pickWithinM = try? c.decodeIfPresent(Double.self, forKey: .pickWithinM)
         hasConnections = try? c.decodeIfPresent(Bool.self, forKey: .hasConnections)
         canShowHeight = (try? c.decodeIfPresent(Bool.self, forKey: .canShowHeight)) ?? false
+        sky = MomentSkyPreviewDTO(from: decoder)
     }
 }
 

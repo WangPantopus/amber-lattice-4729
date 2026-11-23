@@ -15,6 +15,8 @@ import SwiftUI
 struct TodayAgendaList: View {
     let items: [TodayAgendaItem]
     let next: TodayAgendaItem?
+    /// The row lit after a pickup schedule was saved (JOURNEYS 1).
+    var lit: String?
     let onAction: (TodayAgendaItem.Action) -> Void
     let onShowCalendar: () -> Void
     @State private var open: Set<String> = []
@@ -24,8 +26,10 @@ struct TodayAgendaList: View {
     /// The soonest five; a long week stays one tap away rather than a wall.
     private static let firstRows = 5
 
+    /// The lit row shows even when it is past the first five.
     private var shown: [TodayAgendaItem] {
-        showsAll ? items : Array(items.prefix(Self.firstRows))
+        let litLater = lit.flatMap { id in items.firstIndex { $0.id == id } }.map { $0 >= Self.firstRows } ?? false
+        return showsAll || litLater ? items : Array(items.prefix(Self.firstRows))
     }
 
     var body: some View {
@@ -73,6 +77,8 @@ struct TodayAgendaList: View {
         let isOpen = open.contains(item.id)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
+                // A pickup entry opens the pickup editor; every other row folds open.
+                if item.editsPickup { return onAction(.editPickup) }
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
                     if isOpen { open.remove(item.id) } else { open.insert(item.id) }
                 }
@@ -91,7 +97,8 @@ struct TodayAgendaList: View {
                         TodayOwnerLabel(owner: item.owner)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Icon(.chevronDown, size: 16, strokeWidth: 2.25, color: Theme.Color.appTextMuted)
+                    // A chevron that turns opens here; one to the side goes somewhere.
+                    Icon(item.editsPickup ? .chevronRight : .chevronDown, size: 16, strokeWidth: 2.25, color: Theme.Color.appTextMuted)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
                         .accessibilityHidden(true)
                 }
@@ -101,11 +108,18 @@ struct TodayAgendaList: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
-            .accessibilityHint(isOpen ? "Folds the details." : "Shows the details, source and actions.")
-            .accessibilityIdentifier("today.agenda.row")
+            .accessibilityValue(item.editsPickup ? "" : (isOpen ? "Expanded" : "Collapsed"))
+            .accessibilityHint(hint(item, isOpen: isOpen))
+            .accessibilityIdentifier(item.editsPickup ? "pickup.entry.\(item.day)" : "today.agenda.row")
+            .pickupLit(item.id == lit)
             if isOpen { details(item) }
         }
+        .id(item.id)
+    }
+
+    private func hint(_ item: TodayAgendaItem, isOpen: Bool) -> String {
+        if item.editsPickup { return "Opens the pickup schedule" }
+        return isOpen ? "Folds the details." : "Shows the details, source and actions."
     }
 
     private func details(_ item: TodayAgendaItem) -> some View {

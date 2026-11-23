@@ -37,7 +37,7 @@ struct PlaceMoneyDetailContent: View {
         VStack(alignment: .leading, spacing: 0) {
             PlaceDetailSectionLabel(text: "Rate watch")
             if intel.tier == .t4 {
-                RateWatchSection(vm: rateWatch)
+                RateWatchSection(vm: rateWatch, onMailCode: vm.mailCodeAction)
                     .task { await rateWatch.load() }
             } else {
                 PlaceLockedCard(
@@ -143,7 +143,7 @@ struct PlaceMoneyDetailContent: View {
                         if realRentSection.access != .locked { await realRent.load() }
                     }
                 PlaceSourceNote(
-                    name: realRentSection.source ?? "Pantopus · verified neighbors on your block",
+                    name: realRentSection.source ?? "Pantopus · verified residents on your block",
                     asOf: nil
                 )
             }

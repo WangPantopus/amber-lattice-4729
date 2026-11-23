@@ -1,4 +1,5 @@
 const { timezoneFromCoordinates, validTimezone } = require('../utils/timezone');
+const { homeTimezone, resolveTrainTimezone, todayIn, trainToday } = require('../services/supportTrainZone');
 const express = require('express');
 const { createHash } = require('node:crypto');
 const Joi = require('joi');
@@ -7,7 +8,7 @@ const router = express.Router();
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
-const { supportTrainDraftLimiter, supportTrainWriteLimiter } = require('../middleware/rateLimiter');
+const { supportTrainDraftLimiter, supportTrainWriteLimiter, supportTrainGuestSignupLimiter, previewLimiter } = require('../middleware/rateLimiter');
 const { asyncHandler } = require('../errorHandler');
 const {
   draftSupportTrain,
@@ -19,7 +20,14 @@ const {
   requireSupportTrainViewer,
   supportTrainUnavailable,
 } = require('../middleware/supportTrainPermissions');
-const { emitSupportTrainEvent, formatSupportTrainSlotTime, inviteLetters, giftReceiptLetter } = require('../services/supportTrainNotifications');
+const {
+  emitSupportTrainEvent,
+  formatSupportTrainSlotTime,
+  guestCancelSignatureMatches,
+  guestCancelUrl,
+  inviteLetters,
+  giftReceiptLetter,
+} = require('../services/supportTrainNotifications');
 const { deliverNewMessage } = require('./chats');
 const { loadChatPeople, chatPersonRow } = require('../services/chatPeople');
 const {
@@ -57,6 +65,9 @@ function withTrainPerson(row, people) {
 const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
 const { applyLocationPrecision } = require('../utils/locationPrivacy');
 const { householdHomeIds } = require('../utils/homeMailAccess');
+const blockService = require('../services/blockService');
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const { isPublicStorageUrl } = require('../services/s3Service');
 const {
   countActiveReservationsForSlot,
@@ -177,22 +188,9 @@ function formatSupportTrainSlotDate(raw) {
   });
 }
 
-/** Today's date (YYYY-MM-DD) where the train is, so "already passed" means the same day for everyone on it. */
-function todayWhereTrainIs(timezone) {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: validTimezone(timezone) || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-}
-
-/** Whether a slot's date is before today where the train is (the train's timezone lives on its Activity). */
+/** Whether a date (YYYY-MM-DD) is before today where the train is. */
 async function slotDateHasPassed(st, slot) {
-  const { data: activity } = await supabaseAdmin
-    .from('Activity').select('timezone').eq('id', st.activity_id).maybeSingle();
-  return String(slot.slot_date) < todayWhereTrainIs(timezoneFromCoordinates(st.delivery_lat, st.delivery_lng, activity?.timezone));
+  return String(slot.slot_date) < (await trainToday(st));
 }
 
 function formatAddressLabel(address) {
@@ -200,6 +198,69 @@ function formatAddressLabel(address) {
   const firstLine = [address.address, address.unit_number].filter(Boolean).join(' ');
   const secondLine = [address.city, address.state, address.zip_code].filter(Boolean).join(', ');
   return [firstLine, secondLine].filter(Boolean).join('\n');
+}
+
+/**
+ * Where help goes changed on a live train (PATCH /:id): tell everyone who already holds the old address for a date
+ * from today on. Signed-in helpers with the address get a notification (no address in it; the train shows the new
+ * one); email guests whose address was shared get the new address by email, replacing the earlier one. Runs after
+ * the save has answered, so a save costs nothing more.
+ */
+async function notifyDeliveryChanged(train, actorUserId) {
+  const supportTrainId = train.id;
+  const [{ data: reservations, error }, { data: grants, error: grantErr }] = await Promise.all([
+    supabaseAdmin
+      .from('SupportTrainReservation')
+      .select('id, user_id, guest_name, guest_email, guest_address_shared_at, SupportTrainSlot:slot_id ( slot_date, slot_label, start_time, end_time )')
+      .eq('support_train_id', supportTrainId)
+      .eq('status', 'reserved'),
+    supabaseAdmin.from('SupportTrainAddressGrant').select('grantee_user_id').eq('support_train_id', supportTrainId),
+  ]);
+  if (error || grantErr) throw error || grantErr;
+  const today = await trainToday(train);
+  const upcoming = (reservations || []).filter((r) => r.SupportTrainSlot?.slot_date && String(r.SupportTrainSlot.slot_date) >= today);
+  const granted = new Set((grants || []).map((g) => g.grantee_user_id));
+  const helperIds = [...new Set(upcoming.filter((r) => r.user_id && granted.has(r.user_id) && r.user_id !== actorUserId).map((r) => r.user_id))];
+  if (helperIds.length > 0) {
+    await emitSupportTrainEvent({
+      event: 'support_train.delivery_changed',
+      supportTrainId,
+      actorUserId,
+      payload: { helper_user_ids: helperIds },
+    });
+  }
+  // One email per guest address for one change, dated with their earliest coming date.
+  const slotKey = (r) => `${r.SupportTrainSlot?.slot_date || ''} ${r.SupportTrainSlot?.start_time || ''}`;
+  const earliestByEmail = new Map();
+  for (const r of upcoming) {
+    if (r.user_id || !r.guest_email || !r.guest_address_shared_at) continue;
+    const email = r.guest_email.trim().toLowerCase();
+    const seen = earliestByEmail.get(email);
+    if (!seen || slotKey(r) < slotKey(seen)) earliestByEmail.set(email, r);
+  }
+  const guests = [...earliestByEmail.values()];
+  if (guests.length === 0) return;
+  const delivery = await getSupportTrainExactDeliveryDetails(train, supportTrainId, { includeInstructions: true });
+  if (!delivery.address?.address?.trim()) return;
+  for (const r of guests) {
+    const slot = r.SupportTrainSlot;
+    const result = await sendGuestReservationAddressEmail({
+      toEmail: r.guest_email,
+      guestName: r.guest_name || 'there',
+      trainTitle: train.Activity?.title || 'Support Train',
+      slotLabel: slot?.slot_label || 'Support',
+      slotDate: formatSupportTrainSlotDate(slot?.slot_date),
+      slotTime: formatSupportTrainSlotTime(slot),
+      addressLabel: delivery.addressLabel,
+      deliveryInstructions: delivery.deliveryInstructions,
+      specialInstructions: delivery.specialInstructions,
+      supportTrainId,
+      replacesEarlier: true,
+    });
+    if (!result?.success) {
+      logger.error('Support Train changed-address guest email failed', { supportTrainId, reservationId: r.id, error: result?.error });
+    }
+  }
 }
 
 async function getSupportTrainExactDeliveryDetails(st, supportTrainId, { includeInstructions = true } = {}) {
@@ -351,15 +412,19 @@ const draftFromStorySchema = Joi.object({
   }).optional(),
 });
 
+/**
+ * Where help goes on create: one of the organizer's homes (its id is enough; the Home holds the point, as on
+ * PATCH /:id), or a typed or GPS address with its point.
+ */
 const deliveryLocationSchema = Joi.object({
   mode: Joi.string().valid('home', 'current', 'address').required(),
-  latitude: Joi.number().min(-90).max(90).required(),
-  longitude: Joi.number().min(-180).max(180).required(),
-  address: Joi.string().min(3).max(500).required(),
+  latitude: Joi.number().min(-90).max(90).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+  longitude: Joi.number().min(-180).max(180).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+  address: Joi.string().min(3).max(500).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
   city: Joi.string().allow('', null).optional(),
   state: Joi.string().allow('', null).optional(),
   zip: Joi.string().allow('', null).optional(),
-  home_id: Joi.string().uuid().allow(null).optional(),
+  home_id: Joi.string().uuid().when('mode', { is: 'home', then: Joi.required(), otherwise: Joi.allow(null).optional() }),
   place_id: Joi.string().allow('', null).optional(),
 });
 
@@ -392,8 +457,20 @@ const updateSupportTrainSchema = Joi.object({
   enable_groceries: Joi.boolean().optional(),
   enable_gift_funds: Joi.boolean().optional(),
   show_exact_address_after_signup: Joi.boolean().optional(),
-  /** Activity.visibility: private = not in neighborhood Tasks list; nearby/public = listed when in radius */
+  /** Activity.visibility: private = not in the nearby list; nearby/public = listed when in radius */
   activity_visibility: Joi.string().valid('private', 'nearby', 'public').optional(),
+  /** Set or change where help goes: one of the organizer's homes, or a typed or GPS address (A1). */
+  delivery_location: Joi.object({
+    mode: Joi.string().valid('home', 'current', 'address').required(),
+    home_id: Joi.string().uuid().when('mode', { is: 'home', then: Joi.required(), otherwise: Joi.allow(null).optional() }),
+    latitude: Joi.number().min(-90).max(90).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+    longitude: Joi.number().min(-180).max(180).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+    address: Joi.string().min(3).max(500).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+    city: Joi.string().allow('', null).optional(),
+    state: Joi.string().allow('', null).optional(),
+    zip: Joi.string().allow('', null).optional(),
+    place_id: Joi.string().allow('', null).optional(),
+  }).optional(),
 }).min(1);
 
 const recipientProfileSchema = Joi.object({
@@ -444,23 +521,21 @@ const generateSlotsSchema = Joi.object({
 }).custom((value, helpers) => {
   const start = new Date(value.start_date);
   const end = new Date(value.end_date);
-  if (end < start)
-    return helpers.error('any.invalid', { message: 'end_date must be >= start_date' });
+  if (end < start) return helpers.message('Pick an end date on or after the start date.');
   const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-  if (diffDays > 90)
-    return helpers.error('any.invalid', { message: 'Date range must not exceed 90 days' });
+  if (diffDays > 90) return helpers.message('A schedule can cover up to 90 days. Pick a shorter range, then add more dates later.');
   const st = value.start_time;
   const et = value.end_time;
-  if ((st && !et) || (!st && et)) {
-    return helpers.error('any.invalid', {
-      message: 'start_time and end_time must both be set when customizing slot times',
-    });
-  }
-  if (st && et && st >= et) {
-    return helpers.error('any.invalid', { message: 'start_time must be before end_time' });
-  }
+  if ((st && !et) || (!st && et)) return helpers.message('Pick both a start time and an end time.');
+  if (st && et && st >= et) return helpers.message('Pick an end time after the start time.');
   return value;
 });
+
+// A date's end time comes after its start (both "HH:MM").
+function endsAfterStart(startTime, endTime) {
+  if (!startTime || !endTime) return true;
+  return String(endTime).slice(0, 5) > String(startTime).slice(0, 5);
+}
 
 const customSlotSchema = Joi.object({
   client_request_id: Joi.string().uuid().optional(),
@@ -475,7 +550,8 @@ const customSlotSchema = Joi.object({
     .pattern(/^\d{2}:\d{2}$/)
     .allow(null)
     .optional(),
-  capacity: Joi.number().integer().min(1).max(20).default(1),
+  // One helper per date: the database keeps one reserved signup per slot (idx_support_train_reservation_slot_reserved).
+  capacity: Joi.number().integer().valid(1).default(1),
   notes: Joi.string().max(500).allow(null).optional(),
 });
 
@@ -491,7 +567,7 @@ const updateSlotSchema = Joi.object({
     .pattern(/^\d{2}:\d{2}$/)
     .allow(null)
     .optional(),
-  capacity: Joi.number().integer().min(1).max(20).optional(),
+  capacity: Joi.number().integer().valid(1).optional(),
   notes: Joi.string().max(500).allow(null).optional(),
   status: Joi.string().valid('open', 'canceled').optional(),
 }).min(1);
@@ -704,7 +780,8 @@ router.get(
   })
 );
 
-// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs)
+// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs). Each train's distance is
+// from the area its page shows to people who are not helping yet (buildCoarseLocation), to the nearest 100 m.
 router.get(
   '/nearby',
   verifyToken,
@@ -724,7 +801,9 @@ router.get(
     if (!Number.isFinite(radiusMeters)) {
       radiusMeters = 40234; // ~25 mi
     }
-    radiusMeters = Math.min(Math.max(radiusMeters, 100), 200000);
+    // Never narrower than about a mile: the list measures from the area a train's page shows, not from an address
+    // (list_support_trains_nearby keeps the same floor).
+    radiusMeters = Math.min(Math.max(radiusMeters, 1609), 200000);
 
     let limit = parseInt(req.query.limit, 10);
     if (!Number.isFinite(limit)) limit = 40;
@@ -747,6 +826,141 @@ router.get(
     res.json({ support_trains: data || [] });
   })
 );
+
+// The link in a guest's signup email. Opening it records that the address is the helper's own (for every signup that
+// address holds on the train), then shows the train's page. An unknown link just shows the site.
+const guestConfirmHash = (token) => createHash('sha256').update(`pantopus:st-guest-confirm:v1:${token}`).digest('hex');
+router.get(
+  '/guest-confirm/:token',
+  previewLimiter,
+  asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return res.redirect(302, APP_URL);
+    const { data: reservation, error } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .select('id, support_train_id, guest_email, user_id')
+      .eq('guest_confirm_token_hash', guestConfirmHash(token))
+      .maybeSingle();
+    if (error) return supportTrainUnavailable(res);
+    if (!reservation || reservation.user_id || !reservation.guest_email) return res.redirect(302, APP_URL);
+    const { error: markError } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .update({ guest_email_confirmed_at: new Date().toISOString() })
+      .eq('support_train_id', reservation.support_train_id)
+      .eq('guest_email', reservation.guest_email)
+      .is('user_id', null)
+      .is('guest_email_confirmed_at', null);
+    if (markError) logger.warn('Guest signup confirmation not recorded', { reservationId: reservation.id, error: markError.message });
+    return res.redirect(302, `${APP_URL}/support-trains/${reservation.support_train_id}`);
+  })
+);
+
+// ─── A guest's own signup, from the link in their emails (A6) ─────────────
+// The link names the signup and is signed by the server (guestCancelUrl). GET shows what it is; POST cancels it as the
+// helper's own cancel does: the date opens again and the organizers are told.
+const GUEST_SIGNUP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NOT_THIS_LINK = { error: 'NOT_FOUND', message: 'This link doesn’t work any more. Open the Support Train from your email to see where things stand.' };
+
+async function readGuestSignup(req) {
+  const { reservationId } = req.params;
+  const signature = req.method === 'GET' ? req.query.s : req.body?.s;
+  if (!GUEST_SIGNUP_ID.test(String(reservationId || '')) || !guestCancelSignatureMatches(reservationId, signature)) {
+    return { refused: true };
+  }
+  const { data, error } = await supabaseAdmin
+    .from('SupportTrainReservation')
+    .select('id, status, user_id, guest_name, guest_email, slot_id, support_train_id, Slot:slot_id ( slot_date, slot_label, start_time, end_time ), SupportTrain:support_train_id ( id, status, organizer_user_id, recipient_home_id, delivery_lat, delivery_lng, Activity!inner ( title, timezone, home_id ) )')
+    .eq('id', reservationId)
+    .maybeSingle();
+  if (error) return { failed: true };
+  if (!data || data.user_id || !data.guest_email || !data.SupportTrain) return { refused: true };
+  return { signup: data };
+}
+
+async function describeGuestSignup(signup) {
+  const train = signup.SupportTrain;
+  const passed = String(signup.Slot?.slot_date) < (await trainToday(train));
+  return {
+    reservation_id: signup.id,
+    support_train_id: train.id,
+    title: train.Activity?.title || 'Support Train',
+    status: signup.status,
+    slot_date: signup.Slot?.slot_date || null,
+    slot_label: signup.Slot?.slot_label || null,
+    slot_time: signup.Slot ? formatSupportTrainSlotTime(signup.Slot) : null,
+    can_cancel: signup.status === 'reserved' && !passed,
+  };
+}
+
+router.get(
+  '/guest-signups/:reservationId',
+  previewLimiter,
+  asyncHandler(async (req, res) => {
+    const { signup, refused, failed } = await readGuestSignup(req);
+    if (failed) return supportTrainUnavailable(res);
+    if (refused) return res.status(404).json(NOT_THIS_LINK);
+    res.json(await describeGuestSignup(signup));
+  })
+);
+
+router.post(
+  '/guest-signups/:reservationId/cancel',
+  supportTrainWriteLimiter,
+  validate(Joi.object({ s: Joi.string().max(64).required() })),
+  asyncHandler(async (req, res) => {
+    const { signup, refused, failed } = await readGuestSignup(req);
+    if (failed) return supportTrainUnavailable(res);
+    if (refused) return res.status(404).json(NOT_THIS_LINK);
+    const described = await describeGuestSignup(signup);
+    // A repeated tap, or a reply that was lost: the signup is already cancelled.
+    if (signup.status === 'canceled') return res.json(described);
+    if (!described.can_cancel) {
+      return res.status(409).json({
+        error: 'CANNOT_CANCEL',
+        message: signup.status === 'reserved'
+          ? 'This date has already passed, so there is nothing to cancel.'
+          : 'This help was already delivered, so the signup stays on the train.',
+      });
+    }
+    const { data: canceled, error } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .update({ status: 'canceled', canceled_at: new Date().toISOString() })
+      .eq('id', signup.id)
+      .eq('status', 'reserved')
+      .select('id')
+      .maybeSingle();
+    if (error) return supportTrainUnavailable(res, 'Couldn’t cancel your sign-up. Please try again.');
+    if (canceled) {
+      await resyncSlotAfterCancel(signup.slot_id);
+      emitSupportTrainEvent({
+        event: 'support_train.slot_canceled_by_helper',
+        supportTrainId: signup.support_train_id,
+        actorUserId: null,
+        payload: { slot_id: signup.slot_id, slot_label: signup.Slot?.slot_label, helper_name: signup.guest_name },
+      });
+    }
+    res.json({ ...described, status: 'canceled', can_cancel: false });
+  })
+);
+
+/** After a signup is cancelled, its date's count comes from the signups left, and it opens again when it has room. */
+async function resyncSlotAfterCancel(slotId) {
+  const { data: slot } = await supabaseAdmin
+    .from('SupportTrainSlot')
+    .select('id, slot_date, slot_label, filled_count, status, capacity')
+    .eq('id', slotId)
+    .maybeSingle();
+  if (!slot) return null;
+  try {
+    const newCount = await countActiveReservationsForSlot(slot.id);
+    const slotPatch = { filled_count: newCount };
+    if (['open', 'full'].includes(slot.status)) slotPatch.status = newCount >= slot.capacity ? 'full' : 'open';
+    await supabaseAdmin.from('SupportTrainSlot').update(slotPatch).eq('id', slot.id);
+  } catch (error) {
+    logger.error('Cancel reservation slot availability sync failed', { slotId: slot.id, error: error.message });
+  }
+  return slot;
+}
 
 // AI draft from organizer story
 router.post(
@@ -797,8 +1011,12 @@ router.post(
     } = req.body;
     const userId = req.user.id;
     // A train's organizers, recipient and helpers see its Home's exact address, so a train
-    // may only name a Home its organizer belongs to.
-    const namedHomeIds = [recipient_home_id, home_id].filter(Boolean);
+    // may only name a Home its organizer belongs to, as PATCH /:id answers (refused before anything is written).
+    const namedHomeIds = [
+      recipient_home_id,
+      home_id,
+      delivery_location?.mode === 'home' ? delivery_location.home_id : null,
+    ].filter(Boolean);
     if (namedHomeIds.length > 0) {
       const homeIds = await householdHomeIds(userId);
       if (namedHomeIds.some((id) => !homeIds.includes(id))) {
@@ -832,10 +1050,20 @@ router.post(
       title,
       summary: draft_payload.story || null,
       home_id: resolvedActivityHomeId,
-      timezone: timezoneFromCoordinates(deliveryFields.delivery_lat, deliveryFields.delivery_lng, timezone || null),
+      // The delivery point's zone, else the Home's, else the zone the organizer's device sent: a train needs one for
+      // its reminders and for "today" (A5).
+      timezone: deliveryFields.delivery_lat != null
+        ? timezoneFromCoordinates(deliveryFields.delivery_lat, deliveryFields.delivery_lng, timezone || null)
+        : (await homeTimezone(resolvedRecipientHomeId || resolvedActivityHomeId, timezone)) || validTimezone(timezone) || null,
     };
+    // The person a train is for is linked to their account only when the organizer knows them (knownToOrganizer);
+    // otherwise the train keeps them by name, and their account is not brought into it. The reply says so
+    // (recipient_linked: false), so the apps can tell the organizer.
+    const linkedRecipientId = recipient_user_id && (await knownToOrganizer(userId, recipient_user_id))
+      ? recipient_user_id : null;
+    const recipientReply = recipient_user_id ? { recipient_linked: Boolean(linkedRecipientId) } : {};
     const trainFields = {
-      recipient_user_id: recipient_user_id || null,
+      recipient_user_id: linkedRecipientId,
       recipient_home_id: resolvedRecipientHomeId,
       ...deliveryFields,
       story: draft_payload.story || null,
@@ -884,6 +1112,7 @@ router.post(
         support_train_id: existing.id,
         activity_id: existing.activity_id,
         status: 'draft',
+        ...recipientReply,
       });
     };
     if (requestTrainId) {
@@ -1012,6 +1241,7 @@ router.post(
       support_train_id: supportTrain.id,
       activity_id: activityId,
       status: 'draft',
+      ...recipientReply,
     });
   })
 );
@@ -1100,9 +1330,7 @@ router.post(
     const end = new Date(end_date + 'T00:00:00Z');
     let sortOrder = 0;
     // A date that is over can't take a signup, so no slot is made for it.
-    const { data: scheduleActivity } = await supabaseAdmin
-      .from('Activity').select('timezone').eq('id', st.activity_id).maybeSingle();
-    const today = todayWhereTrainIs(timezoneFromCoordinates(st.delivery_lat, st.delivery_lng, scheduleActivity?.timezone));
+    const today = await trainToday(st);
 
     for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
       const dow = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
@@ -1176,6 +1404,9 @@ router.post(
     // A date that is over can't take a signup.
     if (await slotDateHasPassed(st, { slot_date })) {
       return res.status(400).json({ error: 'SLOT_PASSED', message: 'Pick a date that has not passed.' });
+    }
+    if (!endsAfterStart(start_time, end_time)) {
+      return res.status(400).json({ error: 'INVALID_TIME_RANGE', message: 'Pick an end time after the start time.' });
     }
     // One editor keeps its command identity through an uncertain response.
     // The existing primary key arbitrates concurrent retries, scoped to actor/train.
@@ -1274,6 +1505,16 @@ router.patch(
 
     const isCancelingSlot = body.status === 'canceled' && slot.status !== 'canceled';
 
+    // A date can't be moved to a day that has passed, and its end comes after its start (B9).
+    if (body.slot_date !== undefined && body.slot_date !== slot.slot_date && (await slotDateHasPassed(st, body))) {
+      return res.status(400).json({ error: 'SLOT_PASSED', message: 'Pick a date that has not passed.' });
+    }
+    const nextStart = body.start_time !== undefined ? body.start_time : slot.start_time;
+    const nextEnd = body.end_time !== undefined ? body.end_time : slot.end_time;
+    if ((body.start_time !== undefined || body.end_time !== undefined) && !endsAfterStart(nextStart, nextEnd)) {
+      return res.status(400).json({ error: 'INVALID_TIME_RANGE', message: 'Pick an end time after the start time.' });
+    }
+
     // If changing support_mode, slot_date, or canceling the slot, check for existing reservations
     if (body.support_mode !== undefined || body.slot_date !== undefined || isCancelingSlot) {
       const { count } = await supabaseAdmin
@@ -1286,8 +1527,8 @@ router.patch(
         return res.status(409).json({
           error: 'SLOT_HAS_RESERVATIONS',
           message: isCancelingSlot
-            ? 'Cannot remove a slot with active reservations.'
-            : 'Cannot change support mode or date for a slot with active reservations.',
+            ? 'Someone is signed up for this date. Remove their signup first, then remove the date.'
+            : 'Someone is signed up for this date, so its day and kind of help stay as they are. Remove their signup first to change them.',
         });
       }
     }
@@ -1319,6 +1560,35 @@ router.patch(
   })
 );
 
+// ─── Who an organizer can bring into a train by account ──────
+
+const INVITES_PER_TRAIN = 100;
+const NOT_KNOWN = {
+  error: 'NOT_KNOWN',
+  message: "You can add people you're connected with or who share your home.",
+};
+
+/**
+ * Whether an organizer can bring this account into a Support Train (an invitation, a co-organizer, the person the
+ * train is for): their accepted connections and the people they share a home with, never across a block. The rule
+ * Plans invitations follow (services/plans/planInvites.js). Throws when it can't be told.
+ */
+async function knownToOrganizer(organizerId, userId) {
+  if (!organizerId || !userId) return false;
+  if (String(organizerId) === String(userId)) return true;
+  if (await blockService.isBlocked(organizerId, userId)) return false;
+  const { data, error } = await supabaseAdmin
+    .from('Relationship')
+    .select('status')
+    .in('status', ['accepted', 'blocked'])
+    .or(`and(requester_id.eq.${organizerId},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${organizerId})`);
+  if (error) throw Object.assign(new Error('Could not check who you can add. Please try again.'), { status: 503 });
+  if ((data || []).some((row) => row.status === 'blocked')) return false;
+  if ((data || []).some((row) => row.status === 'accepted')) return true;
+  const [mine, theirs] = await Promise.all([householdHomeIds(organizerId), householdHomeIds(userId)]);
+  return mine.some((id) => theirs.includes(id));
+}
+
 // ─── Co-organizer Management ──────────────────────────────────────────────
 
 const addOrganizerSchema = Joi.object({
@@ -1344,6 +1614,14 @@ router.post(
         .status(409)
         .json({ error: 'ALREADY_PRIMARY', message: 'This user is already the primary organizer.' });
     }
+    // The person the train is for doesn't run it: organizers see helpers' private notes to them.
+    if (st.recipient_user_id && user_id === st.recipient_user_id) {
+      return res.status(409).json({
+        error: 'IS_RECIPIENT',
+        message: "The person this Support Train is for can't also organize it.",
+      });
+    }
+    if (!(await knownToOrganizer(req.user.id, user_id))) return res.status(403).json(NOT_KNOWN);
 
     const { data, error } = await supabaseAdmin
       .from('SupportTrainOrganizer')
@@ -1602,7 +1880,9 @@ router.post(
     if (st.status !== 'draft') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot publish from status '${st.status}'. Only drafts can be published.`,
+        message: st.status === 'paused'
+          ? 'This Support Train is paused. Resume it to take signups again.'
+          : 'This Support Train has ended, so it can’t be published again.',
       });
     }
 
@@ -1616,7 +1896,7 @@ router.post(
     if ((slotCount || 0) === 0) {
       return res
         .status(422)
-        .json({ error: 'NO_SLOTS', message: 'Add at least one slot before publishing.' });
+        .json({ error: 'NO_SLOTS', message: 'Add at least one date before publishing.' });
     }
 
     // Verify recipient profile exists
@@ -1628,7 +1908,7 @@ router.post(
     if ((profileCount || 0) === 0) {
       return res.status(422).json({
         error: 'NO_RECIPIENT_PROFILE',
-        message: 'Add recipient profile details before publishing.',
+        message: 'Add the details about who this is for before publishing.',
       });
     }
 
@@ -1777,7 +2057,7 @@ router.post(
     if (st.status !== 'published' && st.status !== 'active') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot unpublish from status '${st.status}'.`,
+        message: 'Only a live Support Train can go back to a draft.',
       });
     }
 
@@ -1791,7 +2071,7 @@ router.post(
     if ((resCount || 0) > 0) {
       return res.status(409).json({
         error: 'HAS_ACTIVE_RESERVATIONS',
-        message: 'Cannot unpublish while there are active reservations.',
+        message: 'People are signed up, so this Support Train can’t go back to a draft. Pause it instead.',
       });
     }
 
@@ -1833,7 +2113,7 @@ router.post(
     if (st.status !== 'published' && st.status !== 'active') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot pause from status '${st.status}'. Only published or active trains can be paused.`,
+        message: st.status === 'draft' ? 'This Support Train is still a draft. Publish it first.' : 'This Support Train has ended, so it can’t be paused.',
       });
     }
 
@@ -1869,7 +2149,7 @@ router.post(
     if (st.status !== 'paused') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot resume from status '${st.status}'. Only paused trains can be resumed.`,
+        message: st.status === 'draft' ? 'This Support Train is still a draft. Publish it first.' : 'Only a paused Support Train can be resumed.',
       });
     }
 
@@ -1906,7 +2186,9 @@ router.post(
     if (!['published', 'active', 'paused'].includes(st.status)) {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot complete from status '${st.status}'.`,
+        message: st.status === 'draft'
+          ? 'This Support Train is still a draft, so there is nothing to close. Publish it, or delete the draft.'
+          : 'This Support Train is already archived.',
       });
     }
 
@@ -1954,7 +2236,7 @@ router.post(
     if (st.status !== 'completed') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot archive from status '${st.status}'. Only completed trains can be archived.`,
+        message: 'Close this Support Train before archiving it.',
       });
     }
 
@@ -2012,6 +2294,13 @@ router.post(
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only organizers or the recipient can post updates.',
+      });
+    }
+    // An ended train has no one left to tell (B9).
+    if (st.status === 'completed' || st.status === 'archived') {
+      return res.status(409).json({
+        error: 'IMMUTABLE_STATE',
+        message: 'This Support Train has ended, so updates can no longer be posted.',
       });
     }
     // Uploaded files only: an outside link would show its owner who read the update and when.
@@ -2537,7 +2826,29 @@ router.post(
   validate(createInviteSchema),
   asyncHandler(async (req, res) => {
     const st = req.supportTrain;
-    const { invitee_user_id, invitee_email } = req.body;
+    const { invitee_user_id } = req.body;
+    const invitee_email = req.body.invitee_email ? normalizeEmail(req.body.invitee_email) : null;
+
+    // An invitation by account goes to someone the inviter knows; nobody is invited twice; a train has a ceiling.
+    if (invitee_user_id && !(await knownToOrganizer(req.user.id, invitee_user_id))) {
+      return res.status(403).json(NOT_KNOWN);
+    }
+    const { data: invited, error: invitedError } = await supabaseAdmin
+      .from('SupportTrainInvite')
+      .select('*')
+      .eq('support_train_id', st.id)
+      .limit(INVITES_PER_TRAIN + 1);
+    if (invitedError) return supportTrainUnavailable(res);
+    const already = (invited || []).find((row) => (invitee_user_id
+      ? row.invitee_user_id === invitee_user_id
+      : !row.invitee_user_id && normalizeEmail(row.invitee_email) === invitee_email));
+    if (already) return res.status(200).json(already);
+    if ((invited || []).length >= INVITES_PER_TRAIN) {
+      return res.status(429).json({
+        error: 'TOO_MANY_INVITES',
+        message: `A Support Train can have up to ${INVITES_PER_TRAIN} invitations.`,
+      });
+    }
 
     const crypto = require('crypto');
     const inviteToken = crypto.randomBytes(24).toString('base64url');
@@ -2741,6 +3052,38 @@ router.post(
 
 // ─── Helper Reserve Flow ──────────────────────────────────────────────────
 
+/** Why a train takes no signups right now, in words a helper can act on. */
+function supportTrainClosedWords(status) {
+  if (status === 'paused') return 'This Support Train is paused, so it isn’t taking signups right now.';
+  if (status === 'draft') return 'This Support Train isn’t shared yet.';
+  return 'This Support Train has ended, so it isn’t taking signups.';
+}
+
+const MODE_SWITCH = { cook: 'enable_home_cooked_meals', takeout: 'enable_takeout', groceries: 'enable_groceries' };
+const MODE_WORDS = { cook: 'home-cooked meals', takeout: 'takeout', groceries: 'groceries' };
+
+/**
+ * Why a way of helping can't be used, or null: the train must ask for it, and (with `slot`) it must fit that date's
+ * kind (B3). A groceries date takes groceries; a meal date takes a home-cooked meal or takeout.
+ */
+function contributionRefusal(st, slot, mode) {
+  if (!st[MODE_SWITCH[mode]]) {
+    return {
+      error: 'MODE_NOT_ENABLED',
+      message: `The organizer isn’t asking for ${MODE_WORDS[mode] || 'that'} on this Support Train. Pick another way to help.`,
+    };
+  }
+  if (slot && (slot.support_mode === 'groceries') !== (mode === 'groceries')) {
+    return {
+      error: 'MODE_NOT_ENABLED',
+      message: slot.support_mode === 'groceries'
+        ? 'This date is for groceries. Choose Groceries to sign up for it.'
+        : 'This date is for a meal. Choose a home-cooked meal or takeout to sign up for it.',
+    };
+  }
+  return null;
+}
+
 // A helper may sign up only for a train they can open (the same rule as GET /:id). Link
 // trains take anyone with the link; a "My connections" train takes its organizers,
 // recipient and current helpers, the organizer's accepted connections, and invitees.
@@ -2777,6 +3120,23 @@ async function canJoinSupportTrain(st, userId) {
   return counts.some((result) => (result.count || 0) > 0);
 }
 
+/**
+ * Whether the organizer and this person have blocked each other (either way), as knownToOrganizer checks: then they
+ * can't sign up on the organizer's train, which would put them in its chat (C5). Throws when it can't be told.
+ */
+async function blockedFromTrain(st, userId) {
+  if (!userId || userId === st.organizer_user_id) return false;
+  if (await blockService.isBlocked(st.organizer_user_id, userId)) return true;
+  const { data, error } = await supabaseAdmin
+    .from('Relationship')
+    .select('id')
+    .eq('status', 'blocked')
+    .or(`and(requester_id.eq.${st.organizer_user_id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${st.organizer_user_id})`)
+    .limit(1);
+  if (error) throw Object.assign(new Error('Could not check this signup. Please try again.'), { status: 503 });
+  return (data || []).length > 0;
+}
+
 const reserveSchema = Joi.object({
   contribution_mode: Joi.string().valid('cook', 'takeout', 'groceries').required(),
   dish_title: Joi.string().max(200).allow(null).optional(),
@@ -2808,7 +3168,7 @@ router.post(
     if (st.status !== 'published' && st.status !== 'active') {
       return res.status(409).json({
         error: 'INVALID_STATE',
-        message: 'This Support Train is not currently accepting reservations.',
+        message: supportTrainClosedWords(st.status),
       });
     }
 
@@ -2819,24 +3179,14 @@ router.post(
       logger.error('Reserve slot access check failed', { supportTrainId: st.id, error: error.message });
       return res.status(500).json({ error: 'INTERNAL', message: 'Failed to reserve slot.' });
     }
-    if (!canJoin) {
+    if (!canJoin || (await blockedFromTrain(st, userId))) {
       return res
         .status(403)
-        .json({ error: 'FORBIDDEN', message: 'You do not have access to this Support Train.' });
+        .json({ error: 'FORBIDDEN', message: 'You can’t sign up for this Support Train.' });
     }
 
-    // Validate contribution_mode is enabled on the Support Train
-    const modeToFlag = {
-      cook: 'enable_home_cooked_meals',
-      takeout: 'enable_takeout',
-      groceries: 'enable_groceries',
-    };
-    if (!st[modeToFlag[body.contribution_mode]]) {
-      return res.status(409).json({
-        error: 'MODE_NOT_ENABLED',
-        message: `${body.contribution_mode} is not enabled on this Support Train.`,
-      });
-    }
+    const trainRefusal = contributionRefusal(st, null, body.contribution_mode);
+    if (trainRefusal) return res.status(409).json(trainRefusal);
 
     // Use an RPC or serialized queries to prevent race conditions.
     // Supabase JS doesn't support SELECT FOR UPDATE, so we use a
@@ -2859,8 +3209,10 @@ router.post(
     if (!['open', 'full'].includes(slot.status)) {
       return res
         .status(409)
-        .json({ error: 'SLOT_NOT_OPEN', message: 'This slot is no longer open.' });
+        .json({ error: 'SLOT_NOT_OPEN', message: 'This date is no longer open.' });
     }
+    const dateRefusal = contributionRefusal(st, slot, body.contribution_mode);
+    if (dateRefusal) return res.status(409).json(dateRefusal);
 
     // A lost successful reply must acknowledge this helper's unchanged signup
     // before capacity is checked. Reuse the existing reservation, without
@@ -3006,6 +3358,10 @@ router.post(
 
 // ─── Guest (Email-only) Reserve Flow ────────────────────────────────────────
 
+// An email address without a signed-in account behind it: signups it can hold on one train, and make in a day.
+const GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN = 5;
+const GUEST_SIGNUPS_PER_EMAIL_PER_DAY = 8;
+
 const guestReserveSchema = Joi.object({
   guest_name: Joi.string().trim().min(1).max(100).required(),
   guest_email: Joi.string().email().max(320).required(),
@@ -3023,6 +3379,7 @@ router.post(
   supportTrainWriteLimiter,
   optionalAuth,
   requireAvailableOptionalAuth,
+  supportTrainGuestSignupLimiter,
   loadSupportTrain,
   validate(guestReserveSchema),
   asyncHandler(async (req, res) => {
@@ -3037,7 +3394,7 @@ router.post(
     if (st.status !== 'published' && st.status !== 'active') {
       return res.status(409).json({
         error: 'INVALID_STATE',
-        message: 'This Support Train is not currently accepting reservations.',
+        message: supportTrainClosedWords(st.status),
       });
     }
 
@@ -3051,18 +3408,8 @@ router.post(
       });
     }
 
-    // Validate contribution_mode is enabled
-    const modeToFlag = {
-      cook: 'enable_home_cooked_meals',
-      takeout: 'enable_takeout',
-      groceries: 'enable_groceries',
-    };
-    if (!st[modeToFlag[body.contribution_mode]]) {
-      return res.status(409).json({
-        error: 'MODE_NOT_ENABLED',
-        message: `${body.contribution_mode} is not enabled on this Support Train.`,
-      });
-    }
+    const trainRefusal = contributionRefusal(st, null, body.contribution_mode);
+    if (trainRefusal) return res.status(409).json(trainRefusal);
 
     // Load the slot
     const { data: slot, error: slotErr } = await supabaseAdmin
@@ -3079,8 +3426,10 @@ router.post(
     if (!['open', 'full'].includes(slot.status)) {
       return res
         .status(409)
-        .json({ error: 'SLOT_NOT_OPEN', message: 'This slot is no longer open.' });
+        .json({ error: 'SLOT_NOT_OPEN', message: 'This date is no longer open.' });
     }
+    const dateRefusal = contributionRefusal(st, slot, body.contribution_mode);
+    if (dateRefusal) return res.status(409).json(dateRefusal);
 
     // A day that is over can't take a signup (an unfilled slot stays 'open' after its date).
     if (await slotDateHasPassed(st, slot)) {
@@ -3097,6 +3446,10 @@ router.post(
 
     if (activeReservationCount >= slot.capacity) {
       return res.status(409).json({ error: 'SLOT_FULL', message: 'This slot is already full.' });
+    }
+
+    if (authenticatedUserId && (await blockedFromTrain(st, authenticatedUserId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'You can’t sign up for this Support Train.' });
     }
 
     if (authenticatedUserId) {
@@ -3221,30 +3574,27 @@ router.post(
       });
     }
 
-    const { data: existingUsers, error: existingUserErr } = await supabaseAdmin
-      .from('User')
-      .select('id, email')
-      .ilike('email', guestEmail)
-      .limit(10);
-
-    if (existingUserErr) {
-      logger.warn('Guest reserve existing-user lookup failed', {
-        guestEmail,
-        error: existingUserErr.message,
+    // The answer is the same whether or not this email has an account. One address takes a few signups on a train and
+    // a few a day in all: nothing here shows the address is the caller's own, and each signup writes to it.
+    const [onThisTrain, today] = await Promise.all([
+      supabaseAdmin.from('SupportTrainReservation').select('id, guest_email_confirmed_at')
+        .eq('support_train_id', st.id).eq('guest_email', guestEmail).is('user_id', null).eq('status', 'reserved')
+        .limit(GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN + 1),
+      supabaseAdmin.from('SupportTrainReservation').select('id', { count: 'exact', head: true })
+        .eq('guest_email', guestEmail).is('user_id', null)
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+    if (onThisTrain.error || today.error) return supportTrainUnavailable(res);
+    if ((onThisTrain.data || []).length >= GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN || (today.count || 0) >= GUEST_SIGNUPS_PER_EMAIL_PER_DAY) {
+      return res.status(429).json({
+        error: 'TOO_MANY_SIGNUPS',
+        message: 'This email already has several signups. Sign in to Pantopus to help with more.',
       });
     }
-
-    const existingUser = (existingUsers || []).find(
-      (user) => normalizeEmail(user.email) === guestEmail
-    );
-
-    if (existingUser && !body.allow_guest_for_existing_account) {
-      return res.status(409).json({
-        error: 'ACCOUNT_EXISTS',
-        message:
-          'This email has a Pantopus account. Sign in for chat and in-app location sharing, or continue with email.',
-      });
-    }
+    // The link in the signup email records that the address was opened (GET /guest-confirm/:token). An address
+    // already confirmed on this train stays confirmed for its next signup.
+    const confirmToken = require('crypto').randomBytes(24).toString('base64url');
+    const confirmedBefore = (onThisTrain.data || []).map((row) => row.guest_email_confirmed_at).find(Boolean) || null;
 
     // Insert guest reservation (user_id is null)
     const { data: reservation, error: resErr } = await supabaseAdmin
@@ -3255,6 +3605,8 @@ router.post(
         user_id: null,
         guest_name: body.guest_name,
         guest_email: guestEmail,
+        guest_confirm_token_hash: guestConfirmHash(confirmToken),
+        guest_email_confirmed_at: confirmedBefore,
         status: 'reserved',
         contribution_mode: body.contribution_mode,
         dish_title: body.dish_title || null,
@@ -3328,6 +3680,8 @@ router.post(
       slotTime: formatSupportTrainSlotTime(slot),
       contributionMode: body.contribution_mode,
       supportTrainId: st.id,
+      confirmUrl: `${APP_URL}/api/activities/support-trains/guest-confirm/${confirmToken}`,
+      cancelUrl: guestCancelUrl(reservation.id),
     }).catch((err) => {
       logger.error('Guest confirmation email failed (non-fatal)', {
         guestEmail,
@@ -3335,6 +3689,7 @@ router.post(
       });
     });
 
+    delete reservation.guest_confirm_token_hash;
     res.status(201).json(reservation);
   })
 );
@@ -3412,7 +3767,7 @@ router.post(
     if (reservation.status === 'canceled') {
       return res.status(409).json({
         error: 'INVALID_STATE',
-        message: 'Cannot share the exact address for a canceled reservation.',
+        message: 'This signup was cancelled, so the address isn’t shared.',
       });
     }
 
@@ -3670,7 +4025,7 @@ router.post(
     if (reservation.status !== 'reserved') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot cancel from status '${reservation.status}'. Only reserved signups can be removed.`,
+        message: 'This help was already delivered, so the signup stays on the train.',
       });
     }
 
@@ -3696,27 +4051,7 @@ router.post(
 
     // Recalculate filled_count from active reservations after cancellation. This
     // avoids carrying forward stale denormalized slot counters.
-    const { data: slot } = await supabaseAdmin
-      .from('SupportTrainSlot')
-      .select('id, slot_date, slot_label, filled_count, status, capacity')
-      .eq('id', reservation.slot_id)
-      .single();
-
-    if (slot) {
-      try {
-        const newCount = await countActiveReservationsForSlot(slot.id);
-        const slotPatch = { filled_count: newCount };
-        if (['open', 'full'].includes(slot.status)) {
-          slotPatch.status = newCount >= slot.capacity ? 'full' : 'open';
-        }
-        await supabaseAdmin.from('SupportTrainSlot').update(slotPatch).eq('id', slot.id);
-      } catch (error) {
-        logger.error('Cancel reservation slot availability sync failed', {
-          slotId: slot.id,
-          error: error.message,
-        });
-      }
-    }
+    const slot = await resyncSlotAfterCancel(reservation.slot_id);
 
     if (isOwner && !isOrganizer) {
       emitSupportTrainEvent({
@@ -3739,6 +4074,7 @@ router.post(
           // A guest signed up by email only; the email is how they hear.
           helper_guest_email: reservation.user_id ? null : reservation.guest_email,
           helper_guest_name: reservation.user_id ? null : reservation.guest_name,
+          helper_guest_confirmed: Boolean(!reservation.user_id && reservation.guest_email_confirmed_at),
           slot_id: reservation.slot_id,
           slot_label: slot?.slot_label,
           slot_date: slot?.slot_date,
@@ -3761,12 +4097,14 @@ router.post(
   })
 );
 
-// Edit an existing signup without changing its helper, slot or lifecycle state.
+// Edit an existing signup without changing its helper, slot or lifecycle state: an organizer, or the helper whose
+// signup it is while it is still ahead of them (B1). note_to_recipient is left as it is when not sent.
 const editReservationSchema = Joi.object({
   dish_title: Joi.string().max(200).allow('', null).required(),
   restaurant_name: Joi.string().max(200).allow('', null).required(),
   estimated_arrival_at: Joi.string().isoDate().allow(null).required(),
   private_note_to_organizer: Joi.string().max(1000).allow('', null).required(),
+  note_to_recipient: Joi.string().max(1000).allow('', null).optional(),
   expected_updated_at: Joi.string().isoDate().raw().required(),
 });
 
@@ -3775,7 +4113,6 @@ router.patch(
   verifyToken,
   supportTrainWriteLimiter,
   loadSupportTrain,
-  requireSupportTrainRole(['primary', 'co_organizer']),
   validate(editReservationSchema),
   asyncHandler(async (req, res) => {
     const { reservationId } = req.params;
@@ -3789,11 +4126,33 @@ router.patch(
     if (readError) {
       return res.status(500).json({ error: 'INTERNAL', message: 'Could not load this signup.' });
     }
-    if (!reservation) {
+    const isOwner = Boolean(reservation?.user_id) && reservation.user_id === req.user.id;
+    let isOrganizer = req.supportTrain.organizer_user_id === req.user.id;
+    if (!isOrganizer) {
+      const { data: orgRow, error: orgErr } = await supabaseAdmin
+        .from('SupportTrainOrganizer')
+        .select('role')
+        .eq('support_train_id', req.supportTrain.id)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      if (orgErr) return supportTrainUnavailable(res);
+      isOrganizer = orgRow?.role === 'primary' || orgRow?.role === 'co_organizer';
+    }
+    if (!reservation || (!isOwner && !isOrganizer)) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Signup not found.' });
     }
     if (reservation.status === 'canceled') {
-      return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This signup was canceled. Reopen the list to refresh it.' });
+      return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This signup was cancelled. Refresh the page to see where things stand.' });
+    }
+    if (!isOrganizer && reservation.status !== 'reserved') {
+      return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This help was already delivered, so the signup can’t be changed.' });
+    }
+    // A helper changes only a signup still ahead of them on a train still running; organizers keep their edits.
+    if (!isOrganizer && ['completed', 'archived'].includes(req.supportTrain.status)) {
+      return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This Support Train has ended, so signups can’t be changed.' });
+    }
+    if (!isOrganizer && reservation.Slot?.slot_date && String(reservation.Slot.slot_date) < (await trainToday(req.supportTrain))) {
+      return res.status(409).json({ error: 'SLOT_PASSED', message: 'That date has passed, so the signup can’t be changed.' });
     }
     const body = req.body;
     const patch = {
@@ -3801,6 +4160,7 @@ router.patch(
       restaurant_name: body.restaurant_name?.trim() || null,
       estimated_arrival_at: body.estimated_arrival_at,
       private_note_to_organizer: body.private_note_to_organizer?.trim() || null,
+      ...(body.note_to_recipient !== undefined ? { note_to_recipient: body.note_to_recipient?.trim() || null } : {}),
     };
     const unchanged = Object.entries(patch).every(([key, value]) =>
       key === 'estimated_arrival_at' && value && reservation[key]
@@ -3809,6 +4169,7 @@ router.patch(
     );
     const people = await loadChatPeople([reservation.User?.id]);
     // A lost reply may be retried with the original version. Never write it twice.
+    delete reservation.guest_confirm_token_hash;
     if (unchanged) return res.json({ ...withTrainPerson(reservation, people), slot_date: reservation.Slot?.slot_date || null });
     const { data: updated, error: writeError } = await supabaseAdmin
       .from('SupportTrainReservation')
@@ -3823,8 +4184,9 @@ router.patch(
       return res.status(500).json({ error: 'INTERNAL', message: 'Could not save this signup. Try again.' });
     }
     if (!updated) {
-      return res.status(409).json({ error: 'CONFLICT', message: 'This signup changed. Pull down to refresh the signup list, then edit again.' });
+      return res.status(409).json({ error: 'CONFLICT', message: 'This signup changed meanwhile. Refresh, then edit it again.' });
     }
+    delete updated.guest_confirm_token_hash;
     res.json({ ...withTrainPerson(updated, people), slot_date: updated.Slot?.slot_date || null });
   })
 );
@@ -3886,7 +4248,7 @@ router.post(
     if (reservation.status !== 'reserved') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot mark as delivered from status '${reservation.status}'.`,
+        message: 'This signup was cancelled, so it can’t be marked delivered.',
       });
     }
 
@@ -3967,7 +4329,7 @@ router.post(
     if (reservation.status !== 'delivered') {
       return res.status(409).json({
         error: 'INVALID_TRANSITION',
-        message: `Cannot confirm from status '${reservation.status}'. Reservation must be in 'delivered' state.`,
+        message: reservation.status === 'canceled' ? 'This signup was cancelled, so there is nothing to confirm.' : 'This help hasn’t been marked delivered yet.',
       });
     }
 
@@ -4318,6 +4680,8 @@ router.get(
           'id, slot_date, slot_label, support_mode, start_time, end_time, status, filled_count, capacity'
         )
         .eq('support_train_id', supportTrainId)
+        // A removed date is gone for everyone (A10).
+        .neq('status', 'canceled')
         .order('slot_date', { ascending: true })
         .order('sort_order', { ascending: true }),
       supabaseAdmin
@@ -4339,7 +4703,8 @@ router.get(
         ? supabaseAdmin
             .from('SupportTrainReservation')
             .select(
-              'id, slot_id, status, contribution_mode, dish_title, restaurant_name, estimated_arrival_at, note_to_recipient, created_at'
+              // updated_at and their own private note let a helper edit their signup (PATCH reservation).
+              'id, slot_id, status, contribution_mode, dish_title, restaurant_name, estimated_arrival_at, note_to_recipient, private_note_to_organizer, created_at, updated_at'
             )
             .eq('support_train_id', supportTrainId)
             .eq('user_id', userId)
@@ -4369,8 +4734,12 @@ router.get(
 
     const profile = profileRes.data;
     let slots = slotsRes.data || [];
+    // The train's own day: a date before it has passed and takes no signup (A8), wherever the viewer is.
+    const timezone = await resolveTrainTimezone(st);
+    const today = todayIn(timezone);
     try {
-      slots = await normalizeSlotsWithActiveReservations(slots);
+      slots = (await normalizeSlotsWithActiveReservations(slots))
+        .map((slot) => ({ ...slot, is_past: String(slot.slot_date) < today }));
     } catch (error) {
       // The stored counts can be stale; open and full come from the signups themselves.
       logger.error('Support Train slot availability normalization failed', {
@@ -4484,8 +4853,12 @@ router.get(
       // My reservations (used to render \"You're signed up\" on slots)
       my_reservations: myReservations,
 
-      // Updates
-      updates: updatesRes.data || [],
+      // The train's zone and today's date there (YYYY-MM-DD), for "today", "passed" and arrival times.
+      timezone: timezone || null,
+      today,
+
+      // Updates: only for signed-in people on the train (its organizers, recipient and helpers), never on a link.
+      updates: viewerLevel === 'viewer' ? [] : (updatesRes.data || []),
 
       // Organizers (display info only)
       organizers,
@@ -4621,7 +4994,7 @@ router.patch(
     if (st.status === 'archived' || st.status === 'completed') {
       return res.status(409).json({
         error: 'IMMUTABLE_STATE',
-        message: 'Cannot update a completed or archived Support Train.',
+        message: 'This Support Train has ended, so it can no longer be changed.',
       });
     }
 
@@ -4655,6 +5028,36 @@ router.patch(
       supportTrainPatch.enable_gift_funds = Boolean(body.enable_gift_funds) && isLaunchFeatureEnabled('gift_funds');
     if (body.show_exact_address_after_signup !== undefined)
       supportTrainPatch.show_exact_address_after_signup = body.show_exact_address_after_signup;
+
+    // Where help goes, set or changed after the train was made, with the rule create uses: a home must be one the
+    // person making the change belongs to. A home and a typed address replace each other, and the train's zone
+    // follows the new place.
+    let deliveryChanged = false;
+    if (body.delivery_location) {
+      const loc = body.delivery_location;
+      if (loc.mode === 'home') {
+        const homeIds = await householdHomeIds(req.user.id);
+        if (!homeIds.includes(loc.home_id)) {
+          return res.status(403).json({ error: 'HOME_NOT_ACCESSIBLE', message: 'You can only use a home you belong to.' });
+        }
+        deliveryChanged = st.recipient_home_id !== loc.home_id;
+        Object.assign(supportTrainPatch, EMPTY_DELIVERY, { recipient_home_id: loc.home_id });
+        activityPatch.home_id = loc.home_id;
+        activityPatch.timezone = (await homeTimezone(loc.home_id, req.activity?.timezone)) || req.activity?.timezone || null;
+      } else {
+        const { delivery } = await resolveDeliveryLocation(req.user.id, loc);
+        if (!delivery) {
+          return res.status(400).json({ error: 'INVALID_ADDRESS', message: 'Pick an address from the suggestions, then save again.' });
+        }
+        deliveryChanged = Boolean(st.recipient_home_id)
+          || st.delivery_address !== delivery.delivery_address
+          || Number(st.delivery_lat) !== delivery.delivery_lat
+          || Number(st.delivery_lng) !== delivery.delivery_lng;
+        Object.assign(supportTrainPatch, delivery, { recipient_home_id: null });
+        activityPatch.home_id = null;
+        activityPatch.timezone = timezoneFromCoordinates(delivery.delivery_lat, delivery.delivery_lng, req.activity?.timezone || null);
+      }
+    }
 
     // Update Activity if there are activity-bound fields
     if (Object.keys(activityPatch).length > 0) {
@@ -4711,6 +5114,12 @@ router.patch(
 
     const { Activity: activity, ...supportTrain } = updated;
     res.json({ ...supportTrain, activity });
+
+    if (deliveryChanged && ['published', 'active', 'paused'].includes(st.status)) {
+      notifyDeliveryChanged(updated, req.user.id).catch((err) => {
+        logger.error('Support Train changed-address notices failed', { supportTrainId: st.id, error: err?.message });
+      });
+    }
   })
 );
 

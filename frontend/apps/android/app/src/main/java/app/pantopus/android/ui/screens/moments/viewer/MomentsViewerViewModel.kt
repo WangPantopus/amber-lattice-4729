@@ -18,6 +18,7 @@ import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.moments.shownHeight
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.ui.screens.moments.components.MomentImages
+import app.pantopus.android.ui.sky.SkyWords
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -552,6 +553,16 @@ internal fun agoLabel(
         minutes < 24 * 60 -> "${minutes / 60}h ago"
         else -> "${minutes / (24 * 60)}d ago"
     }
+}
+
+/** The Sky: "Earlier today", or "Yesterday", for a Moment shared later, by the day it went live (`created_at`). */
+internal fun earlierLabel(
+    iso: String?,
+    today: java.time.LocalDate = java.time.LocalDate.now(),
+): String {
+    val then = iso?.let { runCatching { Instant.parse(it.replace("+00:00", "Z")) }.getOrNull() }
+    val day = then?.atZone(java.time.ZoneId.systemDefault())?.toLocalDate()
+    return if (day == null || day == today) SkyWords.EARLIER_TODAY else SkyWords.YESTERDAY
 }
 
 /** "22h left" until a Moment ends (board V1). */

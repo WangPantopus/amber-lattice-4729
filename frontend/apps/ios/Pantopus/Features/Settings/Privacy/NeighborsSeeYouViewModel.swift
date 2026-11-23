@@ -70,19 +70,19 @@ public final class NeighborsSeeYouViewModel {
     var nameNote: String {
         loaded?.followsAccount.displayName == true
             ? "Same as your account name: it changes when you change your name in Edit profile."
-            : "Only for neighbors: changing your account name won't change it."
+            : "Only on your profile: changing your account name won't change it."
     }
 
     var photoNote: String {
         guard let loaded else { return "" }
         if loaded.profile.avatarUrl == nil {
             return loaded.account.avatarUrl == nil
-                ? "No photo: neighbors see your initials."
-                : "No photo: neighbors see your initials, not your account photo."
+                ? "No photo: others see your initials."
+                : "No photo: others see your initials, not your account photo."
         }
         return loaded.followsAccount.avatarUrl
             ? "Your account photo: it changes when you change it in Edit profile."
-            : "A photo just for neighbors: changing your account photo won't change it."
+            : "A photo just for your profile: changing your account photo won't change it."
     }
 
     /// First load, and again when your profile changed (an account edit can move a copy).
@@ -111,7 +111,7 @@ public final class NeighborsSeeYouViewModel {
     func saveName() async {
         let name = trimmedName
         guard !name.isEmpty else {
-            nameError = "Enter the name neighbors should see."
+            nameError = "Enter the name others should see."
             return
         }
         guard name.count <= Self.nameLimit else {
@@ -131,7 +131,7 @@ public final class NeighborsSeeYouViewModel {
             onToast(ToastMessage(text: "We couldn't read that photo. Try another one.", kind: .error))
             return
         }
-        await changePhoto(success: "Neighbors now see your new photo") {
+        await changePhoto(success: "Others now see your new photo") {
             try await self.uploader.uploadLocalProfilePicture(
                 MultipartFile(fieldName: "file", filename: filename, mimeType: mimeType, data: data)
             )
@@ -140,13 +140,13 @@ public final class NeighborsSeeYouViewModel {
 
     func useAccountPhoto() async {
         guard let url = loaded?.account.avatarUrl else { return }
-        await changePhoto(success: "Neighbors now see your account photo") {
+        await changePhoto(success: "Others now see your account photo") {
             try await self.api.request(LocalProfileEndpoints.updateMe(LocalProfileUpdateRequest(photo: .url(url))))
         }
     }
 
     func removePhoto() async {
-        await changePhoto(success: "Neighbors now see your initials") {
+        await changePhoto(success: "Others now see your initials") {
             try await self.api.request(LocalProfileEndpoints.updateMe(LocalProfileUpdateRequest(photo: .none)))
         }
     }
@@ -162,7 +162,7 @@ public final class NeighborsSeeYouViewModel {
             )
             nameText = view.profile.displayName
             apply(view)
-            onToast(ToastMessage(text: "Neighbors now see you as \(view.profile.displayName)", kind: .success))
+            onToast(ToastMessage(text: "Others now see you as \(view.profile.displayName)", kind: .success))
         } catch {
             nameError = error.localizedDescription
         }

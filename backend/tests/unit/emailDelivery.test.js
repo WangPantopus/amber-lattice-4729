@@ -70,10 +70,16 @@ test('SMTP readiness authenticates without sending a message', async () => {
   expect(await service.sendGuestReservationConfirmationEmail(guestSlot))
     .toEqual({ success: true, messageId: 'smtp-id' });
   expect(mockSendMail).toHaveBeenLastCalledWith(expect.objectContaining({
-    to: 'test@example.com', subject: "You're signed up to help: Meals & help",
+    to: 'test@example.com', subject: "You're signed up to help with a Support Train",
     html: expect.stringContaining("You're Signed Up!"),
   }));
+  // Nothing a person typed is in the signup email, nor in a reminder to an address nobody has confirmed.
+  expect(JSON.stringify(mockSendMail.mock.calls.at(-1)[0])).not.toMatch(/Helper|Meals|Dinner/);
   expect(await service.sendGuestReservationConfirmationEmail({ ...guestSlot, isReminder: true }))
+    .toEqual({ success: true, messageId: 'smtp-id' });
+  expect(mockSendMail.mock.calls.at(-1)[0].subject).toBe('Reminder: your Support Train sign-up');
+  expect(JSON.stringify(mockSendMail.mock.calls.at(-1)[0])).not.toMatch(/Helper|Meals|Dinner/);
+  expect(await service.sendGuestReservationConfirmationEmail({ ...guestSlot, isReminder: true, confirmed: true }))
     .toEqual({ success: true, messageId: 'smtp-id' });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
   expect(reminder.subject).toBe('Reminder: Meals & help');
@@ -83,7 +89,7 @@ test('SMTP readiness authenticates without sending a message', async () => {
   expect(reminder.text).toContain('Dinner · Mon, Oct 5\nTime: 14:00');
   expect(reminder.text).toContain('Type: Home-cooked meal');
   expect(reminder.text).not.toMatch(/private_note|delivery_address/);
-  expect(mockSendMail).toHaveBeenCalledTimes(3);
+  expect(mockSendMail).toHaveBeenCalledTimes(4);
 });
 
 test('unreachable SMTP is unavailable without exposing provider details', async () => {
@@ -116,7 +122,7 @@ test('a transport that accepts no recipients is not successful', async () => {
 test.each(['tomorrow', 'today'])('guest reminder %s reuses the receipt with full safe context', async reminderDay => {
   const service = loadService(smtp);
   expect(await service.sendGuestReservationReminderEmail({
-    ...guestSlot, reminderDay, slotTime: '14:00 - 15:00', dishTitle: 'Pasta <bake>',
+    ...guestSlot, reminderDay, slotTime: '14:00 - 15:00', dishTitle: 'Pasta <bake>', confirmed: true,
   })).toEqual({ success: true, messageId: 'smtp-id' });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
   expect(reminder.subject).toBe(`Reminder: Meals & help ${reminderDay}`);
@@ -133,7 +139,7 @@ test('takeout reminder names the restaurant and includes an already shared addre
   await service.sendGuestReservationReminderEmail({
     ...guestSlot, reminderDay: 'today', contributionMode: 'takeout', dishTitle: 'unused dish',
     restaurantName: 'Noodles & more', guestAddressSharedAt: '2026-10-03T20:00:00Z',
-    addressLabel: '123 <Shared> St\nCamas, WA',
+    addressLabel: '123 <Shared> St\nCamas, WA', confirmed: true,
   });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
   expect(reminder.html).toContain('Noodles &amp; more');

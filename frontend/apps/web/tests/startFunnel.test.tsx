@@ -67,7 +67,7 @@ const READY_PREVIEW = {
   place: { address: '4080 NE Tacoma Ct', city: 'Camas', state: 'WA', zipcode: '98607' },
   free: {
     flood: { status: 'ready', zone: 'X', description: 'Minimal flood risk', source: 'FEMA' },
-    density: { status: 'ready', bucket: 'none', label: 'Founding Neighbor slots are open here', source: 'Pantopus' },
+    density: { status: 'ready', bucket: 'none', label: 'Block Founder slots are open here', source: 'Pantopus' },
     area: { status: 'ready', median_year_built: 2004, median_home_value: 646200, note: '', source: 'Census' },
   },
   aha: {
@@ -81,7 +81,7 @@ const READY_PREVIEW = {
   sections: [
     section('flood', 'risk_readiness', { zone: 'X', zone_label: 'Zone X', risk_level: 'minimal', in_sfha: false, insurance_required: false, plain_meaning: 'Minimal flood risk' }),
     section('wildfire', 'risk_readiness', { hazard_class: 4, hazard_label: 'High', burnable: true, summary: 'High wildfire hazard potential.', disclaimer: '' }),
-    section('block_density', 'your_block', { bucket: 'none', label: 'Founding Neighbor slots are open here' }),
+    section('block_density', 'your_block', { bucket: 'none', label: 'Block Founder slots are open here' }),
   ],
   locked: [
     { id: 'home_details', group: 'your_home', title: 'Home details & value', band: 'B', unlock: 'claim', reason: "Claim this address to see the home's exact record and value." },
@@ -147,7 +147,7 @@ describe('StartFunnel — T0 preview', () => {
     // …the free layers render through the dashboard's section cards…
     expect(screen.getByText(/minimal risk/i)).toBeInTheDocument();
     // …the density card never shows a zero…
-    expect(screen.getByText(/founding neighbor slots are open here/i)).toBeInTheDocument();
+    expect(screen.getByText(/block founder slots are open here/i)).toBeInTheDocument();
     // …only Band B is locked…
     expect(screen.getByText('Home details & value')).toBeInTheDocument();
     // …the privacy promise sits above the wall…

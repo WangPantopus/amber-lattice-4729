@@ -148,20 +148,33 @@ private fun RackContent(
         // size for every card of the collection, with room for the longest verse and caption among them.
         val nameHeight = if (collection.isNullOrBlank()) 0.dp else measure(collection, rackNameStyle)
         val topBlock = maxOf(48.dp, nameHeight + maxOf(48.dp, measure("9 of 9", rackCountStyle)))
-        val textReserve =
-            designs.maxOf { design ->
-                val verse = design.verse?.takeIf { it.isNotBlank() }?.let { measure(it, rackVerseStyle) + 10.dp } ?: 0.dp
-                verse + measure(design.caption.ifBlank { " " }, rackCaptionStyle)
-            }
+        val verseHeight = { design: HolidayCardDesign ->
+            design.verse?.takeIf { it.isNotBlank() }?.let { measure(it, rackVerseStyle) + 10.dp } ?: 0.dp
+        }
+        val captionHeight = { design: HolidayCardDesign -> measure(design.caption.ifBlank { " " }, rackCaptionStyle) }
+        val textReserve = designs.maxOf { verseHeight(it) + captionHeight(it) }
+        // Only the references ("John 3:16 (KJV)"), for a verse collection on a short screen.
+        val referenceReserve = designs.maxOf { captionHeight(it) }
         val actionHeight = maxOf(48.dp, measure(WRITE_ON, rackWriteStyle) + 20.dp) + 6.dp + measure(SWIPE_HINT, tableHintStyle)
         val above = top + 6.dp + topBlock + 10.dp
         val under = 16.dp + actionHeight + 12.dp + bottom
         val room = maxHeight - above - 12.dp - textReserve - under
-        // The table's size: 9 dp from each side on a phone (14 on a wide screen), at most 470 dp across (560 wide), and
-        // never so small that a long verse at the largest text takes the card away (the words scroll then).
+        // The table's size: 9 dp from each side on a phone (14 on a wide screen), as large as the height leaves room for
+        // (card shelves SPEC E3: a picked card is big, with no width cap in a large window), and never so small that a
+        // long verse at the largest text takes the card away (the words scroll then).
         val side = if (maxWidth < 560.dp) 9.dp else 14.dp
-        val widest = minOf(maxWidth - side * 2, if (maxWidth >= 600.dp) 560.dp else 470.dp)
-        val cardWidth = minOf(widest, room / 1.2f).coerceAtLeast(minOf(widest, maxWidth * 0.55f))
+        val widest = maxWidth - side * 2
+        // The least it may be still fits whole between the words above and the button under it.
+        val whole = (maxHeight - above - 12.dp - under) / 1.2f
+        // A verse card is at least 85% of the width (design session, November 22): where the whole verses would hold it
+        // smaller, it takes that 85% (or what the height leaves beside the references alone), and a card shows its verse
+        // only where the verse still fits under it; the verse is printed on the card itself. Nothing scrolls then, and
+        // the collection keeps one card size while it's swiped.
+        val withVerses = minOf(widest, room / 1.2f)
+        val least = minOf(widest, maxWidth * 0.85f)
+        val referencesOnly = (maxHeight - above - 12.dp - referenceReserve - under) / 1.2f
+        val sized = if (withVerses >= least) withVerses else maxOf(withVerses, minOf(least, referencesOnly))
+        val cardWidth = sized.coerceAtLeast(minOf(widest, maxWidth * 0.55f, whole))
         val cardHeight = cardWidth * 1.2f
         val cardTop = above + ((room - cardHeight) / 2).coerceAtLeast(0.dp) * 0.8f
         val textTop = cardTop + cardHeight + 12.dp
@@ -184,10 +197,13 @@ private fun RackContent(
             }
         }
         art?.let { RoomLight(it) }
+        val wordsRoom = (maxHeight - textTop - under).coerceAtLeast(0.dp)
+        val versesShown = remember(designs, wordsRoom, cardWidth) { designs.map { verseHeight(it) + captionHeight(it) <= wordsRoom } }
         RackWords(
             designs,
             pager,
-            Modifier.padding(top = textTop).height((maxHeight - textTop - under).coerceAtLeast(0.dp)),
+            versesShown,
+            Modifier.padding(top = textTop).height(wordsRoom),
         )
         RackActions(bottom, swipes = designs.size > 1, onWrite)
         RackTop(top, collection, pager, designs.size, onClose)
@@ -360,6 +376,8 @@ private fun RackCard(
 private fun RackWords(
     designs: List<HolidayCardDesign>,
     pager: PagerState,
+    /** Per card, whether its whole verse fits under it; where it doesn't, only the reference shows. */
+    versesShown: List<Boolean>,
     modifier: Modifier = Modifier,
 ) {
     Crossfade(
@@ -374,7 +392,7 @@ private fun RackWords(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            design.verse?.takeIf { it.isNotBlank() }?.let { verse ->
+            design.verse?.takeIf { it.isNotBlank() && versesShown.getOrElse(page) { true } }?.let { verse ->
                 Text(
                     verse,
                     style = rackVerseStyle,

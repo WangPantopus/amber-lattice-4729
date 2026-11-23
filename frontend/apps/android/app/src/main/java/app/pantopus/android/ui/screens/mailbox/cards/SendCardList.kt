@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -250,8 +252,9 @@ private fun listLineWords(
 }
 
 /**
- * Under a list's Look it over, pinned: until when each card can be taken back, what the cards cost, why sending didn't
- * go, and "Seal and send 4 cards" (or, with too few stamps, "Get stamps to send").
+ * A list's Look it over keeps only its button pinned (plan 5.2): "Seal and send 4 cards" (or, with too few stamps, "Get
+ * stamps to send") on the fade, with why sending didn't go above it. The take-back and postage lines end the page
+ * ([ListLookEndLines]).
  */
 @Composable
 internal fun ListLookFooter(
@@ -260,48 +263,40 @@ internal fun ListLookFooter(
     stamps: StampBalance?,
     onSend: () -> Unit,
     onGetStamps: () -> Unit,
+    ground: Color = PantopusColors.cardDesk,
+    modifier: Modifier = Modifier,
 ) {
     val needed = look.needed
     val needsStamps = (stamps?.available ?: needed) < needed
     val cardsWord = if (needed == 1) "1 card" else "$needed cards"
+    PinnedLookButton(ground, form.sendError, modifier) {
+        CardButton(
+            when {
+                needsStamps -> "Get stamps to send"
+                form.sending -> "Sending $cardsWord…"
+                else -> "Seal and send $cardsWord"
+            },
+            onClick = if (needsStamps) onGetStamps else onSend,
+            enabled = needed > 0,
+            busy = form.sending,
+            modifier = Modifier.heightIn(min = 52.dp).testTag("sendCardLookSend"),
+        )
+    }
+}
+
+/** The end of a list's Look it over: until when each card can be taken back, and what the cards cost. */
+@Composable
+internal fun ListLookEndLines(
+    form: SendCardForm,
+    look: HolidayCardListPreview,
+    stamps: StampBalance?,
+) {
     val entries = (form.to as? CardRecipient.Several)?.entries.orEmpty()
-    Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk)) {
-        HorizontalDivider(color = PantopusColors.cardNoteEdge)
-        Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)) {
-            DeskNote(listSealNote(entries))
-            if (needed > 0) {
-                StampPostageLine(stamps, design = form.design, modifier = Modifier.padding(top = 10.dp), count = needed)
-            } else {
-                Text(
-                    "None of these cards can go now.",
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    color = PantopusColors.cardTextQuiet,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                )
-            }
-            form.sendError?.let {
-                Text(
-                    it,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PantopusColors.cardTextProblem,
-                    modifier = Modifier.padding(top = 10.dp).testTag("sendCardError"),
-                )
-            }
-            CardButton(
-                when {
-                    needsStamps -> "Get stamps to send"
-                    form.sending -> "Sending $cardsWord…"
-                    else -> "Seal and send $cardsWord"
-                },
-                onClick = if (needsStamps) onGetStamps else onSend,
-                enabled = needed > 0,
-                busy = form.sending,
-                modifier = Modifier.padding(top = 10.dp).testTag("sendCardLookSend"),
-            )
+    LookEndLines(listSealNote(entries)) {
+        if (look.needed > 0) {
+            StampPostageLine(stamps, design = form.design, modifier = Modifier.padding(top = 10.dp), count = look.needed)
+        } else {
+            DeskNote("None of these cards can go now.", modifier = Modifier.padding(top = 10.dp))
         }
     }
 }
@@ -324,6 +319,8 @@ internal fun ListSentSection(
     onClose: () -> Unit,
     onSeeInSent: () -> Unit,
     onAnother: () -> Unit,
+    /** "Send this card to someone else" while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val results = form.listResults.orEmpty()
@@ -409,6 +406,9 @@ internal fun ListSentSection(
             kind = CardButtonKind.Paper,
             modifier = Modifier.testTag("sendAnotherCard"),
         )
+        onSendAgain?.let {
+            CardButton(SEND_THIS_CARD_AGAIN, onClick = it, kind = CardButtonKind.Paper, modifier = Modifier.testTag("sendThisCardAgain"))
+        }
     }
 }
 

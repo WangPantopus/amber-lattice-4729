@@ -10,6 +10,7 @@ import type {
   LocationIntent,
 } from '@pantopus/types';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 const MapPreview = dynamic(() => import('./MapPreview'), { ssr: false });
 
@@ -70,6 +71,8 @@ export default function BusinessAddressFlow({
 
   // Address fields
   const [addressText, setAddressText] = useState('');
+  // Nearby addresses first: around the person's own home (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [resolved, setResolved] = useState<ResolvedAddress | null>(null);
   const [suite, setSuite] = useState('');
   const [intent, setIntent] = useState<LocationIntent | null>(null);
@@ -309,6 +312,7 @@ export default function BusinessAddressFlow({
           onChange={setAddressText}
           onSelectNormalized={handleAddressSelected}
           placeholder="Start typing an address…"
+          near={homeCenter}
         />
       </div>
 

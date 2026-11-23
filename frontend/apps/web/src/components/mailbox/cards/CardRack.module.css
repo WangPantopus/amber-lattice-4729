@@ -33,11 +33,11 @@
 .cardArea { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 6px 16px; touch-action: pan-y; cursor: grab; }
 /* As large as the screen allows, below the words and above the button; a verse card leaves room for the verse. */
 .card {
-  width: min(calc(100vw - 32px), 560px, calc((100dvh - 210px) / 1.2));
+  width: min(calc(100vw - 32px), 720px, calc((100dvh - 210px) / 1.2));
   filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, 0.42)) drop-shadow(3px 6px 14px rgba(0, 0, 0, 0.45));
   transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); animation: rackIn 0.35s ease both;
 }
-.card.withVerse { width: min(calc(100vw - 32px), 560px, calc((100dvh - 340px) / 1.2)); }
+.card.withVerse { width: min(calc(100vw - 32px), 720px, calc((100dvh - 340px) / 1.2)); }
 .dragging { transition: none; }
 .verse { margin: 0; max-width: min(34rem, calc(100vw - 40px)); text-align: center; font: 1.1875rem/1.45 var(--serif); color: var(--cream); text-wrap: pretty; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35); }
 .bottom {

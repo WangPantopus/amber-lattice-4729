@@ -29,6 +29,7 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -96,10 +98,25 @@ internal fun CardTableDialog(
     goneActions: List<CardTableSendBack> = emptyList(),
     /** A letter (plan Part 10): what opens once its folded sheet is out ("Read the letter"); null for a card. */
     onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" once this one has been turned over (plan Part 4); null with no list in hand. */
+    next: CardTableNext? = null,
+    /**
+     * The reply's quiet button, first under the main one once the card has been turned over (plan Part 3): "Write back
+     * to Hazel", or "You wrote back · {day}"; "Share this card" then keeps its round button and a line in ⋯.
+     */
+    reply: CardTableSendBack? = null,
+    /** Laid over the table in its own window: the reply's sheet, or the joined card. */
+    overlay: (@Composable () -> Unit)? = null,
+    /** A travelling card's "Pass it on" beside "Turn it back" (travelling card plan Part 4); null for every other card. */
+    passOn: CardTablePassOn? = null,
+    /** A travelling card's "See its journey" in the quiet row and ⋯ (travelling card plan Part 4); null otherwise. */
+    journey: CardTableSendBack? = null,
 ) {
     FullScreenWindow(onDismissRequest = onClose) {
-        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut)
+        val sender =
+            TableSending(sending, sealAnswer, goneActions, onLetterOut, next = next, reply = reply, passOn = passOn, journey = journey)
         CardTable(card, firstOpen, onClose, onOpened, menu, message, mine, canShare, sendBack, sender)
+        overlay?.invoke()
     }
 }
 
@@ -110,7 +127,44 @@ private class TableSending(
     val goneActions: List<CardTableSendBack>,
     /** A letter's sheet out of its envelope opens the letter page (plan Part 10). */
     val onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" for a card being read (plan Part 4). */
+    val next: CardTableNext? = null,
+    /** The reply's quiet button (plan Part 3). */
+    val reply: CardTableSendBack? = null,
+    /** "Pass it on" for a travelling card (travelling card plan Part 4). */
+    val passOn: CardTablePassOn? = null,
+    /** "See its journey" for a travelling card. */
+    val journey: CardTableSendBack? = null,
 )
+
+/**
+ * The reader's ⋯ holds every quiet button, since the quiet row shows at most two (the design check of November 17):
+ * "Open the next card (2 more)" and "Write back to Hazel" or "You wrote back" first, then the page's own lines, and
+ * "Share this card" (its round button stays). The sender's moment keeps its menu as it is.
+ */
+private fun tableMenu(
+    menu: List<CardTableMenuItem>,
+    sending: TableSending,
+    canShare: Boolean,
+    onShare: () -> Unit,
+): List<CardTableMenuItem> {
+    if (sending.calls != null) return menu
+    return buildList {
+        sending.next?.let { add(CardTableMenuItem(openTheNextCard(it.waiting), "cardTableMenuNext", it.onClick)) }
+        sending.reply?.let { add(CardTableMenuItem(it.title, "cardTableMenuReply", it.onClick)) }
+        // "Pass it on" from either side of the card (travelling card plan Part 4).
+        sending.passOn?.let { passOn -> passOn.label?.let { add(CardTableMenuItem(it, "cardTableMenuPassOn", passOn.onClick)) } }
+        sending.journey?.let { add(CardTableMenuItem(it.title, "cardTableMenuJourney", it.onClick)) }
+        addAll(menu)
+        if (canShare) add(CardTableMenuItem(SHARE_THIS_CARD, "cardTableMenuShare", onShare))
+    }
+}
+
+/** The reader's quiet row has something in it once the card is turned over: the table keeps it room from the start. */
+private fun TableSending.hasQuietRow(sendBack: CardTableSendBack?): Boolean {
+    if (calls != null) return false
+    return next != null || reply != null || sendBack != null || passOn?.passedLine != null || journey != null
+}
 
 @Composable
 private fun CardTable(
@@ -143,13 +197,14 @@ private fun CardTable(
     BackHandler(enabled = state.enlarged) { state.resetZoom() }
     BackHandler(enabled = state.menuOpen) { state.menuOpen = false }
     BackHandler(enabled = state.verseOpen) { state.verseOpen = false }
+    BackHandler(enabled = state.printOpen) { state.printOpen = false }
 
     // The sheet stands over the table, and the table rests under it.
     var sharing by rememberSaveable(card.id) { mutableStateOf(false) }
-    LaunchedEffect(state, sharing) {
-        state.paused = sharing
-        if (!sharing) state.wake()
-    }
+    // The card's own photo, opened over the whole screen from its print: the table rests under it too, and Back closes
+    // it first.
+    val openedPhoto = remember(card.id) { mutableStateOf<CardPhotoOpened?>(null) }
+    TableRests(state, sharing, openedPhoto)
 
     val art = rememberCardTableArt(letter = card.letter)
     val faceArt = rememberCardFaceArt()
@@ -190,8 +245,10 @@ private fun CardTable(
                 safeTop,
                 safeBottom,
                 density,
-                quietButton = hasQuietLine(sendBack, canShare),
+                quietRow = sending.hasQuietRow(sendBack),
                 sending = calls != null,
+                passOnLabel = sending.passOn?.label.takeIf { calls == null },
+                passedLine = sending.passOn?.passedLine.takeIf { calls == null },
             )
         SideEffect { state.geometry = geometry }
         // A new window size (the phone turned, a fold opened) brings an enlarged card back to its size.
@@ -224,12 +281,12 @@ private fun CardTable(
             )
         }
         PictureProblem(state, picture)
-        TableMedia(state, card, geometry, reduceMotion)
+        TableMedia(state, card, geometry, reduceMotion, onOpenPhoto = { openedPhoto.value = it })
         val insets =
             with(density) {
                 PaddingValues(top = safeTop.toDp(), bottom = safeBottom.toDp())
             }
-        val allItems = rememberMenu(menu, state)
+        val allItems = rememberMenu(tableMenu(menu, sending, canShare) { sharing = true }, state)
         // Once the sent card is gone: Take it back, and Share this card.
         val gone = remember(sending.goneActions) { sending.goneActions + CardTableSendBack("Share this card") { sharing = true } }
         CardTableControls(
@@ -243,9 +300,36 @@ private fun CardTable(
             onShare = { sharing = true },
             sendBack = sendBack,
             gone = gone,
+            next = sending.next.takeIf { calls == null },
+            reply = sending.reply.takeIf { calls == null },
+            passOn = sending.passOn.takeIf { calls == null },
+            journey = sending.journey.takeIf { calls == null },
         )
+        OpenedPhoto(openedPhoto)
     }
     if (sharing) CardShareSheet(card, mine || calls != null, onClose = { sharing = false })
+}
+
+/** The table rests under the share sheet and under its opened photo; Back closes the photo first. */
+@Composable
+private fun TableRests(
+    state: CardTableState,
+    sharing: Boolean,
+    openedPhoto: MutableState<CardPhotoOpened?>,
+) {
+    BackHandler(enabled = openedPhoto.value != null) { openedPhoto.value = null }
+    val covered = sharing || openedPhoto.value != null
+    LaunchedEffect(state, covered) {
+        state.paused = covered
+        if (!covered) state.wake()
+    }
+}
+
+/** The card's own photo over the whole screen, opened from its print on the table. */
+@Composable
+private fun OpenedPhoto(openedPhoto: MutableState<CardPhotoOpened?>) {
+    val photo = openedPhoto.value ?: return
+    CardPhotoViewer(photo, onClose = { openedPhoto.value = null })
 }
 
 /** The table's state: a reader's is kept across a turn of the phone; the sender's moment starts afresh each time. */
@@ -314,8 +398,8 @@ private fun PictureProblem(
 }
 
 /**
- * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the quiet
- * second button when there is one ([quietButton]).
+ * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the
+ * reader's one quiet row when there is one ([quietRow]).
  */
 @Composable
 private fun rememberTableGeometry(
@@ -324,25 +408,49 @@ private fun rememberTableGeometry(
     safeTop: Float,
     safeBottom: Float,
     density: Density,
-    quietButton: Boolean,
+    quietRow: Boolean,
     /** The sender's moment: its words stay over the open envelope, so the table starts below them. */
     sending: Boolean = false,
+    /** A travelling card's "Pass it on" beside "Turn it back" (Part 4): a second row of buttons when they don't fit. */
+    passOnLabel: String? = null,
+    /** "You passed it on to Ivy and Cass." in the quiet row, two lines at the largest text sizes. */
+    passedLine: String? = null,
 ): TableGeometry {
     val measurer = rememberTextMeasurer()
     val width = constraints.maxWidth
     val height = constraints.maxHeight
     val readsVerse = card.verse != null && !sending
-    // The card's own photo lies under it once it's turned over (wave 4 drawing 3): the table keeps room for it.
+    // "Read it in print" under the button once the note side is up (plan Part 2), or a full button beside it at large text.
+    val readsInPrint = card.printable && !sending
+    // The card's own photo and greeting lie under it once it's turned over (wave 4 drawing 3): the table keeps them room.
     val media = card.hasMedia && !sending
-    return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, media) {
+    return remember(
+        width,
+        height,
+        safeTop,
+        safeBottom,
+        density,
+        card.fromFirst,
+        card.sealed,
+        quietRow,
+        sending,
+        readsVerse,
+        readsInPrint,
+        media,
+        passOnLabel,
+        passedLine,
+    ) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
             val hintWidth = Constraints(maxWidth = textWidth.coerceAtLeast(1))
             val hintHeight =
                 HINTS.maxOf { hint -> measurer.measure(hint, tableHintStyle, constraints = hintWidth).size.height }.let { hints ->
-                    // A verse card's hint slot also holds "Read the verse", 44 dp to touch (plan 6.2).
-                    if (readsVerse) {
-                        val link = measurer.measure(READ_THE_VERSE, tableVerseLinkStyle).size.height + 12.dp.roundToPx()
+                    // The hint slot also holds "Read the verse" (plan 6.2) or "Read it in print" (Part 2), 44 dp to touch.
+                    if (readsVerse || readsInPrint) {
+                        val link =
+                            listOf(READ_THE_VERSE, READ_IT_IN_PRINT).maxOf {
+                                measurer.measure(it, tableVerseLinkStyle, constraints = hintWidth).size.height
+                            } + 12.dp.roundToPx()
                         maxOf(hints, 44.dp.roundToPx(), link)
                     } else {
                         hints
@@ -350,26 +458,25 @@ private fun rememberTableGeometry(
                 }
             val primaryHeight = measurer.measure("Take the card out", tablePrimaryStyle).size.height
             val pillHeight = max(48.dp.toPx(), primaryHeight + 12.dp.toPx())
+            // At large text "Read it in print" is a full button beside "Turn it back"; one under the other when they don't fit.
+            val printRow = buttonRows(passOnLabel, readsInPrint && fontScale >= LARGE_TEXT_SCALE, measurer, textWidth, pillHeight)
+            // One row of quiet buttons, never a second (the design check of November 17): one line of their words.
             val quietHeight =
-                if (quietButton && !card.sealed) {
-                    val send = measurer.measure("Send ${card.fromFirst} a card", tableQuietStyle).size
-                    val share = measurer.measure(SHARE_THIS_CARD, tableQuietStyle).size
-                    // Side by side when both fit the line (plan 11.1), else one under the other at large text.
-                    val lines = if (send.width + share.width + 64.dp.roundToPx() > textWidth) 2 else 1
-                    (max(48.dp.toPx(), send.height + 12.dp.toPx()) + 2.dp.toPx()) * lines
+                if (quietRow && !card.sealed) {
+                    val words = quietWordsHeight(passedLine, measurer, textWidth)
+                    max(48.dp.toPx(), words + 12.dp.toPx()) + 2.dp.toPx()
                 } else {
                     0f
                 }
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            // As the web keeps it: a third of the width, 112 to 176 dp.
-            val mediaRoom = if (media) (width * 0.34f).coerceIn(112.dp.toPx(), 176.dp.toPx()) else 0f
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + gap + mediaRoom
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height
-            val wordsBottom = safeTop + 54.dp.toPx() + wordsHeight + 8.dp.toPx()
+            val cameHeight = cameLineHeight(card, measurer, wordsWidth)
+            val wordsBottom = safeTop + 54.dp.toPx() + wordsHeight + cameHeight + 8.dp.toPx()
             // Sending, the words ("For Hazel.", or why the seal didn't take) show over the open flap: start below them.
             val sendingWords =
                 if (sending) measurer.measure(SENDING_LONGEST_WORDS, tableWordsStyle, constraints = wordsWidth).size.height else 0
@@ -380,10 +487,77 @@ private fun rememberTableGeometry(
                 bottomRoom = bottomRoom,
                 density = this.density,
                 wordsBottom = wordsBottom,
-                mediaRoom = mediaRoom,
+                // The geometry keeps what a full-size card leaves under it, once it's turned over.
+                keepsMediaRoom = media,
+                quietRoom = quietHeight,
+                shutBelowWords = cameHeight > 0,
             )
         }
     }
+}
+
+/** A travelling card's line under the words, "It came 2,692 miles through 4 towns to reach you." (Part 3): its height. */
+private fun Density.cameLineHeight(
+    card: CardOnTable,
+    measurer: TextMeasurer,
+    width: Constraints,
+): Int {
+    val line = card.travel?.cameLine?.takeIf { card.travels } ?: return 0
+    return measurer.measure(line, tableCameStyle, constraints = width).size.height + CAME_GAP.roundToPx()
+}
+
+/**
+ * The height of a second row of buttons beside the main one, if they need it: at large text "Read it in print" beside
+ * "Turn it back" (plan Part 2); a travelling card's "Pass it on" too (travelling card Part 4), wrapping into as many rows
+ * as they need.
+ */
+private fun Density.buttonRows(
+    passOnLabel: String?,
+    printButton: Boolean,
+    measurer: TextMeasurer,
+    room: Int,
+    pillHeight: Float,
+): Float {
+    if (passOnLabel == null) {
+        if (!printButton) return 0f
+        val turn = measurer.measure("Turn it back", tablePrimaryStyle).size.width
+        val print = measurer.measure(READ_IT_IN_PRINT, tablePrimaryStyle).size.width
+        return if (turn + print + (2 * 48 + 8).dp.roundToPx() > room) pillHeight + 2.dp.toPx() else 0f
+    }
+    val pills =
+        listOfNotNull("Turn it back", passOnLabel, READ_IT_IN_PRINT.takeIf { printButton })
+            .map { measurer.measure(it, tablePrimaryStyle).size.width + 48.dp.roundToPx() }
+    return (pillRows(pills, room, 8.dp.roundToPx()) - 1) * (pillHeight + 2.dp.toPx())
+}
+
+/** One line of the quiet row's words; "You passed it on to Ivy and Cass." (Part 4) may take two at large text. */
+private fun Density.quietWordsHeight(
+    passedLine: String?,
+    measurer: TextMeasurer,
+    room: Int,
+): Int {
+    if (passedLine == null) return measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle, maxLines = 1).size.height
+    val inRow = Constraints(maxWidth = (room - (2 * 16).dp.roundToPx()).coerceAtLeast(1))
+    return measurer.measure(passedLine, tableQuietStyle, constraints = inRow, maxLines = 2).size.height
+}
+
+/** How many rows buttons [widths] wide take in [room], [gap] apart, filled in order as a flow row fills them. */
+private fun pillRows(
+    widths: List<Int>,
+    room: Int,
+    gap: Int,
+): Int {
+    var rows = 1
+    var used = 0
+    for (width in widths) {
+        if (used > 0 && used + gap + width > room) {
+            rows += 1
+            used = width
+        } else {
+            used += if (used > 0) gap + width else width
+        }
+    }
+    return rows
 }
 
 /** How far the card's lowest edge can move: the light moves it 5.5 dp, and its 1° turn lowers a corner about 3.5. */
@@ -406,8 +580,12 @@ private fun sceneWords(
 ): String {
     val name = card.from.trim().ifEmpty { "Someone" }
     if (card.letter) return if (step == TableStep.Out) "The letter from $name. Opening it." else "A letter from $name"
-    if (card.sealed) return "Christmas card from $name, sealed until Christmas morning"
-    if (step != TableStep.Out && step != TableStep.Pulling) return "Christmas card from $name"
+    // A travelling card's envelope says which towns it came through (travelling card plan Part 3).
+    val postmarks = card.travel?.takeIf { card.travels }?.let { " ${it.spokenPostmarks}" }.orEmpty()
+    val sealedWords = "Christmas card from $name, sealed until Christmas morning"
+    if (card.sealed) return if (postmarks.isEmpty()) sealedWords else "$sealedWords.$postmarks"
+    val envelopeWords = "Christmas card from $name"
+    if (step != TableStep.Out && step != TableStep.Pulling) return if (postmarks.isEmpty()) envelopeWords else "$envelopeWords.$postmarks"
     val caption = card.caption.ifBlank { "A Christmas picture" }
     val sentence = if (caption.last() in ".!?") caption else "$caption."
     return "Card from $name: $sentence On the back: ${card.note}"
@@ -593,9 +771,3 @@ private fun LetterOpens(
 
 private const val LETTER_OPENS_MS = 1_100L
 private const val LETTER_OPENS_AT_ONCE_MS = 300L
-
-/** The reader's quiet line under the button: "Send … a card" and, where it can be shared, "Share this card" (plan 11.1). */
-private fun hasQuietLine(
-    sendBack: CardTableSendBack?,
-    canShare: Boolean,
-): Boolean = sendBack != null || canShare

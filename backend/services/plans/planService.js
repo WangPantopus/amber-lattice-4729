@@ -17,6 +17,9 @@
  *  - An online plan, or one of the newer kinds, exists only for an app that said it can draw one (viewer.more):
  *    isVisibleTo refuses it to everyone else, its host included, and the nearby queries leave it out. An online
  *    plan's link reaches only the host and people who are in.
+ *  - Guests without an account (Plans for the holidays, H1) are invitation rows (planGuests.js). Their seats count in
+ *    every card. Their names, numbers, Maybe and room over 30 reach only an app that sent `guests=1`
+ *    (viewer.guests), while the plan's host has the switch; an older app reads the plan as it did.
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -28,8 +31,9 @@ const rules = require('./planRules');
 const planBusiness = require('./planBusiness');
 const { canReadPostModeration, postScopeAccess } = require('../pulse/readAccess');
 
-// planInvites requires this module; it is read when called.
+// planInvites and planGuests require this module; they are read when called.
 const invites = () => require('./planInvites');
+const guests = () => require('./planGuests');
 
 const POST_COLUMNS = 'id, user_id, title, content, event_date, event_end_date, latitude, longitude, location_precision, archived_at, archive_reason, moderation_state, created_at, read_scope, area_id, pulse_post_town_id, allow_external_share';
 const PLAN_COLUMNS = [
@@ -45,6 +49,27 @@ const PLAN_COLUMNS = [
   'repeat', 'series_id', 'series_index', 'series_next_at',
   // An online plan's link (place_kind 'online'): only the host and people in read it (buildDetail).
   'online_link',
+  // Plans for the holidays, H1: kids welcome, and the open link (its token reaches the host alone, in open_link).
+  'kids_welcome', 'open_invite_token', 'open_invite_ok_first',
+  // H2: the bring list (planBring.js), read by the host and the people in only.
+  'bring_list',
+  // H3: the occasion that started it (planOccasions.js).
+  'occasion',
+  // B1: a business's plan's deal (planDeals.js), on its card only while the business has the switch.
+  'deal',
+  // B2: the price of a spot (planPaid.js); null is free.
+  'price_cents', 'currency',
+  // B5: guests pay their bill here, and the check asks for a tip (planChecks.js).
+  'pay_here', 'tips_on',
+  // The extras (08-extras.md): chip in (planChipIn.js), read by the host and the people in only, with `extras=1`.
+  'chip_in',
+  // Find a date (planDates.js): the times offered, the ticks and the pick. A plan still picking reaches only an app
+  // that sends `extras=1` (isVisibleTo).
+  'date_options',
+  // The gift exchange (planGift.js). Its pairs (gift_pairs) are never read here: only plan_gift_mine touches them.
+  'gift',
+  // Photos afterwards (planPhotos.js): the pictures' private keys; the apps get links signed for minutes.
+  'photos',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -52,10 +77,13 @@ const REQUEST_COLUMNS = [
   'stays_with_kids', 'decided_by', 'reconfirm_requested_at', 'reconfirmed', 'reconfirm_reason', 'on_my_way_at',
   'ask_count', 'distance_band', 'queued_at', 'reminded_at', 'feedback', 'feedback_note', 'feedback_at',
   'created_at', 'decided_at', 'updated_at',
+  // One person pays for the group (the extras, planGroupPay.js): the buyer's spots and link, a claimer's buyer.
+  'spots_bought', 'spots_token', 'paid_by_request_id',
 ].join(', ');
 const USER_COLUMNS = 'id, name, first_name, last_name, profile_picture_url, created_at';
 
-const ACTIVE_REQUEST_STATUSES = ['pending', 'waitlisted', 'accepted'];
+// 'paying' (B2): a spot held for 10 minutes while the guest pays; it counts as a taken seat. Only a paid plan has one.
+const ACTIVE_REQUEST_STATUSES = ['pending', 'waitlisted', 'accepted', 'paying'];
 const OPEN_REQUEST_STATUSES = ['pending', 'waitlisted'];
 const NEW_ACCOUNT_DAYS = 30;
 // What someone with no name is called, everywhere in Plans.
@@ -165,6 +193,9 @@ function exactPoint(plan) {
 function isVisibleTo(plan, viewer, { involved = false } = {}) {
   if (!plan || !plan.post) return false;
   if (rules.needsMore(plan) && viewer.more !== true) return false;
+  // A plan still picking its date (the extras' find a date) doesn't exist for an app without `extras=1`, the host's
+  // own included: it would read the first time offered as the plan's time.
+  if (plan.date_options && !plan.date_options.picked && viewer.extras !== true) return false;
   // A business's plan exists only for a viewer with the switch, in an app that can draw it, while the business
   // may still host (planBusiness.shownTo). That goes for the business's own team too. Once the business may no
   // longer host, only the people already involved keep reading it, so a guest can leave and the team can cancel:
@@ -229,12 +260,39 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     moreTimesByPlan: new Map(),
     // Private plans where the viewer, a guest, has already made their one "Bring a friend" link.
     friendLinkPlans: new Set(),
+    // Guests without an account who are in or said maybe (planGuests.js), and whether each plan's host has the switch.
+    guestRowsByPlan: new Map(),
+    guestAnswersByHost: new Map(),
+    // Whether each plan's host has the bring list (H2), and occasions (H3).
+    bringByHost: new Map(),
+    occasionByHost: new Map(),
+    // Whether each business hosting a plan with a deal has the switch (B1), and when each guest's free thing was used.
+    dealsByHost: new Map(),
+    dealUsedByRequest: new Map(),
+    // Paid spots (B2): whether each business with a priced plan has the switch, and each request's money.
+    paidByHost: new Map(),
+    moneyByRequest: new Map(),
+    // The bill at the place (B5): whether each business with pay_here on has the switch.
+    payHereByHost: new Map(),
+    // A tip after a paid plan (B6): the paid requests that already tipped, and each tips_on business's switch.
+    tippedRequests: new Set(),
+    tipsByHost: new Map(),
+    // The extras (`extras=1`): whether each plan's host has chip in.
+    chipInByHost: new Map(),
+    // Find a date: whether each picking plan's host has the switch, and (read per plan) who was invited.
+    datesByHost: new Map(),
+    datesPartsByPlan: new Map(),
+    // The gift exchange: whether each plan's host has the switch, and the viewer's own receiver (theirs only).
+    giftByHost: new Map(),
+    giftGivingByPlan: new Map(),
+    // Photos afterwards: whether each ended plan's host has the switch (and a private bucket is set).
+    photosByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
   const hostedIds = plans.filter((p) => planBusiness.runsPlan(p, viewer)).map((p) => p.post_id);
   const friendPlanIds = plans.filter((p) => rules.isPrivate(p) && p.guests_can_invite && !hostedIds.includes(p.post_id)).map((p) => p.post_id);
-  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks] = await Promise.all([
+  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags, bringFlags, occasionFlags] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).in('status', ACTIVE_REQUEST_STATUSES),
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).eq('user_id', viewer.id),
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true }).eq('user_id', viewer.id).in('status', OPEN_REQUEST_STATUSES),
@@ -248,6 +306,10 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     invites().viewerInvites(viewer.id, planIds.filter((id) => !hostedIds.includes(id))),
     invites().hostInviteCounts(hostedIds),
     invites().friendLinkPlanIds(viewer.id, friendPlanIds),
+    guests().guestRows(planIds),
+    guests().switchByHost(hostIds),
+    require('./planBring').switchByHost(plans.filter((p) => p.bring_list).map((p) => p.host_user_id)),
+    require('./planOccasions').switchByHost(plans.filter((p) => p.occasion).map((p) => p.host_user_id)),
   ]);
   for (const result of [activeRequests, myRequests, openCount, hostedRows, myHistory]) {
     if (result.error) throw new Error(`Failed to load plan details: ${result.error.message}`);
@@ -255,6 +317,76 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.myInviteByPlan = myInvites;
   ctx.inviteCountsByPlan = inviteCounts;
   ctx.friendLinkPlans = friendLinks;
+  ctx.guestRowsByPlan = guestRows;
+  ctx.guestAnswersByHost = guestFlags;
+  ctx.bringByHost = bringFlags;
+  ctx.occasionByHost = occasionFlags;
+  // The extras, for an app that sent `extras=1`: read only for plans that carry one.
+  if (viewer.extras) {
+    const chipInPlans = plans.filter((p) => p.chip_in);
+    if (chipInPlans.length) ctx.chipInByHost = await require('./planChipIn').switchByHost(chipInPlans.map((p) => p.host_user_id));
+    const overPlans = plans.filter((p) => require('./planExtras').takesExtras(p) && require('./planPhotos').isOver(p));
+    if (overPlans.length) ctx.photosByHost = await require('./planPhotos').switchByHost(overPlans.map((p) => p.host_user_id));
+    const giftPlans = plans.filter((p) => p.gift);
+    if (giftPlans.length) {
+      const planGift = require('./planGift');
+      ctx.giftByHost = await planGift.switchByHost(giftPlans.map((p) => p.host_user_id));
+      await Promise.all(giftPlans.filter((p) => p.gift.state === 'drawn' && ctx.giftByHost.get(String(p.host_user_id))).map(async (p) => {
+        const mineKey = String(p.host_user_id) === viewer.id ? planGift.hostKey(p) : require('./planExtras').personKey(viewer.id);
+        if (!(p.gift.people || []).some((x) => x.who === mineKey)) return;
+        ctx.giftGivingByPlan.set(p.post_id, await planGift.givingTo(p, mineKey));
+      }));
+    }
+    const planDates = require('./planDates');
+    const picking = plans.filter((p) => planDates.isPicking(p));
+    if (picking.length) {
+      ctx.datesByHost = await planDates.switchByHost(picking.map((p) => p.host_user_id));
+      await Promise.all(picking.filter((p) => ctx.datesByHost.get(String(p.host_user_id))).map(async (p) => {
+        ctx.datesPartsByPlan.set(p.post_id, await planDates.cardParts(p, { host: planBusiness.runsPlan(p, viewer) }));
+      }));
+    }
+  }
+  // Paid spots (B2): read only for priced plans, from businesses that have the switch.
+  const pricedPlans = plans.filter((p) => p.price_cents && p.business_user_id);
+  if (pricedPlans.length > 0) {
+    ctx.paidByHost = await require('./planPaid').switchByHost(pricedPlans.map((p) => p.host_user_id));
+    const onIds = pricedPlans.filter((p) => ctx.paidByHost.get(String(p.host_user_id))).map((p) => p.post_id);
+    if (onIds.length > 0) {
+      const { data: money, error: moneyError } = await supabaseAdmin.from('PlanRequest')
+        .select('id, payment_id, unit_price_cents, paid_cents, refunded_cents, refund_until, hold_expires_at, fee_basis, deal_used_at, payment:Payment(metadata)')
+        .in('post_id', onIds).not('unit_price_cents', 'is', null);
+      if (moneyError) throw new Error(`Failed to load plan details: ${moneyError.message}`);
+      for (const row of money || []) ctx.moneyByRequest.set(row.id, row);
+    }
+    // One person pays for the group (the extras), with `extras=1`: read only when a buyer or a claimer looks.
+    if (viewer.extras) {
+      const groupPlans = pricedPlans.filter((p) => ctx.paidByHost.get(String(p.host_user_id)) && require('./planGroupPay').takes(p));
+      if (groupPlans.length > 0) ctx.groupPayByHost = await require('./planGroupPay').switchByHost(groupPlans.map((p) => p.host_user_id));
+    }
+  }
+  // A tip after a paid plan (B6): read only for priced plans with tips on, from businesses with the switch.
+  const tipPlans = plans.filter((p) => p.tips_on && p.price_cents && p.business_user_id);
+  if (tipPlans.length > 0 && ctx.moneyByRequest.size > 0) {
+    ctx.tipsByHost = await require('./planChecks').switchByHost(tipPlans.map((p) => p.host_user_id));
+    const { data: tips } = await supabaseAdmin.from('Payment').select('sold_id').eq('sold_type', 'plan_tip')
+      .in('sold_id', [...ctx.moneyByRequest.keys()]).in('payment_status', ['captured_hold', 'transfer_scheduled', 'transfer_pending', 'transferred', 'refunded_partial']);
+    for (const row of tips || []) ctx.tippedRequests.add(row.sold_id);
+  }
+  // The bill at the place (B5): read only for plans with pay_here on.
+  const payHerePlans = plans.filter((p) => p.pay_here && p.business_user_id);
+  if (payHerePlans.length > 0) ctx.payHereByHost = await require('./planChecks').switchByHost(payHerePlans.map((p) => p.host_user_id));
+  // Deals (B1): read only for plans that carry one, from businesses that have the switch.
+  const dealPlans = plans.filter((p) => p.deal && p.business_user_id);
+  if (dealPlans.length > 0) {
+    ctx.dealsByHost = await require('./planDeals').switchByHost(dealPlans.map((p) => p.host_user_id));
+    const onIds = dealPlans.filter((p) => ctx.dealsByHost.get(String(p.host_user_id))).map((p) => p.post_id);
+    if (onIds.length > 0) {
+      const { data: used, error: usedError } = await supabaseAdmin.from('PlanRequest').select('id, deal_used_at')
+        .in('post_id', onIds).not('deal_used_at', 'is', null);
+      if (usedError) throw new Error(`Failed to load plan details: ${usedError.message}`);
+      for (const row of used || []) ctx.dealUsedByRequest.set(row.id, row.deal_used_at);
+    }
+  }
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -409,10 +541,29 @@ async function mutualConnectionCounts(viewerId, otherIds) {
 
 // ── Shaping ──────────────────────────────────────────────────
 
-function seatsTaken(plan, requests) {
-  return (requests || [])
-    .filter((r) => r.status === 'accepted')
-    .reduce((sum, r) => sum + rules.seatsFor(plan.kind, r.party_size), 0);
+/**
+ * Seats taken: accepted requests (their party, and their kids where kids are welcome; one a family at a playdate),
+ * plus `guestSeats`, the adults and kids of guests without an account who said they're in (planGuests.seatsOf),
+ * counted from the moment they answer, also while they wait for the host's yes (K5).
+ */
+function seatsTaken(plan, requests, guestSeats = 0) {
+  const live = (requests || []).filter((r) => r.status === 'accepted' || r.status === 'paying');
+  return live.reduce((sum, r) => sum + rules.seatsFor(plan, r.party_size, r.kids_count) + heldForLink(plan, r, live), 0)
+    + (Number(guestSeats) || 0);
+}
+
+/**
+ * One person pays for the group (the extras, planGroupPay.js): the spots a buyer paid for that nobody has taken yet are
+ * held while they pay and while the link takes people (spots_token set); claimers count as themselves. Zero on every
+ * other request.
+ */
+function heldForLink(plan, request, live) {
+  if (!request.spots_bought) return 0;
+  const own = rules.seatsFor(plan, request.party_size, request.kids_count);
+  if (request.status === 'paying') return Math.max(0, request.spots_bought - own);
+  if (!request.spots_token) return 0;
+  const claimed = live.filter((r) => r.status === 'accepted' && r.paid_by_request_id === request.id).length;
+  return Math.max(0, request.spots_bought - own - claimed);
 }
 
 function waitlistOrder(requests) {
@@ -487,7 +638,7 @@ function askEligibility(plan, viewer, ctx, { myRequest, spotsLeft, state }) {
   return { can_ask: true, cannot_ask_reason: null };
 }
 
-function myRequestView(plan, request, { waitlistPosition = null } = {}) {
+function myRequestView(plan, request, { waitlistPosition = null, guestOn = false } = {}) {
   if (!request) return null;
   const reconfirmNeeded = Boolean(request.reconfirm_requested_at) && request.reconfirmed == null && request.status === 'accepted';
   return {
@@ -495,7 +646,8 @@ function myRequestView(plan, request, { waitlistPosition = null } = {}) {
     status: request.status,
     party_size: request.party_size,
     note: request.note || null,
-    kids_count: plan.kind === 'playdate' ? request.kids_count ?? null : null,
+    // A playdate's kids, or with kids welcome (H1, `guests=1`) how many kids come with this party.
+    kids_count: plan.kind === 'playdate' || (guestOn && plan.kids_welcome) ? request.kids_count ?? null : null,
     kids_age_bands: plan.kind === 'playdate' ? request.kids_age_bands || [] : null,
     reconfirm_needed: reconfirmNeeded,
     // What the host's change asked about ('time', 'place' or 'both'), so the card says what the push said.
@@ -541,8 +693,13 @@ function buildCard(plan, viewer, ctx) {
   const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
   const role = viewerRole(plan, viewer, myRequest);
   const isIn = role === 'host' || role === 'guest';
-  const going = seatsTaken(plan, requests);
-  const spotsLeft = Math.max(0, plan.spots - going);
+  const guestRows = ctx.guestRowsByPlan?.get(plan.post_id) || [];
+  const going = seatsTaken(plan, requests, guests().seatsOf(guestRows));
+  // H1's parts reach an app that sent `guests=1`, while the plan's host has the switch. An older app reads room over
+  // 30 as 30 (K10).
+  const guestOn = Boolean(viewer.guests) && Boolean(ctx.guestAnswersByHost?.get(hostId));
+  const spotsShown = viewer.guests ? plan.spots : Math.min(plan.spots, rules.SPOTS_MAX);
+  const spotsLeft = Math.max(0, spotsShown - going);
   const waitlist = waitlistOrder(requests);
   const state = rules.planState(plan, startsAt(plan), endsAt(plan), now);
   // A neighbor's playdate keeps its time until the family is in. A business's session for kids is a public class.
@@ -596,7 +753,7 @@ function buildCard(plan, viewer, ctx) {
       mutual_connections: hostId === viewer.id ? 0 : ctx.mutualByHost.get(hostId) || 0,
       typical_answer_minutes: ctx.answerMinutesByHost.get(hostId) ?? null,
     },
-    spots: plan.spots,
+    spots: spotsShown,
     going_count: going,
     spots_left: spotsLeft,
     is_full: spotsLeft <= 0,
@@ -615,9 +772,9 @@ function buildCard(plan, viewer, ctx) {
       auto_rule: autoRule,
       feedback_given: Boolean(myRequest?.feedback),
     },
-    my_request: myRequestView(plan, myRequest, { waitlistPosition }),
+    my_request: myRequestView(plan, myRequest, { waitlistPosition, guestOn }),
     // The viewer's invitation (planInvites.js), or null: the app says "Sam invited you" and offers I'm in.
-    my_invite: invites().myInviteView(myInvite),
+    my_invite: invites().myInviteView(myInvite, { maybe: Boolean(viewer.guests), via: guestOn }),
     share_url: shareUrl(plan.post_id),
   };
 
@@ -637,7 +794,84 @@ function buildCard(plan, viewer, ctx) {
   }
   if (plan.business_user_id) addBusinessFields(card, plan, viewer, ctx);
   if (rules.isPrivate(plan)) addPrivateFields(card, plan, viewer, ctx, { role, myInvite });
+  if (guestOn) guests().addCardFields(card, plan, { role, requests, guestRows, counts: ctx.inviteCountsByPlan?.get(plan.post_id) });
+  // The occasion that started the plan (H3), while its host has the switch: the tag reads its name in place of the
+  // kind's. An added field older apps ignore; the kind, its color and its pin don't change.
+  if (plan.occasion && ctx.occasionByHost?.get(hostId)) {
+    const occasion = require('./planOccasions').view(plan.occasion);
+    if (occasion) card.occasion = occasion;
+  }
+  // A business's plan's deal (B1, contract 9.2), with `biz=1` (a business's plan reaches no other app) while the
+  // business has the switch. An added field.
+  if (plan.business_user_id && plan.deal && ctx.dealsByHost?.get(hostId)) {
+    const deal = require('./planDeals').cardView(plan.deal, {
+      role, going, plan, paid: Boolean(card.price),
+      request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null,
+        unit_price_cents: ctx.moneyByRequest?.get(myRequest.id)?.unit_price_cents ?? null } : null,
+      firstName: role === 'guest' && ctx.users.get(viewer.id) ? firstName(ctx.users.get(viewer.id)) : null,
+    });
+    if (deal) card.deal = deal;
+  }
+  // The bring list (H2), for the host and the people in, while the host has the switch. An added field older apps
+  // ignore, so it needs no marker.
+  if (isIn && plan.bring_list && ctx.bringByHost?.get(hostId)) {
+    const planBring = require('./planBring');
+    const bring = planBring.view(plan.bring_list, planBring.mineFor({ role, requestId: myRequest?.status === 'accepted' ? myRequest.id : null }));
+    if (bring) card.bring = bring;
+  }
+  // Find a date (the extras, 08-extras section 2), with `extras=1` (no other app gets a plan that is picking): the
+  // times, how many can make each and the reader's own ticks; for the host, who and the favorite. Lists say "Picking
+  // a date" where the time shows.
+  if (viewer.extras && ctx.datesPartsByPlan?.has(plan.post_id)) {
+    const parts = ctx.datesPartsByPlan.get(plan.post_id);
+    const dates = require('./planDates').view(plan, {
+      mineKey: role === 'host' ? null : require('./planExtras').personKey(viewer.id),
+      host: role === 'host', names: parts.names, invited: parts.invited, room: parts.room,
+      hostFirst: firstName(host), mineWaits: Boolean(myInvite?.needs_host_ok),
+    });
+    if (dates) {
+      card.dates = dates;
+      card.time_text = 'Picking a date';
+      // Whoever saved their times has answered: not "no answer" on the host's card.
+      if (card.answers) card.answers.no_answer = Math.max(0, card.answers.no_answer - dates.answered);
+    }
+  }
+  // The gift exchange (the extras, 08-extras section 4), with `extras=1`, for the host and the people in. Whom someone
+  // drew is in their own card only (giftGivingByPlan holds the viewer's own, read for them alone).
+  if (isIn && viewer.extras && plan.gift && ctx.giftByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const planGift = require('./planGift');
+    const gift = planGift.view(plan, {
+      mineKey: role === 'host' ? planGift.hostKey(plan) : require('./planExtras').personKey(viewer.id),
+      isIn, giving: ctx.giftGivingByPlan?.get(plan.post_id) || null,
+    });
+    if (gift) card.gift = gift;
+  }
+  // Photos afterwards (the extras, 08-extras section 5), with `extras=1`, on a plan that is over, for the host and the
+  // people who were in at the end. The pictures come from GET …/photos as links that last minutes.
+  if (isIn && viewer.extras && ctx.photosByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const photos = require('./planPhotos').cardView(plan, { mineKey: require('./planExtras').personKey(viewer.id), comeCount: going + 1 });
+    if (photos) card.photos = photos;
+  }
+  // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has
+  // the switch. The payment link reaches nobody else.
+  if (isIn && viewer.extras && plan.chip_in && ctx.chipInByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const chipIn = require('./planChipIn').view(plan.chip_in, {
+      keys: extrasKeysIn(plan, requests, guestRows),
+      mineKey: role === 'guest' ? require('./planExtras').personKey(viewer.id) : null,
+      hostFirst: firstName(host),
+    });
+    if (chipIn) card.chip_in = chipIn;
+  }
   return card;
+}
+
+/** The people in, as the extras count them (planExtras.keysIn), from what the card already read. */
+function extrasKeysIn(plan, requests, guestRows) {
+  const extras = require('./planExtras');
+  const accounts = requests.filter((r) => r.status === 'accepted' && String(r.user_id) !== String(plan.host_user_id))
+    .map((r) => extras.personKey(r.user_id));
+  const rows = (guestRows || []).filter((r) => r.status === 'accepted' && !r.needs_host_ok).map((r) => extras.guestKey(r.id));
+  return [...accounts, ...rows];
 }
 
 /**
@@ -647,7 +881,8 @@ function buildCard(plan, viewer, ctx) {
  * one friend when the host allowed it.
  */
 function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
-  if (role === 'none' && myInvite && !myInvite.needs_host_ok && plan.place_kind === 'public') {
+  const active = card.state === 'upcoming' || card.state === 'live';
+  if (active && role === 'none' && myInvite && !myInvite.needs_host_ok && plan.place_kind === 'public') {
     const exact = exactPoint(plan);
     card.place = {
       name: plan.place_name || plan.area_label,
@@ -673,6 +908,7 @@ function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
 function addBusinessFields(card, plan, viewer, ctx) {
   const exact = exactPoint(plan);
   card.business = planBusiness.publicBusiness(plan, { plansHosted: ctx.hostedCount.get(String(plan.host_user_id)) || 0 });
+  if (card.viewer.role === 'host') card.business.can_manage = viewer.businessManage?.has(String(plan.business_user_id)) === true;
   const label = planBusiness.labelView(plan);
   card.label = label ? label.key : null;
   card.label_text = label ? label.text : null;
@@ -683,8 +919,49 @@ function addBusinessFields(card, plan, viewer, ctx) {
     longitude: exact.longitude,
   };
   if (viewer.origin) card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
-  // Free until paid spots are built: null is "Free".
-  card.price = null;
+  // Null is "Free". A price (B2) while the business has the switch.
+  const paidOn = Boolean(plan.price_cents && ctx.paidByHost?.get(String(plan.host_user_id)));
+  // What one spot costs now: with deals on, a deal for everyone or a group price that unlocked (B4).
+  const unitNow = paidOn && plan.deal && ctx.dealsByHost?.get(String(plan.host_user_id)) ? require('./planDeals').spotPriceNow(plan) : plan.price_cents;
+  card.price = paidOn ? require('./planPaid').priceView(plan, unitNow) : null;
+  if (paidOn) {
+    const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
+    const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;
+    if (money && myRequest.status === 'paying' && card.my_request) card.my_request.hold_expires_at = iso(money.hold_expires_at);
+    // One person pays for the group (the extras, `extras=1`): the buyer's spots and link, or "{Chris} got you a spot".
+    // A purchase already made settles by its own rules whatever the switch says (08-extras section 7, "When the switch
+    // goes off"): the buyer's leave line and amount count the claimers' spots as kept in every app; only the spots'
+    // card and the claimer's line follow the switch.
+    const groupOn = Boolean(viewer?.extras && ctx.groupPayByHost?.get(String(plan.host_user_id)));
+    const planRequests = ctx.requestsByPlan.get(plan.post_id) || [];
+    const groupPay = require('./planGroupPay');
+    const buyer = money && myRequest.spots_bought ? { ...myRequest, ...money, status: myRequest.status } : null;
+    const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
+      reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null,
+    { keep: buyer ? groupPay.keptCents(plan, buyer, planRequests) : 0 }) : null;
+    if (paid && myRequest.status === 'accepted') card.paid = paid;
+    // The buyer's leave line names the spots coming back and the people staying in (08-extras section 7).
+    const groupLeave = buyer && paid ? groupPay.leaveText(plan, buyer, planRequests, paid.leave_back_cents) : null;
+    if (groupLeave && card.paid) card.paid = { ...card.paid, leave_text: groupLeave };
+    if (buyer && groupOn) {
+      const spots = groupPay.buyerView(plan, buyer, planRequests);
+      if (spots) card.group_pay = spots;
+    } else if (groupOn && myRequest?.status === 'accepted' && myRequest.paid_by_request_id) {
+      const from = planRequests.find((r) => r.id === myRequest.paid_by_request_id);
+      card.group_pay = groupPay.claimerView(from && ctx.users.get(String(from.user_id)) ? firstName(ctx.users.get(String(from.user_id))) : null);
+    }
+    // "Leave a tip for {business}?" (C4, B6): once, for 7 days after the plan ends.
+    if (paid && myRequest.status === 'accepted' && ctx.tipsByHost?.get(String(plan.host_user_id))) {
+      const tipLater = require('./planChecks').tipLaterView(plan, paid.cents - (paid.refunded_cents || 0), ctx.tippedRequests.has(myRequest.id));
+      if (tipLater) card.tip_later = tipLater;
+    }
+  }
+  // "Pay at {business}" (D2, B5) for the business's staff and the guests who are in, while it has the switch.
+  if (plan.pay_here && ctx.payHereByHost?.get(String(plan.host_user_id))) {
+    const role = card.viewer?.role;
+    const isIn = card.viewer?.request_status === 'accepted';
+    if (role === 'host' || isIn) card.pay_here = require('./planChecks').cardView(plan, card.business?.name);
+  }
   card.guests_can_invite = Boolean(plan.guests_can_invite);
   card.more_times = moreTimesView(ctx.moreTimesByPlan?.get(plan.post_id));
 }
@@ -746,7 +1023,9 @@ function buildDetail(plan, viewer, ctx) {
   const viewerIsHost = card.viewer.role === 'host';
   const requests = ctx.requestsByPlan.get(plan.post_id) || [];
 
-  if (rules.isOnline(plan)) {
+  // An ended plan's host may reuse their own meeting place in Host again.
+  const shareMeeting = card.state !== 'cancelled' && (card.state !== 'ended' || viewerIsHost);
+  if (shareMeeting && rules.isOnline(plan)) {
     // No point, no address and no distance: the link, and the name of the site it opens ("meet.google.com").
     const parsed = require('./planPlace').parseOnlineLink(plan.online_link, rules.ONLINE_LINK_MAX);
     card.place = {
@@ -758,7 +1037,7 @@ function buildDetail(plan, viewer, ctx) {
       link: plan.online_link || null,
       link_host: parsed ? parsed.host : null,
     };
-  } else {
+  } else if (shareMeeting) {
     card.place = {
       name: plan.place_kind === 'home' ? `${firstName(host)}'s place` : (plan.place_name || plan.area_label),
       address: plan.place_address || null,
@@ -796,10 +1075,12 @@ function buildDetail(plan, viewer, ctx) {
       is_host: false,
       on_my_way: Boolean(request.on_my_way_at),
     };
+    // With kids welcome (H1, `guests=1`): how many kids come with each party, for the people line.
+    if (card.kids_welcome !== undefined && plan.kids_welcome) entry.kids_count = request.kids_count ?? 0;
     if (viewerIsHost) {
       entry.request_id = request.id;
       entry.distance_band = request.distance_band || null;
-      entry.kids_count = plan.kind === 'playdate' ? request.kids_count ?? null : undefined;
+      entry.kids_count = plan.kind === 'playdate' ? request.kids_count ?? null : entry.kids_count;
       entry.kids_age_bands = plan.kind === 'playdate' ? request.kids_age_bands || [] : undefined;
       entry.reconfirm_needed = Boolean(request.reconfirm_requested_at) && request.reconfirmed == null;
       const stats = ctx.peopleStats.get(userId) || { plans_joined: 0, hosted_before: false };
@@ -815,9 +1096,36 @@ function buildDetail(plan, viewer, ctx) {
         entry.distance_band = null;
         entry.plans_joined = 0;
         entry.new_to_pantopus = false;
+        // Who paid, and who brought them (B2), on a priced plan while the business has the switch. The apps write
+        // "Paid {text}": "$18.00", or once money came back to a guest still in, "$18.00 · $4.00 back" (the guest's
+        // own words, contract 10.2).
+        const money = card.price ? ctx.moneyByRequest?.get(request.id) : null;
+        if (money?.paid_cents) {
+          entry.paid = { cents: money.paid_cents,
+            text: require('./planPaid').paidAmountText({ status: request.status, paid_cents: money.paid_cents, refunded_cents: money.refunded_cents }),
+            refunded_cents: money.refunded_cents || 0, brought_by: money.fee_basis === 'own' ? 'own' : 'pantopus' };
+        }
+        // "Mark used" on the roster (B1): the guest's free thing, ready or used, while the deal gives one.
+        if (card.deal) {
+          const given = require('./planDeals').givenNow(plan.deal);
+          const usedAt = ctx.dealUsedByRequest?.get(request.id) || null;
+          if (given?.kind === 'free_item' || usedAt) entry.deal = { state: usedAt ? 'used' : 'ready', used_at: usedAt };
+        }
       }
     }
     people.push(entry);
+  }
+  // Guests without an account who are in (H1, `guests=1` only): a name and their numbers, no account.
+  if (card.kids_welcome !== undefined) people.push(...guests().peopleEntries(plan, ctx.guestRowsByPlan?.get(plan.post_id) || [], { viewerIsHost }));
+  // Chip in: who said they paid, on each row the host sees ("paid", and "Mark paid" with POST …/chip-in/paid).
+  if (viewerIsHost && card.chip_in) {
+    const extras = require('./planExtras');
+    const paid = require('./planChipIn').paidSet(plan.chip_in);
+    for (const entry of people) {
+      if (entry.is_host) continue;
+      const key = entry.user_id ? extras.personKey(entry.user_id) : entry.guest_id ? extras.guestKey(entry.guest_id) : null;
+      if (key) entry.chip_in = { paid: paid.has(key), who: key };
+    }
   }
   card.people = people;
   // A business's team is not in its plan's chat yet (planChat.ensureRoom): the room is the guests'.
@@ -926,7 +1234,7 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false, more 
 async function ownPrivatePlans(viewer, { kinds, online = true } = {}) {
   const [requests, invited] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select('post_id').eq('user_id', viewer.id).in('status', ACTIVE_REQUEST_STATUSES).limit(200),
-    supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted']).limit(200),
+    supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted', 'maybe']).limit(200),
   ]);
   if (requests.error || invited.error) throw new Error(`Failed to load your plans: ${(requests.error || invited.error).message}`);
   const ids = [...new Set([...(requests.data || []), ...(invited.data || [])].map((row) => row.post_id))];
@@ -1124,7 +1432,7 @@ async function listMine(viewer) {
     else if (status === 'accepted') out.going.push(card);
     else if (status === 'pending') out.asked.push(card);
     else if (status === 'waitlisted') out.waitlisted.push(card);
-    else if (card.my_invite?.status === 'pending' && rules.isAskingOpen(plan, startsAt(plan), endsAt(plan))) out.invited.push(card);
+    else if (['pending', 'maybe'].includes(card.my_invite?.status) && rules.isAskingOpen(plan, startsAt(plan), endsAt(plan))) out.invited.push(card);
   }
   return out;
 }
@@ -1156,7 +1464,7 @@ async function isPartOfPrivatePlan(plan, viewer) {
   if (String(plan.host_user_id) === String(viewer.id)) return true;
   const [invite, request] = await Promise.all([
     supabaseAdmin.from('PlanInvite').select('id').eq('post_id', plan.post_id).eq('invitee_user_id', viewer.id)
-      .in('status', ['pending', 'accepted', 'declined']).limit(1),
+      .in('status', ['pending', 'accepted', 'declined', 'maybe']).limit(1),
     supabaseAdmin.from('PlanRequest').select('id').eq('post_id', plan.post_id).eq('user_id', viewer.id)
       .in('status', ACTIVE_REQUEST_STATUSES).limit(1),
   ]);

@@ -44,7 +44,7 @@ public enum BusinessVerificationTier: String, Sendable, Hashable {
     public var blurb: String {
         switch self {
         case .unverified:
-            "Neighbors see no verification badge yet. Attest to your legal details to get started."
+            "Others see no verification badge yet. Attest to your legal details to get started."
         case .selfAttested:
             "You've attested to your legal name and address. Upload a document to reach the next tier."
         case .documentVerified:

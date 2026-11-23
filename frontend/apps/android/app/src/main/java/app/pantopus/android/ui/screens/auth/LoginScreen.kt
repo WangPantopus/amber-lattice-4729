@@ -647,7 +647,7 @@ private fun BrandLockup() {
         // Mark + wordmark at 36.dp holds the h1-sized wordmark the hero had.
         PantopusLockup(size = 36.dp, variant = MarkVariant.Light)
         Text(
-            text = "Your neighborhood, verified.",
+            text = "Your home, verified.",
             style = PantopusTextStyle.caption,
             color = PantopusColors.appTextSecondary,
         )
@@ -963,7 +963,11 @@ internal fun waitingLinkLine(path: String?): String? {
             null, is DeepLinkRouter.Destination.Unknown, is DeepLinkRouter.Destination.ResetPassword,
             is DeepLinkRouter.Destination.VerifyEmail, is DeepLinkRouter.Destination.JoinInvite,
             -> return null
-            is DeepLinkRouter.Destination.Plan, is DeepLinkRouter.Destination.PlanRequests -> "open the plan you were sent"
+            is DeepLinkRouter.Destination.Plan,
+            is DeepLinkRouter.Destination.PlanRequests,
+            is DeepLinkRouter.Destination.PlanGuests,
+            is DeepLinkRouter.Destination.PlanCheck,
+            -> "open the plan you were sent"
             is DeepLinkRouter.Destination.Post -> "open the post you were sent"
             is DeepLinkRouter.Destination.SupportTrain, is DeepLinkRouter.Destination.SupportTrainManage ->
                 "open the Support Train you were sent"

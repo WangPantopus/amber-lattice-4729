@@ -651,16 +651,16 @@ export interface InviteProgress {
 
 export const INVITE_FEATURE_TIERS = [
   { key: 'activity_map', label: 'Activity Map', threshold: 1 },
-  { key: 'neighborhood_insights', label: 'Neighborhood Insights', threshold: 3 },
+  { key: 'neighborhood_insights', label: 'Local Insights', threshold: 3 },
   { key: 'priority_matching', label: 'Priority Matching', threshold: 5 },
-  { key: 'founding_badge', label: 'Founding Neighbor Badge', threshold: 10 },
+  { key: 'founding_badge', label: 'Block Founder Badge', threshold: 10 },
 ] as const;
 
 export const FEATURE_LABELS: Record<string, string> = {
   activity_map: 'Activity Map',
-  neighborhood_insights: 'Neighborhood Insights',
+  neighborhood_insights: 'Local Insights',
   priority_matching: 'Priority Matching',
-  founding_badge: 'Founding Neighbor Badge',
+  founding_badge: 'Block Founder Badge',
 };
 
 // ============ USER TYPES ============
@@ -720,6 +720,20 @@ export interface GigIncident {
   resolved_at?: string;
   resolved_by?: string;
   created_at: string;
+}
+
+/** One guidance card's record: how many times it closed, and when last. */
+export interface GuidanceSeenEntry {
+  times: number;
+  last_at: string;
+}
+
+/** GET /api/users/profile `guidance` (a top-level key beside `user`), and the answer of the guidance writes. */
+export interface GuidanceState {
+  enabled: boolean;
+  /** The account is under 14 days old. */
+  new_account: boolean;
+  seen: Record<string, GuidanceSeenEntry>;
 }
 
 export interface UserProfile extends User {
@@ -1037,7 +1051,17 @@ export interface ReactionSummary {
   reacted_by_me: boolean;
 }
 
+export interface ChatMomentQuote {
+  id: string;
+  kind: 'text' | 'photo' | 'video';
+  thumb_url: string | null;
+  ended: boolean;
+  background?: string | null;
+  excerpt?: string | null;
+}
+
 export interface ChatMessage {
+  moment?: ChatMomentQuote | null;
   id: string;
   room_id: string;
   sender_id: string;
@@ -1113,6 +1137,7 @@ export interface ConversationTopic {
 }
 
 export interface ConversationSummary {
+  last_message_moment?: (ChatMomentQuote & { from_me: boolean }) | null;
   other_participant_id: string;
   other_participant_name: string;
   other_participant_username: string;
@@ -1127,6 +1152,7 @@ export interface ConversationSummary {
 }
 
 export interface GroupRoomSummary {
+  last_message_moment?: (ChatMomentQuote & { from_me: boolean }) | null;
   id: string;
   room_type: 'group' | 'home';
   room_name: string;

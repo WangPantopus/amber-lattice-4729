@@ -3,10 +3,10 @@
 //  Pantopus
 //
 //  The send flow's side of sealing a card by hand (plan Part 2, launch key
-//  `card_table`): "Seal and send" on Look it over opens the table over the
-//  flow, the seal sends the card with the draft's request ID, and step 5's
-//  Done, Take it back and Share this card answer from the flow. The table's
-//  own moves are in `CardTableSending.swift`.
+//  `card_table`): "Seal and send" on Seal it for the day or on Look it over
+//  opens the table over the flow, the seal sends the card with the draft's
+//  request ID, and step 5's Done, Take it back and Share this card answer
+//  from the flow. The table's own moves are in `CardTableSending.swift`.
 //
 
 import SwiftUI
@@ -14,6 +14,8 @@ import SwiftUI
 extension HolidayCardFlowViewModel {
     /// "Seal and send": with the table on, it opens to seal the card by hand (the seal sends it); otherwise it goes.
     func sealOrSend() {
+        // A card that travels needs the sender's town first (travelling card plan Part 2).
+        if askTownFirst(then: { [weak self] in self?.sealOrSend() }) { return }
         if LaunchFeatures.cardTable {
             sealsAtTable = true
         } else if recipient?.entries != nil {
@@ -21,6 +23,16 @@ extension HolidayCardFlowViewModel {
         } else {
             Task { await send() }
         }
+    }
+
+    /// "Seal and send" on Seal it for the day (experience plan 5.1): the check Look it over runs, then straight to the
+    /// sealing table, where the card is sealed by hand as from Look it over. A refusal stays under the choices; a list
+    /// with a card that won't go opens Look it over instead; a server that can't show the look still lets it be sealed.
+    func sealFromChoices() async {
+        if askTownFirst(then: { [weak self] in Task { await self?.sealFromChoices() } }) { return }
+        let passed = await lookItOver(opens: false)
+        guard passed || (lookUnavailable && recipient?.entries == nil) else { return }
+        sealOrSend()
     }
 
     /// The card on the sending table as the other person will find it: as Look it over lays it out, or for a list,
@@ -35,7 +47,7 @@ extension HolidayCardFlowViewModel {
                 opened: false
             )
             let card = preview.piece.item.card
-            return CardTableContent(
+            var content = CardTableContent(
                 design: design.id,
                 number: design.number,
                 caption: card?.caption ?? design.caption,
@@ -52,8 +64,14 @@ extension HolidayCardFlowViewModel {
                 sealedInDays: "",
                 sealedDayCount: 0,
                 verse: design.verse,
-                signature: cards.signature == nil ? nil : signature
+                signature: cards.signature == nil ? nil : signature,
+                mood: card?.mood ?? design.mood
             )
+            // A card that travels: the look's one postmark, the sender's town, struck at the seal's thump (Part 2).
+            if let stops = card?.travel?.postmarks, !stops.isEmpty {
+                content.travel = CardTravelEnvelope(sealing: CardTravelEnvelope.marks(stops, year: content.year))
+            }
+            return content
         }
         return CardTableContent(
             design: design.id,
@@ -72,7 +90,8 @@ extension HolidayCardFlowViewModel {
             sealedInDays: "",
             sealedDayCount: 0,
             verse: design.verse,
-            signature: cards.signature == nil ? nil : signature
+            signature: cards.signature == nil ? nil : signature,
+            mood: design.mood
         )
     }
 }
@@ -156,8 +175,14 @@ struct CardTableSendCover: ViewModifier {
         guard viewModel.step == .sent else {
             // Out of stamps: the seal doesn't take and the stamp books open over the table (as web).
             if viewModel.showsStampBooks { return .refused(nil) }
-            // An arrival that closed: back to its choices, which say why.
-            if viewModel.step != .look {
+            // A card that travels and no town yet: the table goes so "Where does it start?" can ask.
+            if viewModel.asksTown {
+                viewModel.sealsAtTable = false
+                return .refused(nil)
+            }
+            // An arrival that closed, or a card sealed from Seal it for the day that didn't go: back to its choices,
+            // which say why. A list says why on the table.
+            if viewModel.step != .look, viewModel.sendError == nil {
                 viewModel.sealsAtTable = false
                 return .refused(nil)
             }
@@ -166,12 +191,13 @@ struct CardTableSendCover: ViewModifier {
         let share = CardTableMenuItem(title: "Share this card", identifier: "cardTableSendShare") { [weak model] in
             model?.isSharing = true
         }
+        let again = await sendAgain(viewModel)
         if let results = viewModel.listResults {
             let sent = results.filter { $0.card != nil }.count
             let words = sent == 1 ? "1 card on its way." : "\(sent) cards on their way."
-            return .sent(words: words, primary: "Done", buttons: [share])
+            return .sent(words: travelWords(words, viewModel), primary: "Done", buttons: [share] + again)
         }
-        guard let card = viewModel.sent else { return .sent(words: "On its way.", primary: "Done", buttons: [share]) }
+        guard let card = viewModel.sent else { return .sent(words: "On its way.", primary: "Done", buttons: [share] + again) }
         if card.byLink, let link = viewModel.sentLink {
             let from = HolidayCardWords.firstName(viewModel.fromName)
             let copy = CardTableMenuItem(title: "Copy link", identifier: "cardTableSendCopyLink") { [weak model] in
@@ -181,7 +207,7 @@ struct CardTableSendCover: ViewModifier {
             let shareLink = CardTableMenuItem(title: "Share", identifier: "cardTableSendShareLink") { [weak model] in
                 model?.linkShareText = "A Christmas card for you from \(from): \(link)"
             }
-            return .sent(words: "Your card is ready.", primary: "Done", buttons: [copy, shareLink])
+            return .sent(words: travelWords("Your card is ready.", viewModel), primary: "Done", buttons: [copy, shareLink] + again)
         }
         let first = MailPieceModel.firstText(card.toName).map(HolidayCardWords.firstName) ?? "them"
         let lines = [HolidayCardWords.arrivalLine(card), HolidayCardWords.takeBackLine(card)].compactMap(\.self)
@@ -192,7 +218,28 @@ struct CardTableSendCover: ViewModifier {
             })
         }
         buttons.append(share)
-        return .sent(words: (["On its way to \(first)."] + lines).joined(separator: "\n"), primary: "Done", buttons: buttons)
+        let travels = viewModel.sentTravels ? [HolidayCardTravelWords.sentLine] : []
+        let words = (["On its way to \(first)."] + travels + lines).joined(separator: "\n")
+        return .sent(words: words, primary: "Done", buttons: buttons + again)
+    }
+
+    /// A card that travels: its sent words gain "It can travel. You'll hear when it reaches a town." (plan Part 2).
+    @MainActor
+    private static func travelWords(_ words: String, _ viewModel: HolidayCardFlowViewModel) -> String {
+        viewModel.sentTravels ? "\(words)\n\(HolidayCardTravelWords.sentLine)" : words
+    }
+
+    /// "Send this card to someone else" under the sent card (experience plan Part 6), when another card can go now: the
+    /// table goes, and the flow starts again at Who it's for with the same picture.
+    @MainActor
+    private static func sendAgain(_ viewModel: HolidayCardFlowViewModel) async -> [CardTableMenuItem] {
+        if viewModel.cards?.postageEnabled == true { await viewModel.stamps.refresh() }
+        guard viewModel.canSendAnother, viewModel.design != nil else { return [] }
+        let again = CardTableMenuItem(title: "Send this card to someone else", identifier: "cardTableSendAgain") { [viewModel] in
+            viewModel.sealsAtTable = false
+            viewModel.sendThisCardAgain()
+        }
+        return [again]
     }
 }
 
@@ -256,11 +303,11 @@ struct CardTableSendPage: View {
     private var closeLabel: String {
         switch model.sending {
         case .addressing, .gone: "Done"
-        default: "Back to Look it over"
+        default: viewModel.step == .look ? "Back to Look it over" : "Back to \(viewModel.step.title)"
         }
     }
 
-    /// ✕: before the seal, back to Look it over with nothing sent; once it's sent, the same as Done.
+    /// ✕: before the seal, back to the page it was opened from with nothing sent; once it's sent, the same as Done.
     private func close() {
         switch model.sending {
         case .sealing:

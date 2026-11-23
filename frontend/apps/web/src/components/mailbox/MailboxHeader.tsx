@@ -174,36 +174,41 @@ function DrawerChips({ view }: { view: Extract<MailboxView, { kind: 'main' } | {
   // Sent: once they've sent something, or while cards can be sent (and on it now).
   const showSent = view.kind === 'sent' || Boolean(reply?.sent?.any) || (launchFeatures.holidayCards && launchFeatures.mailbox);
   const SentIcon = MailboxIcons.sent;
+  const drawerChip = (drawer: MailboxDrawer) => {
+    const Icon = DRAWER_ICONS[drawer];
+    const on = drawer === current;
+    const count = unread(drawer);
+    return (
+      <Link
+        key={drawer}
+        href={mailboxHref(tab, drawer)}
+        aria-current={on ? 'page' : undefined}
+        aria-label={count > 0 ? `${DRAWER_LABELS[drawer]}, ${count} unopened` : DRAWER_LABELS[drawer]}
+        className={`${chip} ${on ? chipOn : chipOff}`}
+      >
+        <Icon className="h-4 w-4" strokeWidth={on ? 2.25 : 2} aria-hidden />
+        <span>{DRAWER_LABELS[drawer]}</span>
+        {count > 0 ? (
+          <span
+            aria-hidden
+            className={`min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-bold leading-5 ${
+              on ? 'bg-app-surface text-app-text' : 'bg-primary-100 text-primary-800'
+            }`}
+          >
+            {count > 99 ? '99+' : count}
+          </span>
+        ) : null}
+      </Link>
+    );
+  };
 
   return (
     <div role="group" aria-label="Drawers" className="flex gap-2 overflow-x-auto px-4 pb-1 pt-2">
-      {shown.map((drawer) => {
-        const Icon = DRAWER_ICONS[drawer];
-        const on = drawer === current;
-        const count = unread(drawer);
-        return (
-          <Link
-            key={drawer}
-            href={mailboxHref(tab, drawer)}
-            aria-current={on ? 'page' : undefined}
-            aria-label={count > 0 ? `${DRAWER_LABELS[drawer]}, ${count} unopened` : DRAWER_LABELS[drawer]}
-            className={`${chip} ${on ? chipOn : chipOff}`}
-          >
-            <Icon className="h-4 w-4" strokeWidth={on ? 2.25 : 2} aria-hidden />
-            <span>{DRAWER_LABELS[drawer]}</span>
-            {count > 0 ? (
-              <span
-                aria-hidden
-                className={`min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-bold leading-5 ${
-                  on ? 'bg-app-surface text-app-text' : 'bg-primary-100 text-primary-800'
-                }`}
-              >
-                {count > 99 ? '99+' : count}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
+      {/* Me and Home share one span: the guidance pointer "Me and Home" rings both. */}
+      <span data-testid="mailbox.meHome" className="flex flex-shrink-0 gap-2">
+        {shown.filter((drawer) => drawer === 'personal' || drawer === 'home').map(drawerChip)}
+      </span>
+      {shown.filter((drawer) => drawer !== 'personal' && drawer !== 'home').map(drawerChip)}
       {showSent ? (
         <Link
           href="/app/mailbox/sent"

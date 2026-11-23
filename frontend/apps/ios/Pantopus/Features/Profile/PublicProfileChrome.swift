@@ -646,7 +646,7 @@ struct PublicProfilePostsFeed: View {
         if showsHiddenByBlock {
             return "You blocked \(first ?? "this person"). Neither of you sees the other's posts while the block is on."
         }
-        if isOwnProfile { return "Your posts show up here, the way neighbors see them." }
+        if isOwnProfile { return "Your posts show up here, the way others see them." }
         if joinedRecently { return "No posts yet. A quick hello goes a long way." }
         return "\(first ?? "They") hasn't posted yet. A quick hello goes a long way."
     }

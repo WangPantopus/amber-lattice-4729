@@ -14,6 +14,8 @@ final class PrivateClaimEvidenceClient {
     private let actorId: String?
     private var serverSession: String?
     private var retired = false
+    /// The last upload's bill read (FASTVERIFY phase 4): `verified`, `needs_review`, `unreadable`, or nil.
+    private(set) var lastFastCheck: String?
 
     init(
         api: APIClient = .shared,
@@ -141,6 +143,7 @@ final class PrivateClaimEvidenceClient {
             )
         )
         try requireCurrent()
+        lastFastCheck = result.fastCheck
         _ = try await list(homeId: homeId, claimId: claimId)
         let record = result.evidence
         guard record.matches(home: homeId, claim: claimId, evidence: uploadId), record.state == "ready", record.available,

@@ -184,6 +184,8 @@ struct RootView: View {
             .allowsHitTesting(!isAppLocked)
             .accessibilityHidden(isAppLocked)
         }
+        // The iPad window buttons stay clear of every screen's top-left control (`WindowControlsClearance`).
+        .background(WindowControlsClearanceInstaller().frame(width: 0, height: 0).accessibilityHidden(true))
         .animation(.easeInOut(duration: 0.25), value: auth.state)
         .transition(.opacity)
         .environment(\.itemZoomNamespace, itemZoom)

@@ -187,7 +187,7 @@ struct PulseConversationDetailContent: View {
     /// "Reply to {Name}…" (appendix): the person being answered, else the author.
     private var composerPlaceholder: String {
         let name = viewModel.replyTarget?.authorName ?? card.authorName
-        return "Reply to \(name == "A neighbor" ? "a neighbor" : name)…"
+        return "Reply to \(name == "Someone nearby" ? "someone nearby" : name)…"
     }
 
     private var replies: some View {

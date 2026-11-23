@@ -212,6 +212,13 @@ final class PlanInviteViewModel {
     }
 
     /// The share sheet closed: the list shows the text invite.
+    /// The same people again: `from-plan` answered the list; the people search reads again too.
+    func invitedFromPlan(_ sent: PlanInviteListDTO) async {
+        list = sent
+        PlansStoreReads.changed(planId: planId, store: store)
+        await reloadList()
+    }
+
     func textInviteShared() async {
         notice = "Done. That link works for one person."
         PlansStoreReads.changed(planId: planId, store: store)

@@ -164,9 +164,9 @@ public struct TransactionReviewSheetView: View {
     private var headerCopy: String {
         if let name = target.reviewedName, !name.isEmpty {
             return "How did your \(target.context.shortLabel.lowercased()) with \(name) go on "
-                + "\(target.transactionTitle)? Your review helps the neighborhood."
+                + "\(target.transactionTitle)? Your review helps people near you."
         }
-        return "How did this go on \(target.transactionTitle)? Your review helps the neighborhood."
+        return "How did this go on \(target.transactionTitle)? Your review helps people near you."
     }
 
     private var overallRating: some View {
@@ -239,7 +239,7 @@ public struct TransactionReviewSheetView: View {
             Text("Comment (optional)")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
-            TextField("Anything the neighborhood should know?", text: $comment, axis: .vertical)
+            TextField("Anything others should know?", text: $comment, axis: .vertical)
                 .lineLimit(3...6)
                 .font(Theme.Font.body)
                 .foregroundStyle(Theme.Color.appText)
@@ -392,7 +392,7 @@ private struct TxnReviewSubmittedView: View {
                 .pantopusTextStyle(.h3)
                 .foregroundStyle(Theme.Color.appText)
                 .accessibilityAddTraits(.isHeader)
-            Text("Thanks — your review helps neighbors trade with confidence.")
+            Text("Thanks — your review helps people trade with confidence.")
                 .pantopusTextStyle(.small)
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)

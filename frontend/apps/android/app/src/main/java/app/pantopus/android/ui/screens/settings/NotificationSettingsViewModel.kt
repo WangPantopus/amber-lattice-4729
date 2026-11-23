@@ -556,7 +556,7 @@ class NotificationSettingsViewModel
                                     id = RowId.MORNING_TIME,
                                     label = "Briefing Time",
                                     subtext = "Choose when this briefing arrives",
-                                    control = RowControl.Chips(MORNING_TIME_OPTIONS, prefs.dailyBriefingTimeLocal),
+                                    control = RowControl.Chips(MORNING_TIME_OPTIONS, prefs.dailyBriefingTimeLocal, clockTimes = true),
                                 ),
                             )
                         }
@@ -574,7 +574,7 @@ class NotificationSettingsViewModel
                                     id = RowId.EVENING_TIME,
                                     label = "Briefing Time",
                                     subtext = "Choose when this briefing arrives",
-                                    control = RowControl.Chips(EVENING_TIME_OPTIONS, prefs.eveningBriefingTimeLocal),
+                                    control = RowControl.Chips(EVENING_TIME_OPTIONS, prefs.eveningBriefingTimeLocal, clockTimes = true),
                                 ),
                             )
                         }
@@ -668,6 +668,7 @@ class NotificationSettingsViewModel
                                         RowControl.Chips(
                                             QUIET_START_OPTIONS,
                                             prefs.quietHoursStartLocal ?: DEFAULT_QUIET_START,
+                                            clockTimes = true,
                                         ),
                                 ),
                             )
@@ -679,6 +680,7 @@ class NotificationSettingsViewModel
                                         RowControl.Chips(
                                             QUIET_END_OPTIONS,
                                             prefs.quietHoursEndLocal ?: DEFAULT_QUIET_END,
+                                            clockTimes = true,
                                         ),
                                 ),
                             )

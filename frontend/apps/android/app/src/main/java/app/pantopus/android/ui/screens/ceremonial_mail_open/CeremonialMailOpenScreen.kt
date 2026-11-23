@@ -96,7 +96,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun CeremonialMailOpenScreen(
     onBack: () -> Unit = {},
-    onWriteBack: (String) -> Unit = {},
+    onWriteBack: (CeremonialReplyTo) -> Unit = {},
     onOutcome: (CeremonialOutcomeCta) -> Unit = {},
     reduceMotionOverride: Boolean? = null,
     viewModel: CeremonialMailOpenViewModel = hiltViewModel(),
@@ -153,10 +153,15 @@ fun CeremonialMailOpenScreen(
                             reduceMotion = reduceMotion,
                             isVoicePlaying = isVoicePlaying,
                             onToggleVoice = viewModel::toggleVoicePlayback,
-                            onReply = {
-                                viewModel.enterReplying()
-                                onWriteBack(current.letter.sender.displayName)
-                            },
+                            // Reply opens the letter form with the sender chosen; none for a business, Pantopus or
+                            // someone the reader blocked.
+                            onReply =
+                                current.letter.replyTo?.let { to ->
+                                    {
+                                        viewModel.enterReplying()
+                                        onWriteBack(to)
+                                    }
+                                },
                             onClose = onBack,
                             onOutcome = { action ->
                                 if (action.id in setOf("save", "archive")) viewModel.performOutcome(action.id) else onOutcome(action)
@@ -168,7 +173,7 @@ fun CeremonialMailOpenScreen(
                         ReplyHandoffFrame(
                             letter = current.letter,
                             onBack = viewModel::resetToOpen,
-                            onContinue = { onWriteBack(current.letter.sender.displayName) },
+                            onContinue = { current.letter.replyTo?.let(onWriteBack) },
                         )
                 }
             }
@@ -848,7 +853,7 @@ private fun ReadingFrame(
     reduceMotion: Boolean,
     isVoicePlaying: Boolean,
     onToggleVoice: () -> Unit,
-    onReply: () -> Unit,
+    onReply: (() -> Unit)?,
     onClose: () -> Unit,
     onOutcome: (CeremonialOutcomeCta) -> Unit,
     isSaved: Boolean = false,
@@ -1246,7 +1251,7 @@ private fun StickyBottomBar(
     letter: CeremonialMailLetter,
     isSaved: Boolean,
     actionInFlight: Boolean,
-    onReply: () -> Unit,
+    onReply: (() -> Unit)?,
     onSave: () -> Unit,
     onArchive: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1265,25 +1270,29 @@ private fun StickyBottomBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(Radii.pill))
-                    .background(PantopusColors.primary600)
-                    .clickable(onClick = onReply)
-                    .padding(vertical = Spacing.s3)
-                    .testTag("ceremonialMailOutcome_write_back"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            PantopusIconImage(icon = PantopusIcon.Send, contentDescription = null, size = 14.dp, tint = Color.White)
-            Spacer(Modifier.width(7.dp))
-            Text(text = "Reply", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        if (onReply != null) {
+            Row(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(Radii.pill))
+                        .background(PantopusColors.primary600)
+                        .clickable(onClick = onReply)
+                        .padding(vertical = Spacing.s3)
+                        .testTag("ceremonialMailOutcome_write_back"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Send, contentDescription = null, size = 14.dp, tint = Color.White)
+                Spacer(Modifier.width(7.dp))
+                Text(text = "Reply", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
+        // With no one to reply to, Save takes the row's room beside Archive.
         Row(
             modifier =
                 Modifier
+                    .then(if (onReply == null) Modifier.weight(1f) else Modifier)
                     .clip(RoundedCornerShape(Radii.pill))
                     .background(Color.White.copy(alpha = 0.65f))
                     .border(1.dp, letter.ink.color.copy(alpha = 0.13f), RoundedCornerShape(Radii.pill))
@@ -1291,7 +1300,7 @@ private fun StickyBottomBar(
                     .padding(horizontal = Spacing.s4, vertical = Spacing.s3)
                     .testTag("ceremonialMailOutcome_save"),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         ) {
             PantopusIconImage(icon = PantopusIcon.Bookmark, contentDescription = null, size = 14.dp, tint = letter.ink.color)
             Text(text = if (isSaved) "Saved" else "Save", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = letter.ink.color)

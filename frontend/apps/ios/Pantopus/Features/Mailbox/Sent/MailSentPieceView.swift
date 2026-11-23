@@ -18,13 +18,18 @@ struct MailSentPieceView: View {
     @Environment(\.mailPieceShowsBack) private var showsBack
     /// Back to Sent.
     private let onBack: () -> Void
+    /// "Send this card to someone else": the send flow with this card's picture (experience plan Part 6).
+    private let onSendThisCard: ((String) -> Void)?
     @State private var showBack = false
+    /// A long note's first leaf: 0 on the back, 1 lifted by Read on (plan Part 9).
+    @State private var leafLift = 0.0
     /// "See it the way they did": the real moment, full screen.
     @State private var tableContent: CardTableContent?
     @State private var tableSharesSealed = false
 
-    init(viewModel: MailSentPieceViewModel, onBack: @escaping () -> Void) {
+    init(viewModel: MailSentPieceViewModel, onSendThisCard: ((String) -> Void)? = nil, onBack: @escaping () -> Void) {
         _viewModel = State(initialValue: viewModel)
+        self.onSendThisCard = onSendThisCard
         self.onBack = onBack
     }
 
@@ -133,6 +138,10 @@ struct MailSentPieceView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, Spacing.s1)
+            // A card that travels: how far it has gone, and its journey (travelling card plan Part 6).
+            if let travel = piece.travel {
+                MailSentTravelLine(travel: travel)
+            }
             // An email that didn't go out shows first, before the envelope and the card.
             MailSentEmailBox(piece: piece, viewModel: viewModel)
             section(mailbox) {
@@ -157,11 +166,16 @@ struct MailSentPieceView: View {
                         tableContent = content
                     }
                     .accessibilityIdentifier("mailSentSeeIt")
+                    if let travel = piece.travel {
+                        MailSentJourneyButton(travel: travel)
+                    }
                     CardTableSentShareButton(content: content, sharesSealed: piece.sealed)
                 }
             }
+            sendAgain(piece)
+            joinedButton(piece)
             trail(piece)
-            if piece.canTakeBack {
+            if piece.canTakeBack || piece.cardReply?.canTakeBack == true {
                 takeBack(piece)
             } else if let error = viewModel.takeBackError {
                 errorLine(error)
@@ -186,20 +200,25 @@ struct MailSentPieceView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
-        let back = HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year) { width in
-            HolidayCardReadNote(text: note, number: piece.card.number, cardWidth: width)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
-        return VStack(spacing: 18) {
-            HolidayCardFlip(showBack: showBack) { front } back: { back }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Your card: \(HolidayCardWords.captionSentence(piece.card.caption)) On the back: \(note)")
-                .rotationEffect(.degrees(-1))
-            HolidayCardPaperButton(title: showBack ? "Turn it back" : "Turn it over", isPressed: showBack) {
-                showBack.toggle()
+        func backFace(_ leaf: CardTableLeaf) -> some View {
+            HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year, noteText: note, leaf: leaf) { width in
+                HolidayCardReadNote(text: note, number: piece.card.number, cardWidth: width, leaf: leaf)
             }
-            .accessibilityIdentifier("mailSentPieceTurn")
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+        let back = backFace(.whole).shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
+        return VStack(spacing: 18) {
+            // A long note runs onto a second leaf on the card that turns over (plan Part 9); the still under it stays one side.
+            HolidayCardFlip(showBack: showBack) {
+                front
+            } back: {
+                HolidayCardTurningBack(note: note, lift: leafLift) { backFace($0) }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Your card: \(HolidayCardWords.captionSentence(piece.card.caption)) On the back: \(note)")
+            .rotationEffect(.degrees(-1))
+            HolidayCardTurnButton(showBack: $showBack, leafLift: $leafLift, note: note)
+                .accessibilityIdentifier("mailSentPieceTurn")
             front.hidden()
                 .overlay { back }
                 .accessibilityElement(children: .ignore)
@@ -279,56 +298,6 @@ struct MailSentPieceView: View {
             .padding(.bottom, isLast ? 0 : Spacing.s4)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    /// "Changed your mind?" while it can still come back.
-    private func takeBack(_ piece: MailSentPiece) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(alignment: .center, spacing: Spacing.s3) {
-                Icon(.calendarClock, size: 20, color: MailPaper.cardLink)
-                VStack(alignment: .leading, spacing: Spacing.s0) {
-                    Text("Changed your mind?")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(MailPaper.cardText)
-                    Text(verbatim: MailSentWords.takeBackLine(piece))
-                        .font(.system(size: 13))
-                        .foregroundStyle(MailPaper.cardTextMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    viewModel.confirmsTakeBack = true
-                } label: {
-                    ZStack {
-                        Text("Take it back").opacity(viewModel.takingBack ? 0 : 1)
-                        if viewModel.takingBack { ProgressView().tint(MailPaper.wax) }
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(MailPaper.wax)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 1.5))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.takingBack)
-                .accessibilityIdentifier("mailSentPieceTakeBack")
-                .confirmationDialog("Take your card back?", isPresented: $viewModel.confirmsTakeBack, titleVisibility: .visible) {
-                    Button("Take it back", role: .destructive, action: confirmTakeBack)
-                        .accessibilityIdentifier("mailSentTakeBackConfirm")
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(MailSentWords.takeBackConfirm(piece, postage: HolidayCardWords.postageOn))
-                }
-            }
-            if let error = viewModel.takeBackError {
-                errorLine(error)
-            }
-        }
-        .padding(.horizontal, Spacing.s4)
-        .padding(.vertical, 14)
-        .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.xl, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
     }
 }
 
@@ -416,12 +385,94 @@ private extension MailSentPieceView {
                 voice: piece.card.voice,
                 from: .sent(cardId: piece.id),
                 number: piece.card.number,
+                moodName: piece.card.mood,
                 day: piece.envelope.postmarkedOn ?? piece.sentAt,
                 fromName: from,
                 forName: piece.toName
             )
             .padding(.top, -Spacing.s6)
             .accessibilityIdentifier("mailSentPhoto")
+        }
+    }
+}
+
+private extension MailSentPieceView {
+    /// "Changed your mind?" while it can still come back.
+    func takeBack(_ piece: MailSentPiece) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            HStack(alignment: .center, spacing: Spacing.s3) {
+                Icon(.calendarClock, size: 20, color: MailPaper.cardLink)
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    Text("Changed your mind?")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(MailPaper.cardText)
+                    Text(verbatim: MailSentWords.takeBackLine(piece))
+                        .font(.system(size: 13))
+                        .foregroundStyle(MailPaper.cardTextMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    viewModel.confirmsTakeBack = true
+                } label: {
+                    ZStack {
+                        Text("Take it back").opacity(viewModel.takingBack ? 0 : 1)
+                        if viewModel.takingBack { ProgressView().tint(MailPaper.wax) }
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(MailPaper.wax)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 1.5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.takingBack)
+                .accessibilityIdentifier("mailSentPieceTakeBack")
+                .confirmationDialog(
+                    piece.cardReply == nil ? "Take your card back?" : "Take your reply back?",
+                    isPresented: $viewModel.confirmsTakeBack,
+                    titleVisibility: .visible
+                ) {
+                    Button("Take it back", role: .destructive, action: confirmTakeBack)
+                        .accessibilityIdentifier("mailSentTakeBackConfirm")
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(MailSentWords.takeBackConfirm(piece, postage: HolidayCardWords.postageOn))
+                }
+            }
+            if let error = viewModel.takeBackError {
+                errorLine(error)
+            }
+        }
+        .padding(.horizontal, Spacing.s4)
+        .padding(.vertical, 14)
+        .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.xl, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
+    }
+
+    /// The card and its reply as one joined card (experience plan Part 3): your reply ("See it the way they did"), or
+    /// the reply to your card ("Nora wrote back").
+    @ViewBuilder
+    func joinedButton(_ piece: MailSentPiece) -> some View {
+        if let pair = viewModel.replyPair {
+            let title = piece.cardReply != nil ? "See it the way they did" : CardReplyWords.slip(pair.reply.fromName)
+            HolidayCardPaperButton(title: title, fullWidth: true) { viewModel.joined = pair }
+                .accessibilityIdentifier("mailSentJoined")
+                .fullScreenCover(item: $viewModel.joined) { pair in
+                    CardTableJoinedPage(pair: pair, closeLabel: "Back to your card") { viewModel.joined = nil }
+                }
+        }
+    }
+
+    /// "Send this card to someone else" (experience plan Part 6), when another card can go now.
+    @ViewBuilder
+    func sendAgain(_ piece: MailSentPiece) -> some View {
+        if !piece.isLetter, viewModel.canSendAnother, let onSendThisCard {
+            HolidayCardPaperButton(title: "Send this card to someone else", fullWidth: true) {
+                onSendThisCard(piece.card.design)
+            }
+            .accessibilityIdentifier("mailSentSendAgain")
         }
     }
 }

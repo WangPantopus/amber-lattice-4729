@@ -382,6 +382,12 @@ const aiDraftLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
   message: { error: 'AI_RATE_LIMITED', message: 'Too many AI requests. Please try again later.' },
+  // A route that has a plain answer of its own (req.aiDraftFallback, the task draft's parser) carries on past the
+  // limit with req.aiDraftRefused set; every other route answers 429 as before.
+  handler: (req, res, next, options) => {
+    if (req.aiDraftFallback) { req.aiDraftRefused = true; return next(); }
+    return res.status(options.statusCode).send(options.message);
+  },
 });
 
 /**
@@ -465,17 +471,37 @@ const shareCardRenderLimiter = rateLimit({
 });
 
 /**
- * Limiter for Support Train organizer/helper write actions.
- * 30 requests per 5 minutes per user.
+ * Limiter for Support Train organizer/helper write actions: 120 per 5 minutes for a signed-in person, 30 for a caller
+ * with no account (keyed by IP; the guest sign-up route reaches this before sign-in is read).
+ *
+ * Founder 2026-11-18: raised from 30 for everyone. An organizer setting up a two-week Train date by date (~14 adds),
+ * filling in its details, publishing and then sharing the address with a dozen helpers makes ~30 writes in a few
+ * minutes, and fixing a few dates or removing signups adds more; 120 is four times that with room for a busy evening,
+ * and still stops a runaway client. Guest sign-ups keep their own 8-a-day limit.
  */
+const SUPPORT_TRAIN_WRITES_SIGNED_IN = 120;
+const SUPPORT_TRAIN_WRITES_NO_ACCOUNT = 30;
 const supportTrainWriteLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  limit: 30,
+  limit: (req) => (req.user?.id ? SUPPORT_TRAIN_WRITES_SIGNED_IN : SUPPORT_TRAIN_WRITES_NO_ACCOUNT),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
   skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
   message: { error: 'Too many support train requests. Please try again shortly.' },
+});
+
+/**
+ * Signups one caller makes on one Support Train through the page anyone with the link can open
+ * (POST /api/activities/support-trains/:id/slots/:slotId/guest-reserve): eight a day.
+ */
+const supportTrainGuestSignupLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `train-guest:${req.params.id}:${req.user?.id || clientIpKey(req)}`,
+  message: { error: 'TOO_MANY_SIGNUPS', message: 'That is a lot of signups for one day. Please try again tomorrow.' },
 });
 
 /**
@@ -578,7 +604,21 @@ const bookingWriteLimiter = rateLimit({
   message: { error: 'Too many booking requests. Please try again shortly.' },
 });
 
+/**
+ * A host's notes about one booking (POST /api/scheduling/bookings/:id/nudge): three a day for a booking, whoever on
+ * the host's side sends them.
+ */
+const bookingNudgeLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `booking-nudge:${req.params.id}`,
+  message: { error: 'This booking has had its notes for today. Try again tomorrow.' },
+});
+
 module.exports = {
+  bookingNudgeLimiter,
   clientIpKey,
   userWriteLimits,
   geocodeLimiter,
@@ -607,6 +647,7 @@ module.exports = {
   placeLookupLimiter,
   shareCardRenderLimiter,
   supportTrainWriteLimiter,
+  supportTrainGuestSignupLimiter,
   supportTrainDraftLimiter,
   personaFollowLimiter,
   broadcastPublishLimiter,

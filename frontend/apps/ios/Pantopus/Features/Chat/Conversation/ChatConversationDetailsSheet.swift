@@ -392,7 +392,7 @@ struct ChatReportUserSheet: View {
                 .frame(width: 56, height: 56)
                 .background(Theme.Color.successBg)
                 .clipShape(Circle())
-            Text("Report submitted — thanks for keeping the neighborhood safe")
+            Text("Report submitted — thanks for keeping Pantopus safe")
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)
                 .multilineTextAlignment(.center)

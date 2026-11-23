@@ -60,6 +60,13 @@ data class MomentRingDto(
      */
     @Json(name = "altitude_ft") val altitudeFt: Double? = null,
     val flying: Boolean = false,
+    /** The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail. */
+    val floating: Boolean = false,
+    /**
+     * Until when the ring is live (API v4.1): the latest `live_until` among its Moments taken here, when its newest
+     * Moment is an exact pin away from home; null otherwise and from an older server. The "Live now" chip and the dot.
+     */
+    @Json(name = "live_until") val liveUntil: String? = null,
 )
 
 /**
@@ -98,7 +105,7 @@ data class MomentDto(
     val id: String,
     val author: MomentAuthorDto,
     val kind: String,
-    /** `uploading`, `checking`, `live`, `held` or `ended` (others only ever get `live`). */
+    /** `uploading`, `checking`, `live`, `held`, `ended` or (the Sky, author only) `scheduled` (others only ever get `live`). */
     val state: String = "live",
     val caption: String? = null,
     val text: String? = null,
@@ -137,6 +144,34 @@ data class MomentDto(
     val flying: Boolean = false,
     /** A part of a longer video posted as several Moments (contract v3.11); null for any other Moment. */
     val series: MomentSeriesDto? = null,
+    /** The Sky (v4.0): it floats over an area (its point is the area's). */
+    val floating: Boolean = false,
+    /** The Sky: it was shared later, so the viewer says "Earlier today" (or "Yesterday") in place of "12m ago". */
+    val earlier: Boolean = false,
+    /** The Sky, for its author only: when it shares (or shared). */
+    @Json(name = "share_at") val shareAt: String? = null,
+    /**
+     * The Live mark (API v4.1): the app's own camera took it at this spot. Never set with [takenAt], at home, on an area
+     * or with no location; false from an older server.
+     */
+    @Json(name = "taken_here") val takenHere: Boolean = false,
+    /** Until when it reads "Live from here", then "Taken here"; null for one shared later, which never reads Live. */
+    @Json(name = "live_until") val liveUntil: String? = null,
+    /** The weather when it was posted ("31°F · Snow"); only on a Moment taken here whose author showed it. */
+    val weather: MomentWeatherDto? = null,
+)
+
+/**
+ * A Moment's weather stamp (API v4.1, `momentWeather.weatherAt`): whole degrees Fahrenheit, one of nine kinds for the
+ * icon (`clear`, `partly_cloudy`, `cloudy`, `fog`, `rain`, `snow`, `sleet`, `thunderstorm`, `wind`) and the words to
+ * show ("Snow", "Wind 38 mph").
+ */
+@JsonClass(generateAdapter = true)
+data class MomentWeatherDto(
+    /** Whole degrees as the server sends them; a Double so "31.0" or a stray fraction never fails the Moment. */
+    @Json(name = "temp_f") val tempF: Double? = null,
+    val kind: String? = null,
+    val label: String? = null,
 )
 
 /**
@@ -183,6 +218,8 @@ data class MomentsMapResponse(
      */
     @Json(name = "float_on") val floatOn: Boolean = false,
     val sun: MomentSunDto? = null,
+    /** The Sky: your own Moments waiting to share later, for your row only; empty while the Sky is off for you. */
+    val scheduled: List<MomentDto> = emptyList(),
 )
 
 /**
@@ -219,6 +256,8 @@ data class MomentEnvelope(
 data class MomentPointBody(
     val latitude: Double? = null,
     val longitude: Double? = null,
+    /** API v4.1: ask for the weather a Moment taken here would keep; only at the author's own fix, never a library item's. */
+    val weather: Boolean? = null,
 )
 
 /** What the camera's chip and the Post sheet say about a spot before posting. */
@@ -242,6 +281,38 @@ data class MomentPlacePreviewDto(
     @Json(name = "has_connections") val hasConnections: Boolean? = null,
     /** The sheet may offer "Show elevation" here (contract v3.8): heights are on for you and it isn't your home. */
     @Json(name = "can_show_height") val canShowHeight: Boolean = false,
+    /** The Sky (Moments API v4.0): true while `sky_places` is on for you; the Post sheet then draws the Sky's rows. */
+    val sky: Boolean = false,
+    /** The Sky: the area the point floats over (its town, the area's own point, the disc's radius); null with no point. */
+    val area: MomentSkyAreaDto? = null,
+    /** The Sky: the public place that names the spot, what "Pin it at a place" starts with; null where there is none. */
+    @Json(name = "place") val skyPlace: MomentPlaceChoiceDto? = null,
+    /** The Sky: a pin is possible here (false at home). */
+    @Json(name = "can_pin") val canPin: Boolean = false,
+    /** The Sky: the "Share later" times on offer now ("In 1 hour", "In 3 hours", "Tonight at 8" before 7 pm). */
+    @Json(name = "share_later") val shareLater: List<MomentShareLaterDto>? = null,
+    /**
+     * API v4.1, only when asked with `weather: true`: the stamp a Moment taken here would keep now, or null (at home, no
+     * fresh reading within 2 seconds): then "Show the weather" isn't offered.
+     */
+    val weather: MomentWeatherDto? = null,
+)
+
+/** The Sky: the area a point floats over (Moments API v4.0). */
+@JsonClass(generateAdapter = true)
+data class MomentSkyAreaDto(
+    val label: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @Json(name = "radius_m") val radiusM: Double? = null,
+)
+
+/** The Sky: one "Share later" choice, `1h`, `3h` or `tonight`, its words and when it would share (ISO). */
+@JsonClass(generateAdapter = true)
+data class MomentShareLaterDto(
+    val key: String,
+    val label: String,
+    val at: String? = null,
 )
 
 /** One name the Post sheet offers for the pin: [key] goes back as `place_key`, never the words. */
@@ -291,6 +362,14 @@ data class CreateMomentBody(
     val altitude: MomentAltitudeBody? = null,
     /** One part of a video posted as several Moments (contract v3.11); left out for a video posted as one. */
     val series: MomentSeriesDto? = null,
+    /** The Sky (v4.0): `place` pins the Moment at a public place (the `venue_id`, else the one naming the spot). */
+    val pin: String? = null,
+    /** The Sky (v4.0): hold the Moment until then, `1h`, `3h` or `tonight`; left out to post now. */
+    @Json(name = "share_later") val shareLater: String? = null,
+    /** API v4.1: the app's own camera took this photo or video just now; the server keeps the Live mark only where it may. */
+    @Json(name = "taken_here") val takenHere: Boolean? = null,
+    /** API v4.1: "Show the weather" was on; the server reads the weather itself (a phone's reading is never sent). */
+    @Json(name = "show_weather") val showWeather: Boolean? = null,
 )
 
 /**

@@ -69,6 +69,10 @@ class MomentsRepository
         /** The rings of the last map read, newest first as the server sent them. */
         val rings: StateFlow<List<MomentRingDto>> = _rings.asStateFlow()
 
+        /** The Sky: your own Moments waiting to share later, from the latest map read (your row's "Shares at …"). */
+        private val _scheduled = MutableStateFlow<List<MomentDto>>(emptyList())
+        val scheduled: StateFlow<List<MomentDto>> = _scheduled.asStateFlow()
+
         private val _heightsOn = MutableStateFlow(false)
 
         /** Heights are on for you, as the last map read said (contract v3.9): the map offers "Elevation". */
@@ -212,6 +216,7 @@ class MomentsRepository
                     _rings.value = all
                     _heightsOn.value = result.data.heightsOn
                     _floatSun.value = result.data.sun.takeIf { result.data.floatOn }
+                    _scheduled.value = result.data.scheduled.filter { it.state == "scheduled" }
                     NetworkResult.Success(all)
                 }
                 is NetworkResult.Failure -> result
@@ -274,7 +279,10 @@ class MomentsRepository
             text: String,
         ): NetworkResult<MomentReplyResponse> = safeApiCall { api.reply(id, MomentReplyBody(text)) }
 
-        suspend fun delete(id: String): NetworkResult<Unit> = safeApiCall { api.delete(id) }.toUnit().alsoChanged()
+        suspend fun delete(id: String): NetworkResult<Unit> =
+            safeApiCall { api.delete(id) }.toUnit().alsoChanged().also { result ->
+                if (result is NetworkResult.Success) _scheduled.value = _scheduled.value.filterNot { it.id == id }
+            }
 
         suspend fun report(
             id: String,
@@ -293,7 +301,10 @@ class MomentsRepository
         suspend fun placePreview(
             latitude: Double,
             longitude: Double,
-        ): NetworkResult<MomentPlacePreviewDto> = safeApiCall { api.placePreview(MomentPointBody(latitude, longitude)) }
+            /** API v4.1: also the weather "Show the weather" would keep; only at the author's own fix. */
+            weather: Boolean = false,
+        ): NetworkResult<MomentPlacePreviewDto> =
+            safeApiCall { api.placePreview(MomentPointBody(latitude, longitude, weather = true.takeIf { weather })) }
 
         /** With location off: only the 18+ state and whether you have a connection (contract v3.4). */
         suspend fun postingPreview(): NetworkResult<MomentPlacePreviewDto> = safeApiCall { api.placePreview(MomentPointBody()) }

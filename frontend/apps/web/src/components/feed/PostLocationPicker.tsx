@@ -32,6 +32,8 @@ interface PostLocationPickerProps {
   darkTextColor?: string;
   /** Where the first located attachment was taken: the list opens around it, with a chip to switch to the device. */
   photoLocation?: { latitude: number; longitude: number } | null;
+  /** Each new number opens the place list (the Sky's "Pin it at a place" in the composer). */
+  openRequest?: number;
 }
 
 type PickerMode = 'closed' | 'search';
@@ -167,7 +169,7 @@ function useDebounced(value: string, ms: number) {
 }
 
 export default function PostLocationPicker({
-  value, onChange, accentColor = '#0284c7', textColor, darkTextColor, photoLocation = null,
+  value, onChange, accentColor = '#0284c7', textColor, darkTextColor, photoLocation = null, openRequest = 0,
 }: PostLocationPickerProps) {
   const [mode, setMode] = useState<PickerMode>('closed');
   const [query, setQuery] = useState('');
@@ -365,6 +367,11 @@ export default function PostLocationPicker({
     setAnchorChip('photo');
     setMode('search');
   };
+
+  // The composer's "Pin it at a place" (the Sky) opens the list.
+  useEffect(() => {
+    if (openRequest > 0) handleOpen();
+  }, [openRequest]);
 
   // Pick a venue or town from the list or the search. Like a searched address it has to pass the place check (it may
   // be far from the person), and the device's fix counts there.

@@ -42,6 +42,8 @@ import { findPlaceSection, detailAddress } from './sections';
 import { usd, statusToState, apiErrorText } from './format';
 import { MoneyField, PrivacyNote, SkyButton, parseMoney, groupDigits } from './fields';
 import { useLocalDraft } from './useLocalDraft';
+import MailProofCard from '../fastVerify/MailProofCard';
+import { useVerifyOptions } from '../fastVerify/useVerifyOptions';
 
 const clampPct = (n: number) => Math.min(100, Math.max(0, n));
 
@@ -215,7 +217,7 @@ function RentBand({ data, homeId }: { data: PlaceRentBandData; homeId: string | 
           <div className="mt-3">
             <SkyButton onClick={() => setEditing(false)}>Show where I fall</SkyButton>
           </div>
-          <PrivacyNote>Saved on this device only — never shown to neighbors or on your public place.</PrivacyNote>
+          <PrivacyNote>Saved on this device only — never shown to others or on your public place.</PrivacyNote>
         </div>
       ) : (
         <button
@@ -356,7 +358,7 @@ function RentContributeForm({
       <div className="flex items-start gap-1.5 mt-3 text-[12px] leading-[17px] text-app-text-muted">
         <Lock size={13} strokeWidth={2} className="mt-0.5 shrink-0" />
         <span>
-          Saving adds this amount to your block’s aggregate. Neighbors only ever see a quartile range and a sample size — never your figure, your unit, or your name — and nothing shows at all until {'≥'}10 homes have reported. You can withdraw it any time.
+          Saving adds this amount to your block’s aggregate. Others only ever see a quartile range and a sample size — never your figure, your unit, or your name — and nothing shows at all until {'≥'}10 homes have reported. You can withdraw it any time.
         </span>
       </div>
     </div>
@@ -464,7 +466,7 @@ function RealRentCard({
             {building ? <Chip label={`${data.reports} of ${data.needed}`} variant="info" /> : null}
           </div>
           <div className="text-[12.5px] text-app-text-muted mt-0.5">
-            What verified neighbors here actually pay — not a county estimate
+            What verified residents here actually pay — not a county estimate
           </div>
         </div>
       </div>
@@ -482,7 +484,7 @@ function RealRentCard({
             {data.summary}
           </div>
           <div className="text-[12.5px] text-app-text-secondary leading-[18px] mt-1.5">
-            Amounts stay hidden until {data.needed} homes have reported — that floor is what keeps any one household from being singled out. Inviting the neighbors you know is the fastest way there.
+            Amounts stay hidden until {data.needed} homes have reported — that floor is what keeps any one household from being singled out. Inviting people you know nearby is the fastest way there.
           </div>
           {/* The invite is what closes the gap, and it lives on the Block
               page — naming it without a way to reach it would leave the
@@ -491,7 +493,7 @@ function RealRentCard({
             href="/app/place/block"
             className="inline-flex items-center gap-1.5 mt-2.5 text-[13px] font-semibold text-primary-600 hover:text-primary-700 transition"
           >
-            Invite a neighbor from Block founders
+            Invite a home from Block founders
             <ChevronRight size={15} strokeWidth={2.5} />
           </Link>
         </>
@@ -967,6 +969,13 @@ function RateWatchSection({ homeId, verified, canVerify }: { homeId: string; ver
     queryFn: () => api.recordWatch.getRecordWatch(homeId),
     enabled: verified,
   });
+  // FASTVERIFY: verified by a fast check, the home record watch needs a mailed code (null with the flags off).
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const fastOnly = verify.data?.level === 'fast';
+  if (verified && verify.loading) {
+    return <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted">Loading your watch…</div>;
+  }
+  if (verified && fastOnly && !watchQuery.data) return <MailProofCard title="Rate watch" homeId={homeId} />;
 
   if (!verified) {
     return (
@@ -1045,7 +1054,7 @@ export default function MoneyDetail({ intelligence, homeId }: { intelligence: Pl
           <>
             <DetailSectionLabel>Bill benchmark</DetailSectionLabel>
             {bill.access === 'locked' ? (
-              <LockedCard icon={Zap} title="Bill benchmark" reason={bill.unavailable_reason ?? "Verify your address by mail to compare your bills with your neighbors'."} cta="Verify address" onCta={verifyByMail} />
+              <LockedCard icon={Zap} title="Bill benchmark" reason={bill.unavailable_reason ?? "Verify your address by mail to compare your bills with homes near you."} cta="Verify address" onCta={verifyByMail} />
             ) : billReady ? (
               <BillBenchmark data={bill.data as PlaceBillBenchmarkData} />
             ) : (
@@ -1085,7 +1094,7 @@ export default function MoneyDetail({ intelligence, homeId }: { intelligence: Pl
           <>
             <DetailSectionLabel>What your block actually pays</DetailSectionLabel>
             <RealRentSection section={realRent} homeId={homeId} />
-            {realRent.access !== 'locked' ? <SourceNote name={realRent.source ?? 'Pantopus · verified neighbors on your block'} /> : null}
+            {realRent.access !== 'locked' ? <SourceNote name={realRent.source ?? 'Pantopus · verified residents on your block'} /> : null}
           </>
         ) : null}
 

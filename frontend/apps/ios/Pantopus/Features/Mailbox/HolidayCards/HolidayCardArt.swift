@@ -305,6 +305,10 @@ struct HolidayCardBack<Note: View>: View {
     let year: Int
     /// The sender's signature beside FROM (plan 8.2), in place of the typed name; on the card table's back only.
     var signature: CardSignature?
+    /// The note's words: on the card table's back the rules follow the pen's size for them (plan Part 1).
+    var noteText = ""
+    /// A long note's first or second leaf on a card that turns over (plan Part 9); give `note` the same one.
+    var leaf: CardTableLeaf = .whole
     @ViewBuilder let note: (_ cardWidth: CGFloat) -> Note
 
     var body: some View {
@@ -314,14 +318,15 @@ struct HolidayCardBack<Note: View>: View {
                 CardTableBack(
                     paperGrain: CardTableSmallArt.shared.paperGrain,
                     paper: paper,
-                    note: "",
+                    note: noteText,
                     fromName: HolidayCardWords.firstName(fromName),
                     year: year,
                     number: nil,
                     signature: signature,
                     drawsNote: false,
                     // Off the table the grain is lighter (multiply 25%), so the back reads bright cream (plan 1.9).
-                    grainOpacity: 0.25
+                    grainOpacity: 0.25,
+                    leaf: leaf
                 )
                 .equatable()
                 .overlay(alignment: .topLeading) {

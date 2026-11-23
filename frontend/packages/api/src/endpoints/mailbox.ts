@@ -5,7 +5,8 @@
 
 import apiClient, { get, post, put, del, patch } from '../client';
 import type { Mail, AdCampaign, ApiResponse } from '@pantopus/types';
-import type { MailItemV2 } from './mailboxV2';
+import type { CardTravel, CardTravelPostmark, MailCard, MailCardReply, MailItemV2 } from './mailboxV2';
+import type { CardLinkFront } from './mailCompose';
 
 export interface MailboxSummary {
   total_mail: number;
@@ -627,18 +628,31 @@ export interface HolidayCardDesign {
   slug?: string | null;
   /** The colour of the cloth it lies on (launch key card_table). */
   table?: string | null;
+  /** The table it opens on (from its collection). Absent from servers before it: decide by number (cardMood). */
+  mood?: HolidayCardMood | null;
   /** The whole verse printed on a Christmas with Jesus Christ picture ("Read the verse"); only those nine have it. */
   verse?: string | null;
 }
+
+/** The table a card opens on: candlelit (Christmas with Jesus Christ), Santa's, or the snowy everyday one. */
+export type HolidayCardMood = 'reverence' | 'santa' | 'nostalgia';
 
 /** A collection "Pick a card" shows: its name, who it's for, and its pictures in grid order. */
 export interface HolidayCardCollection {
   id: string;
   name: string;
+  /** Its short name, for the website's row of collections ("Jesus Christ"). Absent from older servers. */
+  short?: string;
+  /** Its public name in a link: /cards/collection/<slug>. Absent from older servers. */
+  slug?: string;
   /** One line under the row of collections. */
   line: string;
   /** Design ids, in grid order. */
   designs: string[];
+  /** The design id of the card that stands for it in "One from each collection" (never one of its first three). */
+  pick?: string;
+  /** Its parts in story order (Christmas with Jesus Christ only); together they are `designs`, in order. */
+  parts?: { name: string; designs: string[] }[];
 }
 
 /**
@@ -670,6 +684,8 @@ export interface SentHolidayCard {
   can_take_back: boolean;
   status: 'waiting' | 'delivered' | 'claimed' | 'expired' | 'withdrawn';
   sent_at: string | null;
+  /** A card that travels (server key card_travel): its journey, for "See its journey". */
+  travel?: { journey: string };
 }
 
 /**
@@ -691,7 +707,7 @@ export interface CardMediaRef {
   kind: 'photo' | 'voice';
   mime_type: string;
   size: number;
-  /** A photo, upright as stored (at most 1600 on the long side). */
+  /** A photo, upright as stored (at most 2400 on the long side). */
   width?: number | null;
   height?: number | null;
   alt?: string | null;
@@ -699,8 +715,15 @@ export interface CardMediaRef {
   duration_ms?: number;
 }
 
-/** A card's photo on a piece, Look it over or Sent: null while sealed. `covered` until the reader taps (a non-connection). */
-export interface CardPhoto { file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean }
+/** A Live Photo's moving part: an MP4 or QuickTime clip of at most 10 seconds, read from the same routes as its photo. */
+export interface CardLive { file_id: string; mime_type: string | null; duration_ms: number | null }
+/**
+ * A card's photo on a piece, Look it over or Sent: null while sealed. `covered` until the reader taps (a non-connection).
+ * `live` when it's a Live Photo (contract section 13), covered whenever the photo is.
+ */
+export interface CardPhoto {
+  file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean; live?: CardLive | null;
+}
 export interface CardVoice { file_id: string; duration_ms: number | null }
 
 /**
@@ -749,8 +772,11 @@ export interface HolidayCards {
     bought_stamp?: { required: boolean; remaining: number | null; state: 'ready' | 'buy' | 'unavailable' };
   };
   postage_enabled?: boolean;
-  /** The server keeps a signature beside FROM: its box and most bytes. Absent: set the typed name. */
-  signature?: { w: number; h: number; max_bytes: number };
+  /**
+   * The server keeps a signature beside FROM: its box and most bytes. Absent: set the typed name. `saves`: the account
+   * can keep one for the next cards (saveCardSignature / forgetCardSignature); `saved` is the one it keeps, or null.
+   */
+  signature?: { w: number; h: number; max_bytes: number; saves?: boolean; saved?: CardSignature | null };
   /** Digital stamps left (postage on; null when they couldn't be read). */
   stamps?: { available: number; free_remaining: number; paid_remaining: number } | null;
   /** Sending is open (until December 31 ends where you are). */
@@ -763,6 +789,10 @@ export interface HolidayCards {
   designs: HolidayCardDesign[];
   /** The collections "Pick a card" shows, in order (none from a server before collections: one grid of every design). */
   collections?: HolidayCardCollection[];
+  /** "Pick a card" as shelves (server key card_shelves). Absent: today's screen. */
+  shelves?: boolean;
+  /** The collections' ids in the order "One from each collection" draws them (SPEC E2); absent: the collections' order. */
+  opening?: string[];
   /** The arrivals open now, to a person and by email. */
   /**
    * `email` is the two choices older apps word for a card by email (now, sealed until Christmas); `email_all` (when the
@@ -780,11 +810,27 @@ export interface HolidayCards {
   max_recipients?: number;
   /** "Help me write it" can be used now (launch key card_note_help; suggestHolidayCardNote). Absent: no button. */
   note_help?: boolean;
+  /**
+   * "Let it travel" (server key card_travel; absent while it's off: no switch). `on`: the switch starts on. `town`: the
+   * sender's town ("Boise, ID"), or null: ask "Where does it start?" once. `places`: how many people one person may pass
+   * a card to.
+   */
+  travel?: { on: boolean; town: string | null; places: number };
 }
 
 /** GET /api/mailbox/cards */
 export async function getHolidayCards(): Promise<HolidayCards> {
   return get<HolidayCards>('/api/mailbox/cards');
+}
+
+/** PUT /api/mailbox/cards/signature: keep this signature for the next cards, replacing any saved one. */
+export async function saveCardSignature(signature: CardSignature): Promise<{ signature: CardSignature }> {
+  return put<{ signature: CardSignature }>('/api/mailbox/cards/signature', { signature });
+}
+
+/** DELETE /api/mailbox/cards/signature: forget the saved signature (cards already sent keep theirs). */
+export async function forgetCardSignature(): Promise<void> {
+  await del('/api/mailbox/cards/signature');
 }
 
 /**
@@ -818,7 +864,7 @@ export async function suggestHolidayCardNote(data: {
   design: string;
   /** First names, as shown on the screen (none for an address or a link). */
   to: string[];
-  /** How many people the card goes to: past two, the note names no one. */
+  /** How many people the card goes to: past one, the note names no one. */
   count: number;
   hint?: string;
   /** What's on the card so far. */
@@ -859,6 +905,8 @@ export async function sendHolidayCard(data: {
   photo?: string | null;
   photo_alt?: string | null;
   voice?: string | null;
+  /** "Let it travel" (server key card_travel): the card starts a journey. 409 CARD_TRAVEL_NEEDS_TOWN without a town. */
+  travel?: boolean;
 }): Promise<{ card: SentHolidayCard; link?: string }> {
   return post<{ card: SentHolidayCard; link?: string }>('/api/mailbox/cards', data);
 }
@@ -889,7 +937,9 @@ export interface HolidayCardPreview {
     /** The sealed envelope at its top (launch key card_table). */
     picture?: string } | null;
   /** By email: the page its link opens (the address masked, as on that page). */
-  link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean } | null;
+  link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean;
+    /** The card's front as the page shows it; null when it's sealed until Christmas. */
+    front?: CardLinkFront | null } | null;
   /** By email, set to go at your 7 a.m. or on Christmas morning: when (null: as it's sealed). */
   email_send_at?: string | null;
 }
@@ -915,6 +965,8 @@ export interface HolidayCardList {
   signature?: CardSignature | null;
   /** Each address keeps the list's choice (send it when the server offers `arrivals.email_all`). */
   emails_keep_arrival?: boolean;
+  /** "Let it travel" (server key card_travel): each card starts a journey of its own. */
+  travel?: boolean;
 }
 
 /** One card on a list's look: ready to go, sent by an earlier try of the list, or refused (and why). */
@@ -1003,6 +1055,8 @@ export interface SentPiece {
     /** Its public page, and the colour of the cloth it lies on (launch key card_table). */
     slug?: string | null;
     table?: string | null;
+    /** The table it opens on (absent from servers before it: decide by number). */
+    mood?: HolidayCardMood | null;
     /** The whole verse on a Christmas with Jesus Christ picture ("Read the verse"); not while it's sealed. */
     verse?: string | null;
     /** Their own signature beside FROM (GET /sent/:id only; also while it's sealed for the other person). */
@@ -1010,6 +1064,15 @@ export interface SentPiece {
     /** Their own photo and voice (GET /sent/:id only; never covered). */
     photo?: CardPhoto | null;
     voice?: CardVoice | null };
+  /** A reply they wrote to a card (a letter for older builds): the card it answers, and its own take-back. */
+  card_reply?: (Omit<MailCardReply, 'signature'> & { can_take_back: boolean; take_back_until: string | null }) | null;
+  /**
+   * A card that travels (server key card_travel), counted from this card on: "{towns} towns · {miles} miles. Now in
+   * {now_in}." and "See its journey". `now_in` is null until it reaches someone.
+   */
+  travel?: { journey: string; towns: number; miles: number; now_in: string | null;
+    /** The postmarks on this card's envelope as it reached its person (its share picture). */
+    postmarks?: CardTravelPostmark[] } | null;
 }
 
 /** A step of a sent card's trail: `at` an instant (shown by the sender's clock), `on` a day by theirs. */
@@ -1063,7 +1126,187 @@ export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: 
   return post<{ emailed: true }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/email-again`);
 }
 
+// ---- Write back: one reply to a card (server key card_replies; mail-cards-experience Part 3) ----
+
+/** One page of the joined card: the card, or the reply, as this reader may see it. */
+export interface CardExchangePage {
+  id: string;
+  from_name: string | null;
+  to_name: string | null;
+  sent_on: string | null;
+  delivered_on: string | null;
+  card?: MailCard | null;
+  card_reply?: MailCardReply | null;
+  /** Null only for a sealed card seen by its reader. */
+  note: string | null;
+  photo: MailCard['photo'] | null;
+  voice: MailCard['voice'] | null;
+}
+
+/** GET /api/mailbox/cards/:id/exchange: the card and its reply, joined. */
+export interface CardExchange {
+  original: CardExchangePage | null;
+  reply: CardExchangePage | null;
+  /** The replier's own reply while it waits for the 7 a.m. pickup. */
+  pending_reply: { id: string; arrives_on: string | null; take_back_until: string | null; can_take_back: boolean } | null;
+  /** Offer "Write back to {first name}". */
+  can_reply: boolean;
+  reply_controls: { photo: boolean; voice: boolean };
+  reply_refusal: { code: string; error: string } | null;
+}
+
+/** What the replier sees of their reply. */
+export interface CardReplySummary {
+  id: string;
+  card_id: string;
+  to_name: string | null;
+  sent_at: string | null;
+  arrives_at: string | null;
+  arrives_on: string | null;
+  take_back_until: string | null;
+  can_take_back: boolean;
+  status: 'waiting' | 'delivered';
+}
+
+export interface CardReplyBody {
+  message: string;
+  /** One per reply draft, sent again with every retry of it. */
+  request_id: string;
+  signature?: CardSignature | null;
+}
+
+/** GET /api/mailbox/cards/:id/exchange (`id`: the card or its reply). */
+export async function getCardExchange(id: string): Promise<CardExchange> {
+  return get<CardExchange>(`/api/mailbox/cards/${encodeURIComponent(id)}/exchange`);
+}
+
+/** POST /api/mailbox/cards/:id/reply: the card's one reply. 201 { reply }, a repeat 200 { reply }. */
+export async function sendCardReply(cardId: string, body: CardReplyBody): Promise<{ reply: CardReplySummary }> {
+  return post<{ reply: CardReplySummary }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/reply`, body);
+}
+
+/** POST /api/mailbox/cards/:id/reply/take-back: the caller's reply, before the 7 a.m. pickup. */
+export async function takeBackCardReply(cardId: string): Promise<{ taken_back: true; card_id: string }> {
+  return post<{ taken_back: true; card_id: string }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/reply/take-back`);
+}
+
 /** POST /api/mailbox/cards/:id/take-back: before the 7 a.m. pickup (by email: before they open it). */
 export async function takeBackHolidayCard(cardId: string): Promise<{ taken_back: true }> {
   return post<{ taken_back: true }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/take-back`);
+}
+
+// ============ THE TRAVELLING CARD (server key card_travel) ============
+
+export type { CardTravel, CardTravelPostmark } from './mailboxV2';
+
+/** A town from the Census lists the server carries: `id` is what saveCardTown takes. */
+export interface CardTown {
+  id: string;
+  town: string;
+  state: string;
+  /** "Vancouver, WA" */
+  label: string;
+  /** When it was found by its ZIP code. */
+  zip?: string;
+}
+
+/** GET /api/mailbox/cards/towns?q=: up to 8 towns for a few letters or a ZIP code; with no q, the town to suggest. */
+export async function getCardTowns(q?: string): Promise<{ towns: CardTown[]; suggested?: CardTown | null }> {
+  return get<{ towns: CardTown[]; suggested?: CardTown | null }>('/api/mailbox/cards/towns', q ? { q } : undefined);
+}
+
+/** PUT /api/mailbox/cards/town: keep this town in the profile's town fields (asked once). */
+export async function saveCardTown(id: string): Promise<{ town: string }> {
+  return put<{ town: string }>('/api/mailbox/cards/town', { id });
+}
+
+/** A pass-on: the same card goes on, with a note from you, to one person, address or link, in one of its two places. */
+export interface PassOnBody {
+  to: { user_id: string } | { email: string } | { link: true };
+  message: string;
+  signature?: CardSignature | null;
+  /** One per pass-on draft, sent again with every retry of it. */
+  request_id: string;
+  /** `card.travel.next_place`. */
+  place: number;
+}
+
+/** What a pass-on would be: to whom, when it arrives, and your town as it goes on the journey ("Tampa, FL"). */
+export interface PassOnPreview {
+  place: number;
+  to_name: string | null;
+  by_email: boolean;
+  by_link?: boolean;
+  arrives_at: string | null;
+  arrives_on: string | null;
+  take_back_until: string | null;
+  town: string | null;
+  /** The postmark this pass-on strikes: the town it leaves and today where its sender lives. */
+  postmark?: CardTravelPostmark;
+}
+
+/** POST /api/mailbox/cards/:id/pass-on/preview: every check passing it on runs; nothing is stored or sent. */
+export async function previewPassOn(cardId: string, body: PassOnBody): Promise<{ pass_on: PassOnPreview }> {
+  return post<{ pass_on: PassOnPreview }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/pass-on/preview`, body);
+}
+
+/** POST /api/mailbox/cards/:id/pass-on: answered as a send is (`card.travel.journey`; `link` by link). */
+export async function passOnCard(cardId: string, body: PassOnBody): Promise<{ card: SentHolidayCard; link?: string }> {
+  return post<{ card: SentHolidayCard; link?: string }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/pass-on`, body);
+}
+
+/** POST /api/mailbox/cards/:id/pass-on/take-back (`:id`: the card you passed on): its place is free again. */
+export async function takeBackPassOn(passedId: string): Promise<{ taken_back: true; card_id: string; place: number | null }> {
+  return post<{ taken_back: true; card_id: string; place: number | null }>(`/api/mailbox/cards/${encodeURIComponent(passedId)}/pass-on/take-back`, {});
+}
+
+/** All cards this Christmas (D3). */
+export interface CardJourneyGoal {
+  states: number;
+  of: number;
+  state_codes: string[];
+  travelling: number;
+  miles: number;
+  /** "All cards this Christmas: 31 of 50 states." */
+  line: string;
+}
+
+/** A stop on a card's journey: a town, the day it got there and the stop it came from. Never a person. */
+export interface CardJourneyStop {
+  town: string;
+  state: string | null;
+  lat: number | null;
+  lon: number | null;
+  on: string;
+  /** The index of the stop it came from; null for where it started. */
+  from: number | null;
+  /** A town holding the card now: a ring on the map. */
+  holding: boolean;
+}
+
+/** A card's public journey: towns and dates only. */
+export interface CardJourney {
+  id: string;
+  card: { design: string; number: number; caption: string; slug: string; table: string; mood?: HolidayCardMood | null; paper: string;
+    height: number } | null;
+  stops: CardJourneyStop[];
+  miles: number;
+  towns: number;
+  states: number;
+  states_of: number;
+  state_codes: string[];
+  days: number;
+  travelling: boolean;
+  /** Null when the server couldn't count it just now: leave the line out. */
+  goal: CardJourneyGoal | null;
+}
+
+/** GET /api/mailbox/cards/journeys/:journey (public). */
+export async function getCardJourney(journey: string): Promise<{ journey: CardJourney }> {
+  return get<{ journey: CardJourney }>(`/api/mailbox/cards/journeys/${encodeURIComponent(journey)}`);
+}
+
+/** GET /api/mailbox/cards/journeys (public): the shared goal. */
+export async function getCardJourneyGoal(): Promise<{ goal: CardJourneyGoal }> {
+  return get<{ goal: CardJourneyGoal }>('/api/mailbox/cards/journeys');
 }

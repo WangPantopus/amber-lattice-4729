@@ -59,6 +59,7 @@ const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
 // Bills from business invoices in the payer's Mail (Mail tab, SRV-7).
 const invoiceBills = require('../services/invoiceBills');
+const { recordBusinessContact } = require('../services/businessCustomers');
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
@@ -4957,6 +4958,8 @@ router.get('/invoices/received', verifyToken, async (req, res) => {
       .select('*, business:business_user_id(id, name, username, profile_picture_url)', { count: 'exact' })
       .eq('recipient_user_id', userId)
       .in('status', ['sent', 'viewed', 'overdue', 'paid'])
+      // A check at a plan (Plans for the holidays B5) is paid on the plan, never listed as an invoice.
+      .is('plan_post_id', null)
       .order('created_at', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -5058,6 +5061,11 @@ router.post('/invoices/:invoiceId/pay', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' });
     }
 
+    // A check at a plan (Plans for the holidays B5) is paid only on the plan, with its deal and tip.
+    if (invoice.plan_post_id) {
+      return res.status(409).json({ error: 'Pay this check from its plan.', code: 'PLAN_CHECK' });
+    }
+
     // Only the recipient can pay
     if (invoice.recipient_user_id !== userId) {
       return res.status(403).json({ error: 'Only the invoice recipient can pay', code: 'NOT_RECIPIENT' });
@@ -5151,6 +5159,8 @@ router.post('/invoices/:invoiceId/pay', verifyToken, async (req, res) => {
         business_user_id: invoice.business_user_id,
       },
       idempotencyKey: `invoice-pay:${invoiceId}:${invoice.stripe_payment_intent_id || 'first'}`,
+      // What was sold (shared piece 4). A business invoices people it already knows, at today's rate.
+      sale: { soldType: 'invoice', soldId: invoiceId, basis: 'pantopus' },
     });
 
     if (!result.success) {
@@ -5275,6 +5285,9 @@ async function markInvoicePaid(invoiceId) {
   // Its bill in the payer's Mail shows Paid and moves to Receipts (Mail tab, SRV-7); never fails the payment.
   void invoiceBills.onInvoicePaid(invoiceId);
   if (updatedRows?.[0]) {
+    // The business now knows this person as a customer (shared piece 3); it never fails the payment.
+    void recordBusinessContact({ businessUserId: updatedRows[0].business_user_id, userId: updatedRows[0].recipient_user_id,
+      feature: 'invoice', basis: 'own', at: updatedRows[0].paid_at });
     // Only the request that marked it paid says so; a notice that fails never fails the payment.
     notifyInvoicePaid(updatedRows[0]).catch((err) => {
       logger.warn('Invoice paid notice skipped', { invoiceId, error: err.message });
@@ -5306,6 +5319,11 @@ router.post('/invoices/:invoiceId/confirm', verifyToken, async (req, res) => {
 
     if (fetchErr || !invoice) {
       return res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' });
+    }
+
+    // A check at a plan (Plans for the holidays B5) is paid only on the plan, with its deal and tip.
+    if (invoice.plan_post_id) {
+      return res.status(409).json({ error: 'Pay this check from its plan.', code: 'PLAN_CHECK' });
     }
     if (invoice.recipient_user_id !== userId) {
       return res.status(403).json({ error: 'Not authorized', code: 'NOT_RECIPIENT' });
@@ -5639,6 +5657,26 @@ router.post('/:businessId/invoices', verifyToken, validate(createInvoiceSchema),
 /**
  * GET /:businessId/invoices — List invoices with pagination and status filter
  */
+// GET /api/businesses/:businessId/statement?month=YYYY-MM (the business graph's shared contract 5.4, built by Plans for
+// the holidays B6): behind business_statement (read for the business), for staff with finance.view. No screen yet.
+router.get('/:businessId/statement', verifyToken, async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const { isFeatureEnabled } = require('../services/featureFlagService');
+    if (!(await isFeatureEnabled('business_statement', String(businessId)))) return res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' });
+    const { hasPermission } = require('../utils/businessPermissions');
+    if (!(await hasPermission(businessId, req.user.id, 'finance.view'))) {
+      return res.status(403).json({ error: "You can't see this business's statement.", code: 'FORBIDDEN' });
+    }
+    const statement = await require('../services/businessStatement').statementFor(businessId, req.query.month);
+    if (!statement) return res.status(422).json({ error: 'Choose a month as YYYY-MM.', code: 'VALIDATION', field: 'month' });
+    return res.json(statement);
+  } catch (err) {
+    logger.error('Statement failed', { businessId: req.params.businessId, error: err.message });
+    return res.status(500).json({ error: 'Failed to load the statement' });
+  }
+});
+
 router.get('/:businessId/invoices', verifyToken, async (req, res) => {
   try {
     const { businessId } = req.params;
@@ -5657,6 +5695,8 @@ router.get('/:businessId/invoices', verifyToken, async (req, res) => {
       .from('BusinessInvoice')
       .select('*, recipient:recipient_user_id(id, name, username, profile_picture_url)', { count: 'exact' })
       .eq('business_user_id', businessId)
+      // Checks at a plan (B5) are on the plan's guest list, not here.
+      .is('plan_post_id', null)
       .order('created_at', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 

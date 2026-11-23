@@ -104,7 +104,7 @@ public struct MonthlyReceiptCard: View {
                 tint: Theme.Color.business,
                 background: Theme.Color.appSurfaceSunken,
                 value: "\(receipt.community.neighborsHelped)",
-                label: "Neighbors helped",
+                label: "People helped",
                 identifier: "monthlyReceipt.neighborsHelped"
             )
             statBox(
@@ -233,6 +233,6 @@ public struct MonthlyReceiptCard: View {
         let earned = String(format: "%.2f", Double(receipt.earnings.totalCents) / 100)
         let highlight = receipt.highlight.map { "\($0) " } ?? ""
         return "My \(receipt.period.label) on Pantopus: \(highlight)"
-            + "I earned $\(earned) and helped \(receipt.community.neighborsHelped) neighbors."
+            + "I earned $\(earned) and helped \(receipt.community.neighborsHelped) people."
     }
 }

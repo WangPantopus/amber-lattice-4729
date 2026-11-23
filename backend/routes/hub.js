@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabaseAdmin = require('../config/supabaseAdmin');
+const directDb = require('../config/directDb');
 const homeRecordService = require('../services/homeRecordService');
 const homeListService = require('../services/homeListService');
 const { unreadMailQuery } = require('../services/homeDashboardService');
@@ -23,6 +24,8 @@ const logger = require('../utils/logger');
 const { getHubToday, clearHubTodayCache } = require('../services/context/providerOrchestrator');
 const { excludeHiddenLaunchNotifications, isLaunchFeatureEnabled } = require('../utils/featureFlags');
 const { UNPROVEN_SOURCES } = require('../utils/homeAccessPolicy');
+const { fastVerified, fastCheckStands, fastVerifyOn, FAST_CHECK_COLUMNS } = require('../utils/homePermissions');
+const homeFastCheckService = require('../services/homeFastCheckService');
 const { stableEtag } = require('../utils/stableEtag');
 const { recordFunnelEvent, APP_POSTABLE_EVENT_TYPES } = require('../services/funnelEvents');
 const { validTimezone } = require('../utils/timezone');
@@ -84,7 +87,7 @@ router.get('/', verifyToken, async (req, res) => {
         ).catch(() => null),
         supabaseAdmin
           .from('HomeOccupancy')
-          .select('home_id, role, is_active, verification_status, verification_source, home:home_id(id, name, address, city, state, zipcode, map_center_lat, map_center_lng)')
+          .select(`home_id, user_id, role, is_active, verification_status, verification_source, verified_at, ${FAST_CHECK_COLUMNS}, home:home_id(id, name, address, city, state, zipcode, map_center_lat, map_center_lng)`)
           .eq('user_id', userId)
           .eq('is_active', true),
         // Seat-based business memberships (with fallback to BusinessTeam format)
@@ -158,8 +161,30 @@ router.get('/', verifyToken, async (req, res) => {
       return res.status(503).json({ error: 'Could not load your homes. Please retry.' });
     }
 
-    const homes = (occupancyResult.data || [])
-      .filter((o) => o.home)
+    // FASTVERIFY: with home_fast_verify on for this person, a claim with a standing fast check is verified too
+    // (homePermissions.isVerified), and each home says how (verified_by), when, and whether letters and home Mail
+    // still need a mailed code (needs_mail). Off: the same fields as before, and nothing more.
+    const occupancyRows = (occupancyResult.data || []).filter((o) => o.home);
+    const fastOn = await fastVerifyOn(req.user);
+    const fastRows = new Set();
+    if (fastOn) {
+      await Promise.all(occupancyRows.filter((o) => fastCheckStands(o))
+        .map(async (o) => { if (await fastVerified(o)) fastRows.add(o); }));
+    }
+    const provenRows = occupancyRows.filter((o) => o.verification_status === 'verified' && !UNPROVEN_SOURCES.has(o.verification_source));
+    const provenHow = fastOn && provenRows.length
+      ? await homeFastCheckService.provenBy(userId, provenRows.map((o) => o.home_id)).catch(() => new Map()) : new Map();
+    const verifiedHow = (o) => {
+      if (fastRows.has(o)) {
+        return { verified_by: homeFastCheckService.FAST_BY[o.fast_check_kind], verified_at: o.fast_check_at, needs_mail: true };
+      }
+      if (provenRows.includes(o)) {
+        const how = provenHow.get(o.home_id);
+        return { verified_by: how ? how.by : 'mail', verified_at: how ? how.at : o.verified_at || null, needs_mail: false };
+      }
+      return { verified_by: null, verified_at: null, needs_mail: false };
+    };
+    const homes = occupancyRows
       .map((o) => ({
         id: o.home.id,
         name: o.home.name || o.home.address,
@@ -171,7 +196,8 @@ router.get('/', verifyToken, async (req, res) => {
         isPrimary: false,
         roleBase: o.role || 'member',
         // Address proof only: household consent and a claim are verified access, not a verified address.
-        verified: o.verification_status === 'verified' && !UNPROVEN_SOURCES.has(o.verification_source),
+        verified: (o.verification_status === 'verified' && !UNPROVEN_SOURCES.has(o.verification_source)) || fastRows.has(o),
+        ...(fastOn ? verifiedHow(o) : {}),
       }));
 
     // Include homes where user is a verified owner (in case occupancy is missing or out of sync after claim approval)
@@ -650,7 +676,7 @@ router.get('/', verifyToken, async (req, res) => {
       let milestone = null;
       for (const m of MILESTONES) {
         if (count >= m && milestoneSeen < m) {
-          milestone = `Your neighborhood just hit ${m} verified members!`;
+          milestone = `${m} homes near you are now verified!`;
           break;
         }
       }
@@ -811,13 +837,41 @@ function withHhmmTimes(prefs) {
   return out;
 }
 
+// The person's preferences row, through the Data API or, when DIRECT_DB_READS (config/directDb.js) says so, on a
+// direct connection as the Home access check does: "on" reads direct and falls back to the Data API on any failure,
+// "shadow" answers from the Data API and compares. to_json gives the row's columns in the order `select('*')` does.
+const PREFERENCES_ROW_SQL = 'select to_json(p) as row from "UserNotificationPreferences" p where p.user_id = $1';
+function apiPreferencesRow(userId) {
+  return supabaseAdmin.from('UserNotificationPreferences').select('*').eq('user_id', userId).maybeSingle();
+}
+async function directPreferencesRow(userId) {
+  const rows = await directDb.read('hub_preferences', PREFERENCES_ROW_SQL, [userId]);
+  return { data: rows[0]?.row || null, error: null };
+}
+async function preferencesRow(userId) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await directPreferencesRow(userId);
+    } catch (error) {
+      directDb.fellBack('hub_preferences', error);
+      return apiPreferencesRow(userId);
+    }
+  }
+  if (mode !== 'shadow') return apiPreferencesRow(userId);
+  const started = performance.now();
+  const direct = directPreferencesRow(userId)
+    .then((read) => ({ read, ms: performance.now() - started }), (error) => ({ error }));
+  const answer = await apiPreferencesRow(userId);
+  const apiMs = performance.now() - started;
+  direct.then(({ read, ms, error }) => directDb.compared('hub_preferences', error ? { error }
+    : { differs: answer.error || JSON.stringify(read.data) === JSON.stringify(answer.data) ? [] : ['row'], directMs: ms, apiMs }));
+  return answer;
+}
+
 router.get('/preferences', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('UserNotificationPreferences')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
+    const { data, error } = await preferencesRow(req.user.id);
 
     if (error) {
       logger.error('Hub preferences read error', { error: error.message, userId: req.user.id });

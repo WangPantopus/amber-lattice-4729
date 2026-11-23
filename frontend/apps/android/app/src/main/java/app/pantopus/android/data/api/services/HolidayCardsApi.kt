@@ -1,7 +1,18 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
+import app.pantopus.android.data.api.models.mailbox.CardExchange
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
+import app.pantopus.android.data.api.models.mailbox.CardPassOnBody
+import app.pantopus.android.data.api.models.mailbox.CardPassOnPreview
+import app.pantopus.android.data.api.models.mailbox.CardPassOnTakenBack
+import app.pantopus.android.data.api.models.mailbox.CardReplyBody
+import app.pantopus.android.data.api.models.mailbox.CardReplyResponse
+import app.pantopus.android.data.api.models.mailbox.CardReplyTakenBack
+import app.pantopus.android.data.api.models.mailbox.CardSignatureBody
+import app.pantopus.android.data.api.models.mailbox.CardTownBody
+import app.pantopus.android.data.api.models.mailbox.CardTownKept
+import app.pantopus.android.data.api.models.mailbox.CardTownsResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
@@ -26,9 +37,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -59,6 +72,22 @@ interface HolidayCardsApi {
     suspend fun cards(): HolidayCardsResponse
 
     /**
+     * `PUT /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`): keeps this signature
+     * on the account for the next cards, replacing any saved one; answers `{ signature }` as kept.
+     */
+    @PUT("api/mailbox/cards/signature")
+    suspend fun saveSignature(
+        @Body body: CardSignatureBody,
+    ): CardSignatureBody
+
+    /**
+     * `DELETE /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`): forgets the saved
+     * signature (cards already sent keep theirs). Answers 204.
+     */
+    @DELETE("api/mailbox/cards/signature")
+    suspend fun forgetSignature(): Response<Unit>
+
+    /**
      * `GET /api/mailbox/cards/arrivals?to=` — route `backend/routes/mailbox.js:1809`: when a card to this person can
      * come, by their clock; the same checks as sending them one.
      */
@@ -83,6 +112,46 @@ interface HolidayCardsApi {
     suspend fun noteHelp(
         @Body body: HolidayCardNoteHelpBody,
     ): HolidayCardNoteIdeas
+
+    /**
+     * `GET /api/mailbox/cards/towns?q=` — route `backend/routes/mailbox.js` (travelling card plan Part 1, launch key
+     * `card_travel`; 404 while it's off): up to 8 towns for a few letters or a ZIP code; with no [q], the town nearest
+     * where the person is, to offer as "Use Vancouver, WA".
+     */
+    @GET("api/mailbox/cards/towns")
+    suspend fun cardTowns(
+        @Query("q") q: String?,
+    ): CardTownsResponse
+
+    /** `PUT /api/mailbox/cards/town` — the same route file: keeps the chosen town in the person's profile town fields (D4). */
+    @PUT("api/mailbox/cards/town")
+    suspend fun keepCardTown(
+        @Body body: CardTownBody,
+    ): CardTownKept
+
+    /**
+     * `POST /api/mailbox/cards/:id/pass-on/preview` — route `backend/routes/mailbox.js` (travelling card plan Part 4,
+     * launch key `card_travel`): every check a pass-on runs, storing and sending nothing; refusals carry the server's
+     * code and sentence.
+     */
+    @POST("api/mailbox/cards/{id}/pass-on/preview")
+    suspend fun passOnPreview(
+        @Path("id") id: String,
+        @Body body: CardPassOnBody,
+    ): CardPassOnPreview
+
+    /** `POST /api/mailbox/cards/:id/pass-on` — the same route file: "Send it on" (201; 200 for the same request again). */
+    @POST("api/mailbox/cards/{id}/pass-on")
+    suspend fun passOn(
+        @Path("id") id: String,
+        @Body body: CardPassOnBody,
+    ): SendHolidayCardResponse
+
+    /** `POST /api/mailbox/cards/:id/pass-on/take-back` — `:id` the card passed on: its place is free again. */
+    @POST("api/mailbox/cards/{id}/pass-on/take-back")
+    suspend fun takeBackPassOn(
+        @Path("id") id: String,
+    ): CardPassOnTakenBack
 
     /** `POST /api/mailbox/cards` — route `backend/routes/mailbox.js:1837`: send today's card (201). */
     @POST("api/mailbox/cards")
@@ -164,6 +233,31 @@ interface HolidayCardsApi {
     suspend fun takeBack(
         @Path("id") id: String,
     ): TakeBackHolidayCardResponse
+
+    /**
+     * `GET /api/mailbox/cards/:id/exchange` — route `backend/routes/mailbox.js` (plan Part 3): the joined card, `:id` the
+     * card or its reply; needs only `mailbox`. 404 for anyone but the two people.
+     */
+    @GET("api/mailbox/cards/{id}/exchange")
+    suspend fun exchange(
+        @Path("id") id: String,
+    ): CardExchange
+
+    /**
+     * `POST /api/mailbox/cards/:id/reply` — the same route file (plan Part 3; `mailbox` + `holiday_card_memories` +
+     * `card_replies`): one reply per card, from the person it went to; 201, or 200 for the same request again.
+     */
+    @POST("api/mailbox/cards/{id}/reply")
+    suspend fun reply(
+        @Path("id") id: String,
+        @Body body: CardReplyBody,
+    ): CardReplyResponse
+
+    /** `POST /api/mailbox/cards/:id/reply/take-back` — the writer's waiting reply, until the 7 a.m. pickup. */
+    @POST("api/mailbox/cards/{id}/reply/take-back")
+    suspend fun takeBackReply(
+        @Path("id") id: String,
+    ): CardReplyTakenBack
 
     /**
      * `POST /api/mailbox/cards/:id/email-again` — the same route file (after take-back): one more try at a card by

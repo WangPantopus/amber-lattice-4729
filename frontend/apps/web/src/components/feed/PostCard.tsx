@@ -206,7 +206,7 @@ function PostCard({
     chosenUsername(publicAuthor?.handle) ||
     post.creator?.name ||
     chosenUsername(post.creator?.username) ||
-    'Neighbor';
+    'Someone nearby';
 
   const creatorAvatar =
     publicAuthor?.avatarUrl ||
@@ -216,6 +216,9 @@ function PostCard({
   // The author's photo opens the page their name links to (launch cuts #1 + #2: a Beacon author's links to none).
   const hidesPersona = publicAuthor?.type === 'persona' && !(launchFeatures.beacon && launchFeatures.personas);
   const authorHandle = publicAuthor?.handle || post.creator?.username || '';
+  const momentAuthorId = publicAuthor
+    ? (publicAuthor.type === 'local' || publicAuthor.type === 'business' ? publicAuthor.id : null)
+    : post.identity_context_type === 'persona' ? null : post.creator?.id;
   const authorHref = hidesPersona ? null : publicAuthor?.href || (authorHandle ? `/${authorHandle}` : null);
   // City / state never lived on the typed author shape; the legacy reads
   // were always a User-row leak, gone after P0.3 narrowed the SELECT.
@@ -320,7 +323,7 @@ function PostCard({
 
       {/* ─── Author row ──────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 py-2">
-        <UserAvatarLink href={authorHref}>
+        <UserAvatarLink href={authorHref} momentUserId={authorHref ? momentAuthorId : null} name={creatorName}>
           {creatorAvatar ? (
             <Image
               src={creatorAvatar}

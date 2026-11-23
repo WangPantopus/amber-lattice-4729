@@ -5,7 +5,9 @@ import app.pantopus.android.data.ai.PickupFlyerReading
 import app.pantopus.android.data.ai.RadonReportReading
 import app.pantopus.android.data.api.models.place.PlaceAddressCalendarData
 import app.pantopus.android.data.api.models.place.SetPickupDayRequest
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * What the address calendar card needs from whoever hosts it — the
@@ -35,6 +37,9 @@ interface AddressCalendarActions {
         request: SetPickupDayRequest,
         offerPrimer: Boolean = false,
     )
+
+    /** One event after each save that set a schedule (never after a clear): the card's saved box. */
+    val pickupSaved: Flow<Unit> get() = emptyFlow()
 
     /** [expectedVersion] is the calendar's `pickupVersion` when the editor opened. */
     fun clearPickupDay(expectedVersion: String?)

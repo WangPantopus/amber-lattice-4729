@@ -429,6 +429,7 @@ app.use('/api/reviews', contentCreationLimiter);
 app.use('/api/homes', homeCreationLimiter);
 app.use('/api/users/login', authEndpointLimiter);
 app.use('/api/users/register', authEndpointLimiter);
+app.use('/api/users/mail-code', authEndpointLimiter);
 
 // ============ REQUEST BODIES ============
 // Read only once a write is through the limiters above: 1 MB of JSON by default,
@@ -441,6 +442,8 @@ app.use('/api', (req, res, next) => dbTiming.resume(req.dbLedger, next));
 
 // Calendarly public booking flow (own per-route limiters) — mounted before the generic public
 // router so /book and /booking paths use bookingWriteLimiter, not the read previewLimiter.
+// "This wasn't me" for a verify postcard (FASTVERIFY; its own limiters by IP and by home).
+app.use('/api/public', require('./routes/postcardReport'));
 app.use('/api/public', require('./routes/schedulingPublic'));
 
 // Public preview endpoints (no auth, rate-limited by IP)
@@ -481,6 +484,7 @@ app.use('/api/homes', require('./routes/mailboxCheck'));  // Mailbox reality che
 app.use('/api/homes', require('./routes/homeRecordWatch')); // Rate watch (/:id/record-watch)
 app.use('/api/homes', require('./routes/blockFounders')); // Founding ranks + postcard invites (/:id/block-founders)
 app.use('/api/homes', require('./routes/realRent')); // Real Rent Benchmark contribution (/:id/rent-report)
+app.use('/api/homes', require('./routes/homeFastCheck')); // Faster home verification (/:id/verify-options, /:id/fast-check/*)
 app.use('/api/homes', require('./routes/unlisted')); // Unlisted removal tracking (/:id/unlisted)
 app.use('/api/homes', require('./routes/addressCalendar')); // Address calendar + pickup day (/:id/calendar)
 app.use('/api/scout', require('./routes/scout')); // Before-You-Sign Scout (T1, no home)
@@ -680,6 +684,9 @@ server.listen(PORT, HOST, async () => {
     accessKey: process.env.AWS_ACCESS_KEY_ID ? '✓ Set' : '✗ Missing',
     secretKey: process.env.AWS_SECRET_ACCESS_KEY ? '✓ Set' : '✗ Missing',
   });
+
+  // Direct database reads (config/directDb.js): their connections open now, not on the first request after a deploy.
+  if (process.env.NODE_ENV !== 'test') require('./config/directDb').warmUp();
 
   // Begin polling the address rollout flags so enforcement posture can be
   // changed at runtime through the admin feature-flag route instead of

@@ -256,7 +256,7 @@ struct AddHomePostalNotice: Equatable {
     }
 }
 
-private struct AddHomePostalNoticeRow: View {
+struct AddHomePostalNoticeRow: View {
     let notice: AddHomePostalNotice
 
     var body: some View {

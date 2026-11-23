@@ -15,10 +15,11 @@
 
 'use client';
 
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Clock, Compass, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { PlaceIntelligence } from '@pantopus/types';
+import type { VerifyOptions } from '@pantopus/api';
 import { Group, HeroCard, PlaceHeader, VerifyBanner, type PlaceSwitcherHome } from '@/components/archetypes/place';
 import JustMovedCard from './JustMovedCard';
 import Overline from '@/components/archetypes/primitives/Overline';
@@ -64,6 +65,13 @@ export interface PlaceDashboardViewProps {
   onOpenClaimStatus?: () => void;
   /** Verified neighbors ("Verified homes nearby" and the invite), from the container, which reads the invite link. */
   neighbors?: ReactNode;
+  /** The server's verify-options answer (FASTVERIFY); null while the faster verification is off. */
+  verifyOptions?: VerifyOptions | null;
+  /** The verify-options answer hasn't come yet: a verified place shows no Identity group until it knows how. */
+  verifyLoading?: boolean;
+  /** Open the verify sheet once (Add Home in two steps lands here); then `onAutoOpened` drops the request. */
+  autoOpenVerify?: boolean;
+  onAutoOpened?: () => void;
 }
 
 export default function PlaceDashboardView({
@@ -83,6 +91,10 @@ export default function PlaceDashboardView({
   claim = null,
   onOpenClaimStatus,
   neighbors = null,
+  verifyOptions = null,
+  verifyLoading = false,
+  autoOpenVerify = false,
+  onAutoOpened,
 }: PlaceDashboardViewProps) {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const openVerify = () => setVerifyOpen(true);
@@ -122,6 +134,14 @@ export default function PlaceDashboardView({
   const hasServerIdentity = intelligence.groups.some((g) => g.group === 'identity');
   const showIdentity = tier === 'T4' && !hasServerIdentity;
 
+  // Add Home in two steps ends here with the verify sheet open (only where it would show at all).
+  useEffect(() => {
+    if (!autoOpenVerify) return;
+    if (showVerify) setVerifyOpen(true);
+    onAutoOpened?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenVerify]);
+
   return (
     <div className="flex flex-col">
       <PlaceHeader
@@ -146,7 +166,7 @@ export default function PlaceDashboardView({
         </div>
       ) : showVerify ? (
         <div className="mt-4">
-          <VerifyBanner onClick={openVerify} />
+          <VerifyBanner onClick={openVerify} testId="place.verifyAddress" />
         </div>
       ) : null}
 
@@ -160,7 +180,7 @@ export default function PlaceDashboardView({
             className="mb-4 flex items-center gap-2 rounded-xl border border-app-border bg-app-surface-sunken px-3.5 py-2.5 text-[13px] text-app-text-secondary hover:text-app-text"
           >
             <ShieldCheck size={15} strokeWidth={2.25} className="shrink-0 text-app-home" />
-            <span className="flex-1">Private by default. See what neighbors see of this address.</span>
+            <span className="flex-1">Private by default. See what others see of this address.</span>
             <ChevronRight size={15} strokeWidth={2.25} className="shrink-0 text-app-text-muted" />
           </Link>
         )}
@@ -230,7 +250,10 @@ export default function PlaceDashboardView({
         {showVerify ? (
           <Group label="Locked until you verify">{renderVerifyLocked(openVerify)}</Group>
         ) : null}
-        {showIdentity ? <IdentityGroup /> : null}
+        {/* Verified by a fast check, residency letters need a mailed code: nothing is offered until we know. */}
+        {showIdentity && !verifyLoading ? (
+          <IdentityGroup homeId={homeId} verifyOptions={verifyOptions} />
+        ) : null}
         {/* "Verified homes nearby" and the invite on the person's own home, not a claim still in review. */}
         {claim ? null : neighbors}
 
@@ -267,6 +290,7 @@ export default function PlaceDashboardView({
           onClose={() => setVerifyOpen(false)}
           homeId={homeId}
           address={intelligence.place.label}
+          verifyOptions={verifyOptions}
         />
       ) : null}
 

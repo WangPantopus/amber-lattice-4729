@@ -59,8 +59,10 @@ import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
 import app.pantopus.android.data.gigs.GigCameraPhotos
 import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
+import app.pantopus.android.ui.components.ListKeptAboveKeyboard
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSearchArea
 import app.pantopus.android.ui.screens.shared.wizard.WizardShell
 import app.pantopus.android.ui.screens.shared.wizard.blocks.FormFieldsBlock
 import app.pantopus.android.ui.screens.shared.wizard.blocks.HeadlineBlock
@@ -105,6 +107,9 @@ fun GigComposeWizardScreen(
     val pendingEvent by viewModel.pendingEvent.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // "A place" lists addresses near the person's home first (FASTVERIFY section 11).
+    val addressSearchArea = rememberAddressSearchArea()
+    LaunchedEffect(addressSearchArea) { viewModel.addressSearchArea = addressSearchArea }
 
     // P0.2 — modern photo picker (no storage permission needed). Picked
     // URIs are copied to bytes and uploaded immediately by the VM.
@@ -357,7 +362,8 @@ private fun WhereSection(
                     placeholder = "123 Main St",
                     fieldTestTag = "composeGig_place_line1",
                 )
-                PlaceSuggestions(state, vm)
+                // The field sits low on the page: its list is kept above the keyboard (FASTVERIFY section 11).
+                ListKeptAboveKeyboard(rows = state.addressSuggestions, spacing = Spacing.s3) { PlaceSuggestions(state, vm) }
                 PantopusTextField(
                     label = "City",
                     value = state.form.placeAddress.city,

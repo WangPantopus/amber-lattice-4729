@@ -4,8 +4,7 @@
 // hill with the verified homes' lights on it (one ~1 km cell at a time,
 // nearest first), the near ground and its shadow.
 //
-// The homepage's scene (app/_components/skyScene.ts) and Today's (todaySkyPainter.ts) each
-// paint their own air and home around these. Pure drawing: no DOM, no React.
+// Today's scene (todaySkyPainter.ts) paints its own air and home around these. Pure drawing: no DOM, no React.
 // ============================================================
 
 export const LAMP = '#FFC867';

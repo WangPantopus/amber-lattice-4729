@@ -8,7 +8,19 @@
 //     venue_id (the venue the author picked in the place picker, its `osm:` id),
 //     altitude_ft, flying (the height above sea level the author chose to show, rounded to 10 ft, and whether they
 //       were in the air; behind the `moment_heights` flag; never kept for a Moment at home, shown as an area or
-//       with no location: shownAltitude) }
+//       with no location: shownAltitude; a floating Moment's is rounded to 100 ft),
+//     taken_here (the Live mark, API v4.1: the app's own camera made it just now, kept only for a photo or video at
+//       an exact pin away from home: markKept), weather ({ temp_f, kind, label }, read by the server when the
+//       author kept "Show the weather" on; only with taken_here: services/moments/momentWeather.js) }
+// The Sky, phase A (behind the `sky_places` flag, read for the author when they post): a Moment floats over an area of
+// at least 100 homes (utils/areaCells.js) unless its author pinned it at a public place by name, and one made at home
+// always floats. A floating Moment stores only its area's point (latitude, longitude and the effective pair),
+// location_precision 'approx_area', show_area true (so apps from before draw it as an area), and
+// post_metadata.area = { v: 1, step, radius_m }. Where the phone was is never written.
+// "Share later" (same flag; services/moments/momentSchedule.js): post_metadata.moment.share_at holds a Moment until
+// then. Its stored state follows the upload as usual, and every read works out from share_at that it is 'scheduled'
+// (only its author sees it) until the time comes; its hours count from then, and everyone reads that time as when it
+// was posted (`created_at`) with `earlier: true`.
 // A Moment with no location (location_source 'none', founder 2026-11-11) has no point and no place: it goes to the
 // author's connections only, never on the map; they find it in the map's row of faces (GET /map `unplaced`).
 // Its place label is location_name (what everyone reads), its audience Post.audience ('nearby' | 'connections').
@@ -25,7 +37,9 @@ const { verifiedResidentUserIds } = require('../../utils/identityProfiles');
 const { PANTOPUS_VERIFIED_STATUSES } = require('../../utils/businessConstants');
 const { applyLocationPrecision, MAX_DISPLAY_OFFSET_DEGREES, snapToNeighborhoodCells } = require('../../utils/locationPrivacy');
 const { shownReaction, reactionSummary } = require('../../utils/postReaction');
+const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
+const momentWeather = require('./momentWeather');
 
 const KINDS = ['photo', 'video', 'text'];
 const HOURS = [1, 6, 24, 48];
@@ -48,6 +62,10 @@ const CLOCK_SKEW_MS = 2 * 60 * 1000;
 // "Show height" (behind the `moment_heights` flag): a Moment may say how high above sea level it was posted. The phone
 // sends metres; everyone reads feet rounded to HEIGHT_STEP_FT, so the number never tells one floor from the next.
 const HEIGHTS_FLAG = 'moment_heights';
+// The Sky, phase A: approximate places (above).
+const SKY_FLAG = 'sky_places';
+// A floating Moment's height is rounded this much more, so it never points at one spot (the design's decision 13).
+const FLOATING_HEIGHT_STEP_FT = 100;
 // Part D "float by day": Moments with an elevation float on the map, shadows where the sun is. Needs HEIGHTS_FLAG.
 const FLOAT_FLAG = 'moment_float';
 const FEET_PER_M = 3.28084;
@@ -60,6 +78,9 @@ const MAX_ALTITUDE_ERROR_M = 60;
 const MAX_ALTITUDE_ERROR_FLYING_M = 150;
 // Nothing on the ground goes this fast (60 m/s is about 134 mph): the Moment was posted from the air.
 const FLYING_SPEED_MPS = 60;
+// The Live mark (API v4.1): a Moment taken here reads "Live from here" this long after everyone reads it was posted
+// (`created_at`), then "Taken here". Here and nowhere else, so changing it needs no app build.
+const LIVE_FOR_MS = 15 * 60 * 1000;
 const MAX_RINGS = 300;
 const MAX_MAP_ROWS = 2000;
 // A box wider than this (the whole state and beyond) shows no rings; the map asks again closer in.
@@ -102,21 +123,47 @@ function hasEnded(row, now = Date.now()) {
     || !row.story_expires_at || Date.parse(row.story_expires_at) <= now;
 }
 
-/** What the author reads as the Moment's state (CONTRACT "Shapes"); others only ever see 'live' ones. */
+/**
+ * What the author reads as the Moment's state (CONTRACT "Shapes"); others only ever see 'live' ones. A Moment shared
+ * later is 'scheduled' once its file is in and checked, until its time.
+ */
 function momentState(row, now = Date.now()) {
   if (hasEnded(row, now)) return 'ended';
   if (row.moderation_state === 'held') return 'held';
   const { state } = meta(row);
-  return ['uploading', 'checking', 'live'].includes(state) ? state : 'live';
+  const stage = ['uploading', 'checking', 'live'].includes(state) ? state : 'live';
+  return stage === 'live' && isScheduled(row, now) ? 'scheduled' : stage;
 }
 
-// The point everyone sees, the author included: the exact pin, or the approximate grid point (docs/location-privacy-
-// matrix.md, approx_area) for a Moment shown as an area.
+/** Held by "Share later" until a time still to come. */
+function isScheduled(row, now = Date.now()) {
+  const at = Date.parse(meta(row).share_at || '');
+  return Number.isFinite(at) && at > now;
+}
+
+/**
+ * When everyone reads that the Moment was posted: when it went live for one shared later (so apps say "Earlier today"
+ * from `earlier`, and older apps the time it went live), else when it was made.
+ */
+function shownAt(row) {
+  return meta(row).share_at ? new Date(wentLiveAt(row)).toISOString() : row.created_at;
+}
+
+// The point everyone sees, the author included: the exact pin, the stored area point of a floating Moment (it holds
+// nothing finer), or the approximate grid point (docs/location-privacy-matrix.md, approx_area) for a Moment shown as
+// an area before the Sky.
 function displayedPoint(row) {
   if (!hasPlace(row)) return { latitude: null, longitude: null };
   const point = { latitude: row.latitude, longitude: row.longitude };
-  if (meta(row).show_area) applyLocationPrecision(point, 'approx_area', false, { setUnlockedFlag: false, stripAddress: false });
+  if (meta(row).show_area && !isFloating(row)) {
+    applyLocationPrecision(point, 'approx_area', false, { setUnlockedFlag: false, stripAddress: false });
+  }
   return point;
+}
+
+/** A floating Moment (the Sky): it stores its area's point and post_metadata.area. */
+function isFloating(row) {
+  return Boolean(row?.post_metadata?.area) && hasPlace(row);
 }
 
 /** Whether the Moment has a point (one posted with no location has none). */
@@ -141,16 +188,26 @@ function ringKey(row, point) {
  * muted (everywhere, or in Moments only) and, for connections-only Moments, who they're connected to. Throws when the
  * blocks or mutes can't be read, so nothing shows unfiltered.
  */
-async function viewerContext(viewerId, authorIds = []) {
-  const filters = await feedService.getMuteAndHideFilters(viewerId);
+async function viewerContext(viewerId, authorIds = [], shared = null) {
+  // `shared` (sharedViewerReads): the viewer's filters already being read for this request, used instead of reading
+  // them again; a failed read throws here, as its own would have.
+  const filters = shared ? await used(shared.filters) : await feedService.getMuteAndHideFilters(viewerId);
   const others = [...new Set(authorIds.filter((id) => id && id !== viewerId))];
-  const links = await readInBatches(others, (batch) => supabaseAdmin
-    .from('Relationship')
-    .select('requester_id, addressee_id')
-    .eq('status', 'accepted')
-    .or(`and(requester_id.eq.${viewerId},addressee_id.in.(${batch.join(',')})),and(addressee_id.eq.${viewerId},requester_id.in.(${batch.join(',')}))`),
-  'connections');
-  const connected = new Set(links.map((r) => (r.requester_id === viewerId ? r.addressee_id : r.requester_id)));
+  let connected;
+  if (shared?.connections) {
+    // These authors all come from the viewer's connections (shared.connections, read in full for this request), so
+    // each one is connected: the same answer the read below gives for them.
+    const all = new Set(shared.connections.map(String));
+    connected = new Set(others.filter((id) => all.has(String(id))));
+  } else {
+    const links = await readInBatches(others, (batch) => supabaseAdmin
+      .from('Relationship')
+      .select('requester_id, addressee_id')
+      .eq('status', 'accepted')
+      .or(`and(requester_id.eq.${viewerId},addressee_id.in.(${batch.join(',')})),and(addressee_id.eq.${viewerId},requester_id.in.(${batch.join(',')}))`),
+    'connections');
+    connected = new Set(links.map((r) => (r.requester_id === viewerId ? r.addressee_id : r.requester_id)));
+  }
   return {
     viewerId,
     blocked: filters.blockedUserIds,
@@ -238,8 +295,50 @@ async function viewerMarks(viewerId, ids) {
  */
 function shownHeight(row) {
   const m = meta(row);
-  if (!Number.isFinite(m.altitude_ft) || m.at_home || m.show_area || !hasPlace(row)) return null;
+  // A floating Moment's height was rounded to 100 ft when it was kept; an area Moment from before the Sky kept none.
+  if (!Number.isFinite(m.altitude_ft) || m.at_home || (m.show_area && !isFloating(row)) || !hasPlace(row)) return null;
   return { altitude_ft: m.altitude_ft, flying: Boolean(m.flying) };
+}
+
+/**
+ * Whether the Moment is shown at its exact pin away from its author's home: it has a point, wasn't made at home, isn't
+ * shown as an area and doesn't float. Only there may anything say its author is at that spot now.
+ */
+function exactAway(row) {
+  const m = meta(row);
+  return hasPlace(row) && row.location_precision === 'exact_place' && !m.at_home && !m.show_area
+    && !row.post_metadata?.area;
+}
+
+/**
+ * Whether the Moment carries the Live mark (API v4.1): its author's app said its camera made it just now, and what
+ * was kept at posting (markKept) still holds: a photo or video from a fix where its author was, with no older taken
+ * time, at its exact pin away from home.
+ */
+function takenHere(row) {
+  const m = meta(row);
+  return m.taken_here === true && (m.kind === 'photo' || m.kind === 'video') && m.location_source === 'gps'
+    && !m.taken_at && exactAway(row);
+}
+
+/**
+ * Until when a Moment taken here reads "Live from here": LIVE_FOR_MS after the time everyone reads it was posted.
+ * Null for one shared later (it may read "Taken here", never "Live") and for any Moment without the mark.
+ */
+function liveUntil(row) {
+  if (!takenHere(row) || meta(row).share_at) return null;
+  const posted = Date.parse(shownAt(row));
+  return Number.isFinite(posted) ? new Date(posted + LIVE_FOR_MS).toISOString() : null;
+}
+
+/**
+ * A ring's `live_until`: the latest among its Moments, only when the Moment the ring is drawn at (its newest) is
+ * itself an exact pin away from home, so the dot never sits on a pin at home or an area. Null otherwise.
+ */
+function ringLiveUntil(members, newest) {
+  if (!exactAway(newest.row)) return null;
+  const times = members.map(({ row }) => liveUntil(row)).filter(Boolean).sort();
+  return times.length ? times[times.length - 1] : null;
 }
 
 /**
@@ -254,6 +353,11 @@ async function heightsOn(viewer) {
 /** Whether Moments float by day on `viewer`'s map: `moment_float` on for them, and heights too. Off for everyone. */
 async function floatOn(viewer) {
   return (await heightsOn(viewer)) && flagOnFor(FLOAT_FLAG, viewer);
+}
+
+/** Whether the Sky's places rules apply to `viewer`'s posts and Post sheet (`sky_places`). Off for everyone. */
+async function skyOn(viewer) {
+  return flagOnFor(SKY_FLAG, viewer);
 }
 
 /** One flag for one person, read from the cached flag row; any failure reads as off. */
@@ -272,7 +376,7 @@ async function flagOnFor(name, viewer) {
 }
 
 function briefOf(row, seen) {
-  return { id: row.id, kind: meta(row).kind, created_at: row.created_at, expires_at: row.story_expires_at, seen };
+  return { id: row.id, kind: meta(row).kind, created_at: shownAt(row), expires_at: row.story_expires_at, seen };
 }
 
 /**
@@ -306,13 +410,25 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     longitude: point.longitude,
     no_location: !hasPlace(row),
     show_area: Boolean(m.show_area),
+    // The Sky: a floating Moment and its disc around the area point (null for any other).
+    floating: isFloating(row),
+    area: isFloating(row) && Number.isFinite(row.post_metadata.area.radius_m)
+      ? { radius_m: row.post_metadata.area.radius_m } : null,
     audience: row.audience === 'connections' ? 'connections' : 'nearby',
-    created_at: row.created_at,
+    created_at: shownAt(row),
     expires_at: row.story_expires_at,
+    // Shared later (the Sky): apps say "Earlier today"; its author also reads when it shares.
+    earlier: Boolean(m.share_at),
+    share_at: own ? (m.share_at || null) : null,
     hours: m.hours,
     // A part of a longer video posted as several Moments: which one, of how many (null for any other Moment).
     series: m.series ? { id: m.series.id, index: m.series.index, count: m.series.count } : null,
     taken_at: m.kind === 'text' ? null : (m.taken_at || null),
+    // The Live mark (API v4.1): taken here with the app's camera; "Live from here" until `live_until`, then "Taken
+    // here" (null for one shared later). `weather`: the stamp its author kept, only on a Moment taken here.
+    taken_here: takenHere(row),
+    live_until: liveUntil(row),
+    weather: takenHere(row) ? momentWeather.shownStamp(m.weather) : null,
     // Feet above sea level, when the author chose "Show height" (null otherwise); `flying`: posted from the air.
     altitude_ft: high ? high.altitude_ft : null,
     flying: Boolean(high?.flying),
@@ -421,11 +537,28 @@ async function reportedIds(viewerId) {
   return new Set((data || []).map((report) => report.post_id));
 }
 
+// A read's outcome held until it is used ({ value } or { error }), so a read nobody ends up needing never rejects.
+const settled = (read) => read.then((value) => ({ value }), (error) => ({ error }));
+async function used(read) {
+  const { value, error } = await read;
+  if (error) throw error;
+  return value;
+}
+
+/**
+ * The viewer's own reads that one request needs in more than one place (the Moments in view and the ones with no
+ * location): their mute, hide and block filters and their recent reports, started at once and read once. reportedIds
+ * never fails (an unreadable list is empty).
+ */
+function sharedViewerReads(viewerId) {
+  return { filters: settled(feedService.getMuteAndHideFilters(viewerId)), reported: reportedIds(viewerId) };
+}
+
 /**
  * The live Moments shown in the box that `viewerId` may see (blocks, mutes, audience) and hasn't reported, newest
  * first, each with the point everyone sees: [{ row, point }]. The map and the tab's dot both read this.
  */
-async function shownInBox(viewerId, { south, west, north, east }) {
+async function shownInBox(viewerId, { south, west, north, east }, shared = null) {
   if (north - south > MAX_MAP_SPAN_DEGREES || east - west > MAX_MAP_SPAN_DEGREES) return [];
   // An area pin's displayed point can be up to MAX_DISPLAY_OFFSET_DEGREES from its stored point: read the stored points
   // in a box that wide, on whole cells (so the rows read never depend on where an edge falls between stored points),
@@ -448,8 +581,8 @@ async function shownInBox(viewerId, { south, west, north, east }) {
   if (error) throw new Error(`Failed to load Moments: ${error.message}`);
   const rows = (data || []).filter((row) => momentState(row) === 'live');
   const [ctx, reported] = await Promise.all([
-    viewerContext(viewerId, rows.map((r) => r.user_id)),
-    rows.length ? reportedIds(viewerId) : new Set(),
+    viewerContext(viewerId, rows.map((r) => r.user_id), shared),
+    rows.length ? (shared ? shared.reported : reportedIds(viewerId)) : new Set(),
   ]);
   const shown = [];
   for (const row of rows) {
@@ -473,8 +606,9 @@ async function connectionIds(viewerId) {
  * The live Moments with no location that `viewerId` may see: their connections' and their own, whatever the map shows
  * (blocks, mutes and reports apply), newest first, as [{ row, point }] with an empty point.
  */
-async function shownUnplaced(viewerId) {
-  const people = [String(viewerId), ...await connectionIds(viewerId)];
+async function shownUnplaced(viewerId, shared = null) {
+  const connections = await connectionIds(viewerId);
+  const people = [String(viewerId), ...connections];
   const nowIso = new Date().toISOString();
   const rows = (await readInBatches(people, (batch) => supabaseAdmin.from('Post').select(MOMENT_SELECT)
     .eq('is_story', true)
@@ -486,9 +620,12 @@ async function shownUnplaced(viewerId) {
     .eq('post_metadata->moment->>state', 'live')
     .limit(MAX_MAP_ROWS), 'unplaced Moments')).filter((row) => momentState(row) === 'live');
   if (!rows.length) return [];
-  const [ctx, reported] = await Promise.all([viewerContext(viewerId, rows.map((r) => r.user_id)), reportedIds(viewerId)]);
+  const [ctx, reported] = await Promise.all([
+    viewerContext(viewerId, rows.map((r) => r.user_id), shared && { ...shared, connections }),
+    shared ? shared.reported : reportedIds(viewerId),
+  ]);
   return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .sort((a, b) => Date.parse(shownAt(b)) - Date.parse(shownAt(a)))
     .map((row) => ({ row, point: { latitude: null, longitude: null } }));
 }
 
@@ -501,9 +638,9 @@ async function mapRings(viewerId, box) {
  * shownUnplaced, or none when it can't be read: the Moments with no location never stop the map or the tab's dot
  * from working.
  */
-async function unplacedOrNone(viewerId) {
+async function unplacedOrNone(viewerId, shared = null) {
   try {
-    return await shownUnplaced(viewerId);
+    return await shownUnplaced(viewerId, shared);
   } catch (error) {
     logger.warn('moments.unplaced_read_failed', { error: error.message });
     return [];
@@ -553,9 +690,9 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
   }
   // The newest MAX_RINGS rings; only theirs are named and marked.
   const kept = [...groups.entries()].map(([key, members]) => {
-    members.sort((a, b) => Date.parse(a.row.created_at) - Date.parse(b.row.created_at));
+    members.sort((a, b) => Date.parse(shownAt(a.row)) - Date.parse(shownAt(b.row)));
     return { key, members, newest: members[members.length - 1] };
-  }).sort((a, b) => Date.parse(b.newest.row.created_at) - Date.parse(a.newest.row.created_at)).slice(0, MAX_RINGS);
+  }).sort((a, b) => Date.parse(shownAt(b.newest.row)) - Date.parse(shownAt(a.newest.row))).slice(0, MAX_RINGS);
   const [authors, marks, thumbs, heights] = await Promise.all([
     loadAuthors(kept.map(({ newest }) => newest.row.user_id)),
     viewerMarks(viewerId, kept.flatMap(({ members }) => members.map(({ row }) => row.id))),
@@ -578,9 +715,16 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
       place_label: newest.row.location_name || null,
       altitude_ft: high ? high.altitude_ft : null,
       flying: Boolean(high?.flying),
+      // The Sky: the newest Moment shows only its area (made at home), so apps draw the pin floating over its spot
+      // with no pointer, never as an exact pin.
+      floating: isFloating(newest.row),
+      // The Live mark (API v4.1): the latest time one of its Moments stops reading "Live from here" (apps draw the
+      // dot and keep the ring under "Live now" until then); null when none is live or the ring isn't an exact pin
+      // away from home.
+      live_until: ringLiveUntil(members, newest),
       moments,
       unseen_count: moments.filter((m) => !m.seen).length,
-      newest_at: newest.row.created_at,
+      newest_at: shownAt(newest.row),
       mine,
     };
   });
@@ -628,9 +772,11 @@ function wentLiveAt(row) {
  * dot never lights for something it can't show.
  */
 async function unseenPeople(viewerId, box, since = null, { includeUnplaced = false } = {}) {
+  // The viewer's filters and recent reports are read once, alongside the Moments, for both halves below.
+  const shared = sharedViewerReads(viewerId);
   const [inBox, unplaced] = await Promise.all([
-    shownInBox(viewerId, box),
-    includeUnplaced ? unplacedOrNone(viewerId) : [],
+    shownInBox(viewerId, box, shared),
+    includeUnplaced ? unplacedOrNone(viewerId, shared) : [],
   ]);
   const fresh = [...inBox, ...unplaced].map(({ row }) => row)
     .filter((row) => row.user_id !== viewerId && (since == null || wentLiveAt(row) > since));
@@ -691,9 +837,19 @@ async function viewersOf(row) {
 
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
-  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null }) {
+  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
+  area = null, shareAt = null, takenHere: sentTakenHere = false, weather = null }) {
   const now = createdAt ? new Date(createdAt) : new Date();
+  // A Moment shared later counts its hours from its time.
+  const starts = shareAt ? new Date(shareAt) : now;
   const live = kind === 'text';
+  // A floating Moment (the Sky) keeps its area's point and nothing finer.
+  if (area) {
+    location = { ...location, latitude: area.latitude, longitude: area.longitude };
+    showArea = true;
+  }
+  // The Live mark, decided again on what is stored; its weather only with it.
+  const marked = Boolean(sentTakenHere) && markKept({ kind, source: location.source, atHome, showArea, takenAt });
   return {
     user_id: userId,
     author_user_id: userId,
@@ -715,7 +871,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
     distribution_targets: [],
     is_story: true,
     created_at: now.toISOString(),
-    story_expires_at: new Date(now.getTime() + hours * HOUR_MS).toISOString(),
+    story_expires_at: new Date(starts.getTime() + hours * HOUR_MS).toISOString(),
     show_on_profile: false,
     profile_visibility_scope: 'hidden',
     state: 'open',
@@ -723,6 +879,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
     moderation_state: 'live',
     gps_timestamp: location.source === 'gps' ? location.fix_at : null,
     post_metadata: {
+      ...(area ? { area: areaMetadata(area) } : {}),
       moment: {
         v: 1,
         kind,
@@ -736,6 +893,8 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
         ...(venueId ? { venue_id: venueId } : {}),
         ...(series && kind === 'video' ? { series: { id: series.id, index: series.index, count: series.count } } : {}),
         ...(altitude ? { altitude_ft: altitude.altitude_ft, ...(altitude.flying ? { flying: true } : {}) } : {}),
+        ...(shareAt ? { share_at: new Date(shareAt).toISOString() } : {}),
+        ...(marked ? { taken_here: true, ...(weather ? { weather } : {}) } : {}),
         location_source: location.source,
         state: live ? 'live' : 'uploading',
         media: null,
@@ -758,11 +917,12 @@ function takenAtShown(value, now = Date.now()) {
 /**
  * The height a new Moment keeps, { altitude_ft, flying }, or null. `reading` is what the phone sent with "Show height"
  * on: { meters, accuracy_m, speed_mps } (metres above sea level; the last two optional). Nothing is kept for a
- * Moment at home, shown as an area or with no location (a height would narrow down where it is), nor for a reading
- * that can't be right or that the phone says is too rough. A bad reading never fails the post: it is left out.
+ * Moment at home, shown as an area before the Sky or with no location (a height would narrow down where it is), nor
+ * for a reading that can't be right or that the phone says is too rough. A floating Moment (`floating`, the Sky)
+ * keeps feet rounded to 100 instead of 10. A bad reading never fails the post: it is left out.
  */
-function shownAltitude(reading, { atHome = false, showArea = false, unplaced = false } = {}) {
-  if (!reading || atHome || showArea || unplaced) return null;
+function shownAltitude(reading, { atHome = false, showArea = false, unplaced = false, floating = false } = {}) {
+  if (!reading || atHome || (showArea && !floating) || unplaced) return null;
   const meters = Number(reading.meters);
   if (!Number.isFinite(meters) || meters < MIN_ALTITUDE_M || meters > MAX_ALTITUDE_M) return null;
   const speed = Number(reading.speed_mps);
@@ -770,8 +930,21 @@ function shownAltitude(reading, { atHome = false, showArea = false, unplaced = f
   const error = reading.accuracy_m == null ? null : Number(reading.accuracy_m);
   if (error != null && (!Number.isFinite(error) || error < 0
     || error > (flying ? MAX_ALTITUDE_ERROR_FLYING_M : MAX_ALTITUDE_ERROR_M))) return null;
+  const step = floating ? FLOATING_HEIGHT_STEP_FT : HEIGHT_STEP_FT;
   // `|| 0`: a few feet below the sea rounds to 0, never to -0.
-  return { altitude_ft: Math.round((meters * FEET_PER_M) / HEIGHT_STEP_FT) * HEIGHT_STEP_FT || 0, flying };
+  return { altitude_ft: Math.round((meters * FEET_PER_M) / step) * step || 0, flying };
+}
+
+/**
+ * Whether a new Moment keeps the Live mark its author's app sent (`taken_here`: its own camera made it just now). Only
+ * a photo or video from a fresh fix of where its author is (`gps`; never an album item pinned where its file says,
+ * `capture`), sent with no taken time (`takenAt`: the apps send one only for an album item), at its exact pin away
+ * from home: never at home, shown as an area, floating or with no location, whatever the app sent. The same places a
+ * height is never kept (shownAltitude). The route also drops it when the author's homes can't be read.
+ */
+function markKept({ kind, source, atHome = false, showArea = false, unplaced = false, floating = false, takenAt = null }) {
+  return (kind === 'photo' || kind === 'video') && source === 'gps' && !atHome && !showArea && !unplaced && !floating
+    && !takenAt;
 }
 
 /**
@@ -846,11 +1019,15 @@ async function updateMoment(row, { moment, ...columns }, expect = {}) {
   return data || null;
 }
 
-/** The Moment goes live: its time starts now (CONTRACT: expires_at counts from going live). */
+/**
+ * The Moment goes live: its time starts now (CONTRACT: expires_at counts from going live), or at its time for one
+ * shared later whose time hasn't come.
+ */
 function goLive(row, check) {
   const hours = HOURS.includes(meta(row).hours) ? meta(row).hours : 24;
+  const starts = Math.max(Date.now(), Date.parse(meta(row).share_at || '') || 0);
   return updateMoment(row, {
-    story_expires_at: new Date(Date.now() + hours * HOUR_MS).toISOString(),
+    story_expires_at: new Date(starts + hours * HOUR_MS).toISOString(),
     moment: { state: 'live', check },
   }, { archived_at: null });
 }
@@ -945,8 +1122,8 @@ async function deleteMoment(row) {
 
 module.exports = {
   KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
-  fail, meta, hasEnded, momentState, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
+  fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
-  newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, HEIGHTS_FLAG, FLOAT_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
 };

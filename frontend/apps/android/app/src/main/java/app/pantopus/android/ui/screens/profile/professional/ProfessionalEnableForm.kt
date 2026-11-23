@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import app.pantopus.android.ui.components.AddressSuggestionList
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.screens.shared.form.FormShell
 import app.pantopus.android.ui.screens.shared.form.FormShellLeading
 import app.pantopus.android.ui.theme.PantopusColors
@@ -155,14 +157,23 @@ private fun EnableFormShell(
             }
         }
         ProSection("Service area") {
+            // The city suggests places as it is typed (FASTVERIFY section 11); a pick fills the city and the state.
+            val citySuggestions = rememberAddressSuggestions(streetOnly = false)
             ProTextInput(
                 label = "City",
                 optional = true,
                 value = draft.city,
                 placeholder = "City",
                 testTag = "proEnableCityField",
-                onValueChange = onCityChange,
+                onValueChange = {
+                    onCityChange(it)
+                    citySuggestions?.onTextChanged(it)
+                },
             )
+            AddressSuggestionList(citySuggestions, testTagPrefix = "proEnableCitySuggestion") { picked ->
+                picked.city?.takeIf { it.isNotBlank() }?.let(onCityChange)
+                picked.state?.takeIf { it.isNotBlank() }?.let(onStateChange)
+            }
             ProTextInput(
                 label = "State",
                 optional = true,
@@ -204,7 +215,7 @@ private fun EnableFormShell(
                         VisibilityRow(
                             id = "publicProfile",
                             label = "Public profile",
-                            sub = "Neighbors can find you on the map and in search.",
+                            sub = "People can find you on the map and in search.",
                             isOn = draft.isPublic,
                         ),
                     onToggle = onPublicChange,

@@ -231,7 +231,7 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
         } ?? .chevron
         return GroupedListGroup(
             id: "thisIPhone",
-            overline: "This iPhone",
+            overline: "This \(DeviceWords.name)",
             rows: [
                 GroupedListRow(id: "storageData", label: "Storage & data", subtext: "Photos and saved pages", control: size)
             ]
@@ -331,7 +331,7 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
     static func visibilitySubtext(_ raw: String?) -> String? {
         switch (raw ?? "").lowercased() {
         case "public": "Anyone"
-        case "registered": "Signed-in neighbors"
+        case "registered": "Signed-in people"
         case "private": "Only you"
         default: nil
         }

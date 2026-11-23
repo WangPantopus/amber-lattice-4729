@@ -36,7 +36,8 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     public private(set) var selectedBeneficiary: MailRecipientDTO?
     public var selectedReason: StartSupportTrainReason = .mealTrain
     public var reason: String = ""
-    public var inviteOnly: Bool = true
+    /// Anyone with the link is the default audience (founder, 11-17): a shared link opens for everyone.
+    public var inviteOnly: Bool = false
     public var blockVisible: Bool = false
     public var inviteMethod: StartSupportTrainInviteMethod = .phone
 
@@ -45,12 +46,28 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     public var startDate: Date
     public var endDate: Date
     public var slotDuration: StartSupportTrainSlotDuration = .sixty
+    /// When each date starts (only its hour and minute are used) (B8).
+    public var startTime: Date = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    /// The weekdays the train runs, 0 = Sunday … 6 = Saturday (B8).
+    public var weekdays: Set<Int> = Set(0...6)
+    /// Where help goes (A1).
+    let whereModel = SupportTrainWhereModel()
 
-    // Step 3 — Review & launch
-    public var allowComments: Bool = true
-    public var visibility: StartSupportTrainVisibility = .connections // "Invite only" is on by default
+    // Step 3 — Review & launch: what helpers should know (A1)
+    public var householdSize: Int = 0
+    public var allergies: String = ""
+    public var diet: String = ""
+    public var contactless: Bool = false
+    /// Held to the 2,000 characters the server keeps (`special_instructions`), through `updateInstructions`.
+    public var instructions: String = ""
+
+    public var visibility: StartSupportTrainVisibility = .linkOnly
+    /// The person picked by account wasn't linked to the train (not a connection) (A13).
+    public private(set) var recipientNotLinkedName: String?
     public private(set) var launchError: String?
     public private(set) var publishedTrainId: String?
+    /// How many dates the server saved: it skips a date that had passed where the train is.
+    public private(set) var savedDateCount: Int?
     /// A half-built draft a failed launch couldn't delete; the next launch removes it first.
     private var leftoverTrainId: String?
     /// The create's request id, kept until its reply arrives, so a retry reaches the same draft.
@@ -59,6 +76,8 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     // MARK: - Constants
 
     public static let reasonCharLimit: Int = 500
+    /// The server makes a schedule of up to 90 days.
+    public static let maxScheduleDays: Int = 90
 
     // MARK: - Dependencies
 
@@ -86,12 +105,36 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     // MARK: - Derived projections
 
     public var generatedSlots: [StartSupportTrainSlot] {
-        StartSupportTrainSlotGenerator.generate(
+        guard !scheduleTooLong else { return [] }
+        let clock = Calendar.current.dateComponents([.hour, .minute], from: startTime)
+        return StartSupportTrainSlotGenerator.generate(
             startDate: startDate,
             endDate: endDate,
             durationMinutes: slotDuration.rawValue,
-            startHour: kind.defaultStartHour
+            startHour: clock.hour ?? kind.defaultStartHour,
+            startMinute: clock.minute ?? 0,
+            weekdays: weekdays
         )
+    }
+
+    /// The range is longer than a schedule can be: said, not cut silently (B8).
+    public var scheduleTooLong: Bool {
+        let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+        return days + 1 > Self.maxScheduleDays
+    }
+
+    /// Why the dates can't go ahead yet, in words; nil when they can.
+    public var scheduleProblem: String? {
+        if startDate < Calendar.current.startOfDay(for: Date()) { return "Pick a start date from today on." }
+        if scheduleTooLong { return "A train can run up to \(Self.maxScheduleDays) days. Pick a shorter range; you can add dates later." }
+        if weekdays.isEmpty { return "Pick at least one day of the week." }
+        if generatedSlots.isEmpty { return "None of the picked days fall in this range." }
+        if whereModel.body == nil { return "Pick where help goes." }
+        return nil
+    }
+
+    public func toggleWeekday(_ day: Int) {
+        if weekdays.contains(day) { weekdays.remove(day) } else { weekdays.insert(day) }
     }
 
     public var reasonRemainingChars: Int {
@@ -103,7 +146,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         let recipientName = selectedBeneficiary?.name
             ?? MadeUpUsername.chosen(selectedBeneficiary?.username)
             ?? beneficiaryQuery.trimmingCharacters(in: .whitespaces)
-        let name = recipientName.isEmpty ? "a neighbor" : recipientName
+        let name = recipientName.isEmpty ? "someone" : recipientName
         return "\(kind.title) for \(name)"
     }
 
@@ -185,6 +228,11 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         selectedReason = value
     }
 
+    /// Typing or pasting past 2,000 characters keeps the first 2,000 (the server's `special_instructions` limit).
+    public func updateInstructions(_ value: String) {
+        instructions = String(value.prefix(Self.instructionsCharLimit))
+    }
+
     public func updateReason(_ value: String) {
         if value.count > Self.reasonCharLimit {
             reason = String(value.prefix(Self.reasonCharLimit))
@@ -218,7 +266,8 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
 
     public func setStartDate(_ value: Date) {
         let cal = Calendar.current
-        startDate = cal.startOfDay(for: value)
+        // A start date that has passed can't be picked (B8).
+        startDate = max(cal.startOfDay(for: value), cal.startOfDay(for: Date()))
         if endDate < startDate {
             endDate = startDate
         }
@@ -235,10 +284,6 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     }
 
     // MARK: - Step 3 actions
-
-    public func toggleAllowComments(_ value: Bool) {
-        allowComments = value
-    }
 
     public func selectVisibility(_ value: StartSupportTrainVisibility) {
         visibility = value
@@ -334,14 +379,14 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     }
 
     public var canAdvanceFromWhatAndWhen: Bool {
-        endDate >= startDate && !generatedSlots.isEmpty
+        endDate >= startDate && scheduleProblem == nil
     }
 
     private var primaryCTAEnabled: Bool {
         switch step {
         case .whoAndWhy: canAdvanceFromWhoAndWhy
         case .whatAndWhen: canAdvanceFromWhatAndWhen
-        case .reviewAndLaunch: !isSubmittingFlag && !generatedSlots.isEmpty
+        case .reviewAndLaunch: !isSubmittingFlag && scheduleProblem == nil && detailsProblem == nil
         case .success: true
         }
     }
@@ -424,6 +469,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     }
 
     private func launch() async {
+        guard detailsProblem == nil else { return }
         isSubmittingFlag = true
         launchError = nil
         defer { isSubmittingFlag = false }
@@ -437,11 +483,24 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestId = createRequestId ?? UUID().uuidString
         createRequestId = requestId
+        let window = generatedSlots.first.map {
+            CreateSupportTrainBody.DraftPayload.DropoffWindow(startTime: $0.startTime, endTime: $0.endTime)
+        }
         let body = CreateSupportTrainBody(
-            draftPayload: CreateSupportTrainBody.DraftPayload(story: trimmedReason),
+            draftPayload: CreateSupportTrainBody.DraftPayload(
+                story: trimmedReason,
+                householdSize: householdSize > 0 ? householdSize : nil,
+                dietaryRestrictions: Self.list(allergies),
+                dietaryPreferences: Self.list(diet),
+                preferredDropoffWindow: window,
+                contactlessPreferred: contactless,
+                specialInstructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : String(instructions.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.instructionsCharLimit))
+            ),
             title: derivedTitle,
             recipientUserId: selectedBeneficiary?.userId,
             sharingMode: visibility.sharingModeWire,
+            deliveryLocation: whereModel.body,
             clientRequestId: requestId
         )
         var createdTrainId: String?
@@ -452,22 +511,9 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
             createRequestId = nil
             createdTrainId = created.id
             publishedTrainId = created.id
-            // The whole schedule in one request (a slot on every day of the range): a request
-            // per slot ran a long train into the write limits partway through.
-            if let first = generatedSlots.first, let last = generatedSlots.last {
-                let schedule = GenerateSupportTrainSlotsBody(
-                    startDate: first.dateKey,
-                    endDate: last.dateKey,
-                    startTime: first.startTime,
-                    endTime: first.endTime,
-                    slotLabel: kind.defaultSlotLabel,
-                    supportMode: kind.supportMode
-                )
-                _ = try await api.request(
-                    SupportTrainsEndpoints.generateSlots(supportTrainId: created.id, body: schedule),
-                    as: EmptyResponse.self
-                )
-            }
+            recipientNotLinkedName = created.recipientLinked == false
+                ? (selectedBeneficiary.map(displayName) ?? beneficiaryQuery) : nil
+            try await saveDates(trainId: created.id)
             _ = try await api.request(
                 SupportTrainsEndpoints.publish(supportTrainId: created.id),
                 as: EmptyResponse.self
@@ -486,12 +532,44 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
                 case .failed: leftoverTrainId = id
                 }
             }
+            if case LaunchProblem.datePassed = error {
+                launchError = "That date has already passed where the train is. Pick a later date and launch again."
+                step = .whatAndWhen
+                return
+            }
             launchError = (error as? APIError)?.errorDescription
                 ?? "Couldn't launch the train. Try again."
         }
     }
 
+    /// The whole schedule in one request (a slot on every day of the range): a request per slot ran a long train
+    /// into the write limits partway through. The server skips a date that has already passed where the train is
+    /// (its zone can be ahead of the phone's); with no date left, that is said instead of the publish refusal.
+    private func saveDates(trainId: String) async throws {
+        guard let first = generatedSlots.first, let last = generatedSlots.last else { return }
+        let schedule = GenerateSupportTrainSlotsBody(
+            startDate: first.dateKey,
+            endDate: last.dateKey,
+            startTime: first.startTime,
+            endTime: first.endTime,
+            slotLabel: kind.defaultSlotLabel,
+            supportMode: kind.supportMode,
+            weekdays: weekdays.count == 7 ? nil : weekdays.sorted()
+        )
+        let saved = try await api.request(
+            SupportTrainsEndpoints.generateSlots(supportTrainId: trainId, body: schedule),
+            as: GeneratedSlotsCount.self
+        )
+        if saved.count < 1 { throw LaunchProblem.datePassed }
+        savedDateCount = saved.count
+    }
+
     private enum DraftDiscard { case deleted, live, failed }
+
+    private enum LaunchProblem: Error { case datePassed }
+
+    /// `POST /:id/generate-slots` answers `{ slots, count }`; only the count is read.
+    private struct GeneratedSlotsCount: Decodable { let count: Int }
 
     /// Deletes a draft this wizard created. The server keeps a train that is
     /// no longer a draft (`draftOnly`), so a launch that went live is never undone.
@@ -524,6 +602,40 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         } else {
             pendingEvent = .dismiss
         }
+    }
+
+    static let instructionsCharLimit = 2000
+    /// The server keeps each allergy or diet item to 100 characters.
+    static let listItemCharLimit = 100
+
+    /// One allergy or diet item longer than the server keeps, said under the fields; Launch waits for it.
+    public var detailsProblem: String? {
+        if (Self.list(allergies) ?? []).contains(where: { $0.count > Self.listItemCharLimit }) {
+            return "Keep each allergy to \(Self.listItemCharLimit) characters, and separate them with commas."
+        }
+        if (Self.list(diet) ?? []).contains(where: { $0.count > Self.listItemCharLimit }) {
+            return "Keep each diet to \(Self.listItemCharLimit) characters, and separate them with commas."
+        }
+        return nil
+    }
+
+    /// "peanuts, shellfish" → ["peanuts", "shellfish"]; a comma inside parentheses stays in its item.
+    static func list(_ text: String) -> [String]? {
+        var items: [String] = []
+        var current = ""
+        var depth = 0
+        for ch in text {
+            if ch == "(" { depth += 1 } else if ch == ")", depth > 0 { depth -= 1 }
+            if ch == ",", depth == 0 {
+                items.append(current)
+                current = ""
+            } else {
+                current.append(ch)
+            }
+        }
+        items.append(current)
+        let trimmed = items.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return trimmed.isEmpty ? nil : Array(trimmed.prefix(50))
     }
 
     private func displayName(_ recipient: MailRecipientDTO) -> String {

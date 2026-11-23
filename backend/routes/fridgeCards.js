@@ -26,7 +26,7 @@ const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
 const { fridgeCardIssueLimiter } = require('../middleware/rateLimiter');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerifiedResident, mailLevelRefusal } = require('../utils/homePermissions');
 const fridgeCardService = require('../services/fridgeCardService');
 const logger = require('../utils/logger');
 
@@ -41,10 +41,10 @@ router.post('/:id/fridge-cards', verifyToken, fridgeCardIssueLimiter, async (req
       return res.status(403).json({ error: 'You do not have permission to manage this place.', ...(access.verificationRequired && { code: 'VERIFICATION_REQUIRED' }) });
     }
     if (!isVerifiedResident(access)) {
-      return res.status(403).json({
+      return res.status(403).json(await mailLevelRefusal(access, {
         error: 'Verify your address to issue a fridge card.',
         code: 'VERIFICATION_REQUIRED',
-      });
+      }));
     }
 
     const card = await fridgeCardService.issueCard({
@@ -80,10 +80,10 @@ router.get('/:id/fridge-cards', verifyToken, async (req, res) => {
     // occupancy grants home access, not the household's health data;
     // whoever the household wants informed gets handed the card link.
     if (!isVerifiedResident(access)) {
-      return res.status(403).json({
+      return res.status(403).json(await mailLevelRefusal(access, {
         error: 'Verify your address to see this household’s cards.',
         code: 'VERIFICATION_REQUIRED',
-      });
+      }));
     }
     const cards = await fridgeCardService.listCards({ homeId: id });
     return res.json({ cards });

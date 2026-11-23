@@ -17,8 +17,24 @@ struct BusinessAddressField: View {
     let state: BizFieldState
     let onFieldChange: @MainActor (EditBusinessPageFieldKey, String) -> Void
     @State private var suggestions = AddressSuggestions()
+    private static let fieldId = "editBusinessPage.addressWithSuggestions"
 
     var body: some View {
+        // The field sits low on the page: when suggestions appear it moves to the top of what the
+        // keyboard leaves, with the first suggestions under it.
+        ScrollViewReader { proxy in
+            fieldAndList
+                .id(Self.fieldId)
+                .onChange(of: suggestions.suggestions.isEmpty) { _, empty in
+                    guard !empty else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.fieldId, anchor: .top) }
+                }
+        }
+        // Nearby first: the owner's own home's area (founder 2026-11-17).
+        .task { if suggestions.near == nil { suggestions.near = await AddressSuggestions.anyHomePoint() } }
+    }
+
+    private var fieldAndList: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             BizField(
                 label: "Address",

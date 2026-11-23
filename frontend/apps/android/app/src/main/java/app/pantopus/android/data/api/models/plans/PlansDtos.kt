@@ -144,6 +144,15 @@ data class PlanPersonDto(
     @Json(name = "reconfirm_needed") val reconfirmNeeded: Boolean? = null,
     @Json(name = "kids_count") val kidsCount: Int? = null,
     @Json(name = "kids_age_bands") val kidsAgeBands: List<String>? = null,
+    /** Plans for the holidays (`guests=1`): a guest without an account who is in, by their invitation's id. */
+    @Json(name = "guest_id") val guestId: String? = null,
+    @Json(name = "guest") val isGuest: Boolean = false,
+    /** Business track B1, staff only: this guest's free thing (`ready` or `used`), for "Mark used". */
+    @Json(name = "deal") val deal: PlanPersonDealDto? = null,
+    /** Business track B2, staff only: what this guest paid and who brought them. */
+    @Json(name = "paid") val paid: PlanPersonPaidDto? = null,
+    /** The holidays' chip in, on the host's screens: whether this person said they paid, and `who` for "Mark paid". */
+    @Json(name = "chip_in") val chipIn: PlanChipInMarkDto? = null,
 )
 
 /** `my_request`: the viewer's own request, once they have one. */
@@ -164,6 +173,8 @@ data class PlanMyRequestDto(
     @Json(name = "decided_by") val decidedBy: String? = null,
     @Json(name = "decided_at") val decidedAt: String? = null,
     @Json(name = "asks_left") val asksLeft: Int? = null,
+    /** Business track B2: a `paying` request's spot is held until then. */
+    @Json(name = "hold_expires_at") val holdExpiresAt: String? = null,
 )
 
 /**
@@ -186,6 +197,17 @@ data class PlanPriceDto(
     @Json(name = "cents") val cents: Int? = null,
     @Json(name = "currency") val currency: String? = null,
     @Json(name = "per") val per: String? = null,
+    /** Business track B2: "$18" (the list's chip). */
+    @Json(name = "text") val text: String? = null,
+    /** "$18 a person": replaces "Free" in "Free, and for adults". */
+    @Json(name = "line") val line: String? = null,
+    /** D1's line under Join: "$18 a person. Full refund until Friday at 10:00 AM." */
+    @Json(name = "join_text") val joinText: String? = null,
+    @Json(name = "refund_until") val refundUntil: String? = null,
+    @Json(name = "refund_text") val refundText: String? = null,
+    /** B4: the price struck through beside a deal price. */
+    @Json(name = "was_cents") val wasCents: Int? = null,
+    @Json(name = "was_text") val wasText: String? = null,
 )
 
 /** One of a venue's later plans folded under its soonest (`more_times.items`): a short line in the list. */
@@ -283,6 +305,163 @@ data class PlanDto(
     @Json(name = "invite_results") val inviteResults: List<PlanInviteResultDto>? = null,
     /** Posting a private plan: the invitations couldn't be sent at all (the plan is posted either way), in words to show. */
     @Json(name = "invite_error") val inviteError: String? = null,
+    // Plans for the holidays, H1 (contract 6.5), with `guests=1`; absent from an older server.
+    /** Guests say how many adults and how many kids. */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** The holidays' chip in (extras section 3, `extras=1`): for the host and people who are in only. */
+    @Json(name = "chip_in") val chipIn: PlanChipInDto? = null,
+    /** The holidays' find a date (extras section 2, `extras=1`): the times offered while the host is picking. */
+    @Json(name = "dates") val dates: PlanDatesDto? = null,
+    /** "Picking a date" where lists show the time, while the host is picking. */
+    @Json(name = "time_text") val timeText: String? = null,
+    /** The holidays' gift exchange (extras section 4, `extras=1`): for the host and people who are in only. */
+    @Json(name = "gift") val gift: PlanGiftDto? = null,
+    /** The holidays' photos afterwards (extras section 5, `extras=1`): on a plan that is over, for those who were in. */
+    @Json(name = "photos") val photos: PlanPhotosCardDto? = null,
+    /** The holidays' one person pays for the group (`extras=1`, `biz=1`): the buyer's spots, or who paid a claimer's. */
+    @Json(name = "group_pay") val groupPay: PlanGroupPayDto? = null,
+    /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
+    @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
+    /** The host only: how many people said I'm in, Maybe, or haven't answered. */
+    @Json(name = "answers") val answers: PlanAnswersDto? = null,
+    /** Plans for the holidays, H2 (contract 7): the bring list, for the host and people in; none without items. */
+    @Json(name = "bring") val bring: PlanBringDto? = null,
+    /** Plans for the holidays, H3 (contract 8): the occasion it was started from; its tag reads the occasion's name. */
+    @Json(name = "occasion") val occasion: PlanOccasionRefDto? = null,
+    /** Business track B1 (contract 9): a business's deal, with every word from the server; none without one. */
+    @Json(name = "deal") val deal: PlanDealDto? = null,
+    /** Business track B2: what the guest paid, the receipt and what leaving gives back; only for a guest who paid. */
+    @Json(name = "paid") val paid: PlanPaidDto? = null,
+    /** Business track B5: "Pay at {business}" for staff and guests who are in, while the plan takes the bill here. */
+    @Json(name = "pay_here") val payHere: PlanPayHereDto? = null,
+    /** Business track B6: a tip after a paid plan, once, for 7 days after it ends. */
+    @Json(name = "tip_later") val tipLater: PlanTipLaterDto? = null,
+)
+
+/** `occasion` on a card (Plans for the holidays, H3). */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionRefDto(
+    @Json(name = "key") val key: String = "",
+    @Json(name = "text") val text: String = "",
+)
+
+/** `GET /api/plans/occasions` (H3): the occasions in season for the host's date, in the strip's order. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionsResponse(
+    @Json(name = "occasions") val occasions: List<PlanOccasionDto> = emptyList(),
+)
+
+/** One occasion: a start for a plan of an existing [kind], with what it fills in. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionDto(
+    @Json(name = "key") val key: String,
+    @Json(name = "text") val text: String = "",
+    @Json(name = "kind") val kind: String = "",
+    @Json(name = "details") val details: PlanDetailsDto? = null,
+    @Json(name = "fills") val fills: PlanOccasionFillsDto? = null,
+)
+
+/** What an occasion fills in on the host form (contract 8); every part stays editable. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionFillsDto(
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "audience") val audience: String? = null,
+    @Json(name = "place_kind") val placeKind: String? = null,
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** The room the occasion starts with (server #4227): 12, or 20 for a holiday party or New Year's Eve. */
+    @Json(name = "spots") val spots: Int? = null,
+    @Json(name = "bring") val bring: PlanOccasionBringDto? = null,
+    @Json(name = "starts_at") val startsAt: String? = null,
+    @Json(name = "ends_at") val endsAt: String? = null,
+    @Json(name = "timezone") val timezone: String? = null,
+)
+
+/** An occasion's starter bring list. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionBringDto(
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean = true,
+    @Json(name = "items") val items: List<PlanOccasionBringItemDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanOccasionBringItemDto(
+    @Json(name = "label") val label: String = "",
+    @Json(name = "note") val note: String? = null,
+)
+
+/** The bring list on a card (Plans for the holidays, H2): what is needed and who is bringing it. */
+@JsonClass(generateAdapter = true)
+data class PlanBringDto(
+    @Json(name = "rev") val rev: Int = 0,
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean = false,
+    @Json(name = "open_count") val openCount: Int = 0,
+    @Json(name = "items") val items: List<PlanBringItemDto> = emptyList(),
+) {
+    /** How many items someone is bringing. */
+    val taken: Int get() = items.count { it.claim != null }
+}
+
+/** One thing on the bring list; [claim] is who is bringing it (a first name), null while it is open. */
+@JsonClass(generateAdapter = true)
+data class PlanBringItemDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "label") val label: String = "",
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "claim") val claim: PlanBringClaimDto? = null,
+)
+
+/** Who is bringing an item: their first name, and whether it is the person looking. */
+@JsonClass(generateAdapter = true)
+data class PlanBringClaimDto(
+    @Json(name = "name") val name: String = "",
+    @Json(name = "mine") val mine: Boolean = false,
+)
+
+/** The bring list as the host sends it (create, change, `PUT …/bring`): kept items carry their id. */
+@JsonClass(generateAdapter = true)
+data class PlanBringInput(
+    @Json(name = "items") val items: List<PlanBringItemInput>,
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean,
+)
+
+/** One item the host sends; [mine] claims it for the host (true) or gives it back (false). */
+@JsonClass(generateAdapter = true)
+data class PlanBringItemInput(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "label") val label: String,
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "mine") val mine: Boolean? = null,
+)
+
+/** `POST /api/plans/:id/bring/items`: a guest adds one thing, claimed by them. */
+@JsonClass(generateAdapter = true)
+data class PlanBringAddBody(
+    @Json(name = "label") val label: String,
+    @Json(name = "note") val note: String? = null,
+)
+
+/** Every bring-list route answers the list as it is now. */
+@JsonClass(generateAdapter = true)
+data class PlanBringResponse(
+    @Json(name = "bring") val bring: PlanBringDto? = null,
+)
+
+/** `headcount` on a plan card and on the host's invitation list (Plans for the holidays, contract 6.4 and 6.5). */
+@JsonClass(generateAdapter = true)
+data class PlanHeadcountDto(
+    @Json(name = "adults") val adults: Int = 0,
+    @Json(name = "kids") val kids: Int = 0,
+) {
+    /** Everyone coming: adults and kids. */
+    val total: Int get() = adults + kids
+}
+
+/** `answers` on the host's card (Plans for the holidays, contract 6.5), counted in people. */
+@JsonClass(generateAdapter = true)
+data class PlanAnswersDto(
+    @Json(name = "in") val isIn: Int = 0,
+    @Json(name = "maybe") val maybe: Int = 0,
+    @Json(name = "no_answer") val noAnswer: Int = 0,
 )
 
 /**
@@ -493,6 +672,25 @@ data class CreatePlanBody(
     @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
     /** A private plan only: up to 30 people (from `GET /api/plans/invites/people`) invited as it is posted. */
     @Json(name = "invite_user_ids") val inviteUserIds: List<String>? = null,
+    /** Plans for the holidays, H1: guests say how many adults and kids (a private plan, sent only while it's on). */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** Plans for the holidays, H2: the bring list made on the form (A3, A9); none leaves it out. */
+    @Json(name = "bring") val bring: PlanBringInput? = null,
+    /** Plans for the holidays, H3: the occasion the plan was started from (a key); none for an ordinary plan. */
+    @Json(name = "occasion") val occasion: String? = null,
+    /** The holidays' chip in: the amount each person, what for, and the host's own payment link. */
+    @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
+    /** The holidays' find a date: two to five times guests tick; the plan's own time is the earliest. No repeat. */
+    @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
+    /** The holidays' gift exchange: how much each spends and when names are drawn. */
+    @Json(name = "gift") val gift: PlanGiftInput? = null,
+    /** Business track B1: a business's deal (D3); none leaves it out. */
+    @Json(name = "deal") val deal: PlanDealInput? = null,
+    /** Business track B2: a spot's price in cents ($1 to $500); none is free. */
+    @Json(name = "price_cents") val priceCents: Int? = null,
+    /** Business track B5: guests can pay their bill here, and take tips (the server's start value when left out). */
+    @Json(name = "pay_here") val payHere: Boolean? = null,
+    @Json(name = "tips_on") val tipsOn: Boolean? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
@@ -521,6 +719,21 @@ data class UpdatePlanBody(
      * checks the host is nearby by their home, else this. Never for a private plan.
      */
     @Json(name = "gps") val gps: PlanGpsInput? = null,
+    /** Plans for the holidays, H1: guests say how many adults and kids (null leaves it as it is). */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** Business track B1: a changed deal (`409 deal_locked` once someone is in); taking it off is `removeDeal`. */
+    @Json(name = "deal") val deal: PlanDealInput? = null,
+    /** Business track B2: a new price (`409 price_locked` once someone is in or paying); taking it off is a raw PATCH. */
+    @Json(name = "price_cents") val priceCents: Int? = null,
+    /** Business track B5: the bill here and tips, at any time. */
+    @Json(name = "pay_here") val payHere: Boolean? = null,
+    @Json(name = "tips_on") val tipsOn: Boolean? = null,
+    /** The holidays' find a date, while picking: the times offered now (a kept time keeps its ticks; a removed one's go). */
+    @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
+    /** The holidays' chip in, changed: who paid is kept. Taking it away (`"chip_in": null`) is `updateClearing`. */
+    @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
+    /** The holidays' gift exchange, changed (after the draw only the budget counts). Calling it off is `"gift": null`. */
+    @Json(name = "gift") val gift: PlanGiftInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */
@@ -543,6 +756,9 @@ data class AskToJoinBody(
     @Json(name = "gps") val gps: PlanGpsInput? = null,
     /** How the person found a business's plan, when the app knows (`business_page`). Left out otherwise. */
     @Json(name = "via") val via: String? = null,
+    /** The holidays' one person pays for the group: `link` buys [spots] in one payment, the buyer's own among them. */
+    @Json(name = "for") val forWhom: String? = null,
+    @Json(name = "spots") val spots: Int? = null,
 )
 
 /** `POST /api/plans/:id/report` body: reason is spam, harassment, inappropriate, misinformation, safety or other. */
@@ -558,6 +774,8 @@ data class PlanRequestRefDto(
     @Json(name = "id") val id: String? = null,
     @Json(name = "status") val status: String? = null,
     @Json(name = "waitlist_position") val waitlistPosition: Int? = null,
+    /** Business track B2: a `paying` request's spot is held until then (10 minutes). */
+    @Json(name = "hold_expires_at") val holdExpiresAt: String? = null,
 )
 
 /** `POST /api/plans/:id/requests` reply: the request and the plan as the asker now sees it. */
@@ -565,6 +783,8 @@ data class PlanRequestRefDto(
 data class AskToJoinResponse(
     @Json(name = "request") val request: PlanRequestRefDto? = null,
     @Json(name = "plan") val plan: PlanDto? = null,
+    /** Business track B2: on a priced plan with room, the payment for the shipped payment sheet. */
+    @Json(name = "payment") val payment: PlanPaymentDto? = null,
 )
 
 /** `RequestView.user`: what a host sees about someone who asked. Never an address. */
@@ -817,6 +1037,10 @@ data class HostAsBusinessDto(
     @Json(name = "kinds") val kinds: List<HostAsKindDto> = emptyList(),
     @Json(name = "locations") val locations: List<HostAsLocationDto> = emptyList(),
     @Json(name = "limits") val limits: HostAsLimitsDto = HostAsLimitsDto(),
+    /** Business track: which rows the form draws (deal, price, pay here), while a track switch is on for it. */
+    @Json(name = "can") val can: HostAsCanDto? = null,
+    /** Business track B2: a price can be set now; false offers the payout setup in the price row. */
+    @Json(name = "payouts_ready") val payoutsReady: Boolean = false,
 )
 
 /** `GET /api/businesses/:id/plans` (B6): the business's upcoming plans, soonest first and not folded. */

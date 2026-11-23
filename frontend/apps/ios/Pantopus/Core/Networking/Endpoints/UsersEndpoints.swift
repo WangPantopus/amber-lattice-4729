@@ -21,6 +21,15 @@ public enum UsersEndpoints {
         Endpoint(method: .patch, path: "/api/users/profile", body: update, dispatchGuard: dispatchGuard)
     }
 
+    /// `POST /api/users/guidance/shown` — route `backend/routes/users.js`
+    /// (`router.post('/guidance/shown'`, GUIDE spec §3). Records that a guidance
+    /// card closed (`times` + 1, `last_at` now) and answers `{ guidance }`;
+    /// 400 `GUIDANCE_CARD_UNKNOWN` for an id the server doesn't know, 404 while
+    /// the server's switch is off.
+    public static func guidanceShown(card: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/users/guidance/shown", body: GuidanceShownBody(card: card))
+    }
+
     /// `GET /api/users/username-availability?username=` — route
     /// `backend/routes/users.js` (`router.get('/username-availability'`).
     /// Can the signed-in person change their username to this one?

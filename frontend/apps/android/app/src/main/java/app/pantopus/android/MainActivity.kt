@@ -28,6 +28,7 @@ import app.pantopus.android.data.auth.OAuthSessionStore
 import app.pantopus.android.data.auth.TokenStorage
 import app.pantopus.android.data.chats.ActiveChatThread
 import app.pantopus.android.data.chats.ChatOutbox
+import app.pantopus.android.data.guidance.GuidanceRepository
 import app.pantopus.android.data.moments.MomentsDot
 import app.pantopus.android.data.moments.MomentsFeature
 import app.pantopus.android.data.network.NetworkMonitor
@@ -43,6 +44,7 @@ import app.pantopus.android.ui.components.CutoutBand
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.closesKeyboardOnTapOrScroll
+import app.pantopus.android.ui.guidance.GuidanceDebug
 import app.pantopus.android.ui.navigation.PantopusNavHost
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasToday
 import app.pantopus.android.ui.theme.PantopusColors
@@ -109,6 +111,9 @@ class MainActivity : FragmentActivity() {
     /** The Moments tab's dot: read with the flag, and every few minutes while the app is open. */
     @Inject lateinit var momentsDot: MomentsDot
 
+    /** The guidance cards' record: app opens (a cold start, or a return after 30 minutes) and the seen cards. */
+    @Inject lateinit var guidance: GuidanceRepository
+
     /**
      * App-wide [ToastController]. Survives configuration changes via the
      * Activity instance. Feature view-models can grab the same instance
@@ -127,11 +132,15 @@ class MainActivity : FragmentActivity() {
         // Debug builds only: `PANTOPUS_DEBUG_AREA_MAX_AGE=<seconds>` shortens the hour after which Today reads the
         // city's fix again (TABCARD §4). A release build never reads it.
         if (BuildConfig.DEBUG) TodayAreaStore.takeDebugMaxAge(intent?.getStringExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA))
+        // Debug builds only: `PANTOPUS_DEBUG_GUIDANCE=<card id>` shows that guidance card at once (spec §8). A release
+        // build never reads it.
+        if (BuildConfig.DEBUG) GuidanceDebug.take(intent?.getStringExtra(GuidanceDebug.EXTRA))
         enableEdgeToEdge()
         secureWindowController.bind(this)
         storeSync.start()
         plansFeature.start()
         momentsFeature.start()
+        guidance.start()
         observeAppLockPrivacyHold()
         lifecycleScope.launch {
             authRepository.state.collect { pilotEvents.authChanged() }
@@ -208,6 +217,7 @@ class MainActivity : FragmentActivity() {
         storeSync.foregrounded()
         plansFeature.foregrounded()
         momentsFeature.foregrounded()
+        guidance.foregrounded()
         launchPushTokenSync()
     }
 
@@ -220,6 +230,7 @@ class MainActivity : FragmentActivity() {
         appLockManager.appDidEnterBackground(isConfigurationChange = isChangingConfigurations)
         if (!isChangingConfigurations) {
             pilotEvents.enterBackground()
+            guidance.backgrounded()
             storeSync.backgrounded()
             chatOutbox.backgrounded()
         }
@@ -232,6 +243,7 @@ class MainActivity : FragmentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra(ChristmasToday.DEBUG_EXTRA)) {
             ChristmasToday.takeDebugDay(intent.getStringExtra(ChristmasToday.DEBUG_EXTRA))
         }
+        if (BuildConfig.DEBUG && intent.hasExtra(GuidanceDebug.EXTRA)) GuidanceDebug.take(intent.getStringExtra(GuidanceDebug.EXTRA))
         if (BuildConfig.DEBUG && intent.hasExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA)) {
             TodayAreaStore.takeDebugMaxAge(intent.getStringExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA))
         }
@@ -285,8 +297,10 @@ class MainActivity : FragmentActivity() {
             OAuthSessionStore.deliver(uri)
             return
         }
-        if (forwardWebOnlyLink(intent, uri) || forwardReminderAction(intent, uri) || forwardAccountScopedPush(intent, uri)) return
-        DeepLinkRouter.handle(uri)
+        val handled =
+            forwardWebOnlyLink(intent, uri) || forwardOpenLink(intent, uri) ||
+                forwardReminderAction(intent, uri) || forwardAccountScopedPush(intent, uri)
+        if (!handled) DeepLinkRouter.handle(uri)
     }
 
     /**
@@ -299,6 +313,27 @@ class MainActivity : FragmentActivity() {
     ): Boolean {
         if (!WebLinkFallback.isWebOnly(uri)) return false
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) WebLinkFallback.open(this, uri)
+        return true
+    }
+
+    /**
+     * A plan's one link for everyone (`https://…/plan-link/<id>?open=…`, Plans for the holidays, contract 6.9): someone
+     * signed in answers it in the app as themselves; signed out it opens the web's page, where a guest answers without
+     * an account. A cold start waits for the saved session first. True when [uri] is such a link.
+     */
+    private fun forwardOpenLink(
+        intent: Intent,
+        uri: Uri,
+    ): Boolean {
+        if (!DeepLinkRouter.opensOnlySignedIn(uri)) return false
+        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        lifecycleScope.launch {
+            val state = authRepository.state.first { it != AuthRepository.State.Unknown }
+            when {
+                state is AuthRepository.State.SignedIn -> DeepLinkRouter.handle(uri)
+                !fromHistory -> WebLinkFallback.open(this@MainActivity, uri)
+            }
+        }
         return true
     }
 

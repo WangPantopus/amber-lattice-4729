@@ -19,10 +19,24 @@ struct PlansDestination: View {
             switch route {
             case let .plan(id, intent):
                 PlanScreen(planId: id, intent: intent, path: $path, onHost: onHost)
+                    // The host's "You're bringing…" line stays while a screen is over the plan and goes once the
+                    // plan's own screen is left.
+                    .onDisappear { if !path.contains(route) { PlanBringHostClaim.shared.left(planId: id) } }
             case let .requests(planId):
                 PlanRequestsScreen(planId: planId, onOpenProfile: { path.append(.profile(userId: $0)) }, onBack: { pop() })
+            case let .whosComing(planId):
+                PlanWhosComingScreen(
+                    planId: planId,
+                    onOpenProfile: { path.append(.profile(userId: $0)) },
+                    onOpenRequests: { path.append(.requests(planId: planId)) },
+                    onBack: { pop() }
+                )
+            case let .bringList(planId):
+                PlanBringListRoute(planId: planId) { pop() }
             case let .change(planId):
                 PlanChangeScreen(planId: planId) { pop() }
+            case let .pickDate(planId):
+                PlanPickDateScreen(planId: planId) { pop() }
             case let .profile(userId):
                 PublicProfileView(
                     userId: userId,
@@ -52,13 +66,18 @@ struct PlansDestination: View {
                     onPosted: { _ in pop() }
                 )
                 .toolbar(.hidden, for: .navigationBar)
-            case let .chat(dest):
+            case let .check(planId):
+                PlanCheckScreen(planId: planId, onBack: { pop() }, onOpenChat: { path.append(.chatAbout($0, firstLine: $1)) })
+            case let .checks(planId):
+                PlanChecksScreen(planId: planId) { pop() }
+            case let .chat(dest), let .chatAbout(dest, _):
                 ChatConversationView(
                     viewModel: ChatConversationViewModel(
                         mode: dest.threadMode,
                         counterparty: dest.counterparty,
                         counterpartyAvatarURL: dest.avatarURL.flatMap(URL.init(string:)),
                         currentUserId: currentUserId ?? "",
+                        initialComposerText: firstLine,
                         initialTopic: dest.initialTopic
                     ),
                     mode: dest.kind,
@@ -72,6 +91,12 @@ struct PlansDestination: View {
         // A link that replaces the screen on top (another plan) must start a
         // fresh screen: the stack reuses its slot, and the old plan's state with it.
         .id(route)
+    }
+
+    /// C2's "Something's wrong with this payment": the conversation's first line names the payment.
+    private var firstLine: String {
+        if case let .chatAbout(_, line) = route { return line }
+        return ""
     }
 
     private var currentUserId: String? {

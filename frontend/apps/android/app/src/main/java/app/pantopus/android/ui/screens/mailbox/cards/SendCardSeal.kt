@@ -27,6 +27,7 @@ import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.tableCard
  * second press sends nothing more). A refusal lifts the seal and says why. Once it's gone, "Done" shows the card sent
  * underneath, with every word and rule it had before.
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SealByHand(
     cards: HolidayCardsResponse,
@@ -38,6 +39,8 @@ internal fun SealByHand(
     /** Done (or ✕) once it's sent: back to the Mailbox. */
     onFinished: () -> Unit,
     onTakeBack: () -> Unit,
+    /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // Read once, from the look: sending clears it.
@@ -76,10 +79,12 @@ internal fun SealByHand(
             refusals > 0 -> SealAnswer.Refused(form.sendError ?: form.sealError, refusals)
             else -> null
         }
+    val again =
+        onSendAgain?.takeIf { form.step == SendCardStep.Sent }?.let { listOf(CardTableSendBack(SEND_THIS_CARD_AGAIN, onClick = it)) }
     val goneActions =
         goneActions(form, onTable.fromFirst, onTakeBack) { link, copy ->
             if (copy) copyLink(context, link) else shareLink(context, link, onTable.fromFirst)
-        }
+        } + again.orEmpty()
     val isSent = form.step == SendCardStep.Sent
     CardTableDialog(
         card = onTable,
@@ -105,7 +110,7 @@ private fun goneActions(
     return when {
         sent.byLink && link != null && fromFirst.isNotEmpty() ->
             listOf(CardTableSendBack("Copy link") { onLink(link, true) }, CardTableSendBack("Share") { onLink(link, false) })
-        sent.canTakeBack && form.to !is CardRecipient.Several -> listOf(CardTableSendBack("Take it back", onTakeBack))
+        sent.canTakeBack && form.to !is CardRecipient.Several -> listOf(CardTableSendBack("Take it back", onClick = onTakeBack))
         else -> emptyList()
     }
 }
@@ -156,8 +161,9 @@ private fun goneWords(
     }
     val sent = form.sent ?: return SealAnswer.Took("On its way.", "")
     val zone = HolidayCardTimes.zone(cards.timeZone)
-    // Today's words under it: when it arrives, and until when it can be taken back.
-    val lines = listOfNotNull(arrivalLine(sent, zone), takeBackLine(sent, zone)).joinToString("\n")
+    // Today's words under it: when it arrives, and until when it can be taken back; a travelling card says so too.
+    val lines =
+        listOfNotNull(arrivalLine(sent, zone), takeBackLine(sent, zone), CAN_TRAVEL.takeIf { sent.travel != null }).joinToString("\n")
     return when (val to = form.to) {
         CardRecipient.Link -> SealAnswer.Took("Your card is ready.", lines)
         // Set for later, nothing is emailed yet: the line under it says when.
@@ -170,3 +176,6 @@ private fun goneWords(
         else -> SealAnswer.Took("On its way.", lines)
     }
 }
+
+/** Under "On its way to Maya." for a card that travels (travelling card plan Part 2). */
+internal const val CAN_TRAVEL = "It can travel. You’ll hear when it reaches a town."

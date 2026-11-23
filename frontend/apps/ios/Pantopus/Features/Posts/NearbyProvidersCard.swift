@@ -67,7 +67,7 @@ public enum NearbyProviderFormat {
 
     public static func neighborLabel(_ count: Int?) -> String? {
         guard let count, count > 0 else { return nil }
-        return "\(count) neighbor\(count == 1 ? "" : "s")"
+        return "\(count) near you"
     }
 }
 
@@ -89,7 +89,7 @@ public struct NearbyProvidersCard: View {
             header
             if showsTooltip {
                 Text(
-                    "These providers are matched based on proximity, neighbor trust, "
+                    "These providers are matched based on proximity, trust from people near you, "
                         + "and ratings \u{2014} never paid placement."
                 )
                 .pantopusTextStyle(.caption)

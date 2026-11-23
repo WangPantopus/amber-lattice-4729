@@ -178,14 +178,14 @@ const SAFETY_TIPS = [
     title: 'Ice Storm Safety',
     body: 'Ice storms can take down power lines and tree branches. Keep a 72-hour emergency kit with flashlights, water, and blankets.',
     source: 'PNW Safety',
-    cta: 'Share tips with neighbors',
+    cta: 'Share tips with people near you',
     where: 'pnw',
   },
   {
     title: 'Earthquake Preparedness',
     body: 'The Cascadia subduction zone is overdue for a major earthquake. Secure tall furniture and have a family plan.',
     source: 'PNW Safety',
-    cta: 'Ask neighbors about preparedness',
+    cta: 'Ask people near you about preparedness',
     where: 'cascadia',
   },
   {
@@ -206,7 +206,7 @@ const SAFETY_TIPS = [
     title: 'Flood Insurance Takes Time',
     body: 'Homeowner’s insurance doesn’t cover flooding, and a flood policy typically takes up to 30 days to start. Buy it well before a storm, not when one is forecast.',
     source: 'Ready.gov',
-    cta: 'Ask neighbors about flood coverage',
+    cta: 'Ask people near you about flood coverage',
   },
   // epa.gov/radon/health-risk-radon
   {
@@ -225,7 +225,7 @@ const SAFETY_TIPS = [
     title: 'Know Your Evacuation Zone',
     body: 'If you live in a hurricane evacuation zone you may have to leave quickly, so look yours up now. Before a storm, clear drains and gutters, bring in outdoor furniture and consider hurricane shutters.',
     source: 'Ready.gov',
-    cta: 'Share your plan with neighbors',
+    cta: 'Share your plan with people near you',
     where: 'hurricane_coast',
   },
   // ready.gov/tornadoes
@@ -248,7 +248,7 @@ const SAFETY_TIPS = [
     title: 'Heat Wave Plan',
     body: 'Know where you can go to cool off, like a library or a cooling center your health department lists. A fan alone won’t prevent heat illness, and never leave people or pets in a closed car.',
     source: 'Ready.gov',
-    cta: 'Check on neighbors in a heat wave',
+    cta: 'Check on people near you in a heat wave',
     where: 'extreme_heat',
   },
   // ready.gov/wildfires
@@ -276,7 +276,7 @@ const LOCAL_RESOURCE_TIPS = [
     title: 'Free Energy Audit',
     body: 'Clark County PUD offers energy audits for $0\u201350. Great for homes built before 2000.',
     source: 'Local Resources',
-    cta: 'Learn more from neighbors',
+    cta: 'Learn more from people near you',
     where: 'clark_county',
   },
   {
@@ -289,7 +289,7 @@ const LOCAL_RESOURCE_TIPS = [
     title: 'Water Conservation Rebates',
     body: 'Local utilities often offer rebates for low-flow fixtures and rain barrels. Check your water district\'s website.',
     source: 'Local Resources',
-    cta: 'Ask neighbors about rebates',
+    cta: 'Ask people near you about rebates',
   },
   {
     title: 'Recycling Rules',
@@ -301,7 +301,7 @@ const LOCAL_RESOURCE_TIPS = [
     title: 'Weatherization Assistance',
     body: 'Low-income homeowners may qualify for free weatherization through Community Action agencies. Includes insulation, windows, and heating.',
     source: 'Local Resources',
-    cta: 'Share with neighbors who might qualify',
+    cta: 'Share with people who might qualify',
   },
   // epa.gov/recycle/how-do-i-recycle-common-recyclables
   {
@@ -314,7 +314,7 @@ const LOCAL_RESOURCE_TIPS = [
     title: 'Call 811 Before You Dig',
     body: '811 is the free national before-you-dig service. Contact it a few business days before planting a tree, setting a fence post or any digging, and buried lines get marked.',
     source: '811',
-    cta: 'Ask neighbors about yard projects',
+    cta: 'Ask people near you about yard projects',
   },
 ];
 
@@ -326,7 +326,7 @@ const MOVING_TIPS = [
     title: 'Welcome to the PNW',
     body: 'New to the area? Portland Metro\'s recycling rules are unique \u2014 check your city\'s website for what goes where.',
     source: 'Moving Tips',
-    cta: 'Introduce yourself to neighbors',
+    cta: 'Introduce yourself to people near you',
     where: 'portland_metro',
   },
   {
@@ -339,14 +339,14 @@ const MOVING_TIPS = [
     title: 'Utility Setup',
     body: 'New homeowners: set up accounts with your local PUD, water district, and waste hauler within the first week to avoid lapses.',
     source: 'Moving Tips',
-    cta: 'Ask neighbors about local providers',
+    cta: 'Ask people near you about local providers',
     // Clark Public Utilities is a PUD; Portland's power companies and most
     // of the country's aren't.
     where: 'clark_county',
   },
   {
-    title: 'Neighborhood Networks',
-    body: 'The best way to find reliable contractors is through verified neighbors. Post a question \u2014 someone nearby has a recommendation.',
+    title: 'Local Recommendations',
+    body: 'The best way to find reliable contractors is through verified homes near you. Post a question \u2014 someone nearby has a recommendation.',
     source: 'Moving Tips',
     cta: 'Ask for a recommendation',
   },
@@ -468,7 +468,7 @@ function generatePropertyFacts(geohash, homes, profiles, week, year) {
         body: 'Tip: Homes built before 1990 may have original plumbing. Consider a sewer scope inspection ($300\u2013500).',
         source: 'ATTOM',
         post_type: 'recommendation',
-        cta: 'Ask neighbors for recommendations',
+        cta: 'Ask people near you for recommendations',
       });
     }
   }
@@ -480,8 +480,8 @@ function generatePropertyFacts(geohash, homes, profiles, week, year) {
     facts.push({
       id: makeFactId(geohash, 'property_tip', week, year, 2),
       type: 'property_tip',
-      title: 'Neighborhood Home Types',
-      body: `Your neighborhood is primarily ${label} homes.`,
+      title: 'Home Types Near You',
+      body: `Homes near you are mostly ${label}.`,
       source: 'ATTOM',
     });
   }
@@ -528,7 +528,7 @@ function generateSeasonalFacts(geohash, seasonalCtx, neighborhoodPreview, week, 
     const topCategory = seasonalCtx.suggested_gig_categories[0];
     const neighborCount = neighborhoodPreview?.verified_users_count || 0;
     const neighborClause = neighborCount > 0
-      ? ` ${neighborCount} verified neighbor${neighborCount !== 1 ? 's' : ''} nearby.`
+      ? ` ${neighborCount} verified home${neighborCount !== 1 ? 's' : ''} nearby.`
       : '';
 
     facts.push({
@@ -667,7 +667,7 @@ function generateHomeValueFacts(geohash, profiles, week, year) {
       body: 'Home values in your area are cooling. Strategic improvements like curb appeal can help maintain value.',
       source: 'ATTOM',
       post_type: 'discussion',
-      cta: 'Ask neighbors about contractors',
+      cta: 'Ask people near you about contractors',
     });
   }
 
@@ -687,11 +687,11 @@ function generateCommunityQuestions(geohash, homes, seasonalCtx, week, year) {
     {
       title: `${topCategory} Recommendations`,
       body: `Has anyone used a good ${topCategory.toLowerCase()} service near ${city}?`,
-      cta: 'Ask your neighbors',
+      cta: 'Ask people near you',
     },
     {
       title: `Welcome to ${city}`,
-      body: `New to ${city}? Introduce yourself! Your verified neighbors are here.`,
+      body: `New to ${city}? Introduce yourself! Verified homes near you are here.`,
       cta: 'Say hello',
     },
     {
@@ -705,7 +705,7 @@ function generateCommunityQuestions(geohash, homes, seasonalCtx, week, year) {
       cta: 'Share a recommendation',
     },
     {
-      title: 'Neighborhood Watch',
+      title: 'Looking Out Near You',
       body: `Anyone else notice anything unusual in ${city} recently? Stay connected and look out for each other.`,
       cta: 'Start a conversation',
     },

@@ -1,22 +1,26 @@
 // ============================================================
 // A Christmas card by email's email: sent as the card is stored (routes/mailbox storeCard), or at the sender's 7 a.m. or
 // on Christmas morning by jobs/cardEmailSend, which also tries again one that didn't go, and by its sender's "Email it
-// again" (POST /api/mailbox/cards/:id/email-again).
+// again" (POST /api/mailbox/cards/:id/email-again). Three days after it went out, a card still unopened gets one reminder
+// (remind, below; jobs/cardEmailSend), between 9 a.m. and 8 p.m. where its sender lives, behind the server's
+// CARD_EMAIL_REMINDERS switch.
 //
 // Where it is lives on the card's Mail row, in mail_extracted.card.email ({ state, tries, at, sent_at };
 // services/holidayCards emailTrouble), so the sender's Sent can say when it didn't go out. A try first marks the row
 // 'sending', only if nobody else did, so two tries never send one card's email twice. Its link is made from the card's
-// id (holidayCards.cardEmailToken), so every try carries the same link.
+// id (holidayCards.cardEmailToken), so every try carries the same link. The reminder keeps its own state beside it, in
+// mail_extracted.card.email.reminder ({ state, tries, at, sent_at }), and never changes what the email's own state means.
 // ============================================================
 
 const crypto = require('crypto');
+const { DateTime } = require('luxon');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const emailService = require('./emailService');
 const notificationService = require('./notificationService');
 const holidayCards = require('./holidayCards');
 const mailDelivery = require('./mailDelivery');
 const logger = require('../utils/logger');
-const { skipForLaunchCut } = require('../utils/featureFlags');
+const { skipForLaunchCut, cardEmailRemindersEnabled } = require('../utils/featureFlags');
 const { maskContact } = require('../jobs/mailEscrowExpiry');
 
 // Emails go a few at a time, not 20 connections to the mail server at once for a list, nor hundreds on Christmas morning.
@@ -24,6 +28,17 @@ const AT_ONCE = 4;
 // A card's first email gets one more try a moment later; after that the retry job tries every 10 minutes.
 const QUICK_RETRY_MS = Number(process.env.CARD_EMAIL_QUICK_RETRY_MS || 3000);
 const RETRY_EVERY_MS = 10 * 60 * 1000;
+// One reminder, for a card still unopened 3 days after its email went out, only while its email went out less than about
+// 10 days ago: when this shipped, cards emailed long before got none, and a reminder that kept failing stops in time.
+// It goes in the daytime where its sender lives (the person it's for has no time zone we know), 9 a.m. to 8 p.m. (founder,
+// November 16): one that comes due at night waits for the next 9 a.m. The window's end has a night's 13 hours more, so
+// a card whose 10 days end at night still gets its reminder the next morning.
+const REMIND_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+const DAY_STARTS = 9;
+const DAY_ENDS = 20;
+const REMIND_UNTIL_MS = (10 * 24 + (24 - DAY_ENDS + DAY_STARTS)) * 60 * 60 * 1000;
+// A reminder that didn't go is tried again 10 minutes later, 3 tries in all; its sender is never told.
+const REMIND_TRIES = 3;
 const ROW = 'id, sender_user_id, sender_display, created_at, escrow_status, escrow_recipient_contact, escrow_expires_at, escrow_claim_token_hash, mail_extracted';
 
 /**
@@ -55,18 +70,33 @@ function inTurn(fn) {
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const emailOf = (mail) => mail?.mail_extracted?.card?.email || null;
 
+/** The sender's clock (mailDelivery.personTimeZone), or the zone their first email used when they have none. */
+async function senderZone(mail) {
+  return (await mailDelivery.personTimeZone(mail.sender_user_id)) || mailDelivery.FALLBACK_TIME_ZONE;
+}
+
+/** Whether it is daytime where this zone is: 9 a.m. up to 8 p.m. */
+function isDaytime(timeZone, now = new Date()) {
+  const { hour } = DateTime.fromJSDate(now, { zone: timeZone });
+  return hour >= DAY_STARTS && hour < DAY_ENDS;
+}
+
 // The card's email as it is now: its words come from the card (who it's from, as stored when it was sent; sealed or
-// not; its 90 days told by the sender's clock), as the first try had them.
-async function sendOnce(mail) {
+// not and its picture; its 90 days told by the sender's clock), as the first try had them. `reminder`: its one reminder.
+// A card sealed until Christmas keeps its sealed envelope, but once Christmas morning has passed where its sender lives
+// its words no longer say it's sealed: it opens as soon as they join.
+async function sendOnce(mail, { reminder = false, timeZone: zone = null } = {}) {
   const token = holidayCards.cardEmailToken(mail.id);
   if (!token) return { ok: false, error: 'NO_LINK_SECRET' };
   const card = mail.mail_extracted?.card || {};
-  const timeZone = (await mailDelivery.personTimeZone(mail.sender_user_id)) || mailDelivery.FALLBACK_TIME_ZONE;
+  const timeZone = zone || await senderZone(mail);
+  const sealed = card.arrival === 'sealed_christmas';
   try {
     const sent = await emailService.sendCardWaitingEmail({
       toEmail: mail.escrow_recipient_contact, senderName: mail.sender_display || 'Someone',
       claimLink: escrowClaimLink(mail.id, token), expiresAt: mail.escrow_expires_at,
-      sealed: card.arrival === 'sealed_christmas', timeZone,
+      sealed, stillSealed: sealed && holidayCards.christmasMorning(timeZone).getTime() > Date.now(),
+      design: card.design || null, reminder, timeZone,
     });
     return sent?.success ? { ok: true } : { ok: false, error: sent?.error || 'EMAIL_NOT_SENT' };
   } catch (err) {
@@ -202,4 +232,98 @@ async function dueToSend(now = new Date(), limit = 200) {
   ];
 }
 
-module.exports = { deliver, cardRow, dueToSend, tellSender, escrowClaimLink, AT_ONCE, RETRY_EVERY_MS };
+// ---- The one reminder ----
+
+const reminderOf = (mail) => emailOf(mail)?.reminder || null;
+
+// Write where its reminder is now onto the row read as `base`, only while the card waits, its email is still 'sent' and
+// its reminder is still where `base` had it (none, or `was`: its state and tries), so two runs never send it twice.
+async function writeReminder(base, was, reminder) {
+  const email = emailOf(base);
+  let query = supabaseAdmin.from('Mail')
+    .update({ mail_extracted: { ...base.mail_extracted, card: { ...base.mail_extracted.card, email: { ...email, reminder } } } })
+    .eq('id', base.id).eq('escrow_status', 'pending')
+    .eq('mail_extracted->card->email->>state', 'sent')
+    .eq('mail_extracted->card->email->>sent_at', email.sent_at);
+  query = was
+    ? query.eq('mail_extracted->card->email->reminder->>state', was.state)
+      .eq('mail_extracted->card->email->reminder->>tries', String(was.tries ?? 0))
+    : query.is('mail_extracted->card->email->reminder', null);
+  const { data, error } = await query.select(ROW);
+  if (error) throw new Error(error.message);
+  return data?.[0] || null;
+}
+
+/** Whether this card (its row) is due its reminder now: see dueToRemind. */
+function remindable(mail, now = new Date()) {
+  const email = emailOf(mail);
+  if (!email || email.state !== 'sent' || !email.sent_at || !mail.escrow_recipient_contact) return false;
+  if (mail.escrow_status !== 'pending' || !(Date.parse(mail.escrow_expires_at) > now.getTime())) return false;
+  const since = now.getTime() - Date.parse(email.sent_at);
+  if (!(since >= REMIND_AFTER_MS && since < REMIND_UNTIL_MS)) return false;
+  const reminder = email.reminder;
+  if (!reminder) return true;
+  return reminder.state === 'failed' && (Number(reminder.tries) || 0) < REMIND_TRIES
+    && now.getTime() - Date.parse(reminder.at) >= RETRY_EVERY_MS;
+}
+
+/**
+ * Send a card's one reminder now, if it is due (remindable) and it is daytime where its sender lives: its row is marked
+ * first, only if nobody else did, then the email goes, a few at a time like the others. Answers { sent: true },
+ * { sent: false, error } once tried, or { skipped: true } (with `night: true` when it waits for the sender's morning; its
+ * row is untouched, so a later run sends it). A reminder that doesn't go is left 'failed' for a later run (REMIND_TRIES in
+ * all); a reminder whose try was lost midway stays 'sending' and is never sent again, so nobody gets two.
+ */
+async function remind(mail, now = new Date()) {
+  if (skipForLaunchCut(['mailbox', 'holiday_cards'], 'cardEmailReminder')) return { skipped: true };
+  if (!cardEmailRemindersEnabled() || !remindable(mail, now)) return { skipped: true };
+  const timeZone = await senderZone(mail);
+  if (!isDaytime(timeZone, now)) return { skipped: true, night: true };
+  const was = reminderOf(mail);
+  const tries = (Number(was?.tries) || 0) + 1;
+  const row = await writeReminder(mail, was, { ...(was || {}), state: 'sending', tries, at: now.toISOString() });
+  if (!row) return { skipped: true };
+  const result = await inTurn(() => sendOnce(row, { reminder: true, timeZone }));
+  const at = new Date().toISOString();
+  try {
+    await writeReminder(row, reminderOf(row), result.ok
+      ? { state: 'sent', tries, at, sent_at: at }
+      : { state: 'failed', tries, at });
+  } catch (err) {
+    logger.warn('Card reminder state not kept', { mailId: row.id, error: err.message });
+  }
+  if (result.ok) {
+    logger.info('Card reminder sent', { mailId: row.id });
+    return { sent: true };
+  }
+  logger.warn('Card reminder not delivered', { mailId: row.id, tries, error: result.error });
+  return { sent: false, error: result.error };
+}
+
+/**
+ * The cards by email due their reminder (jobs/cardEmailSend), oldest email first, still waiting and not yet past their
+ * 90 days, whatever the hour (remind waits for the sender's daytime): `fresh`, those whose email went out 3 to 10 days
+ * ago with no reminder yet, `limit` of them from `offset` on, so a run can page past the ones waiting for their sender's
+ * morning; and on the first page `again`, those whose reminder didn't go (remindable picks the ones whose last try was
+ * 10 minutes ago or more, under REMIND_TRIES). Nothing while CARD_EMAIL_REMINDERS is off.
+ */
+async function dueToRemind(now = new Date(), { offset = 0, limit = 200 } = {}) {
+  if (!cardEmailRemindersEnabled()) return { fresh: [], again: [] };
+  const window = () => supabaseAdmin.from('Mail').select(ROW)
+    .eq('escrow_status', 'pending')
+    .contains('tags', [holidayCards.CARD_TAG])
+    .gt('escrow_expires_at', now.toISOString())
+    .eq('mail_extracted->card->email->>state', 'sent')
+    .lte('mail_extracted->card->email->>sent_at', new Date(now.getTime() - REMIND_AFTER_MS).toISOString())
+    .gt('mail_extracted->card->email->>sent_at', new Date(now.getTime() - REMIND_UNTIL_MS).toISOString())
+    .order('mail_extracted->card->email->>sent_at', { ascending: true }).order('id', { ascending: true });
+  const [fresh, again] = await Promise.all([
+    window().is('mail_extracted->card->email->reminder', null).range(offset, offset + limit - 1),
+    offset ? Promise.resolve({ data: [] })
+      : window().eq('mail_extracted->card->email->reminder->>state', 'failed').limit(limit),
+  ]);
+  if (fresh.error || again.error) throw new Error((fresh.error || again.error).message);
+  return { fresh: fresh.data || [], again: (again.data || []).filter((mail) => remindable(mail, now)) };
+}
+
+module.exports = { deliver, cardRow, dueToSend, tellSender, escrowClaimLink, remind, dueToRemind, AT_ONCE, RETRY_EVERY_MS };

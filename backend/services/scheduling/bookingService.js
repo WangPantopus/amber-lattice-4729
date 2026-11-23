@@ -133,7 +133,31 @@ async function bumpAssigneeRotation(eventTypeId, hostId) {
  * booking_daily_cap_trg trigger (migration 167) is the atomic backstop for daily_cap.
  * Cap-day = UTC date of start_at, matching the trigger and the slot grid.
  */
-async function assertBookingLimits(eventType, startMs, invitee = {}) {
+// How many bookings one email address that isn't a member's can be given in a day, across every host: each one
+// writes to that address, and nothing shows the address is the booker's own. A recurring series counts once.
+const EMAIL_INVITEE_BOOKINGS_PER_DAY = 5;
+
+async function assertEmailInviteeDailyCap(invitee = {}, recurrenceGroupId = null) {
+  if (invitee.user_id || !invitee.email) return;
+  const { data, error } = await supabaseAdmin
+    .from('Booking')
+    .select('id, recurrence_group_id')
+    .eq('invitee_email', normalizeEmail(invitee.email))
+    .is('invitee_user_id', null)
+    .is('cohost_of_booking_id', null)
+    .gte('created_at', new Date(Date.now() - DAY_MS).toISOString())
+    .limit(500);
+  if (error || !Array.isArray(data)) throw new BookingError('Bookings are unavailable right now. Please try again.', 503, 'BOOKING_UNAVAILABLE');
+  const made = new Set(data.map((row) => row.recurrence_group_id || row.id));
+  // A later session of the series being made now is already counted.
+  if (recurrenceGroupId && made.has(recurrenceGroupId)) return;
+  if (made.size >= EMAIL_INVITEE_BOOKINGS_PER_DAY) {
+    throw new BookingError('This email address has had several bookings today. Try again tomorrow, or sign in to book.', 429, 'TOO_MANY_BOOKINGS_FOR_EMAIL');
+  }
+}
+
+async function assertBookingLimits(eventType, startMs, invitee = {}, recurrenceGroupId = null) {
+  await assertEmailInviteeDailyCap(invitee, recurrenceGroupId);
   const dailyCap = eventType.daily_cap || 0;
   const bookerCap = eventType.per_booker_cap || 0;
   if (dailyCap <= 0 && bookerCap <= 0) return;
@@ -201,7 +225,7 @@ async function createBooking({ eventType, page, startIso, durationMin, invitee =
     throw new BookingError('That time is no longer available.', 409, 'SLOT_UNAVAILABLE');
   }
 
-  await assertBookingLimits(eventType, startMs, invitee);
+  await assertBookingLimits(eventType, startMs, invitee, recurrenceGroupId);
 
   // Resolve host + attendees by assignment mode.
   const mode = eventType.assignment_mode || 'one_on_one';

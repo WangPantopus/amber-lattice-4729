@@ -178,31 +178,40 @@ struct ClaimUploadStep: View {
                 Text("This file may already be saved. Retry the same upload, or open My claims to inspect and remove its private record.")
                 Button("Manage saved documents") { viewModel.manageSavedDocuments() }
             }
-            ClaimUploadStepContent(
-                homeLabel: viewModel.startContent.homeLabel,
-                slots: viewModel.activeSlots.map(slotModel(for:)),
-                statement: $viewModel.note,
-                verificationType: viewModel.verificationType,
-                documentOptions: viewModel.documentOptions,
-                selectedDocumentType: viewModel.selectedDocumentType,
-                submitError: viewModel.startLoadError == nil ? viewModel.submitError : nil,
-                onPick: { id in
-                    if viewModel.canPick, let slot = ClaimEvidenceSlot(rawValue: id) { pickerSlot = slot
-                        showPicker = true
-                    }
-                },
-                onRemove: { id in
-                    if let slot = ClaimEvidenceSlot(rawValue: id) { viewModel.remove(slot) }
-                },
-                onSelectDocumentType: { viewModel.selectDocumentType($0) }
-            )
-            .disabled(!viewModel.canPick)
+            if viewModel.isBillCheck {
+                BillCheckStep(viewModel: viewModel)
+            } else {
+                uploadContent
+            }
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.pdf, .plainText, .image]) { result in
             guard let slot = pickerSlot, viewModel.canPick else { return }
             defer { pickerSlot = nil }
             do { try viewModel.picked(slot, file: ClaimPickedFile.read(result.get())) } catch { viewModel.filePickFailed(error) }
         }
+    }
+
+    /// Today's upload: the document kind, its file and the statement.
+    private var uploadContent: some View {
+        ClaimUploadStepContent(
+            homeLabel: viewModel.startContent.homeLabel,
+            slots: viewModel.activeSlots.map(slotModel(for:)),
+            statement: $viewModel.note,
+            verificationType: viewModel.verificationType,
+            documentOptions: viewModel.documentOptions,
+            selectedDocumentType: viewModel.selectedDocumentType,
+            submitError: viewModel.startLoadError == nil ? viewModel.submitError : nil,
+            onPick: { id in
+                if viewModel.canPick, let slot = ClaimEvidenceSlot(rawValue: id) { pickerSlot = slot
+                    showPicker = true
+                }
+            },
+            onRemove: { id in
+                if let slot = ClaimEvidenceSlot(rawValue: id) { viewModel.remove(slot) }
+            },
+            onSelectDocumentType: { viewModel.selectDocumentType($0) }
+        )
+        .disabled(!viewModel.canPick)
     }
 
     private func slotModel(for slot: ClaimEvidenceSlot) -> ClaimUploadSlotModel {

@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.plans.host
 
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
+import app.pantopus.android.data.api.models.plans.PlanDealInput
 import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanHostAsInput
@@ -107,6 +108,8 @@ internal fun businessDraftProblem(
         minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
         draft.kind == PlanKind.STUDY_GROUP && draft.subject.cleanedSubject().isEmpty() -> "Add what you're studying."
         business.locations.none { it.id == draft.locationId } -> "Choose one of your business's locations."
+        // Business track B2: a price is $1 to $500 (the server's words).
+        priceProblem(draft, business) -> "A spot can be \$1 to \$500."
         else -> null
     }
 }
@@ -121,6 +124,8 @@ internal fun businessCreateBody(
     draft: HostDraft,
     zone: ZoneId,
     business: HostAsBusinessDto,
+    /** Business track B1: the deal chosen on the deal step (D3); null for "No deal" or a business without deals. */
+    deal: PlanDealInput? = null,
 ): CreatePlanBody =
     CreatePlanBody(
         kind = kind.wire,
@@ -142,7 +147,20 @@ internal fun businessCreateBody(
         hostAs = PlanHostAsInput(business.userId),
         businessLocationId = draft.locationId,
         label = draft.label,
+        deal = deal,
     )
+
+/** "Price a spot" is on for a business that can charge, with an amount that isn't $1 to $500. */
+private fun priceProblem(
+    draft: HostDraft,
+    business: HostAsBusinessDto,
+): Boolean {
+    if (!draft.priceOn || business.can?.price != true || !business.payoutsReady) return false
+    val cents = centsOf(draft.priceDollars) ?: return true
+    return cents !in PRICE_RANGE_CENTS
+}
+
+private val PRICE_RANGE_CENTS = 100..50_000
 
 /** A study group's subject with its spaces tidied, as the host flow sends it. */
 private fun String.cleanedSubject(): String = trim().replace(Regex("\\s+"), " ")

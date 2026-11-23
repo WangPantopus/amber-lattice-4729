@@ -33,7 +33,9 @@ import app.pantopus.android.ui.screens.place.components.PlaceIconTile
 import app.pantopus.android.ui.screens.place.components.PlaceTileTone
 import app.pantopus.android.ui.screens.place.components.placeSurface
 import app.pantopus.android.ui.screens.place.detail.TodayHairline
+import app.pantopus.android.ui.screens.place.detail.TodayHouseCard
 import app.pantopus.android.ui.screens.place.detail.TodayTextAction
+import app.pantopus.android.ui.screens.place.detail.needsYouShown
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -47,9 +49,6 @@ import javax.inject.Inject
 
 /** The rows the card shows before "Show all" (AI assistant phase 3 contract §6.4). */
 private const val NEEDS_YOU_FIRST_ROWS = 3
-
-/** Tasks "Coming up at home" may also list (phase 3 brief section 3, decision 2). */
-private val TASK_TYPES = setOf("task_overdue", "task_assigned")
 
 /**
  * Today's Needs you (AI assistant phase 3 contract §6.4): what waits on the person, from `GET /api/ai/needs-you`
@@ -105,8 +104,92 @@ fun NeedsYouCard(
     /** Space above the title: a section's under the sky, none at the top of the screen. */
     topGap: Dp = 24.dp,
 ) {
-    val shown = items.orEmpty().filterNot { it.type in TASK_TYPES && it.subject?.id in agendaTaskIds }
+    val shown = needsYouShown(items, agendaTaskIds)
     if (shown.isEmpty()) return
+    NeedsYouRows(shown.map { item -> NeedsYouLine.of(item, onOpen) }, modifier, topGap)
+}
+
+/**
+ * The card with the house on Today (JOURNEYS section 3): right under the picture, it says in words what the picture
+ * shows. A first row while mail waits unopened ("You have mail", "{n} unopened", opening Mail), then the
+ * list as always, then on a pickup evening "Pickup is tomorrow" with the kinds (opening the pickup schedule, as the
+ * bins do). With nothing to list, a person with a home reads one line instead of an empty space.
+ */
+@Composable
+fun TodayHouseNeedsYouCard(
+    items: List<AINeedsYouItemDto>?,
+    onOpen: (String) -> Unit,
+    /** Mail that came and is not opened yet; the row shows while it is over 0. */
+    unopenedMail: Int,
+    onOpenMail: () -> Unit,
+    page: TodayHouseCard,
+    modifier: Modifier = Modifier,
+) {
+    val mail =
+        NeedsYouLine(PantopusIcon.Mail, PlaceTileTone.SKY, "You have mail", "$unopenedMail unopened", "today.house.mailRow", onOpenMail)
+            .takeIf { unopenedMail > 0 }
+    val pickup =
+        page.pickup?.let { (kinds, open) ->
+            NeedsYouLine(PantopusIcon.Trash2, PlaceTileTone.HOME, "Pickup is tomorrow", kinds, "today.house.pickupRow", open)
+        }
+    val rows = listOfNotNull(mail) + needsYouShown(items, page.agendaTaskIds).map { NeedsYouLine.of(it, onOpen) } + listOfNotNull(pickup)
+    when {
+        rows.isNotEmpty() -> NeedsYouRows(rows, modifier, topGap = 16.dp)
+        page.hasHome -> NeedsYouQuiet(modifier.padding(top = 10.dp))
+    }
+}
+
+/** "Nothing needs you today.": the house is quiet. */
+@Composable
+private fun NeedsYouQuiet(modifier: Modifier = Modifier) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .placeSurface()
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("today.house.quiet"),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PantopusIconImage(PantopusIcon.Check, null, size = 18.dp, strokeWidth = 2.5f, tint = PantopusColors.success)
+        Text("Nothing needs you today.", fontSize = 15.sp, lineHeight = 20.sp, color = PantopusColors.appText)
+    }
+}
+
+/** One row of the card: a list item, or one of the house's own rows (unopened mail, tomorrow's pickup). */
+private data class NeedsYouLine(
+    val icon: PantopusIcon,
+    val tone: PlaceTileTone,
+    val title: String,
+    val subtitle: String?,
+    val tag: String,
+    /** Null for an item with no link: it shows, and is not a button. */
+    val onOpen: (() -> Unit)?,
+) {
+    companion object {
+        fun of(
+            item: AINeedsYouItemDto,
+            onOpen: (String) -> Unit,
+        ) = NeedsYouLine(
+            icon = needsYouIcon(item.type),
+            tone = if (item.type == "task_overdue") PlaceTileTone.MUTED else PlaceTileTone.SKY,
+            title = item.title,
+            subtitle = item.subtitle,
+            tag = "needsYou.row.${item.type}",
+            onOpen = item.link?.let { link -> { onOpen(link) } },
+        )
+    }
+}
+
+/** "Needs you", up to three rows and "Show all (N)" over three. */
+@Composable
+private fun NeedsYouRows(
+    shown: List<NeedsYouLine>,
+    modifier: Modifier,
+    topGap: Dp,
+) {
     var showsAll by rememberSaveable { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxWidth().testTag("needsYou.card")) {
         Text(
@@ -120,9 +203,9 @@ fun NeedsYouCard(
         )
         Column(modifier = Modifier.fillMaxWidth().animateContentSize().placeSurface().padding(horizontal = 14.dp)) {
             val rows = if (showsAll) shown else shown.take(NEEDS_YOU_FIRST_ROWS)
-            rows.forEachIndexed { index, item ->
+            rows.forEachIndexed { index, line ->
                 if (index > 0) TodayHairline()
-                NeedsYouRow(item, onOpen)
+                NeedsYouRow(line)
             }
             if (shown.size > NEEDS_YOU_FIRST_ROWS) {
                 TodayHairline()
@@ -137,31 +220,28 @@ fun NeedsYouCard(
 }
 
 @Composable
-private fun NeedsYouRow(
-    item: AINeedsYouItemDto,
-    onOpen: (String) -> Unit,
-) {
-    val link = item.link
+private fun NeedsYouRow(line: NeedsYouLine) {
+    val open = line.onOpen
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
-                .then(if (link != null) Modifier.clickable(role = Role.Button, onClickLabel = "Open") { onOpen(link) } else Modifier)
+                .then(if (open != null) Modifier.clickable(role = Role.Button, onClickLabel = "Open", onClick = open) else Modifier)
                 .semantics(mergeDescendants = true) {}
                 .padding(vertical = 12.dp)
-                .testTag("needsYou.row.${item.type}"),
+                .testTag(line.tag),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlaceIconTile(icon = needsYouIcon(item.type), tone = if (item.type == "task_overdue") PlaceTileTone.MUTED else PlaceTileTone.SKY)
+        PlaceIconTile(icon = line.icon, tone = line.tone)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(item.title, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
-            item.subtitle?.takeIf { it.isNotBlank() }?.let {
+            Text(line.title, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+            line.subtitle?.takeIf { it.isNotBlank() }?.let {
                 Text(it, fontSize = 12.5.sp, lineHeight = 17.sp, color = PantopusColors.appTextSecondary)
             }
         }
-        if (link != null) PantopusIconImage(PantopusIcon.ChevronRight, null, size = 16.dp, tint = PantopusColors.appTextMuted)
+        if (open != null) PantopusIconImage(PantopusIcon.ChevronRight, null, size = 16.dp, tint = PantopusColors.appTextMuted)
     }
 }
 

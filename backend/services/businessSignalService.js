@@ -57,7 +57,7 @@ async function generateNewBusinessSignal(businessId) {
     const entityLabel = ENTITY_TYPE_LABELS[entityType] || 'Business';
     const areaName = location
       ? [location.city, location.state].filter(Boolean).join(', ')
-      : 'your neighborhood';
+      : 'near you';
 
     // Build place_key from city for geographic scoping
     const placeKey = location?.city
@@ -69,7 +69,7 @@ async function generateNewBusinessSignal(businessId) {
       .insert({
         signal_type: 'new_business',
         priority: 6,
-        title: `${bizUser.name} just joined your neighborhood`,
+        title: `${bizUser.name} just joined near you`,
         detail: `${entityLabel} in ${areaName}`,
         data: {
           business_id: businessId,

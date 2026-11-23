@@ -6,7 +6,8 @@
 //  sits on one of the back's rules: fountain-pen blue italic serif, its size
 //  and line pitch a share of the card's width (4.7% and 7.6%, as on the
 //  web). The same view writes the note (no scrolling: a card holds what fits
-//  on it, up to the letter limit) and reads it on the card page.
+//  on it, up to the letter limit) and reads it on the card page. On the card
+//  table the pen starts large and steps down as the note grows (plan Part 1).
 //
 
 import SwiftUI
@@ -33,17 +34,24 @@ enum HolidayCardNote {
         return UIFont(descriptor: italic, size: size)
     }
 
-    static func attributes(cardWidth: CGFloat, color: UIColor) -> [NSAttributedString.Key: Any] {
+    /// The note's type; on the card table, at one of the pen's sizes (`fit`, today's 6u pen by default).
+    static func attributes(
+        cardWidth: CGFloat,
+        color: UIColor,
+        fit: CardTableNoteLayout.Fit = .today
+    ) -> [NSAttributedString.Key: Any] {
+        let table = LaunchFeatures.cardTable
+        let lineHeight = cardWidth * (table ? fit.pitch / 100 : pitch)
         let style = NSMutableParagraphStyle()
-        style.minimumLineHeight = cardWidth * pitch
-        style.maximumLineHeight = cardWidth * pitch
+        style.minimumLineHeight = lineHeight
+        style.maximumLineHeight = lineHeight
         style.lineBreakMode = .byWordWrapping
-        let font = font(size: cardWidth * size)
-        guard LaunchFeatures.cardTable else {
+        let font = font(size: cardWidth * (table ? fit.size / 100 : size))
+        guard table else {
             return [.font: font, .foregroundColor: color, .paragraphStyle: style]
         }
         // TextKit hangs a tall font's line from its descent; the card sets it in the middle of the line, as read.
-        let middle = (cardWidth * pitch - (font.ascender - font.descender)) / 2
+        let middle = (lineHeight - (font.ascender - font.descender)) / 2
         return [.font: font, .foregroundColor: color, .paragraphStyle: style, .baselineOffset: middle]
     }
 }
@@ -55,6 +63,8 @@ struct HolidayCardReadNote: View {
     /// The card's number, for the writing's shifts and turns.
     var number: Int?
     let cardWidth: CGFloat
+    /// A long note's first or second leaf (plan Part 9).
+    var leaf: CardTableLeaf = .whole
 
     var body: some View {
         if LaunchFeatures.cardTable {
@@ -62,7 +72,7 @@ struct HolidayCardReadNote: View {
                 let unit = cardWidth / 100
                 var page = context
                 page.translateBy(x: -CardTableNoteLayout.left * unit, y: -CardTableNoteLayout.top * unit)
-                CardTableNoteLayout(text: text, seed: number, u: unit).draw(in: page)
+                CardTableNoteLayout(text: text, seed: number, u: unit, leaf: leaf).draw(in: page)
             }
             .blendMode(.multiply)
             .allowsHitTesting(false)
@@ -107,6 +117,7 @@ struct HolidayCardNoteText: UIViewRepresentable {
         if view.editor.text != text {
             view.editor.attributedText = NSAttributedString(string: text, attributes: view.inkAttributes)
         }
+        view.restyle()
         view.placeholderView.attributedText = NSAttributedString(string: placeholder, attributes: view.placeholderAttributes)
         view.placeholderView.isHidden = !text.isEmpty
     }
@@ -124,7 +135,9 @@ struct HolidayCardNoteText: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
-            (textView.superview as? HolidayCardNoteView)?.placeholderView.isHidden = !textView.text.isEmpty
+            let view = textView.superview as? HolidayCardNoteView
+            view?.restyle()
+            view?.placeholderView.isHidden = !textView.text.isEmpty
         }
 
         /// Up to the letter limit (a paste is cut to what's left, as on the
@@ -162,6 +175,10 @@ final class HolidayCardNoteView: UIView {
     private(set) var inkAttributes: [NSAttributedString.Key: Any] = [:]
     private(set) var placeholderAttributes: [NSAttributedString.Key: Any] = [:]
     private var styledWidth: CGFloat = 0
+    /// The pen the note is written with now; nil until the width is known.
+    private var styledFit: CardTableNoteLayout.Fit?
+    /// The card's room: the note at today's 6u pen on 11 rules.
+    private var roomAttributes: [NSAttributedString.Key: Any] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -191,25 +208,60 @@ final class HolidayCardNoteView: UIView {
     func setStyle(cardWidth: CGFloat) {
         guard cardWidth > 0, abs(cardWidth - styledWidth) > 0.5 else { return }
         styledWidth = cardWidth
-        let ink = UIColor(MailPaper.cardInk)
-        inkAttributes = HolidayCardNote.attributes(cardWidth: cardWidth, color: ink)
-        placeholderAttributes = HolidayCardNote.attributes(cardWidth: cardWidth, color: ink.withAlphaComponent(0.45))
-        editor.typingAttributes = inkAttributes
-        editor.attributedText = NSAttributedString(string: editor.text ?? "", attributes: inkAttributes)
+        roomAttributes = HolidayCardNote.attributes(cardWidth: cardWidth, color: UIColor(MailPaper.cardInk))
+        styledFit = nil
+        restyle()
     }
 
-    /// Whether this note fits on the card's lines.
+    /// Sets the note in the pen its words call for (plan Part 1): large while it's short, a size smaller when the
+    /// next line wouldn't fit, and larger again as words are deleted. Waits while a word is being composed.
+    func restyle() {
+        guard styledWidth > 0, editor.markedTextRange == nil else { return }
+        let fit = LaunchFeatures.cardTable ? penFit(editor.text ?? "") : .today
+        guard fit != styledFit else { return }
+        styledFit = fit
+        let ink = UIColor(MailPaper.cardInk)
+        inkAttributes = HolidayCardNote.attributes(cardWidth: styledWidth, color: ink, fit: fit)
+        placeholderAttributes = HolidayCardNote.attributes(cardWidth: styledWidth, color: ink.withAlphaComponent(0.45), fit: fit)
+        editor.typingAttributes = inkAttributes
+        let selection = editor.selectedRange
+        editor.textStorage.setAttributes(inkAttributes, range: NSRange(location: 0, length: editor.textStorage.length))
+        editor.selectedRange = selection
+        placeholderView.attributedText = NSAttributedString(string: placeholderView.text ?? "", attributes: placeholderAttributes)
+    }
+
+    /// Once the box has its size, TextKit can check the pen against it.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        restyle()
+    }
+
+    /// Whether this note fits on the card's lines, at today's pen.
     func fits(_ text: String) -> Bool {
         guard bounds.height > 0, bounds.width > 0 else { return true }
+        return height(text, roomAttributes) <= bounds.height + 1
+    }
+
+    /// The card's own rule (the one the back's rules and the reader use), a size smaller if TextKit's lines run past
+    /// the box.
+    private func penFit(_ text: String) -> CardTableNoteLayout.Fit {
+        let start = CardTableNoteLayout.fit(text, u: styledWidth / 100)
+        guard bounds.height > 0, bounds.width > 0 else { return start }
+        let ink = UIColor(MailPaper.cardInk)
+        return CardTableNoteLayout.Fit.all.drop { $0 != start }.first { fit in
+            height(text, HolidayCardNote.attributes(cardWidth: styledWidth, color: ink, fit: fit)) <= bounds.height + 1
+        } ?? .today
+    }
+
+    private func height(_ text: String, _ attributes: [NSAttributedString.Key: Any]) -> CGFloat {
         // A last empty line still takes a line.
         let measured = text.hasSuffix("\n") ? text + "x" : text
-        let height = NSAttributedString(string: measured, attributes: inkAttributes)
+        return NSAttributedString(string: measured, attributes: attributes)
             .boundingRect(
                 with: CGSize(width: bounds.width, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin],
                 context: nil
             )
             .height
-        return height <= bounds.height + 1
     }
 }

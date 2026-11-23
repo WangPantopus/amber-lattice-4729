@@ -40,8 +40,7 @@ public enum PlanKind: String, Codable, Sendable, Hashable, CaseIterable, Identif
     }
 }
 
-/// The part of the day a plan starts in. Always present; a playdate shows
-/// only this until the viewer is in.
+/// The part of the day a plan starts in. Always present; a playdate shows only this until the viewer is in.
 public enum PlanDayPart: String, Sendable, Hashable {
     case morning, afternoon, evening, night
 
@@ -53,8 +52,7 @@ public enum PlanDayPart: String, Sendable, Hashable {
 
 extension PlanDayPart: Codable {}
 
-/// How far the plan's area is from the viewer, as a band. Never an exact
-/// distance (brief section 6).
+/// How far the plan's area is from the viewer, as a band. Never an exact distance (brief section 6).
 public enum PlanDistanceBand: String, Codable, Sendable, Hashable {
     case under1Mi = "under_1_mi"
     case about1Mi = "about_1_mi"
@@ -85,7 +83,7 @@ public enum PlanPlaceKind: String, Codable, Sendable, Hashable {
 
 /// One person's request to join, as the server keeps it.
 public enum PlanRequestStatus: String, Sendable, Hashable {
-    case pending, waitlisted, accepted, declined, withdrawn, left, removed, expired
+    case pending, waitlisted, accepted, declined, withdrawn, left, removed, expired, paying // paying: B2's 10-minute hold
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -331,6 +329,10 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
     public let privatePart: PlanCardPrivatePart
     /// Repeating plans (step 2): how it repeats and which date of the series this is. Nil when it doesn't.
     public let repeats: PlanRepeatDTO?
+    /// Plans for the holidays H1 (read with `guests=1`): kids welcome, the headcount and the host's counts.
+    public let guestsPart: PlanCardGuestsPart
+    /// The extras (read with `extras=1`, each while its switch is on for the host): chip in, and later the others.
+    public let extrasPart: PlanCardExtrasPart
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, about, timezone, area, host, spots, details, state, viewer
@@ -392,6 +394,8 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
         businessPart = try? PlanCardBusinessPart(from: decoder)
         privatePart = (try? PlanCardPrivatePart(from: decoder)) ?? .nearby
         repeats = PlanRepeatDTO.read(from: decoder)
+        guestsPart = (try? PlanCardGuestsPart(from: decoder)) ?? .none
+        extrasPart = (try? PlanCardExtrasPart(from: decoder)) ?? .none
     }
 
     /// The exact start, parsed. Nil when hidden (a playdate before you're in).

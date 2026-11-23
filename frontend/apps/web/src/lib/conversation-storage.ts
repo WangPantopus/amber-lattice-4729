@@ -20,7 +20,7 @@ export async function retainInbox(reply: ConversationsReply, actor: string, mark
   if (fence === undefined || !actor || marker !== authSessionMarker()) return;
   const scope = await activateChatStorage(actor);
   if (marker !== authSessionMarker() || current?.() === false) return;
-  const inbox = { ...reply, conversations: reply.conversations.slice(0, CONVERSATIONS_LIMIT), keptTail: undefined };
+  const inbox = { ...reply, conversations: reply.conversations.slice(0, CONVERSATIONS_LIMIT).map(row => row.last_message_moment ? { ...row, last_message_moment: { ...row.last_message_moment, thumb_url: null, excerpt: null, background: null } } : row), keptTail: undefined };
   const rooms = inbox.conversations.flatMap((row) => row._type === 'room' ? [row.id] : row.room_ids);
   const value: SavedInbox = { inbox, roomIds: [...new Set(rooms)], historyGeneration: fence?.account === scope.account ? fence.generation : 0 };
   await writeChatRecords(scope, [{ kind: 'history', key: INBOX_KEY, value }]);

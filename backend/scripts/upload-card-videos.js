@@ -28,6 +28,8 @@ const { DESIGNS } = require('../services/holidayCards');
 const { uploadToS3, getPublicUrl } = require('../services/s3Service');
 
 (async () => {
+  const unknown = only ? [...only].filter((id) => !DESIGNS.some((design) => design.id === id)) : [];
+  if (unknown.length) throw new Error(`Not one of this server's pictures (does it run the release that adds them?): ${unknown.join(', ')}`);
   const wanted = DESIGNS.filter((design) => !only || only.has(design.id));
   const missing = wanted.filter((design) => !fs.existsSync(path.join(folder, `${design.id}.mp4`)));
   if (missing.length) throw new Error(`No video for: ${missing.map((design) => design.id).join(', ')}`);

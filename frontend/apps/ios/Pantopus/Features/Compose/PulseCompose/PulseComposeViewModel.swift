@@ -142,7 +142,7 @@ public enum PulseComposeVisibility: String, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .neighbors: "Neighbors"
+        case .neighbors: "Nearby"
         case .connections: "Connections"
         case .publicFeed: "Public"
         }
@@ -179,7 +179,7 @@ public enum PulseAnnounceAudience: String, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .neighbors: "Neighbors"
+        case .neighbors: "Nearby"
         case .followers: "Followers"
         case .publicFeed: "Public"
         }
@@ -303,6 +303,8 @@ public final class PulseComposeViewModel {
     /// Which way in the check counted (`resident`, `business`, `gps` or
     /// `photo`), when the draft may post to its place.
     public private(set) var eligibilityBasis: String?
+    /// The Sky (phase A): the town the post would float over, while the place check answers `sky: true`.
+    public private(set) var skyArea: String?
     /// The place was checked to its end; a screen rebuilt by a fold or a turn doesn't check it again.
     @ObservationIgnored private var eligibilityChecked = false
 
@@ -1628,7 +1630,7 @@ public final class PulseComposeViewModel {
         guard draft != aiConfirmedDraft else { return false }
         aiPostConfirmation = effectiveAudience == "connections"
             ? "Pantopus AI wrote parts of this post. Check that it's right before your connections see it."
-            : "Pantopus AI wrote parts of this post. Check that it's right before neighbors see it."
+            : "Pantopus AI wrote parts of this post. Check that it's right before others see it."
         return true
     }
 
@@ -1685,6 +1687,7 @@ public final class PulseComposeViewModel {
         guard let point = eligibilityPoint() else {
             eligibilityWarning = nil
             eligibilityBasis = nil
+            skyArea = nil
             return
         }
         if eligibilityChecked, screens.isRebuilding { return }
@@ -1707,11 +1710,13 @@ public final class PulseComposeViewModel {
             guard !Task.isCancelled else { return }
             eligibilityWarning = response.eligible ? nil : response.reason
             eligibilityBasis = response.eligible ? response.basis : nil
+            skyArea = response.sky == true ? response.area?.label : nil
         } catch {
             // Non-blocking — the submit path still reports real errors.
             guard !Task.isCancelled else { return }
             eligibilityWarning = nil
             eligibilityBasis = nil
+            skyArea = nil
         }
     }
 
@@ -1886,5 +1891,20 @@ private extension PulseAnnounceAudience {
         case .followers: "followers"
         case .publicFeed: "public"
         }
+    }
+}
+
+// MARK: - The Sky
+
+public extension PulseComposeViewModel {
+    /// The Sky: the venue's name while the post would pin exactly there: a venue is tagged and one of the draft's
+    /// photos or videos was taken within 5 km of it (the server's rule). Nil while it floats.
+    var skyPinnedAt: String? {
+        guard skyArea != nil, let tag = selectedPlaceTag, SkyPlaceKind.of(placeId: tag.placeId, kind: tag.kind) == .venue
+        else { return nil }
+        let takenThere = draftMediaLocations.contains {
+            SkyPlaceKind.meters($0.latitude, $0.longitude, tag.latitude, tag.longitude) <= SkyPlaceKind.takenThereMeters
+        }
+        return takenThere ? tag.name : nil
     }
 }

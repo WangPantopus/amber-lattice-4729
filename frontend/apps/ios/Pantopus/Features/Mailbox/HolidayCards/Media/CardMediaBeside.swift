@@ -15,16 +15,19 @@ struct CardMediaBeside: View {
     let voice: CardVoice?
     /// Whose route their bytes come from: the uploader's own (Look it over) or Sent's.
     let from: CardMediaFrom
-    /// The card's picture number, for its mood.
+    /// The card's picture number, and the server's name for its table (card shelves A4), for its mood.
     let number: Int?
+    var moodName: String?
     /// The card's own day (its postmark, or when it was sent), printed in orange on a nostalgia card.
     var day: String?
     var fromName = ""
     /// Who the greeting is for ("For Maya").
     var forName = ""
 
+    @State private var opened: CardPhotoOpened?
+
     var body: some View {
-        let mood = CardTableMood(number: number)
+        let mood = CardTableMood(mood: moodName, number: number)
         HStack(alignment: .top, spacing: Spacing.s3) {
             if let photo {
                 CardPrintView(
@@ -32,8 +35,18 @@ struct CardMediaBeside: View {
                     aspect: photo.aspect,
                     alt: photo.alt,
                     datedOn: mood == .nostalgia ? day : nil,
-                    fromName: fromName
-                )
+                    fromName: fromName,
+                    live: photo.live != nil
+                ) {
+                    // Their own photo: "yours" to a screen reader.
+                    opened = CardPhotoOpened(
+                        source: from.source(photo.fileId),
+                        aspect: photo.aspect,
+                        alt: photo.alt,
+                        live: photo.live.map { from.source($0.fileId) },
+                        liveType: photo.live?.mimeType
+                    )
+                }
                 .frame(maxWidth: 190)
             }
             Spacer(minLength: 0)
@@ -50,5 +63,27 @@ struct CardMediaBeside: View {
             }
         }
         .padding(.horizontal, Spacing.s3)
+        .cardPhotoCover($opened)
+    }
+}
+
+extension View {
+    /// A card's photo over the whole screen, where no card table is under it: it fades in by itself, with none of the
+    /// system's sliding.
+    func cardPhotoCover(_ opened: Binding<CardPhotoOpened?>) -> some View {
+        fullScreenCover(isPresented: Binding(
+            get: { opened.wrappedValue != nil },
+            set: { if !$0 { opened.wrappedValue = nil } }
+        )) {
+            if let photo = opened.wrappedValue {
+                CardPhotoViewer(photo: photo) {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { opened.wrappedValue = nil }
+                }
+                .presentationBackground(.clear)
+            }
+        }
+        .transaction(value: opened.wrappedValue != nil) { $0.disablesAnimations = true }
     }
 }

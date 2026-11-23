@@ -527,13 +527,27 @@ public struct PlaceEligibilityResponse: Decodable, Sendable, Hashable {
     /// Which way in counted: `resident`, `business`, `gps` or `photo`.
     public let basis: String?
     public let trustLevel: String?
+    /// The Sky (phase A): there only while the server's `sky_places` switch is on for you.
+    public let sky: Bool?
+    /// The Sky: the area a post here floats over (its town, point and disc).
+    public let area: PostSkyAreaDTO?
 
-    public init(eligible: Bool, readOnly: Bool? = nil, reason: String? = nil, basis: String? = nil, trustLevel: String? = nil) {
+    public init(
+        eligible: Bool,
+        readOnly: Bool? = nil,
+        reason: String? = nil,
+        basis: String? = nil,
+        trustLevel: String? = nil,
+        sky: Bool? = nil,
+        area: PostSkyAreaDTO? = nil
+    ) {
         self.eligible = eligible
         self.readOnly = readOnly
         self.reason = reason
         self.basis = basis
         self.trustLevel = trustLevel
+        self.sky = sky
+        self.area = area
     }
 
     enum CodingKeys: String, CodingKey {
@@ -542,6 +556,8 @@ public struct PlaceEligibilityResponse: Decodable, Sendable, Hashable {
         case reason
         case basis
         case trustLevel
+        case sky
+        case area
     }
 }
 
@@ -559,5 +575,19 @@ public struct ProfilePinResponse: Decodable, Sendable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         postId = c.lenient(String.self, forKey: .postId)
         profilePinned = c.lenient(Bool.self, forKey: .profilePinned) ?? false
+    }
+}
+
+/// The Sky: the area a Pulse post floats over, from `GET /api/posts/place-eligibility` (route backend/routes/posts.js,
+/// place-eligibility).
+public struct PostSkyAreaDTO: Decodable, Sendable, Hashable {
+    public let label: String?
+    public let latitude: Double?
+    public let longitude: Double?
+    public let radiusM: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case label, latitude, longitude
+        case radiusM = "radius_m"
     }
 }

@@ -171,6 +171,8 @@ final class PlaceSwitcherViewModel {
 
 struct PlaceSwitcherSheet: View {
     @State private var viewModel: PlaceSwitcherViewModel
+    /// A card in the middle of an iPad window has no drag handle (`presentationDetentsFittingContentOnIPad`).
+    @Environment(\.sheetIsFittedCard) private var isFittedCard
 
     init(viewModel: PlaceSwitcherViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -178,7 +180,11 @@ struct PlaceSwitcherSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            grabber
+            if isFittedCard {
+                Color.clear.frame(height: 6)
+            } else {
+                grabber
+            }
             header
             content
         }

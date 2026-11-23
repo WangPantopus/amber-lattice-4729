@@ -117,7 +117,7 @@ public enum YouRoute: Hashable {
     /// reservation). Pushed from the Review-signups per-row Edit
     /// action with the seed DTO baked in so the form can prefill
     /// without a re-fetch.
-    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO)
+    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO, timeZoneId: String? = nil)
     /// A13.13 / P4.3 — Manage train (organizer surface). Pushed from
     /// the A10.9 detail dock overflow when the viewer is the organizer
     /// and from the `pantopus://support-trains/:id/manage` deep link.
@@ -517,7 +517,10 @@ public struct YouTabRoot: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("You'll need to sign in again to use your account. Signing out removes what Pantopus saved on this phone.")
+                    Text(
+                        "You'll need to sign in again to use your account. "
+                            + "Signing out removes what Pantopus saved on this \(DeviceWords.plainName)."
+                    )
                 }
                 .sheet(isPresented: $showsEditProfile) {
                     EditProfileView {
@@ -1088,6 +1091,13 @@ public struct YouTabRoot: View {
                     Task { @MainActor in
                         path.append(.packageGig(mailId: mailId, isPreDelivery: isPreDelivery))
                     }
+                },
+                // "Open the next card": the next card's page takes this one's place, so ✕ still returns to the Mailbox.
+                onOpenNextCard: { nextId in
+                    Task { @MainActor in
+                        if !path.isEmpty { path.removeLast() }
+                        path.append(.mailItemDetail(mailId: nextId))
+                    }
                 }
             )
         case .settings:
@@ -1620,6 +1630,15 @@ public struct YouTabRoot: View {
                 viewModel: SupportTrainDetailViewModel(trainId: supportTrainId),
                 onBack: { Task { @MainActor in pop() } },
                 onOpenManage: { Task { @MainActor in path.append(.manageTrain(trainId: supportTrainId)) } },
+                // The You stack shares like Place and Tasks (B14).
+                onShare: {
+                    systemSheet = .share(items: [SupportTrainShareText.message(trainId: supportTrainId)])
+                },
+                onEditSignup: { reservation, zone in
+                    Task { @MainActor in
+                        path.append(.editSignup(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: zone))
+                    }
+                },
                 onMessageHost: { host in
                     Task { @MainActor in path.append(Self.chatRoute(toHost: host)) }
                 },
@@ -1659,7 +1678,7 @@ public struct YouTabRoot: View {
                     supportTrainId: supportTrainId,
                     onShareTrain: {
                         systemSheet = .share(
-                            items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
+                            items: [SupportTrainShareText.message(trainId: supportTrainId, asOrganizer: false)]
                         )
                     },
                     onConfirm: { reservationId in
@@ -1689,8 +1708,8 @@ public struct YouTabRoot: View {
                     }
                 )
             )
-        case let .editSignup(supportTrainId, reservation):
-            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation) {
+        case let .editSignup(supportTrainId, reservation, timeZoneId):
+            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: timeZoneId) {
                 if !path.isEmpty { path.removeLast() }
             }
         case let .manageTrain(trainId):
@@ -1719,7 +1738,7 @@ public struct YouTabRoot: View {
                 // yet, so they aren't wired and their rows are hidden.
                 onInviteHelpers: { _ in
                     systemSheet = .share(
-                        items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: trainId))"]
+                        items: [SupportTrainShareText.message(trainId: trainId, asOrganizer: true)]
                     )
                 }
             )
@@ -2357,7 +2376,7 @@ public struct YouTabRoot: View {
                         case .inviteBusiness:
                             let draft = MailDraft(
                                 subject: "Join Pantopus",
-                                body: "I'd love to see your business on Pantopus — neighbors near me are "
+                                body: "I'd love to see your business on Pantopus — people near me are "
                                     + "looking for trusted local pros. \(PersonalInviteLink.shared.url.absoluteString)"
                             )
                             if MailDraft.canSendMail {
@@ -2749,7 +2768,7 @@ public struct YouTabRoot: View {
                 onHelp: { path.append(.helpCenter) },
                 onCashOut: { path.append(.paymentsSettings) },
                 onBrowseTasks: { path.append(.gigsFeed) },
-                onReferNeighbor: { path.append(.placeholder(label: "Refer a neighbor")) },
+                onReferNeighbor: { path.append(.placeholder(label: "Refer someone")) },
                 onOfferService: { path.append(.professionalProfile) },
                 onManagePayout: { path.append(.paymentsSettings) },
                 onAddBank: { path.append(.paymentsSettings) },

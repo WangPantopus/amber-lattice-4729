@@ -803,7 +803,7 @@ public struct ExploreMapView: View {
         let lead = filterCount == 1
             ? "1 filter is narrowing this view. Try clearing it"
             : "\(filterCount) filters are narrowing this view. Try clearing them"
-        return distanceNarrowed ? lead + ", or widen the area to surface neighbors a little further out." : lead + "."
+        return distanceNarrowed ? lead + ", or widen the area to see people a little further out." : lead + "."
     }
 
     private func pendingPlace(for entity: ExploreEntity) -> PendingSavePlace {

@@ -15,6 +15,8 @@
 //                     `Send a card` + `Join as backup` dock.
 //
 
+// swiftlint:disable file_length
+
 import Foundation
 
 /// Per-archetype palette. Currently drives the `TypeDatesCard` icon
@@ -38,6 +40,10 @@ public enum SupportTrainDock: Sendable, Hashable {
     case signUp(label: String)
     case sendCardAndBackup
     case closed(reason: String)
+    /// An organizer's main action: run the train (B2).
+    case manage
+    /// The person the train is for: nothing to sign up for (B2).
+    case noDock
 }
 
 /// The recipient block at the top of the screen. The household line is
@@ -269,6 +275,9 @@ public struct ReserveSlotOption: Equatable, Sendable, Identifiable, Hashable {
     public let slotDate: String?
     /// The window's start ("17:00:00"), where the arrival picker starts.
     public let windowStart: String?
+    /// The ways of helping this date takes (a groceries date takes groceries; a meal date a cooked
+    /// meal or takeout), as the server checks them. `nil` means the train's lanes.
+    public let allowedModes: [SupportTrainContributionMode]?
 
     public init(
         id: String,
@@ -276,7 +285,8 @@ public struct ReserveSlotOption: Equatable, Sendable, Identifiable, Hashable {
         slotLabel: String,
         windowLabel: String?,
         slotDate: String? = nil,
-        windowStart: String? = nil
+        windowStart: String? = nil,
+        allowedModes: [SupportTrainContributionMode]? = nil
     ) {
         self.id = id
         self.dateLabel = dateLabel
@@ -284,6 +294,7 @@ public struct ReserveSlotOption: Equatable, Sendable, Identifiable, Hashable {
         self.windowLabel = windowLabel
         self.slotDate = slotDate
         self.windowStart = windowStart
+        self.allowedModes = allowedModes
     }
 }
 
@@ -293,15 +304,19 @@ public struct ReserveSheetContext: Equatable, Sendable, Hashable {
     public let enabledModes: [SupportTrainContributionMode]
     public let restrictionChips: [String]
     public let contactlessPreferred: Bool
+    /// The train's IANA zone: an arrival time is that clock time on the date, where the train is.
+    public let timeZoneId: String?
 
     public init(
         enabledModes: [SupportTrainContributionMode],
         restrictionChips: [String],
-        contactlessPreferred: Bool
+        contactlessPreferred: Bool,
+        timeZoneId: String? = nil
     ) {
         self.enabledModes = enabledModes
         self.restrictionChips = restrictionChips
         self.contactlessPreferred = contactlessPreferred
+        self.timeZoneId = timeZoneId
     }
 }
 
@@ -422,6 +437,21 @@ public struct SupportTrainDetailContent: Equatable, Sendable {
     public let updates: [TrainUpdateCard]
     /// The train's chat room, when the viewer is in it.
     public let chatRoomId: String?
+    /// What helpers should know: allergies, diet, household, drop-off window, instructions (A14).
+    public let helperDetails: [HelperDetailLine]
+
+    public struct HelperDetailLine: Equatable, Sendable, Identifiable, Hashable {
+        public let label: String
+        public let value: String
+        public var id: String {
+            label
+        }
+
+        public init(label: String, value: String) {
+            self.label = label
+            self.value = value
+        }
+    }
 
     public struct CelebrationBanner: Equatable, Sendable {
         public let title: String
@@ -456,7 +486,8 @@ public struct SupportTrainDetailContent: Equatable, Sendable {
         exactAddress: String? = nil,
         deliveryInstructions: String? = nil,
         updates: [TrainUpdateCard] = [],
-        chatRoomId: String? = nil
+        chatRoomId: String? = nil,
+        helperDetails: [HelperDetailLine] = []
     ) {
         self.trainId = trainId
         self.recipient = recipient
@@ -473,5 +504,29 @@ public struct SupportTrainDetailContent: Equatable, Sendable {
         self.deliveryInstructions = deliveryInstructions
         self.updates = updates
         self.chatRoomId = chatRoomId
+        self.helperDetails = helperDetails
+    }
+
+    /// This train without what only a fresh read may show: the exact address and the instructions.
+    /// Shown while the details are checked again, so the screen keeps its story, dates and allergies (B5).
+    public func withoutPrivateDetails() -> SupportTrainDetailContent {
+        SupportTrainDetailContent(
+            trainId: trainId,
+            recipient: recipient,
+            typeDates: typeDates,
+            calendarDays: calendarDays,
+            sections: sections,
+            hostedBy: hostedBy,
+            dock: dock,
+            celebrationBanner: celebrationBanner,
+            reserveOptions: reserveOptions,
+            reserveContext: reserveContext,
+            viewerRole: viewerRole,
+            exactAddress: nil,
+            deliveryInstructions: nil,
+            updates: updates,
+            chatRoomId: chatRoomId,
+            helperDetails: helperDetails.filter { $0.label != "Instructions" }
+        )
     }
 }

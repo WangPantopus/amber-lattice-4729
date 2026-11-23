@@ -1019,6 +1019,9 @@ async function registerDevice({ userId, sessionRow, dpop, device, pushToken, pus
   if (!sessionRow || !sessionRow.device_id) {
     return { ok: false, status: 409, code: 'DEVICE_NOT_BOUND', error: 'This session is not bound to a device key' };
   }
+  // The person's security preferences don't depend on the device, so they're read alongside it; they're used only once
+  // every check below has passed (getSecurityPrefs never fails: an unreadable row gives the defaults).
+  const prefsRead = getSecurityPrefs(userId);
   const deviceRow = await getDevice(sessionRow.device_id);
   if (!deviceRow || deviceRow.user_id !== userId) {
     return { ok: false, status: 409, code: 'DEVICE_NOT_BOUND', error: 'This session is not bound to a device key' };
@@ -1042,29 +1045,30 @@ async function registerDevice({ userId, sessionRow, dpop, device, pushToken, pus
   }
 
   const patch = descriptorPatch(desc, req);
-  // Descriptive metadata only. Trust/key fields are decided at issuance.
-  const updated = (await updateDevice(deviceRow.id, patch)) || deviceRow;
-
-  if (pushToken && typeof pushToken === 'string') {
-    try {
-      await pushService.saveToken(userId, pushToken, {
+  // Every check has passed. The device's descriptive metadata (trust/key fields are decided at issuance), the push
+  // token and the session's last-seen time are independent writes, none of which fails the request (each logs its own
+  // failure), so they go out together.
+  const [patched] = await Promise.all([
+    updateDevice(deviceRow.id, patch),
+    pushToken && typeof pushToken === 'string'
+      ? pushService.saveToken(userId, pushToken, {
         platform: desc.platform,
         provider: pushProvider || undefined,
         deviceId: desc.deviceId,
-      });
-    } catch (err) {
-      logger.warn('auth.register.push_save_failed', { userId, error: err.message });
-    }
-  }
+      }).catch((err) => {
+        logger.warn('auth.register.push_save_failed', { userId, error: err.message });
+      })
+      : null,
+    authSessionService.touchSession(sessionRow.id, req),
+  ]);
+  const updated = patched || deviceRow;
 
   let resumeGrant = null;
-  const prefs = await getSecurityPrefs(userId);
+  const prefs = await prefsRead;
   if (await grantEligible(userId, updated, prefs)) {
     const minted = await authSessionService.mintResumeGrant(userId, updated.id);
     resumeGrant = minted?.grant || null;
   }
-
-  await authSessionService.touchSession(sessionRow.id, req);
 
   return { ok: true, device: publicDevice(updated), resumeGrant };
 }

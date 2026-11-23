@@ -78,9 +78,18 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
     /// "Help me write it" can be used now (the server's launch key `card_note_help`); false from older servers and
     /// with the key off: no button.
     public let noteHelp: Bool
+    /// The travelling card (server switch `card_travel`, travelling card plan Part 2): "Let it travel" shows only when
+    /// this says it's on; nil from older servers and with the switch off.
+    public let travel: HolidayCardsTravel?
+    /// Pick a card shows the card shelves (server switch `card_shelves`, card shelves A5); false from older servers and
+    /// with the switch off: one collection at a time behind a row of names.
+    public let shelves: Bool
+    /// The collections' ids in the order "One from each collection" draws them (card shelves E2); nil from older
+    /// servers: the collections' own order.
+    public let opening: [String]?
 
     private enum CodingKeys: String, CodingKey {
-        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media
+        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media, travel, shelves, opening
         case noteHelp = "note_help"
         case maxRecipients = "max_recipients"
         case postageEnabled = "postage_enabled"
@@ -126,12 +135,25 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         signature = try? c.decodeIfPresent(HolidayCardSignatureSpec.self, forKey: .signature)
         media = try? c.decodeIfPresent(HolidayCardMediaSpec.self, forKey: .media)
         noteHelp = (try? c.decodeIfPresent(Bool.self, forKey: .noteHelp)) ?? false
+        travel = try? c.decodeIfPresent(HolidayCardsTravel.self, forKey: .travel)
+        shelves = (try? c.decodeIfPresent(Bool.self, forKey: .shelves)) ?? false
+        opening = try? c.decodeIfPresent([String].self, forKey: .opening)
     }
 
     /// "Add a photo" shows (the server takes one now, and this build carries the memories), unless no bought stamp
     /// is left and none can be bought.
     var takesPhoto: Bool {
         LaunchFeatures.holidayCardMemories && media?.photo?.usable == true && mediaStamp != .unavailable
+    }
+
+    /// A Live Photo keeps its moving part (the server takes one now).
+    var takesLivePhoto: Bool {
+        takesPhoto && media?.photo?.live?.usable == true
+    }
+
+    /// The most bytes a Live Photo's moving part can be.
+    var livePhotoMaxBytes: Int {
+        media?.photo?.live?.maxBytes ?? 15_728_640
     }
 
     /// "Record a greeting" shows.
@@ -153,16 +175,39 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
 }
 
 /// `signature` on `GET /api/mailbox/cards`: the box a signature is drawn in (400 × 100) and the most bytes it can take
-/// as compact JSON (2048).
+/// as compact JSON (2048). `saves`: the account can keep one signature for the next cards (founder, 2026-11-16;
+/// `PUT`/`DELETE /api/mailbox/cards/signature`), and `saved` is the one it keeps (nil: none, or an older server).
 public struct HolidayCardSignatureSpec: Decodable, Sendable, Hashable {
     public let width: Int
     public let height: Int
     public let maxBytes: Int
+    public let saves: Bool
+    public let saved: CardSignature?
 
     private enum CodingKeys: String, CodingKey {
         case width = "w"
         case height = "h"
         case maxBytes = "max_bytes"
+        case saves, saved
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        width = try c.decode(Int.self, forKey: .width)
+        height = try c.decode(Int.self, forKey: .height)
+        maxBytes = try c.decode(Int.self, forKey: .maxBytes)
+        saves = (try? c.decodeIfPresent(Bool.self, forKey: .saves)) == true
+        // A saved signature this app can't read leaves the card unsigned, never the signing itself.
+        saved = try? c.decodeIfPresent(CardSignature.self, forKey: .saved)
+    }
+}
+
+/// `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept.
+public struct CardSignatureBody: Codable, Sendable, Hashable {
+    public let signature: CardSignature
+
+    public init(signature: CardSignature) {
+        self.signature = signature
     }
 }
 
@@ -249,6 +294,9 @@ public struct HolidayCardDesign: Decodable, Sendable, Hashable, Identifiable {
     /// A Christmas with Jesus Christ picture's whole verse, in the KJV words its caption names ("For unto us a child
     /// is born…"); nil for every other picture and from older servers (`card_table`, plan 6.2).
     public let verse: String?
+    /// The table it opens on, named by the server (card shelves A4): `reverence`, `santa` or `nostalgia`; nil from
+    /// older servers, where `CardTableMood` goes by the number.
+    public let mood: String?
 }
 
 /// A collection of the season's pictures ("Christmas with Friends"): who
@@ -261,9 +309,16 @@ public struct HolidayCardCollection: Decodable, Sendable, Hashable, Identifiable
     public let line: String
     /// Its pictures' ids, in grid order.
     public let designs: [String]
+    /// The card shelves' facts (card shelves A3); nil or empty from older servers. `short`: the name in a row of
+    /// names ("Santa"); `slug`: its public name in a link; `pick`: the design id of its large card in "One from each
+    /// collection"; `parts`: Christmas with Jesus Christ's parts in story order.
+    public let short: String?
+    public let slug: String?
+    public let pick: String?
+    public let parts: [HolidayCardCollectionPart]
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, line, designs
+        case id, name, line, designs, short, slug, pick, parts
     }
 
     public init(from decoder: any Decoder) throws {
@@ -272,6 +327,22 @@ public struct HolidayCardCollection: Decodable, Sendable, Hashable, Identifiable
         name = try c.decode(String.self, forKey: .name)
         line = (try? c.decodeIfPresent(String.self, forKey: .line)) ?? ""
         designs = (try? c.decodeIfPresent([String].self, forKey: .designs)) ?? []
+        short = try? c.decodeIfPresent(String.self, forKey: .short)
+        slug = try? c.decodeIfPresent(String.self, forKey: .slug)
+        pick = try? c.decodeIfPresent(String.self, forKey: .pick)
+        // A part this app can't read is left out, never the collection.
+        parts = ((try? c.decodeIfPresent([CardTravelLenient<HolidayCardCollectionPart>].self, forKey: .parts)) ?? [])
+            .compactMap(\.value)
+    }
+}
+
+/// One part of a collection, in story order ("The first Christmas"): its name and its pictures' ids.
+public struct HolidayCardCollectionPart: Decodable, Sendable, Hashable, Identifiable {
+    public let name: String
+    public let designs: [String]
+
+    public var id: String {
+        name
     }
 }
 
@@ -376,12 +447,17 @@ public struct SendHolidayCardBody: Encodable, Sendable {
     public let photo: String?
     public let photoAlt: String?
     public let voice: String?
+    /// The photo's moving part when it goes as a Live Photo; left out for a still.
+    public let photoLive: String?
+    /// "Let it travel" left on (travelling card plan Part 2): true starts a journey; left out for an ordinary card.
+    public var travel: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case design, message, arrival, to, signature, photo, voice
+        case design, message, arrival, to, signature, photo, voice, travel
         case requestId = "request_id"
         case useStamp = "use_stamp"
         case photoAlt = "photo_alt"
+        case photoLive = "photo_live"
     }
 
     public enum Recipient: Encodable, Sendable {
@@ -426,6 +502,7 @@ public struct SendHolidayCardBody: Encodable, Sendable {
         photo = media.photo
         photoAlt = media.photo == nil ? nil : media.photoAlt
         voice = media.voice
+        photoLive = media.photo == nil ? nil : media.photoLive
     }
 }
 
@@ -445,6 +522,8 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     /// True when the app words every choice by email (`arrivals.email_all`): each address keeps the list's choice,
     /// its email going at the sender's 7 a.m. or on Christmas morning. Nil (left out) keeps the older mapping.
     public let emailsKeepArrival: Bool?
+    /// "Let it travel" left on: each card of the list starts a journey of its own; left out otherwise.
+    public var travel: Bool?
 
     public struct Recipient: Encodable, Sendable {
         public let to: SendHolidayCardBody.Recipient
@@ -457,7 +536,7 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case design, message, arrival, recipients, signature
+        case design, message, arrival, recipients, signature, travel
         case useStamp = "use_stamp"
         case emailsKeepArrival = "emails_keep_arrival"
     }
@@ -616,8 +695,11 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
     /// The page the email's link opens; nil for a person on Pantopus.
     public let linkPage: LinkPage?
 
-    /// The email's words, from the strings the real email uses.
+    /// The email's words and picture, from the strings the real email uses.
     public struct Email: Decodable, Sendable, Hashable {
+        /// The picture at the top of the email (launch key `card_table` on the server): the card's front lying on its
+        /// open envelope, or the sealed envelope for a card sealed until Christmas. Nil from a server without it.
+        public let picture: URL?
         public let subject: String
         public let heading: String
         public let lines: [String]
@@ -628,6 +710,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            picture = (try? c.decodeIfPresent(String.self, forKey: .picture)).flatMap { $0 }.flatMap(URL.init(string:))
             subject = try c.decode(String.self, forKey: .subject)
             heading = try c.decode(String.self, forKey: .heading)
             lines = (try? c.decodeIfPresent([String].self, forKey: .lines)) ?? []
@@ -640,7 +723,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case subject, heading, lines, button, footnote, footer
+            case picture, subject, heading, lines, button, footnote, footer
         }
     }
 
@@ -734,11 +817,38 @@ public struct MailCard: Decodable, Sendable, Hashable {
     /// older servers.
     public let photo: CardPhoto?
     public let voice: CardVoice?
+    /// A card that travels (server switch `card_travel`, travelling card plan): its postmarks, miles and places for its
+    /// reader; nil for every other card, the switch off, and older servers.
+    public let travel: CardTravel?
+    /// The table it opens on, named by the server (card shelves A4); nil from older servers.
+    public let mood: String?
 
     private enum CodingKeys: String, CodingKey {
         case design, number, caption, paper, height, holiday, year, arrival, sealed, slug, table, verse, signature
-        case photo, voice
+        case photo, voice, travel, mood
         case sealedUntil = "sealed_until"
+    }
+
+    /// The card a reply answers (experience plan Part 3), drawn with that card's picture in the reply's row.
+    init(reply: CardReplyCard) {
+        design = reply.design
+        number = reply.number
+        caption = reply.caption
+        paper = reply.paper
+        height = reply.height
+        holiday = "christmas"
+        year = reply.year
+        arrival = nil
+        sealedUntil = nil
+        sealed = false
+        slug = reply.slug
+        table = reply.table
+        verse = nil
+        signature = reply.signature
+        photo = nil
+        voice = nil
+        travel = nil
+        mood = reply.mood
     }
 
     /// A card not sent yet, as its envelope is drawn while it's being sealed.
@@ -759,6 +869,8 @@ public struct MailCard: Decodable, Sendable, Hashable {
         signature = nil
         photo = nil
         voice = nil
+        travel = nil
+        mood = design.mood
     }
 
     private init(copying card: MailCard, sealed: Bool) {
@@ -778,6 +890,8 @@ public struct MailCard: Decodable, Sendable, Hashable {
         signature = card.signature
         photo = card.photo
         voice = card.voice
+        travel = card.travel
+        mood = card.mood
     }
 
     /// The same card on the morning its seal lifts.
@@ -803,6 +917,8 @@ public struct MailCard: Decodable, Sendable, Hashable {
         signature = try? c.decodeIfPresent(CardSignature.self, forKey: .signature)
         photo = sealed ? nil : try? c.decodeIfPresent(CardPhoto.self, forKey: .photo)
         voice = sealed ? nil : try? c.decodeIfPresent(CardVoice.self, forKey: .voice)
+        travel = try? c.decodeIfPresent(CardTravel.self, forKey: .travel)
+        mood = try? c.decodeIfPresent(String.self, forKey: .mood)
     }
 }
 
@@ -830,7 +946,7 @@ public struct HolidayCardNoteHelpBody: Encodable, Sendable {
     public let design: String
     /// The first names the card is to, as the screen shows them (none for an address or a link).
     public let to: [String]
-    /// How many people the card goes to: past two, the note names no one.
+    /// How many people the card goes to: from two on, the note names no one.
     public let count: Int
     /// "Anything to mention?"
     public let hint: String?

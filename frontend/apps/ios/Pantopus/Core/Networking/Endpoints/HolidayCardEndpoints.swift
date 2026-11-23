@@ -16,6 +16,18 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .get, path: "/api/mailbox/cards")
     }
 
+    /// `PUT /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`). Keeps this
+    /// signature on the account for the next cards, replacing any saved one; answers `{ signature }` as kept.
+    public static func saveSignature(_ signature: CardSignature) -> Endpoint {
+        Endpoint(method: .put, path: "/api/mailbox/cards/signature", body: CardSignatureBody(signature: signature))
+    }
+
+    /// `DELETE /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`). Forgets the
+    /// saved signature (cards already sent keep theirs); answers 204.
+    public static func forgetSignature() -> Endpoint {
+        Endpoint(method: .delete, path: "/api/mailbox/cards/signature")
+    }
+
     /// `GET /api/mailbox/cards/arrivals?to=` — route
     /// `backend/routes/mailbox.js:1809`. When a card to this person can come,
     /// by their clock; the same checks as sending them one.
@@ -115,6 +127,26 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/take-back")
     }
 
+    /// `GET /api/mailbox/cards/:id/exchange` — route `backend/routes/mailbox.js` (the joined card, PR #4394). The card
+    /// and its reply for either of the two people (`:id` is the card or the reply); 404 `CARD_NOT_FOUND` for anyone
+    /// else. Needs `mailbox` only.
+    public static func exchange(cardId: String) -> Endpoint {
+        Endpoint(method: .get, path: "/api/mailbox/cards/\(cardId)/exchange")
+    }
+
+    /// `POST /api/mailbox/cards/:id/reply` — route `backend/routes/mailbox.js` (PR #4394). Writes back to the card's
+    /// sender with their next 7 a.m. mail: free, one per card. Needs `mailbox`, `holiday_card_memories` and
+    /// `card_replies` (404 when off).
+    public static func reply(cardId: String, _ body: CardReplyBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/reply", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/reply/take-back` — route `backend/routes/mailbox.js` (PR #4394). Takes the
+    /// writer's reply back before the pickup (409 `CARD_ALREADY_SENT` after it).
+    public static func takeBackReply(cardId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/reply/take-back")
+    }
+
     /// `POST /api/mailbox/cards/:id/email-again` — route
     /// `backend/routes/mailbox.js:2978`. "Email it again" on a card by email
     /// whose email didn't go out (Sent's `email_status`), for its sender. A
@@ -122,5 +154,38 @@ public enum HolidayCardEndpoints {
     /// an app error; 429 `CARD_EMAIL_BUSY` within a minute of the last try.
     public static func emailAgain(cardId: String) -> Endpoint {
         Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/email-again", reportsServerErrors: false)
+    }
+
+    // MARK: The travelling card (server switch `card_travel`, travelling card plan Part 1; 404 while it's off)
+
+    /// `GET /api/mailbox/cards/towns?q=` — route `backend/routes/mailbox.js` (travelling card routes). Up to 8 towns for
+    /// two letters or more, or 3 to 5 digits of a ZIP code, from the bundled Census lists; without `q`, the suggested
+    /// town ("Use Vancouver, WA") or none.
+    public static func towns(query: String?) -> Endpoint {
+        Endpoint(method: .get, path: "/api/mailbox/cards/towns", query: query.map { ["q": $0] } ?? [:])
+    }
+
+    /// `PUT /api/mailbox/cards/town` — route `backend/routes/mailbox.js` (travelling card routes). Keeps the chosen
+    /// town in the profile's town fields (D4: asked once).
+    public static func setTown(_ body: CardTownBody) -> Endpoint {
+        Endpoint(method: .put, path: "/api/mailbox/cards/town", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/pass-on/preview` — route `backend/routes/mailbox.js` (travelling card routes). The
+    /// same checks as passing it on, nothing stored; `:id` is the card the caller received.
+    public static func passOnPreview(cardId: String, _ body: CardPassOnBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on/preview", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/pass-on` — route `backend/routes/mailbox.js` (travelling card routes). The same card
+    /// goes on, free, with this note; answers as `POST /cards` does (a repeat of the request ID, the same card).
+    public static func passOn(cardId: String, _ body: CardPassOnBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/pass-on/take-back` — route `backend/routes/mailbox.js` (travelling card routes).
+    /// `:id` is the passed-on card; its place is free again.
+    public static func takeBackPassOn(cardId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on/take-back")
     }
 }

@@ -94,6 +94,17 @@ canvas.
 | 18 | `18-answering-in-the-app.png` | Answering in the app: adults, kids, Maybe |
 | 19 | `19-bring-list-host.png` | The bring list, for the host |
 | 20 | `20-guest-plan-page.png` | A guest's plan page in the app, with the bring list |
+| 21 | `21-shared-link-in-the-app.png` | A shared link opened in the app by someone with an account |
+| 22 | `22-shared-link-waiting.png` | After "I'm in" from a shared link: waiting for the host's yes |
+| 23 | `23-whos-coming-from-the-link.png` | Who's coming: people from the link, with and without an account |
+| 24 | `24-find-a-date-guest.png` | Find a date: an invited person ticks the times that work |
+| 25 | `25-find-a-date-host.png` | Find a date: the host picks |
+| 26 | `26-host-form-extras-on.png` | Host form: date options, chip in and gift exchange switched on |
+| 27 | `27-chip-in.png` | Chip in: an amount and the host's own payment link |
+| 28 | `28-gift-exchange.png` | Gift exchange: the name you drew |
+| 29 | `29-photos-afterwards.png` | Photos afterwards: one album for the people who came |
+| 30 | `30-same-people-again.png` | The same people again |
+| 31 | `31-pay-for-the-group.png` | One person pays for the group |
 
 Boards 1 to 6 and 15 to 20 are additions 1 to 4, the people track; each is
 specified element by element in [06-screens.md](06-screens.md). Boards 7 to 9

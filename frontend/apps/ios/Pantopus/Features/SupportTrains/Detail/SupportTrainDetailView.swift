@@ -10,7 +10,7 @@
 //  `Send a card` / `Join as backup` pair (fully covered).
 //
 
-// swiftlint:disable file_length type_body_length
+// swiftlint:disable file_length type_body_length function_body_length
 
 import SwiftUI
 
@@ -22,6 +22,8 @@ public struct SupportTrainDetailView: View {
     private let onShare: (@MainActor () -> Void)?
     private let onSignUp: (@MainActor () -> Void)?
     private let onEditSlot: (@MainActor (SlotRowContent) -> Void)?
+    /// Opens Edit signup for the helper's own signup, with the train's zone (B1).
+    private let onEditSignup: (@MainActor (SupportTrainReservationDTO, String?) -> Void)?
     private let onSendCard: (@MainActor () -> Void)?
     private let onJoinAsBackup: (@MainActor () -> Void)?
     private let onMessageHost: (@MainActor (HostedByFooter) -> Void)?
@@ -39,6 +41,7 @@ public struct SupportTrainDetailView: View {
         onShare: (@MainActor () -> Void)? = nil,
         onSignUp: (@MainActor () -> Void)? = nil,
         onEditSlot: (@MainActor (SlotRowContent) -> Void)? = nil,
+        onEditSignup: (@MainActor (SupportTrainReservationDTO, String?) -> Void)? = nil,
         onSendCard: (@MainActor () -> Void)? = nil,
         onJoinAsBackup: (@MainActor () -> Void)? = nil,
         onMessageHost: (@MainActor (HostedByFooter) -> Void)? = nil,
@@ -52,6 +55,7 @@ public struct SupportTrainDetailView: View {
         self.onShare = onShare
         self.onSignUp = onSignUp
         self.onEditSlot = onEditSlot
+        self.onEditSignup = onEditSignup
         self.onSendCard = onSendCard
         self.onJoinAsBackup = onJoinAsBackup
         self.onMessageHost = onMessageHost
@@ -202,20 +206,29 @@ public struct SupportTrainDetailView: View {
                     }
 
                     overline("For")
-                    if viewModel.recipientDetailsAvailable {
-                        RecipientCard(content: content.recipient)
-                    } else {
-                        VStack(alignment: .leading, spacing: Spacing.s2) {
-                            Text("Recipient and delivery details need to be checked again.")
-                                .font(.system(size: 13.5))
+                    // The last details stay on screen while they are checked again (B5); only the exact
+                    // address and instructions wait for the fresh read.
+                    RecipientCard(content: content.recipient)
+                    if !viewModel.recipientDetailsAvailable {
+                        HStack(spacing: Spacing.s2) {
+                            Text("Checking for the latest details…")
+                                .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.Color.appTextSecondary)
-                            Button("Retry recipient details") { Task { await viewModel.refresh() } }
+                            Spacer(minLength: Spacing.s2)
+                            Button("Refresh") { Task { await viewModel.refresh() } }
+                                .font(.system(size: 12.5, weight: .semibold))
                                 .accessibilityIdentifier("supportTrainRetryDetails")
                         }
+                        .padding(.top, Spacing.s2)
                     }
 
                     overline("The train")
                     TypeDatesCard(content: content.typeDates)
+
+                    if !content.helperDetails.isEmpty {
+                        overline("Good to know")
+                        helperDetailsCard(content.helperDetails)
+                    }
 
                     if !content.updates.isEmpty {
                         updatesSection(content.updates)
@@ -240,7 +253,8 @@ public struct SupportTrainDetailView: View {
                                     SlotRow(
                                         content: row,
                                         onSignUp: signUpAction(for: row),
-                                        onEdit: editAction(for: row)
+                                        onEdit: editAction(for: row),
+                                        showsSignUp: content.viewerRole != .recipient
                                     )
                                     commitmentActions(for: row, content: content)
                                 }
@@ -334,6 +348,8 @@ public struct SupportTrainDetailView: View {
         switch dock {
         case .signUp, .closed: true
         case .sendCardAndBackup: onSendCard != nil || onJoinAsBackup != nil
+        case .manage: onOpenManage != nil
+        case .noDock: false
         }
     }
 
@@ -511,12 +527,29 @@ public struct SupportTrainDetailView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(Theme.Color.appText)
                     .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
             }
             if let instructions, !instructions.isEmpty {
                 Text(instructions)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            // Directions and a copy, so a helper doesn't retype the address (B16).
+            HStack(spacing: Spacing.s2) {
+                rowActionButton(title: "Directions", icon: .navigation, identifier: "supportTrainAddressDirections") {
+                    // URLComponents encodes "&" and "#" inside the value (.urlQueryAllowed left them in); "+" is
+                    // encoded by hand, or Maps reads it as a space.
+                    var components = URLComponents(string: "https://maps.apple.com/")
+                    components?.queryItems = [URLQueryItem(name: "daddr", value: address)]
+                    let encoded = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+                    components?.percentEncodedQuery = encoded
+                    if let url = components?.url { UIApplication.shared.open(url) }
+                }
+                rowActionButton(title: "Copy", icon: .copy, identifier: "supportTrainAddressCopy") {
+                    UIPasteboard.general.string = address
+                    viewModel.toast = "Address copied"
+                }
             }
         }
         .padding(Spacing.s3)
@@ -530,8 +563,39 @@ public struct SupportTrainDetailView: View {
         .accessibilityIdentifier("supportTrainExactAddressCard")
     }
 
+    private func helperDetailsCard(_ lines: [SupportTrainDetailContent.HelperDetailLine]) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            ForEach(lines) { line in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(line.label)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                    Text(line.value)
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.Color.appText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(Spacing.s3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
+                .stroke(Theme.Color.appBorder, lineWidth: 1)
+        )
+        .accessibilityIdentifier("supportTrainHelperDetails")
+    }
+
     private func editAction(for row: SlotRowContent) -> (@MainActor () -> Void)? {
-        guard row.mine, let onEditSlot else { return nil }
+        guard row.mine else { return nil }
+        if let onEditSignup, let reservation = viewModel.editableReservation(id: row.reservationId) {
+            let zone = viewModel.trainTimeZoneId
+            return { onEditSignup(reservation, zone) }
+        }
+        guard let onEditSlot else { return nil }
         return { onEditSlot(row) }
     }
 
@@ -609,6 +673,11 @@ public struct SupportTrainDetailView: View {
                     SplitCoveredDock(onSendCard: onSendCard, onJoinAsBackup: onJoinAsBackup)
                 case let .closed(reason):
                     PrimarySignUpCTA(label: reason, isEnabled: false) {}
+                case .manage:
+                    PrimarySignUpCTA(label: "Manage train", isEnabled: true) { onOpenManage?() }
+                        .accessibilityIdentifier("supportTrainDetailManageCTA")
+                case .noDock:
+                    EmptyView()
                 }
             }
             .padding(.horizontal, Spacing.s4)

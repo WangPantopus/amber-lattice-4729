@@ -204,6 +204,15 @@ enum PlanOpenIntent: Hashable {
     case view, ask, chat
     /// Opened from an email or text invitation: the plan opens it for this account first.
     case invite(token: String)
+    /// Opened from the plan's one link for everyone (Plans for the holidays, contract 6.9): claimed first.
+    case openLink(token: String)
+    /// Opened from a buyer's link (one person pays for the group, 08-extras section 7): the spot is offered first.
+    case spot(token: String)
+
+    /// A plan link's way in: an invitation first, then the open link, then a buyer's link.
+    init(invite: String?, open: String?, spot: String?) {
+        self = invite.map { .invite(token: $0) } ?? open.map { .openLink(token: $0) } ?? spot.map { .spot(token: $0) } ?? .view
+    }
 }
 
 /// The actions the map hands to the Plans tab's stack.
@@ -233,6 +242,8 @@ struct PlansHostStart: Hashable {
     var game: PlanGameOptionDTO?
     /// A5 "Host again": the earlier plan, a week later.
     var again: PlanDetailDTO?
+    /// Board 29's "Plan the next one with the same people": once posted, the invite sheet opens on this plan's people.
+    var samePeopleFrom: String?
 }
 
 /// The region that shows some points inside a window of the map (a rect in

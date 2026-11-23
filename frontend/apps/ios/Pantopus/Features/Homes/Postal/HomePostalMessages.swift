@@ -121,6 +121,8 @@ enum HomePostalMessages {
         case "POSTCARD_REVIEW_ALREADY_RECORDED": "You're already verified. Residency status shows your access."
         case "POSTCARD_HOME_UNAVAILABLE": "Mail verification is unavailable for this Home right now."
         case "POSTCARD_RESIDENCY_REQUEST_REQUIRED": "Submit your residency request before requesting a postcard."
+        // A card someone reported with "This wasn't me": the server's own words.
+        case "POSTCARD_NO_LONGER_AVAILABLE": "This postcard can no longer be used. Check your current verification status."
         default: availability(code)
         }
     }

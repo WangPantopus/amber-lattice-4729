@@ -755,6 +755,8 @@ public final class PublicProfileViewModel {
             connection = .connected
             profileChanged()
             toastMessage = "Connected"
+            // The guidance card "You're connected" follows in Messages.
+            GuidanceCenter.shared.pend(.doneConnected)
             await reloadAfterConnectionChange()
         } catch let error as APIError {
             let message = friendlyMessage(for: error)
@@ -784,7 +786,7 @@ public final class PublicProfileViewModel {
                 connectState = .idle
                 profileChanged()
                 await reloadAfterConnectionChange()
-                toastMessage = "You're not connected to this neighbor."
+                toastMessage = "You're not connected to this person."
                 return
             }
             _ = try await client.request(
@@ -1593,7 +1595,7 @@ public final class PublicProfileViewModel {
             return "Joined \(max(days, 0)) days ago"
         }
         let year = Calendar.current.component(.year, from: date)
-        return "Neighbor since \(year)"
+        return "On Pantopus since \(year)"
     }
 
     private func firstName(_ name: String) -> String {

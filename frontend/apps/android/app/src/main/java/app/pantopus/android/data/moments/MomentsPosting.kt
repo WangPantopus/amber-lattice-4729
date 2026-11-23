@@ -3,11 +3,15 @@
 package app.pantopus.android.data.moments
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import app.pantopus.android.data.api.models.moments.MomentAuthorDto
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.network.NetworkMonitor
+import app.pantopus.android.ui.sky.SkyWords
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +38,7 @@ import okio.BufferedSink
 import okio.source
 import org.json.JSONObject
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -142,7 +147,20 @@ class MomentsPosting
         /** A text card has nothing to upload: it's live the moment it's posted. */
         fun posted(moment: MomentDto) {
             repository.announceChange()
-            _outcomes.tryEmit(MomentPostingOutcome.Live(moment))
+            if (!waitsToShare(moment)) _outcomes.tryEmit(MomentPostingOutcome.Live(moment))
+        }
+
+        /**
+         * The Sky's "Share later": a Moment waiting for its time is on no map yet, so nothing says it's live; a short note
+         * says when it shares ("Your Moment shares at 6:40 pm."). True for such a Moment.
+         */
+        private fun waitsToShare(moment: MomentDto): Boolean {
+            if (moment.state != "scheduled") return false
+            val at = moment.shareAt?.let { runCatching { Instant.parse(it.replace("+00:00", "Z")) }.getOrNull() }
+            if (at != null) {
+                Handler(Looper.getMainLooper()).post { Toast.makeText(context, SkyWords.scheduledNotice(at), Toast.LENGTH_LONG).show() }
+            }
+            return true
         }
 
         /** "Try again" on a Moment that couldn't post. */
@@ -448,8 +466,9 @@ class MomentsPosting
             val held = moment.state == "held"
             if (!held) update(momentId) { it.copy(stage = MomentPosting.Stage.DONE, progress = 1f) }
             repository.announceChange()
-            _outcomes.tryEmit(if (held) MomentPostingOutcome.Held(moment) else MomentPostingOutcome.Live(moment))
-            if (!held) {
+            val waits = !held && waitsToShare(moment)
+            if (!waits) _outcomes.tryEmit(if (held) MomentPostingOutcome.Held(moment) else MomentPostingOutcome.Live(moment))
+            if (!held && !waits) {
                 // The posting ring stands in until the map's own read brings the Moment's ring, so nothing blinks.
                 withTimeoutOrNull(RING_WAIT_MS) {
                     repository.rings.first { rings -> rings.any { ring -> ring.mine && ring.moments.any { it.id == momentId } } }

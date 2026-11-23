@@ -126,7 +126,8 @@ extension MomentsViewer {
                     place: peek.moment?.placeLabel ?? peek.ring.placeLabel,
                     times: MomentsViewerModel.times(
                         created: peek.moment?.createdAtDate ?? MomentTime.parse(peek.brief.createdAt),
-                        ends: peek.moment?.expiresAtDate ?? peek.brief.expiresAtDate
+                        ends: peek.moment?.expiresAtDate ?? peek.brief.expiresAtDate,
+                        earlier: peek.moment?.sky.earlier == true
                     ),
                     isVideo: peek.brief.kind == .video,
                     muted: model.muted,

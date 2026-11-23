@@ -26,7 +26,7 @@ final class MomentsMapMemo {
     private var current: [MomentRingDTO]?
     private var markers: Markers?
 
-    /// The rings, the clock, what was watched or what was hidden changed: everything is worked out again.
+    /// The rings, the clock, what was watched or hidden, or a filter changed: everything is worked out again.
     func reset() {
         current = nil
         markers = nil
@@ -39,11 +39,21 @@ final class MomentsMapMemo {
         return value
     }
 
-    /// Every ring read, with what was watched or hidden since, and only Moments still running.
-    static func running(_ rings: [MomentRingDTO], now: Date, watched: Set<String>, hidden: [String: Date]) -> [MomentRingDTO] {
+    /// Every ring read, with what was watched or hidden since, and only Moments still running and posted since `since`
+    /// (the time filter; nil for all of them). `liveOnly` ("Live now"): only rings live now. A ring's live time is
+    /// cleared once it passes, so its pin loses the dot on the map's clock, as "Live now" lets it go.
+    static func running(
+        _ rings: [MomentRingDTO],
+        now: Date,
+        watched: Set<String>,
+        hidden: [String: Date],
+        since: Date? = nil,
+        liveOnly: Bool = false
+    ) -> [MomentRingDTO] {
         rings.compactMap { ring in
-            guard hidden[ring.author.id] == nil else { return nil }
-            var ring = ring
+            guard hidden[ring.author.id] == nil, var ring = ring.posted(since: since) else { return nil }
+            if !ring.isLive(at: now) { ring.liveUntil = nil }
+            guard !liveOnly || ring.liveUntil != nil else { return nil }
             ring.moments = ring.moments.compactMap { moment in
                 if let end = moment.expiresAtDate, end <= now { return nil }
                 var moment = moment

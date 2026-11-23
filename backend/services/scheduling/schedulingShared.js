@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const { hasPermission } = require('../../utils/homePermissions');
 const logger = require('../../utils/logger');
+const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
 
 const OWNER_TYPES = ['user', 'home', 'business'];
 
@@ -125,7 +126,21 @@ async function isEmailSuppressed(email, ownerType, ownerId) {
   return !!data;
 }
 
+/**
+ * Public scheduling is switched off for the first launch (`public_scheduling`, docs/launch-scope-flags-2026-10-01.md).
+ * While it is off nobody can be booked: the routes that take a booking, change a booking page or send a booking note
+ * answer 403, and no booking email goes to someone who isn't a member. What the launch scope keeps (invoices,
+ * packages, payouts and the public read a package page loads) is untouched.
+ */
+const schedulingOn = () => isLaunchFeatureEnabled('public_scheduling');
+function requireSchedulingOn(req, res, next) {
+  if (schedulingOn()) return next();
+  return res.status(403).json({ error: 'SCHEDULING_UNAVAILABLE', message: "Scheduling isn't available yet." });
+}
+
 module.exports = {
+  schedulingOn,
+  requireSchedulingOn,
   OWNER_TYPES,
   ownerColumns,
   resolveOwner,

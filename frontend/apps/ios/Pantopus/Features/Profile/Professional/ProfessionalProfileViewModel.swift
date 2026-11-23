@@ -651,7 +651,7 @@ public final class ProfessionalProfileViewModel {
             ProVisibilityRow(
                 id: "publicProfile",
                 label: "Public profile",
-                sub: "Neighbors can open your professional profile from search and gigs.",
+                sub: "People can open your professional profile from search and gigs.",
                 isOn: isPublic
             ),
             ProVisibilityRow(

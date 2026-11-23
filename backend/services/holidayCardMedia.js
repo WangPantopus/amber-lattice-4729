@@ -5,8 +5,14 @@
  * Stored the chat-files way (founder, November 2): one private `File` row per item (file_context holiday_card_media)
  * and one private S3 object under a key that names no one (holiday-card-media/<time>_<random>.<ext>). The bytes come
  * only through API routes that check the reader on every request, answered private and no-store; a file id never grants
- * anything by itself. A photo is stored once, as the server made it: upright, at most 1600 px on its long side, a JPEG
- * with every piece of metadata removed. The original is never stored.
+ * anything by itself. A photo is stored once, as the server made it: upright, at most 2400 px on its long side, a JPEG
+ * with every piece of metadata removed. The original is never stored. (1600 px until November 16, when the founder chose
+ * the larger copy so an opened photo stays sharp when it's enlarged; photos stored before then keep their size.)
+ *
+ * A Live Photo (founder, November 16) is that photo plus its few seconds of video, a third kind of item (`live`): an MP4
+ * or QuickTime clip of at most 10 seconds and 15 MiB, stored as it came with its location, camera and title tags blanked
+ * (services/videoMetadata, the cleaner posts and chats use; nothing is re-encoded). It goes on a card only beside its
+ * photo, is read by the same routes and the same readers, and is covered whenever the photo is.
  *
  * Which card an item belongs to is server-written in two places: the card's private stored copy (MailObject
  * body.payload.media, beside the note and the signature, so a sealed card shows nothing of it) and the File row's
@@ -20,6 +26,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const { S3_BUCKET, CARD_MEDIA_BUCKET, S3_STORAGE_NAMESPACE } = require('../config/aws');
 const s3 = require('./s3Service');
 const { removePhotoMetadata } = require('./photoMetadata');
+const { UnreadableVideoError, removeVideoMetadata } = require('./videoMetadata');
 const { areLaunchFeaturesEnabled } = require('../utils/featureFlags');
 const logger = require('../utils/logger');
 
@@ -27,8 +34,9 @@ const CONTEXT = 'holiday_card_media';
 const STORAGE_CONTRACT = 'holiday_card_media_v1';
 const PREFIX = 'holiday-card-media/';
 const MiB = 1024 * 1024;
-const PHOTO = { max_bytes: 10 * MiB, long_side: 1600 };
+const PHOTO = { max_bytes: 10 * MiB, long_side: 2400 };
 const VOICE = { max_bytes: 5 * MiB, max_seconds: 60 };
+const LIVE = { max_bytes: 15 * MiB, max_seconds: 10 };
 const ALT_LIMIT = 200;
 // A reference can be sent for 72 hours, only by its uploader; cleanup removes what no card took after seven days.
 const DRAFT_MS = 72 * 60 * 60 * 1000;
@@ -52,7 +60,9 @@ const voiceOn = () => VOICE_SHIPPED && memoriesOn();
 /** What GET /api/mailbox/cards says the controls can do now (contract section 4). */
 function controls() {
   return {
-    photo: { usable: memoriesOn(), max_bytes: PHOTO.max_bytes, long_side: PHOTO.long_side },
+    photo: { usable: memoriesOn(), max_bytes: PHOTO.max_bytes, long_side: PHOTO.long_side,
+      // A Live Photo's moving part can ride beside the photo (kind `live`); apps that don't know it send the still.
+      live: { usable: memoriesOn(), max_bytes: LIVE.max_bytes, max_seconds: LIVE.max_seconds } },
     voice: { usable: voiceOn(), max_seconds: VOICE.max_seconds, max_bytes: VOICE.max_bytes },
   };
 }
@@ -84,7 +94,7 @@ function oneAtATime(work) {
 
 /**
  * The photo as a card keeps it, from what the bytes are (never what the upload says they are): { buffer, width, height },
- * a JPEG turned upright by its orientation, at most 1600 px on its long side, in sRGB and with no metadata. An iPhone's
+ * a JPEG turned upright by its orientation, at most 2400 px on its long side, in sRGB and with no metadata. An iPhone's
  * HEIC is decoded on the server (photoMetadata, #3166). Throws the contract's refusals: unreadable, not a still (video
  * or animated), too large.
  */
@@ -123,6 +133,78 @@ async function cardPhoto(buffer, declared) {
   });
 }
 
+// ---- A Live Photo's moving part ----
+
+const LIVE_STILL = 'Your card can still go with the photo as a still.';
+const liveUnreadable = () => refusal(415, 'CARD_LIVE_UNREADABLE', `We couldn’t read this Live Photo’s moving part. ${LIVE_STILL}`);
+const liveTooLong = () => refusal(413, 'CARD_LIVE_TOO_LONG',
+  `Only a Live Photo’s few seconds can go on a card, not a longer video. ${LIVE_STILL}`);
+const liveTooLarge = () => refusal(413, 'CARD_LIVE_TOO_LARGE', `This Live Photo’s moving part is too large. ${LIVE_STILL}`);
+
+/** One box of an MP4 or QuickTime file at `at`: { type, start (of its content), end }, or null when it doesn't fit. */
+function movieBox(buffer, at, limit) {
+  if (at + 8 > limit) return null;
+  let size = buffer.readUInt32BE(at);
+  let header = 8;
+  if (size === 1) {
+    if (at + 16 > limit) return null;
+    const large = buffer.readBigUInt64BE(at + 8);
+    if (large > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    size = Number(large);
+    header = 16;
+  } else if (size === 0) size = limit - at;
+  if (size < header || at + size > limit) return null;
+  return { type: buffer.toString('latin1', at + 4, at + 8), start: at + header, end: at + size };
+}
+
+/** How long a movie says it is, in milliseconds, from its movie header (moov > mvhd); 0 when it can't be read. */
+function movieDurationMs(buffer) {
+  const find = (type, from, to) => {
+    for (let at = from, guard = 0; at < to && guard < 10000; guard += 1) {
+      const box = movieBox(buffer, at, to);
+      if (!box) return null;
+      if (box.type === type) return box;
+      at = box.end;
+    }
+    return null;
+  };
+  const moov = find('moov', 0, buffer.length);
+  const mvhd = moov && find('mvhd', moov.start, moov.end);
+  if (!mvhd || mvhd.end - mvhd.start < 20) return 0;
+  const version = buffer.readUInt8(mvhd.start);
+  if (version === 1) {
+    if (mvhd.end - mvhd.start < 32) return 0;
+    const scale = buffer.readUInt32BE(mvhd.start + 20);
+    const length = buffer.readBigUInt64BE(mvhd.start + 24);
+    return scale > 0 && length < BigInt(Number.MAX_SAFE_INTEGER) ? Math.round((Number(length) / scale) * 1000) : 0;
+  }
+  const scale = buffer.readUInt32BE(mvhd.start + 12);
+  return scale > 0 ? Math.round((buffer.readUInt32BE(mvhd.start + 16) / scale) * 1000) : 0;
+}
+
+/**
+ * A Live Photo's moving part as a card keeps it, from what the bytes are: the same MP4 or QuickTime clip with its
+ * location, camera and title tags blanked in place, never re-encoded. { buffer, durationMs, mimeType, ext }, or throws
+ * the refusals: unreadable (not such a clip, or one that can't be cleaned), too long (a video, not a Live Photo's few
+ * seconds).
+ */
+async function cardLive(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 16 || buffer.toString('latin1', 4, 8) !== 'ftyp') throw liveUnreadable();
+  const brand = buffer.toString('latin1', 8, 12);
+  if (STILL_BRANDS.has(brand.trim())) throw liveUnreadable();
+  try {
+    await removeVideoMetadata(buffer);
+  } catch (error) {
+    if (error instanceof UnreadableVideoError) throw liveUnreadable();
+    throw error;
+  }
+  const durationMs = movieDurationMs(buffer);
+  if (!durationMs) throw liveUnreadable();
+  if (durationMs > LIVE.max_seconds * 1000) throw liveTooLong();
+  const quicktime = brand.startsWith('qt');
+  return { buffer, durationMs, mimeType: quicktime ? 'video/quicktime' : 'video/mp4', ext: quicktime ? 'mov' : 'mp4' };
+}
+
 // ---- Storing an upload ----
 
 const sha256 = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex');
@@ -131,7 +213,7 @@ const sha256 = (buffer) => crypto.createHash('sha256').update(buffer).digest('he
 function mediaRef(file, alt = null) {
   const meta = file?.metadata || {};
   const base = { file_id: file.id, kind: meta.kind, mime_type: file.mime_type, size: Number(file.file_size) };
-  if (meta.kind === 'voice') return { ...base, duration_ms: Number(meta.duration_ms) || 0 };
+  if (meta.kind === 'voice' || meta.kind === 'live') return { ...base, duration_ms: Number(meta.duration_ms) || 0 };
   return { ...base, width: Number(meta.width) || null, height: Number(meta.height) || null, alt: alt || null };
 }
 
@@ -142,9 +224,9 @@ const expiresAt = (file) => new Date(Date.parse(file.created_at) + DRAFT_MS).toI
  * Stores one prepared item privately for its uploader: the S3 object, then its File row. { file } or throws
  * CARD_MEDIA_UNAVAILABLE (503; nothing kept).
  */
-async function storeUpload({ userId, kind, buffer, mimeType, facts }) {
+async function storeUpload({ userId, kind, buffer, mimeType, facts, ext: clipExt = null }) {
   const id = crypto.randomUUID();
-  const ext = kind === 'voice' ? 'm4a' : 'jpg';
+  const ext = { voice: 'm4a', live: clipExt === 'mov' ? 'mov' : 'mp4' }[kind] || 'jpg';
   const key = `${PREFIX}${Date.now()}_${crypto.randomBytes(16).toString('hex')}.${ext}`;
   const digest = sha256(buffer);
   try {
@@ -159,7 +241,7 @@ async function storeUpload({ userId, kind, buffer, mimeType, facts }) {
     user_id: userId,
     filename: key.slice(PREFIX.length),
     // Never the name it had on the phone.
-    original_filename: kind === 'voice' ? 'card-voice.m4a' : 'card-photo.jpg',
+    original_filename: { voice: 'card-voice.m4a', live: `card-live.${ext}` }[kind] || 'card-photo.jpg',
     file_path: key,
     file_url: `/api/mailbox/cards/media/${id}`,
     file_size: buffer.length,
@@ -192,20 +274,29 @@ const cleanAlt = (raw) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').tr
  * What a card's digest counts of its photo and voice, from the send itself (before any check): the ids and the photo's
  * description. Null for a card without them, so its digest is what it always was.
  */
-function digestMedia({ photo = null, photo_alt: alt = null, voice = null } = {}) {
-  if (!photo && !voice) return null;
-  return { photo: photo ? [String(photo).toLowerCase(), cleanAlt(alt) || null] : null, voice: voice ? String(voice).toLowerCase() : null };
+function digestMedia({ photo = null, photo_alt: alt = null, voice = null, photo_live: live = null } = {}) {
+  if (!photo && !voice && !live) return null;
+  return { photo: photo ? [String(photo).toLowerCase(), cleanAlt(alt) || null] : null, voice: voice ? String(voice).toLowerCase() : null,
+    // Only on a card that has one, so every other card's digest is what it always was.
+    ...(live ? { live: String(live).toLowerCase() } : {}) };
 }
 
-const mediaExpired = (what) => refusal(410, 'CARD_MEDIA_EXPIRED', `Add the ${what} again: this one can’t be sent any more.`);
+// What each kind is called to the sender.
+const KIND_WORDS = { photo: 'photo', voice: 'voice greeting', live: 'Live Photo' };
+const mediaExpired = (kind) => refusal(410, 'CARD_MEDIA_EXPIRED',
+  `Add the ${KIND_WORDS[kind] || 'photo'} again: this one can’t be sent any more.`);
 
 /**
  * The references a send gives ({ photo, photo_alt, voice }), checked for this sender and this card (`rowId`, the card's
  * id from its request): their own uploads, of the right kind, within their 72 hours, not on another card, and within the
  * limits again. Answers { media: { photo, voice } | null, files } or throws a refusal ({ status, code }).
  */
-async function checkRefs(senderId, { photo = null, photo_alt: rawAlt = null, voice = null } = {}, { rowId, now = new Date() }) {
-  if (!photo && !voice) return { media: null, files: [] };
+async function checkRefs(
+  senderId,
+  { photo = null, photo_alt: rawAlt = null, voice = null, photo_live: live = null } = {},
+  { rowId, now = new Date() },
+) {
+  if (!photo && !voice && !live) return { media: null, files: [] };
   if (!memoriesOn()) {
     throw refusal(403, 'CARD_MEDIA_OFF', 'Photos on cards aren’t open yet. Remove it to send your card.');
   }
@@ -216,7 +307,10 @@ async function checkRefs(senderId, { photo = null, photo_alt: rawAlt = null, voi
   if ([...alt].length > ALT_LIMIT) {
     throw refusal(400, 'CARD_PHOTO_ALT_TOO_LONG', `Keep the photo’s description to ${ALT_LIMIT} letters.`);
   }
-  const wanted = [photo && { id: String(photo), kind: 'photo' }, voice && { id: String(voice), kind: 'voice' }].filter(Boolean);
+  // A Live Photo's moving part goes only beside its photo.
+  if (live && !photo) throw refusal(400, 'CARD_LIVE_NEEDS_PHOTO', 'Add the photo again: its moving part can’t go without it.');
+  const wanted = [photo && { id: String(photo), kind: 'photo' }, voice && { id: String(voice), kind: 'voice' },
+    live && { id: String(live), kind: 'live' }].filter(Boolean);
   if (wanted.some((item) => !UUID.test(item.id))) throw mediaExpired(wanted.find((i) => !UUID.test(i.id)).kind);
   const { data, error } = await supabaseAdmin.from('File').select(FILE_SELECT).in('id', wanted.map((item) => item.id));
   if (error) throw new Error(error.message);
@@ -226,16 +320,17 @@ async function checkRefs(senderId, { photo = null, photo_alt: rawAlt = null, voi
     const file = byId.get(item.id.toLowerCase());
     if (!file || file.is_deleted || file.file_context !== CONTEXT || file.metadata?.kind !== item.kind) throw mediaExpired(item.kind);
     if (String(file.user_id) !== String(senderId)) {
-      throw refusal(403, 'CARD_MEDIA_NOT_YOURS', `This ${item.kind} was added by someone else. Add your own.`);
+      throw refusal(403, 'CARD_MEDIA_NOT_YOURS', `This ${KIND_WORDS[item.kind]} was added by someone else. Add your own.`);
     }
     const boundTo = file.metadata?.mail_id || null;
     if (boundTo && boundTo !== rowId) throw mediaExpired(item.kind);
     if (!boundTo && Date.parse(file.created_at) + DRAFT_MS <= now.getTime()) throw mediaExpired(item.kind);
     // Checked again at send: what is stored is within the limits.
     const meta = file.metadata || {};
+    const within = (limit) => Number(file.file_size) <= limit.max_bytes && Number(meta.duration_ms) <= limit.max_seconds * 1000;
     const fits = item.kind === 'photo'
       ? Number(file.file_size) <= PHOTO.max_bytes && Math.max(Number(meta.width), Number(meta.height)) <= PHOTO.long_side
-      : Number(file.file_size) <= VOICE.max_bytes && Number(meta.duration_ms) <= VOICE.max_seconds * 1000;
+      : within(item.kind === 'live' ? LIVE : VOICE);
     if (!fits) throw mediaExpired(item.kind);
     files.push(file);
   }
@@ -244,6 +339,8 @@ async function checkRefs(senderId, { photo = null, photo_alt: rawAlt = null, voi
     media: {
       photo: fileOf('photo') ? mediaRef(fileOf('photo'), alt || null) : null,
       voice: fileOf('voice') ? mediaRef(fileOf('voice')) : null,
+      // Only on a card that has one: every other card's stored copy is what it always was.
+      ...(fileOf('live') ? { live: mediaRef(fileOf('live')) } : {}),
     },
     files,
   };
@@ -349,11 +446,12 @@ function byteRange(header, size) {
 
 const notFound = (res) => res.status(404).json({ error: 'This isn’t here any more.', code: 'CARD_MEDIA_NOT_FOUND' });
 
-/** Answers a file's bytes from storage: private, no-store, a byte range for a voice. */
+/** Answers a file's bytes from storage: private, no-store, a byte range for a voice or a Live Photo's moving part. */
 async function send(req, res, file) {
   res.set('Cache-Control', 'private, no-store');
   const size = Number(file.file_size);
-  const range = file.metadata?.kind === 'voice' ? byteRange(req.headers.range, size) : null;
+  const ranged = file.metadata?.kind === 'voice' || file.metadata?.kind === 'live';
+  const range = ranged ? byteRange(req.headers.range, size) : null;
   if (range?.unsatisfiable) return res.status(416).set('Content-Range', `bytes */${size}`).end();
   let object;
   try {
@@ -363,7 +461,7 @@ async function send(req, res, file) {
     throw error;
   }
   res.set({ 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff',
-    ...(file.metadata?.kind === 'voice' ? { 'Accept-Ranges': 'bytes' } : {}) });
+    ...(ranged ? { 'Accept-Ranges': 'bytes' } : {}) });
   res.type(file.mime_type);
   if (object.contentRange) res.status(206).set('Content-Range', object.contentRange);
   if (Number.isSafeInteger(object.contentLength)) res.set('Content-Length', String(object.contentLength));
@@ -482,8 +580,8 @@ async function cleanup(now = new Date()) {
 }
 
 module.exports = {
-  CONTEXT, STORAGE_CONTRACT, PREFIX, PHOTO, VOICE, ALT_LIMIT, DRAFT_MS,
-  memoriesOn, voiceOn, controls, cardPhoto, looksLikeVideo, storeUpload, mediaRef, expiresAt,
+  CONTEXT, STORAGE_CONTRACT, PREFIX, PHOTO, VOICE, LIVE, ALT_LIMIT, DRAFT_MS,
+  memoriesOn, voiceOn, controls, cardPhoto, cardLive, movieDurationMs, liveTooLarge, looksLikeVideo, storeUpload, mediaRef, expiresAt,
   checkRefs, cleanAlt, digestMedia, bind, unbind, boundFile, ownFile, photoCovered, blockedBeforeDelivery, send,
   removeFiles, removeForMail, removeWithdrawnBetween, cleanup, notFound, photoTooLarge,
 };

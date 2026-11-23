@@ -41,7 +41,12 @@ struct PlanFooter: View {
     }
 
     private func content(_ card: PlanCardDTO) -> AnyView? {
-        switch viewModel.mode {
+        // A buyer's link with spots left (one person pays for the group): its free "I'm in", never the paid "Join".
+        if let spot = viewModel.spot, viewModel.mode != .hosting {
+            if let offer = spot.offer { return AnyView(PlanSpotClaimButton(viewModel: viewModel, offer: offer)) }
+            return AnyView(PlanSpotRetry(viewModel: viewModel, token: spot.token)) // couldn't check: no paid "Join"
+        }
+        return switch viewModel.mode {
         case .browsing:
             AnyView(browsing(card))
         case .requested:
@@ -69,11 +74,28 @@ struct PlanFooter: View {
                     .accessibilityIdentifier("planCantMakeIt")
             })
         case .going:
-            AnyView(
-                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
+            AnyView(VStack(spacing: Spacing.s2) {
+                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card), money: card.paid?.leaveText)) }
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
-            )
+                // D2 item 5: leaving gives up a deal that's ready.
+                if card.myDeal?.state == .ready { caption("Leaving gives up your deal") }
+            })
+        case .hosting where card.answerCounts != nil && viewModel.remindable > 0 && card.state == .upcoming:
+            // Board 4: one reminder each, the way they were invited.
+            AnyView(VStack(spacing: Spacing.s2) {
+                Button { Task { _ = await viewModel.remindEveryone() } } label: {
+                    PlanButtonLabel(
+                        title: "Remind the \(viewModel.remindable) who \(viewModel.remindable == 1 ? "hasn't" : "haven't") answered",
+                        kind: .primary,
+                        isLoading: viewModel.isWorking
+                    )
+                }
+                .planButton(.primary)
+                .disabled(viewModel.isWorking)
+                .accessibilityIdentifier("planRemind")
+                caption("One reminder each, by the way they were invited")
+            })
         case .hosting where card.isOnline && card.state != .cancelled && card.state != .ended:
             AnyView(VStack(spacing: Spacing.s2) { PlanOnlineJoin(place: viewModel.plan?.place) })
         case .hosting, .closed, .notThisTime:
@@ -87,7 +109,10 @@ struct PlanFooter: View {
     @ViewBuilder
     private func browsing(_ card: PlanCardDTO) -> some View {
         let viewer = card.viewer
-        if let invite = viewModel.openInvite, viewer?.canAsk == true || viewer?.cannotAskReason == .fullUseWaitlist {
+        if card.extrasPart.dates != nil, viewer?.isHost != true {
+            // Find a date (board 24): while the host picks, ticking is the answer; "I'm in" waits for the pick.
+            PlanDatesSaveBar(viewModel: viewModel, card: card)
+        } else if let invite = viewModel.openInvite, viewer?.canAsk == true || viewer?.cannotAskReason == .fullUseWaitlist {
             invited(card, invite)
         } else if viewer?.canAsk ?? true {
             Button { onAsk(false) } label: {
@@ -164,6 +189,8 @@ struct PlanFooter: View {
     /// playdate says "Maya approves each family" (J2); other plans already say
     /// how people get in above the footer.
     private func askCaption(_ card: PlanCardDTO) -> String? {
+        // Plans for the holidays B1 (D1 item 5): the deal's line under the join button, in the server's words.
+        if card.isBusiness, let line = card.price?.joinText ?? card.deal?.joinText { return line }
         // A business's plan (board G3): in right away, or the business approves each person.
         if card.isBusiness {
             return Self.joinsRightAway(card)
@@ -226,6 +253,8 @@ enum PlanInviteCopy {
         let host = PlanCardLines.hostName(card)
         if invite.status == .declined { return "You said you can't make it. If that changes, tap I'm in." }
         if card.isFull { return PlanCannotAskCopy.waitlist }
+        // The plan's one link for everyone with "I say yes first" (contract 6.9, A10 item 5).
+        if invite.needsHostOk, invite.cameByOpenLink { return "\(host) says yes to each person who uses this link" }
         if invite.needsHostOk { return "This invitation went to another address, so \(host) says yes first." }
         return "\(host) invited you, so you're in as soon as you say so."
     }
@@ -247,7 +276,7 @@ enum PlanConfirmation: Identifiable, Equatable {
     case withdraw(host: String)
     case leaveWaitlist
     /// `online`: an online plan, whose guests lose its link (Plans step 3).
-    case cantMakeIt(host: String, online: Bool = false)
+    case cantMakeIt(host: String, online: Bool = false, money: String? = nil)
     /// "Can't make it" to the host's "Still coming?" (H11): answers it and leaves.
     case notComing(host: String, online: Bool = false)
     case blockHost(name: String)
@@ -255,6 +284,8 @@ enum PlanConfirmation: Identifiable, Equatable {
     /// A repeating plan's date skipped (Plans step 2): "Skip Thursday's walk?", and the button's "Skip Thursday".
     case skipDate(title: String, message: String, label: String)
     case stopRepeating
+    /// Plans for the holidays B1: staff mark a guest's free thing used ("Mark Dana's free appetizer used?").
+    case markDealUsed(name: String, item: String, requestId: String)
 
     var id: String {
         switch self {
@@ -266,6 +297,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case let .removeGuest(_, requestId, _, _): "remove.\(requestId)"
         case .skipDate: "skipDate"
         case .stopRepeating: "stopRepeating"
+        case let .markDealUsed(_, _, requestId): "dealUsed.\(requestId)"
         }
     }
 
@@ -278,6 +310,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case let .removeGuest(name, _, _, _): "Remove \(PlanCardLines.firstName(name))?"
         case let .skipDate(title, _, _): title
         case .stopRepeating: "Stop repeating?"
+        case let .markDealUsed(name, item, _): "Mark \(PlanCardLines.firstName(name))'s \(item) used?"
         }
     }
 
@@ -287,7 +320,10 @@ enum PlanConfirmation: Identifiable, Equatable {
             "\(host) won't see it anymore."
         case .leaveWaitlist:
             "You'll lose your place in line."
-        case let .cantMakeIt(host, online), let .notComing(host, online):
+        case let .cantMakeIt(_, _, money?):
+            // B2: a paid spot says what leaving now gives back, in the server's words.
+            money
+        case let .cantMakeIt(host, online, _), let .notComing(host, online):
             "We'll tell \(host), and your spot goes to the next person waiting. "
                 + "You'll lose \(online ? "the link" : "the exact place"), the note and the chat."
         case .blockHost:
@@ -301,6 +337,8 @@ enum PlanConfirmation: Identifiable, Equatable {
             message
         case .stopRepeating:
             PlanRepeatCopy.stopMessage
+        case .markDealUsed:
+            "This can't be undone."
         }
     }
 
@@ -313,6 +351,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .removeGuest: "Remove"
         case let .skipDate(_, _, label): label
         case .stopRepeating: "Stop repeating"
+        case .markDealUsed: "Mark used"
         }
     }
 
@@ -323,7 +362,7 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.withdraw() ? "Request withdrawn" : nil
         case .leaveWaitlist:
             await viewModel.withdraw() ? "You left the waitlist" : nil
-        case let .cantMakeIt(host, _):
+        case let .cantMakeIt(host, _, _):
             await viewModel.withdraw() ? "We told \(host)" : nil
         case let .notComing(host, _):
             await viewModel.stillComing(false) ? "We told \(host)" : nil
@@ -335,6 +374,8 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.skipDate()
         case .stopRepeating:
             await viewModel.stopRepeating() ? "It won't repeat. This date stays." : nil
+        case let .markDealUsed(_, _, requestId):
+            await viewModel.markDealUsed(requestId: requestId) ? "Marked used" : nil
         }
     }
 }

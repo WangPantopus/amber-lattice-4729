@@ -19,7 +19,7 @@ const express = require('express');
 const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerifiedResident, mailLevelRefusal } = require('../utils/homePermissions');
 const homeRecordWatchService = require('../services/homeRecordWatchService');
 const logger = require('../utils/logger');
 
@@ -33,10 +33,10 @@ router.put('/:id/record-watch', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'You do not have access to this place.', ...(access.verificationRequired && { code: 'VERIFICATION_REQUIRED' }) });
     }
     if (!isVerifiedResident(access)) {
-      return res.status(403).json({
+      return res.status(403).json(await mailLevelRefusal(access, {
         error: 'Verify your address to set a record watch.',
         code: 'VERIFICATION_REQUIRED',
-      });
+      }));
     }
 
     const watch = await homeRecordWatchService.setWatch({

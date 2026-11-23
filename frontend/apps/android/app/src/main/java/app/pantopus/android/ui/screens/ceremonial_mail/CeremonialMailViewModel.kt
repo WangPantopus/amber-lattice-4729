@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.ceremonial_mail
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.mail_compose.MailHomeContextResponse
@@ -9,6 +10,7 @@ import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.mail_compose.SendMailBody
 import app.pantopus.android.data.api.models.mail_compose.SendMailObject
 import app.pantopus.android.data.api.models.mail_compose.SendMailPayload
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.mail_compose.MailComposeRepository
 import app.pantopus.android.data.mailbox.HolidayCardsRepository
@@ -30,6 +32,7 @@ class CeremonialMailViewModel
     @Inject
     constructor(
         private val repository: MailComposeRepository,
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
     ) : ViewModel(), WizardModel {
         private val _form = MutableStateFlow(CeremonialMailFormState())
         val form: StateFlow<CeremonialMailFormState> = _form.asStateFlow()
@@ -59,6 +62,39 @@ class CeremonialMailViewModel
         val pendingEvent: StateFlow<CeremonialMailEvent?> = _pendingEvent.asStateFlow()
 
         private var searchJob: Job? = null
+
+        /** The person a letter's Reply chose (its sender), until the writer picks someone else. */
+        private val replyTo: MailRecipientDto? =
+            savedStateHandle.get<String>(LETTER_TO_USER_KEY)?.takeIf { it.isNotBlank() }?.let { userId ->
+                val name = savedStateHandle.get<String>(LETTER_TO_NAME_KEY)?.takeIf { it.isNotBlank() }
+                MailRecipientDto(userId = userId, name = name)
+            }
+
+        init {
+            replyTo?.let { to ->
+                selectRecipient(to)
+                completeReplyTo(to)
+            }
+        }
+
+        /**
+         * The chosen sender as the recipient search knows them (their Home and town when they're a connection), so a
+         * Reply reads and sends as picking them by hand would. Not found: they stay chosen by their name alone.
+         */
+        private fun completeReplyTo(to: MailRecipientDto) {
+            val name = to.name?.trim().orEmpty()
+            if (name.length < 2) return
+            viewModelScope.launch {
+                val found =
+                    (repository.recipients(name) as? NetworkResult.Success)
+                        ?.data
+                        ?.recipients
+                        ?.firstOrNull { it.userId == to.userId }
+                        ?: return@launch
+                // Only while the writer hasn't chosen someone else meanwhile.
+                if (_selectedRecipient.value == to) selectRecipient(found)
+            }
+        }
 
         // MARK: - Step 1: decide
 
@@ -202,7 +238,10 @@ class CeremonialMailViewModel
                     }
                     is NetworkResult.Failure -> {
                         _isSubmitting.value = false
-                        _submitError.value = "Couldn't send your letter. Try again."
+                        // A refusal says why in the server's words ("You can't send mail to this person."):
+                        // trying again won't help.
+                        _submitError.value = (result.error as? NetworkError.Forbidden)?.reason
+                            ?: "Couldn't send your letter. Try again."
                     }
                 }
             }
@@ -315,7 +354,11 @@ class CeremonialMailViewModel
 
         private fun dirtyFor(form: CeremonialMailFormState): Boolean =
             when (form.step) {
-                CeremonialMailStep.Decide -> _selectedRecipient.value != null || form.recipientQuery.isNotEmpty()
+                // The sender a Reply chose isn't the writer's own change; words already written (back from step 3) are.
+                CeremonialMailStep.Decide ->
+                    _selectedRecipient.value?.userId.let { it != null && it != replyTo?.userId } ||
+                        (form.recipientQuery.isNotEmpty() && form.recipientQuery != displayName(replyTo)) ||
+                        form.bodyText.isNotBlank()
                 CeremonialMailStep.Verify, CeremonialMailStep.Compose, CeremonialMailStep.Commit -> true
                 CeremonialMailStep.Success -> false
             }
@@ -341,5 +384,11 @@ class CeremonialMailViewModel
             } finally {
                 _isSearching.value = false
             }
+        }
+
+        companion object {
+            /** The nav arguments naming the person a letter's Reply writes to: their user id and their name. */
+            const val LETTER_TO_USER_KEY = "toUser"
+            const val LETTER_TO_NAME_KEY = "toName"
         }
     }

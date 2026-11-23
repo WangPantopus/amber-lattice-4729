@@ -21,6 +21,7 @@ const requireAuthority = require('../middleware/requireAuthority');
 const logger = require('../utils/logger');
 const { writeAuditLog } = require('../utils/homePermissions');
 const { ownershipClaimLimiter } = require('../middleware/rateLimiter');
+const homeSecurityPolicy = require('../utils/homeSecurityPolicy');
 const landlordAuthorityService = require('../services/addressValidation/landlordAuthorityService');
 const { assertCallerOwnsLease, resolveVerifiedAuthorityForActor } = require('../utils/authorityResolution');
 const { requireExpectedSessionScope } = require('../utils/requestSessionScope');
@@ -138,8 +139,23 @@ router.post(
         }
       }
 
+      // The rules of an ordinary owner claim (POST /api/homes/:id/ownership-claims) apply here too. A refusal says
+      // nothing about the home, as that route's doesn't.
+      let eligibility;
+      try {
+        eligibility = await homeSecurityPolicy.canSubmitOwnerClaim(home_id, userId);
+      } catch (error) {
+        return res.status(503).json({ error: 'Could not check this request right now. Please try again.' });
+      }
+      if (!eligibility.allowed) {
+        if (eligibility.errors?.[0] === 'Home not found') return res.status(400).json({ error: 'Home not found' });
+        return res.status(403).json({ error: "This request can't be made for this home right now.", code: 'AUTHORITY_REQUEST_UNAVAILABLE' });
+      }
+
+      // The request names the kind of proof. The document itself is uploaded to the claim it opens
+      // (POST /api/upload/ownership-evidence/:homeId/:claimId); a file reference or details in the body are not used.
       const result = await landlordAuthorityService.requestAuthority(
-        subject_type, subject_id, home_id, evidence_type, evidence || undefined,
+        subject_type, subject_id, home_id, evidence_type, Boolean(evidence),
       );
 
       if (!result.success) {
@@ -199,7 +215,9 @@ router.get(
         businessAuths = data || [];
       }
 
-      const properties = [...(userAuths || []), ...businessAuths];
+      // A home's own name is shown once the authority is verified; a request still waiting lists the home without it.
+      const properties = [...(userAuths || []), ...businessAuths]
+        .map((row) => (row.status === 'verified' || !row.home ? row : { ...row, home: { ...row.home, name: null } }));
 
       res.json({ properties });
     } catch (err) {

@@ -23,18 +23,18 @@ export interface IntentDef {
 }
 
 export const INTENTS: IntentDef[] = [
-  { key: 'ask_local', label: 'Ask', icon: <MessageCircle className="w-4 h-4" />, placeholder: 'What do you want to ask your neighbors?', color: '#0369A1', textColor: '#0369A1', darkTextColor: '#38BDF8', bgLight: '#EFF6FF', cta: 'Post Question' },
+  { key: 'ask_local', label: 'Ask', icon: <MessageCircle className="w-4 h-4" />, placeholder: 'What do you want to ask people near you?', color: '#0369A1', textColor: '#0369A1', darkTextColor: '#38BDF8', bgLight: '#EFF6FF', cta: 'Post Question' },
   { key: 'recommendation', label: 'Recommend', icon: <Star className="w-4 h-4" />, placeholder: 'What place, service, or thing are you recommending?', color: '#B45309', textColor: '#B45309', darkTextColor: '#FBBF24', bgLight: '#FFFBEB', cta: 'Share Recommendation' },
-  { key: 'event', label: 'Event', icon: <Calendar className="w-4 h-4" />, placeholder: 'Tell neighbors about the event — what, when, where…', color: '#7C3AED', textColor: '#7C3AED', darkTextColor: '#A78BFA', bgLight: '#F5F3FF', cta: 'Post Event' },
+  { key: 'event', label: 'Event', icon: <Calendar className="w-4 h-4" />, placeholder: 'Tell people near you about the event — what, when, where…', color: '#7C3AED', textColor: '#7C3AED', darkTextColor: '#A78BFA', bgLight: '#F5F3FF', cta: 'Post Event' },
   { key: 'lost_found', label: 'Lost & Found', icon: <Search className="w-4 h-4" />, placeholder: 'Describe what was lost or found and where…', color: '#A16207', textColor: '#A16207', darkTextColor: '#FBBF24', bgLight: '#FEFCE8', cta: 'Post Alert' },
-  { key: 'alert', label: 'Safety Alert', icon: <Siren className="w-4 h-4" />, placeholder: 'What should neighbors know?', color: '#DC2626', textColor: '#B91C1C', darkTextColor: '#F87171', bgLight: '#FEF2F2', cta: 'Post Alert' },
+  { key: 'alert', label: 'Safety Alert', icon: <Siren className="w-4 h-4" />, placeholder: 'What should people near you know?', color: '#DC2626', textColor: '#B91C1C', darkTextColor: '#F87171', bgLight: '#FEF2F2', cta: 'Post Alert' },
   { key: 'deal', label: 'Deal/Promo', icon: <Tag className="w-4 h-4" />, placeholder: 'Describe the deal and where to find it...', color: '#15803D', textColor: '#15803D', darkTextColor: '#4ADE80', bgLight: '#F0FDF4', cta: 'Post Deal' },
-  { key: 'local_update', label: 'Local Update', icon: <Newspaper className="w-4 h-4" />, placeholder: 'Share a local update with your neighbors…', color: '#374151', textColor: '#374151', darkTextColor: '#9CA3AF', bgLight: '#F9FAFB', cta: 'Post Update' },
-  { key: 'neighborhood_win', label: 'Neighborhood Win', icon: <Trophy className="w-4 h-4" />, placeholder: 'Celebrate something great in your neighborhood…', color: '#047857', textColor: '#047857', darkTextColor: '#34D399', bgLight: '#F0FDF4', cta: 'Share Win' },
+  { key: 'local_update', label: 'Local Update', icon: <Newspaper className="w-4 h-4" />, placeholder: 'Share a local update with people near you…', color: '#374151', textColor: '#374151', darkTextColor: '#9CA3AF', bgLight: '#F9FAFB', cta: 'Post Update' },
+  { key: 'neighborhood_win', label: 'Local Win', icon: <Trophy className="w-4 h-4" />, placeholder: 'Celebrate something great near you…', color: '#047857', textColor: '#047857', darkTextColor: '#34D399', bgLight: '#F0FDF4', cta: 'Share Win' },
   { key: 'visitor_guide', label: 'Visitor Guide', icon: <Compass className="w-4 h-4" />, placeholder: 'Share tips for visitors to the area…', color: '#7C3AED', textColor: '#7C3AED', darkTextColor: '#A78BFA', bgLight: '#FAF5FF', cta: 'Post Guide' },
   { key: 'service_offer', label: 'Service', icon: <Wrench className="w-4 h-4" />, placeholder: 'What service are you offering?', color: '#7C3AED', textColor: '#7C3AED', darkTextColor: '#A78BFA', bgLight: '#FAF5FF', cta: 'Post Service' },
-  { key: 'announcement', label: 'Announce', icon: <Megaphone className="w-4 h-4" />, placeholder: 'Share important news with the neighborhood…', color: '#0F766E', textColor: '#0F766E', darkTextColor: '#2DD4BF', bgLight: '#F0FDFA', cta: 'Post Announcement' },
-  { key: 'general', label: 'Share', icon: <PenLine className="w-4 h-4" />, placeholder: 'Share something with your neighborhood…', color: '#6B7280', textColor: '#6B7280', darkTextColor: '#9CA3AF', bgLight: '#F9FAFB', cta: 'Post' },
+  { key: 'announcement', label: 'Announce', icon: <Megaphone className="w-4 h-4" />, placeholder: 'Share important news with people near you…', color: '#0F766E', textColor: '#0F766E', darkTextColor: '#2DD4BF', bgLight: '#F0FDFA', cta: 'Post Announcement' },
+  { key: 'general', label: 'Share', icon: <PenLine className="w-4 h-4" />, placeholder: 'Share something with people near you…', color: '#6B7280', textColor: '#6B7280', darkTextColor: '#9CA3AF', bgLight: '#F9FAFB', cta: 'Post' },
 ];
 
 interface IntentSelectorProps {
@@ -43,13 +43,15 @@ interface IntentSelectorProps {
   activeSurface?: FeedSurface;
   /** When set, only these post types are offered (the Place feed refuses the others). */
   allowedTypes?: readonly string[];
+  /** data-testid on the "Share something…" button that starts a post. */
+  promptTestId?: string;
 }
 
-export default function IntentSelector({ onSelect, user, activeSurface, allowedTypes }: IntentSelectorProps) {
+export default function IntentSelector({ onSelect, user, activeSurface, allowedTypes, promptTestId }: IntentSelectorProps) {
   const isNetworkSurface = activeSurface === 'connections';
   const sharePrompt = activeSurface === 'connections'
     ? 'Share something with your connections…'
-    : 'Share something with your neighborhood…';
+    : 'Share something with people near you…';
   const userInitial =
     user?.first_name?.[0]?.toUpperCase() ||
     user?.name?.[0]?.toUpperCase() ||
@@ -68,6 +70,7 @@ export default function IntentSelector({ onSelect, user, activeSurface, allowedT
         )}
         <button
           onClick={() => onSelect('general')}
+          data-testid={promptTestId}
           className="flex-1 text-left text-app-muted text-sm bg-surface-muted rounded-xl px-4 py-2.5 hover-bg-app transition"
         >
           {sharePrompt}

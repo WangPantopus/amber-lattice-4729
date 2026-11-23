@@ -58,7 +58,9 @@ const venuesIndex = createIndexReader({
 const RADII_M = [400, 1500, 6000];
 const ENOUGH = 8;
 const NEARBY_LIMIT = 30;
-const SEARCH_LIMIT = 8;
+// A search lists this many venues at most (best name match first, then nearest): a broad word ("park") has more than
+// a handful near anyone (founder 2026-11-17: "we can return more than 8 matches").
+const SEARCH_LIMIT = 25;
 const SEARCH_RADIUS_M = 5000;
 const FIRST_ANSWER_WAIT_MS = 5000;
 // With rows from the index to list, a new fetch gets only this long (a cached answer arrives in time). Asked

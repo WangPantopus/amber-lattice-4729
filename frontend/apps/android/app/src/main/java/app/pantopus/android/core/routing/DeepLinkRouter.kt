@@ -64,6 +64,9 @@ object DeepLinkRouter {
     /** A mail or message id in a notification link (a UUID). */
     private val MAIL_UUID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
+    /** A mailed postcard code as the card's link carries it (`#c=`): 6 to 8 letters and digits. */
+    private val POSTCARD_CODE = Regex("^[A-Za-z0-9]{6,8}$")
+
     sealed interface Destination {
         data object Feed : Destination
 
@@ -141,9 +144,12 @@ object DeepLinkRouter {
 
         /**
          * `pantopus://homes/:id/verify-postcard` — opens the A12.7
-         * sibling status screen directly.
+         * sibling status screen directly. [code] is the mailed code a scanned card carries in the link's fragment
+         * (`#c=K7M4Q2`, FASTVERIFY), filled into the code field; it never goes to a server in the link or to a log.
          */
-        data class PostcardVerification(val id: String) : Destination
+        data class PostcardVerification(val id: String, val code: String? = null) : Destination {
+            override fun toString(): String = "PostcardVerification(id=$id, code=${if (code == null) "none" else "hidden"})"
+        }
 
         data class HomeResidency(val id: String) : Destination
 
@@ -427,12 +433,19 @@ object DeepLinkRouter {
 
         /**
          * Nearby Plans: `/plans/:id` opens the plan (J1 to J8, or H9 for its host). Behind the `plans` flag.
-         * `?invite=` carries an email or text invitation for the plan to open ([invite]).
+         * `?invite=` carries an email or text invitation for the plan to open ([invite]); `?open=` the plan's one link
+         * for everyone (Plans for the holidays, contract 6.9), which the person answers as themselves ([open]).
          */
-        data class Plan(val id: String, val invite: String? = null) : Destination
+        data class Plan(val id: String, val invite: String? = null, val open: String? = null, val spot: String? = null) : Destination
 
         /** Nearby Plans: `/plans/:id/requests` opens the host's requests (H10). */
         data class PlanRequests(val id: String) : Destination
+
+        /** Plans for the holidays: `/plans/:id/guests` opens the host's Who's coming (A5), from its two notices. */
+        data class PlanGuests(val id: String) : Destination
+
+        /** `/plans/:id/check` (business track B5): the guest's check, C1. */
+        data class PlanCheck(val id: String) : Destination
 
         /** Nearby Plans: `/plans/new` opens the host flow (H1). */
         data object NewPlan : Destination
@@ -538,10 +551,60 @@ object DeepLinkRouter {
     /** Whether a Moment link may open now, waiting for the server's answer on a first sign-in here (as [plansAnswer]). */
     suspend fun momentsAnswer(): Boolean = momentsAnswerProvider()
 
+    /**
+     * `/plans/:id` with its tokens: an email or text invitation (`invite`), the plan's one link (`open`), or, from the web
+     * page's "Open app" (web #4367), a spot someone bought for whoever opens it (`spot`, read as on `/plan-link/:id`, so
+     * the page offers the free "I'm in" and never the paid "Join" for it).
+     */
+    private fun planLink(
+        id: String,
+        queryPart: String,
+    ): Destination.Plan {
+        val invite = Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken)
+        val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
+        val spot = Paths.queryParam(queryPart, "spot")?.takeIf(Paths::isInviteToken)
+        return Destination.Plan(id, invite = invite, open = open, spot = spot.takeIf { invite == null && open == null })
+    }
+
+    /**
+     * A pantopus.com address of a plan's one link for everyone (`/plan-link/:id?open=`, `/plans/:id?open=`, contract 6.9):
+     * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
+     * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
+     * sign-in instead, as plan links are.
+     *
+     * A scanned postcard's link (`/app/homes/:id/verify-postcard#c=…`, FASTVERIFY) is the same: signed in, the app opens
+     * the code screen with the code filled in; signed out, the web's page asks "Did you ask for this card?" (and offers
+     * "This wasn't me"), and the code is never kept on the phone for after sign-in.
+     */
+    fun opensOnlySignedIn(uri: Uri): Boolean {
+        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        return when (val destination = resolve(uri)) {
+            is Destination.Plan -> (destination.open ?: destination.spot) != null
+            is Destination.PostcardVerification -> destination.code != null
+            else -> false
+        }
+    }
+
+    /**
+     * A Plans notice whose metadata says `opens: whos_coming` (Plans for the holidays: a guest is in, wants to come, or
+     * waits after a move to a home) opens the host's Who's coming, in the notifications list as from its push.
+     */
+    fun whosComingPath(metadata: Any?): String? {
+        val fields = metadata as? Map<*, *> ?: return null
+        val planId = (fields["plan_id"] as? String)?.takeIf(String::isNotBlank) ?: return null
+        return when (fields["opens"]) {
+            "whos_coming" -> "/plans/$planId/guests"
+            // Business track B5: a check's notice opens the check (C1).
+            "check" -> "/plans/$planId/check"
+            else -> null
+        }
+    }
+
     /** True when [destination] is a Plans page. Those open only while the `plans` flag is on. */
     fun isPlansDestination(destination: Destination): Boolean =
-        destination is Destination.Plan || destination is Destination.PlanRequests || destination == Destination.NewPlan ||
-            destination == Destination.PlansTab
+        destination is Destination.Plan || destination is Destination.PlanRequests || destination is Destination.PlanGuests ||
+            destination is Destination.PlanCheck ||
+            destination == Destination.NewPlan || destination == Destination.PlansTab
 
     /** True while Nearby Plans is on for the signed-in person. */
     fun plansEnabled(): Boolean = plansEnabledProvider()
@@ -674,6 +737,8 @@ object DeepLinkRouter {
             "holiday_card_claimed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
             "holiday_card_expired" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
             "holiday_card_email_failed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
+            // A travelling card reached another town (server switch card_travel): it opens the person's own Sent card.
+            "holiday_card_travelled" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
         )
 
     /**
@@ -1031,7 +1096,11 @@ object DeepLinkRouter {
                     "claim-owner" ->
                         if (trailing.getOrNull(1) == "evidence") Destination.WaitingRoom(id) else Destination.HomeDetail(id)
                     "verify-landlord", "verify_landlord" -> Destination.VerifyLandlord(id)
-                    "verify-postcard", "verify_postcard" -> Destination.PostcardVerification(id)
+                    "verify-postcard", "verify_postcard" ->
+                        Destination.PostcardVerification(
+                            id,
+                            code = Paths.queryParam(fragmentPart, "c")?.takeIf(POSTCARD_CODE::matches)?.uppercase(),
+                        )
                     // B1.6 — A18.4 persistent waiting room.
                     "waiting-room", "waiting_room" -> Destination.WaitingRoom(id)
                     else -> Destination.HomeDetail(id)
@@ -1048,13 +1117,27 @@ object DeepLinkRouter {
                     Destination.Unknown(raw)
                 }
             }
+            // Plans for the holidays (contract 6.9): `/plan-link/:id?open=` is the plan's one link for everyone; it opens
+            // the plan (claimed for a signed-in person, see [opensOnlySignedIn]). Without `open` it's the web's page.
+            "plan-link" -> {
+                val id = segments.getOrNull(1)
+                val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
+                // The holidays' one person pays for the group: `?spot=` is a spot someone bought for whoever opens it.
+                val spot = Paths.queryParam(queryPart, "spot")?.takeIf(Paths::isInviteToken)
+                val token = open ?: spot
+                if (segments.size == 2 && !id.isNullOrBlank() && token != null) {
+                    Destination.Plan(id, open = open, spot = spot.takeIf { open == null })
+                } else {
+                    Destination.Unknown(raw)
+                }
+            }
             // Moments: `/moments/:id` (a connection's new Moment); its id is a UUID.
             "moments" ->
                 segments.getOrNull(1)
                     ?.takeIf { segments.size == 2 && MAIL_UUID.matches(it) }
                     ?.let { Destination.Moment(it.lowercase()) } ?: Destination.Unknown(raw)
             "plans" -> {
-                // Nearby Plans: `/plans/new`, `/plans/:id` and `/plans/:id/requests` (brief section 7).
+                // Nearby Plans: `/plans/new`, `/plans/:id`, `/plans/:id/requests` (brief section 7) and `/plans/:id/guests`.
                 val id = segments.getOrNull(1)
                 val trailing = segments.getOrNull(2)
                 when {
@@ -1062,8 +1145,10 @@ object DeepLinkRouter {
                     segments.size == 1 -> Destination.PlansTab
                     id == "new" && segments.size == 2 -> Destination.NewPlan
                     id.isNullOrBlank() -> Destination.Unknown(raw)
-                    segments.size == 2 -> Destination.Plan(id, Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken))
+                    segments.size == 2 -> planLink(id, queryPart)
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
+                    trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
+                    trailing == "check" && segments.size == 3 -> Destination.PlanCheck(id)
                     else -> Destination.Unknown(raw)
                 }
             }

@@ -13,7 +13,7 @@
  */
 
 const supabaseAdmin = require('../config/supabaseAdmin');
-const { isVerifiedResident } = require('./homePermissions');
+const { isVerified, FAST_CHECK_COLUMNS } = require('./homePermissions');
 
 /**
  * @param {string} userId - whose residency is being summarised
@@ -34,9 +34,13 @@ async function getPublicResidencySummary(userId, viewerId = null) {
       supabaseAdmin
         .from('HomeOccupancy')
         .select(`
+          home_id,
+          user_id,
+          is_active,
           verification_status,
           verification_source,
           verified_at,
+          ${FAST_CHECK_COLUMNS},
           created_at,
           home:home_id ( id, city, state )
         `)
@@ -50,13 +54,35 @@ async function getPublicResidencySummary(userId, viewerId = null) {
         .eq('owner_status', 'verified'),
     ]);
 
+    return await residencyFromRows(occRows, ownersRead, async (homeId) => {
+      const { data: h } = await supabaseAdmin
+        .from('Home')
+        .select('city, state')
+        .eq('id', homeId)
+        .maybeSingle();
+      return h;
+    });
+  } catch {
+    return empty;
+  }
+}
+
+/**
+ * The summary from the rows getPublicResidencySummary reads: the person's active occupancies (oldest first, each
+ * with its Home's id, city and state), their verified ownerships as a reply ({ data, error }), and `ownerHome(id)`,
+ * the city and state of the Home they own when no occupancy answers. Also used with the same rows read on a direct
+ * connection (routes/users.js GET /profile).
+ */
+async function residencyFromRows(occRows, ownersRead, ownerHome) {
+  const empty = { hasHome: false, city: null, state: null, verified: false };
+  try {
     const occ = (occRows || []).find((r) => r.home);
     if (occ && occ.home) {
       const home = occ.home;
       const homeId = home.id;
-      // Use the same attestation gate as home artifacts: an accepted household
-      // invitation grants household tools, not an address-verified badge.
-      let verified = isVerifiedResident({ occupancy: occ });
+      // The Verified gate (mail, or a fast check while home_fast_verify is on): an accepted household
+      // invitation grants household tools, not a verified badge.
+      let verified = await isVerified({ occupancy: occ });
       if (!verified) {
         // A verified ownership of this Home as a person (homePermissions.isVerifiedOwner). An unreadable
         // ownership read, or more than one such row, leaves the summary empty, as that check's error did.
@@ -76,11 +102,7 @@ async function getPublicResidencySummary(userId, viewerId = null) {
     const ownerRows = ownersRead.data;
 
     if (ownerRows?.[0]?.home_id) {
-      const { data: h } = await supabaseAdmin
-        .from('Home')
-        .select('city, state')
-        .eq('id', ownerRows[0].home_id)
-        .maybeSingle();
+      const h = await ownerHome(ownerRows[0].home_id);
       return {
         hasHome: true,
         city: h?.city || null,
@@ -95,4 +117,4 @@ async function getPublicResidencySummary(userId, viewerId = null) {
   }
 }
 
-module.exports = { getPublicResidencySummary };
+module.exports = { getPublicResidencySummary, residencyFromRows };

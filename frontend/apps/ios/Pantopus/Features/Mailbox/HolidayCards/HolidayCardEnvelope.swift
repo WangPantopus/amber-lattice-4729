@@ -62,7 +62,7 @@ struct HolidayCardEnvelopePiece: View {
 
                 if model.card?.sealed == true {
                     // The wax seal and its words, as on Android (plan 1.5).
-                    HStack(spacing: 10) {
+                    HStack(alignment: .bottom, spacing: 10) {
                         sealMark
                             .frame(width: 58, height: 58)
                         if LaunchFeatures.cardTable {
@@ -73,6 +73,10 @@ struct HolidayCardEnvelopePiece: View {
                                 .foregroundStyle(MailPaper.cardEnvelopeLabel)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
+                                // Level with the foot of the wax, under the address: centred on the seal, the words ran
+                                // into the address's second line (the street under a name). The type is fixed, so the
+                                // gap holds at every text size.
+                                .padding(.bottom, 6)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .bottomLeading)
@@ -218,7 +222,29 @@ struct HolidayCardTakenOut: View {
                     .rotationEffect(.degrees(-3))
                     .offset(x: Spacing.s4, y: -14)
             }
+            .overlay(alignment: .bottomLeading) {
+                if let slip = model.replySlip {
+                    replySlip(slip)
+                }
+            }
             .task(id: card.design) { await CardTableSmallArt.shared.load() }
+    }
+
+    /// A reply (experience plan Part 3): a cream slip across the card and the envelope, "Nora wrote back" in the pen.
+    private func replySlip(_ words: String) -> some View {
+        Text(words)
+            .font(Font(CardTableType.pen(22)))
+            .foregroundStyle(MailPaper.tablePenInk)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(MailPaper.letter, in: RoundedRectangle(cornerRadius: 2, style: .continuous))
+            .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
+            .rotationEffect(.degrees(-2))
+            .padding(.leading, 6)
+            .padding(.bottom, 16)
+            .accessibilityHidden(true)
     }
 
     /// Who, the caption and the day, beside the card.
@@ -279,10 +305,11 @@ struct HolidayCardTakenOut: View {
             : "From \(HolidayCardWords.firstName(model.from))"
     }
 
-    /// "Nov 10 · Opened" (by the postmark's day); in Sent, "Nov 10 · Delivered".
+    /// "Nov 10 · Opened" (by the postmark's day); in Sent, "Nov 10 · Delivered". A reply not opened yet says only its
+    /// day (experience plan Part 3).
     private var dayLine: String {
         let day = model.postmarkDate.isEmpty ? nil : model.postmarkDate
-        let what = model.cardIsWithThem ? "Delivered" : "Opened"
+        let what: String? = model.cardIsWithThem ? "Delivered" : model.replySlip != nil && !model.isOpened ? nil : "Opened"
         return [day, what].compactMap { $0 }.joined(separator: " · ")
     }
 }

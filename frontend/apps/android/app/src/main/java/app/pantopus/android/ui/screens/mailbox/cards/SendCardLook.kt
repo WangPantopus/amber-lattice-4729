@@ -31,6 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -77,6 +80,7 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import app.pantopus.android.ui.theme.rememberReduceMotion
+import coil.compose.AsyncImage
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -141,7 +145,7 @@ private fun lookIntro(
         to is CardRecipient.Link ->
             "The page your link opens never shows the card. Whoever opens it first joins Pantopus to read it, and it’s theirs."
         to is CardRecipient.Email ->
-            "They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this " +
+            "They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this " +
                 "address."
         preview.sealed -> "It comes sealed and stays shut until Christmas morning. Use Back to change anything."
         preview.piece.card?.arrival == "christmas_morning" ->
@@ -327,6 +331,8 @@ private fun CardComingOut(
 ) {
     val reduceMotion = rememberReduceMotion()
     var showBack by rememberSaveable { mutableStateOf(false) }
+    // A long note shows over two leaves, as the reader will see it (plan Part 9).
+    val leaves = rememberCardLeaves()
     // Each "Open it again" draws it coming out afresh; it doesn't play again when the screen comes back.
     var replays by remember { mutableIntStateOf(0) }
     // The card the desk's full width (the screen less 16 dp a side), as large as it will be in their hands.
@@ -340,6 +346,7 @@ private fun CardComingOut(
                 showBack = showBack,
                 opening = replays > 0 && !reduceMotion,
                 onOut = {},
+                leaves = leaves,
             )
         }
     }
@@ -349,11 +356,12 @@ private fun CardComingOut(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CardButton(
-            if (showBack) "Turn it back" else "Turn it over",
-            onClick = { showBack = !showBack },
+            leaves.turnLabel(showBack),
+            onClick = { leaves.press(showBack) { showBack = !showBack } },
             kind = CardButtonKind.Paper,
             fill = false,
             state = if (showBack) "Showing the back" else "Showing the picture",
+            spoken = leaves.turnSpoken(showBack),
             modifier = Modifier.testTag("sendCardLookTurn"),
         )
         if (LaunchFeatures.cardTable) {
@@ -483,7 +491,13 @@ private fun LookSection(
     }
 }
 
-/** The email a card to an email address sends, as their inbox shows it: never the card, only who it's from. */
+/** The shape of the picture at the top of a card's email (1200 × 630). */
+private const val EMAIL_PICTURE_RATIO = 1200f / 630f
+
+/**
+ * The email a card to an email address sends, as their inbox shows it: who it's from and the picture at its top (the
+ * card's front, or the sealed envelope), never the note.
+ */
 @Composable
 private fun EmailPicture(
     email: HolidayCardPreviewEmail,
@@ -521,15 +535,31 @@ private fun EmailPicture(
             )
         }
         HorizontalDivider(color = PantopusColors.appBorderSubtle)
+        email.picture?.let { picture ->
+            // The real email's picture across its width, in its 1200 × 630 shape so it keeps its place while it loads.
+            AsyncImage(
+                model = picture,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(EMAIL_PICTURE_RATIO).background(PantopusColors.cardWax),
+            )
+        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .background(PantopusColors.cardWax)
-                    .padding(start = Spacing.s4, end = Spacing.s4, top = 20.dp, bottom = Spacing.s4),
+                    .padding(
+                        start = Spacing.s4,
+                        end = Spacing.s4,
+                        top = if (email.picture == null) 20.dp else Spacing.s3,
+                        bottom = Spacing.s4,
+                    ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            PantopusIconImage(icon = PantopusIcon.Mail, contentDescription = null, size = 30.dp, tint = PantopusColors.cardWaxText)
+            if (email.picture == null) {
+                PantopusIconImage(icon = PantopusIcon.Mail, contentDescription = null, size = 30.dp, tint = PantopusColors.cardWaxText)
+            }
             Text(
                 email.heading,
                 fontSize = 17.sp,
@@ -671,7 +701,7 @@ private fun LinkPagePicture(
                             tint = PantopusColors.success,
                         )
                         Text(
-                            "Verified neighbor",
+                            "Verified resident",
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -753,54 +783,108 @@ private fun PageButton(
 }
 
 /**
- * The footer under step 5: until when it can be taken back, what it costs with digital stamps on, why sending failed,
- * and "Seal and send" ("Get stamps to send", opening the stamp books, once none are left).
+ * Step 5's one pinned button (plan 5.2): "Seal and send" ("Get stamps to send", opening the stamp books, once none are
+ * left), on a soft fade over the page with no panel behind it, so the card shows down to the button. Why sending failed
+ * shows as one line right above it; the take-back and postage lines are at the end of the page ([LookEndLines]).
  */
 @Composable
 internal fun LookFooter(
-    byEmail: Boolean,
     form: SendCardForm,
     onSend: () -> Unit,
     byLink: Boolean = false,
     /** Digital stamps left (postage on, once read). */
     stamps: StampBalance? = null,
     onGetStamps: () -> Unit = {},
+    /** What the page lies on under the button: the cloth's colour at the table, else the desk's. */
+    ground: Color = PantopusColors.cardDesk,
+    modifier: Modifier = Modifier,
 ) {
     val needsStamps = stamps?.available == 0
-    Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk)) {
-        HorizontalDivider(color = PantopusColors.cardNoteEdge)
-        Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)) {
-            DeskNote(
-                if (byEmail || byLink) {
-                    "You can take it back until they open it."
-                } else {
-                    "You can take it back until the carrier picks it up at 7 a.m. their time."
-                },
-            )
-            StampPostageLine(stamps, design = form.design, modifier = Modifier.padding(top = 10.dp))
-            form.sendError?.let {
-                Text(
-                    it,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PantopusColors.cardTextProblem,
-                    modifier = Modifier.padding(top = 10.dp).semantics { liveRegion = LiveRegionMode.Assertive }.testTag("sendCardError"),
-                )
-            }
-            CardButton(
-                when {
-                    needsStamps -> "Get stamps to send"
-                    byLink -> "Seal it and get the link"
-                    else -> "Seal and send"
-                },
-                onClick = if (needsStamps) onGetStamps else onSend,
-                busy = form.sending,
-                modifier = Modifier.padding(top = 10.dp).testTag("sendCardLookSend"),
-            )
-        }
+    PinnedLookButton(ground, form.sendError, modifier) {
+        CardButton(
+            when {
+                needsStamps -> "Get stamps to send"
+                byLink -> "Seal it and get the link"
+                else -> "Seal and send"
+            },
+            onClick = if (needsStamps) onGetStamps else onSend,
+            busy = form.sending,
+            modifier = Modifier.heightIn(min = 52.dp).testTag("sendCardLookSend"),
+        )
     }
 }
+
+/** Look it over's pinned button on its fade, with [problem] (why it didn't go) as one line above it. */
+@Composable
+internal fun PinnedLookButton(
+    ground: Color,
+    problem: String?,
+    modifier: Modifier = Modifier,
+    button: @Composable () -> Unit,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        0f to ground.copy(alpha = 0f),
+                        0.4f to ground.copy(alpha = 0.78f),
+                        1f to ground.copy(alpha = 0.9f),
+                    ),
+                )
+                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
+                .testTag("sendCardLookPinned"),
+    ) {
+        problem?.let { PinnedProblem(it) }
+        button()
+    }
+}
+
+/** Why it didn't go, as one line on cream paper right above a pinned button. */
+@Composable
+internal fun PinnedProblem(problem: String) {
+    Text(
+        problem,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontWeight = FontWeight.Medium,
+        color = PantopusColors.cardTextProblem,
+        modifier =
+            Modifier
+                .padding(bottom = Spacing.s2)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.md))
+                .background(PantopusColors.cardNotePaper)
+                .padding(horizontal = Spacing.s3, vertical = 6.dp)
+                .semantics { liveRegion = LiveRegionMode.Assertive }
+                .testTag("sendCardError"),
+    )
+}
+
+/**
+ * The end of Look it over (plan 5.2): until when it can be taken back and what it costs, scrolling with the page (they're
+ * on "Seal it for the day" too).
+ */
+@Composable
+internal fun LookEndLines(
+    takeBack: String,
+    modifier: Modifier = Modifier,
+    postage: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s6).testTag("sendCardLookEnd")) {
+        DeskNote(takeBack)
+        postage()
+    }
+}
+
+/** Step 5's take-back line for one card. */
+internal fun lookTakeBackLine(to: CardRecipient?): String =
+    if (to is CardRecipient.Email || to is CardRecipient.Link) {
+        "You can take it back until they open it."
+    } else {
+        "You can take it back until the carrier picks it up at 7 a.m. their time."
+    }
 
 /** Sealed until Christmas morning once it's in their mailbox. */
 internal val HolidayCardPreview.sealed: Boolean
@@ -834,6 +918,7 @@ internal fun lookCard(
         // The sender's own upload, as it will go: never covered for them.
         photo = card?.photo?.let { CardPrintPhoto.own(it) },
         voice = card?.voice?.let { CardGreetingVoice.own(it) },
+        mood = card?.mood ?: design.mood,
     )
 }
 

@@ -447,7 +447,8 @@ private struct DeviceRow: View {
     }
 
     private var glyph: PantopusIcon {
-        switch device.platform?.lowercased() {
+        if DevicesViewModel.isIPad(device) { return .tablet }
+        return switch device.platform?.lowercased() {
         case "ios", "android": .smartphone
         case "web": .globe
         default: .monitor

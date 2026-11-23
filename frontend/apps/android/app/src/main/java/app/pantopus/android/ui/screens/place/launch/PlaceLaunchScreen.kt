@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -233,9 +235,9 @@ private fun Hero(
             Text(
                 when {
                     // The Place tab's first-run root says what an address shows, as the front door does (TABCARD §4b).
-                    embedded != null -> "Your flood risk, today's air, your home's value, and who your verified neighbors are."
+                    embedded != null -> "Your flood risk, today's air, your home's value, and the verified homes near you."
                     signedInEntry -> "Look up an address, preview its public information, and choose whether to save it privately."
-                    else -> "Your flood risk, today's air, your home's value, and who your verified neighbors are — free, no account."
+                    else -> "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
                 },
                 fontSize = 15.sp,
                 lineHeight = 21.sp,
@@ -246,7 +248,12 @@ private fun Hero(
                 Text(it, color = PantopusColors.appTextSecondary, modifier = Modifier.testTag("place.launch.error"))
                 TextButton(onClick = viewModel::retryPreview, modifier = Modifier.testTag("place.launch.retry")) { Text("Try again") }
             }
-            AddressField(query = query, onChange = viewModel::onQueryChange, onClear = { viewModel.onQueryChange("") })
+            AddressField(
+                query = query,
+                onChange = viewModel::onQueryChange,
+                onClear = { viewModel.onQueryChange("") },
+                focus = embedded?.addressFocus,
+            )
 
             if (query.isNotBlank() && suggestions.isNotEmpty()) {
                 // While typing the address, the first tap on a suggestion only puts the keyboard away.
@@ -324,7 +331,7 @@ private fun PrivacyProof() {
         )
         Text(
             buildAnnotatedString {
-                append("Neighbors see a first name and a street. ")
+                append("Others see a first name and a street. ")
                 withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)) {
                     append("Never your house number.")
                 }
@@ -408,6 +415,7 @@ private fun AddressField(
     query: String,
     onChange: (String) -> Unit,
     onClear: () -> Unit,
+    focus: FocusRequester? = null,
 ) {
     Row(
         modifier =
@@ -426,7 +434,7 @@ private fun AddressField(
                 onValueChange = onChange,
                 singleLine = true,
                 textStyle = TextStyle(fontSize = 16.sp, color = PantopusColors.appText),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier),
                 // The placeholder sits inside the field, so a screen reader reads it as the field's name.
                 decorationBox = { inner ->
                     if (query.isEmpty()) {

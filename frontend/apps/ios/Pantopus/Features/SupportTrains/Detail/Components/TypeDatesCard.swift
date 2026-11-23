@@ -208,8 +208,8 @@ public struct TypeDatesCard: View {
     private var contributorHelperLine: String {
         switch content.slotsFilled {
         case 0: "No one has signed up yet"
-        case 1: "1 neighbor signed up"
-        default: "\(content.slotsFilled) neighbors signed up"
+        case 1: "1 date covered"
+        default: "\(content.slotsFilled) dates covered"
         }
     }
 

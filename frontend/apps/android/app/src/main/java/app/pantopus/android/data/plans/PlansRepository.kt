@@ -9,6 +9,12 @@ import app.pantopus.android.data.api.models.plans.CancelPlanBody
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanBringAddBody
+import app.pantopus.android.data.api.models.plans.PlanBringInput
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewBody
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
+import app.pantopus.android.data.api.models.plans.PlanDealUsedResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -22,9 +28,15 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanQuoteBody
+import app.pantopus.android.data.api.models.plans.PlanQuoteDto
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
@@ -392,21 +404,40 @@ class PlansRepository
         }
 
         /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
-        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateStoppingRepeat(id, UpdatePlanBody())
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateClearing(id, UpdatePlanBody(), listOf(REPEAT_FIELD))
 
         /**
-         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and `"repeat": null`: the change screen's
-         * other changes and "Doesn't repeat" together, so either both go through or neither does.
+         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and each of [clears] as `null` ("Doesn't
+         * repeat" is `repeat`; the holidays' chip in taken away is `chip_in`): the change screen's other changes and
+         * these together, so either all go through or none does.
          */
-        suspend fun updateStoppingRepeat(
+        suspend fun updateClearing(
             id: String,
             body: UpdatePlanBody,
+            clears: List<String>,
         ): NetworkResult<PlanDto> {
             val session = cacheSession()
-            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body)).put(REPEAT_FIELD, JSONObject.NULL)
+            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body))
+            clears.forEach { fields.put(it, JSONObject.NULL) }
             val raw = fields.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
             return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
         }
+
+        /** Business track B1: takes a business's deal off (`PATCH` with `"deal": null`); everyone in is told. */
+        suspend fun removeDeal(id: String): NetworkResult<PlanDto> {
+            val session = cacheSession()
+            val raw = JSONObject().put(DEAL_FIELD, JSONObject.NULL).toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.updateRaw(id, raw) }.also { rememberResult(it, session) }
+        }
+
+        /** Business track B1: the server's words for the deal the form describes (D3); nothing is saved. */
+        suspend fun dealPreview(body: PlanDealPreviewBody): NetworkResult<PlanDealPreviewResponse> = safeApiCall { api.dealPreview(body) }
+
+        /** Business track B1: "Mark used" on a guest's free thing (staff); answers its new state. */
+        suspend fun markDealUsed(
+            id: String,
+            requestId: String,
+        ): NetworkResult<PlanDealUsedResponse> = write(id) { api.markDealUsed(id, requestId) }
 
         suspend fun ask(
             id: String,
@@ -427,6 +458,15 @@ class PlansRepository
         ): NetworkResult<Unit> = safeApiCall(surfaceForbiddenBody = true) { api.report(id, PlanReportBody(reason)) }
 
         suspend fun withdraw(id: String): NetworkResult<Unit> = write(id, chats = true) { api.withdraw(id) }
+
+        /** Business track B2: P1's amounts for a party (the server multiplies; the app never does). */
+        suspend fun quote(
+            id: String,
+            body: PlanQuoteBody,
+        ): NetworkResult<PlanQuoteDto> = safeApiCall { api.quote(id, body) }
+
+        /** Business track B2: the payment sheet closed; the server lets the guest in once the payment went through. */
+        suspend fun confirmMine(id: String): NetworkResult<PlanDto> = write(id, chats = true) { api.confirmMine(id) }
 
         suspend fun requests(id: String): NetworkResult<PlanRequestsResponse> =
             safeApiCall(
@@ -589,13 +629,89 @@ class PlansRepository
             token: String,
         ): NetworkResult<PlanInvitePlanResponse> {
             val session = cacheSession()
-            return write(id) { api.claimInvite(id, PlanInviteClaimBody(token)) }.also { result ->
+            return write(id) { api.claimInvite(id, PlanInviteClaimBody(token = token)) }.also { result ->
+                (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
+            }
+        }
+
+        /**
+         * The person opened the plan's one link for everyone (Plans for the holidays, contract 6.9): they answer it as
+         * themselves. Every refusal is `404 invite_unavailable`.
+         */
+        suspend fun claimOpenLink(
+            id: String,
+            open: String,
+        ): NetworkResult<PlanInvitePlanResponse> {
+            val session = cacheSession()
+            return write(id) { api.claimInvite(id, PlanInviteClaimBody(open = open)) }.also { result ->
                 (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
             }
         }
 
         /** "Can't make it" to an invitation. */
         suspend fun declineInvite(id: String): NetworkResult<PlanInvitePlanResponse> = write(id, chats = true) { api.declineInvite(id) }
+
+        // ---- Plans for the holidays, H1 (contract 6.4) ----
+
+        /** The plan's one link for everyone: made the first time, then the same; also saves "I say yes first". */
+        suspend fun openLink(
+            id: String,
+            hostSaysYesFirst: Boolean?,
+            confirmSharesAddress: Boolean,
+        ): NetworkResult<PlanOpenLinkResponse> =
+            write(id) {
+                val body = PlanOpenLinkBody(hostSaysYesFirst = hostSaysYesFirst, confirmSharesAddress = confirmSharesAddress.takeIf { it })
+                api.openLink(id, body)
+            }
+
+        /** "Turn this link off". */
+        suspend fun closeOpenLink(id: String): NetworkResult<Unit> = write(id) { api.closeOpenLink(id) }
+
+        /** "Let in": a guest who waits for the host's yes is in. */
+        suspend fun letIn(
+            id: String,
+            inviteId: String,
+        ): NetworkResult<PlanInviteListDto> = write(id) { api.letIn(id, inviteId) }
+
+        /** "Remind": everyone who hasn't answered, the way each was invited. */
+        suspend fun remind(id: String): NetworkResult<PlanRemindResponse> = write(id) { api.remind(id) }
+
+        /** "Maybe" to an invitation. */
+        suspend fun maybeInvite(id: String): NetworkResult<PlanInvitePlanResponse> {
+            val session = cacheSession()
+            return write(id) { api.maybeInvite(id) }.also { result ->
+                (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
+            }
+        }
+
+        /** The occasions in season for the kind picker (Plans for the holidays, H3). */
+        suspend fun occasions(): NetworkResult<PlanOccasionsResponse> = safeApiCall { api.occasions() }
+
+        // ---- Plans for the holidays, H2: the bring list (contract 7) ----
+
+        /** The host's whole list (A9's Done). */
+        suspend fun putBring(
+            id: String,
+            body: PlanBringInput,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.putBring(id, body) }
+
+        /** "I'll bring it". */
+        suspend fun claimBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.claimBring(id, itemId) }
+
+        /** "Give back". */
+        suspend fun giveBackBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.giveBackBring(id, itemId) }
+
+        /** "Bring something else". */
+        suspend fun addBring(
+            id: String,
+            label: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.addBring(id, PlanBringAddBody(label = label)) }
 
         /** Right after signing in: the newest invitation not opened yet (an email invite finds its verified address). */
         suspend fun nextInvite(): NetworkResult<PlanNextInviteResponse> = safeApiCall { api.nextInvite() }
@@ -691,6 +807,7 @@ class PlansRepository
             const val GPS_MAX_AGE_SECONDS = 300L
             const val REPEAT_KEEP = "keep"
             const val REPEAT_FIELD = "repeat"
+            const val DEAL_FIELD = "deal"
             const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }
@@ -754,6 +871,18 @@ val NetworkError.planCode: String?
                 else -> null
             } ?: return null
         return runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+/** The field a Plans `422 validation` reply names (`{ error, message, field }`), such as `item` or `group_size`. */
+val NetworkError.planField: String?
+    get() {
+        val body =
+            when (this) {
+                is NetworkError.ClientError -> body
+                is NetworkError.Forbidden -> body
+                else -> null
+            } ?: return null
+        return runCatching { JSONObject(body).optString("field") }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
 /** The sentence for people from a Plans error reply, else the error's own copy. */

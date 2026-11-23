@@ -31,6 +31,8 @@ struct HolidayCardLookStep: View {
     private let openedEnvelope: MailPieceModel
 
     @State private var showBack = false
+    /// A long note's first leaf: 0 on the back, 1 lifted by Read on (plan Part 9).
+    @State private var leafLift = 0.0
     /// "Open it again": the card rises out of its envelope once more.
     @State private var rises = false
     @State private var replays = 0
@@ -134,7 +136,8 @@ struct HolidayCardLookStep: View {
                 return "The first person to open your link keeps the card. "
                     + "The page it opens never shows the card; they open it in Pantopus once they join."
             }
-            return "They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this address."
+            return "They aren’t on Pantopus yet. The email never shows your note; "
+                + "they read it in Pantopus once they join with this address."
         }
         switch arrival {
         case .sealedChristmas:
@@ -197,7 +200,7 @@ struct HolidayCardLookStep: View {
             HolidayCardFlip(showBack: showBack) {
                 front
             } back: {
-                back
+                HolidayCardTurningBack(note: note, lift: leafLift) { backFace($0) }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -213,10 +216,8 @@ struct HolidayCardLookStep: View {
 
     private var cardButtons: some View {
         HStack(spacing: Spacing.s2) {
-            HolidayCardPaperButton(title: showBack ? "Turn it back" : "Turn it over", isPressed: showBack) {
-                showBack.toggle()
-            }
-            .accessibilityIdentifier("sendCardLookTurn")
+            HolidayCardTurnButton(showBack: $showBack, leafLift: $leafLift, note: note)
+                .accessibilityIdentifier("sendCardLookTurn")
             Button {
                 if LaunchFeatures.cardTable {
                     tableContent = lookContent
@@ -335,16 +336,22 @@ struct HolidayCardLookStep: View {
 
     /// The back with the note and who it's from.
     private var back: some View {
+        backFace(.whole)
+            .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
+    }
+
+    private func backFace(_ leaf: CardTableLeaf) -> some View {
         HolidayCardBack(
             paper: card?.paper ?? design.paper,
             fromName: from,
             year: card?.year ?? cards.year,
-            signature: card?.signature
+            signature: card?.signature,
+            noteText: note,
+            leaf: leaf
         ) { width in
-            HolidayCardReadNote(text: note, number: design.number, cardWidth: width)
+            HolidayCardReadNote(text: note, number: design.number, cardWidth: width, leaf: leaf)
         }
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
     }
 
     /// The back on its own, the size of the picture side.
@@ -392,6 +399,7 @@ private extension HolidayCardLookStep {
                 voice: card?.voice,
                 from: .own,
                 number: card?.number ?? design.number,
+                moodName: card?.mood ?? design.mood,
                 day: preview.piece.item.postmark?.date ?? preview.piece.item.createdAt,
                 fromName: from,
                 forName: recipient.envelopeName
@@ -438,13 +446,52 @@ private extension HolidayCardLookStep {
             signature: card?.signature,
             photo: card?.photo,
             voice: card?.voice,
-            mediaFrom: .own
+            mediaFrom: .own,
+            mood: card?.mood ?? design.mood
         )
     }
 }
 
-/// Under Look it over, pinned: until when it can be taken back, why sending
-/// didn't go, and "Seal and send".
+/// The end of Look it over, scrolling with the page (experience plan 5.2): until when it can be taken back, and the
+/// postage. "Seal it for the day" says both too.
+struct HolidayCardLookEnd: View {
+    let viewModel: HolidayCardFlowViewModel
+    let byEmail: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HolidayCardLookNote(
+                text: viewModel.recipient?.isLink == true ? HolidayCardWords.sealNoteByLink : HolidayCardWords.sealNote(byEmail: byEmail)
+            )
+            if viewModel.cards?.postageEnabled == true, let design = viewModel.design {
+                StampPostageLine(store: viewModel.stamps, design: design.id, media: viewModel.carriesMedia)
+            }
+        }
+        .padding(.top, Spacing.s3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sendCardLookEnd")
+    }
+}
+
+/// The take-back line on its cream note.
+struct HolidayCardLookNote: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(MailPaper.cardTextSoft)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Spacing.s3)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
+    }
+}
+
+/// Under Look it over, pinned: only "Seal and send" on a soft fade, so nothing else covers the card (experience plan
+/// 5.2), with why sending didn't go in one line above it.
 struct HolidayCardLookFooter: View {
     let viewModel: HolidayCardFlowViewModel
     let byEmail: Bool
@@ -461,30 +508,12 @@ struct HolidayCardLookFooter: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(viewModel.recipient?.isLink == true ? HolidayCardWords.sealNoteByLink : HolidayCardWords.sealNote(byEmail: byEmail))
-                .font(.system(size: 13))
-                .foregroundStyle(MailPaper.cardTextSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, Spacing.s3)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
-            if viewModel.cards?.postageEnabled == true, let design = viewModel.design {
-                StampPostageLine(store: viewModel.stamps, design: design.id, media: viewModel.carriesMedia)
-            }
-            if let error = viewModel.sendError {
-                Text(error)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(HolidayCardDesk.error(scheme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("sendCardError")
-            }
+        HolidayCardPinnedButton(error: viewModel.sendError) {
             HolidayCardWaxButton(
                 title: needsStamps ? "Get stamps to send" : viewModel.recipient?
                     .isLink == true ? "Seal it and get the link" : "Seal and send",
-                isLoading: viewModel.sending
+                isLoading: viewModel.sending,
+                height: 52
             ) {
                 if needsBoughtStamp {
                     viewModel.openStampsForMedia()
@@ -496,13 +525,65 @@ struct HolidayCardLookFooter: View {
             }
             .accessibilityIdentifier("sendCardLookSend")
         }
-        .frame(maxWidth: 560)
-        .padding(.horizontal, Spacing.s4)
-        .padding(.vertical, Spacing.s3)
-        .frame(maxWidth: .infinity)
-        .holidayCardBarBackground(scheme, atTable: LaunchFeatures.cardTable)
     }
 }
+
+/// A page's pinned buttons on a soft fade: 12 pt above them, the safe area below, and a refusal right over them. The
+/// refusal lies on its own cream slip in dark ink, so it reads over whatever scrolls under the fade (the arrival
+/// choices, the card), as Android shows it (design check, Nov 17).
+struct HolidayCardPinnedButton<Content: View>: View {
+    let error: String?
+    /// A quiet button lies under the main one (step 4's "Look it over"): the page behind it is solid, the fade running
+    /// from clear at the top edge to full at the main button's middle, so no word of the page reads behind the quiet
+    /// one (the design session's re-check, Nov 17). Look it over's own page, with its one button, keeps its fade.
+    var quietUnder = false
+    @ViewBuilder let button: Content
+    @Environment(\.colorScheme) private var scheme
+    /// From the pinned area's top edge to the main button's middle (the main button is the 52 pt one on top).
+    @State private var toMainMiddle: CGFloat = 0
+
+    var body: some View {
+        if quietUnder {
+            pinned
+                .holidayCardSolidUnder(scheme, atTable: LaunchFeatures.cardTable, fadeHeight: toMainMiddle)
+        } else {
+            pinned
+                .holidayCardButtonFade(scheme, atTable: LaunchFeatures.cardTable)
+        }
+    }
+
+    private var pinned: some View {
+        VStack(spacing: Spacing.s2) {
+            if let error {
+                Text(error)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(HolidayCardDesk.error(.light))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.s3)
+                    .padding(.vertical, Spacing.s2)
+                    .frame(maxWidth: .infinity)
+                    .background(MailPaper.letter, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 3)
+                    .environment(\.colorScheme, .light)
+                    .accessibilityIdentifier("sendCardError")
+            }
+            button
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(holidayCardPinnedArea)).minY + 26 } action: {
+                    toMainMiddle = $0
+                }
+        }
+        .frame(maxWidth: 560)
+        .padding(.horizontal, Spacing.s4)
+        .padding(.top, Spacing.s3)
+        .padding(.bottom, Spacing.s1)
+        .frame(maxWidth: .infinity)
+        .coordinateSpace(.named(holidayCardPinnedArea))
+    }
+}
+
+/// The pinned area's own coordinates, to place where its background turns solid.
+private let holidayCardPinnedArea = "holidayCardPinnedArea"
 
 // MARK: - The envelope, drawn another way
 

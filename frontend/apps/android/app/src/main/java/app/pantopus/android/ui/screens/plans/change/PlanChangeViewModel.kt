@@ -4,12 +4,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.plans.PlanChecksRepository
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanLocation
 import app.pantopus.android.data.plans.PlanLocationResolver
@@ -21,13 +24,26 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.planField
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.host.CHIP_IN_FIELDS
+import app.pantopus.android.ui.screens.plans.host.ChipInDraft
+import app.pantopus.android.ui.screens.plans.host.DATE_OPTIONS_FEWEST
+import app.pantopus.android.ui.screens.plans.host.DEAL_PREVIEW_DEBOUNCE_MS
+import app.pantopus.android.ui.screens.plans.host.DealDraft
+import app.pantopus.android.ui.screens.plans.host.DealPlanFacts
+import app.pantopus.android.ui.screens.plans.host.DealPreviewState
+import app.pantopus.android.ui.screens.plans.host.DealScope
+import app.pantopus.android.ui.screens.plans.host.GIFT_FIELDS
+import app.pantopus.android.ui.screens.plans.host.GiftDraft
 import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
 import app.pantopus.android.ui.screens.plans.host.PLACES_SLOW
 import app.pantopus.android.ui.screens.plans.host.PickedPlace
 import app.pantopus.android.ui.screens.plans.host.PlaceSuggestions
+import app.pantopus.android.ui.screens.plans.host.adding
+import app.pantopus.android.ui.screens.plans.host.dealPreviewBody
 import app.pantopus.android.ui.screens.plans.host.placeQuery
 import app.pantopus.android.ui.screens.plans.host.placesFailure
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
@@ -86,6 +102,18 @@ data class PlanChangeUi(
     val repeatsOpen: Boolean = false,
     /** Online or a place, and the link (Plans step 3, PlanChangeOnline.kt). */
     val online: PlanChangeOnline = PlanChangeOnline(),
+    /** A business's deal (business track B1, PlanChangeDeal.kt). */
+    val deal: PlanChangeDeal = PlanChangeDeal(),
+    /** A business's price and the bill here (business track B2, B5, PlanChangeMoney.kt). */
+    val money: PlanChangeMoney = PlanChangeMoney(),
+    /** A private plan's "Room for" and "Kids welcome" (Plans for the holidays, PlanChangeRoom.kt). */
+    val room: PlanChangeRoom = PlanChangeRoom(),
+    /** The holidays' find a date: the times offered while the plan is picking (PlanChangeTimes.kt). */
+    val times: PlanChangeTimes = PlanChangeTimes(),
+    /** The holidays' chip in (PlanChangeChipIn.kt). */
+    val chipIn: PlanChangeChipIn = PlanChangeChipIn(),
+    /** The holidays' gift exchange (PlanChangeGift.kt). */
+    val gift: PlanChangeGift = PlanChangeGift(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -182,7 +210,10 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged
+    val changed: Boolean
+        get() =
+            changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed || chipIn.changed ||
+                gift.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -202,6 +233,7 @@ class PlanChangeViewModel
         private val repository: PlansRepository,
         private val feature: PlansFeature,
         private val locations: PlanLocationResolver,
+        private val checksRepository: PlanChecksRepository,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val _ui = MutableStateFlow(PlanChangeUi())
@@ -243,6 +275,12 @@ class PlanChangeViewModel
                                         chosen = plan.isOnline,
                                         link = plan.place?.link.orEmpty(),
                                     ),
+                                deal = DealDraft.from(plan.deal?.form, zone).let { PlanChangeDeal(original = it, draft = it) },
+                                money = PlanChangeMoney.of(plan),
+                                room = PlanChangeRoom.of(plan, feature.flags.value.guestAnswersOn),
+                                times = PlanChangeTimes.of(plan, zone),
+                                chipIn = PlanChangeChipIn.of(plan, feature.flags.value.chipInOn),
+                                gift = PlanChangeGift.of(plan, feature.flags.value.giftOn, zone),
                             )
                         }
                         lookForOrigin()
@@ -442,7 +480,7 @@ class PlanChangeViewModel
             // posted up to 62 days ahead): the times are checked, and sent, only when they moved. Where (an online plan's
             // link, or the place it moves to) is checked whatever moved (Plans step 3).
             val timesProblem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
-            val problem = timesProblem ?: ui.whereProblem()
+            val problem = timesProblem ?: ui.times.problem ?: ui.gift.problem ?: ui.whereProblem()
             if (problem != null) {
                 _ui.update { it.copy(error = problem) }
                 return
@@ -461,12 +499,244 @@ class PlanChangeViewModel
                         // A new pattern from this date on (Plans step 2); "Doesn't repeat" adds `"repeat": null`, below.
                         repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
                         gps = fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) },
+                        // Business track B1: a changed deal; "No deal" takes it off with its own request, below.
+                        deal = ui.deal.chosen?.toInput(ui.zone)?.takeIf { ui.dealChanged },
+                        // Business track B2 and B5: a new price, and the bill here with tips; taking a price off is its own request.
+                        priceCents = ui.money.priceCents?.takeIf { ui.money.priceChanged },
+                        payHere = ui.money.payHere.takeIf { ui.money.payChanged },
+                        tipsOn = (ui.money.payHere && ui.money.tipsOn).takeIf { ui.money.payChanged },
+                        // Plans for the holidays: a private plan's room and "Kids welcome", each only when changed.
+                        spots = ui.room.spots.takeIf { ui.room.spotsChanged },
+                        kidsWelcome = ui.room.kidsWelcome.takeIf { ui.room.kidsChanged },
+                        // The holidays' find a date, while picking: the times offered now (kept ones as the server sent them).
+                        dateOptions = ui.times.toInput(ui.zone).takeIf { ui.times.changed },
+                        // The holidays' chip in: a new value (who paid is kept); taking it away is `"chip_in": null`, below.
+                        chipIn = ui.chipIn.toSend,
+                        // The gift exchange: a new budget (or draw time before the draw); calling it off is `"gift": null`.
+                        gift = ui.gift.toSend(ui.zone),
                     )
-                // One request either way: "Doesn't repeat" goes with the other changes as a raw body.
-                val result = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
-                when (result) {
+                when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
-                    is NetworkResult.Failure -> _ui.update { it.copy(saving = false, error = result.error.planMessage) }
+                    is NetworkResult.Failure -> saveFailed(result.error)
+                }
+            }
+        }
+
+        /**
+         * One request either way: "Doesn't repeat" goes with the other changes as a raw body. Taking a deal off (business
+         * track B1) is its own request, after the other changes when there are any.
+         */
+        private suspend fun send(
+            ui: PlanChangeUi,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
+            val others = ui.patchesFields
+            val first =
+                when {
+                    !others && ui.removesDeal -> repository.removeDeal(planId)
+                    !others && ui.money.removesPrice -> checksRepository.removePrice(planId)
+                    ui.clears.isNotEmpty() -> repository.updateClearing(planId, body, ui.clears)
+                    else -> repository.update(planId, body)
+                }
+            if (first !is NetworkResult.Success) return first
+            val second = if (others && ui.removesDeal) repository.removeDeal(planId) else first
+            if (second !is NetworkResult.Success) return second
+            return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
+        }
+
+        /** A refusal: the server's sentence, under the chip-in field it names when it names one, else under the card. */
+        private fun saveFailed(error: NetworkError) {
+            val field = error.planField
+            val message = error.planMessage
+            _ui.update {
+                val underChip = field != null && field in CHIP_IN_FIELDS && it.chipIn.draft != null
+                val underGift = field != null && field in GIFT_FIELDS && it.gift.draft != null
+                val chipErrors = if (underChip && field != null) mapOf(field to message) else emptyMap()
+                val giftErrors = if (underGift && field != null) mapOf(field to message) else emptyMap()
+                // A field's sentence shows under that field only (the screen's own line sits right below the card).
+                it.copy(
+                    saving = false,
+                    error = message.takeIf { !underChip && !underGift },
+                    chipIn = it.chipIn.copy(errors = chipErrors),
+                    gift = it.gift.copy(errors = giftErrors),
+                )
+            }
+        }
+
+        // ---- Plans for the holidays: chip in ----
+
+        /** "Chip in" on (the plan's own value, else empty fields) or off (Save takes it away). */
+        fun setChipIn(on: Boolean) {
+            _ui.update {
+                val chip = it.chipIn
+                val draft = if (on) chip.draft ?: chip.original ?: ChipInDraft() else null
+                it.copy(chipIn = chip.copy(draft = draft, errors = emptyMap()), error = null)
+            }
+        }
+
+        /** A chip-in field typed into; its refusal goes. */
+        fun editChipIn(
+            field: String,
+            transform: (ChipInDraft) -> ChipInDraft,
+        ) {
+            _ui.update { ui ->
+                val draft = ui.chipIn.draft ?: return@update ui
+                ui.copy(chipIn = ui.chipIn.copy(draft = transform(draft), errors = ui.chipIn.errors - field), error = null)
+            }
+        }
+
+        // ---- Plans for the holidays: the gift exchange ----
+
+        /** "Gift exchange" on (the plan's own, else names drawn the day before at noon) or off (Save calls it off). */
+        fun setGift(on: Boolean) {
+            _ui.update {
+                val gift = it.gift
+                val fresh = { GiftDraft.startingFor(it.start, LocalDateTime.now(it.zone)) }
+                val draft = if (on) gift.draft ?: gift.original ?: fresh() else null
+                it.copy(gift = gift.copy(draft = draft, errors = emptyMap()), error = null)
+            }
+        }
+
+        /** A gift field changed; its refusal goes. */
+        fun editGift(
+            field: String,
+            transform: (GiftDraft) -> GiftDraft,
+        ) {
+            _ui.update { ui ->
+                val draft = ui.gift.draft ?: return@update ui
+                ui.copy(gift = ui.gift.copy(draft = transform(draft), errors = ui.gift.errors - field), error = null)
+            }
+        }
+
+        // ---- Plans for the holidays: the times offered while picking ----
+
+        fun addTime(
+            start: LocalDateTime,
+            end: LocalDateTime,
+        ) {
+            _ui.update { it.copy(times = it.times.copy(options = it.times.options.adding(start, end)), error = null) }
+        }
+
+        fun removeTime(key: Int) {
+            _ui.update { ui ->
+                // At least two stay (the list's "Remove" is off at two).
+                if (ui.times.options.size <= DATE_OPTIONS_FEWEST) return@update ui
+                ui.copy(times = ui.times.copy(options = ui.times.options.filter { it.key != key }), error = null)
+            }
+        }
+
+        // ---- Plans for the holidays: a private plan's room and "Kids welcome" ----
+
+        fun setRoom(spots: Int) {
+            _ui.update { it.copy(room = it.room.copy(spots = spots.coerceIn(it.room.range)), error = null) }
+        }
+
+        fun setKidsWelcome(on: Boolean) {
+            _ui.update { it.copy(room = it.room.copy(kidsWelcome = on), error = null) }
+        }
+
+        // ---- Business track B2 and B5: the price and the bill here ----
+
+        fun editMoney(transform: (PlanChangeMoney) -> PlanChangeMoney) {
+            _ui.update { it.copy(money = transform(it.money), error = null) }
+        }
+
+        // ---- Business track B1: the deal (D3 over this page) ----
+
+        private var dealJob: Job? = null
+
+        /** The Deal row: D3's form over this page, starting from the deal chosen here or the plan's own. */
+        fun openDeal() {
+            val ui = _ui.value
+            if (ui.dealLocked) return
+            val from = ui.deal.chosen ?: ui.deal.original
+            val start = if (from.groupBy == null) DealDraft.startingFor(ui.plan?.spots ?: 2, ui.start, LocalDateTime.now(ui.zone)) else null
+            val draft = if (start != null) from.copy(groupSize = start.groupSize, groupBy = start.groupBy) else from
+            _ui.update { it.copy(deal = it.deal.copy(open = true, draft = draft, preview = DealPreviewState())) }
+            askDealPreview(debounce = false)
+        }
+
+        /** Back on D3: nothing chosen there is kept. */
+        fun closeDeal() {
+            dealJob?.cancel()
+            _ui.update { it.copy(deal = it.deal.copy(open = false, checking = false)) }
+        }
+
+        fun editDeal(transform: (DealDraft) -> DealDraft) {
+            _ui.update { it.copy(deal = it.deal.copy(draft = transform(it.deal.draft)), error = null) }
+            askDealPreview(debounce = true)
+        }
+
+        private fun askDealPreview(debounce: Boolean) {
+            dealJob?.cancel()
+            if (_ui.value.deal.draft.scope == DealScope.NONE) {
+                _ui.update { it.copy(deal = it.deal.copy(preview = DealPreviewState())) }
+                return
+            }
+            dealJob =
+                viewModelScope.launch {
+                    if (debounce) delay(DEAL_PREVIEW_DEBOUNCE_MS)
+                    readDealPreview()
+                }
+        }
+
+        /** Asks the server about the deal on the form; [checked]: "Done" asked, so every error shows from now on. */
+        private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
+            val ui = _ui.value
+            val business = ui.business ?: return null
+            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents, bill = ui.bill)
+            val body = dealPreviewBody(business, ui.deal.draft, facts, ui.zone) ?: return null
+            _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = true, failed = null))) }
+            return when (val result = repository.dealPreview(body)) {
+                is NetworkResult.Success -> {
+                    val answer = result.data
+                    _ui.update {
+                        val shown = checked || it.deal.preview.checked
+                        val preview = DealPreviewState(answer = answer.takeIf { a -> a.ok }, errors = answer.errors, checked = shown)
+                        it.copy(deal = it.deal.copy(preview = preview))
+                    }
+                    answer
+                }
+                is NetworkResult.Failure -> {
+                    val failed = result.error.planMessage
+                    _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = false, failed = failed))) }
+                    null
+                }
+            }
+        }
+
+        /** "Done" on D3: kept for Save once the server accepts the deal (or with "No deal"). */
+        fun dealDone() {
+            val ui = _ui.value
+            if (ui.deal.checking) return
+            dealJob?.cancel()
+            if (ui.deal.draft.scope == DealScope.NONE) {
+                _ui.update { it.copy(deal = it.deal.copy(open = false, chosen = it.deal.draft, chosenText = null)) }
+                return
+            }
+            _ui.update { it.copy(deal = it.deal.copy(checking = true)) }
+            viewModelScope.launch {
+                val answer = readDealPreview(checked = true)
+                _ui.update { current ->
+                    val deal = current.deal.copy(checking = false)
+                    when {
+                        answer?.ok == true -> current.copy(deal = deal.copy(open = false, chosen = deal.draft, chosenText = answer.text))
+                        answer == null -> current.copy(deal = deal, error = "Couldn't check the deal. Try again.")
+                        else -> current.copy(deal = deal)
+                    }
+                }
+            }
+        }
+
+        /** "Remove the deal" once anyone is in (after its question): everyone in is told. */
+        fun removeDeal() {
+            if (_ui.value.deal.removing) return
+            _ui.update { it.copy(deal = it.deal.copy(removing = true), error = null) }
+            viewModelScope.launch {
+                when (val result = repository.removeDeal(planId)) {
+                    is NetworkResult.Success -> _ui.update { it.copy(deal = it.deal.copy(removing = false), saved = true) }
+                    is NetworkResult.Failure ->
+                        _ui.update { it.copy(deal = it.deal.copy(removing = false), error = result.error.planMessage) }
                 }
             }
         }

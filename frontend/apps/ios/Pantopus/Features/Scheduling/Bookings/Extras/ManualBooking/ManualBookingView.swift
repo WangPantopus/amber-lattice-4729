@@ -341,7 +341,7 @@ struct ManualBookingView: View {
                 Text(name)
                     .font(.system(size: 13.5, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
-                Text("Verified neighbor · \(neighborLabel)")
+                Text("Verified home · \(neighborLabel)")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.Color.appTextSecondary)
             }

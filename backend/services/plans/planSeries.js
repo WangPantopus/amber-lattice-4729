@@ -304,6 +304,10 @@ async function nextInput(plan, times, host) {
     details,
     audience: rules.isPrivate(plan) ? 'invited' : 'nearby',
     guests_can_invite: Boolean(plan.guests_can_invite),
+    // Kids welcome (H1): kept while the host has the switch (createPlan reads it only then).
+    ...(plan.kids_welcome ? { kids_welcome: true } : {}),
+    // The occasion (H3), kept while the host has its switch.
+    ...(plan.occasion ? { occasion: plan.occasion } : {}),
   };
 }
 
@@ -317,7 +321,7 @@ async function regularsOf(plan) {
     supabaseAdmin.from('PlanRequest').select('user_id').eq('post_id', plan.post_id).eq('status', 'accepted'),
     rules.isPrivate(plan)
       ? supabaseAdmin.from('PlanInvite').select('invitee_user_id').eq('post_id', plan.post_id).eq('host_user_id', hostId)
-        .in('status', ['pending', 'accepted', 'declined']).not('invitee_user_id', 'is', null)
+        .in('status', ['pending', 'accepted', 'declined', 'maybe']).not('invitee_user_id', 'is', null)
       : { data: [] },
   ]);
   if (requests.error || invites.error) throw new Error(`Failed to read who came: ${(requests.error || invites.error).message}`);

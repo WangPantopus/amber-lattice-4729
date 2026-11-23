@@ -98,6 +98,10 @@ fun LetterLayout(
     if (tableCard != null) {
         return HolidayCardTablePage(letter, tableCard, actionInFlight, message, actions, onBack, content.senderUserId)
     }
+    // A reply to a Christmas card (plan Part 3) opens as the joined card.
+    if (letter.reply != null && LaunchFeatures.cardTable && !removed) {
+        return HolidayCardReplyPage(letter, actionInFlight, message, actions, onBack, content.senderUserId)
+    }
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailLetter")) {
         MailItemDetailTopBar(config = MailTopBarConfig(eyebrow = "Mail", trust = content.detailTrust, onBack = onBack))
         banner?.invoke()

@@ -1,0 +1,86 @@
+name: Area Cells
+
+# The Sky's homes-per-cell file (backend/utils/areaCells.js reads it): which size of area each 0.005° cell of the US
+# floats over, built from the 2020 Census housing counts by block (backend/scripts/area-cells/build.cjs). By hand only:
+# the Census counts don't change. A run builds and prints counts. With publish on, from master only, it also uploads the
+# file to the property index's private storage under area-cells/v1/ (the tiles first, the manifest last, so a server
+# never reads a manifest naming tiles that aren't there yet). That storage and its release steps belong to the property
+# index; publish only when its owners say so. This repository is public, so the run prints counts only and uploads no
+# artifact here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "State FIPS codes, space separated (blank: the 50 states, DC and Puerto Rico). Only a full build publishes."
+        required: false
+        default: ""
+      publish:
+        description: "Upload the file to the property index's storage (master only, a full build only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: area-cells
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    if: ${{ !inputs.publish }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      # The build needs no packages.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Build
+        env:
+          STATES: ${{ inputs.states }}
+        run: node backend/scripts/area-cells/build.cjs --out "$RUNNER_TEMP/area-cells" ${STATES:+--states "$STATES"}
+
+  publish:
+    name: Build and publish
+    if: ${{ inputs.publish && github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: property-index
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.PROPERTY_INDEX_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.PROPERTY_INDEX_AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.PROPERTY_INDEX_REGION }}
+      PROPERTY_INDEX_BUCKET: ${{ vars.PROPERTY_INDEX_BUCKET }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Build
+        env:
+          STATES: ${{ inputs.states }}
+        run: |
+          if [ -n "$STATES" ]; then
+            echo "::error::Only a full build publishes: leave states blank."
+            exit 1
+          fi
+          node backend/scripts/area-cells/build.cjs --out "$RUNNER_TEMP/area-cells"
+      # The 2020 Census counted about 140 million homes. Far fewer means a state didn't read: nothing is published.
+      - name: Check the count
+        run: |
+          homes=$(node -e "console.log(require(process.argv[1]).homes)" "$RUNNER_TEMP/area-cells/manifest.json")
+          echo "homes: $homes"
+          if [ "$homes" -lt 135000000 ]; then
+            echo "::error::Only $homes homes were counted; nothing is published."
+            exit 1
+          fi
+      - name: Publish
+        run: |
+          aws s3 cp "$RUNNER_TEMP/area-cells/tiles" "s3://$PROPERTY_INDEX_BUCKET/area-cells/v1/tiles" --recursive --only-show-errors
+          aws s3 cp "$RUNNER_TEMP/area-cells/manifest.json" "s3://$PROPERTY_INDEX_BUCKET/area-cells/v1/manifest.json" --only-show-errors

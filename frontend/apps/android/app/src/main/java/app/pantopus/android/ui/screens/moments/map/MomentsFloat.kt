@@ -56,19 +56,26 @@ import kotlin.math.tan
  * elevation floats over the map. It loses its tail, its disc sits right over its spot, it is a little bigger the higher
  * it was made (a quarter bigger in flight), and its shadow falls on the map where the real sun puts it now, farther and
  * softer the higher it is, turned with the map. Its height tag takes the side away from the shadow. A pin with no
- * elevation keeps its tail and stands on its spot, so floating always means height; crowded spots and fans stay as they
- * are. A chip beside the colour key says the time the shadows are drawn for.
+ * elevation keeps its tail and stands on its spot; crowded spots and fans stay as they are. A chip beside the colour key
+ * says the time the shadows are drawn for.
  *
  * Only while the map's answer says `float_on` (the `moment_float` switch, contract v3.10), the Elevation chip is on and
  * the sun is up. Otherwise the map draws today's pins. The shadows are drawn under every pin in the overlay's draw step,
  * from the camera as it is then, so the pins still move with the map without recomposing. The same numbers as iPhone's
  * `MomentsFloat.swift`.
+ *
+ * A Moment that shows only its area (made at home; the Sky, founder 2026-11-17) floats too, whatever the hour and the
+ * chip: the same disc with no tail, low over a street close by, its shadow right under it, so it never points at one
+ * spot ([AreaRingItem], [MomentsFloat.AREA_SHADOW]).
  */
 
 /** How a floating pin is drawn, from its elevation and the sun. */
 internal object MomentsFloat {
     /** The shadow's radius before its soft edge: the disc's own. */
     const val SHADOW_RADIUS_DP = 31f
+
+    /** Under a Moment that shows only its area: right below the disc, the same by day and by night. */
+    val AREA_SHADOW = MomentFloatShadow(dx = 0f, dy = 9f, blur = 5f, opacity = 0.3f)
 
     /** How high it floats on the map's own scale, 0 to 1: a square root of the feet up to 15,000; flights at the top. */
     fun lift(height: MomentShownHeight): Double = if (height.flying) 1.0 else min(1.0, sqrt(max(height.feet, 0) / 15000.0))
@@ -204,6 +211,7 @@ internal fun FloatRingItem(
                     seen = ring.seen,
                     preview = ring.ring.preview,
                     tail = false,
+                    live = ring.live,
                     modifier =
                         Modifier.graphicsLayer {
                             scaleX = scale
@@ -214,6 +222,23 @@ internal fun FloatRingItem(
             if (tag == MomentTagSide.AFTER) MomentHeightTag(height = height)
         }
         if (tag == MomentTagSide.BELOW) MomentHeightTag(height = height)
+    }
+}
+
+/**
+ * A ring whose Moment shows only its area (made at home): today's pin with no tail, its disc's middle on the spot. Its
+ * shadow is drawn under every pin by the overlay. The same tap and the same words for TalkBack as any ring.
+ */
+@Composable
+internal fun AreaRingItem(
+    ring: MomentRingUi,
+    onTap: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.ringTap(ring, null, remember { MutableInteractionSource() }, onTap).size(MOMENT_PIN_WIDTH),
+        contentAlignment = Alignment.Center,
+    ) {
+        MomentMapPin(author = ring.author, seen = ring.seen, preview = ring.ring.preview, tail = false, live = ring.live)
     }
 }
 

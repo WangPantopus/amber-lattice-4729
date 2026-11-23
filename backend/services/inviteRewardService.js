@@ -17,10 +17,10 @@ const logger = require('../utils/logger');
 // ── Feature unlock tiers ──────────────────────────────────────────
 
 const FEATURE_TIERS = [
-  { key: 'activity_map', label: 'Neighborhood Activity Map', threshold: 1 },
-  { key: 'neighborhood_insights', label: 'Neighborhood Insights', threshold: 3 },
+  { key: 'activity_map', label: 'Local Activity Map', threshold: 1 },
+  { key: 'neighborhood_insights', label: 'Local Insights', threshold: 3 },
   { key: 'priority_matching', label: 'Priority Matching', threshold: 5 },
-  { key: 'founding_badge', label: 'Founding Neighbor Badge', threshold: 10 },
+  { key: 'founding_badge', label: 'Block Founder Badge', threshold: 10 },
 ];
 
 const FEATURE_KEYS = FEATURE_TIERS.map((t) => t.key);
@@ -78,33 +78,7 @@ async function getInviteProgress(userId) {
       logger.warn('inviteRewardService: failed to count conversions', { userId, error: convErr.message });
     }
 
-    const converted = totalConverted || 0;
-
-    // Determine unlocked features
-    const unlocked_features = FEATURE_TIERS
-      .filter((t) => converted >= t.threshold)
-      .map((t) => t.key);
-
-    // Determine next unlock
-    const nextTier = FEATURE_TIERS.find((t) => converted < t.threshold) || null;
-    const next_unlock = nextTier
-      ? {
-          feature: nextTier.key,
-          label: nextTier.label,
-          invites_needed: nextTier.threshold,
-          invites_remaining: nextTier.threshold - converted,
-        }
-      : null;
-
-    const result = {
-      total_invited: totalInvited || 0,
-      total_converted: converted,
-      unlocked_features,
-      next_unlock,
-    };
-
-    setCache(userId, result);
-    return result;
+    return inviteProgressFromCounts(userId, totalInvited, totalConverted);
   } catch (err) {
     logger.error('inviteRewardService: getInviteProgress failed', { userId, error: err.message });
     return {
@@ -116,6 +90,40 @@ async function getInviteProgress(userId) {
         : null,
     };
   }
+}
+
+/**
+ * The progress from the two referral counts (all invites, converted ones), kept for five minutes like
+ * getInviteProgress's. Also used with the counts read on a direct connection (routes/users.js GET /profile).
+ */
+function inviteProgressFromCounts(userId, totalInvited, totalConverted) {
+  const converted = totalConverted || 0;
+
+  // Determine unlocked features
+  const unlocked_features = FEATURE_TIERS
+    .filter((t) => converted >= t.threshold)
+    .map((t) => t.key);
+
+  // Determine next unlock
+  const nextTier = FEATURE_TIERS.find((t) => converted < t.threshold) || null;
+  const next_unlock = nextTier
+    ? {
+        feature: nextTier.key,
+        label: nextTier.label,
+        invites_needed: nextTier.threshold,
+        invites_remaining: nextTier.threshold - converted,
+      }
+    : null;
+
+  const result = {
+    total_invited: totalInvited || 0,
+    total_converted: converted,
+    unlocked_features,
+    next_unlock,
+  };
+
+  setCache(userId, result);
+  return result;
 }
 
 /**
@@ -146,7 +154,7 @@ function requireFeature(featureKey) {
         const needed = tier ? tier.threshold : 0;
         const remaining = needed - progress.total_converted;
         return res.status(403).json({
-          error: `Invite ${remaining} neighbor${remaining !== 1 ? 's' : ''} to unlock this feature`,
+          error: `Invite ${remaining} more ${remaining !== 1 ? 'people' : 'person'} to unlock this feature`,
           feature: featureKey,
           invites_needed: needed,
           invites_remaining: remaining,
@@ -165,6 +173,8 @@ module.exports = {
   FEATURE_KEYS,
   FEATURE_TIERS,
   getInviteProgress,
+  inviteProgressFromCounts,
+  cachedInviteProgress: getCached,
   forgetInviteProgress,
   checkFeatureAccess,
   requireFeature,

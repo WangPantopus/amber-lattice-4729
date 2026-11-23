@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AcUnit
@@ -730,6 +731,9 @@ enum class PantopusIcon(
     CircleDashed("circle-dashed"),
     Volume2("volume-2"),
     VolumeX("volume-x"),
+
+    // Moment marks (Text and Draw, board T3): Draw's Undo is Lucide `undo` (Material `Undo`, SF `arrow.uturn.backward`).
+    Undo("undo"),
     ;
 
     companion object {
@@ -1107,6 +1111,7 @@ internal fun PantopusIcon.source(): IconSource =
         PantopusIcon.Forward -> IconSource.Material(Icons.AutoMirrored.Filled.ArrowForward)
         PantopusIcon.Keyboard -> IconSource.Material(Icons.Filled.Keyboard)
         PantopusIcon.Undo2 -> IconSource.Material(Icons.AutoMirrored.Filled.ArrowBack)
+        PantopusIcon.Undo -> IconSource.Material(Icons.AutoMirrored.Filled.Undo)
         // A17.9 Party — Material ships direct glyphs for all but
         // `cloud-sun` (which uses Material's `WbSunny` sun-with-rays as the
         // closest weather analogue) and `shirt` (which uses `Checkroom`'s

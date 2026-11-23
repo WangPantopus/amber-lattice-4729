@@ -170,7 +170,7 @@ public final class OffersViewModel: ListOfRowsDataSource {
     // MARK: - Static copy
 
     private static let receivedEmptySubcopy =
-        "When a neighbor offers a price on one of your listings, " +
+        "When someone offers a price on one of your listings, " +
         "it’ll land here. Listings with photos and a fair ask tend " +
         "to draw offers within a day."
 

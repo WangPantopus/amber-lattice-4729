@@ -303,7 +303,7 @@ public final class UniversalSearchViewModel {
         )
         return response.users.map { user in
             // A made-up username (user_…) is never shown as a name or a handle.
-            let name = user.name?.nonEmpty ?? MadeUpUsername.chosen(user.username) ?? "Neighbor"
+            let name = user.name?.nonEmpty ?? MadeUpUsername.chosen(user.username) ?? "Someone nearby"
             return UniversalSearchResult(
                 id: user.id,
                 kind: .person,

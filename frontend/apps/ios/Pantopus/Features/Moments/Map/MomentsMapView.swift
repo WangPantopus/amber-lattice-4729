@@ -41,6 +41,8 @@ struct MomentsMapView: View {
     /// The iPhone Duo: how tall the card at the bottom left is (open, the pill or the empty, location or load-failed
     /// card; closed, the strip or one of those cards). MapKit's Legal link sits just above it.
     @State var leftCardHeight: CGFloat = 52
+    /// Zoomed far out, the satellite globe (`MapGlobe`, shared with the Pulse map; `MomentsGlobe.swift`).
+    @State private var globe = MapGlobe()
     /// When a ring or a bubble was last tapped: the map's own tap sees that tap too.
     @State private var pinTappedAt = Date.distantPast
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -147,6 +149,8 @@ struct MomentsMapView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: note) {
                         try? await Task.sleep(for: .seconds(4))
+                        // After "Your Moment is live": the guidance card "Your Moment is up", after the first one.
+                        if uploads.liveNote != nil { GuidanceCenter.shared.pend(.doneFirstMoment) }
                         uploads.liveNote = nil
                         uploads.plainNote = nil
                     }
@@ -270,7 +274,8 @@ struct MomentsMapView: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .mapGlobe(globe, closeIn: .standard(pointsOfInterest: .excludingAll))
+        .onMapCameraChange(frequency: .continuous) { context in globe.follow(context.region) }
         .onMapCameraChange(frequency: .onEnd, onSettled)
         .watchesFingerOnMap(hidesBar: duo.pose == .phone) { viewModel.fingerOnMapAt = duo.pose.isOpen ? nil : Date() }
         // A tap on the map itself closes the card beside it (open sideways, board O2). A ring's own tap comes first.
@@ -449,6 +454,7 @@ enum MomentsSpeech {
     static func label(for ring: MomentRingDTO, height: MomentShownHeight? = nil) -> String {
         let count = ring.moments.count == 1 ? "1 Moment" : "\(ring.moments.count) Moments"
         var parts = [ring.mine ? "Your Moments" : ring.author.name, count, ring.isNew ? "new" : "watched"]
+        if ring.isLive(at: Date()) { parts.append("live") }
         if !ring.placeLabel.isEmpty { parts.append("at \(ring.placeLabel)") }
         if let height { parts.append(height.spoken) }
         if ring.author.verified { parts.append("verified resident") }

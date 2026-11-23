@@ -74,6 +74,8 @@ fun ComingUpAtHome(
     calendarOpen: Boolean,
     onToggleCalendar: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** The row lit now (a pickup just saved, "See it in Today"); null: none. */
+    litId: String? = null,
     /** Shown where the agenda would be when the calendar couldn't be read (its fallback card). */
     unavailable: (@Composable () -> Unit)? = null,
     calendar: @Composable () -> Unit = {},
@@ -85,7 +87,7 @@ fun ComingUpAtHome(
         AgendaHead(calendarOpen, onToggleCalendar)
         when {
             calendarOpen -> calendar()
-            window.isNotEmpty() -> AgendaList(window, now, actions)
+            window.isNotEmpty() -> AgendaList(window, now, actions, litId)
             unavailable != null && items.isEmpty() -> unavailable()
             else -> AgendaEmpty(items.firstOrNull(), now, actions, onToggleCalendar)
         }
@@ -129,14 +131,15 @@ private fun AgendaList(
     rows: List<AgendaItem>,
     now: ZonedDateTime,
     actions: AgendaActions,
+    litId: String? = null,
 ) {
-    // The soonest five; a long week stays one tap away rather than a wall (as on iPhone).
+    // The soonest five; a long week stays one tap away rather than a wall (as on iPhone). A lit row past them shows.
     var showsAll by rememberSaveable { mutableStateOf(false) }
-    val shown = if (showsAll) rows else rows.take(AGENDA_FIRST_ROWS)
+    val shown = if (showsAll || rows.indexOfFirst { it.id == litId } >= AGENDA_FIRST_ROWS) rows else rows.take(AGENDA_FIRST_ROWS)
     Column(modifier = Modifier.fillMaxWidth().placeSurface().padding(horizontal = 14.dp)) {
         shown.forEachIndexed { index, item ->
             if (index > 0) TodayHairline()
-            AgendaRow(item, now, actions)
+            AgendaRow(item, now, actions, lit = item.id == litId)
         }
         if (rows.size > AGENDA_FIRST_ROWS) {
             TodayHairline()
@@ -186,16 +189,33 @@ private fun AgendaRow(
     item: AgendaItem,
     now: ZonedDateTime,
     actions: AgendaActions,
+    lit: Boolean = false,
 ) {
     var open by rememberSaveable(item.id) { mutableStateOf(false) }
+    // A pickup entry opens the pickup editor, for a person who may change the schedule; every other row unfolds.
+    val pickup = (item.source as? AgendaSource.Calendar)?.event?.takeIf { it.isPickupEntry }
+    val editPickup = actions.onEditPickup?.takeIf { pickup != null }
     Column(modifier = Modifier.fillMaxWidth().animateContentSize().testTag("today.agenda.row")) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 56.dp)
-                    .clickable(role = Role.Button, onClickLabel = if (open) "Hide details" else "Show details") { open = !open }
-                    .semantics(mergeDescendants = true) { stateDescription = if (open) "Expanded" else "Collapsed" }
+                    // The row's column clips to its bounds (it animates its size), so the wash stays inside them.
+                    .pickupLit(pickupLitColor(lit), outsetX = 0.dp)
+                    .then(
+                        if (editPickup != null && pickup != null) {
+                            Modifier
+                                .clickable(role = Role.Button, onClickLabel = "Open the pickup schedule", onClick = editPickup)
+                                .testTag(pickupEntryTag(pickup))
+                        } else {
+                            Modifier
+                                .clickable(role = Role.Button, onClickLabel = if (open) "Hide details" else "Show details") {
+                                    open = !open
+                                }
+                                .semantics(mergeDescendants = true) { stateDescription = if (open) "Expanded" else "Collapsed" }
+                        },
+                    )
                     .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -207,7 +227,11 @@ private fun AgendaRow(
                 AudienceLabel(item.audience)
             }
             PantopusIconImage(
-                if (open) PantopusIcon.ChevronUp else PantopusIcon.ChevronDown,
+                when {
+                    editPickup != null -> PantopusIcon.ChevronRight
+                    open -> PantopusIcon.ChevronUp
+                    else -> PantopusIcon.ChevronDown
+                },
                 null,
                 size = 16.dp,
                 tint = PantopusColors.appTextMuted,

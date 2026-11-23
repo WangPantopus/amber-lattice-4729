@@ -4,9 +4,11 @@
 //
 //  A ring's pin on the Moments map: today's pin standing on its spot, or, while
 //  pins float by day (part D, `MomentsFloat.swift`) and the ring carries an
-//  elevation, the floating disc over its spot with its shadow. One button
-//  either way, with the same spoken label and test id; the pin playing in the
-//  card beside the map (the open iPhone Duo) stays today's pin in its halo.
+//  elevation, the floating disc over its spot with its shadow. A ring whose
+//  Moment shows only its area (made at home) always floats, low over its spot.
+//  One button either way, with the same spoken label and test id; the pin
+//  playing in the card beside the map (the open iPhone Duo) stays today's pin
+//  in its halo.
 //
 
 import MapKit
@@ -19,6 +21,11 @@ extension MomentsMapView {
         if let sun = plan.float, let height = ring.shownHeight, !isPlaying(ring) {
             Annotation("", coordinate: coordinate, anchor: MomentFloatPin.anchor(tagged: tag, height: height)) {
                 ringButton(ring, plan: plan) { MomentFloatPin(ring: ring, height: height, sun: sun).tagged(tag) }
+            }
+            .annotationTitles(.hidden)
+        } else if ring.floating, !isPlaying(ring) {
+            Annotation("", coordinate: coordinate, anchor: .center) {
+                ringButton(ring, plan: plan) { MomentFloatPin(overArea: ring) }
             }
             .annotationTitles(.hidden)
         } else {

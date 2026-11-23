@@ -14,6 +14,7 @@ import {
   COMPOSE_FIELD_CLASS, COMPOSE_SELECT_CLASS, COMPOSE_TEXTAREA_CLASS,
   STRUCTURED_COMPOSE_DEFAULTS,
 } from './mailbox-constants';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type RecipientUser = { id: string; name?: string; username?: string; city?: string | null; state?: string | null };
 
@@ -57,6 +58,8 @@ interface ComposeMailModalProps {
 export default function ComposeMailModal({
   currentUserId, availableHomes, scopeHomeId, onClose, onSent, setActionError, setActionSuccess,
 }: ComposeMailModalProps) {
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [composeMode, setComposeMode] = useState<ComposeMode>('quick');
   const [composeLoading, setComposeLoading] = useState(false);
   // The page banner that also gets this sits behind the modal's overlay.
@@ -457,7 +460,7 @@ export default function ComposeMailModal({
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-app-text-secondary">Step 2 — Address Route</label>
-                <AddressAutocomplete value={quickAddressInput}
+                <AddressAutocomplete near={homeCenter} value={quickAddressInput}
                   onChange={(value) => { setQuickAddressInput(value); setQuickComposeData(prev => ({ ...prev, destinationHomeId: '' })); }}
                   onSelectNormalized={(normalized) => {
                     const matchedHome = matchHomeRouteFromAddress(normalized?.address || '');
@@ -571,7 +574,7 @@ export default function ComposeMailModal({
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-app-text-secondary">Address (Home)</label>
-                <AddressAutocomplete value={structuredAddressInput}
+                <AddressAutocomplete near={homeCenter} value={structuredAddressInput}
                   onChange={(value) => { setStructuredAddressInput(value); setStructuredComposeData(prev => ({ ...prev, recipientHomeId: '' })); }}
                   onSelectNormalized={(normalized) => {
                     const matchedHome = matchHomeRouteFromAddress(normalized?.address || '');

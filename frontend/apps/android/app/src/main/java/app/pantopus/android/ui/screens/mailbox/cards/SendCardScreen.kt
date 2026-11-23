@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,7 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +63,7 @@ import app.pantopus.android.data.api.models.mailbox.SentHolidayCard
 import app.pantopus.android.data.api.models.mailbox.StampBalance
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
+import app.pantopus.android.ui.screens.mailbox.cards.table.clothTint
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -89,16 +95,32 @@ fun SendCardScreen(
     var largeDesign by rememberSaveable { mutableStateOf<String?>(null) }
     // "Seal and send" on Look it over: the table, to seal it by hand (Part 2).
     var sealing by rememberSaveable { mutableStateOf(false) }
+    // "Seal and send" on step 4 (plan Part 5): the look's check, then straight to the table; Back there returns to step 4.
+    var sealFromStep4 by rememberSaveable { mutableStateOf(false) }
+    // Look it over's pinned button, measured, so the end of the page can scroll up above it.
+    var pinnedHeight by remember { mutableIntStateOf(0) }
     // A card on a sent list, asked about before it's taken back.
     var listTakeBack by remember { mutableStateOf<SentHolidayCard?>(null) }
     val season = cards
     val page = SendCardPage.of(season, form)
+    // Pick a card as shelves (the server's switch `card_shelves`, card shelves SPEC Part B), and the collection whose
+    // page is open over them ("All collections"); the page closes with the step.
+    val shelves = page == SendCardPage.Steps && form.step == SendCardStep.Pick && season?.drawsShelves == true
+    var openCollection by rememberSaveable { mutableStateOf<String?>(null) }
+    val collectionOpen = shelves && openCollection != null
     // Back walks the steps only while they show: on today's card (or done for the year) it closes at once, even when
-    // "Send Hazel a card" opened the steps at Pick a card underneath.
-    val back = { if (page != SendCardPage.Steps || !viewModel.back()) onClose() }
+    // "Send Hazel a card" opened the steps at Pick a card underneath. On a collection's page it goes back to the shelves.
+    val back = {
+        if (collectionOpen) {
+            openCollection = null
+        } else if (page != SendCardPage.Steps || !viewModel.back()) {
+            onClose()
+        }
+    }
     BackHandler(onBack = back)
     val scroll = rememberScrollState()
     LaunchedEffect(form.step) { scroll.scrollTo(0) }
+    LaunchedEffect(form.step) { if (form.step != SendCardStep.Pick) openCollection = null }
     // Digital stamps (postage on): the balance after each step, card and take-back, and on coming back (Google Play
     // purchases are finished then). The stamp books open from the header's count, "Get stamps to send", or a card the
     // server refused for a stamp.
@@ -133,75 +155,145 @@ fun SendCardScreen(
             if (toBuy && paid > 0) viewModel.reload()
         }
     }
+    val onSteps = page == SendCardPage.Steps
+    val listLook = form.listPreview.takeIf { onSteps && form.to is CardRecipient.Several }
+    // Look it over keeps only its button, over the page (plan 5.2); every other bar sits under the steps.
+    val pinsOver = onSteps && form.step == SendCardStep.Look && (listLook != null || form.preview != null)
+    // "Seal it for the day" pins its two buttons too, so they show the moment it opens (the design check of November 17).
+    val sealTo = form.to.takeIf { onSteps && form.step == SendCardStep.Seal && season?.designOf(form.design) != null }
+    val lookGround = lookGround(season, form)
+    val density = LocalDensity.current
+    // "Send this card to someone else" (plan Part 6): the same picture and signature, from Who it's for.
+    val sendAgain = { viewModel.startAnotherCard(samePicture = true) }
     // Above the keyboard: the steps and what's pinned under them (step 1's button on with a list).
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.cardDesk).imePadding().testTag("sendCard")) {
         StepHeader(
-            title = page.title(form),
+            title = if (collectionOpen) "All collections" else page.title(form),
             step = form.step.takeIf { page == SendCardPage.Steps },
             onBack = back,
         )
-        StampChip(
-            stamps?.balance,
-            onOpen = getStamps,
-            modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
-        )
-        Column(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .verticalScroll(scroll)
-                    .padding(bottom = Spacing.s6),
-        ) {
-            when (page) {
-                SendCardPage.Reading -> {
-                    val failed = load as? SendCardLoad.Failed
-                    if (failed != null) LoadProblem(failed.message, onRetry = viewModel::reload) else LoadingDesk()
+        // On the shelves the stamps left sit on the "To" line instead.
+        if (!shelves) {
+            StampChip(
+                stamps?.balance,
+                onOpen = getStamps,
+                modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            if (shelves && season != null) {
+                PickShelves(
+                    cards = season,
+                    chosen = form.design,
+                    to = form.to,
+                    stamps = stamps?.balance,
+                    onStamps = getStamps,
+                    open = openCollection,
+                    onOpen = { openCollection = it },
+                    onLarge = { largeDesign = it },
+                )
+            } else {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scroll)
+                            .padding(bottom = if ((pinsOver || sealTo != null) && LaunchFeatures.cardTable) 0.dp else Spacing.s6),
+                ) {
+                    when (page) {
+                        SendCardPage.Reading -> {
+                            val failed = load as? SendCardLoad.Failed
+                            if (failed != null) LoadProblem(failed.message, onRetry = viewModel::reload) else LoadingDesk()
+                        }
+                        SendCardPage.Today ->
+                            season?.todaysCard?.let { today ->
+                                SentCardSection(
+                                    today,
+                                    season,
+                                    "Today’s card",
+                                    form,
+                                    onTakeBack = { confirmTakeBack = true },
+                                    onClose = onClose,
+                                    fromName = fromName,
+                                )
+                            }
+                        SendCardPage.Closed -> DoneForTheYear(onClose)
+                        SendCardPage.Steps, SendCardPage.Sent ->
+                            season?.let {
+                                Steps(
+                                    cards = it,
+                                    form = form,
+                                    fromName = fromName,
+                                    viewModel = viewModel,
+                                    onClose = onClose,
+                                    onTakeBack = { confirmTakeBack = true },
+                                    onSeeInSent = onSeeInSent,
+                                    stamps = stamps?.balance,
+                                    onStampsForMedia = getStampsForMedia,
+                                    onTakeBackFromList = { listTakeBack = it },
+                                    onLarge = { largeDesign = it },
+                                    endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver || sealTo != null } ?: 0.dp,
+                                    onSendAgain = sendAgain.takeIf { season.canSendAnother(stamps?.balance) },
+                                )
+                            }
+                    }
                 }
-                SendCardPage.Today ->
-                    season?.todaysCard?.let { today ->
-                        SentCardSection(
-                            today,
-                            season,
-                            "Today’s card",
-                            form,
-                            onTakeBack = { confirmTakeBack = true },
-                            onClose = onClose,
-                            fromName = fromName,
-                        )
-                    }
-                SendCardPage.Closed -> DoneForTheYear(onClose)
-                SendCardPage.Steps, SendCardPage.Sent ->
-                    season?.let {
-                        Steps(
-                            cards = it,
-                            form = form,
-                            fromName = fromName,
-                            viewModel = viewModel,
-                            onClose = onClose,
-                            onTakeBack = { confirmTakeBack = true },
-                            onSeeInSent = onSeeInSent,
-                            stamps = stamps?.balance,
-                            onGetStamps = getStamps,
-                            onStampsForMedia = getStampsForMedia,
-                            onTakeBackFromList = { listTakeBack = it },
-                            onLarge = { largeDesign = it },
-                        )
-                    }
+            }
+            val pinned = Modifier.align(Alignment.BottomCenter).onSizeChanged { pinnedHeight = it.height }
+            if (pinsOver && listLook != null) {
+                ListLookFooter(
+                    form = form,
+                    look = listLook,
+                    stamps = stamps?.balance,
+                    onSend = { sealing = true },
+                    onGetStamps = { viewModel.getStampsForList(stamps?.balance?.available ?: 0) },
+                    ground = lookGround,
+                    modifier = pinned,
+                )
+            } else if (pinsOver) {
+                LookFooter(
+                    form = form,
+                    onSend = { sealing = true },
+                    byLink = form.to is CardRecipient.Link,
+                    stamps = stamps?.balance,
+                    onGetStamps = getStamps,
+                    ground = lookGround,
+                    modifier = pinned,
+                )
+            } else if (sealTo != null) {
+                SealFooter(
+                    to = sealTo,
+                    form = form,
+                    stamps = stamps?.balance,
+                    sealingNow = sealFromStep4,
+                    onSend = viewModel::send,
+                    onSealNow = {
+                        sealFromStep4 = true
+                        viewModel.look()
+                    },
+                    onLook = {
+                        sealFromStep4 = false
+                        viewModel.look()
+                    },
+                    onGetStamps = getStamps,
+                    ground = lookGround,
+                    modifier = pinned,
+                )
             }
         }
-        val onSteps = page == SendCardPage.Steps
-        val listLook = form.listPreview.takeIf { onSteps && form.to is CardRecipient.Several }
         val listGrowing = onSteps && viewModel.maxRecipients > 1 && form.listed.isNotEmpty()
-        if (form.step == SendCardStep.Look && listLook != null) {
-            ListLookFooter(
-                form = form,
-                look = listLook,
-                stamps = stamps?.balance,
-                onSend = { sealing = true },
-                onGetStamps = { viewModel.getStampsForList(stamps?.balance?.available ?: 0) },
-            )
-        } else if (form.step == SendCardStep.To && listGrowing) {
+        if (form.step == SendCardStep.To && listGrowing) {
             ListContinueBar(form, onContinue = viewModel::continueWithList)
+        } else if (shelves && season != null) {
+            // The shelves' bar shows only once a card is chosen; the rack is the same.
+            ShelvesBar(season, form.design, onLarge = { largeDesign = it }, onNext = viewModel::next)
+            PickRack(
+                season,
+                large = largeDesign,
+                onLarge = { largeDesign = it },
+                onChoose = viewModel::chooseDesign,
+                onNext = viewModel::next,
+            )
         } else if (onSteps && form.step == SendCardStep.Pick && season != null) {
             PickBar(
                 cards = season,
@@ -211,20 +303,26 @@ fun SendCardScreen(
                 onChoose = viewModel::chooseDesign,
                 onNext = viewModel::next,
             )
-        } else if (onSteps && form.step == SendCardStep.Look && form.preview != null) {
-            LookFooter(
-                byEmail = form.to is CardRecipient.Email,
-                form = form,
-                onSend = { sealing = true },
-                byLink = form.to is CardRecipient.Link,
-                stamps = stamps?.balance,
-                onGetStamps = getStamps,
-            )
         }
     }
     // The table stays while the card is looked over and sent; anything else (step 4 saying why) puts it away.
     LaunchedEffect(form.step) {
         if (form.step != SendCardStep.Look && form.step != SendCardStep.Sent) sealing = false
+    }
+    // Step 4's "Seal and send" once its check is answered: the table, or the reason on step 4. A list with a card that
+    // won't go, or too few stamps for it, opens Look it over instead, which shows each person's line (plan 5.1).
+    LaunchedEffect(form.step, form.previewing) {
+        if (!sealFromStep4 || form.previewing) return@LaunchedEffect
+        when (form.step) {
+            SendCardStep.Look -> {
+                val list = form.listPreview
+                val stampsLeft = stamps?.balance?.available ?: list?.needed ?: 0
+                val listGoes = list == null || (list.recipients.all { it.status == "ready" } && list.needed <= stampsLeft)
+                if (listGoes) sealing = true else sealFromStep4 = false
+            }
+            SendCardStep.Seal -> sealFromStep4 = false
+            else -> Unit
+        }
     }
     val sealable = form.step == SendCardStep.Look || form.step == SendCardStep.Sent
     if (sealing && season != null && sealable) {
@@ -233,7 +331,14 @@ fun SendCardScreen(
             form = form,
             fromName = fromName,
             onSeal = { if (viewModel.form.value.to is CardRecipient.Several) viewModel.sendList() else viewModel.send() },
-            onBack = { sealing = false },
+            // Back from a table reached from step 4 returns there; from Look it over, to Look it over.
+            onBack = {
+                sealing = false
+                if (sealFromStep4) {
+                    sealFromStep4 = false
+                    viewModel.back()
+                }
+            },
             // Done (or ✕) once it's sent: back to the Mailbox.
             onFinished = {
                 sealing = false
@@ -243,6 +348,11 @@ fun SendCardScreen(
                 sealing = false
                 confirmTakeBack = true
             },
+            onSendAgain =
+                {
+                    sealing = false
+                    sendAgain()
+                }.takeIf { season.canSendAnother(stamps?.balance) },
         )
     }
     if (stamps != null && showsStampBooks) {
@@ -282,6 +392,63 @@ fun SendCardScreen(
             onKeep = { confirmTakeBack = false },
         )
     }
+    // "Where does it start?" (travelling card plan Part 2): asked once, for a travelling card from someone with no town.
+    val askTown by viewModel.town.askTown.collectAsStateWithLifecycle()
+    if (askTown != null) {
+        CardTownSheet(
+            onKept = {
+                // What was asked for goes on with the town kept.
+                when (viewModel.town.kept()) {
+                    TownThen.Look -> viewModel.look()
+                    TownThen.Send -> viewModel.send()
+                    TownThen.SendList -> viewModel.sendList()
+                    TownThen.Nothing, null -> Unit
+                }
+            },
+            onDismiss = viewModel.town::dismissed,
+        )
+    }
+}
+
+/** Under a card just sent: "Send another card", and "Send this card to someone else" while another can go (Part 6). */
+@Composable
+private fun AnotherCardButtons(
+    onAnother: () -> Unit,
+    onSendAgain: (() -> Unit)?,
+) {
+    CardButton(
+        "Send another card",
+        onClick = onAnother,
+        kind = CardButtonKind.Paper,
+        modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4).testTag("sendAnotherCard"),
+    )
+    if (onSendAgain != null) {
+        CardButton(
+            SEND_THIS_CARD_AGAIN,
+            onClick = onSendAgain,
+            kind = CardButtonKind.Paper,
+            modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s2).testTag("sendThisCardAgain"),
+        )
+    }
+}
+
+/** "Send this card to someone else" (plan Part 6). */
+internal const val SEND_THIS_CARD_AGAIN = "Send this card to someone else"
+
+/** Another card can go now (plan Part 6): a stamp left with digital stamps on, else today's card not used yet. */
+internal fun HolidayCardsResponse?.canSendAnother(stamps: StampBalance?): Boolean {
+    val season = this ?: return false
+    if (!season.open) return false
+    return if (season.postageEnabled) (stamps?.available ?: season.stamps?.available ?: 0) > 0 else season.todaysCard == null
+}
+
+/** What Look it over lies on under its pinned button: the card's cloth at the table, else the desk. */
+private fun lookGround(
+    cards: HolidayCardsResponse?,
+    form: SendCardForm,
+): Color {
+    val design = cards?.designOf(form.design)
+    return if (LaunchFeatures.cardTable && design != null) clothTint(design.table) else PantopusColors.cardDesk
 }
 
 /** What the send screen shows: the cards being read, today's card, done for the year, the steps, or the card just sent. */
@@ -327,13 +494,16 @@ private fun Steps(
     onSeeInSent: (String?) -> Unit,
     /** Digital stamps left (postage on, once read), for step 4 when it seals and sends itself. */
     stamps: StampBalance?,
-    onGetStamps: () -> Unit,
     /** The stamp books for the card's photo or greeting (no bought stamp left), saying why. */
     onStampsForMedia: () -> Unit,
     /** A card on a sent list: "Take it back" (asked first). */
     onTakeBackFromList: (SentHolidayCard) -> Unit,
     /** Pick a card: show this picture large. */
     onLarge: (String) -> Unit,
+    /** Room at the end of "Seal it for the day" and of Look it over for their pinned buttons. */
+    endRoom: Dp = 0.dp,
+    /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val backNote = form.backNote(postage = cards.postageEnabled)
     if (backNote != null && form.step == SendCardStep.To) {
@@ -351,12 +521,14 @@ private fun Steps(
             onSendRest = viewModel::sendList,
             onClose = onClose,
             onSeeInSent = { onSeeInSent(null) },
-            onAnother = viewModel::startAnotherCard,
+            onAnother = { viewModel.startAnotherCard() },
+            onSendAgain = onSendAgain,
         )
         return
     }
     val to = form.to
     val design = cards.designs.firstOrNull { it.id == form.design }
+    val keepingState by viewModel.signatureKeeper.state.collectAsStateWithLifecycle()
     when (form.step) {
         SendCardStep.To -> ToStep(form, viewModel)
         SendCardStep.Pick -> PickStep(cards, form.design, onLarge = onLarge)
@@ -375,6 +547,14 @@ private fun Steps(
                         signature = form.signature,
                         canSign = LaunchFeatures.cardTable && cards.signature != null,
                         onSignature = viewModel::onSignature,
+                        keeping =
+                            CardSignKeeping(
+                                saved = cards.signature?.saved?.takeIf { it.drawable },
+                                state = keepingState,
+                                onSigned = viewModel.signatureKeeper::signed,
+                                onForget = viewModel.signatureKeeper::forget,
+                                onOpened = viewModel.signatureKeeper::opened,
+                            ).takeIf { LaunchFeatures.cardTable && cards.signature?.saves == true },
                         photo = form.photo,
                         photos = photoCalls(cards, form, viewModel),
                         voice = form.voice,
@@ -394,10 +574,11 @@ private fun Steps(
                         fromName,
                         form,
                         onArrival = viewModel::chooseArrival,
-                        onLook = viewModel::look,
-                        onSend = viewModel::send,
                         stamps = stamps,
-                        onGetStamps = onGetStamps,
+                        endRoom = endRoom,
+                        // "Let it travel" (travelling card plan Part 2): only where the server offers it.
+                        travel = (!form.travelOff).takeIf { cards.travel?.on == true },
+                        onTravel = viewModel.town::set,
                     )
                 }
             }
@@ -406,9 +587,18 @@ private fun Steps(
             val listLook = form.listPreview
             StepsAtTable(LaunchFeatures.cardTable && design != null, design?.table) {
                 when {
-                    to is CardRecipient.Several && design != null && listLook != null -> ListLookStep(cards, form, design, listLook)
-                    design != null && to != null && preview != null -> LookStep(cards, to, design, preview)
+                    to is CardRecipient.Several && design != null && listLook != null -> {
+                        ListLookStep(cards, form, design, listLook)
+                        ListLookEndLines(form, listLook, stamps)
+                    }
+                    design != null && to != null && preview != null -> {
+                        LookStep(cards, to, design, preview)
+                        LookEndLines(lookTakeBackLine(to)) {
+                            StampPostageLine(stamps, design = form.design, modifier = Modifier.padding(top = 10.dp))
+                        }
+                    }
                 }
+                Spacer(Modifier.height(endRoom))
             }
         }
         SendCardStep.Sent ->
@@ -424,17 +614,7 @@ private fun Steps(
                     onSeeInSent = { onSeeInSent(card.id) },
                 )
                 // With digital stamps there's no card a day: another card starts here, under the one just sent.
-                if (cards.postageEnabled) {
-                    CardButton(
-                        "Send another card",
-                        onClick = viewModel::startAnotherCard,
-                        kind = CardButtonKind.Paper,
-                        modifier =
-                            Modifier
-                                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4)
-                                .testTag("sendAnotherCard"),
-                    )
-                }
+                if (cards.postageEnabled) AnotherCardButtons(onAnother = { viewModel.startAnotherCard() }, onSendAgain = onSendAgain)
             }
     }
 }

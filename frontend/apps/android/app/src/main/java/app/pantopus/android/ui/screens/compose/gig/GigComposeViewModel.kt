@@ -833,6 +833,12 @@ open class GigComposeViewModel
                 }
         }
 
+        /**
+         * Favors addresses near this point (the person's home, to about a kilometer; latitude to longitude), set by the
+         * screen (FASTVERIFY section 11). Null searches as before.
+         */
+        var addressSearchArea: Pair<Double, Double>? = null
+
         private fun searchPlaces(text: String) {
             cancelPlaceSearch()
             val query = text.trim()
@@ -842,7 +848,8 @@ open class GigComposeViewModel
             addressJob =
                 viewModelScope.launch {
                     delay(ADDRESS_SEARCH_DEBOUNCE_MILLIS)
-                    val result = safeApiCall { geoApi.autocomplete(query) }
+                    val area = addressSearchArea
+                    val result = safeApiCall { geoApi.autocomplete(query, lat = area?.first, lng = area?.second) }
                     if (revision != addressRevision) return@launch
                     val suggestions = (result as? NetworkResult.Success)?.data?.suggestions
                     val error =

@@ -84,12 +84,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.pantopus.android.R
+import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.moments.MomentPosting
 import app.pantopus.android.data.moments.MomentsMapMove
 import app.pantopus.android.ui.components.MessagesButton
 import app.pantopus.android.ui.components.MessagesEntryHolder
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.moments.components.MOMENT_PIN_ANCHOR_FROM_TOP
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentStripFace
@@ -154,7 +157,10 @@ fun MomentsMapScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val rings by viewModel.rings.collectAsStateWithLifecycle()
     val posts by viewModel.posts.collectAsStateWithLifecycle()
+    val scheduled by viewModel.scheduled.collectAsStateWithLifecycle()
     val liveSpot by viewModel.liveSpot.collectAsStateWithLifecycle()
+    val timeFilter by viewModel.timeFilter.collectAsStateWithLifecycle()
+    val liveOnly by viewModel.liveOnly.collectAsStateWithLifecycle()
     val toast = remember { ToastController() }
     LaunchedEffect(Unit) { viewModel.messages.collect { toast.info(it) } }
     // A note from outside the map ("This Moment has ended." after a push) is taken only by the map on screen: a map
@@ -183,6 +189,7 @@ fun MomentsMapScreen(
     LaunchedEffect(Unit) {
         while (true) {
             delay(REFRESH_MS)
+            viewModel.tick()
             viewModel.refresh()
         }
     }
@@ -315,6 +322,10 @@ fun MomentsMapScreen(
         )
         MomentsTopChrome(
             state = state,
+            timeFilter = timeFilter,
+            onTimeFilter = viewModel::chooseTimeFilter,
+            liveOnly = liveOnly,
+            onLiveOnly = viewModel::toggleLiveOnly,
             heights = heights,
             onOpenMenu = actions.onOpenMenu,
             onBackFromSpot = {
@@ -347,7 +358,9 @@ fun MomentsMapScreen(
                     .padding(bottom = Spacing.s3 + barRest),
             horizontalAlignment = Alignment.End,
         ) {
-            val empty = state.loaded && !state.failed && shown.isEmpty() && posts.isEmpty()
+            // The Sky: your own Moments waiting to share later stay in your row under every time filter.
+            val waiting = scheduled.stillWaiting()
+            val empty = state.loaded && !state.failed && shown.isEmpty() && posts.isEmpty() && waiting.isEmpty()
             // A Moment that just went live keeps its place in the strip until its ring is read; no second cell then.
             val stripPosts = posts.filter { item -> shown.none { ring -> ring.mine && ring.ring.moments.any { it.id == item.momentId } } }
             val people = remember(shown, spot != null) { rowPeople(stripPeople(shown), inSpot = spot != null) }
@@ -355,7 +368,7 @@ fun MomentsMapScreen(
             val playAll = { if (viewModel.playAll(shown)) actions.onWatch() }
             // The row holds a crowded spot's people, or what the map can't: a Moment with no location, yours while it
             // posts, the first read failing.
-            val holdsOffMap = state.failed || stripPosts.isNotEmpty() || people.isNotEmpty()
+            val holdsOffMap = state.failed || stripPosts.isNotEmpty() || people.isNotEmpty() || (spot == null && waiting.isNotEmpty())
             MapRoundButton(
                 icon = PantopusIcon.Navigation,
                 label = "Show my location",
@@ -374,6 +387,8 @@ fun MomentsMapScreen(
                 Spacer(Modifier.height(14.dp))
                 MomentsEmptyCard(
                     place = state.emptyPlace ?: state.areaLabel,
+                    // "Live now" says nothing is live; otherwise the time filter says what it covers.
+                    filteredLine = if (liveOnly) LIVE_NOW_EMPTY_LINE else timeFilter.emptyLine,
                     locationMissing = state.locationMissing,
                     onAdd = actions.onAdd,
                     onUseLocation = ::askLocation,
@@ -387,6 +402,8 @@ fun MomentsMapScreen(
                     newPeople = newPeople,
                     canPlay = shown.isNotEmpty(),
                     posts = stripPosts,
+                    scheduled = if (spot == null) waiting else emptyList(),
+                    onDeleteScheduled = viewModel::deleteScheduled,
                     avatarUrl = viewModel.avatarUrl,
                     failed = state.failed,
                     spot = spot,
@@ -660,6 +677,10 @@ private fun MomentsMap(
 @Composable
 private fun MomentsTopChrome(
     state: MomentsMapUiState,
+    timeFilter: MomentsTimeFilter,
+    onTimeFilter: (MomentsTimeFilter) -> Unit,
+    liveOnly: Boolean,
+    onLiveOnly: () -> Unit,
     heights: MomentsHeightsActions,
     onOpenMenu: (() -> Unit)?,
     onBackFromSpot: () -> Unit,
@@ -670,13 +691,16 @@ private fun MomentsTopChrome(
 ) {
     Column(modifier = modifier) {
         MomentsTopRow(state, onOpenMenu, onBackFromSpot, onUseLocation, onUseHome, Modifier.onSizeChanged { onRowHeight(it.height) })
-        // Under the row while heights are on for you: the "Elevation" chip and its key (`MomentsHeights.kt`).
+        // Under the row: the time filter's and "Live now" chips, and while heights are on for you the "Elevation" chip and its key
+        // (`MomentsHeights.kt`).
         MomentsHeightsBar(
             state = state,
-            onToggle = heights.onToggle,
-            onKey = heights.onKey,
-            onCloseKey = heights.onCloseKey,
-            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4),
+            timeFilter = timeFilter,
+            onTimeFilter = onTimeFilter,
+            liveOnly = liveOnly,
+            onLiveOnly = onLiveOnly,
+            heights = heights,
+            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4, end = Spacing.s4),
         )
     }
 }
@@ -699,7 +723,12 @@ private fun MomentsTopRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         onOpenMenu?.let {
-            MapRoundButton(icon = PantopusIcon.Menu, label = "Menu", onClick = it, modifier = Modifier.testTag("moments.menu"))
+            MapRoundButton(
+                icon = PantopusIcon.Menu,
+                label = "Menu",
+                onClick = it,
+                modifier = Modifier.guidanceAnchor(GuidanceTarget.Menu).testTag("moments.menu"),
+            )
         }
         val spot = state.spot
         if (spot != null) {
@@ -808,6 +837,8 @@ private fun MomentsStrip(
     newPeople: Int,
     canPlay: Boolean,
     posts: List<MomentPosting>,
+    scheduled: List<MomentDto>,
+    onDeleteScheduled: (String, (Boolean) -> Unit) -> Unit,
     avatarUrl: String?,
     failed: Boolean,
     spot: MomentsSpot?,
@@ -821,7 +852,7 @@ private fun MomentsStrip(
     val list = rememberLazyListState()
     val first = posts.firstOrNull()?.momentId ?: people.firstOrNull()?.first?.takeIf { it.mine }?.id
     LaunchedEffect(first, spot?.ringIds) { list.animateScrollToItem(0) }
-    val title = rowTitle(failed = failed, people = people, posts = posts)
+    val title = rowTitle(failed = failed, people = people, posts = posts, waiting = scheduled.isNotEmpty())
     Column(
         modifier =
             Modifier
@@ -901,6 +932,7 @@ private fun MomentsStrip(
             contentPadding = PaddingValues(start = Spacing.s2, end = Spacing.s2, top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            items(scheduled, key = { "scheduled:${it.id}" }) { moment -> MomentsScheduledCell(moment, onDeleteScheduled) }
             items(posts, key = { "posting:${it.momentId}" }) { item ->
                 val author = item.author
                 if (item.stage == MomentPosting.Stage.DONE && author != null) {
@@ -952,6 +984,8 @@ private fun MomentsStrip(
 @Composable
 private fun MomentsEmptyCard(
     place: String?,
+    /** With the time filter on, what it covers: older Moments may still be there. */
+    filteredLine: String?,
     locationMissing: Boolean,
     onAdd: () -> Unit,
     onUseLocation: () -> Unit,
@@ -990,6 +1024,7 @@ private fun MomentsEmptyCard(
                     text =
                         when {
                             locationMissing -> "Turn on location to see Moments around you."
+                            filteredLine != null -> filteredLine
                             place != null -> "Share what's happening at $place."
                             else -> "Share what's happening around you."
                         },

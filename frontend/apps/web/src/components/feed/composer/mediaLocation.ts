@@ -13,6 +13,8 @@ export interface MediaLocation {
   capturedAt: string | null;
 }
 
+export type CaptureMetadata = Partial<Pick<MediaLocation, 'latitude' | 'longitude'>> & { capturedAt: string | null; altitude?: number };
+
 const JPEG_HEAD_BYTES = 1024 * 1024;
 const MAX_TOP_LEVEL_BOXES = 64;
 const MAX_MOOV_BYTES = 32 * 1024 * 1024;
@@ -43,7 +45,7 @@ function isoTime(value: string): string | null {
 // ─── Photos: EXIF ────────────────────────────────────────────
 
 /** An EXIF block: the GPS directory's point and time, else the camera's capture time. */
-function readExif(view: DataView): MediaLocation | null {
+function readExif(view: DataView): CaptureMetadata | null {
   const order = ascii(view, 0, 2);
   if (order !== 'II' && order !== 'MM') return null;
   const little = order === 'II';
@@ -75,8 +77,7 @@ function readExif(view: DataView): MediaLocation | null {
 
   const top = directory(u32(4));
   const gpsPointer = top.get(0x8825);
-  if (gpsPointer == null) return null;
-  const gps = directory(u32(gpsPointer + 8));
+  const gps = gpsPointer == null ? new Map<number, number>() : directory(u32(gpsPointer + 8));
 
   const latitude = degrees(fractions(gps.get(2)), text(gps.get(1)) === 'S');
   const longitude = degrees(fractions(gps.get(4)), text(gps.get(3)) === 'W');
@@ -97,10 +98,14 @@ function readExif(view: DataView): MediaLocation | null {
       capturedAt = isoTime(`${original.replace(/^(\d+):(\d+):/, '$1-$2-').replace(' ', 'T')}${/^[+-]\d\d:\d\d$/.test(offset) ? offset : ''}`);
     }
   }
-  return located(latitude, longitude, capturedAt);
+  const position = located(latitude, longitude, capturedAt);
+  const aboveSea = fractions(gps.get(6))?.[0];
+  const ref = gps.get(5);
+  const altitude = aboveSea == null ? undefined : aboveSea * (ref != null && view.getUint8(ref + 8) === 1 ? -1 : 1);
+  return position ? { ...position, ...(altitude == null ? {} : { altitude }) } : capturedAt ? { capturedAt } : null;
 }
 
-function readJpeg(view: DataView): MediaLocation | null {
+function readJpeg(view: DataView): CaptureMetadata | null {
   let at = 2;
   while (at + 4 <= view.byteLength) {
     if (view.getUint8(at) !== 0xff) return null;
@@ -194,7 +199,7 @@ function exifExtent(view: DataView, meta: Box): { offset: number; length: number
   return null;
 }
 
-async function readHeic(file: Blob, box: Box): Promise<MediaLocation | null> {
+async function readHeic(file: Blob, box: Box): Promise<CaptureMetadata | null> {
   const meta = await bytes(file, box.start, box.end);
   const extent = exifExtent(meta, { type: 'meta', start: 0, end: meta.byteLength });
   if (!extent) return null;
@@ -233,7 +238,7 @@ function appleLocation(view: DataView, meta: Box): string | null {
 }
 
 /** A video's `moov` box: `©xyz` (Android and most cameras), `loci` or Apple's key, and the movie's creation time. */
-function readMovie(view: DataView): MediaLocation | null {
+function readMovie(view: DataView): CaptureMetadata | null {
   const boxes = childBoxes(view, 0, view.byteLength);
   const udta = boxes.find((box) => box.type === 'udta');
   let point: { latitude: number; longitude: number } | null = null;
@@ -248,16 +253,14 @@ function readMovie(view: DataView): MediaLocation | null {
     }
     if (point) break;
   }
-  if (!point) return null;
-
   const mvhd = boxes.find((box) => box.type === 'mvhd');
   // Seconds since 1904, in 32 or 64 bits (the low half is enough until 2040). A clock never set reads as nothing.
   const seconds = mvhd ? view.getUint32(mvhd.start + (view.getUint8(mvhd.start) === 1 ? 8 : 4)) : 0;
   const capturedAt = seconds > SECONDS_1904_TO_1970 ? new Date((seconds - SECONDS_1904_TO_1970) * 1000).toISOString() : null;
-  return located(point.latitude, point.longitude, capturedAt);
+  return (point && located(point.latitude, point.longitude, capturedAt)) || (capturedAt ? { capturedAt } : null);
 }
 
-async function readMedia(file: File): Promise<MediaLocation | null> {
+async function readMedia(file: File): Promise<CaptureMetadata | null> {
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) return null;
   const head = await bytes(file, 0, 2);
   if (head.getUint8(0) === 0xff && head.getUint8(1) === 0xd8) return readJpeg(await bytes(file, 0, JPEG_HEAD_BYTES));
@@ -279,20 +282,23 @@ async function readMedia(file: File): Promise<MediaLocation | null> {
 
 // ─── The composer's side ─────────────────────────────────────
 
-const reads = new WeakMap<File, Promise<MediaLocation | null>>();
+const reads = new WeakMap<File, Promise<CaptureMetadata | null>>();
 const NONE: MediaLocation[] = [];
 
 /** Every located attachment's point, in attachment order. A file that can't be read simply has none. */
 export async function readMediaLocations(files: File[]): Promise<MediaLocation[]> {
-  const points = await Promise.all(files.map((file) => {
-    let read = reads.get(file);
-    if (!read) {
-      read = readMedia(file).catch(() => null);
-      reads.set(file, read);
-    }
-    return read;
-  }));
-  return points.filter((point): point is MediaLocation => point != null);
+  const captures = await Promise.all(files.map(readCaptureMetadata));
+  return captures.filter((capture): capture is MediaLocation => capture?.latitude != null && capture.longitude != null)
+    .map(({ latitude, longitude, capturedAt }) => ({ latitude, longitude, capturedAt }));
+}
+
+export function readCaptureMetadata(file: File): Promise<CaptureMetadata | null> {
+  let read = reads.get(file);
+  if (!read) {
+    read = readMedia(file).catch(() => null);
+    reads.set(file, read);
+  }
+  return read;
 }
 
 /** The attachments' points, as state. The list keeps its identity until a point really changes. */
@@ -325,4 +331,21 @@ export function nearestMediaLocation(points: MediaLocation[], latitude: number, 
     (nearest, point) => (!nearest || squaredDegrees(point) < squaredDegrees(nearest) ? point : nearest),
     undefined,
   );
+}
+
+/** How far from a place an attachment may have been taken and still count as taken there (the server's 5 km). */
+const TAKEN_THERE_M = 5000;
+
+/**
+ * Whether one of the draft's attachments was taken at the place, as POST /api/posts counts it: within 5 km of it. The
+ * Sky pins a post exactly at a tagged venue only then.
+ */
+export function mediaTakenNear(points: MediaLocation[], latitude: number, longitude: number): boolean {
+  return points.some((point) => {
+    const dLat = ((point.latitude - latitude) * Math.PI) / 180;
+    const dLng = ((point.longitude - longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos((latitude * Math.PI) / 180) * Math.cos((point.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.sqrt(a)) <= TAKEN_THERE_M;
+  });
 }

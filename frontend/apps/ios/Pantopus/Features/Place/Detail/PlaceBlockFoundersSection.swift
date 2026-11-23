@@ -55,9 +55,8 @@ final class PlaceBlockFoundersViewModel {
     }
 
     func load() async {
-        if addressSuggestions.near == nil {
-            addressSuggestions.near = await AddressSuggestions.homePoint(homeId: homeId)
-        }
+        // Beside the block's read, never in front of it.
+        addressSuggestions.findNear(homeId: homeId)
         do {
             let response: BlockStatusResponse = try await api.request(
                 BlockFoundersEndpoints.status(homeId: homeId)
@@ -106,7 +105,7 @@ final class PlaceBlockFoundersViewModel {
 
     func sendInvite() async {
         guard let recipient else {
-            inviteError = "Enter the neighbor's street address, city, two-letter state, and ZIP."
+            inviteError = "Enter the home's street address, city, two-letter state, and ZIP."
             return
         }
         isSending = true
@@ -139,7 +138,7 @@ final class PlaceBlockFoundersViewModel {
         switch error {
         case let .clientError(status, body):
             if status == 429 || APIError.code(in: body) == "WEEKLY_CAP" {
-                return "You've used this week's invitations. Three a week is the cap, so a block grows by neighbors rather than by blasts — your budget resets in a week."
+                return "You've used this week's invitations. Three a week is the cap, so a block grows one home at a time rather than by blasts — your budget resets in a week."
             }
             return error.errorDescription ?? "The invitation couldn't be sent."
         case let .server(status, body):
@@ -159,6 +158,8 @@ final class PlaceBlockFoundersViewModel {
 
 struct PlaceBlockFoundersSection: View {
     let vm: PlaceBlockFoundersViewModel
+    /// Opens the postcard screen for someone verified by a fast check (block invites need a mailed code).
+    var onMailCode: (() -> Void)?
 
     var body: some View {
         switch vm.state {
@@ -172,14 +173,7 @@ struct PlaceBlockFoundersSection: View {
                     Text(message)
                         .font(.system(size: 13.5))
                         .foregroundStyle(Theme.Color.appTextMuted)
-                    Button {
-                        Task { await vm.load() }
-                    } label: {
-                        Text("Try again")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.Color.primaryInk)
+                    PlaceMailCodeRetry(homeId: vm.homeId, onMailCode: onMailCode) { await vm.load() }
                 }
             }
             .accessibilityIdentifier("place.blockFounders.error")
@@ -263,15 +257,15 @@ private struct BlockFounderRankCard: View {
     /// The Founding Neighbor tier: first 5, within 21 days of the first.
     private func foundingLine(_ f: BlockFounding) -> String? {
         if f.isFounding, let slot = f.slot {
-            return "Founding Neighbor · slot \(slot) of \(f.slotsTotal). Permanent."
+            return "Block Founder · slot \(slot) of \(f.slotsTotal). Permanent."
         }
         guard f.windowOpen, f.slotsOpen > 0 else { return nil }
         let slots = f.slotsOpen == 1 ? "slot" : "slots"
         if let ends = f.windowEndsAt, let end = ISO8601DateFormatter().date(from: ends) ?? isoWithFraction(ends) {
             let days = max(0, Int(ceil(end.timeIntervalSinceNow / 86400)))
-            return "\(f.slotsOpen) Founding Neighbor \(slots) still open · closes in \(days) \(days == 1 ? "day" : "days")"
+            return "\(f.slotsOpen) Block Founder \(slots) still open · closes in \(days) \(days == 1 ? "day" : "days")"
         }
-        return "\(f.slotsOpen) Founding Neighbor \(slots) still open on this block"
+        return "\(f.slotsOpen) Block Founder \(slots) still open on this block"
     }
 
     private func isoWithFraction(_ value: String) -> Date? {
@@ -322,7 +316,7 @@ private struct BlockFounderMetersCard: View {
                     }
                 }
                 Text(
-                    "“Real rents” counts rents your neighbors have shared; the others count verified homes. That difference is deliberate — a block of twenty-five verified owner-occupiers has no rents to pool."
+                    "“Real rents” counts rents others on your block have shared; the others count verified homes. That difference is deliberate — a block of twenty-five verified owner-occupiers has no rents to pool."
                 )
                 .font(.system(size: 11.5))
                 .lineSpacing(2)

@@ -497,7 +497,7 @@ private struct GigPolicySheet: View {
                 }
                 SheetInfoNote(
                     icon: .info,
-                    text: "Most neighbors pick Moderate — it protects you without scaring off bidders.",
+                    text: "Most people pick Moderate — it protects you without scaring off bidders.",
                     tint: Theme.Color.primary700,
                     background: Theme.Color.primary50
                 )
@@ -664,7 +664,7 @@ private struct GigTagsSheet: View {
         PickerSheetScaffold(
             testID: "gigPicker.tagsSheet",
             title: "Tags",
-            subtitle: "Help the right neighbors find this gig.",
+            subtitle: "Help the right people find this gig.",
             applyLabel: applyLabel,
             applyIdentifier: "gigPicker.tagsApply",
             onApply: viewModel.dismissPicker,

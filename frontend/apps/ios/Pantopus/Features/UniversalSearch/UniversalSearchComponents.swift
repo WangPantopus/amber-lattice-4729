@@ -171,7 +171,7 @@ struct UniversalSearchBrowseNearbyCard: View {
                     Text("Browse nearby businesses")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.primaryInk)
-                    Text("Find trusted businesses near you with neighbor recommendations")
+                    Text("Find trusted businesses near you, recommended by people near you")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.Color.appTextMuted)
                         .multilineTextAlignment(.leading)

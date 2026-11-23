@@ -171,10 +171,32 @@ public struct ProfileResponse: Decodable, Sendable, Hashable {
     public let user: UserProfile
     /// Shape varies by invite service; decode lazily.
     public let inviteProgress: JSONValue?
+    /// The guidance cards' state (GUIDE spec §3); nil from an older server.
+    /// Read beside the profile or inside `user`, and never allowed to fail
+    /// the profile's own decode.
+    public let guidance: GuidanceStateDTO?
+    /// The house on Today is switched on (JOURNEYS); false from a server without the key.
+    public let todayHouse: Bool
 
     private enum CodingKeys: String, CodingKey {
         case user
         case inviteProgress = "invite_progress"
+        case guidance
+        case todayHouse = "today_house"
+    }
+
+    private enum UserGuidanceKey: String, CodingKey {
+        case guidance
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        user = try container.decode(UserProfile.self, forKey: .user)
+        inviteProgress = try container.decodeIfPresent(JSONValue.self, forKey: .inviteProgress)
+        let nested = try? container.nestedContainer(keyedBy: UserGuidanceKey.self, forKey: .user)
+        guidance = (try? container.decodeIfPresent(GuidanceStateDTO.self, forKey: .guidance))
+            ?? (try? nested?.decodeIfPresent(GuidanceStateDTO.self, forKey: .guidance))
+        todayHouse = (try? container.decodeIfPresent(Bool.self, forKey: .todayHouse)) ?? false
     }
 }
 

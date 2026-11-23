@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getAuthToken } from '@pantopus/api';
 import MailboxHeader, { mailboxHref, mailboxView } from '@/components/mailbox/MailboxHeader';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import MailboxHero, { deliveryState, sentWaiting } from '@/components/mailbox/MailboxHero';
 import { useEmptyDayCard } from '@/components/mailbox/cards/cardDoors';
 import MailboxErrorBoundary from '@/components/mailbox/MailboxErrorBoundary';
@@ -166,6 +167,8 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
       </div>
 
       {composeOpen && <ComposeLetter onClose={() => setComposeOpen(false)} />}
+      {/* Mail's first screen has loaded (and today's delivery has finished opening): its guidance card may show. */}
+      {view.kind === 'main' && !view.pushed && drawers && !deliveryOpening ? <GuidanceScreen name="mail" facts={{ sentAny: Boolean(drawers.sent?.any) }} /> : null}
     </div>
   );
 }

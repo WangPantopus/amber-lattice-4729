@@ -105,6 +105,8 @@ class NotificationDispatcher
             val pushType: String? = null,
             val planId: String? = null,
             val requestId: String? = null,
+            /** Plans for the holidays: the guest's invitation a "Let in" or "Not this time" acts on. */
+            val inviteId: String? = null,
             val chatNotificationKey: String? = null,
             /** A brief's or nudge's notification id (its "Fewer like this", and the note a failed button leaves). */
             val nudgeId: String? = null,
@@ -121,7 +123,7 @@ class NotificationDispatcher
          * iOS uses in `userNotificationCenter(_:didReceive:)`.
          */
         fun dispatch(message: RemoteMessage) {
-            val routing = route(message.data, message.notification?.title, message.notification?.body)
+            val routing = withWhosComing(route(message.data, message.notification?.title, message.notification?.body), message.data)
             // Launch cut (2026-09-27): no system notification for a feature
             // hidden for the first launch (bids, listings, Beacon, bookings…).
             if (!DeepLinkRouter.isLaunchAvailable(message.data["type"], routing.deepLink)) {
@@ -173,12 +175,29 @@ class NotificationDispatcher
                 homeId = HomeTaskNotificationRoute.canonicalId(data["homeId"] ?: data["home_id"]),
                 taskId = HomeTaskNotificationRoute.canonicalId(data["taskId"] ?: data["task_id"]),
                 date = data["pickupDate"] ?: data["date"], recipientUserId = data["recipient_user_id"], pushType = data["type"],
-                planId = data["plan_id"], requestId = data["request_id"],
+                planId = data["plan_id"], requestId = data["request_id"], inviteId = data["invite_id"],
                 chatNotificationKey = if (channel == Channel.CHAT) data["notificationId"] ?: data["message_id"] else null,
                 nudgeId = data["notificationId"].takeIf { DeepLinkRouter.assistantNotificationPath(data["type"], null, null) != null },
                 conversationId = data["conversation_id"],
                 assistantAction = data["assistant_action"],
             )
+        }
+
+        /**
+         * Plans for the holidays: a guest's two notices ("Dana Lee is in", "Dana Lee wants to come") open the host's Who's
+         * coming (`opens: whos_coming`) instead of the plan.
+         */
+        internal fun withWhosComing(
+            routing: Routing,
+            data: Map<String, String>,
+        ): Routing {
+            val planId = data["plan_id"]?.takeIf(String::isNotBlank) ?: return routing
+            return when (data["opens"]) {
+                "whos_coming" -> routing.copy(deepLink = "/plans/$planId/guests")
+                // Business track B5: a check's notice ("Your check from …", "… refunded $12.00") opens the check (C1).
+                "check" -> routing.copy(deepLink = "/plans/$planId/check")
+                else -> routing
+            }
         }
 
         /**
@@ -395,6 +414,7 @@ class NotificationDispatcher
                         data = Uri.parse("pantopus-plan-action://$notificationId/${button.action}")
                         putExtra(PlanActionReceiver.PLAN, planId)
                         putExtra(PlanActionReceiver.REQUEST, routing.requestId)
+                        putExtra(PlanActionReceiver.INVITE, routing.inviteId)
                         putExtra(PlanActionReceiver.RECIPIENT, routing.recipientUserId)
                         putExtra(PlanActionReceiver.SESSION, session)
                         putExtra(PlanActionReceiver.NOTIFICATION_ID, notificationId)
@@ -472,6 +492,7 @@ class NotificationDispatcher
          */
         private fun planActionSession(routing: Routing): String? {
             if (routing.category == PlanActionReceiver.CATEGORY_REQUEST && routing.requestId == null) return null
+            if (routing.category == PlanActionReceiver.CATEGORY_GUEST_OK && routing.inviteId == null) return null
             val identity = runCatching { runBlocking { tokens.sessionIdentity() } }.getOrNull()
             return ReminderActionReceiver.sessionFingerprint(identity)?.takeIf { identity?.first == routing.recipientUserId }
         }

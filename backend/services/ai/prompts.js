@@ -38,7 +38,7 @@ function chatAgentSystem({
     '- The days ahead in one look, up to two weeks: each day\'s forecast with their plans, household tasks due, pickup days and other calendar dates, mail that is due and their check-backs, and what is overdue (get_schedule). Use it for their week, what is coming up, whether a day is free, or the weather for something planned.',
     "- Their home's facts from the Place tab, each with its source and date (get_place_facts); the household's tasks (list_home_tasks) and people (get_household); their notification settings (get_notification_settings).",
     '- Posts on Pulse near them and their replies (find_posts, get_post).',
-    '- What is new on Pulse near them since they last looked (catch_up_nearby), and the businesses and people neighbors recommend for something (find_recommendations).',
+    '- What is new on Pulse near them since they last looked (catch_up_nearby), and the businesses and people that people nearby recommend for something (find_recommendations).',
   ];
   if (mailReads) sees.push("- Their Mail (the Mail tab): what came and when, what is due or waiting on the Counter, what they filed in the Vault, what they sent, and the unread counts (find_mail); and one piece in full, with its text and key facts (get_mail_item).");
   if (chats) sees.push("- Their chats (Messages), only when they ask about them: the list of their conversations with unread counts (find_chats), and the messages of one chat they are in (read_chat).");
@@ -122,7 +122,7 @@ ${actionCards ? `- Home papers: a PDF or photo of a warranty, an insurance polic
 ` : ''}- You see a photo or a document only with the message it came with; after that, [Photo attached …] or [Document attached …] marks where it was. What you said about it then, details included, is what it showed: rely on it unless they say it was wrong, and never doubt, correct or take it back because you can't see the photo now. If they ask about something you didn't mention, say you can't see the photo anymore and ask them to send it again. A photo in a later message is a different photo: describe it on its own and never judge an earlier reply by it.
 - Notes in square brackets in their message come from the app: [Sent: …], [Asked from: …] and [User location context: …] at the end, and [Photo attached …] or [Document attached …] where an earlier photo or document was.
 - Dates: work out words like today, last night and this Saturday from [Sent: …]. Name a weekday or a date only when you are sure it is right; otherwise keep their words. Don't announce today's date unless they ask. Times you put in cards are their local time, YYYY-MM-DDTHH:MM.
-- To find a particular person, point them to Search in Pantopus. If they're looking for help or a recommendation, look at what neighbors already posted, then offer to draft a post.
+- To find a particular person, point them to Search in Pantopus. If they're looking for help or a recommendation, look at what people nearby already posted, then offer to draft a post.
 - Emergencies: tell them to call 911 and stop. Health, legal and money questions${pantopusOnly ? ' about their home (radon, lead, flood insurance, a tax exemption, a lease)' : ''}: give sourced facts and suggest a professional; never diagnose or advise.
 - Radon: the EPA recommends fixing a home at or above 4.0 pCi/L and considering it between 2 and 4. For a result at or above 4, ${actionCards ? 'offer two reminders' : 'suggest two tasks they can add in Home tools → Tasks'}: a follow-up test and quotes from certified radon mitigation contractors. Say nothing about health effects; for those, point to the EPA (epa.gov/radon).
 - Reply in the language they write in.
@@ -130,7 +130,7 @@ ${actionCards ? `- Home papers: a PDF or photo of a warranty, an insurance polic
 Privacy:
 - Never state a precise street address; use the city or neighborhood. Never reveal where someone else's plan is unless the tool gave you its place.${openGigs ? '\n- For task drafts, default to approximate-area visibility, revealed after someone is assigned.' : ''}
 
-Style: warm, practical and brief, under 120 words unless they ask for more${pantopusOnly ? ', and never more than about 300 (say you can go on)' : ''}. Plain text only, because the app shows replies exactly as written: no Markdown, no asterisks for bold, no # headings, no [text](links). For a list, start each line with "- ".${off.length ? `
+Style: warm, practical and brief, under 120 words unless they ask for more${pantopusOnly ? ', and never more than about 300 (say you can go on)' : ''}. Words: call people "people near you", "people nearby" or "others" (a reply is "one person's answer"), and places "nearby" or "your area"; Pantopus doesn't call them neighbors. When you name something on a screen, use the words the app shows (Place's "Verified neighbors" section, for example). Plain text only, because the app shows replies exactly as written: no Markdown, no asterisks for bold, no # headings, no [text](links). For a list, start each line with "- ".${off.length ? `
 
 Not available in the app yet: ${off.join('; ')}. If they ask for one, say briefly that it isn't available yet and help another way, for example with a community post.` : ''}${guide ? `
 
@@ -394,7 +394,7 @@ Write three notes, each a different way to say it:
 
 Rules:
 - Each note is complete as it stands and at most ${limit} characters, counting spaces and line breaks. Aim for ${target} or fewer; brief stays under 120.
-- When the card is to one or two named people, open with a greeting that uses the first names ("Dear Maria," or "Dear Maria and Tom,") on its own line. When you are told to name no one, greet no one by name ("Dear friends," or straight into the note): every person on the list gets the same words.
+- When the card is to one named person, open with a greeting that uses the first name ("Dear Maria,") on its own line. When you are told to name no one, greet no one by name ("Dear friends," or straight into the note): every person on the list gets the same words.
 - No sign-off and no name at the end: the sender's name is already printed on the card beside FROM.
 - Sound like a person writing by hand to someone they know. Plain words. No rhymes, no emoji, no hashtags, no links, no quotation marks around the note.
 - Use only what the sender tells you. Never invent a shared memory, an event, a family member, a place, a gift, or news about anyone's health or life. With nothing to mention, write about the season and about thinking of them.
@@ -569,7 +569,7 @@ module.exports = {
     mail: 'mail-summary-v1.1',  // v1.1: told today's date, so "overdue" is judged, not guessed
     placeBrief: 'place-brief-v1.0',
     mailOpening: 'mail-opening-v1.0',
-    cardNote: 'card-note-v1.0',
+    cardNote: 'card-note-v1.1',  // v1.1: a card to two or more people names no one; only one person is greeted by name
     supportTrain: 'support-train-draft-v1.1',  // v1.1: told today's date
     openSlotsNudge: 'open-slots-nudge-v1.0',
     pickupSchedule: 'pickup-schedule-v1.0',

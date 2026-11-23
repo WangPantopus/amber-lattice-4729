@@ -462,7 +462,7 @@ private fun EditProfileSections(
         icon = PantopusIcon.Users,
         tint = PantopusColors.home,
         background = PantopusColors.homeBg,
-        title = "Neighbors see this",
+        title = "Others see this",
         subtitle = "Shown on your profile and next to your posts, comments and messages.",
         tag = "editProfileNeighborsSection",
     )
@@ -471,7 +471,7 @@ private fun EditProfileSections(
             extras.neighborPhotoSlot()
             TextRow(
                 field = EditProfileField.NeighborName,
-                label = "Name neighbors see",
+                label = "Name others see",
                 fields = fields,
                 onUpdate = onUpdate,
             )
@@ -580,9 +580,9 @@ private fun EditProfileSections(
             avatarSlot()
             FieldHelp(
                 if (extras.accountPhotoFollows) {
-                    "Neighbors see this photo too until you choose a different one above."
+                    "Others see this photo too until you choose a different one above."
                 } else {
-                    "Only for your account. Neighbors see the photo above."
+                    "Only for your account. Others see the photo above."
                 },
             )
         }
@@ -595,7 +595,7 @@ private fun EditProfileSections(
         ContactVisibilityToggle(
             field = EditProfileField.ShowEmail,
             label = "Show on my profile",
-            subtitle = "Neighbors viewing your profile can see your email address.",
+            subtitle = "People viewing your profile can see your email address.",
             fields = fields,
             onUpdate = onUpdate,
         )
@@ -610,7 +610,7 @@ private fun EditProfileSections(
         ContactVisibilityToggle(
             field = EditProfileField.ShowPhone,
             label = "Show on my profile",
-            subtitle = "Neighbors viewing your profile can see your phone number.",
+            subtitle = "People viewing your profile can see your phone number.",
             fields = fields,
             onUpdate = onUpdate,
         )
@@ -620,7 +620,7 @@ private fun EditProfileSections(
         EditLinkRow(
             icon = PantopusIcon.Home,
             title = "Home address",
-            subtitle = "Never shown. Neighbors see \u201cVerified neighbor\u201d and your city.",
+            subtitle = "Never shown. Others see \u201cVerified home\u201d and your city.",
             value = null,
             tag = "editProfileHomeAddress",
             onClick = extras.onOpenMyHomes,
@@ -634,6 +634,9 @@ private fun EditProfileSections(
             onClick = extras.onOpenCity,
         )
         val addressSuggestions = rememberAddressSuggestions()
+        // Discard and Save put the saved address back without a keystroke: the suggestions go with the change.
+        val addressChanged = fields[EditProfileField.Address]?.isDirty == true
+        LaunchedEffect(addressChanged) { if (!addressChanged) addressSuggestions?.dismiss() }
         TextRow(
             field = EditProfileField.Address,
             label = "Mailing address",
@@ -644,7 +647,7 @@ private fun EditProfileSections(
                 addressSuggestions?.onTextChanged(value)
             },
         )
-        AddressSuggestionList(addressSuggestions, testTagPrefix = "field_address.suggestion") { picked ->
+        AddressSuggestionList(addressSuggestions, testTagPrefix = "field_address.suggestion", keepAboveKeyboard = true) { picked ->
             picked.address?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.Address, it) }
             picked.city?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.City, it) }
             picked.state?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.State, it) }
@@ -932,7 +935,7 @@ internal fun EditProfileSkillsBlock(
         }
         if (skills.isEmpty()) {
             Text(
-                text = "No skills yet. Neighbors browse these when they're looking for help.",
+                text = "No skills yet. People browse these when they're looking for help.",
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
                 modifier = Modifier.testTag("editProfileSkillsEmpty"),

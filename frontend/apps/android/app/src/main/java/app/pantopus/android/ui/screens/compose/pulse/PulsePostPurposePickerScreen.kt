@@ -68,7 +68,7 @@ fun PulsePostPurposePickerScreen(
                     color = PantopusColors.appText,
                 )
                 Text(
-                    text = "This helps neighbors find your post.",
+                    text = "This helps people near you find your post.",
                     style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp),
                     color = PantopusColors.appTextSecondary,
                 )
@@ -178,14 +178,14 @@ private fun PurposeCard(
 
 private fun purposeDescription(purpose: PulseComposePurpose): String =
     when (purpose) {
-        PulseComposePurpose.Ask -> "Get help or answers from neighbors"
+        PulseComposePurpose.Ask -> "Get help or answers from people near you"
         PulseComposePurpose.HeadsUp -> "Warn people nearby about something"
         PulseComposePurpose.Recommend -> "Share a place or service you love"
         PulseComposePurpose.LostFound -> "Reunite lost items and pets"
         PulseComposePurpose.LocalUpdate -> "Share news from around the area"
         PulseComposePurpose.NeighborhoodWin -> "Celebrate something good nearby"
         PulseComposePurpose.VisitorGuide -> "Tips for people visiting the area"
-        PulseComposePurpose.Event -> "Invite neighbors to something"
+        PulseComposePurpose.Event -> "Invite people near you to something"
         PulseComposePurpose.Deal -> "Share a local discount or offer"
     }
 

@@ -38,7 +38,8 @@ export function draftFromStory(data: DraftFromStoryRequest) {
 // ─── CRUD ───────────────────────────────────────────────────────────────
 
 export function createSupportTrain(data: CreateSupportTrainRequest) {
-  return post<{ support_train_id: string; activity_id: string; status: string }>(`${BASE}`, data);
+  // recipient_linked: false when the named account wasn't linked (the organizer doesn't know them).
+  return post<{ support_train_id: string; activity_id: string; status: string; recipient_linked?: boolean }>(`${BASE}`, data);
 }
 
 export function getSupportTrain(id: string) {
@@ -205,6 +206,25 @@ export function confirmDelivered(id: string, reservationId: string) {
   return post<SupportTrainReservation>(`${BASE}/${id}/reservations/${reservationId}/confirm`);
 }
 
+/**
+ * Edit a signup's details: an organizer, or the helper whose (still upcoming) signup it is. `expected_updated_at` is
+ * the signup's updated_at as read; a signup changed meanwhile answers 409 CONFLICT.
+ */
+export function updateReservation(
+  id: string,
+  reservationId: string,
+  data: {
+    dish_title: string | null;
+    restaurant_name: string | null;
+    estimated_arrival_at: string | null;
+    private_note_to_organizer: string | null;
+    note_to_recipient?: string | null;
+    expected_updated_at: string;
+  }
+) {
+  return patch<SupportTrainReservation>(`${BASE}/${id}/reservations/${reservationId}`, data);
+}
+
 export function listReservations(id: string) {
   return get<{ reservations: SupportTrainReservation[]; viewer_role: string }>(
     `${BASE}/${id}/reservations`
@@ -234,7 +254,7 @@ export function listMySupportTrains(params?: {
   }>(`${BASE}/me/support-trains`, params);
 }
 
-/** Published/active trains in radius (Activity visibility nearby/public; requires recipient or activity home with coordinates). */
+/** Published/active trains in radius (Activity visibility nearby/public) with a date today or later. */
 export function listNearbySupportTrains(params: {
   latitude: number;
   longitude: number;

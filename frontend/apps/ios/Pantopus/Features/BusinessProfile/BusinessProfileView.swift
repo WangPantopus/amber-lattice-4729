@@ -512,7 +512,7 @@ private struct BusinessProfileSections: View {
                     icon: .messageSquarePlus,
                     title: "No reviews yet",
                     message: "Be the first to hire \(content.header.displayName). Your review helps "
-                        + "the next neighbor decide.",
+                        + "the next person decide.",
                     cta: EmptyBlock.CTA(
                         label: "Hire to review",
                         icon: .pencil,
@@ -648,7 +648,7 @@ private struct JustOpenedNote: View {
                     .tracking(-0.1)
                     .foregroundStyle(Theme.Color.businessDark)
                 Text((isVerified ? "Address and business identity are verified." : "Verification pending.")
-                    + " Reviews and photos build up after the first few jobs — early neighbors set the tone.")
+                    + " Reviews and photos build up after the first few jobs — early customers set the tone.")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.Color.appTextStrong)
                     .lineSpacing(2)

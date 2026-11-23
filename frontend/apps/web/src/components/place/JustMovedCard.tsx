@@ -39,12 +39,12 @@ export function isRecentMove(moveInDate: string | null | undefined, now = new Da
 export type JustMovedStepId = 'pickup' | 'mail' | 'money' | 'civic' | 'block';
 
 export const JUST_MOVED_STEPS: { id: JustMovedStepId; icon: LucideIcon; label: string; payoff: string; href: string }[] = [
-  { id: 'pickup', icon: Trash2, label: 'Set your pickup day', payoff: 'Reminders the night before, every week', href: '/app/place/today' },
+  { id: 'pickup', icon: Trash2, label: 'Set your pickup day', payoff: 'Reminders the night before, every week', href: '/app/place/today#pickup-schedule' },
   // Launch cut #10 (Mailbox): no mail step while the mailbox is hidden.
   ...(launchFeatures.mailbox ? [{ id: 'mail' as const, icon: Mailbox, label: "Send back the previous resident's mail", payoff: 'One tap returns it; yours gets filed', href: '/app/mailbox/settings/mail-day' }] : []),
   { id: 'money', icon: Zap, label: 'Utilities, rebates, and rates', payoff: 'What this address qualifies for, and when taxes are due', href: '/app/place/money' },
   { id: 'civic', icon: Landmark, label: 'Who represents you, and the schools', payoff: 'Your districts, the next election, the council calendar', href: '/app/place/civic' },
-  { id: 'block', icon: Users, label: 'Meet the block', payoff: 'Who is verified nearby, and the Founding Neighbor slots', href: '/app/nearby' },
+  { id: 'block', icon: Users, label: 'Meet the block', payoff: 'Who is verified nearby, and the Block Founder slots', href: '/app/nearby' },
 ];
 
 function readDone(homeId: string): Set<JustMovedStepId> {
@@ -127,7 +127,7 @@ export default function JustMovedCard({ homeId, moveInDate, needsPickupDay = nul
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[18px] font-bold leading-[24px] -tracking-[0.015em] text-app-text text-balance">Your first week at this address</p>
-            <p className="mt-1 text-[13.5px] leading-[19px] text-app-text-strong">{total} things it can do for you now, before there are neighbors to meet.</p>
+            <p className="mt-1 text-[13.5px] leading-[19px] text-app-text-strong">{total} things it can do for you now, before there is anyone to meet.</p>
           </div>
         </div>
         <div className="mt-3 flex items-center gap-3">

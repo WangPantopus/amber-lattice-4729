@@ -108,6 +108,14 @@ fun FutureDatePickerDialog(
     }
 }
 
+/** The time stage alone, for a field that holds only a time of day (no date step to ignore). */
+@Composable
+fun TimeOnlyPickerDialog(
+    initial: LocalTime,
+    onSelect: (LocalTime) -> Unit,
+    onDismiss: () -> Unit,
+) = TimePickerDialog(initial = initial, onSelect = onSelect, onDismiss = onDismiss)
+
 @Composable
 private fun TimePickerDialog(
     initial: LocalTime,

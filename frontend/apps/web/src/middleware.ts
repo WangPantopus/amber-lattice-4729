@@ -47,7 +47,8 @@ function publicAliasFor(pathname: string): string | null {
 const APP_ALIASES: Array<[RegExp, (id: string) => string]> = [
   [/^\/gigs\/([^/]+)$/, (id) => `/app/gigs/${id}`],
   [/^\/posts\/([^/]+)$/, (id) => `/app/feed/post/${id}`],
-  [/^\/support-trains\/([^/]+)$/, (id) => `/app/support-trains/${id}`],
+  // The guest's cancel page (support-trains/cancel-signup) is the same for everyone.
+  [/^\/support-trains\/(?!cancel-signup$)([^/]+)$/, (id) => `/app/support-trains/${id}`],
 ];
 
 function appAliasFor(pathname: string): string | null {

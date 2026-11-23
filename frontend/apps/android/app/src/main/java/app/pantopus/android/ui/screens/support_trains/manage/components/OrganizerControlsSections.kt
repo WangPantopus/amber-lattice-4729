@@ -169,6 +169,7 @@ fun ManageDatesSection(
     onAdd: () -> Unit,
     onEdit: (ManageSlotRow) -> Unit,
     onRemove: (ManageSlotRow) -> Unit,
+    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainDatesSection"),
@@ -176,17 +177,19 @@ fun ManageDatesSection(
     ) {
         ManageSectionHeader(
             title = "Dates (${rows.size})",
-            actionLabel = "Add date",
+            actionLabel = if (readOnly) null else "Add date",
             actionTag = "manageTrainAddDateButton",
-            onAction = onAdd,
+            onAction = onAdd.takeIf { !readOnly },
         )
-        Text(
-            text =
-                "Add a new date, move an open one, or remove one you no longer need. " +
-                    "Reserved dates need their signup removed first. Completed dates stay in the train's history.",
-            color = PantopusColors.appTextSecondary,
-            fontSize = 12.5.sp,
-        )
+        if (!readOnly) {
+            Text(
+                text =
+                    "Add a new date, move an open one, or remove one you no longer need. " +
+                        "Reserved dates need their signup removed first. Completed dates stay in the train's history.",
+                color = PantopusColors.appTextSecondary,
+                fontSize = 12.5.sp,
+            )
+        }
         if (rows.isEmpty()) {
             ManageCard {
                 Text(text = "No dates added yet", color = PantopusColors.appTextMuted, fontSize = 13.sp)
@@ -211,7 +214,7 @@ fun ManageDatesSection(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                if (row.isEditable) {
+                if (!readOnly && row.isEditable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                         ManagePillButton(
                             label = "Edit",
@@ -229,7 +232,7 @@ fun ManageDatesSection(
                             onClick = { onRemove(row) },
                         )
                     }
-                } else {
+                } else if (!readOnly) {
                     Text(
                         text =
                             if (row.status == "completed") {
@@ -256,12 +259,14 @@ fun ManageHelpersSection(
     onShareAddress: (ManageHelperRow) -> Unit,
     onConfirm: (ManageHelperRow) -> Unit,
     onRemove: (ManageHelperRow) -> Unit,
+    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainHelpersSection"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        ManageSectionHeader(title = if (failed) "Helpers" else "Helpers (${rows.size})")
+        // Signups that still count: a cancelled one stays listed but isn't a helper (B12).
+        ManageSectionHeader(title = if (failed) "Helpers" else "Helpers (${rows.count { it.status != "canceled" }})")
         if (rows.isEmpty()) {
             ManageCard {
                 Text(
@@ -310,49 +315,71 @@ fun ManageHelpersSection(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                    if (row.status != "canceled" && !addressAvailable) {
-                        Text(
-                            text = "Delivery address unavailable",
-                            color = PantopusColors.appTextMuted,
-                            fontSize = 11.5.sp,
-                        )
-                    } else if (row.canShareAddress) {
-                        ManagePillButton(
-                            label = if (row.isGuest) "Email address" else "Share address",
-                            icon = PantopusIcon.MapPin,
-                            tag = "manageTrainShareAddress-${row.id}",
-                            isEnabled = !isBusy,
-                            onClick = { onShareAddress(row) },
-                        )
-                    } else if (row.status != "canceled") {
-                        Text(
-                            text = if (row.isGuest) "Exact location sent" else "Exact location shared",
-                            color = PantopusColors.success,
-                            fontSize = 11.5.sp,
-                        )
-                    }
-                    if (row.canConfirm) {
-                        ManagePillButton(
-                            label = "Confirm delivery",
-                            icon = PantopusIcon.CheckCircle,
-                            tag = "manageTrainConfirmDelivery-${row.id}",
-                            isEnabled = !isBusy,
-                            onClick = { onConfirm(row) },
-                        )
-                    }
-                    if (row.canRemove) {
-                        ManagePillButton(
-                            label = "Remove",
-                            icon = PantopusIcon.UserMinus,
-                            tag = "manageTrainRemoveHelper-${row.id}",
-                            destructive = true,
-                            isEnabled = !isBusy,
-                            onClick = { onRemove(row) },
-                        )
-                    }
-                }
+                HelperRowActions(
+                    row = row,
+                    addressAvailable = addressAvailable,
+                    readOnly = readOnly,
+                    isBusy = isBusy,
+                    onShareAddress = onShareAddress,
+                    onConfirm = onConfirm,
+                    onRemove = onRemove,
+                )
             }
+        }
+    }
+}
+
+/** A helper's address, delivery and remove buttons; a read-only viewer (recipient_delegate) gets only Confirm delivery. */
+@Composable
+private fun HelperRowActions(
+    row: ManageHelperRow,
+    addressAvailable: Boolean,
+    readOnly: Boolean,
+    isBusy: Boolean,
+    onShareAddress: (ManageHelperRow) -> Unit,
+    onConfirm: (ManageHelperRow) -> Unit,
+    onRemove: (ManageHelperRow) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        if (row.status != "canceled" && !addressAvailable) {
+            Text(
+                text = "Delivery address unavailable",
+                color = PantopusColors.appTextMuted,
+                fontSize = 11.5.sp,
+            )
+        } else if (row.canShareAddress && !readOnly) {
+            ManagePillButton(
+                label = if (row.isGuest) "Email address" else "Share address",
+                icon = PantopusIcon.MapPin,
+                tag = "manageTrainShareAddress-${row.id}",
+                isEnabled = !isBusy,
+                onClick = { onShareAddress(row) },
+            )
+        } else if (row.status != "canceled" && !row.canShareAddress) {
+            Text(
+                text = if (row.isGuest) "Exact location sent" else "Exact location shared",
+                color = PantopusColors.success,
+                fontSize = 11.5.sp,
+            )
+        }
+        if (row.canConfirm) {
+            ManagePillButton(
+                label = "Confirm delivery",
+                icon = PantopusIcon.CheckCircle,
+                tag = "manageTrainConfirmDelivery-${row.id}",
+                isEnabled = !isBusy,
+                onClick = { onConfirm(row) },
+            )
+        }
+        if (row.canRemove && !readOnly) {
+            ManagePillButton(
+                label = "Remove",
+                icon = PantopusIcon.UserMinus,
+                tag = "manageTrainRemoveHelper-${row.id}",
+                destructive = true,
+                isEnabled = !isBusy,
+                onClick = { onRemove(row) },
+            )
         }
     }
 }
@@ -628,13 +655,13 @@ fun ManageFundSection(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Neighbors can chip in from the train's page.",
+                    text = "People can chip in from the train's page.",
                     color = PantopusColors.appTextSecondary,
                     fontSize = 12.5.sp,
                 )
             } else {
                 Text(
-                    text = "Let neighbors chip in money as well as meals.",
+                    text = "Let people chip in money as well as meals.",
                     color = PantopusColors.appTextSecondary,
                     fontSize = 12.5.sp,
                 )

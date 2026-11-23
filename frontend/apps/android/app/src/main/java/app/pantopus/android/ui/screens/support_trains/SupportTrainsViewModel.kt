@@ -445,7 +445,7 @@ class SupportTrainsViewModel
                         icon = PantopusIcon.HandCoins,
                         headline = "No support trains yet",
                         subcopy =
-                            "A support train is a calendar of neighbors taking turns helping someone " +
+                            "A support train is a calendar of people taking turns bringing meals to someone " +
                                 "through a life event. Start one for someone, or join one nearby.",
                         ctaTitle = "Start a train",
                         onCta = { onStartTrain() },
@@ -471,7 +471,7 @@ class SupportTrainsViewModel
                 icon = PantopusIcon.Heart,
                 headline = "No trains nearby right now",
                 subcopy =
-                    "When a neighbor starts a meal, ride, or pet-care train within 25 mi, you'll see it here.",
+                    "When someone within 25 mi starts a meal train that's open to people nearby, you'll see it here.",
                 ctaTitle = "Start a train",
                 onCta = { onStartTrain() },
             )

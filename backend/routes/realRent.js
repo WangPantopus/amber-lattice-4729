@@ -22,7 +22,7 @@ const express = require('express');
 const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerified } = require('../utils/homePermissions');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const realRentService = require('../services/realRentService');
 const householdFacts = require('../services/householdFacts');
@@ -38,7 +38,8 @@ router.put('/:id/rent-report', verifyToken, async (req, res) => {
     if (!access.hasAccess) {
       return res.status(403).json({ error: 'You do not have access to this place.', ...(access.verificationRequired && { code: 'VERIFICATION_REQUIRED' }) });
     }
-    if (!isVerifiedResident(access)) {
+    // Verified by mail or by a fast check (FASTVERIFY): Real Rent is open at the Verified level.
+    if (!(await isVerified(access))) {
       return res.status(403).json({
         error: 'Verify your address to add your rent — a benchmark is only real if the people in it live there.',
         code: 'VERIFICATION_REQUIRED',

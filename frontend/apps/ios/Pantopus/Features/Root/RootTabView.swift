@@ -6,6 +6,8 @@
 //  above every signed-in screen (Pulse S3, founder decision 2026-10-13: the
 //  Nearby tab is gone; its Pulse, Connections and neighborhood meter live in
 //  the Pulse tab). Place is selected at launch. Today is the daily briefing.
+//  (Since 2026-11-21 a person with a Home gets Today first and opens on it:
+//  the note at the end of this header.)
 //  Plans shows only while the `plans` switch is on, so the bar has four
 //  tabs or five and follows the switch while the app runs. The last tab is
 //  Messages, the conversation list with the unread badge.
@@ -53,6 +55,12 @@
 //  and later the floating Liquid Glass capsule. It slides away while a page
 //  scrolls down, for more room to read, and comes back on a scroll up
 //  (`RootTabBarScrollWatcher`).
+//
+//  Founder decision 2026-11-21: a person with a Home gets Today · Place as the
+//  first two tabs and the app opens on Today; without one the bar keeps
+//  Place · Today and opens on Place. Only those two swap. The order is read
+//  once, when the tabs are made, from what the phone kept (`RootTabOrder`), so
+//  the bar never moves while the app is in use.
 //
 
 // swiftlint:disable file_length
@@ -120,12 +128,13 @@ public enum RootTab: Hashable, CaseIterable {
         LaunchFeatures.pulseRedesign ? .pulse : .nearby
     }
 
-    /// The bar's tabs in order: Mail third while the Mailbox is on (launch
-    /// cut #10; founder decision 2026-11-13), then Pulse, and Moments and
-    /// Plans while their switches are on. Messages isn't on the bar: the chat
-    /// button opens it (founder, 2026-11-08).
-    static func barTabs(plans: Bool, moments: Bool = false) -> [RootTab] {
-        var tabs: [RootTab] = [.place, .today]
+    /// The bar's tabs in order: Place and Today, Today first for a person
+    /// with a Home (`todayFirst`; founder decision 2026-11-21); Mail third
+    /// while the Mailbox is on (launch cut #10; founder decision 2026-11-13),
+    /// then Pulse, and Moments and Plans while their switches are on. Messages
+    /// isn't on the bar: the chat button opens it (founder, 2026-11-08).
+    static func barTabs(plans: Bool, moments: Bool = false, todayFirst: Bool = false) -> [RootTab] {
+        var tabs: [RootTab] = todayFirst ? [.today, .place] : [.place, .today]
         if LaunchFeatures.mailbox { tabs.append(.mail) }
         tabs.append(pulseHome)
         if moments { tabs.append(.moments) }
@@ -134,8 +143,8 @@ public enum RootTab: Hashable, CaseIterable {
     }
 
     /// The tabs the container keeps: the bar's and Messages.
-    static func hostedTabs(plans: Bool, moments: Bool = false) -> [RootTab] {
-        barTabs(plans: plans, moments: moments) + [.messages]
+    static func hostedTabs(plans: Bool, moments: Bool = false, todayFirst: Bool = false) -> [RootTab] {
+        barTabs(plans: plans, moments: moments, todayFirst: todayFirst) + [.messages]
     }
 }
 
@@ -152,7 +161,17 @@ enum MailTabRequest: Equatable {
 @Observable
 @MainActor
 public final class RootTabModel {
-    /// Currently selected tab. Starts at `.place`.
+    /// Today is the bar's first tab and the one the app opened on: the person
+    /// had a Home when these tabs were made (`RootTabOrder`). Fixed for the
+    /// life of the tabs, so the bar doesn't move while the app is in use.
+    public let todayFirst: Bool
+
+    /// The tab the app opens on: the bar's first.
+    public var openingTab: RootTab {
+        todayFirst ? .today : .place
+    }
+
+    /// Currently selected tab. Starts at `openingTab`.
     public var selected: RootTab = .place {
         didSet {
             // Messages opens over the tab it was opened from (the chat
@@ -168,6 +187,9 @@ public final class RootTabModel {
     public var messagesBadge: Int = 0
     /// The Place stack is on its root (kept current by `HubTabRoot`).
     public var placeAtRoot = false
+    /// Place is opening or showing "Verify you live here" for a Home just added in two steps (kept current by
+    /// `HubTabRoot`): the first-run notices wait until it is closed, or they would take its place.
+    public var placeVerifySheetUp = false
     /// Changes each time the Place tab is tapped again while already on its
     /// root, so the root scrolls back to the top.
     public var placeReselectedAtRoot: UUID?
@@ -181,6 +203,12 @@ public final class RootTabModel {
     /// "Add radon test information" (Place's risk list): Today opens its
     /// home setup on this Home's radon question once, then clears it (as on Android).
     public var todayRadonHomeId: String?
+    /// "Set pickup day" on the tip card "Your home is set up": this Home's Today page on
+    /// Place opens with its pickup editor once, then clears it (JOURNEYS 1).
+    public var pickupEditorHomeId: String?
+    /// "See it in Today" after a pickup schedule is saved on Place: the Today tab shows
+    /// "Coming up at home" with this Home's next pickup lit once, then clears it.
+    public var todayPickupLitHomeId: String?
     /// The side menu is open (each tab's menu button sets it; the drawer,
     /// hosted by `RootTabView`, clears it when it closes).
     public var showsNavigationMenu = false
@@ -205,7 +233,13 @@ public final class RootTabModel {
     /// A screen from your own profile's "Your account" list, asked for where
     /// the profile was pushed in another tab: the profile cover opens on it.
     var profileCoverDestination: ProfileOwnerDestination?
-    public init() {}
+    public init(todayFirst: Bool = false) {
+        self.todayFirst = todayFirst
+        if todayFirst {
+            selected = .today
+            messagesReturnTab = .today
+        }
+    }
 
     /// The chat button: Messages over the tab you're on.
     func openMessages() {
@@ -236,7 +270,8 @@ public final class RootTabModel {
 /// Root tab container for signed-in users. Each tab hosts its own
 /// NavigationStack so deep navigation within a tab survives tab switches.
 public struct RootTabView: View {
-    @State private var model = RootTabModel()
+    /// Made once, for the signed-in account, in the order its last home list on this phone decides (`RootTabOrder`).
+    @State private var model = RootTabModel(todayFirst: RootTabOrder.todayFirstForSignedInAccount())
     private let chatBadgeStore = ChatBadgeStore.shared
     @State private var router = DeepLinkRouter.shared
     @State private var pendingInviteToken: InviteSheetToken?
@@ -299,6 +334,9 @@ public struct RootTabView: View {
                 // Every invite shares the person's own link; read it before anyone taps one.
                 await PersonalInviteLink.shared.load(account: signedInUserID)
             }
+            // The guidance cards for new accounts (founder, 2026-11-16): this account's, read on each sign-in.
+            .task(id: signedInUserID) { await GuidanceCenter.shared.start(account: signedInUserID) }
+            .onChange(of: model.showsNavigationMenu) { _, open in GuidanceCenter.shared.sideMenuOpen = open }
             .onChange(of: signedInUserName, initial: true) { _, name in
                 drawerModel.updateContext(.personal(name: name))
             }
@@ -326,19 +364,23 @@ public struct RootTabView: View {
             .modifier(MomentsDotUpdates(account: signedInUserID, isOn: momentsFlags.moments, onTab: model.selected == .moments))
             // A new account's first look: the Christmas card it joined for, once.
             .modifier(WaitingCardLanding(account: signedInUserID, tabs: model) {
-                router.pending.map(WaitingCardLanding.opens) == true || pendingInviteToken != nil
+                linkIsOpening || PlanFirstOpen.shared.planId != nil
             })
+            // And the plan that brought the person, once (JOURNEYS section 2, change 3).
+            .modifier(PlanFirstOpenLanding(account: signedInUserID, tabs: model) { linkIsOpening || model.selected != model.openingTab })
             .onChange(of: model.selected) { _, selected in
                 // A tab that isn't kept (Plans or Moments switched off, Mail
                 // without the Mailbox) lands on the nearest one that is.
                 // Messages is always kept, off the bar.
-                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
+                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
                 if !hosted.contains(selected) { model.selected = Self.nearestTab(to: selected, on: hosted) }
             }
             .onChange(of: chatBadgeStore.unreadMessages) { _, unread in
                 model.messagesBadge = unread
             }
             .onChange(of: router.pending) { _, pending in
+                // No guidance card over a link or notification that is opening.
+                GuidanceCenter.shared.noteLinkOpening()
                 consumeInviteDeepLinkIfNeeded(pending: pending)
             }
             .onChange(of: model.profileCoverDestination) { _, destination in
@@ -482,10 +524,11 @@ public struct RootTabView: View {
         // stack. While the `plans` switch is off the link is dropped.
         case .plans:
             openPlansTab()
-        case let .plan(id, invite):
-            openPlans(.plan(id: id, intent: invite.map { .invite(token: $0) } ?? .view))
+        case let .plan(id, invite, open, spot):
+            openPlans(.plan(id: id, intent: PlanOpenIntent(invite: invite, open: open, spot: spot)))
         case let .planRequests(id):
             openPlans(.requests(planId: id))
+        case .planGuests, .planCheck: openPlans(PlansRoute.screen(over: pending))
         case .planNew:
             openPlans(nil)
         // The Moments tab, and one Moment in the viewer over it (the "added a
@@ -596,6 +639,11 @@ public struct RootTabView: View {
         model.selected = .place
     }
 
+    /// A link is waiting to open in the signed-in tabs, or its invitation is showing.
+    private var linkIsOpening: Bool {
+        router.pending.map(WaitingCardLanding.opens) == true || pendingInviteToken != nil
+    }
+
     private var signedInUserName: String {
         if case let .signedIn(user) = auth.state { user.displayName ?? "" } else { "" }
     }
@@ -627,10 +675,12 @@ public struct RootTabView: View {
 
     /// The briefings notice waits until nothing else is asking: the Place tab
     /// on its own root (not under "Keep this address handy", nor a plan or post
-    /// opened by a link), or Today.
+    /// opened by a link, nor the verify sheet a new Home opens with), or Today.
     private var briefingNoticeMayShow: Bool {
-        switch model.selected {
-        case .place: model.placeAtRoot
+        // A new account's plan may still open over the first screen: the notice waits for the answer.
+        guard !PlanFirstOpen.shared.deciding else { return false }
+        return switch model.selected {
+        case .place: model.placeAtRoot && !model.placeVerifySheetUp
         case .today: true
         default: false
         }
@@ -651,8 +701,8 @@ extension RootTabView {
     /// container; the bar is drawn above it. Messages is kept but not drawn on
     /// the bar, which lights the tab it was opened from.
     private var drawnTabs: some View {
-        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
-        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments)
+        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
+        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
         let showsBar = model.barHiders.isEmpty
         return RootTabBarPlacementReader { verticalEdge in
             ZStack(alignment: verticalEdge.map { $0 == .leading ? .leading : .trailing } ?? .bottom) {
@@ -732,6 +782,8 @@ extension RootTabView {
     /// A tap on the drawn bar. Tapping the tab you're on takes its stack back
     /// to its root; on Place's root, or the feed, it scrolls to the top.
     private func select(_ tab: RootTab) {
+        // The person chose where to go: Back from a new account's first plan is the Plans tab's own again.
+        PlanFirstOpen.shared.forget()
         guard tab == model.selected else {
             model.selected = tab
             return

@@ -63,6 +63,46 @@ struct PlaceDashboardView: View {
         _viewModel = State(initialValue: viewModel)
     }
 
+    private var isLoaded: Bool {
+        if case .loaded = viewModel.state { return true }
+        return false
+    }
+
+    /// Card 1 leaves out its address line for someone who joined by a household invitation (never typed one).
+    private var guidanceVariants: GuidanceVariants {
+        guard case let .loaded(intel) = viewModel.state, viewModel.claim == nil else {
+            return GuidanceVariants(placeHasAddress: true)
+        }
+        let invited = intel.viewer?.role == "member" || intel.viewer?.role == "nonresident"
+        return GuidanceVariants(joinedByInvite: invited, placeHasAddress: true, home: guidanceHome(intel, invited: invited))
+    }
+
+    /// The home, for the cards after setting it up (16, 17, 23) and the reminders to verify and invite (26, 27).
+    /// It was set up when the person's place in it started (the kept list of their homes), else when it was made.
+    private func guidanceHome(_ intel: PlaceIntelligence, invited: Bool) -> GuidanceHomeFacts {
+        let mine = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id == viewModel.homeId }
+        let verified = intel.tier == .t4
+        return GuidanceHomeFacts(
+            id: viewModel.homeId,
+            verified: verified,
+            verifiable: !verified && (intel.verifyAvailable ?? (intel.tier == .t3)),
+            setUpAt: mine?.occupancy?.startAt ?? mine?.home.createdAt,
+            invited: invited,
+            needsPickupDay: Self.needsPickupDay(intel)
+        )
+    }
+
+    /// The address calendar still has no pickup schedule of the household's own.
+    private static func needsPickupDay(_ intel: PlaceIntelligence) -> Bool {
+        intel.groups.flatMap(\.sections).compactMap(\.addressCalendar).first?.needsPickupDay == true
+    }
+
+    /// "Set pickup day" on the tip card "Your home is set up": Today at this address, on its pickup editor.
+    private func openPickupEditor() {
+        rootTabs?.pickupEditorHomeId = viewModel.homeId
+        viewModel.onOpenDetail(.today)
+    }
+
     private var verifyAddress: String {
         if case let .loaded(intel) = viewModel.state { return intel.place.label }
         return ""
@@ -126,6 +166,12 @@ struct PlaceDashboardView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+        // The Place tab's first screen for the guidance cards (card 1, and the pointers here).
+        .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
+        // The guidance reminder "Verify your address": its button opens the verify step, as "Verify address" does.
+        .guidanceAction(.nextVerify, active: isRoot) { showVerify = true }
+        // "Your home is set up": while the home has no pickup schedule its button opens the pickup editor.
+        .guidanceAction(.doneHomeSetup, active: isRoot && guidanceVariants.home?.needsPickupDay == true) { openPickupEditor() }
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return
@@ -167,8 +213,7 @@ struct PlaceDashboardView: View {
                     onClose: { showSwitcher = false }
                 )
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.hidden)
+            .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .hidden)
         }
         .sheet(isPresented: $showsChanges) {
             if case let .loaded(intel) = viewModel.state {
@@ -200,6 +245,8 @@ struct PlaceDashboardView: View {
                 homeId: viewModel.homeId,
                 onStart: { method in
                     showVerify = false
+                    // A fast check can verify the person before they come back: read Place again then.
+                    if viewModel.verifyOptions != nil { viewModel.reloadOnReturn() }
                     viewModel.onStartVerify(method, verifyAddress)
                 },
                 onClose: { showVerify = false },
@@ -239,22 +286,8 @@ struct PlaceDashboardView: View {
                     PlaceColumns {
                         VStack(alignment: .leading, spacing: 0) {
                             leadBanner(claim: claim)
-                            PlaceHomeCard(
-                                intel: intel,
-                                claimInReview: claim != nil,
-                                shortcuts: viewModel.homeShortcuts,
-                                onUnlock: canVerify ? { showVerify = true } : nil,
-                                showsVerify: showsVerify && claim == nil,
-                                onOpenTools: {
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHubHome()
-                                },
-                                onShortcut: { shortcut in
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHomeShortcut(shortcut)
-                                }
-                            )
-                            .padding(.top, 12)
+                            homeCard(intel, claim: claim, canVerify: canVerify, showsVerify: showsVerify)
+                                .padding(.top, 12)
                             worthALook(intel)
                         }
                         .placeColumn(.leading, order: 0)
@@ -314,6 +347,35 @@ struct PlaceDashboardView: View {
         }
     }
 
+    /// The home at the top: where the person stands, the address, the record and Home tools.
+    private func homeCard(_ intel: PlaceIntelligence, claim: OwnershipClaimDTO?, canVerify: Bool, showsVerify: Bool) -> some View {
+        PlaceHomeCard(
+            intel: intel,
+            claimInReview: claim != nil,
+            shortcuts: viewModel.homeShortcuts,
+            onUnlock: canVerify ? { showVerify = true } : nil,
+            showsVerify: showsVerify && claim == nil,
+            onOpenTools: {
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHubHome()
+            },
+            onShortcut: { shortcut in
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHomeShortcut(shortcut)
+            },
+            verifyOptions: viewModel.verifyOptions,
+            onMessageHomes: { viewModel.onComposeMessage(intel.place.label) },
+            onMailCode: {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            },
+            onEnterMailedCode: viewModel.hasPendingPostcard ? {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            } : nil
+        )
+    }
+
     private static let topAnchor = "place.top"
     private static let ballotAnchor = "place.ballot"
 
@@ -357,7 +419,7 @@ struct PlaceDashboardView: View {
     private func header(intel: PlaceIntelligence) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                if isRoot { menuButton.padding(.leading, -Spacing.s3) }
+                if isRoot { menuButton.guidanceAnchor(.tipMenu).padding(.leading, -Spacing.s3) }
                 HStack(spacing: 8) {
                     Text("Your Place")
                         .font(.system(size: 28, weight: .bold))
@@ -402,6 +464,7 @@ struct PlaceDashboardView: View {
                         .frame(width: Spacing.s12, height: 44)
                         .contentShape(Rectangle())
                 }
+                .guidanceAnchor(.tipAsk, when: isRoot)
             }
         }
     }
@@ -620,6 +683,8 @@ struct PlaceDashboardView: View {
 
     private func saveOpenGroups(_ groups: Set<PlaceGlanceGroup>) {
         UserDefaults.standard.set(groups.map(\.rawValue).sorted(), forKey: openGroupsKey)
+        // "See more" (the guidance pointer on the first row's +) is for someone who hasn't opened one.
+        if !groups.isEmpty { GuidanceCenter.shared.note(.placeRowOpened) }
     }
 
     /// The sections that belong in each glance group, in the server's order.
@@ -658,7 +723,8 @@ struct PlaceDashboardView: View {
                 PlaceGlanceRow(
                     group: group,
                     summary: summary(group, sections: sections, intel: intel, claim: claim),
-                    isOpen: groupBinding(group)
+                    isOpen: groupBinding(group),
+                    guidanceAnchor: index == 0 && isRoot ? .tipPlaceRow : nil
                 ) {
                     groupContent(group, sections: sections, intel: intel, claim: claim)
                 }
@@ -873,19 +939,19 @@ struct PlaceDashboardView: View {
         if claim == nil {
             PlaceRowDivider()
             Button(action: viewModel.onOpenPrivacyMirror) {
-                PlaceActionRowLabel(icon: .eye, title: "What neighbors see", subtitle: "Preview this address as a neighbor sees it.")
+                PlaceActionRowLabel(icon: .eye, title: "What others see", subtitle: "Preview this address as others see it.")
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("place.glance.privacyMirror")
         }
     }
 
-    /// Wedge v2 §2 — "Private by default. See what neighbors see of this address."
+    /// Wedge v2 §2 — "Private by default. See what others see of this address."
     private var privacyMirrorRow: some View {
         Button(action: viewModel.onOpenPrivacyMirror) {
             HStack(spacing: 8) {
                 Icon(.shieldCheck, size: 15, strokeWidth: 2.25, color: Theme.Color.home)
-                Text("Private by default. See what neighbors see of this address.")
+                Text("Private by default. See what others see of this address.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .multilineTextAlignment(.leading)
@@ -908,13 +974,13 @@ struct PlaceDashboardView: View {
     private func neighborsEntry(address: String, messages: Bool, homesNearby: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // "Private messages" names the section only while messages are all it holds.
-            PlaceSectionHeading(title: "Verified neighbors", detail: messages && !homesNearby ? "Private messages" : nil)
+            PlaceSectionHeading(title: "Verified homes near you", detail: messages && !homesNearby ? "Private messages" : nil)
             PlaceGroupSurface {
                 if messages {
                     Button { viewModel.onComposeMessage(address) } label: {
                         PlaceActionRowLabel(
                             icon: .messageSquarePlus,
-                            title: "Message a neighbor",
+                            title: "Message a home near you",
                             subtitle: "Send a private heads-up to a home on your block."
                         )
                     }
@@ -922,7 +988,7 @@ struct PlaceDashboardView: View {
                     .accessibilityIdentifier("place.messageNeighbor")
                     PlaceRowDivider()
                     Button { viewModel.onOpenInbox() } label: {
-                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified neighbors nearby.")
+                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified homes nearby.")
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("place.inbox")
@@ -943,7 +1009,7 @@ struct PlaceDashboardView: View {
                     ShareLink(item: PersonalInviteLink.shared.url, message: Text(NeighborhoodView.inviteMessage)) {
                         PlaceActionRowLabel(
                             icon: .share2,
-                            title: "Invite your neighbors",
+                            title: "Invite homes near you",
                             subtitle: "Share a link that shows them their own address first."
                         )
                     }
@@ -968,7 +1034,7 @@ struct BallotGovernmentsSheet: Identifiable {
 
 struct PlaceVerifyBanner: View {
     var icon: PantopusIcon = .shieldCheck
-    var message = "Verify your address to message neighbors and get your badge."
+    var message = "Verify your address to message homes near you and get your badge."
     var action = "Verify address"
     var identifier = "place.verifyBanner"
     var onTap: () -> Void

@@ -176,7 +176,7 @@ public final class ReviewClaimsViewModel: ListOfRowsDataSource {
             ListOfRowsState.EmptyContent(
                 icon: .checkCheck,
                 headline: "No claims to review",
-                subcopy: "You're all caught up. New ownership claims will appear here when neighbors submit address verification.",
+                subcopy: "You're all caught up. New ownership claims will appear here when people submit address verification.",
                 ctaTitle: "View approved"
             ) { [weak self] in
                 MainActor.assumeIsolated { self?.selectedTab = ReviewClaimsTab.approved }

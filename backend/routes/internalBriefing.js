@@ -18,7 +18,7 @@ const logger = require('../utils/logger');
 const { composeScheduledBriefing } = require('../services/context/providerOrchestrator');
 const { collectInternalContext } = require('../services/context/internalContextCollector');
 const { validTimezone } = require('../utils/timezone');
-const { resolveLocation, resolveNotificationTimezone } = require('../services/context/locationResolver');
+const { resolveLocation, resolveNotificationTimezone, resolveNotificationTimezones } = require('../services/context/locationResolver');
 const { buildTomorrowPickupSignal } = require('../services/context/eveningBriefingService');
 const addressCalendarService = require('../services/addressCalendarService');
 const pushService = require('../services/pushService');
@@ -161,9 +161,9 @@ function getTodayLocal(tz) {
 }
 
 // The briefing scheduler asks for every recipient's zone once a minute, and the
-// home reminders every 15 minutes. Each answer takes about seven database reads
-// (preferences, viewing location, homes, saved place), which made these minute
-// ticks the API's largest source of database calls. The answers rarely change,
+// home reminders every 15 minutes. An answer rests on about seven database reads
+// (preferences, viewing location, homes, saved place); those are made once for
+// everyone a request asks about, not once per person. The answers rarely change,
 // so one is reused for ten minutes: someone who moves or changes their location
 // gets their new clock within ten minutes, inside the scheduler's 15-minute
 // delivery window. An answer built while one of those reads failed isn't kept.
@@ -194,16 +194,23 @@ router.post('/timezones', verifyInternalApiKey, async (req, res) => {
     return res.status(400).json({ error: 'Invalid userIds' });
   }
   try {
+    // Everyone without a kept answer is resolved together (seven reads in all). The answer keeps the request's order.
+    const people = [...new Set(ids)];
+    const kept = new Map();
+    for (const userId of people) {
+      const zone = rememberedZone(userId, Date.now());
+      if (zone) kept.set(userId, zone.zone);
+    }
+    const resolved = await resolveNotificationTimezones(people.filter((userId) => !kept.has(userId)));
     const zones = {};
-    for (const userId of new Set(ids)) {
-      const kept = rememberedZone(userId, Date.now());
-      if (kept) {
-        zones[userId] = kept.zone;
+    for (const userId of people) {
+      if (kept.has(userId)) {
+        zones[userId] = kept.get(userId);
         continue;
       }
-      const report = { degraded: false };
-      zones[userId] = await resolveNotificationTimezone(userId, undefined, report);
-      if (!report.degraded) rememberZone(userId, zones[userId], Date.now());
+      const { zone, degraded } = resolved.get(userId);
+      zones[userId] = zone;
+      if (!degraded) rememberZone(userId, zone, Date.now());
     }
     return res.json({ timezones: zones });
   } catch (err) {
@@ -775,6 +782,19 @@ async function sendReminderPush({ userId, title, body, reminderType, data }) {
  * fails after its call was answered is told to the next call instead (500), so the caller's alarm still hears of it.
  */
 const MAIL_MORNING_ANSWER_MS = 45 * 1000;
+let travelArrivalsRunning = false;
+async function runTravelArrivals() {
+  if (travelArrivalsRunning) return;
+  travelArrivalsRunning = true;
+  try {
+    const travel = await require('../services/cardTravel').runArrivals();
+    if (!travel.skipped) logger.info('Travelling card arrivals', travel);
+  } catch (err) {
+    logger.warn('Travelling card arrivals failed', { error: err.message });
+  } finally {
+    travelArrivalsRunning = false;
+  }
+}
 let mailMorningLateFailure = null;
 router.post('/mail-morning', verifyInternalApiKey, async (req, res) => {
   // Launch cut #10 (Mailbox): no mail notices while the mailbox is off.
@@ -793,6 +813,9 @@ router.post('/mail-morning', verifyInternalApiKey, async (req, res) => {
       send: async (push) => (await sendReminderPush(push)).payload || { status: 'failed' },
     }).then((stats) => {
       logger.info('Mail morning notices', stats);
+      // Travelling cards (launch key card_travel) delivered this morning reach their towns, and everyone who held them
+      // hears (services/cardTravel). After the mail notices, on its own: it never slows or fails them.
+      runTravelArrivals();
       return stats;
     });
     let timer;
@@ -852,7 +875,7 @@ router.post('/no-bid-nudge', verifyInternalApiKey, async (req, res) => {
     const title = 'Hang tight \u2014 bids are coming';
     const body = hasHome
       ? `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 more people are signing up every day. Hang tight!`
-      : `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 we're growing every day! Meanwhile, adding your home address helps neighbors trust you.`;
+      : `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 we're growing every day! Meanwhile, adding your home address helps others trust you.`;
 
     const notification = await createNotification({
       userId,

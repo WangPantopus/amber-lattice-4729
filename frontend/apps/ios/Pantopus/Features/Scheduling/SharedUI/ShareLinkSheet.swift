@@ -314,7 +314,7 @@ public struct ShareLinkSheet: View {
             toggleRow(
                 icon: .userRound,
                 label: "Show on my profile",
-                sub: "Neighbors see a Book button on your page.",
+                sub: "People see a Book button on your page.",
                 isOn: showOnProfile,
                 onChange: onToggleShowOnProfile
             )

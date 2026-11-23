@@ -14,7 +14,7 @@
 const { DateTime } = require('luxon');
 const logger = require('../../utils/logger');
 const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
-const { composeForHomeId } = require('../addressCalendarService');
+const { composeForHomeId, generalPickupWords } = require('../addressCalendarService');
 const { loadViewer } = require('../plans/planViewer');
 const planService = require('../plans/planService');
 const readTools = require('./readTools');
@@ -163,7 +163,7 @@ async function getSchedule(args, ctx) {
     const pickup = PICKUP_KINDS[entry.kind];
     let source = 'the address calendar';
     if (entry.scope === 'home') source = 'set by their household';
-    else if (pickup) source = entry.confidence === 'official' ? "the city's published schedule" : "the city's schedule, not confirmed";
+    else if (pickup) source = `${generalPickupWords(entry)}${entry.confidence === 'official' ? '' : ', not confirmed'}`;
     put(entry.date, {
       kind: pickup ? 'pickup' : 'date',
       time: null,

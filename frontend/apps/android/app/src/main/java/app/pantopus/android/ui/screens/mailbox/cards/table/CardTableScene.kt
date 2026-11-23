@@ -21,6 +21,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
@@ -514,12 +516,20 @@ private fun EnvelopeFront(
                     val pen = faceArt?.pen ?: return@drawBehind
                     val moment = state.sending
                     val reveal = AddressReveal.of(moment)
+                    // A travelling card's newest postmark is struck as the envelope lands (travelling card Part 3), or
+                    // as a pass-on is sealed, where today's postmark would land.
+                    val strike =
+                        when {
+                            card.travel == null -> 1f
+                            moment != null -> reveal.postmark
+                            else -> state.strike
+                        }
                     drawIntoCanvas { canvas ->
                         // A list: the envelopes under the top one, their edges showing.
                         if ((moment?.calls?.several ?: 1) > 1) {
                             drawEnvelopeStack(canvas.nativeCanvas, art, size.width, size.height, paint)
                         }
-                        drawAddressSide(canvas.nativeCanvas, art, pen, card, day, size.width, size.height, paint, reveal)
+                        drawAddressSide(canvas.nativeCanvas, art, pen, card, day, size.width, size.height, paint, reveal, strike)
                     }
                 },
     )
@@ -535,6 +545,7 @@ private fun drawAddressSide(
     height: Float,
     paints: EnvelopePaints,
     reveal: AddressReveal = AddressReveal.All,
+    strike: Float = 1f,
 ) {
     canvas.drawBitmap(art.front, null, RectF(0f, 0f, width, height), paints.bitmap)
     drawPostage(canvas, art, card, day, width, height, paints, reveal)
@@ -603,11 +614,14 @@ private fun drawAddressSide(
         val label = if (card.letter) "A LETTER FOR YOU" else "CHRISTMAS CARD"
         canvas.drawText(label, width * 0.068f - size * 0.1f, baseline, paints.text)
     }
+    // The postmarks of the towns on its way here, over the names as stamped ink is; the first cancels the stamp.
+    if (card.travels) CardTravelPostmarks.draw(canvas, card.travel?.postmarks.orEmpty(), width, height, paints, strike)
 }
 
 /**
  * The stamp, and the postmark over it with the day it was mailed. While the sender's envelope is addressed ([reveal]),
- * each drops onto the paper: from a little larger, and faint, to where it lies.
+ * each drops onto the paper: from a little larger, and faint, to where it lies. A travelling card has the postmarks of
+ * the towns on its way here instead, drawn last by [drawAddressSide].
  */
 private fun drawPostage(
     canvas: Canvas,
@@ -619,19 +633,23 @@ private fun drawPostage(
     paints: EnvelopePaints,
     reveal: AddressReveal,
 ) {
-    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.takeIf { reveal.stamp > 0f }?.let { stamp ->
+    // A passed-on card's envelope already carries its stamp, cancelled by its first postmark (travelling card Part 4).
+    val stampOn = if (card.travels) 1f else reveal.stamp
+    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design, card.mood)?.takeIf { stampOn > 0f }?.let { stamp ->
         val left = width * 0.755f
         val top = height * 0.0345f
         val stampWidth = width * 0.2017f
         val stampHeight = stampWidth * stamp.height / stamp.width
         val saved = canvas.save()
-        val grow = 1f + 0.45f * (1f - reveal.stamp)
+        val grow = 1f + 0.45f * (1f - stampOn)
         canvas.scale(grow, grow, left + stampWidth / 2f, top + stampHeight / 2f)
-        paints.bitmap.alpha = (255 * reveal.stamp.coerceIn(0f, 1f)).toInt()
+        paints.bitmap.alpha = (255 * stampOn.coerceIn(0f, 1f)).toInt()
         canvas.drawBitmap(stamp, null, RectF(left, top, left + stampWidth, top + stampHeight), paints.bitmap)
         paints.bitmap.alpha = 255
         canvas.restoreToCount(saved)
     }
+    // A travelling card's postmarks are struck over the names, last (travelling card plan Part 3).
+    if (card.travels) return
     // A letter Pantopus puts straight in the box has no postmark (and the postmark says Christmas).
     if (reveal.postmark > 0f && !card.letter) {
         val saved = canvas.save()
@@ -731,7 +749,14 @@ private fun TableCardLayer(
     val out = state.cardOutForOrder
     val density = LocalDensity.current.density
     val painter = remember(faceArt, density) { faceArt?.let { CardFacePainter(it, density) } }
-    val words = remember(state.card) { state.card.words(cardPaperColor(state.card.paper)) }
+    // A long note goes over two leaves where the card can be turned: not while it's being sealed (plan Part 9).
+    val words =
+        remember(state.card) {
+            state.card.words(cardPaperColor(state.card.paper)).copy(leaves = state.sending == null && !state.card.letter)
+        }
+    LaunchedEffect(painter, words, g.cardWidth) {
+        painter?.let { state.leavesLaid(it.twoLeaves(words, g.cardWidth / 100f)) }
+    }
     val loaded = (picture as? CardPictureState.Loaded)?.picture
     Box(
         modifier =
@@ -778,10 +803,43 @@ private fun TableCardLayer(
                         val face = painter ?: return@drawBehind
                         drawIntoCanvas { face.drawBack(it.nativeCanvas, size.width, words) }
                     },
-            )
+            ) { FirstLeaf(state, painter, words, g) }
             TurningLight(state)
         }
     }
+}
+
+/**
+ * A long note's first leaf (plan Part 9), lying on the card's back. "Read on" lifts it from its foot, hinged along its
+ * top edge, with the depth the card's own turn uses; it darkens as it rises and isn't drawn past 90°.
+ */
+@Composable
+private fun BoxScope.FirstLeaf(
+    state: CardTableState,
+    painter: CardFacePainter?,
+    words: CardFaceWords,
+    g: TableGeometry,
+) {
+    if (!state.twoLeaves) return
+    Box(
+        Modifier
+            .matchParentSize()
+            .graphicsLayer {
+                alpha = state.leafAlpha
+                // A positive X turn about the top edge brings the foot up toward you (seen on the emulator).
+                rotationX = state.leafAngle
+                transformOrigin = TransformOrigin(0.5f, 0f)
+                cameraDistance = g.cardWidth * 5.2f / PIXELS_PER_CAMERA_UNIT
+            }.drawBehind {
+                val face = painter ?: return@drawBehind
+                drawIntoCanvas { face.drawFirstLeaf(it.nativeCanvas, size.width, words) }
+                val shade = state.leafShade
+                if (shade > 0.001f) {
+                    val corner = size.width * 0.007f
+                    drawRoundRect(Color.Black.copy(alpha = shade), cornerRadius = CornerRadius(corner, corner))
+                }
+            },
+    )
 }
 
 /**

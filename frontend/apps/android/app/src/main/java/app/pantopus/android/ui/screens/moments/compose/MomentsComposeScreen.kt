@@ -13,7 +13,6 @@ package app.pantopus.android.ui.screens.moments.compose
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
@@ -39,6 +38,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -57,6 +57,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -66,6 +67,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -99,6 +101,13 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksOver
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacedStill
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -170,7 +179,8 @@ fun MomentsComposeScreen(
         onPauseOrDispose { }
     }
     // Closing with something to lose asks first (REVIEW item 8): a written card from the camera or the card, or a photo
-    // or video on the Post sheet (Back there goes back to the camera; Retake doesn't ask).
+    // or video on the Post sheet (Back there goes back to the camera; Retake asks only when the photo has marks or was
+    // resized).
     var asksDiscard by remember { mutableStateOf(false) }
     val closeOrAsk: () -> Unit = {
         if (state.text.isNotBlank()) {
@@ -181,12 +191,15 @@ fun MomentsComposeScreen(
     }
     BackHandler(enabled = state.step != ComposeStep.Review && state.text.isNotBlank()) { asksDiscard = true }
     BackHandler(enabled = state.step == ComposeStep.Review) {
-        if (state.media != null) {
+        // While a Post is making its Moment, Back stays on the sheet (the upload needs the photo or video).
+        if (state.media != null && state.canRetake) {
             asksDiscard = true
         } else {
             viewModel.backFromReview()
         }
     }
+    // Nor does "Discard this Moment?" stay up over it (asked while a video was still getting ready).
+    LaunchedEffect(state.canRetake) { if (!state.canRetake) asksDiscard = false }
 
     Box(modifier = Modifier.fillMaxSize().background(PantopusColors.momentStage).semantics { testTagsAsResourceId = true }) {
         when (state.step) {
@@ -196,7 +209,8 @@ fun MomentsComposeScreen(
                     hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
                     askCamera = { cameraPermission.launch(Manifest.permission.CAMERA) },
                     onClose = closeOrAsk,
-                    onCaptured = viewModel::captured,
+                    // The in-app camera: a Moment taken here, just now (the Live mark).
+                    onCaptured = { media -> viewModel.captured(media, fromCamera = true) },
                     onLibrary = openLibrary,
                     onText = { viewModel.showStep(ComposeStep.Text) },
                     onNotice = { message -> if (message != null) viewModel.showNotice(message) else viewModel.clearNotice() },
@@ -215,7 +229,9 @@ fun MomentsComposeScreen(
                 ReviewStep(
                     state = state,
                     avatarUrl = viewModel.avatarUrl,
-                    onBack = viewModel::backFromReview,
+                    // Retake asks first when the photo has marks on it or was resized.
+                    onBack = { if (state.marks.isEmpty && state.placement == null) viewModel.backFromReview() else asksDiscard = true },
+                    onMarks = viewModel::openMarks,
                     onShowArea = viewModel::setShowArea,
                     onHours = viewModel::setHours,
                     onAudience = viewModel::setAudience,
@@ -225,7 +241,20 @@ fun MomentsComposeScreen(
                     onFindPlace = { viewModel.findPlace(true) },
                     onNoLocation = viewModel::setNoLocation,
                     onShowHeight = viewModel::setShowHeight,
+                    onShowWeather = viewModel::setShowWeather,
+                    sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                 )
+        }
+        // Text, Draw and Resize on the photo, over the Post screen (its own Back handler takes Back while it's up).
+        state.marking?.let { editing ->
+            val picture by viewModel.marksPicture.collectAsStateWithLifecycle()
+            MomentsMarksEditor(
+                picture = picture,
+                editing = editing,
+                onEdit = viewModel::editMarks,
+                onClose = viewModel::closeMarks,
+                video = (state.media as? MomentMediaFile.Video)?.file,
+            )
         }
         // The place picker (the Pulse composer's) around the Moment's pin: venues within reach of it, and search.
         val pin = state.pin
@@ -239,7 +268,8 @@ fun MomentsComposeScreen(
                 mediaLocation = MediaCaptureLocation(pin.latitude, pin.longitude),
                 limits =
                     PlacePickerLimits(anchorChips = false, showLocality = false) { place ->
-                        place.placeId?.startsWith("osm:") == true && (place.distanceM ?: Double.MAX_VALUE) <= reach
+                        place.placeId?.startsWith("osm:") == true &&
+                            (place.distanceM ?: Double.MAX_VALUE) <= reach
                     },
             )
         }
@@ -252,6 +282,8 @@ fun MomentsComposeScreen(
                     Text(
                         when {
                             !onSheet -> "What you wrote won't be saved."
+                            !state.marks.isEmpty -> "What you drew or wrote on it won't be saved."
+                            state.placement != null -> "How you resized it won't be saved."
                             state.media is MomentMediaFile.Video -> "Your video won't be saved."
                             else -> "Your photo won't be saved."
                         },
@@ -678,6 +710,7 @@ private fun ReviewStep(
     state: MomentsComposeUiState,
     avatarUrl: String?,
     onBack: () -> Unit,
+    onMarks: (MomentMarksTool) -> Unit,
     onShowArea: (Boolean) -> Unit,
     onHours: (Int) -> Unit,
     onAudience: (String) -> Unit,
@@ -687,8 +720,11 @@ private fun ReviewStep(
     onFindPlace: () -> Unit,
     onNoLocation: (Boolean) -> Unit,
     onShowHeight: (Boolean) -> Unit,
+    onShowWeather: (Boolean) -> Unit,
+    sky: MomentsSkyActions,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Under the marks editor, TalkBack reads only the editor.
+    Box(modifier = Modifier.fillMaxSize().then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier)) {
         when (val media = state.media) {
             is MomentMediaFile.Photo ->
                 AsyncImage(
@@ -697,7 +733,7 @@ private fun ReviewStep(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-            is MomentMediaFile.Video -> VideoStill(media)
+            is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
             null ->
                 Box(
                     modifier = Modifier.fillMaxSize().momentCardGradient(state.background).statusBarsPadding().padding(top = 54.dp),
@@ -717,33 +753,55 @@ private fun ReviewStep(
                 }
         }
         if (state.media != null) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clearAndSetSemantics {})
+        // Retake at the left, the pills at the right: a pill that doesn't fit beside Retake drops to a second row.
+        val density = LocalDensity.current
+        var topRows by remember { mutableStateOf(40.dp) }
         Row(
             modifier =
                 Modifier
+                    .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(start = Spacing.s3, top = 11.dp)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(Radii.xl2))
-                    .background(if (state.media != null) PantopusColors.momentCameraChip else Color.Black.copy(alpha = 0.25f))
-                    .clickable(role = Role.Button, onClick = onBack)
-                    .padding(start = Spacing.s2, end = 14.dp)
-                    .testTag("moments.post.retake"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+                    .padding(start = Spacing.s3, end = Spacing.s3, top = 11.dp)
+                    .onSizeChanged { topRows = with(density) { it.height.toDp() } },
+            verticalAlignment = Alignment.Top,
         ) {
-            PantopusIconImage(
-                icon = PantopusIcon.ChevronLeft,
-                contentDescription = null,
-                size = 20.dp,
-                strokeWidth = 2.2f,
-                tint = Color.White,
-            )
-            Text(
-                text = if (state.media != null) "Retake" else "Edit",
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .height(40.dp)
+                        .alpha(if (state.canRetake) 1f else 0.5f)
+                        .clip(RoundedCornerShape(Radii.xl2))
+                        .background(if (state.media != null) PantopusColors.momentCameraChip else Color.Black.copy(alpha = 0.25f))
+                        .clickable(enabled = state.canRetake, role = Role.Button, onClick = onBack)
+                        .padding(start = Spacing.s2, end = 14.dp)
+                        .testTag("moments.post.retake"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+            ) {
+                PantopusIconImage(
+                    icon = PantopusIcon.ChevronLeft,
+                    contentDescription = null,
+                    size = 20.dp,
+                    strokeWidth = 2.2f,
+                    tint = Color.White,
+                )
+                Text(
+                    text = if (state.media != null) "Retake" else "Edit",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            // Measured before the weighted space, the pills get the width Retake and this gap leave.
+            Spacer(Modifier.width(Spacing.s2))
+            Spacer(Modifier.weight(1f))
+            if (state.media != null) {
+                MomentsMarksPills(
+                    enabled = !state.posting,
+                    onOpen = onMarks,
+                    video = state.media is MomentMediaFile.Video,
+                )
+            }
         }
         MomentsPostSheet(
             state = state,
@@ -753,39 +811,45 @@ private fun ReviewStep(
             onAudience = onAudience,
             onCaption = onCaption,
             onPost = onPost,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            // Never over the Retake / Text / Draw / Resize rows (11 dp down, 40 dp each, a second row while the pills wrap):
+            // the sheet stops 12 dp under them, and on a short screen its own content scrolls in that height while Post
+            // stays at its bottom.
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + topRows + Spacing.s3),
             onPlace = onPlace,
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,
             onShowHeight = onShowHeight,
+            onShowWeather = onShowWeather,
+            sky = sky,
         )
     }
 }
 
-/** A video's first frame behind the Post sheet. */
+/**
+ * A video's first frame behind the Post sheet, with its marks (Text and Draw) where they go on every frame, on the 9:16
+ * canvas at its [placement] when Resize placed it.
+ */
 @Composable
-private fun VideoStill(media: MomentMediaFile.Video) {
+private fun VideoStill(
+    media: MomentMediaFile.Video,
+    marks: MomentMarks,
+    placement: MomentPlacement?,
+) {
     val still by produceState<android.graphics.Bitmap?>(null, media.file) {
-        value =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        retriever.setDataSource(media.file.path)
-                        retriever.getFrameAtTime(0)
-                    } finally {
-                        retriever.release()
-                    }
-                }.getOrNull()
-            }
+        value = withContext(Dispatchers.IO) { MomentMedia.videoStill(media.file) }
     }
     still?.let {
+        if (placement != null) {
+            MomentPlacedStill(it, placement, marks, spoken = "Your video", modifier = Modifier.fillMaxSize())
+            return@let
+        }
         androidx.compose.foundation.Image(
             bitmap = it.asImageBitmap(),
             contentDescription = "Your video",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
+        if (!marks.isEmpty) MomentMarksOver(it.width, it.height, marks, Modifier.fillMaxSize())
     }
 }
 

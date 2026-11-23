@@ -405,7 +405,7 @@ extension BookingsInboxView {
 
     private var emptySubcopy: String {
         switch viewModel.selectedTab {
-        case .upcoming: "When neighbors book time with you, they show up here."
+        case .upcoming: "When people book time with you, they show up here."
         case .pending: "No requests are waiting on your approval."
         case .past: "Completed and past bookings will collect here once you've met with someone."
         case .cancelled: "Cancelled and declined bookings show up here."

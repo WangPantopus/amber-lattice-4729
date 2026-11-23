@@ -52,7 +52,11 @@ struct MomentsMapOpenBottom: View {
             if viewModel.loadFailed, !viewModel.loaded, postings.isEmpty {
                 MomentsLoadFailedCard { Task { await viewModel.load() } }
             } else if viewModel.isEmpty, postings.isEmpty {
-                MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                if viewModel.tooWide {
+                    MomentsZoomInCard { Task { await viewModel.locate() } }
+                } else {
+                    MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                }
             } else {
                 MomentsNewPill(viewModel: viewModel, actions: actions)
             }

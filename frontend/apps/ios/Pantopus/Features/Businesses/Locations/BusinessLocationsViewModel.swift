@@ -68,7 +68,7 @@ public final class BusinessLocationsViewModel: ListOfRowsDataSource {
             state = .empty(.init(
                 icon: .mapPin,
                 headline: "No locations yet",
-                subcopy: "Add a storefront or service area so neighbors know where to find you.",
+                subcopy: "Add a storefront or service area so people know where to find you.",
                 tint: Theme.Color.businessBg,
                 accent: Theme.Color.business
             ))

@@ -30,6 +30,10 @@ public struct PulseComposeContentState: Equatable {
     /// The draft may post to its tagged place because an attachment was
     /// taken there (the Place check's `photo` basis).
     public var isPhotoPlaced: Bool
+    /// The Sky (phase A): the town the post floats over ("Around Camas, WA"); nil draws "Posting to …".
+    public var skyArea: String?
+    /// The Sky: the venue the post pins at ("At Esther Short Park"); nil while it floats.
+    public var skyPinnedAt: String?
     /// Soft nudge from `POST /api/posts/precheck` — dismissible.
     public var precheckNudge: String?
     /// Cooldown copy when the viewer is rate-limited / restricted.
@@ -77,6 +81,8 @@ public struct PulseComposeContentState: Equatable {
         dealExpiresAt: Date? = Date().addingTimeInterval(7 * 86400),
         eligibilityWarning: String? = nil,
         isPhotoPlaced: Bool = false,
+        skyArea: String? = nil,
+        skyPinnedAt: String? = nil,
         precheckNudge: String? = nil,
         precheckCooldown: String? = nil,
         isVisitorPost: Bool = false,
@@ -108,6 +114,8 @@ public struct PulseComposeContentState: Equatable {
         self.dealExpiresAt = dealExpiresAt
         self.eligibilityWarning = eligibilityWarning
         self.isPhotoPlaced = isPhotoPlaced
+        self.skyArea = skyArea
+        self.skyPinnedAt = skyPinnedAt
         self.precheckNudge = precheckNudge
         self.precheckCooldown = precheckCooldown
         self.isVisitorPost = isVisitorPost
@@ -358,7 +366,10 @@ public struct PulseComposeContent: View {
             .padding(.horizontal, Spacing.s4)
             .accessibilityIdentifier("composePulsePurposeBadge")
         }
-        if let label = state.postingTargetLabel {
+        if let area = state.skyArea {
+            // The Sky: "Around Camas, WA" and "Pin it at a place" in place of "Posting to …".
+            PulseSkyPlaceLine(area: area, pinnedAt: state.skyPinnedAt, onPin: actions.onAddLocation, onChangeTarget: actions.onChangeTarget)
+        } else if let label = state.postingTargetLabel {
             HStack(spacing: Spacing.s2) {
                 Icon(.mapPin, size: 14, strokeWidth: 2, color: Theme.Color.appTextSecondary)
                 Text("Posting to \(label)")
@@ -465,7 +476,7 @@ public struct PulseComposeContent: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 HStack(spacing: Spacing.s2) {
                     Icon(.lightbulb, size: 16, strokeWidth: 2, color: Theme.Color.primary600)
-                    Text("Before you ask, neighbors already said")
+                    Text("Before you ask, people near you already said")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
                 }
@@ -747,6 +758,7 @@ public struct PulseComposeContent: View {
             dateField
             eventEndDateField
             textField(.eventLocation, label: "Location", placeholder: "Where?")
+            locationSuggestions(.eventLocation)
             bodyField(label: "Details", placeholder: "Add anything attendees should know…", minHeight: 96)
         }
     }
@@ -840,6 +852,7 @@ public struct PulseComposeContent: View {
             lostFoundToggle
             bodyField(label: "Description", placeholder: "Describe the item…", minHeight: 96)
             textField(.lostLastSeenLocation, label: "Last seen location", placeholder: "Where?")
+            locationSuggestions(.lostLastSeenLocation)
             lastSeenDateField
             contactPrefRow
             // Editing shows the saved number read-only (none saved, no field).
@@ -1075,7 +1088,7 @@ public struct PulseComposeContent: View {
         guard !state.isNetworkTarget else { return "Post" }
         return switch state.composePurpose {
         case .localUpdate: "Local Update"
-        case .neighborhoodWin: "Neighborhood Win"
+        case .neighborhoodWin: "Local Win"
         case .visitorGuide: "Visitor Guide"
         default: "Announcement"
         }
@@ -1083,7 +1096,7 @@ public struct PulseComposeContent: View {
 
     private var announceBodyPlaceholder: String {
         if state.isNetworkTarget { return "Share with your connections…" }
-        return state.composePurpose?.placeholder ?? "Share what your neighbors should know…"
+        return state.composePurpose?.placeholder ?? "Share what people near you should know…"
     }
 
     private var audienceChipRow: some View {
@@ -1226,7 +1239,8 @@ public struct PulseComposeContent: View {
     private var photoPlacedNote: some View {
         HStack(alignment: .top, spacing: Spacing.s2) {
             Icon(.camera, size: 16, strokeWidth: 2, color: Theme.Color.success)
-            Text("Your photo was taken here, so you can post to this place. Your post will say \u{201C}Photo taken here.\u{201D}")
+            // The Sky: only a venue keeps the exact pin; an address or a bare photo floats.
+            Text(state.skyArea == nil || state.skyPinnedAt != nil ? SkyWords.photoPins : SkyWords.photoFloats)
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.success)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1350,6 +1364,16 @@ public struct PulseComposeContent: View {
     }
 
     // MARK: - Field builders
+
+    /// Address suggestions under a "Where?" field (founder 2026-11-17: suggestions everywhere).
+    private func locationSuggestions(_ key: PulseComposeField) -> some View {
+        LocationSuggestionList(
+            text: actions.fieldValue?(key) ?? state.fields[key]?.value ?? "",
+            identifier: "composePulseField_\(key.rawValue).suggestion"
+        ) { picked in
+            actions.onUpdateField(key, picked)
+        }
+    }
 
     private func textField(
         _ key: PulseComposeField,

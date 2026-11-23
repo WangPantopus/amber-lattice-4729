@@ -11,7 +11,9 @@
 //
 //  All of it shows only while the map's answer says heights are on for you
 //  (`heights_on`, contract v3.9). The chip's choice is kept on the phone, per
-//  account, and starts on.
+//  account, and starts on. The time filter's chip (`MomentsTimeFilter.swift`)
+//  and "Live now" (`MomentsLiveChip.swift`) follow them, or go under them
+//  when the row is full; heights off, they are there alone.
 //
 
 import SwiftUI
@@ -21,14 +23,22 @@ struct MomentsHeightsBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if viewModel.heightsOn {
+        if viewModel.phase == .ready {
             VStack(alignment: .leading, spacing: Spacing.s2) {
-                HStack(spacing: Spacing.s2) {
-                    chip
-                    if viewModel.showsHeightTags { keyButton.transition(.opacity) }
-                    if let time = viewModel.sunChipTime { MomentsSunChip(time: time).transition(.opacity) }
+                // The heights chips keep their place. How far back the map shows Moments from (`MomentsTimeFilter.swift`)
+                // and "Live now" (`MomentsLiveChip.swift`) follow them on the same line, or go under them when the line
+                // is full.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.s2) {
+                        heightsChips
+                        filterChips
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.s2) {
+                        HStack(spacing: Spacing.s2) { heightsChips }
+                        HStack(spacing: Spacing.s2) { filterChips }
+                    }
                 }
-                if viewModel.showsHeightTags, viewModel.heightsKeyOpen {
+                if viewModel.heightsOn, viewModel.showsHeightTags, viewModel.heightsKeyOpen {
                     MomentsHeightKey()
                         .onTapGesture { viewModel.heightsKeyOpen = false }
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
@@ -37,6 +47,24 @@ struct MomentsHeightsBar: View {
             .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: viewModel.heightsKeyOpen)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: viewModel.showsHeightTags)
         }
+    }
+
+    /// "Elevation", the key's colours while the tags show, and the sun's time while pins float. Nothing while heights
+    /// are off for you.
+    @ViewBuilder
+    private var heightsChips: some View {
+        if viewModel.heightsOn {
+            chip
+            if viewModel.showsHeightTags { keyButton.transition(.opacity) }
+            if let time = viewModel.sunChipTime { MomentsSunChip(time: time).transition(.opacity) }
+        }
+    }
+
+    /// The time filter's chip, then "Live now".
+    @ViewBuilder
+    private var filterChips: some View {
+        MomentsTimeChip(viewModel: viewModel)
+        MomentsLiveChip(viewModel: viewModel)
     }
 
     private var chip: some View {
@@ -158,9 +186,11 @@ extension MomentsMapViewModel {
         heightsOn && !heightTagsOff
     }
 
-    /// "Your Moment is live" sits under the chip while there is one.
+    /// "Your Moment is live" sits under the chips (the time filter's and "Live now" are always there once the map is
+    /// ready): two lines of them while heights are on for you, since those two then go under "Elevation" on a phone.
     var heightsNoteDrop: CGFloat {
-        heightsOn ? MomentsHeightsBar.drop : 0
+        guard phase == .ready else { return 0 }
+        return heightsOn ? 2 * MomentsHeightsBar.drop : MomentsHeightsBar.drop
     }
 
     /// The map's answer said whether heights are on for you: with them, the chip's last choice on this phone.

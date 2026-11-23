@@ -91,8 +91,13 @@ async function blockedUserIds(userId) {
     logger.warn('blockService.blockedUserIds unavailable', { userId, error: error?.message });
     throw blockCheckUnavailable();
   }
+  return blockedIdsFromRows(userId, data);
+}
+
+/** The counterparts in this person's UserBlock rows (blocker_user_id, blocked_user_id), either direction. */
+function blockedIdsFromRows(userId, rows) {
   const ids = new Set();
-  for (const row of data) {
+  for (const row of rows) {
     ids.add(String(row.blocker_user_id) === String(userId) ? row.blocked_user_id : row.blocker_user_id);
   }
   ids.delete(userId);
@@ -152,6 +157,6 @@ async function notificationBlockFilter(userId, blockedRead) {
 }
 
 module.exports = {
-  isBlocked, hasBlocked, blockedUserIds, notificationBlockFilter, invalidateBlockCache, blockCheckUnavailable,
-  removeFollowsBetween,
+  isBlocked, hasBlocked, blockedUserIds, blockedIdsFromRows, notificationBlockFilter, invalidateBlockCache,
+  blockCheckUnavailable, removeFollowsBetween,
 };

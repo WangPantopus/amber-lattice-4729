@@ -311,7 +311,7 @@ public final class MailTaskListViewModel {
         case let .success(response):
             markConverted(row.id)
             let title = response.title ?? row.title
-            toast = "\u{201C}\(title)\u{201D} posted as a neighbor task"
+            toast = "\u{201C}\(title)\u{201D} posted as a task"
         case .failure:
             alert = MailTaskListAlert(title: "Error", message: "Could not convert to gig.")
         }

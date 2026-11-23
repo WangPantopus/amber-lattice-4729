@@ -263,7 +263,7 @@ public final class CommunityMailViewModel {
             guard generation == loadGeneration else { return }
             state = .error(
                 message: (error as? APIError)?.errorDescription
-                    ?? "We couldn't load your neighborhood feed."
+                    ?? "We couldn't load your local mail."
             )
         }
     }

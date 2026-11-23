@@ -379,6 +379,24 @@ border. A venues index built from an older selector list
 either published index's elements is not published. A pull request that
 changes the build runs it on two small extracts and publishes nothing.
 
+## Area cells
+
+The Sky's homes-per-cell file (which size of area each 0.005° cell of the US
+gets, from the 2020 Census housing counts by block) ships with the backend in
+`backend/data/area-cells` (1,381 tiles, 5.5 MB), so staging, production and a
+local backend read the same areas with nothing to publish or set
+(`backend/utils/areaCells.js`). The Census counts don't change; to rebuild it
+after a change to the rule, run
+`node backend/scripts/area-cells/build.cjs --out backend/data/area-cells` (about
+three minutes, 1 GB of public Census tables read) and commit the result.
+
+`area-cells.yml` runs the same build by hand (Actions → Area Cells → Run
+workflow; `states` limits a test build) and prints counts. With `publish` on,
+from master and for a full build only, it uploads the file to the property
+index's private storage under `area-cells/v1/`; that is needed only for a
+server pointed there with `AREA_CELLS_URL`, and that storage belongs to the
+property index, so publish only when its owners say so.
+
 ## Runners and actions
 
 Linux jobs run on `ubuntu-24.04`, pinned so GitHub's move of `ubuntu-latest` to

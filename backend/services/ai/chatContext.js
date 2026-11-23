@@ -16,7 +16,7 @@ const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const noaa = require('../external/noaa');
 const { resolveLocation } = require('../context/locationResolver');
-const { composeForHomeId } = require('../addressCalendarService');
+const { composeForHomeId, generalPickupWords } = require('../addressCalendarService');
 const { DEFAULT_TIMEZONE } = require('./llm');
 
 // The context is read while the conversation loads; whatever isn't ready by
@@ -75,7 +75,7 @@ async function homesLine(userId) {
 
 function provenance(entry) {
   if (entry.scope === 'home') return 'set by their household';
-  return entry.confidence === 'official' ? "from the city's published schedule" : "from the city's schedule, not confirmed";
+  return `from ${generalPickupWords(entry)}${entry.confidence === 'official' ? '' : ', not confirmed for their home'}`;
 }
 
 async function calendarLines(homeId, userId) {

@@ -91,10 +91,15 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
     public let emailTo: String?
     public let envelope: Envelope
     public let card: Card
+    /// A reply to a Christmas card in its writer's Sent (experience plan Part 3): the card it answers. Nil otherwise.
+    public let cardReply: CardReplyCard?
     /// The sender's own words (the card's page only), also while it's sealed for them.
     public let note: String?
     /// The card's page only: where it has been, in order.
     public let trail: [TrailStep]
+    /// A card that travels (server switch `card_travel`, travelling card plan Part 6): its journey, and from this card on
+    /// its towns, miles and newest town; nil for every other card and older servers.
+    public let travel: SentCardTravel?
 
     /// Where a card by email's email is when it hasn't gone out: the server
     /// keeps trying for about an hour (`retrying`), then gives up (`failed`).
@@ -139,6 +144,8 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         /// The card's own photo and voice greeting (`holiday_card_memories`), on the card's page only, never covered.
         public let photo: CardPhoto?
         public let voice: CardVoice?
+        /// The table it opens on, named by the server (card shelves A4); nil from older servers.
+        public let mood: String?
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -153,10 +160,11 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
             signature = try? c.decodeIfPresent(CardSignature.self, forKey: .signature)
             photo = try? c.decodeIfPresent(CardPhoto.self, forKey: .photo)
             voice = try? c.decodeIfPresent(CardVoice.self, forKey: .voice)
+            mood = try? c.decodeIfPresent(String.self, forKey: .mood)
         }
 
         private enum CodingKeys: String, CodingKey {
-            case design, number, caption, paper, height, year, slug, table, signature, photo, voice
+            case design, number, caption, paper, height, year, slug, table, signature, photo, voice, mood
         }
     }
 
@@ -183,7 +191,8 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, subject, arrival, status, sealed, envelope, card, note, trail
+        case id, kind, subject, arrival, status, sealed, envelope, card, note, trail, travel
+        case cardReply = "card_reply"
         case sentAt = "sent_at"
         case toName = "to_name"
         case toHousehold = "to_household"
@@ -223,7 +232,9 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         emailTo = try? c.decodeIfPresent(String.self, forKey: .emailTo)
         envelope = try c.decode(Envelope.self, forKey: .envelope)
         card = try c.decode(Card.self, forKey: .card)
+        cardReply = try? c.decodeIfPresent(CardReplyCard.self, forKey: .cardReply)
         note = try? c.decodeIfPresent(String.self, forKey: .note)
         trail = (try? c.decodeIfPresent([TrailStep].self, forKey: .trail)) ?? []
+        travel = try? c.decodeIfPresent(SentCardTravel.self, forKey: .travel)
     }
 }

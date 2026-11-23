@@ -16,7 +16,6 @@ import app.pantopus.android.ui.screens.plans.components.PlanChoiceGroup
 import app.pantopus.android.ui.screens.plans.components.PlanField
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
 import app.pantopus.android.ui.screens.plans.components.PlanSegmented
-import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
 import app.pantopus.android.ui.screens.plans.components.PlanTextArea
 import app.pantopus.android.ui.theme.PantopusIcon
 
@@ -175,14 +174,9 @@ private fun ColumnScope.NewKindFields(
     WhenField(ui, vm)
     WhereField(ui, vm, homeLabel = "My place")
     AudienceField(ui, vm)
-    PlanStepperRow(
-        title = "Spots",
-        caption = "People who can join, besides you",
-        value = draft.spots,
-        range = 1..MAX_SPOTS,
-        onChange = { value -> vm.edit { it.copy(spots = value) } },
-    )
+    RoomField(ui, vm, title = "Spots", caption = "People who can join, besides you")
     HowPeopleGetIn(ui, vm)
+    AddToThisPlan(ui, vm)
     val note = if (ui.isOnline) ONLINE_NOTE_HINT else words.note
     NoteField(draft.note, label = "Note for people who are in", placeholder = note) { text -> vm.edit { it.copy(note = text) } }
     PlanField(label = "About · everyone sees this") {

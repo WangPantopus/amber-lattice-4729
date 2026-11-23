@@ -46,6 +46,8 @@ struct MailLetter: Hashable {
     /// A Christmas card (`holiday_cards`): the card page instead of the
     /// letter. Nil for anything else.
     var card: HolidayCardLetter?
+    /// A reply to a Christmas card (experience plan Part 3): opens as the joined card. Nil for anything else.
+    var cardReply: CardReplyCard?
 
     /// Pay shows while the invoice is owed (contract: sent, viewed, overdue).
     var payable: MailInvoiceRef? {
@@ -148,7 +150,8 @@ extension MailLetter {
             homeId: item.recipientHomeId,
             drawer: drawer,
             trail: trail(item: item, posted: posted, homes: homes, clock: clock),
-            card: card
+            card: card,
+            cardReply: item.cardReply
         )
     }
 

@@ -216,6 +216,8 @@ public struct FeedView: View {
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy(duration: 0.25), value: isHeaderHidden)
             if viewModel.surface != .beacons {
                 FeedComposeFAB { onCompose(viewModel.activeIntent) }
+                    // The guidance pointer "Post to Pulse", on the Pulse tab's own feed.
+                    .guidanceAnchor(.tipPulsePost, when: mapSwitchOnTop && viewModel.surface == .pulse)
                     .padding(.trailing, Spacing.s4)
                     .padding(.bottom, Spacing.s10)
             }
@@ -310,6 +312,7 @@ public struct FeedView: View {
                     Task { await viewModel.refresh() }
                 }
             )
+            .readableColumn()
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pulseFeed")

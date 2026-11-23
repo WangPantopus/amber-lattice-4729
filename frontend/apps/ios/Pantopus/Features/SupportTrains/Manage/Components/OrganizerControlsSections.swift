@@ -109,24 +109,28 @@ struct ManageDatesSection: View {
     let onAdd: @MainActor () -> Void
     let onEdit: @MainActor (ManageSlotRow) -> Void
     let onRemove: @MainActor (ManageSlotRow) -> Void
+    /// A recipient_delegate sees the dates but can't change them (the server refuses that role).
+    var readOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             ManageSectionHeader(
                 title: "Dates (\(rows.count))",
-                actionTitle: "Add date",
+                actionTitle: readOnly ? nil : "Add date",
                 actionIdentifier: "manageTrainAddDateButton",
-                onAction: onAdd
+                onAction: readOnly ? nil : onAdd
             )
-            Text(
-                """
-                Add a new date, move an open one, or remove one you no \
-                longer need. If someone already signed up, remove the \
-                helper first.
-                """
-            )
-            .font(.system(size: 12.5))
-            .foregroundStyle(Theme.Color.appTextSecondary)
+            if !readOnly {
+                Text(
+                    """
+                    Add a new date, move an open one, or remove one you no \
+                    longer need. If someone already signed up, remove the \
+                    helper first.
+                    """
+                )
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+            }
             if rows.isEmpty {
                 OrganizerSectionCard {
                     Text("No dates added yet")
@@ -150,7 +154,9 @@ struct ManageDatesSection: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Theme.Color.appTextSecondary)
                     }
-                    if row.isEditable {
+                    if readOnly {
+                        EmptyView()
+                    } else if row.isEditable {
                         HStack(spacing: Spacing.s2) {
                             ManagePillButton(
                                 title: "Edit",
@@ -190,6 +196,8 @@ struct ManageHelpersSection: View {
     let onShareAddress: @MainActor (ManageHelperRow) -> Void
     let onConfirm: @MainActor (ManageHelperRow) -> Void
     let onRemove: @MainActor (ManageHelperRow) -> Void
+    /// A recipient_delegate confirms deliveries but can't share the address or remove a signup.
+    var readOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
@@ -235,14 +243,14 @@ struct ManageHelpersSection: View {
                             Text("Delivery address unavailable")
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(Theme.Color.appTextSecondary)
-                        } else if row.canShareAddress {
+                        } else if row.canShareAddress, !readOnly {
                             ManagePillButton(
                                 title: row.isGuest ? "Email address" : "Share address",
                                 icon: .mapPin,
                                 identifier: "manageTrainShareAddress-\(row.id)",
                                 isDisabled: isBusy
                             ) { onShareAddress(row) }
-                        } else if row.status != "canceled" {
+                        } else if row.status != "canceled", !row.canShareAddress {
                             Text(row.isGuest ? "Exact location sent" : "Exact location shared")
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(Theme.Color.success)
@@ -255,7 +263,7 @@ struct ManageHelpersSection: View {
                                 isDisabled: isBusy
                             ) { onConfirm(row) }
                         }
-                        if row.canRemove {
+                        if row.canRemove, !readOnly {
                             ManagePillButton(
                                 title: "Remove",
                                 icon: .userMinus,
@@ -433,11 +441,11 @@ struct ManageFundSection: View {
                     Text(totalLabel)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
-                    Text("Neighbors can chip in from the train's page.")
+                    Text("People can chip in from the train's page.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 } else {
-                    Text("Let neighbors chip in money as well as meals.")
+                    Text("Let people chip in money as well as meals.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }

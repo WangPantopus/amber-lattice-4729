@@ -121,11 +121,34 @@ enum HolidayCardSearch: Equatable {
 // swiftlint:disable:next type_body_length
 final class HolidayCardFlowViewModel {
     private(set) var state: HolidayCardFlowState = .loading
-    private(set) var step: HolidayCardStep = .to
+    private(set) var step: HolidayCardStep = .to {
+        // Each time Pick a card opens from another step, its card shelves start afresh (at the chosen card).
+        didSet {
+            guard step != oldValue else { return }
+            shelfPage = nil
+            if step == .pick {
+                shelfRowPlaces = [:]
+                shelvesStart = true
+            }
+        }
+    }
+
     private(set) var recipient: HolidayCardRecipient?
     var designId: String?
     /// The card rack over Pick a card (plan Part 5): the picture it opened at, nil when it's closed.
     var largeDesign: HolidayCardDesign?
+    /// Where each of the card shelves' rows was scrolled to (its first card in view), while Pick a card shows.
+    @ObservationIgnored var shelfRowPlaces: [String: String] = [:]
+    /// The shelf the card shelves' page scrolls to (the line under a large card, or the chosen card's as the shelves
+    /// open); nil once there.
+    var shelfJump: HolidayCardShelfJump?
+    /// Pick a card has just opened: the card shelves go to the chosen card's shelf as they first show (card shelves B6),
+    /// not again after the card rack or a collection's page.
+    @ObservationIgnored var shelvesStart = true
+    /// The collection whose page lies over the card shelves (card shelves B4); nil on the shelves.
+    var shelfPage: String?
+    /// The card on the card shelves the card rack grows out of (card shelves B8); nil opens it as before.
+    @ObservationIgnored var rackZoomSource: String?
     var message = "" {
         didSet {
             sendError = nil
@@ -141,6 +164,12 @@ final class HolidayCardFlowViewModel {
             previewError = nil
         }
     }
+
+    /// The signature the account keeps for the next cards (founder, 2026-11-16): read with the cards, then as it's
+    /// saved or forgotten here. A new card starts signed with it.
+    private(set) var savedSignature: CardSignature?
+    /// Done with "Keep this signature" ticked, but the account didn't keep it: this card is still signed.
+    private(set) var keepSignatureFailed = false
 
     /// The card's own photo beside its note (memories plan step 4, `holiday_card_memories`), uploaded as it's chosen.
     let attachments = HolidayCardAttachments()
@@ -188,6 +217,15 @@ final class HolidayCardFlowViewModel {
     var confirmsTakeBack = false
     /// "Seal and send" opened the table to seal it by hand (plan Part 2, `card_table`).
     var sealsAtTable = false
+    /// "Let it travel" (travelling card plan Part 2, `HolidayCardFlowViewModel+Travel.swift`): on to begin with.
+    var travels = true
+    /// The town just chosen on "Where does it start?" ("Vancouver, WA").
+    var travelTown: String?
+    /// "Where does it start?" is up, and what waits for its town.
+    var asksTown = false
+    @ObservationIgnored var afterTown: (@MainActor () -> Void)?
+    /// The card (or list) just sent travels: its sent words gain "It can travel."
+    var sentTravels = false
     /// One request ID per card, sent with every look and retry of it, so a
     /// send whose answer was lost is answered with the card it stored, never
     /// a second one. A new card starts once this one is sent or taken back.
@@ -260,16 +298,26 @@ final class HolidayCardFlowViewModel {
     @ObservationIgnored private var chosenAtStart: HolidayCardRecipient?
     /// Opened for someone or for a picture on purpose (send one back, a card's link): no draft comes back.
     @ObservationIgnored private let openedOnPurpose: Bool
+    /// "Send this card to someone else" (experience plan Part 6): the picture is kept, so Who it's for goes straight on
+    /// to Write on the back.
+    @ObservationIgnored private var keepsPicture: Bool
     /// The kept draft was looked for once the cards loaded; only then is the card kept as it changes.
     @ObservationIgnored private var draftRead = false
 
-    init(api: APIClient = .shared, fromName: String, designId: String? = nil, to person: (id: String, name: String)? = nil) {
+    init(
+        api: APIClient = .shared,
+        fromName: String,
+        designId: String? = nil,
+        to person: (id: String, name: String)? = nil,
+        keepsPicture: Bool = false
+    ) {
         self.api = api
         noteHelp = HolidayCardNoteHelp(api: api)
         self.fromName = fromName
         self.designId = designId
         chosenAtStart = person.map { .person(userId: $0.id, name: $0.name) }
         openedOnPurpose = designId != nil || person != nil
+        self.keepsPicture = keepsPicture && designId != nil
     }
 
     // MARK: - Reading
@@ -311,8 +359,10 @@ final class HolidayCardFlowViewModel {
         Self.isEmail(email.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    /// "Dear Maya," on the back before anything's written.
+    /// "Dear Maya," on the back before anything's written; "Dear friends," on a card to two or more people, which names
+    /// no one.
     var placeholder: String {
+        if recipient?.entries != nil { return "Dear friends," }
         guard case let .person(_, name) = recipient else { return "Dear friend," }
         return "Dear \(HolidayCardWords.firstName(name)),"
     }
@@ -356,7 +406,11 @@ final class HolidayCardFlowViewModel {
             // A link can name a picture that isn't one of this year's: nothing is chosen then.
             if let designId, !response.designs.contains(where: { $0.id == designId }) { self.designId = nil }
             state = .loaded(response)
+            savedSignature = response.signature?.saved
             HolidayCardWords.postageOn = response.postageEnabled
+            // The card shelves' first screen (two large cards, the first shelf's first two) while step 1 is up, so
+            // Pick a card opens with its pictures there.
+            if response.showsShelves { HolidayCardPicture.loadAhead(response.shelvesFirstScreen, thumb: true) }
         } catch {
             state = .error(message: Self.loadFailure(error))
         }
@@ -366,6 +420,11 @@ final class HolidayCardFlowViewModel {
 
     /// Back a step; false on the first step and on a sent card, which leave.
     func back() -> Bool {
+        // A collection's page goes back to the card shelves, where they were.
+        if step == .pick, shelfPage != nil {
+            shelfPage = nil
+            return true
+        }
         guard step != .to, step != .sent, let previous = HolidayCardStep(rawValue: step.rawValue - 1) else { return false }
         step = previous
         sendError = nil
@@ -379,7 +438,7 @@ final class HolidayCardFlowViewModel {
         readTheirs()
         // The arrival choices depend on who it's for: the first that's open.
         if arrival.map({ !arrivals.contains($0) }) ?? true { arrival = arrivals.first }
-        step = .pick
+        step = keepsPicture && design != nil ? .write : .pick
     }
 
     func chooseEmail() {
@@ -410,15 +469,19 @@ final class HolidayCardFlowViewModel {
     /// "Look it over": what the other person will see, from the same checks
     /// sending runs (nothing is stored or sent), then step 5. A refusal stays
     /// on step 4 with the server's sentence; a server that can't show the
-    /// look leaves "Seal and send" on step 4.
-    func lookItOver() async {
-        guard !previewing else { return }
+    /// look leaves "Seal and send" on step 4. With `opens` false (step 4's
+    /// "Seal and send", experience plan 5.1) the check runs and step 5 stays
+    /// closed. True when the check passed.
+    @discardableResult
+    func lookItOver(opens: Bool = true) async -> Bool {
+        guard !previewing else { return false }
+        // A card that travels starts in the sender's town: asked once, before the look.
+        if askTownFirst(then: { [weak self] in Task { await self?.lookItOver(opens: opens) } }) { return false }
         if recipient?.entries != nil {
-            await lookOverList()
-            return
+            return await lookOverList(opens: opens)
         }
         requestId = requestId ?? UUID().uuidString.lowercased()
-        guard let body = sendBody else { return }
+        guard let body = sendBody else { return false }
         saveDraft()
         previewing = true
         previewError = nil
@@ -427,15 +490,18 @@ final class HolidayCardFlowViewModel {
             let look: HolidayCardPreview = try await answer(HolidayCardEndpoints.preview(body))
             preview = look
             sendError = nil
-            step = .look
+            if opens { step = .look }
+            return true
         } catch {
-            if await wentEarlier(error) { return }
+            if await wentEarlier(error) { return false }
             if Self.lookIsUnavailable(error) {
                 lookUnavailable = true
-                return
+                return false
             }
+            if needsTown(error, retry: { [weak self] in Task { await self?.lookItOver(opens: opens) } }) { return false }
             previewError = Self.refusal(error, fallback: "Couldn’t show your card just now. Try again in a moment.")
             await needsBoughtStamp(error)
+            return false
         }
     }
 
@@ -517,7 +583,7 @@ final class HolidayCardFlowViewModel {
         case .link: to = .link
         case .list: return nil
         }
-        return SendHolidayCardBody(
+        var body = SendHolidayCardBody(
             design: design.id,
             message: message.trimmingCharacters(in: .whitespacesAndNewlines),
             arrival: arrival,
@@ -527,6 +593,8 @@ final class HolidayCardFlowViewModel {
             signature: cards?.signature == nil ? nil : signature,
             media: mediaPick
         )
+        body.travel = letsTravel ? true : nil
+        return body
     }
 
     /// The photo the card carries: one person's card only (a list goes without), and only while the server takes one.
@@ -560,9 +628,12 @@ final class HolidayCardFlowViewModel {
             requestId = nil
             sent = response.card
             sentLink = response.link
+            sentTravels = body.travel == true
             step = .sent
             tookBack = false
             HolidayCardDraftStore.clear()
+            // The guidance card "It's on its way" follows in Mail, after the first letter or card.
+            GuidanceCenter.shared.pend(.doneFirstLetter)
         } catch {
             if await wentEarlier(error) { return }
             // The stamps ran out meanwhile (another device sent a card): the stamp books open; the card stays as it is.
@@ -573,6 +644,8 @@ final class HolidayCardFlowViewModel {
             }
             // Its photo or greeting needs a bought stamp and none is left: the same, saying why.
             if await needsBoughtStamp(error) { return }
+            // A card that travels needs the sender's town: asked once, then sealed again.
+            if needsTown(error, retry: { [weak self] in self?.sealOrSend() }) { return }
             let sentence = Self.refusal(error, fallback: "Couldn’t send your card just now. Try again in a moment.")
             let closed = Self.refusalCode(error) == "CARD_ARRIVAL_CLOSED"
             guard closed || step == .seal else {
@@ -617,9 +690,26 @@ final class HolidayCardFlowViewModel {
         }
     }
 
+    /// "Send this card to someone else" (experience plan Part 6): a new card on step 1 with the same picture and the
+    /// saved signature; the note starts empty and when it comes is asked again.
+    func sendThisCardAgain() {
+        let picture = designId
+        startOver()
+        designId = picture
+        keepsPicture = picture != nil
+    }
+
+    /// Another card can go now: a stamp left, or without stamps, today's card not used (experience plan Part 6).
+    var canSendAnother: Bool {
+        guard let cards, cards.open else { return false }
+        guard cards.postageEnabled else { return today == nil }
+        return (stamps.balance?.available ?? cards.stamps?.available ?? 0) > 0
+    }
+
     /// Everything written goes, and the next card starts on step 1 with a
     /// request ID of its own.
     func startOver() {
+        keepsPicture = false
         HolidayCardDraftStore.clear()
         requestId = nil
         listIds = [:]
@@ -635,12 +725,55 @@ final class HolidayCardFlowViewModel {
         theirs = nil
         designId = nil
         message = ""
+        if let savedSignature { signature = savedSignature }
         attachments.reset()
         arrival = nil
         query = ""
         email = ""
         byEmail = false
+        travels = true
+        sentTravels = false
         step = .to
+    }
+
+    // MARK: - Saved signature
+
+    /// The account keeps one signature for the next cards (GET /cards `signature.saves`).
+    var signatureSaves: Bool {
+        cards?.signature?.saves == true
+    }
+
+    /// The card is signed with the account's saved signature.
+    var signedWithSaved: Bool {
+        signature != nil && signature == savedSignature
+    }
+
+    /// Signed on the pad: this card takes it, and with "Keep this signature" ticked the account keeps it too.
+    func signed(_ new: CardSignature, keep: Bool) {
+        signature = new
+        keepSignatureFailed = false
+        guard keep, signatureSaves, new != savedSignature else { return }
+        Task { await keepSignature(new) }
+    }
+
+    private func keepSignature(_ new: CardSignature) async {
+        do {
+            let kept: CardSignatureBody = try await api.request(HolidayCardEndpoints.saveSignature(new))
+            savedSignature = kept.signature
+        } catch {
+            keepSignatureFailed = true
+        }
+    }
+
+    /// Forgets the saved signature (this card keeps its own); false when the server couldn't.
+    func forgetSavedSignature() async -> Bool {
+        do {
+            _ = try await api.request(HolidayCardEndpoints.forgetSignature())
+            savedSignature = nil
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// This card already went with an earlier try whose answer was lost: show
@@ -743,7 +876,7 @@ extension HolidayCardFlowViewModel {
             case .link, .list: nil
             }
         }
-        return SendHolidayCardListBody(
+        var body = SendHolidayCardListBody(
             design: design.id,
             message: message.trimmingCharacters(in: .whitespacesAndNewlines),
             arrival: arrival,
@@ -752,13 +885,18 @@ extension HolidayCardFlowViewModel {
             // Each address keeps the list's choice, worded with all four (else the older mapping).
             emailsKeepArrival: cards?.emailAllArrivals == nil ? nil : true
         )
+        body.travel = letsTravel ? true : nil
+        return body
     }
 
     /// "Look it over" for a list: every card's line, and the first card that
     /// can go as its person will see it. A refusal of the whole list (the
-    /// season closed, say) stays on step 4.
-    private func lookOverList() async {
-        guard let body = listBody() else { return }
+    /// season closed, say) stays on step 4. With `opens` false the check runs
+    /// and step 5 opens only when a card on the list won't go, since that page
+    /// shows each person's line (experience plan 5.1). True when every card
+    /// on the list can go.
+    private func lookOverList(opens: Bool) async -> Bool {
+        guard let body = listBody() else { return false }
         saveDraft()
         previewing = true
         previewError = nil
@@ -767,9 +905,13 @@ extension HolidayCardFlowViewModel {
             let look: HolidayCardListPreview = try await answer(HolidayCardEndpoints.previewList(body))
             listPreview = look
             sendError = nil
-            step = .look
+            let allGo = look.needed > 0 && look.recipients.allSatisfy { $0.status == "ready" }
+            if opens || !allGo { step = .look }
+            return allGo
         } catch {
+            if needsTown(error, retry: { [weak self] in Task { await self?.lookItOver(opens: opens) } }) { return false }
             previewError = Self.refusal(error, fallback: "Couldn’t show your cards just now. Try again in a moment.")
+            return false
         }
     }
 
@@ -788,9 +930,11 @@ extension HolidayCardFlowViewModel {
             listResults = response.results
             listPreview = nil
             tookBack = false
+            sentTravels = body.travel == true
             step = .sent
             HolidayCardDraftStore.clear()
         } catch {
+            if needsTown(error, retry: { [weak self] in self?.sealOrSend() }) { return }
             guard Self.refusalCode(error) == "STAMPS_REQUIRED" else {
                 sendError = Self.refusal(error, fallback: "Couldn’t send your cards just now. Try again in a moment.")
                 return
@@ -871,6 +1015,8 @@ extension HolidayCardFlowViewModel {
     private func restoreDraftOnce() {
         guard !draftRead, let cards else { return }
         draftRead = true
+        // A new card starts with the saved signature beside FROM; a draft brought back keeps its own.
+        if let savedSignature { signature = savedSignature }
         guard !openedOnPurpose, cards.open, let user = draftUser, let kept = HolidayCardDraftStore.read(user: user) else { return }
         if let to = kept.to?.recipient {
             recipient = to

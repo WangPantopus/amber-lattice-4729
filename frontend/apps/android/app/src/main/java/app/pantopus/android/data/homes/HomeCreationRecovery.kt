@@ -197,9 +197,10 @@ class HomeCreationCodec(moshi: Moshi) {
         request: CreateHomeRequest,
     ): Boolean {
         if (!validFormMetadata(form)) return false
+        // Add Home in two steps sends no home type (the county record fills it), whatever the kept form says.
         return form["street"] == request.address && form["unit"].orEmpty() == request.unitNumber.orEmpty() &&
             form["city"] == request.city && form["state"] == request.state && form["zip"] == request.zipCode &&
-            form["homeType"] == request.homeType
+            (request.homeType == null || form["homeType"] == request.homeType)
     }
 
     private fun validFormMetadata(form: Map<String, String>): Boolean {

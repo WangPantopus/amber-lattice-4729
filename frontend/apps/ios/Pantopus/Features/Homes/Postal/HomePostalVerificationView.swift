@@ -4,12 +4,13 @@ import UIKit
 @MainActor
 struct HomePostalVerificationView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var viewModel: HomePostalViewModel
+    /// Read by the one-tap views (`HomePostalOneTapViews.swift`).
+    @State var viewModel: HomePostalViewModel
     @State private var visible = false
     @State private var confirmsMail = false
     @State private var confirmsCancellation = false
     private let onClose: () -> Void
-    private let onNavigate: (HomePostalNavigation) -> Void
+    let onNavigate: (HomePostalNavigation) -> Void
 
     init(viewModel: HomePostalViewModel, onClose: @escaping () -> Void, onNavigate: @escaping (HomePostalNavigation) -> Void) {
         _viewModel = State(initialValue: viewModel)
@@ -20,19 +21,27 @@ struct HomePostalVerificationView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s5) {
-                Text("Verify your address by mail").scaledFont(24, weight: .semibold)
-                Text(
-                    "We'll mail a postcard with a code to this Home's address. "
-                        + "Enter the code when it arrives to verify that you live here."
-                )
-                .scaledFont(16).foregroundStyle(Theme.Color.appTextSecondary)
-                if let error = viewModel.error {
+                if viewModel.offersOneTapMail {
+                    oneTapIntro
+                } else {
+                    Text("Verify your address by mail").scaledFont(24, weight: .semibold)
+                    Text(
+                        "We'll mail a postcard with a code to this Home's address. "
+                            + "Enter the code when it arrives to verify that you live here."
+                    )
+                    .scaledFont(16).foregroundStyle(Theme.Color.appTextSecondary)
+                }
+                if let error = viewModel.error, !viewModel.asksAboutScannedCard {
                     Text(error).scaledFont(16).accessibilityIdentifier("homePostalError")
                 }
                 if let draft = viewModel.pending {
                     recovery(draft)
                 } else if viewModel.isWorking {
                     ProgressView("Checking…").accessibilityIdentifier("homePostalLoading")
+                } else if viewModel.asksAboutScannedCard {
+                    scannedCardQuestion
+                } else if viewModel.offersOneTapMail, let address = viewModel.status?.mailingAddress {
+                    oneTapMail(address)
                 } else if let status = viewModel.status {
                     currentStatus(status)
                 } else {
@@ -47,8 +56,13 @@ struct HomePostalVerificationView: View {
         .scrollDismissesKeyboard(.interactively)
         .submitLabel(.done)
         .onSubmit(dismissKeyboard)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if viewModel.offersOneTapMail, viewModel.pending == nil, !viewModel.isWorking, !viewModel.asksAboutScannedCard {
+                oneTapDock
+            }
+        }
         .background(Theme.Color.appBg)
-        .navigationTitle("Mail verification")
+        .navigationTitle(viewModel.fastOptions == nil ? "Mail verification" : "Mail check")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden()
         .toolbar {
@@ -67,6 +81,8 @@ struct HomePostalVerificationView: View {
             guard visible else { return }
             if phase == .active { Task { await viewModel.open() } } else { retire() }
         }
+        // A card's link opened while this screen shows: it takes the code instead of a second screen.
+        .onChange(of: PostcardLinkCode.shared.handed) { _, _ in viewModel.takeLinkCode() }
         .onChange(of: viewModel.isCurrent) { _, current in
             if !current { retire()
                 Task { await viewModel.open() }
@@ -84,6 +100,11 @@ struct HomePostalVerificationView: View {
         } message: {
             Text("If it already went through, it stays. Discarding can't recall a postcard that's already been mailed.")
         }
+    }
+
+    /// "This address is wrong" on the one-tap screen: the Home's address, checked again in Add Home.
+    func onAddressWrong() {
+        onNavigate(.addressWrong)
     }
 
     private func retire() {

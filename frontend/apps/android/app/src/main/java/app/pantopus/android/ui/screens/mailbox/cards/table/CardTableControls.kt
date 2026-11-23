@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -45,13 +47,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -72,6 +77,14 @@ data class CardTableMenuItem(
 /** "Send Hazel a card": the quiet second button under the main one, once the card has been turned over. */
 data class CardTableSendBack(
     val title: String,
+    /** Its words when two don't fit side by side in the quiet row ("Send a card", "Write back"); a screen reader hears [title]. */
+    val short: String? = null,
+    val onClick: () -> Unit,
+)
+
+/** "Open the next card" (plan Part 4): how many more are waiting after this one, and opening the first. */
+data class CardTableNext(
+    val waiting: Int,
     val onClick: () -> Unit,
 )
 
@@ -98,10 +111,21 @@ internal val tableWordsStyle =
         shadow = Shadow(PantopusColors.tableNight.copy(alpha = 0.35f), Offset(0f, 3f), blurRadius = 16f),
     )
 
-/** The hint under the button, in white at 70% so it reads on the dark cloth. */
+/** A travelling card's line under the words: the sample's small upright words in the soft cream (travelling card Part 3). */
+internal val tableCameStyle =
+    TextStyle(
+        fontSize = 14.sp,
+        lineHeight = 1.4.em,
+        color = PantopusColors.tableCreamSoft,
+        textAlign = TextAlign.Center,
+        lineBreak = LineBreak.Heading,
+        shadow = Shadow(PantopusColors.tableNight.copy(alpha = 0.35f), Offset(0f, 3f), blurRadius = 16f),
+    )
+
+/** The hint under the button, 15 in white at 85% so it reads on the dark cloth (plan 8.2). */
 internal val tableHintStyle =
     TextStyle(
-        fontSize = 12.5.sp,
+        fontSize = 15.sp,
         lineHeight = 1.35.em,
         color = PantopusColors.tableHint,
         textAlign = TextAlign.Center,
@@ -134,28 +158,33 @@ internal fun CardTableControls(
     sendBack: CardTableSendBack? = null,
     /** The sender's quiet buttons once their card is gone. */
     gone: List<CardTableSendBack> = emptyList(),
+    /** "Open the next card" once the card has been turned over, with the Mailbox list's waiting cards in hand. */
+    next: CardTableNext? = null,
+    /** "Write back to Hazel" or "You wrote back" (plan Part 3). */
+    reply: CardTableSendBack? = null,
+    /** A travelling card's "Pass it on" (travelling card plan Part 4). */
+    passOn: CardTablePassOn? = null,
+    /** A travelling card's "See its journey", in the quiet row (Part 4). */
+    journey: CardTableSendBack? = null,
 ) {
     val top = insets.calculateTopPadding()
     val bottom = insets.calculateBottomPadding()
     val hidden = state.controlsHidden && !touchExploring
-    // The quiet buttons under the main one: the sender's once their card is gone, or the reader's "Send … a card" once
-    // the card has been turned over (not on a sealed card), with "Share this card" beside it (plan 11.1; the corner icon
-    // stays).
+    // The sender's quiet buttons once their card is gone; the reader's one quiet row once the card has been turned over
+    // (not on a sealed card): at most two, side by side, never stacked (the design check of November 17). "Share this
+    // card" keeps its corner button and its line in ⋯.
     val moment = state.sending
-    val quiet =
-        when {
-            moment != null -> if (moment.step == SendStep.Gone) gone else emptyList()
-            state.sendBackShows -> listOfNotNull(sendBack, CardTableSendBack(SHARE_THIS_CARD, onShare).takeIf { canShare })
-            else -> emptyList()
-        }
+    val goneButtons = if (moment?.step == SendStep.Gone) gone else emptyList()
+    val row = if (moment == null && state.sendBackShows) quietRow(next, reply, sendBack, passOn?.passedLine, journey) else emptyList()
     Box(modifier = Modifier.fillMaxSize()) {
         Words(state, top)
-        ActionBlock(state, hidden, bottom, quiet)
+        ActionBlock(state, hidden, bottom, goneButtons, row, passOn.takeIf { moment == null })
         if (showsTurnTip) TurnTip()
         TopRow(state, top, hidden, canShare, menu.isNotEmpty(), onClose, onShare)
         if (state.menuOpen && menu.isNotEmpty()) MenuPanel(state, top, menu)
         TableToast(state, top)
         if (state.verseOpen) VerseBookmark(state.card, bottom, onClose = { state.verseOpen = false })
+        if (state.printOpen) NoteBookmark(state.card, bottom, onClose = { state.printOpen = false })
     }
 }
 
@@ -239,6 +268,23 @@ private fun Words(
     val fade by animateFloatAsState(if (shows && state.words.isNotEmpty()) 1f else 0f, tween(400), label = "tableWords")
     val words = state.words
     if (words.isEmpty() && fade == 0f) return
+    val came = state.cameLine
+    if (came.isNotEmpty()) {
+        // A travelling card's envelope: how far it came, under the words (travelling card plan Part 3).
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, top = top + 54.dp)
+                    .alpha(fade)
+                    .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+            verticalArrangement = Arrangement.spacedBy(CAME_GAP),
+        ) {
+            Text(words, style = tableWordsStyle, modifier = Modifier.fillMaxWidth().testTag("cardTableWords"))
+            Text(came, style = tableCameStyle, modifier = Modifier.fillMaxWidth().testTag("cardTableCameLine"))
+        }
+        return
+    }
     Text(
         words,
         style = tableWordsStyle,
@@ -252,16 +298,23 @@ private fun Words(
     )
 }
 
+/** Between the words and a travelling card's line under them. */
+internal val CAME_GAP = 6.dp
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ActionBlock(
     state: CardTableState,
     hidden: Boolean,
     bottom: Dp,
-    quiet: List<CardTableSendBack>,
+    gone: List<CardTableSendBack>,
+    row: List<QuietChoice>,
+    passOn: CardTablePassOn? = null,
 ) {
     val away = hidden || state.step == TableStep.Pulling
     val fade by animateFloatAsState(if (away) 0f else 1f, tween(350), label = "tableAct")
+    // At larger text "Read it in print" is a full button beside "Turn it back", not a small line (plan Part 2).
+    val printButton = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE && state.readsInPrint
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(
             modifier =
@@ -271,103 +324,281 @@ private fun ActionBlock(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            if (state.primaryLabel.isNotEmpty()) {
-                val shape = RoundedCornerShape(22.dp)
-                Box(
-                    modifier =
-                        Modifier
-                            .minimumInteractiveComponentSize()
-                            .clip(shape)
-                            .background(PantopusColors.tableGlass)
-                            .border(0.5.dp, PantopusColors.tableGlassLine, shape)
-                            .then(
-                                if (away) {
-                                    Modifier
-                                } else {
-                                    Modifier.clickable(role = Role.Button, onClick = state::primary)
-                                },
-                            ).heightIn(min = 44.dp)
-                            .padding(horizontal = 24.dp)
-                            .testTag("cardTablePrimary"),
-                    contentAlignment = Alignment.Center,
+            // A travelling card turned over: "Pass it on" beside "Turn it back" (travelling card plan Part 4).
+            val passOnLabel = passOn?.label?.takeIf { state.step == TableStep.Out && state.backUp && !state.enlarged }
+            if (state.primaryLabel.isNotEmpty() && passOnLabel != null && passOn != null) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(state.primaryLabel, style = tablePrimaryStyle)
+                    TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
+                    TablePill(passOnLabel, away, "cardTablePassOn", filled = passOn.filled, onClick = passOn.onClick)
+                    if (printButton) TablePill(READ_IT_IN_PRINT, away, "cardTableReadInPrint") { state.openPrint() }
                 }
+            } else if (state.primaryLabel.isNotEmpty() && printButton) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
+                    TablePill(READ_IT_IN_PRINT, away, "cardTableReadInPrint") { state.openPrint() }
+                }
+            } else if (state.primaryLabel.isNotEmpty()) {
+                TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
             }
             if (state.sending == null) {
-                // The reader's quiet buttons side by side in the one quiet line (plan 11.1), wrapping at large text.
-                FlowRow(horizontalArrangement = Arrangement.Center) {
-                    quiet.forEach { action ->
-                        QuietButton(action, away, if (action.title == SHARE_THIS_CARD) "cardTableShareQuiet" else "cardTableSendBack")
-                    }
-                }
+                // The line slot stays with the main button; under it, the reader's one quiet row (as on the web and iPhone).
+                HintSlot(state, away, printButton)
+                QuietRow(row, away)
             } else {
-                quiet.forEachIndexed { index, action -> QuietButton(action, away, "cardTableGone.$index") }
+                gone.forEachIndexed { index, action ->
+                    QuietButton(action.title, action.title, away, "cardTableGone.$index", action.onClick)
+                }
+                HintSlot(state, away, printButton)
             }
-            HintSlot(state, away)
         }
     }
 }
 
-/** A quiet button under the main one: words only, 44 dp to touch. */
+/** The table's main button: a glass pill, 44 dp tall; [filled] in cream (a travelling card's "Pass it on"). */
 @Composable
-private fun QuietButton(
-    action: CardTableSendBack,
+private fun TablePill(
+    words: String,
     away: Boolean,
     tag: String,
+    spoken: String? = null,
+    filled: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier =
+            Modifier
+                .minimumInteractiveComponentSize()
+                .clip(shape)
+                .background(if (filled) PantopusColors.tableCream else PantopusColors.tableGlass)
+                .border(0.5.dp, if (filled) PantopusColors.tableCream else PantopusColors.tableGlassLine, shape)
+                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick))
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 24.dp)
+                .then(if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier)
+                .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(words, style = if (filled) tablePrimaryStyle.copy(color = PantopusColors.tableNight) else tablePrimaryStyle)
+    }
+}
+
+/**
+ * Pass it on, on a travelling card's table (travelling card plan Part 4): [label] is "Pass it on" ([filled], beside
+ * "Turn it back") or "Pass it on to one more" (quiet), null once both places are taken; then [passedLine] ("You passed
+ * it on to Ivy and Cass.") stands in the quiet row.
+ */
+internal class CardTablePassOn(
+    val label: String?,
+    val filled: Boolean,
+    val passedLine: String?,
+    val onClick: () -> Unit,
+)
+
+/** "You passed it on to Ivy and Cass.": words in the quiet row, not a button; on one line, as the row's buttons are. */
+@Composable
+private fun PassedLine(
+    words: String,
+    away: Boolean,
+    tag: String,
+) {
+    Box(
+        modifier = Modifier.alpha(if (away) 0f else 1f).heightIn(min = 44.dp).padding(horizontal = QUIET_PADDING.dp).testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        // At the largest text sizes it may take a second line rather than be cut; the table keeps it that room.
+        Text(words, style = tableQuietStyle, maxLines = 2, textAlign = TextAlign.Center)
+    }
+}
+
+/** The reader's way on to the next card waiting (plan Part 4). */
+internal const val OPEN_THE_NEXT_CARD = "Open the next card"
+
+/** "Open the next card (2 more)": the count in the button's own words (the design check of November 17). */
+internal fun openTheNextCard(waiting: Int): String = "$OPEN_THE_NEXT_CARD ($waiting more)"
+
+/** One button of the reader's quiet row: its full words, its short words, what a screen reader hears, and its tag. */
+internal class QuietChoice(
+    val full: String,
+    val short: String,
+    val spoken: String,
+    val tag: String,
+    val onClick: () -> Unit,
+    /** Words in the row, not a button ("You passed it on to Ivy and Cass."). */
+    val words: Boolean = false,
+)
+
+/**
+ * The reader's quiet row, at most two, in this order: "Open the next card" when cards wait, "Write back to Hazel" (or "You
+ * wrote back"), "Send Hazel a card". The rest are in ⋯.
+ */
+private fun quietRow(
+    next: CardTableNext?,
+    reply: CardTableSendBack?,
+    sendBack: CardTableSendBack?,
+    /** A travelling card passed on to two: "You passed it on to Ivy and Cass." first (travelling card Part 4). */
+    passedLine: String? = null,
+    /** A travelling card's "See its journey", before "Write back" as the sample has it. */
+    journey: CardTableSendBack? = null,
+): List<QuietChoice> {
+    val nextChoice =
+        next?.let {
+            QuietChoice(
+                full = openTheNextCard(it.waiting),
+                short = "Next card (${it.waiting} more)",
+                spoken = "$OPEN_THE_NEXT_CARD, ${it.waiting} more waiting",
+                tag = "cardTableNextCard",
+                onClick = it.onClick,
+            )
+        }
+    val replyChoice = reply?.let { QuietChoice(it.title, it.short ?: it.title, it.title, "cardTableWriteBack", it.onClick) }
+    val sendChoice = sendBack?.let { QuietChoice(it.title, it.short ?: it.title, it.title, "cardTableSendBack", it.onClick) }
+    val passed = passedLine?.let { QuietChoice(it, it, it, "cardTablePassedOn", onClick = {}, words = true) }
+    val journeyChoice = journey?.let { QuietChoice(it.title, "Its journey", it.title, "cardTableJourney", onClick = it.onClick) }
+    return listOfNotNull(passed, journeyChoice, nextChoice, replyChoice, sendChoice).take(2)
+}
+
+/**
+ * One row, never a second row or a column: both buttons in their full words when they fit side by side, else both in
+ * their short words, else only the first (at the largest text sizes).
+ */
+@Composable
+private fun QuietRow(
+    choices: List<QuietChoice>,
+    away: Boolean,
+) {
+    if (choices.isEmpty()) return
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val room = constraints.maxWidth
+        val density = LocalDensity.current
+        val shown = remember(choices, room, density) { with(density) { fitQuietRow(choices, room, measurer) } }
+        Row(horizontalArrangement = Arrangement.Center) {
+            shown.forEach { (choice, words) ->
+                if (choice.words) {
+                    PassedLine(words, away, choice.tag)
+                } else {
+                    QuietButton(words, choice.spoken, away, choice.tag, choice.onClick)
+                }
+            }
+        }
+    }
+}
+
+/** Which buttons the row shows, and in which words, for [room] pixels across. */
+private fun Density.fitQuietRow(
+    choices: List<QuietChoice>,
+    room: Int,
+    measurer: TextMeasurer,
+): List<Pair<QuietChoice, String>> {
+    val padding = (2 * QUIET_PADDING).dp.roundToPx()
+    val width = { words: String -> measurer.measure(words, tableQuietStyle, maxLines = 1, softWrap = false).size.width + padding }
+    val full = choices.map { it.full }
+    if (full.sumOf(width) <= room) return choices.zip(full)
+    val short = choices.map { it.short }
+    if (short.sumOf(width) <= room) return choices.zip(short)
+    val first = choices.first()
+    if (first.words) return listOf(first to first.full)
+    return listOf(first to if (width(first.full) <= room) first.full else first.short)
+}
+
+/** A quiet button's space either side of its words. */
+private const val QUIET_PADDING = 16
+
+/** A quiet button under the main one: words only, on one line, 44 dp to touch; a screen reader hears [spoken]. */
+@Composable
+private fun QuietButton(
+    words: String,
+    spoken: String,
+    away: Boolean,
+    tag: String,
+    onClick: () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
                 .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(22.dp))
-                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = action.onClick))
+                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick))
                 .heightIn(min = 44.dp)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = QUIET_PADDING.dp)
+                .semantics { contentDescription = spoken }
                 .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        Text(action.title, style = tableQuietStyle)
+        Text(words, style = tableQuietStyle, maxLines = 1, softWrap = false)
     }
 }
 
 /**
- * The hint under the button. A verse card has "Read the verse" in its place once the card lies out (plan 6.2), in one
- * slot, so the card doesn't move when one replaces the other.
+ * The hint under the button, in one slot so nothing moves when a link replaces it. Note side up, "Read it in print" takes
+ * its place (plan Part 2; at larger text it's the full button beside the main one instead, [printButton]); picture side
+ * up, a verse card has "Read the verse" there once the card lies out (plan 6.2).
  */
 @Composable
 private fun HintSlot(
     state: CardTableState,
     away: Boolean,
+    printButton: Boolean,
 ) {
-    if (state.card.verse == null || state.sending != null) {
+    val verse = state.card.verse != null
+    if (state.sending != null || !(verse || state.printable)) {
         Text(state.hint, style = tableHintStyle, modifier = Modifier.heightIn(min = 16.dp).testTag("cardTableHint"))
         return
     }
     Box(modifier = Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) {
         val lying = state.step == TableStep.Out && !state.enlarged
-        if (!away && !state.card.sealed && lying) {
-            Box(
-                modifier =
-                    Modifier
-                        .heightIn(min = 44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .clickable(role = Role.Button) {
-                            state.menuOpen = false
-                            state.verseOpen = true
-                        }.padding(horizontal = 16.dp)
-                        .testTag("cardTableReadVerse"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(READ_THE_VERSE, style = tableVerseLinkStyle)
-            }
-        } else {
-            Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
+        when {
+            away || !lying -> Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
+            state.readsInPrint -> if (!printButton) HintLink(READ_IT_IN_PRINT, "cardTableReadInPrint", state::openPrint)
+            verse && !state.card.sealed ->
+                HintLink(READ_THE_VERSE, "cardTableReadVerse") {
+                    state.menuOpen = false
+                    state.verseOpen = true
+                }
+            else -> Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
         }
     }
 }
 
+/** A link in the hint's place, 44 dp to touch. */
+@Composable
+private fun HintLink(
+    words: String,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 16.dp)
+                .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(words, style = tableVerseLinkStyle)
+    }
+}
+
 internal const val READ_THE_VERSE = "Read the verse"
+
+/** The note in plain type on the bookmark (plan Part 2). */
+internal const val READ_IT_IN_PRINT = "Read it in print"
+
+/** The main button on a long note's first leaf (plan Part 9), and what a screen reader hears for it. */
+internal const val READ_ON = "Read on"
+internal const val READ_ON_SPOKEN = "Read on, the note continues on a second leaf"
+
+/** Android's "larger text": font scale 1.15 or more (plan Part 2). */
+internal const val LARGE_TEXT_SCALE = 1.15f
 
 /** "Read the verse" under the button: a link, white at 85%, underlined. */
 internal val tableVerseLinkStyle =

@@ -77,6 +77,7 @@ import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.data.plans.tagLabel
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.components.Shimmer
@@ -150,13 +151,30 @@ internal fun rowEnd(
 /** A plan the viewer has no part in: how many are going or spots left; a business's shows its price instead (G2). */
 private fun spotsEnd(plan: PlanDto): PlanRowEnd =
     when {
-        // "Free" in step 2 (no price exists yet).
-        plan.isBusiness && !plan.isFull -> if (plan.price == null) PlanRowEnd.Price(PLAN_FREE) else PlanRowEnd.None
+        // One tag a row (business track B1, settled): the deal's tag before the price or "Free".
+        plan.isBusiness && !plan.isFull && !plan.deal?.tag.isNullOrBlank() -> PlanRowEnd.Deal(plan.deal?.tag.orEmpty())
+        // The price's chip ("$18", business track B2), else "Free".
+        plan.isBusiness && !plan.isFull -> PlanRowEnd.Price(plan.price?.text?.takeIf(String::isNotBlank) ?: PLAN_FREE)
         plan.planState == PlanState.LIVE -> PlanRowEnd.Note("${plan.goingCount} going")
         plan.isFull -> PlanRowEnd.Note("Full")
         plan.spotsLeft == 1 -> PlanRowEnd.Note("1 spot")
         else -> PlanRowEnd.Note("${plan.spotsLeft} spots")
     }
+
+/**
+ * A row's end under "Yours" (Plans for the holidays, board 1): one count. A host's requests first (they wait on the
+ * host), then "{n} coming" where the server counts adults and kids, else the shipped count.
+ */
+internal fun yoursEnd(plan: PlanDto): PlanRowEnd {
+    val requests = plan.requestsCount ?: 0
+    val coming = plan.headcount?.total
+    return when {
+        plan.standing == PlanViewerStanding.HOSTING && requests > 0 -> hostingEnd(plan)
+        coming != null -> PlanRowEnd.Note("$coming coming")
+        plan.standing == PlanViewerStanding.HOSTING -> hostingEnd(plan)
+        else -> spotsEnd(plan)
+    }
+}
 
 /** A hosted plan's row end: its requests, else how many are going. */
 private fun hostingEnd(plan: PlanDto): PlanRowEnd {
@@ -189,12 +207,14 @@ internal fun ordinal(n: Int): String {
 internal fun rowSpoken(
     plan: PlanDto,
     end: PlanRowEnd,
+    subtitle: String = PlanFormat.rowSubtitle(plan),
 ): String {
     val endWords =
         when (end) {
             is PlanRowEnd.Status -> end.text
             is PlanRowEnd.Note -> end.text
             is PlanRowEnd.Price -> end.text
+            is PlanRowEnd.Deal -> end.text
             else -> null
         }
     // A business's plan: what it calls it ("Clinic"), and that a business hosts it (the badge's words).
@@ -204,7 +224,7 @@ internal fun rowSpoken(
     val privateWord = PLAN_PRIVATE_SPOKEN.takeIf { plan.isPrivate }
     // A repeating plan says how (Plans step 2), as its row's third line shows it.
     val repeatWords = PlanRepeatWords.cardLine(plan.repeat)
-    return listOfNotNull(kind, business, privateWord, plan.title, PlanFormat.rowSubtitle(plan), repeatWords, endWords).joinToString(", ")
+    return listOfNotNull(kind, business, privateWord, plan.title, subtitle, repeatWords, endWords).joinToString(", ")
 }
 
 /** One plan as a row of the list; at the sheet's lowest stop ([peek], board F1) a chevron ends it, as on iOS. */
@@ -217,17 +237,20 @@ internal fun PlanListRow(
     peek: Boolean = false,
     /** Opens one of a venue's later plans from its fold (the full list only; null leaves the fold out). */
     fold: PlanFoldScope? = null,
+    /** A row under "Yours" (Plans for the holidays): the person's part ends the second line, a count ends the row. */
+    yours: Boolean = false,
 ) {
-    val status = rowEnd(plan, mine)
+    val status = if (yours) yoursEnd(plan) else rowEnd(plan, mine)
     val repeatLine = PlanRepeatWords.cardLine(plan.repeat)
+    val subtitle = if (yours) PlanFormat.yoursSubtitle(plan) else PlanFormat.rowSubtitle(plan)
     PlanRow(
         title = plan.title,
-        subtitle = PlanFormat.rowSubtitle(plan),
+        subtitle = subtitle,
         end = if (peek) PlanRowEnd.Chevron else status,
         first = first,
         leading = { PlanKindLeading(plan.planKind, business = plan.isBusiness, isPrivate = plan.isPrivate) },
         // TalkBack still hears the status or spots a peek row doesn't show (as VoiceOver does on iOS).
-        spoken = rowSpoken(plan, status),
+        spoken = rowSpoken(plan, status, subtitle),
         onClick = { onOpen(plan) },
         below = if (repeatLine != null) ({ PlanRowRepeat(repeatLine) }) else null,
     )
@@ -455,14 +478,28 @@ internal fun ColumnScope.PlansPeekContent(
                         modifier = Modifier.padding(vertical = Spacing.s3),
                     )
                 } else {
-                    PlanListRow(soonest, first = true, mine = soonest in state.mineShown, onOpen = onOpen, peek = true)
+                    PlanListRow(
+                        soonest,
+                        first = true,
+                        mine = soonest in state.mineShown,
+                        onOpen = onOpen,
+                        peek = true,
+                        yours = state.flags.guestAnswersOn && soonest in state.mineShown,
+                    )
                 }
             }
         }
     }
     if (state.listStatus == PlansListStatus.Loaded) {
         all.drop(1).take(PEEK_ROWS - 1).forEach { plan ->
-            PlanListRow(plan, first = false, mine = plan in state.mineShown, onOpen = onOpen, peek = true)
+            PlanListRow(
+                plan,
+                first = false,
+                mine = plan in state.mineShown,
+                onOpen = onOpen,
+                peek = true,
+                yours = state.flags.guestAnswersOn && plan in state.mineShown,
+            )
         }
     }
 }
@@ -533,15 +570,8 @@ internal fun PlansListContent(
             item(key = "loading") { PlanRowsSkeleton(rows = 4) }
         }
         if (state.mineShown.isNotEmpty()) {
-            item(key = "mine-title") { SectionTitle("Your plans", top = 10.dp) }
-            items(state.mineShown, key = { "mine-${it.id}" }) { plan ->
-                val series = seriesActions?.takeIf { plan.isHostedSeries }
-                if (series != null) {
-                    PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
-                } else {
-                    PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen)
-                }
-            }
+            item(key = "mine-title") { YoursTitle(state) }
+            items(state.mineShown, key = { "mine-${it.id}" }) { plan -> YoursRow(plan, state, onOpen, seriesActions) }
         }
         sections.forEach { (title, plans) ->
             item(key = "title-$title") { SectionTitle(title, top = 14.dp) }
@@ -609,6 +639,45 @@ private fun PlansListHeader(
             PantopusIconImage(icon = PantopusIcon.Map, contentDescription = null, size = 20.dp, tint = PantopusColors.appText)
         }
         // Ask is the chrome's sparkle just above: the list stops under it now (as on iOS).
+    }
+}
+
+/** "Yours" with Plans for the holidays (board 1), "Your plans" before it. */
+@Composable
+private fun YoursTitle(state: PlansMapUiState) {
+    SectionTitle(if (state.flags.guestAnswersOn) "Yours" else "Your plans", top = 10.dp)
+}
+
+/** One of the person's own plans under "Yours": a hosted repeating plan's card, or a row. */
+@Composable
+private fun YoursRow(
+    plan: PlanDto,
+    state: PlansMapUiState,
+    onOpen: (PlanDto) -> Unit,
+    seriesActions: ((PlanDto) -> PlanSeriesActions)?,
+) {
+    val series = seriesActions?.takeIf { plan.isHostedSeries }
+    if (series != null) {
+        PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
+    } else {
+        PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen, yours = state.flags.guestAnswersOn)
+    }
+}
+
+/**
+ * "Yours" where the list can't show yet (no location): the person's own plans, as the list shows them once location is
+ * allowed, over "See plans near you". Nothing when they have none.
+ */
+@Composable
+internal fun PlansYours(
+    state: PlansMapUiState,
+    onOpen: (PlanDto) -> Unit,
+    seriesActions: ((PlanDto) -> PlanSeriesActions)?,
+) {
+    if (state.mineShown.isEmpty()) return
+    Column(modifier = Modifier.fillMaxWidth().testTag("plansYours")) {
+        YoursTitle(state)
+        state.mineShown.forEach { plan -> YoursRow(plan, state, onOpen, seriesActions) }
     }
 }
 
@@ -737,7 +806,7 @@ internal fun PlanCardContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                PlanTypeTag(kind, label = plan.labelText.takeIf { plan.isBusiness })
+                PlanTypeTag(kind, label = plan.tagLabel)
                 if (plan.isPrivate) PlanPrivateChip()
                 if (plan.isOnline) PlanOnlineChip()
                 Spacer(modifier = Modifier.weight(1f))
@@ -1128,6 +1197,8 @@ internal fun PlansNoLocationContent(
     onUseLocation: () -> Unit,
     onUseHome: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** The person's own plans ("Yours"), over the request; null or empty: the request alone. */
+    yours: (@Composable () -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
     Column(
@@ -1135,6 +1206,7 @@ internal fun PlansNoLocationContent(
         modifier = Modifier.fillMaxWidth().reportsFit(scroll).verticalScroll(scroll).padding(top = Spacing.s1),
         verticalArrangement = Arrangement.spacedBy(Spacing.s4),
     ) {
+        yours?.invoke()
         PlanIconTile(
             icon = PantopusIcon.Navigation,
             background = PantopusColors.primary100,
@@ -1227,6 +1299,8 @@ internal fun PlanPostedBusinessContent(
                 whenText = PlanFormat.whenLine(plan, long = true),
                 spots = plan.spots,
                 place = listOfNotNull(plan.place?.name, plan.place?.address).joinToString(" · "),
+                // Business track B2: the price's chip ("$18"), the server's words; "Free" without one.
+                price = plan.price?.text?.takeIf(String::isNotBlank) ?: PLAN_FREE,
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {

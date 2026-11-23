@@ -20,10 +20,10 @@ const val PRIVACY_MIRROR_HOME_ID_KEY = "homeId"
 /** The four lines of the promise, verbatim from the web `PrivacyPromise`. */
 val PRIVACY_PROMISE_LINES: List<String> =
     listOf(
-        "Neighbors see a first name and a street at most. Never a house number or unit.",
+        "Others see a first name and a street at most. Never a house number or unit.",
         "We never sell your address or use it for ads.",
         "Verifying never asks for your GPS. It works by mail, a landlord, or a document you choose.",
-        "Verification documents are seen by one reviewer, never by neighbors, and deleted once your claim is decided.",
+        "Verification documents are seen by one reviewer, never by others, and deleted once your claim is decided.",
     )
 
 /**

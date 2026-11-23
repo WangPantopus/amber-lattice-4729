@@ -238,7 +238,7 @@ public enum NotificationCategory: Sendable, Hashable {
 
 private let notificationsUnreadEmptySubcopy =
     "No unread notifications. Replies, mentions, claim updates, " +
-    "and safety alerts from your neighborhood will land here."
+    "and safety alerts from near you will land here."
 
 @Observable
 @MainActor
@@ -793,7 +793,7 @@ public final class NotificationsViewModel: ListOfRowsDataSource {
         // A brief or nudge opens the assistant at its message (AI assistant phase 2).
         let link = DeepLinkRouter.assistantPath(type: dto.type, notificationId: dto.id, conversationId: dto.metadata?.conversationId)
             ?? HomeTaskNotificationRoute.path(type: dto.type, homeId: dto.metadata?.homeId, taskId: dto.metadata?.taskId)
-            ?? DeepLinkRouter.notificationPath(type: dto.type, link: dto.link)
+            ?? DeepLinkRouter.notificationPath(type: dto.type, link: dto.link, opens: dto.metadata?.opens)
         if let link, !link.isEmpty { DeepLinkRouter.shared.handle(path: link) }
         onSelect(dto)
     }

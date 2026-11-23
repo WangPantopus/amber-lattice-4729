@@ -61,7 +61,7 @@ object ManageTrainSampleData {
                         tone = OrganizeRowTone.SKY,
                         label = "Invite more helpers",
                         meta = null,
-                        sub = "Share a link or pick from neighbors who follow this train.",
+                        sub = "Send the train's link to people you know.",
                         isDestructive = false,
                     ),
                     OrganizeRowContent(
@@ -88,11 +88,13 @@ object ManageTrainSampleData {
                 CloseTrainSheetContent(
                     daysEarlyLabel = "Locks new signups · 9 days early",
                     mealsDelivered = "18",
-                    neighborsHelped = "12",
+                    peopleHelped = "12",
                     coverageDays = "12d",
                     recipientQuote =
                         "\"Theo's eating, sleeping, and chubbing up. We can take it from here. " +
                             "From the bottom of our spoon drawer — thank you.\" — Daniel",
                 ),
+            // The design shows the primary organizer on a live train, who may close it.
+            canClose = true,
         )
 }

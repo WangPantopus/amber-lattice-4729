@@ -50,7 +50,11 @@ final class MomentsComposerModel {
     }
 
     var mode: Mode = .camera
-    private(set) var draft: Draft?
+    /// A new picture (or none) starts with no marks: several picked together never carry one's marks to the next.
+    private(set) var draft: Draft? {
+        didSet { marking.clear() }
+    }
+
     private(set) var locating: Locating = .locating
     private(set) var place: MomentPlacePreviewDTO?
     /// The server has said what this spot reads as and whether the 18+ answer is on file (or couldn't be reached).
@@ -81,6 +85,11 @@ final class MomentsComposerModel {
     var choseNoLocation = false
     /// "Show elevation" (board H1, `+Height`): the Moment says how high above sea level it was made.
     var showHeight = false
+    /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
+    /// it was taken.
+    var pinsAtPlace = false
+    /// The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); nil posts now.
+    var shareLaterKey: String?
     /// When the album photo or video was taken (any time); nil for the camera, a text card, or a file that never said.
     private(set) var takenAt: Date?
     /// The rest of what was picked together in the library, in the order picked (`+Several`): each takes the sheet
@@ -98,12 +107,18 @@ final class MomentsComposerModel {
     private(set) var preparing = false
     var error: String?
     var isPosting = false
+    /// From the request that makes the Moment until that Post ends: Retake can't drop the draft then (`+Posting`).
+    var isSending = false
     /// The place names' sheet over the Post sheet, kept here so a fold on the iPhone Duo leaves it as it was.
     var picksPlace = false
     /// The place picker (search and the venues around the pin) over the Post sheet, kept here for the same reason.
     var findsPlace = false
     /// The camera, held here so a fold on the iPhone Duo (which builds the camera screen again) keeps a recording going.
     let camera = MomentsCameraModel()
+    /// Text and Draw on the photo (`+Marks`): its marks and the editor, held here so a fold keeps them.
+    let marking = MomentsMarking()
+    /// The camera's shot, for the Live mark and the weather (`+Live`).
+    let live = MomentsLiveShot()
 
     static let textLimit = 200
     static let captionLimit = 100
@@ -132,9 +147,10 @@ final class MomentsComposerModel {
     init(location: any LocationProviding = DeviceLocationProvider.shared, defaults: UserDefaults = .standard) {
         self.location = location
         self.defaults = defaults
-        camera.onPhoto = { [weak self] image in self?.use(photo: image) }
+        // The camera's own photo or video is also the shot for the Live mark (`+Live`).
+        camera.onPhoto = { [weak self] image in self?.tookPhoto(image) }
         camera.onVideo = { [weak self] url in
-            Task { await self?.use(video: url) }
+            Task { await self?.tookVideo(url) }
         }
     }
 
@@ -154,6 +170,7 @@ final class MomentsComposerModel {
     func start() async {
         guard !started else { return }
         started = true
+        MomentsDraftFiles.sweep(keeping: draft?.video)
         restoreChoices()
         // How long a video may be now, and how large its file: asked once each time the composer opens.
         Task { await MomentsLimits.refresh() }
@@ -197,6 +214,8 @@ final class MomentsComposerModel {
                 longitude: longitude
             ))
             place = reply
+            // A new spot starts where it was taken: a place is always picked for the spot on the sheet.
+            pinsAtPlace = false
             if let has = reply.hasConnections { hasConnections = has }
             // A picked name stays only while it still fits the pin.
             if let placeKey, !reply.places.contains(where: { $0.key == placeKey }) { self.placeKey = nil }
@@ -264,6 +283,8 @@ final class MomentsComposerModel {
             }
             capture = point
             await useVideo(url)
+            // Too long to post after all: nothing will read the copy.
+            if draft != .video(url) { MomentsDraftFiles.drop(url) }
         default:
             guard let image = await MomentsLibraryLoader.image(for: asset) else {
                 error = "Couldn't open that photo."
@@ -283,10 +304,20 @@ final class MomentsComposerModel {
             return
         }
         draft = .video(url)
-        // A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own.
+        prepareVideo(url, seconds: seconds)
+    }
+
+    /// A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own, with the
+    /// marks (`overlay`) over every frame of each, and each placed on its canvas the same way (`placing`).
+    private func prepareVideo(
+        _ url: URL, seconds: Double, overlay: MomentsVideoEncoder.Overlay? = nil, placing: MomentsVideoEncoder.Placing? = nil
+    ) {
         let ranges = MomentsMediaExport.parts(of: seconds)
         prepare(ranges.map { range in
-            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil) }
+            { folder in
+                let part = ranges.count > 1 ? range : nil
+                return try await MomentsMediaExport.video(at: url, into: folder, part: part, overlay: overlay, placing: placing)
+            }
         })
     }
 
@@ -298,22 +329,28 @@ final class MomentsComposerModel {
         draft = .text
     }
 
-    /// Retake (P3) or Edit (P4): back to the camera, or to the text.
+    /// Retake (P3) or Edit (P4): back to the camera, or to the text. While Post only waits (for the fix, or for the
+    /// file to be made ready) it cancels that Post, and no Moment is made; once the request that makes the Moment has
+    /// gone out it does nothing until the Post ends, so the Moment never loses its file.
     func retake() {
+        guard !isSending else { return }
         preparation?.cancel()
         if case .text = draft {} else { discardPrepared() }
+        MomentsDraftFiles.drop(draft?.video)
         draft = nil
         error = nil
         if capture != nil, let fix { Task { await preview(latitude: fix.coordinate.latitude, longitude: fix.coordinate.longitude) } }
         capture = nil
         takenAt = nil
-        waiting = []
-        pickedTogether = 0
+        (waiting, pickedTogether) = ([], 0)
+        live.clear()
     }
 
     /// The one on the sheet has posted: the next of the ones picked together takes the sheet, with its own place and
     /// words and the same "How long" and "Who sees it". False when none is left: the composer closes.
     func moveOn() async -> Bool {
+        // The one that posted: the outbox has its files now, so its library copy or recording goes.
+        MomentsDraftFiles.drop(draft?.video)
         guard !waiting.isEmpty else { return false }
         isPosting = true
         defer { isPosting = false }
@@ -383,19 +420,43 @@ final class MomentsComposerModel {
         if let capture { return CLLocationCoordinate2D(latitude: capture.latitude, longitude: capture.longitude) }
         return fix.map { CLLocationCoordinate2D(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
     }
+}
 
-    /// A place picked in the place picker: a venue near the pin names the Moment and moves its pin there (the server
-    /// finds it again by its id). Only venues are offered (see the sheet's filter).
-    func pickVenue(_ tag: PostPlaceTag) {
-        guard let id = tag.placeId, id.hasPrefix("osm:"), let basePin else { return }
-        placeKey = nil
-        venue = MomentVenue(placeId: id, name: tag.name, latitude: tag.latitude, longitude: tag.longitude, around: basePin)
-        findsPlace = false
+// MARK: - Text, Draw and Resize's Done
+
+extension MomentsComposerModel {
+    /// The marks editor's Done (`+Marks`): the photo, at most 2048 px, carries `marks`, and goes up as the 9:16 canvas
+    /// when it's placed (Resize). The draft and its export change in one step, and the export draws them in off the
+    /// main thread, so a Post tapped next waits for them.
+    func use(marked base: UIImage, _ marks: MomentMarks, placement: MomentPlacement? = nil) {
+        guard !isPosting, case .photo = draft else { return }
+        let backdrop = marking.backdrop
+        draft = .photo(base)
+        marking.keep(marks, base: base, placement: placement, backdrop: backdrop)
+        // Done before the colours were read: the Post screen reads them again (the export reads them for itself).
+        if placement != nil, backdrop == nil { marking.sampleBackdrop(base) }
+        if let placement {
+            let export: @MainActor (URL) async throws -> MomentPreparedMedia = { folder in
+                try await MomentPlacementDrawing.export(base, at: placement, backdrop: backdrop, marks, into: folder)
+            }
+            prepare([export])
+        } else {
+            prepare([{ folder in try await MomentMarksDrawing.export(base, marks, into: folder) }])
+        }
     }
 
-    /// "Remove location" in the place picker: back to the name the spot gets by itself.
-    func clearVenue() {
-        venue = nil
-        findsPlace = false
+    /// The same for a video: every part is exported again with the marks over every frame, and on its 9:16 canvas when
+    /// it's placed; Post waits for it.
+    func use(marked url: URL, video: (size: CGSize, seconds: Double), _ marks: MomentMarks, placement: MomentPlacement? = nil) {
+        guard !isPosting, case .video = draft else { return }
+        let backdrop = marking.backdrop
+        draft = .video(url)
+        marking.keep(marks, base: nil, video: video, placement: placement, backdrop: backdrop)
+        if placement != nil, backdrop == nil { marking.sampleBackdrop(video: url) }
+        // The export running for the video as it was is no longer wanted.
+        preparation?.cancel()
+        let aspect = placement == nil ? video.size.width / max(video.size.height, 1) : MomentPlacement.canvas
+        let placing = placement.map { MomentsVideoEncoder.Placing(placement: $0, backdrop: backdrop) }
+        prepareVideo(url, seconds: video.seconds, overlay: MomentMarksDrawing.overlay(marks, aspect: aspect), placing: placing)
     }
 }

@@ -100,6 +100,8 @@ public enum HubRoute: Hashable {
     case homeMembers(homeId: String)
     /// The Members sub-screen opened on its Requests tab (access requests).
     case homeMemberRequests(homeId: String)
+    /// The Members sub-screen with its invite open (the guidance reminder "Invite your household").
+    case homeMembersInvite(homeId: String)
     /// The Owners list, and the owner's claim review (the lists the You
     /// stack already hosts), for Home notification links.
     case homeOwners(homeId: String)
@@ -285,7 +287,7 @@ public enum HubRoute: Hashable {
     /// reservation). Pushed from the Review-signups per-row Edit
     /// action with the seed DTO baked into the route so the form can
     /// prefill without a re-fetch.
-    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO)
+    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO, timeZoneId: String? = nil)
     /// A13.13 / P4.3 — Manage train (organizer surface). Pushed from
     /// the A10.9 detail dock overflow when the viewer is the organizer
     /// and from the `pantopus://support-trains/:id/manage` deep link.
@@ -412,6 +414,10 @@ public enum HubRoute: Hashable {
     /// W5 — the verify status screen (B2 pending → B3 success / B4 failed)
     /// after a method is chosen in the verify sheet.
     case placeVerifyStatus(homeId: String, method: PlaceVerifyMethod, address: String)
+    /// FASTVERIFY — "Phone check": the texted code and the phone records' answer for this Home.
+    case phoneCheck(homeId: String)
+    /// FASTVERIFY — "Location check": one reading at home, with the device proof.
+    case locationCheck(homeId: String)
     /// W7 D1 — compose a template-only heads-up to a verified neighbor on
     /// your block. `recipient` is nil when opened without a chosen home
     /// (the "choose a neighbor" empty state).
@@ -449,7 +455,8 @@ public enum HubRoute: Hashable {
     /// the row at the top of Me in the Mailbox, or a public card page's link
     /// with that picture chosen.
     /// The send flow; `design` chosen (from a public card page), or a person chosen (`toUserId`, from a card's table).
-    case christmasCards(design: String? = nil, toUserId: String? = nil, toName: String? = nil)
+    /// `samePicture`: "Send this card to someone else" (experience plan Part 6), Who it's for goes on to Write on the back.
+    case christmasCards(design: String? = nil, toUserId: String? = nil, toName: String? = nil, samePicture: Bool = false)
     /// A card in Sent (`mailbox`): what they got, its trail, and Take it back.
     case mailSentCard(id: String)
     /// Family Mail Party — household co-opening (discover / join / start /
@@ -843,17 +850,16 @@ public struct HubTabRoot: View {
             launchScopedDestination(for: item.route) { path.append($0) }
         }
         .sheet(item: $systemSheet) { request in request.makeView() }
+        .onChange(of: mailVerifyHome == nil) { _, closed in
+            if closed, mode == .hub { rootTabs.placeVerifySheetUp = false }
+        }
         .sheet(item: $mailVerifyHome) { home in
             PlaceVerifySheet(
                 address: home.address,
                 homeId: home.homeId,
                 onStart: { method in
                     mailVerifyHome = nil
-                    switch method {
-                    case .document: path.append(.verifyResidency(homeId: home.homeId))
-                    case .mail: path.append(.postcardVerification(homeId: home.homeId))
-                    case .landlord: path.append(.verifyLandlord(homeId: home.homeId))
-                    }
+                    path.append(Self.verifyRoute(method, homeId: home.homeId))
                 },
                 onClose: { mailVerifyHome = nil },
                 onOpenDocumentStatus: {
@@ -1049,6 +1055,55 @@ public struct HubTabRoot: View {
         return model
     }
 
+    /// The screen each way to verify opens (the verify sheet's rows, a locked section's "Verify address").
+    static func verifyRoute(_ method: PlaceVerifyMethod, homeId: String) -> HubRoute {
+        switch method {
+        case .document: .verifyResidency(homeId: homeId)
+        case .mail: .postcardVerification(homeId: homeId)
+        case .landlord: .verifyLandlord(homeId: homeId)
+        case .phone: .phoneCheck(homeId: homeId)
+        case .location: .locationCheck(homeId: homeId)
+        }
+    }
+
+    /// The Home's street from the kept homes list, for a fast check's words.
+    static func homeStreet(_ homeId: String) -> String {
+        let home = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id.caseInsensitiveCompare(homeId) == .orderedSame }
+        let street = home?.home.address?.trimmingCharacters(in: .whitespaces) ?? ""
+        return street.isEmpty ? "this home" : street
+    }
+
+    /// A renter here sees "What others near you pay in rent" once verified.
+    static func isRenter(_ homeId: String) -> Bool {
+        let home = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id.caseInsensitiveCompare(homeId) == .orderedSame }
+        return home?.roleBase == "lease_resident" || home?.occupancy?.roleBase == "lease_resident"
+    }
+
+    /// A fast check passed: back to Your Place, which reads the new level.
+    @MainActor
+    private func leaveFastCheck(homeId: String) {
+        HomeVerifyOptionsStore.shared.forget(homeId: homeId)
+        path.removeAll { route in
+            switch route {
+            case .phoneCheck, .locationCheck: true
+            default: false
+            }
+        }
+    }
+
+    /// After Add Home in two steps: Your Place for the new Home, and its verify sheet once the sheet knows its rows.
+    @MainActor
+    private func openPlaceToVerify(homeId: String, street: String) {
+        // The first-run notices (daily briefings, Suggestions) wait from here until the sheet is closed: both
+        // are waiting for Place's top screen, and the notice would take the sheet's place.
+        rootTabs.placeVerifySheetUp = true
+        openPlaceRoot(homeId: homeId)
+        Task { @MainActor in
+            await HomeVerifyOptionsStore.shared.load(homeId: homeId)
+            mailVerifyHome = MailVerifyHome(homeId: homeId, address: street.isEmpty ? "Your home" : street)
+        }
+    }
+
     /// "Verify your home" from the Mail tab: the verify sheet for that Home.
     @MainActor
     private func showVerifyHome(_ homeId: String) {
@@ -1230,6 +1285,7 @@ public struct HubTabRoot: View {
         case .myBeacon: return .myBeacon
         case .myListings: return .myListings
         case .myPulse: return .myPosts(initialTab: nil)
+        case .supportTrains: return .supportTrains
         case .myTasks: return .myTasks
         case .myBids: return .myBids
         case .offersAndBids: return .offers
@@ -1366,8 +1422,11 @@ public struct HubTabRoot: View {
         case let .homeResidency(id):
             path.append(.residencyStatus(homeId: id))
             _ = router.consume()
-        case let .postcardVerification(id):
-            path.append(.postcardVerification(homeId: id))
+        case let .postcardVerification(id, code):
+            // A scanned card's code waits for the postcard screen, outside the navigation path.
+            PostcardLinkCode.hand(code, homeId: id)
+            // The screen already showing takes the code itself; a second copy of it would lose the code.
+            if path.last != .postcardVerification(homeId: id) { path.append(.postcardVerification(homeId: id)) }
             _ = router.consume()
         case .notifications:
             path.append(.notifications)
@@ -1578,7 +1637,7 @@ public struct HubTabRoot: View {
         case .feed, .post, .gig, .listing, .hubToday, .conversation,
              .invite, .joinInvite, .monthlyReceipt, .resetPassword, .verifyEmail, .unknown, .home,
              .creatorInbox, .fanInbox, .creatorAudienceMembers,
-             .plans, .plan, .planRequests, .planNew, .moments, .moment:
+             .plans, .plan, .planRequests, .planGuests, .planCheck, .planNew, .moments, .moment:
             return false
         // `/nearby` opens "Verified homes nearby" here while the Pulse redesign
         // is off (founder decision 2026-11-07); with it on, the Pulse tab takes it.
@@ -1604,6 +1663,8 @@ public struct HubTabRoot: View {
                 // Another Home is another dashboard, with its own state.
                 .id(homeId)
                 .onAppear { Self.placeRootViewed("home") }
+                // The guidance reminder "Invite your household": its button opens the Members invite.
+                .guidanceAction(.nextInvite) { path.append(.homeMembersInvite(homeId: homeId)) }
         case let .claim(homeId):
             // The same dashboard: the claimed Home's public view, its claim's status on top.
             placeDashboard(homeId: homeId, isActive: path.isEmpty && rootTabs.selected == owningTab, isRoot: true)
@@ -1621,6 +1682,9 @@ public struct HubTabRoot: View {
                 onOpenDetail: { path.append(.savedPlaceDetail(savedPlaceId: place.id, group: $0)) }
             )
             .id(place.id)
+            .guidanceScreen(.place, variants: GuidanceVariants(savedAddress: true, placeHasAddress: true, savedPlaceAt: place.createdAt))
+            // The guidance reminder "Set up your home": its button opens the set-up flow, as the page's own does.
+            .guidanceAction(.nextSetupHome) { path.append(.addHomeAt(address: place.label)) }
             .onAppear { Self.placeRootViewed("saved_place") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
@@ -1639,11 +1703,13 @@ public struct HubTabRoot: View {
             .accessibilityIdentifier("place.firstRun")
             .toolbar(.hidden, for: .navigationBar)
             .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+            .guidanceScreen(.place, variants: GuidanceVariants(firstRun: true))
             .onAppear { Self.placeRootViewed("first_run") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
         case .homes:
             placeRootBar(destination(for: .myHomes) { path.append($0) })
+                .guidanceScreen(.place, variants: GuidanceVariants(placeHasAddress: true))
                 .onAppear { Self.placeRootViewed("homes") }
         case .resolving:
             PlaceDashboardSkeleton()
@@ -1702,6 +1768,7 @@ public struct HubTabRoot: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { rootTabs.showsNavigationMenu = true } label: {
                         Icon(.menu, size: 20, color: Theme.Color.appText)
+                            .guidanceAnchor(.tipMenu)
                     }
                     .accessibilityLabel("Menu")
                     .accessibilityIdentifier("place.menu")
@@ -2378,6 +2445,12 @@ public struct HubTabRoot: View {
             } onAddGuest: {
                 Task { @MainActor in push(.guestPasses(homeId: homeId)) }
             }
+        case let .homeMembersInvite(homeId):
+            MembersListView(homeId: homeId, opensInvite: true) { userId in
+                Task { @MainActor in push(.publicProfile(userId: userId)) }
+            } onAddGuest: {
+                Task { @MainActor in push(.guestPasses(homeId: homeId)) }
+            }
         case let .homeOwners(homeId):
             OwnersListView(
                 homeId: homeId,
@@ -2499,7 +2572,25 @@ public struct HubTabRoot: View {
                         return false
                     }
                     path.append(.findHome)
-                }
+                },
+                billVerified: BillVerifiedActions(
+                    address: Self.homeStreet(homeId),
+                    isRenter: Self.isRenter(homeId),
+                    onMailCode: {
+                        path.removeAll { route in
+                            if case .verifyResidency = route { return true }
+                            return false
+                        }
+                        path.append(.postcardVerification(homeId: homeId))
+                    },
+                    onGoToPlace: {
+                        HomeVerifyOptionsStore.shared.forget(homeId: homeId)
+                        path.removeAll { route in
+                            if case .verifyResidency = route { return true }
+                            return false
+                        }
+                    }
+                )
             )
         case let .verifyLandlord(homeId):
             VerifyLandlordWizardView(
@@ -2584,6 +2675,13 @@ public struct HubTabRoot: View {
                 onVerifyHome: { homeId in showVerifyHome(homeId) },
                 onSendCard: { userId, name in
                     Task { @MainActor in push(.christmasCards(toUserId: userId, toName: name)) }
+                },
+                // "Open the next card": the next card's page takes this one's place, so ✕ still returns to the Mailbox.
+                onOpenNextCard: { nextId in
+                    Task { @MainActor in
+                        if !path.isEmpty { path.removeLast() }
+                        push(.mailItemDetail(mailId: nextId))
+                    }
                 }
             )
             // A link that swaps one open letter for another gets a fresh page,
@@ -3125,13 +3223,18 @@ public struct HubTabRoot: View {
                 },
                 onShare: {
                     systemSheet = .share(
-                        items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
+                        items: [SupportTrainShareText.message(trainId: supportTrainId, asOrganizer: false)]
                     )
                 },
                 onSignUp: {
                     // S1 — the reserve sheet is owned by the detail
                     // screen itself (`ReserveSlotSheet`), which posts
                     // `POST …/slots/:slotId/reserve`. Nothing to push.
+                },
+                onEditSignup: { reservation, zone in
+                    Task { @MainActor in
+                        push(.editSignup(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: zone))
+                    }
                 },
                 // Edit slot, Send a card and Join as backup have no backend
                 // route yet, so they aren't wired and the screen hides them
@@ -3152,7 +3255,7 @@ public struct HubTabRoot: View {
                     supportTrainId: supportTrainId,
                     onShareTrain: {
                         systemSheet = .share(
-                            items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
+                            items: [SupportTrainShareText.message(trainId: supportTrainId, asOrganizer: false)]
                         )
                     },
                     onConfirm: { reservationId in
@@ -3179,8 +3282,8 @@ public struct HubTabRoot: View {
                     }
                 )
             )
-        case let .editSignup(supportTrainId, reservation):
-            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation) {
+        case let .editSignup(supportTrainId, reservation, timeZoneId):
+            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: timeZoneId) {
                 if !path.isEmpty { path.removeLast() }
             }
         case let .manageTrain(trainId):
@@ -3209,7 +3312,7 @@ public struct HubTabRoot: View {
                 // yet, so they aren't wired and their rows are hidden.
                 onInviteHelpers: { _ in
                     systemSheet = .share(
-                        items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: trainId))"]
+                        items: [SupportTrainShareText.message(trainId: trainId, asOrganizer: true)]
                     )
                 }
             )
@@ -3257,7 +3360,7 @@ public struct HubTabRoot: View {
                         case .inviteBusiness:
                             let draft = MailDraft(
                                 subject: "Join Pantopus",
-                                body: "I'd love to see your business on Pantopus — neighbors near me are "
+                                body: "I'd love to see your business on Pantopus — people near me are "
                                     + "looking for trusted local pros. \(PersonalInviteLink.shared.url.absoluteString)"
                             )
                             if MailDraft.canSendMail {
@@ -3670,13 +3773,14 @@ public struct HubTabRoot: View {
             .hidesTabBar()
         case .mailRoutingQueue:
             MailRoutingQueueView { Task { @MainActor in pop() } }
-        case let .christmasCards(design, toUserId, toName):
+        case let .christmasCards(design, toUserId, toName, samePicture):
             HolidayCardFlowView(
                 viewModel: mailScreenModels.model(for: route) {
                     HolidayCardFlowViewModel(
                         fromName: MailPieceRecipient.personName,
                         designId: design,
-                        to: toUserId.map { ($0, toName ?? "") }
+                        to: toUserId.map { ($0, toName ?? "") },
+                        keepsPicture: samePicture
                     )
                 },
                 onSeeInSent: { cardId in
@@ -3706,9 +3810,13 @@ public struct HubTabRoot: View {
                 onClose: { Task { @MainActor in pop() } }
             )
         case let .mailSentCard(id):
-            MailSentPieceView(viewModel: mailScreenModels.model(for: route) { MailSentPieceViewModel(id: id) }) {
-                Task { @MainActor in pop() }
-            }
+            MailSentPieceView(
+                viewModel: mailScreenModels.model(for: route) { MailSentPieceViewModel(id: id) },
+                onSendThisCard: { design in
+                    Task { @MainActor in push(.christmasCards(design: design, samePicture: true)) }
+                },
+                onBack: { Task { @MainActor in pop() } }
+            )
             // A notice that swaps one open Sent page for another gets a fresh page,
             // not the first piece's view model.
             .id(id)
@@ -3834,7 +3942,7 @@ public struct HubTabRoot: View {
                 onHelp: { Task { @MainActor in push(.helpCenter) } },
                 onCashOut: { Task { @MainActor in push(.paymentsSettings) } },
                 onBrowseTasks: { Task { @MainActor in push(.gigsFeed) } },
-                onReferNeighbor: { Task { @MainActor in push(.placeholder(label: "Refer a neighbor")) } },
+                onReferNeighbor: { Task { @MainActor in push(.placeholder(label: "Refer someone")) } },
                 onOfferService: { Task { @MainActor in push(.professionalProfile) } },
                 onManagePayout: { Task { @MainActor in push(.paymentsSettings) } },
                 onAddBank: { Task { @MainActor in push(.paymentsSettings) } },
@@ -3928,7 +4036,9 @@ public struct HubTabRoot: View {
                 onOpenWaitingRoom: { homeId in
                     path.removeAll { $0.isHomeEntry }
                     path.append(.waitingRoom(homeId: homeId))
-                }
+                },
+                // Two steps (FASTVERIFY): Your Place for the new Home, then "Verify you live here".
+                onOpenHomeToVerify: mode == .hub ? { homeId, street in openPlaceToVerify(homeId: homeId, street: street) } : nil
             )
         case .findHome:
             FindHomeView(
@@ -3951,11 +4061,7 @@ public struct HubTabRoot: View {
                     group: group,
                     onStartVerify: { method in
                         // A locked section's "Verify address" opens the same doors as the dashboard's verify sheet.
-                        switch method {
-                        case .document: push(.verifyResidency(homeId: homeId))
-                        case .mail: push(.postcardVerification(homeId: homeId))
-                        case .landlord: push(.verifyLandlord(homeId: homeId))
-                        }
+                        push(Self.verifyRoute(method, homeId: homeId))
                     },
                     onOpenVerificationStatus: { push(.waitingRoom(homeId: homeId)) }
                 ),
@@ -3975,6 +4081,30 @@ public struct HubTabRoot: View {
             ) { pop() }
         case let .privacyMirror(homeId):
             PlacePrivacyMirrorView(viewModel: PlacePrivacyMirrorViewModel(homeId: homeId)) { pop() }
+        case let .phoneCheck(homeId):
+            PhoneCheckView(
+                viewModel: PhoneCheckViewModel(homeId: homeId, address: Self.homeStreet(homeId)),
+                isRenter: Self.isRenter(homeId),
+                onStart: { method in
+                    pop()
+                    push(Self.verifyRoute(method, homeId: homeId))
+                },
+                onMailCode: { push(.postcardVerification(homeId: homeId)) },
+                onGoToPlace: { leaveFastCheck(homeId: homeId) },
+                onBack: { pop() }
+            )
+        case let .locationCheck(homeId):
+            LocationCheckView(
+                viewModel: LocationCheckViewModel(homeId: homeId, address: Self.homeStreet(homeId)),
+                isRenter: Self.isRenter(homeId),
+                onStart: { method in
+                    pop()
+                    push(Self.verifyRoute(method, homeId: homeId))
+                },
+                onMailCode: { push(.postcardVerification(homeId: homeId)) },
+                onGoToPlace: { leaveFastCheck(homeId: homeId) },
+                onBack: { pop() }
+            )
         case let .placeVerifyStatus(homeId, method, address):
             PlaceVerifyStatusView(
                 address: address,
@@ -4037,11 +4167,7 @@ public struct HubTabRoot: View {
                 // The sheet's doors open the REAL flows (Wedge Phase 2, D3);
                 // the simulated status screen stays only for previews.
                 onStartVerify: { method, _ in
-                    switch method {
-                    case .document: path.append(.verifyResidency(homeId: homeId))
-                    case .mail: path.append(.postcardVerification(homeId: homeId))
-                    case .landlord: path.append(.verifyLandlord(homeId: homeId))
-                    }
+                    path.append(Self.verifyRoute(method, homeId: homeId))
                 },
                 // A residency document already in review: its status, not a second upload.
                 onOpenVerificationStatus: { path.append(.waitingRoom(homeId: homeId)) },

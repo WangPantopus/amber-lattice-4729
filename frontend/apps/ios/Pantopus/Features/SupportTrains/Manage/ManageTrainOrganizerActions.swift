@@ -215,20 +215,30 @@ public extension ManageTrainViewModel {
     /// Fan-out for the organizer-only feeds. Failures degrade to empty
     /// sections instead of blowing up the whole screen.
     internal func loadOrganizerSurfaces(read: Int, cache: Int) async {
-        let reservations = try? await api.request(
-            SupportTrainsEndpoints.reservations(supportTrainId: supportTrainId),
+        // The four reads go out together, so the invitations list adds no round trip (founder: a fix must not
+        // slow a feature).
+        let client = api
+        let trainId = supportTrainId
+        async let reservationsRead = try? client.request(
+            SupportTrainsEndpoints.reservations(supportTrainId: trainId),
             as: SupportTrainReservationsResponse.self
         )
-        guard readIsCurrent(read, cache: cache) else { return }
-        let organizers = try? await api.request(
-            SupportTrainActionsEndpoints.organizers(supportTrainId: supportTrainId),
+        async let organizersRead = try? client.request(
+            SupportTrainActionsEndpoints.organizers(supportTrainId: trainId),
             as: SupportTrainOrganizersResponse.self
         )
-        guard readIsCurrent(read, cache: cache) else { return }
-        let fundSummary = try? await api.request(
-            SupportTrainActionsEndpoints.fund(supportTrainId: supportTrainId),
+        async let fundRead = try? client.request(
+            SupportTrainActionsEndpoints.fund(supportTrainId: trainId),
             as: SupportTrainFundDTO.self
         )
+        async let invitesRead = try? client.request(
+            SupportTrainActionsEndpoints.invites(supportTrainId: trainId),
+            as: SupportTrainInvitesResponse.self
+        )
+        let reservations = await reservationsRead
+        let organizers = await organizersRead
+        let fundSummary = await fundRead
+        let invites = await invitesRead
         guard readIsCurrent(read, cache: cache) else { return }
         let helperIdentities = reservations?.reservations.filter { $0.status != "canceled" }.map { row -> String? in
             guard ["reserved", "delivered", "confirmed"].contains(row.status ?? "") else { return nil }
@@ -240,8 +250,18 @@ public extension ManageTrainViewModel {
         let helperCount: Int? = helperIdentities.flatMap { ids in
             ids.contains { $0 == nil } ? nil : Set(ids.compactMap { $0 }).count
         }
+        // Dropouts: signups cancelled by the helper or removed (B12).
+        if let rows = reservations?.reservations {
+            setDropouts(rows.filter { $0.status == "canceled" }.count)
+        }
+        replaceInvites(invites?.invites.filter { $0.inviteeUserId != nil } ?? [])
         replaceOrganizerSurfaces(
-            helpers: Self.helperRows(reservations?.reservations ?? [], slots: slotRows, hasDeliveryAddress: hasDeliveryAddress),
+            helpers: Self.helperRows(
+                reservations?.reservations ?? [],
+                slots: slotRows,
+                hasDeliveryAddress: hasDeliveryAddress,
+                timeZoneId: trainTimeZoneId
+            ),
             helpersFailed: reservations == nil,
             deliveredMeals: reservations?.reservations.filter {
                 ["delivered", "confirmed"].contains($0.status ?? "") &&
@@ -331,6 +351,45 @@ public extension ManageTrainViewModel {
         )
     }
 
+    // MARK: The train: where help goes, who can open it, invitations (A1, A2)
+
+    /// `PATCH /:id { delivery_location }`.
+    func updateDeliveryLocation(_ location: SupportTrainDeliveryLocationBody) async -> Bool {
+        await run(
+            SupportTrainActionsEndpoints.updateTrain(
+                supportTrainId: supportTrainId,
+                body: SupportTrainPatchBody(deliveryLocation: location)
+            ),
+            success: "Address saved",
+            failure: "Couldn't save the address."
+        )
+    }
+
+    /// `PATCH /:id { sharing_mode }`.
+    func updateSharingMode(_ mode: String) async {
+        await run(
+            SupportTrainActionsEndpoints.updateTrain(
+                supportTrainId: supportTrainId,
+                body: SupportTrainPatchBody(sharingMode: mode)
+            ),
+            success: "Saved",
+            failure: "Couldn't change who can open it."
+        )
+    }
+
+    /// `POST /:id/invites { invitee_user_id }`.
+    func inviteHelper(userId: String) async {
+        guard !userId.isEmpty else { return }
+        await run(
+            SupportTrainActionsEndpoints.invite(
+                supportTrainId: supportTrainId,
+                body: SupportTrainInviteBody(inviteeUserId: userId)
+            ),
+            success: "Invited",
+            failure: "Couldn't invite them."
+        )
+    }
+
     func removeOrganizer(userId: String) async {
         await run(
             SupportTrainActionsEndpoints.removeOrganizer(
@@ -347,7 +406,8 @@ public extension ManageTrainViewModel {
     func startAddSlot() {
         slotEditor = ManageSlotEditorState(
             slotId: nil,
-            slotDate: Date().addingTimeInterval(86400),
+            // Today where the train is, not the phone's or UTC's day (B4).
+            slotDate: trainToday,
             slotLabel: "Dinner",
             supportMode: "meal",
             startTime: Self.defaultClock(hour: 17),
@@ -626,14 +686,16 @@ public extension ManageTrainViewModel {
     internal nonisolated static func helperRows(
         _ reservations: [SupportTrainReservationDTO],
         slots: [ManageSlotRow],
-        hasDeliveryAddress: Bool = true
+        hasDeliveryAddress: Bool = true,
+        timeZoneId: String? = nil
     ) -> [ManageHelperRow] {
         let slotById = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
-        return reservations.map { reservation in
+        // A cancelled signup is a dropout (counted above), not a helper on the train (B12).
+        return reservations.filter { $0.status != "canceled" }.map { reservation in
             let slot = reservation.slotId.flatMap { slotById[$0] }
             let contribution = [
                 contributionSummary(reservation),
-                arrivalLabel(reservation.estimatedArrivalAt).map { "arrives \($0)" }
+                arrivalLabel(reservation.estimatedArrivalAt, timeZoneId: timeZoneId).map { "arrives \($0)" }
             ]
             .compactMap { $0 }
             .joined(separator: " · ")
@@ -670,7 +732,8 @@ public extension ManageTrainViewModel {
     }
 
     /// The helper's estimated arrival ("2026-10-12T00:30:00+00:00") as "5:30 pm" in this phone's time zone.
-    internal nonisolated static func arrivalLabel(_ iso: String?) -> String? {
+    /// An arrival in the train's zone (B4).
+    internal nonisolated static func arrivalLabel(_ iso: String?, timeZoneId: String? = nil) -> String? {
         guard let iso, !iso.isEmpty else { return nil }
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -679,7 +742,7 @@ public extension ManageTrainViewModel {
         guard let date = fractional ?? parser.date(from: iso) else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
+        formatter.timeZone = timeZoneId.flatMap(TimeZone.init(identifier:)) ?? .current
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date).lowercased()
     }

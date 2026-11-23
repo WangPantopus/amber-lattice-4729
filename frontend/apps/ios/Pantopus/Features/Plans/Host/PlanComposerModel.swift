@@ -66,6 +66,7 @@ final class PlanComposerModel {
     let repeating = PlanRepeatDraft()
     /// Plans steps 3 and 4: the newer kinds' choices and an online plan's link.
     let more = PlanMoreDraft()
+    let money = PlanMoneyDraft() // Plans for the holidays: a business's deal, price and bill here
 
     private(set) var isPosting = false
     var postError: String?
@@ -74,7 +75,7 @@ final class PlanComposerModel {
     private(set) var hostName = "You"
     var hostedAgainFrom: String?
     private(set) var verifiedAddress: Bool
-    @ObservationIgnored private var autoTitle: String?
+    @ObservationIgnored var autoTitle: String?
     @ObservationIgnored private var kindChosen: Bool
 
     private let api: APIClient
@@ -190,7 +191,7 @@ final class PlanComposerModel {
         if effectiveTitle.trimmingCharacters(in: .whitespaces).isEmpty { return "Give your plan a title." }
         if whereKind == .publicPlace, place == nil { return "Choose a place." }
         if whereKind == .home, home == nil { return "Add your home to host there, or choose a public place." }
-        if let onlineProblem { return onlineProblem }
+        if let problem = onlineProblem ?? extrasProblem { return problem }
         let span = end.timeIntervalSince(effectiveStart)
         if span < 15 * 60 { return "A plan lasts at least 15 minutes." }
         if span > 8 * 3600 { return "A plan lasts at most 8 hours." }
@@ -282,7 +283,8 @@ final class PlanComposerModel {
             gps: gps
         )
         body.hostedAgainFrom = hostedAgainFrom
-        if isPrivate { privacy.apply(to: &body) }
+        if !isBusiness { body.occasion = privacy.occasion?.key } // H3, on a public or a private plan
+        if isPrivate { privacy.apply(to: &body, offers: self) }
         applyRepeat(to: &body)
         return body
     }
@@ -450,8 +452,7 @@ extension PlanComposerModel {
             more.restore(from: details)
         }
         let rules = Set(card.autoRules ?? [])
-        privacy.audience = card.isPrivate && PlansFlags.shared.privatePlans ? .invited : .nearby
-        privacy.guestsCanInvite = card.guestsCanInvite
+        privacy.restore(from: card)
         alsoHostedBefore = rules.contains(.hostedBefore)
         approval = rules.contains(.anyoneNearby) ? .anyoneNearby : rules.contains(.verified) ? .verifiedAuto : .approveEach
         if card.placeKind == .home {

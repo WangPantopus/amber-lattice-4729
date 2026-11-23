@@ -64,6 +64,25 @@ struct PrivateClaimEvidenceList: Decodable {
 
 struct PrivateClaimEvidenceEnvelope: Decodable {
     let evidence: PrivateClaimEvidenceDTO
+    /// FASTVERIFY phase 4: a bill read at once (`verified`, `needs_review` or `unreadable`), only on an upload by
+    /// someone who holds a claim while `home_fast_verify_document` is on. Never fails the envelope.
+    let fastCheck: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case evidence
+        case fastCheck = "fast_check"
+    }
+
+    private enum FastCheckKeys: String, CodingKey {
+        case result
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        evidence = try c.decode(PrivateClaimEvidenceDTO.self, forKey: .evidence)
+        let fast = try? c.nestedContainer(keyedBy: FastCheckKeys.self, forKey: .fastCheck)
+        fastCheck = try? fast?.decodeIfPresent(String.self, forKey: .result)
+    }
 }
 
 struct PrivateClaimEvidenceVerification: Decodable {

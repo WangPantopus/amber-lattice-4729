@@ -329,3 +329,108 @@ public struct EnableSupportTrainFundBody: Encodable, Sendable {
         case goalAmount = "goal_amount"
     }
 }
+
+// MARK: - Where help goes, the train's settings, invitations
+
+/// `delivery_location` on create and `PATCH /:id`: one of the organizer's homes (`mode: home`, `home_id`), or a
+/// typed or GPS address with its point.
+public struct SupportTrainDeliveryLocationBody: Encodable, Sendable, Hashable {
+    public let mode: String
+    public let homeId: String?
+    public let latitude: Double?
+    public let longitude: Double?
+    public let address: String?
+    public let city: String?
+    public let state: String?
+    public let zip: String?
+    public let placeId: String?
+
+    public static func home(_ homeId: String) -> SupportTrainDeliveryLocationBody {
+        SupportTrainDeliveryLocationBody(
+            mode: "home",
+            homeId: homeId,
+            latitude: nil,
+            longitude: nil,
+            address: nil,
+            city: nil,
+            state: nil,
+            zip: nil,
+            placeId: nil
+        )
+    }
+
+    public init(
+        mode: String,
+        homeId: String?,
+        latitude: Double?,
+        longitude: Double?,
+        address: String?,
+        city: String?,
+        state: String?,
+        zip: String?,
+        placeId: String?
+    ) {
+        self.mode = mode
+        self.homeId = homeId
+        self.latitude = latitude
+        self.longitude = longitude
+        self.address = address
+        self.city = city
+        self.state = state
+        self.zip = zip
+        self.placeId = placeId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mode, latitude, longitude, address, city, state, zip
+        case homeId = "home_id"
+        case placeId = "place_id"
+    }
+}
+
+/// `PATCH /:id` body. Only the fields set are sent.
+public struct SupportTrainPatchBody: Encodable, Sendable {
+    public let sharingMode: String?
+    public let deliveryLocation: SupportTrainDeliveryLocationBody?
+
+    public init(sharingMode: String? = nil, deliveryLocation: SupportTrainDeliveryLocationBody? = nil) {
+        self.sharingMode = sharingMode
+        self.deliveryLocation = deliveryLocation
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sharingMode = "sharing_mode"
+        case deliveryLocation = "delivery_location"
+    }
+}
+
+/// `POST /:id/invites` body (by account).
+public struct SupportTrainInviteBody: Encodable, Sendable {
+    public let inviteeUserId: String
+
+    public init(inviteeUserId: String) {
+        self.inviteeUserId = inviteeUserId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case inviteeUserId = "invitee_user_id"
+    }
+}
+
+/// One row of `GET /:id/invites` (only what Manage lists).
+public struct SupportTrainInviteDTO: Decodable, Sendable, Hashable, Identifiable {
+    public let id: String
+    public let inviteeUserId: String?
+    public let status: String?
+    public let user: SupportTrainHelperDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case inviteeUserId = "invitee_user_id"
+        case user = "User"
+    }
+}
+
+public struct SupportTrainInvitesResponse: Decodable, Sendable {
+    public let invites: [SupportTrainInviteDTO]
+}

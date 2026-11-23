@@ -132,6 +132,12 @@ enum MailPaper {
     static let cardEdge = Color(red: 110 / 255, green: 80 / 255, blue: 30 / 255).opacity(0.13)
     static let cardGrain = Color(red: 120 / 255, green: 95 / 255, blue: 60 / 255).opacity(0.07)
     static let cardShadow = Color(red: 60 / 255, green: 40 / 255, blue: 10 / 255)
+    /// The mantel at the top of Mail (experience plan Part 7): the warm light behind the cards and their shadow on the
+    /// wall, light and dark.
+    static let mantelGlowLight = Color(red: 255 / 255, green: 226 / 255, blue: 170 / 255).opacity(0.55)
+    static let mantelGlowDark = Color(red: 255 / 255, green: 196 / 255, blue: 120 / 255).opacity(0.16)
+    static let mantelWallShadowLight = Color(red: 60 / 255, green: 40 / 255, blue: 10 / 255).opacity(0.26)
+    static let mantelWallShadowDark = Color.black.opacity(0.6)
     /// The back: fountain-pen blue, its faint rules, who it's from, the footer.
     static let cardInk = Color(red: 0x2C / 255, green: 0x4A / 255, blue: 0x8A / 255)
     static let cardRuleLine = Color(red: 120 / 255, green: 100 / 255, blue: 70 / 255).opacity(0.22)

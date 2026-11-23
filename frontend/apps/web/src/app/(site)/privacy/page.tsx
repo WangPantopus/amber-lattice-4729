@@ -76,7 +76,7 @@ export default function PrivacyPage() {
             <p>We collect the minimum data needed to operate the platform and keep communities safe. Here is what that includes:</p>
             <PolicyList items={[
               { label: 'Account information', detail: 'Name, email address or phone number, and profile details you choose to provide (bio, photo, skills, interests).' },
-              { label: 'Content you create', detail: 'Posts, messages, gig listings, offers, reviews, any files you upload, what you ask the Pantopus assistant, and anything you ask it to remember.' },
+              { label: 'Content you create', detail: 'Posts, messages, gig listings, offers, reviews, any files you upload, what you ask the Pantopus assistant, anything you ask it to remember, and the Christmas card signature you choose to keep for your next cards (only you see it until you send a card, and you can forget it any time).' },
               { label: 'Home and residency information (optional)', detail: 'If you claim or join a home, we collect address details and residency relationship (owner, tenant, etc.) used for home features and mailbox routing. Your precise address is not publicly displayed.' },
               { label: 'Location data (optional)', detail: 'General location for map and local discovery features, only if you grant permission. You can use most features without sharing precise location.' },
               { label: 'Usage and device data', detail: 'Basic analytics such as feature usage patterns, device type, and error logs used to improve reliability and prevent abuse.' },
@@ -102,7 +102,7 @@ export default function PrivacyPage() {
             <div className="space-y-4 mt-4">
               <div className="bg-app-surface-raised/60 border border-app-border-subtle rounded-xl p-5">
                 <p className="font-semibold text-app-text dark:text-white text-sm mb-1">Your address is not publicly displayed by default.</p>
-                <p className="text-app-text-secondary dark:text-app-text-muted text-sm">Home claim and residency information is used internally for routing and feature access. Neighborhood-level presence (e.g., posts shown as &quot;nearby&quot;) does not reveal your exact address.</p>
+                <p className="text-app-text-secondary dark:text-app-text-muted text-sm">Home claim and residency information is used internally for routing and feature access. Area-level presence (e.g., posts shown as &quot;nearby&quot;) does not reveal your exact address.</p>
               </div>
               <div className="bg-app-surface-raised/60 border border-app-border-subtle rounded-xl p-5">
                 <p className="font-semibold text-app-text dark:text-white text-sm mb-1">Audience controls are yours to set.</p>
@@ -121,7 +121,7 @@ export default function PrivacyPage() {
 
           <PolicySection title="5. AI features and the Pantopus assistant">
             <p>
-              Pantopus has an assistant, called Pantopus in the app, that answers questions about your home, your neighborhood and what you have in Pantopus, explains how the app works, and prepares posts, plans, reminders and replies for you to check. It is not a general chatbot: it declines requests about anything else. AI also writes the text of your daily briefings and reads photos and PDFs you choose to share, such as a hauler&apos;s flyer, a radon lab report or a warranty.
+              Pantopus has an assistant, called Pantopus in the app, that answers questions about your home, your area and what you have in Pantopus, explains how the app works, and prepares posts, plans, reminders and replies for you to check. It is not a general chatbot: it declines requests about anything else. AI also writes the text of your daily briefings and reads photos and PDFs you choose to share, such as a hauler&apos;s flyer, a radon lab report or a warranty.
             </p>
             <p>
               These features run on Claude, an AI model made by Anthropic. Anthropic processes this information on our behalf, as our service provider. When you use them, we send Anthropic what the feature needs to answer you:

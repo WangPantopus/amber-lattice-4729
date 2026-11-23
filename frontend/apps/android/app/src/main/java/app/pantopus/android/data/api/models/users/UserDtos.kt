@@ -113,6 +113,40 @@ data class ProfileResponse(
     val user: UserProfile,
     /** Shape varies by invite service — decoded lazily. */
     @Json(name = "invite_progress") val inviteProgress: JsonValue?,
+    /** The guidance cards' switch and record (`ui/guidance`); absent from older servers. */
+    val guidance: GuidanceDto? = null,
+    /** The house on Today's switch (`TODAY_HOUSE`); absent from older servers, which means off. */
+    @Json(name = "today_house") val todayHouse: Boolean? = null,
+)
+
+/**
+ * The profile's `guidance` (guidance cards for new users, founder 2026-11-16): the server's switch, whether the account
+ * is under 14 days old, and the cards the person has closed on any app. `POST /api/users/guidance/shown` answers the same.
+ */
+@JsonClass(generateAdapter = true)
+data class GuidanceDto(
+    val enabled: Boolean = false,
+    @Json(name = "new_account") val newAccount: Boolean = false,
+    val seen: Map<String, GuidanceSeenDto> = emptyMap(),
+)
+
+/** One closed card in [GuidanceDto.seen]: how many times it closed, and when last. */
+@JsonClass(generateAdapter = true)
+data class GuidanceSeenDto(
+    val times: Int = 1,
+    @Json(name = "last_at") val lastAt: String? = null,
+)
+
+/** `{ guidance }`, the answer of the guidance routes. */
+@JsonClass(generateAdapter = true)
+data class GuidanceEnvelope(
+    val guidance: GuidanceDto,
+)
+
+/** `POST /api/users/guidance/shown` body: the card that closed. */
+@JsonClass(generateAdapter = true)
+data class GuidanceShownRequest(
+    val card: String,
 )
 
 /**

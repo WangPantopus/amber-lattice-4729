@@ -44,9 +44,9 @@ const VERDICT_SCHEMA = toClaudeSchema({
 });
 
 const TONE_MESSAGES = {
-  insults: 'This may read as heated: it calls someone names. Neighbors answer a calm post more readily.',
+  insults: 'This may read as heated: it calls someone names. People answer a calm post more readily.',
   threat: 'This may read as a threat. Saying what happened and what would help gets a better answer.',
-  shaming: 'This may read as calling out a neighbor. Describing what happened, without who, gets more help.',
+  shaming: 'This may read as calling someone out. Describing what happened, without who, gets more help.',
   yelling: 'This may read as shouting (capitals or many exclamation marks). A calm post gets more helpful replies.',
   none: 'This may read as heated. A calm post gets more helpful replies.',
 };

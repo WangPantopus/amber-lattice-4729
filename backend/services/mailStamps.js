@@ -48,8 +48,8 @@ async function rpc(name, args) {
 async function balance(user) {
   return rpc("mail_stamp_balance", { p_user: user });
 }
-// The latest stamp moves for the Stamps wallet, newest first: the free three, books, cards sent, stamps returned and
-// refunded books. Only kinds and counts; who a card went to stays in Sent.
+// The latest stamp moves for the Stamps wallet, newest first: the free three, books, cards sent, stamps returned,
+// refunded books and a free one for someone who joined (rewardJoin, kind "join"). Only kinds and counts; who a card went to stays in Sent.
 async function history(user, limit = 30) {
   const { data, error } = await db
     .from("MailStampLedger")
@@ -78,6 +78,48 @@ async function usedTotal(user) {
   };
   const [sent, returned] = await Promise.all([count("send"), count("return")]);
   return Math.max(0, sent - returned);
+}
+// The free stamps every account starts with (the database's welcome row, mail_stamp_balance). The public card pages
+// say so (GET /api/mailbox/cards/designs).
+const FREE_CARDS = 3;
+// A free stamp for the sender whose card brought someone in: the person it went to (by email or by link) made their
+// account after it was sealed, and now has the card. One for each new person, ever (the ledger's unique event key),
+// in the free bucket, while cards can still be sent. Every card costs its sender a stamp, so this gives back at most
+// what the cards that brought people in cost. Never throws: a missed reward must not fail the claim. Answers whether
+// one was given.
+async function rewardJoin({ senderId, joinerId, mailId, sentAt }) {
+  try {
+    if (!enabled(senderId)) return false;
+    const zone =
+      (await mailDelivery.personTimeZone(senderId)) ||
+      mailDelivery.FALLBACK_TIME_ZONE;
+    if (!holidayCards.seasonOpen(zone)) return false;
+    const { data: joiner, error } = await db
+      .from("User")
+      .select("created_at")
+      .eq("id", joinerId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!joiner || !(Date.parse(joiner.created_at) > Date.parse(sentAt)))
+      return false;
+    const { error: refused } = await db.from("MailStampLedger").insert({
+      user_id: senderId,
+      event_key: `join:${joinerId}`,
+      bucket: "free",
+      delta: 1,
+      mail_id: mailId,
+    });
+    // Already given for this person (to this sender or another whose card they opened first).
+    if (refused?.code === "23505") return false;
+    if (refused) throw new Error(refused.message);
+    return true;
+  } catch (err) {
+    require("../utils/logger").warn("Card join reward not given", {
+      mailId,
+      error: err.message,
+    });
+    return false;
+  }
 }
 // At most this many cards in any 24 hours, cards taken back included: the database refuses the next one
 // (mail_stamp_card_accounting). A list's look counts them the same way so it can say which cards would go.
@@ -363,7 +405,9 @@ async function stripeChargeChanged(object, connectedAccount) {
 }
 module.exports = {
   BOOKS,
+  FREE_CARDS,
   enabled,
+  rewardJoin,
   salesOpen,
   balance,
   history,

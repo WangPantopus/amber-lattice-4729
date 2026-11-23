@@ -372,12 +372,17 @@ public final class DevicesViewModel {
             parts.append(model)
         }
         if let os = device.osVersion, !os.isEmpty {
-            parts.append("\(osName(device.platform)) \(os)")
+            parts.append("\(isIPad(device) ? "iPadOS" : osName(device.platform)) \(os)")
         }
         if let app = device.appVersion, !app.isEmpty {
             parts.append("Pantopus \(app)")
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// An iOS device whose model is an iPad ("iPad16,3"): its row says iPadOS and shows a tablet.
+    static func isIPad(_ device: AuthDeviceDTO) -> Bool {
+        device.platform?.lowercased() == "ios" && (device.model ?? "").hasPrefix("iPad")
     }
 
     static func platformLabel(_ platform: String?) -> String {

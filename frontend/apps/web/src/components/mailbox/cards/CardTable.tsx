@@ -9,15 +9,17 @@
 // nothing about the server: reading it marks nothing.
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import TravelPostmarks, { travelCameLine } from './TravelPostmarks';
+import travelStyles from './CardTravel.module.css';
 import { cardMood, cardStampFile, cardTrimmedPicture, daysUntil, firstNameOf, postmarkDay, seededRandom, TABLE_ART, tableEdge, tableTint } from './cardArt';
 import { cardPen } from './cardFont';
 import { playCardSound, preloadCardSounds } from './cardSounds';
-import type { CardPhoto, CardSignature, CardVoice } from '@pantopus/api';
+import type { CardPhoto, CardSignature, CardVoice, CardTravel } from '@pantopus/api';
 import CardPrint, { type PrintSource } from './CardPrint';
 import CardGreeting, { spokenLength } from './CardGreeting';
-import { PaperBack, PaperFront } from './CardPaper';
+import { PaperBack, PaperFront, PaperLeaf, useNoteLeaves } from './CardPaper';
 import { CardTableEngine, type TableState } from './cardTableEngine';
 import { useDarkPage } from './useDarkPage';
 import styles from './CardTable.module.css';
@@ -54,6 +56,8 @@ export type TableCard = {
   caption: string | null;
   paper: string;
   table?: string | null;
+  /** The table it opens on, as the server names it (absent: by its number, cardMood). */
+  mood?: string | null;
   year: number;
   sealed: boolean;
   sealed_until?: string | null;
@@ -65,9 +69,25 @@ export type TableCard = {
   photo?: CardPhoto | null;
   /** The card's own voice greeting (memories plan step 7); null while sealed. Plays only when pressed. */
   voice?: CardVoice | null;
+  /** A card that travels (server key card_travel): the postmarks of the towns on the way, and how far it came. */
+  travel?: Pick<CardTravel, 'postmarks' | 'miles' | 'towns'> | null;
 };
 
-export type TableMenuItem = { label: string; onSelect: () => void };
+/** A line in the ⋯ menu, or a quiet button under the card. A quiet button may also carry its short words (used when two
+ *  don't fit side by side) and what a screen reader says (the full words, whichever show). */
+export type TableMenuItem = { label: string; onSelect: () => void; short?: string; spoken?: string };
+
+/** A quiet button in the one row under the card (Fix 1 of the November 17 design check). */
+type QuietButton = { key: string; full: string; short: string; spoken: string; testId: string; onSelect: () => void };
+
+/** A reply lying on the card (Write back, mail-cards-experience Part 3): the replier's sheet, drawn as the card's back. */
+export type TableReply = {
+  note: string;
+  fromName: string;
+  signature?: CardSignature | null;
+  /** The day it was written, for Read it in print. */
+  writtenOn?: string | null;
+};
 
 /** Sealing it by hand (design plan Part 2): the sender's own moment on the table, before the card goes. */
 export type SendMoment = {
@@ -108,6 +128,13 @@ function daysWords(until: string | null | undefined) {
   };
 }
 
+/** The print's first line: "FROM MAYA · NOVEMBER 15", the day it was mailed (just "FROM MAYA" without one). */
+function printFrom(first: string, mailedOn: string | null | undefined): string {
+  const date = mailedOn ? new Date(mailedOn.length === 10 ? `${mailedOn}T12:00:00` : mailedOn) : null;
+  const day = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
+  return `FROM ${first}${day ? ` · ${day}` : ''}`.toUpperCase();
+}
+
 function Art({ src, ...rest }: { src: string; alt?: string } & React.ImgHTMLAttributes<HTMLImageElement>) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={src} alt="" {...rest} />;
@@ -146,7 +173,12 @@ export default function CardTable({
   closeLabel = 'Back to the Mailbox',
   menu = [],
   sendBack = null,
+  writeBack = null,
+  reply = null,
+  nextCard = null,
   sendMoment = null,
+  passOn = null,
+  journey = null,
   onShare,
   onClose,
   overlay,
@@ -170,8 +202,19 @@ export default function CardTable({
   menu?: TableMenuItem[];
   /** Send one back (design plan Part 3): a quiet button under "Turn it back" once the card is turned over. */
   sendBack?: TableMenuItem | null;
+  /** "Write back to {first name}" or "You wrote back" (Part 3): a quiet button once the card is turned over; "Share this
+   *  card" then keeps only its corner button and its line in the ⋯ menu. */
+  writeBack?: TableMenuItem | null;
+  /** The reply on the card (the joined pair): it lands over the card's lower part. The table keeps room for it. */
+  reply?: TableReply | null;
+  /** Open the next card (mail-cards-experience Part 4): how many more wait, and the move to the oldest of them. */
+  nextCard?: { count: number; onOpen: () => void } | null;
   /** Sealing it by hand instead of opening it. */
   sendMoment?: SendMoment | null;
+  /** "Pass it on" (travelling card Part 4): beside "Turn it back" once the card is turned over; filled, or quiet after one. */
+  passOn?: (TableMenuItem & { quiet?: boolean }) | null;
+  /** "See its journey" (Part 4): the first quiet button once the card is turned over. */
+  journey?: TableMenuItem | null;
   onShare?: () => void;
   onClose: () => void;
   /** Sheets and dialogs that belong over the table. */
@@ -185,6 +228,13 @@ export default function CardTable({
   mediaFrom?: ((fileId: string) => PrintSource) | null;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // The reply on the card (Part 3): in front as it lands; a tap on the card or on the sheet brings either forward.
+  const replyRef = useRef(reply);
+  replyRef.current = reply;
+  const [replyFront, setReplyFront] = useState(true);
+  const replyFrontRef = useRef(replyFront);
+  replyFrontRef.current = replyFront;
+  const [replyLanded, setReplyLanded] = useState(false);
   const engineRef = useRef<CardTableEngine | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -194,12 +244,35 @@ export default function CardTable({
   const momentRef = useRef(sendMoment);
   momentRef.current = sendMoment;
   const [menuOpen, setMenuOpen] = useState(false);
+  // The quiet row's words: both full, both short, or only the first (full, else short) where two don't fit side by side.
+  const quietRowRef = useRef<HTMLDivElement | null>(null);
+  const quietMeasureRef = useRef<HTMLDivElement | null>(null);
+  const [rowFit, setRowFit] = useState<'full' | 'short' | 'one' | 'oneShort'>('full');
+  const fitQuietRow = useCallback(() => {
+    const row = quietRowRef.current;
+    const measure = quietMeasureRef.current;
+    const bottom = row?.closest('[data-el="bottom"]') as HTMLElement | null;
+    if (!row || !measure || !bottom) return;
+    const box = getComputedStyle(bottom);
+    const room = bottom.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+    const widths = (which: string) => Array.from(measure.querySelectorAll<HTMLElement>(`[data-words="${which}"]`))
+      .map((el) => el.getBoundingClientRect().width);
+    const across = (list: number[]) => list.reduce((a, b) => a + b, 0) + gap * Math.max(0, list.length - 1);
+    const full = widths('full');
+    const short = widths('short');
+    if (!full.length || room <= 0) return;
+    setRowFit(across(full) <= room ? 'full' : across(short) <= room ? 'short' : full[0] <= room ? 'one' : 'oneShort');
+  }, []);
+  // Measured after every render (the words change with the card's side and the reply), and again when the controls
+  // change size (window width, larger text).
+  useLayoutEffect(() => { fitQuietRow(); });
   const [controlsHidden, setControlsHidden] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef(0);
   const from = firstNameOf(fromName);
   // The collection's mood (design plan Part 7): snow, candlelight or Santa's bounce. Off with Reduce Motion (CSS).
-  const mood = cardMood(card.number, card.design);
+  const mood = cardMood(card.number, card.design, card.mood);
   // A photo from someone who isn't the reader's connection stays covered until it's tapped (memories contract 10).
   const [uncovered, setUncovered] = useState(false);
   // The photo is fetched only once the card has been turned over, as on the phones: nothing at open or after a reload,
@@ -210,11 +283,14 @@ export default function CardTable({
   const photo = !isLetter && !card.sealed && !sendMoment && mediaFrom ? card.photo ?? null : null;
   const voice = !isLetter && !card.sealed && !sendMoment && mediaFrom ? card.voice ?? null : null;
   const hasMedia = Boolean(photo || voice);
+  // A long note runs onto a second leaf on a table that can be turned (Part 9); the sealing moment keeps one side.
+  const leavesOn = !isLetter && !card.sealed && !sendMoment;
+  const leaves = useNoteLeaves(leavesOn ? note : '', card.number, leavesOn);
   // The envelope's pictures: the cream set for a letter.
   const envArt = (name: string) => art(isLetter ? `cream-${name}` : name);
   const waxWhole = isLetter ? LETTER_WAX_WHOLE : WAX_WHOLE;
   const waxCracked = isLetter ? LETTER_WAX_CRACKED : WAX_CRACKED;
-  const stampSrc = isLetter ? LETTER_STAMP : cardStampFile(card.number, card.design);
+  const stampSrc = isLetter ? LETTER_STAMP : cardStampFile(card.number, card.design, card.mood);
   const letterRef = useRef(letter);
   letterRef.current = letter;
   const days = daysWords(card.sealed_until);
@@ -237,12 +313,19 @@ export default function CardTable({
       sending: Boolean(momentRef.current),
       mood: isLetter ? undefined : mood,
       media: hasMedia,
+      reply: Boolean(replyRef.current),
       wholeSrc: waxWhole,
       crackedSrc: waxCracked,
       callbacks: {
         onState: setUi,
         onRefused: () => say(daysWords(card.sealed_until).notYet),
         onTableTap: () => setControlsHidden((hidden) => !hidden),
+        // The joined pair: a tap on the card, with the reply in front, brings the card to the front instead of turning it.
+        onCardTap: () => {
+          if (!replyRef.current || !replyFrontRef.current) return false;
+          setReplyFront(false);
+          return true;
+        },
         onPress: () => setMenuOpen(false),
         // Quiet paper sounds (design plan 8.3), when they're on in Mail Day settings.
         onSound: playCardSound,
@@ -305,11 +388,61 @@ export default function CardTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
+  // The engine knows when the note runs onto a second leaf (Part 9): then "Read on" and a tap lift its first leaf.
+  const twoLeaves = Boolean(leaves);
+  useEffect(() => { if (mounted) engineRef.current?.setLeaves(twoLeaves); }, [mounted, twoLeaves]);
+
   // Read the verse (design plan 6.2): the bookmark over the table.
   const [verseOpen, setVerseOpen] = useState(false);
   const verseCloseRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { if (verseOpen) verseCloseRef.current?.focus(); }, [verseOpen]);
-  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen); }, [paused, verseOpen]);
+  // Read it in print (mail-cards-experience Part 2): the note in plain type on the same bookmark. The browser's Back
+  // closes it too: opening it adds a history entry with the page's own state, which Back (or closing it) takes away.
+  const [printOpen, setPrintOpen] = useState(false);
+  // What the bookmark prints: the card's note, or the reply lying on it (Part 3).
+  const [printWhat, setPrintWhat] = useState<'card' | 'reply'>('card');
+  const printCloseRef = useRef<HTMLButtonElement | null>(null);
+  const printPushed = useRef(false);
+  useEffect(() => { if (printOpen) printCloseRef.current?.focus({ preventScroll: true }); }, [printOpen]);
+  const openPrint = useCallback((what: 'card' | 'reply' = 'card') => {
+    setMenuOpen(false);
+    setPrintWhat(what);
+    setPrintOpen(true);
+    try { window.history.pushState(window.history.state, ''); printPushed.current = true; } catch { /* no history: Close still works */ }
+  }, []);
+  const closePrint = useCallback(() => {
+    setPrintOpen(false);
+    if (printPushed.current) { printPushed.current = false; window.history.back(); }
+  }, []);
+  useEffect(() => {
+    if (!printOpen) return undefined;
+    const onBack = () => { printPushed.current = false; setPrintOpen(false); };
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, [printOpen]);
+  // The reply lands on the card once it lies out (Part 3): the set-down sound, and one tap you can feel where the phone
+  // lets the page ask for it.
+  useEffect(() => {
+    if (!reply || replyLanded || ui.step !== 'out') return undefined;
+    const timer = window.setTimeout(() => {
+      setReplyLanded(true);
+      playCardSound('card-down');
+      try { navigator.vibrate?.(12); } catch { /* not offered */ }
+    }, 420);
+    return () => window.clearTimeout(timer);
+  }, [reply, replyLanded, ui.step]);
+  // Larger text than the browser's default (1.15 times or more, as on Android): "Read it in print" is a full button.
+  const [largeText, setLargeText] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    setLargeText(parseFloat(getComputedStyle(document.documentElement).fontSize) >= 16 * 1.15);
+  }, [mounted]);
+  // The card has been enlarged once, so the hint that says how has done its job.
+  const [enlargedOnce, setEnlargedOnce] = useState(false);
+  if (ui.enlarged && !enlargedOnce) setEnlargedOnce(true);
+  // The card's own photo, opened over the window from its print: the table rests under it, and its keys are the photo's.
+  const [photoOpen, setPhotoOpen] = useState(false);
+  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen || photoOpen || printOpen); }, [paused, verseOpen, photoOpen, printOpen]);
 
   // "Open it again".
   const playedRef = useRef(replay);
@@ -326,15 +459,15 @@ export default function CardTable({
     const stage = stageRef.current;
     if (!mounted || !stage || typeof ResizeObserver === 'undefined') return undefined;
     const bottom = stage.querySelector('[data-el="bottom"]') as HTMLElement;
-    const observer = new ResizeObserver(() => { engineRef.current?.layout(); engineRef.current?.wake(); });
+    const observer = new ResizeObserver(() => { fitQuietRow(); engineRef.current?.layout(); engineRef.current?.wake(); });
     observer.observe(bottom);
     return () => observer.disconnect();
-  }, [mounted]);
+  }, [mounted, fitQuietRow]);
 
   useEffect(() => {
     if (!mounted) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (paused) return;
+      if (paused || photoOpen) return;
       const stage = stageRef.current;
       const active = document.activeElement;
       const here = !active || active === document.body || Boolean(stage?.contains(active));
@@ -342,6 +475,9 @@ export default function CardTable({
       if (event.key === 'Escape' && verseOpen) {
         event.preventDefault();
         setVerseOpen(false);
+      } else if (event.key === 'Escape' && printOpen) {
+        event.preventDefault();
+        closePrint();
       } else if (event.key === 'Escape' && ui.enlarged) {
         // An enlarged card comes back to its size first.
         event.preventDefault();
@@ -368,7 +504,7 @@ export default function CardTable({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [mounted, paused, menuOpen, onClose, ui.step, ui.enlarged, verseOpen]);
+  }, [mounted, paused, photoOpen, menuOpen, onClose, ui.step, ui.enlarged, verseOpen, printOpen, closePrint]);
 
   // Focus comes to the table as it opens, and goes back where it was when it closes.
   useEffect(() => {
@@ -394,6 +530,7 @@ export default function CardTable({
   // Sealing it, the card isn't sealed to the sender: only its envelope says so once it's addressed.
   const sealed = card.sealed && !sendMoment;
   let words = '';
+  let wordsSub: string | null = null;
   let primary = '';
   let hint = '';
   const reduce = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -420,6 +557,8 @@ export default function CardTable({
     else if (step === 'out') { primary = 'Read the letter'; }
   } else if (step === 'front') {
     words = sealed ? `${from} sealed this card.` : `A Christmas card from ${from}.`;
+    // A travelling card past its first stop (Part 3): how far it came, under the words.
+    if (!sealed) wordsSub = travelCameLine(card.travel);
     primary = 'Turn it over';
     hint = envTurnedOnce ? 'or swipe it' : 'or swipe it, the way you’d turn it in your hand';
   } else if (step === 'back') {
@@ -429,17 +568,61 @@ export default function CardTable({
     primary = 'Take the card out';
     hint = 'or pull it out with your finger';
   } else if (step === 'out') {
-    primary = backUp ? 'Turn it back' : 'Turn it over';
+    // A long note's first leaf (Part 9): "Read on" lifts it; the card's own back, the second leaf, turns it back.
+    primary = backUp ? (twoLeaves && ui.leafUp ? 'Read on' : 'Turn it back') : 'Turn it over';
     if (!turnedOnce) hint = 'or swipe it';
+    // Until it's been enlarged once (the card could always be enlarged, but nothing said so).
+    else if (!enlargedOnce) hint = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches ? 'double-tap the card to enlarge it' : 'double-click the card to enlarge it';
     else if (!heldOnce && typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches) hint = 'press and hold, then move your finger: the light moves';
   }
   // Enlarged (design plan 6.1): how to bring it back. A verse card on the table offers its verse in place of the hint.
   if (!sendMoment && step === 'out' && ui.enlarged) {
     hint = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches ? 'double-tap to bring it back' : 'double-click to bring it back';
   }
-  const readVerse = !sendMoment && !isLetter && !sealed && step === 'out' && !ui.enlarged && Boolean(card.verse);
+  // Read it in print (Part 2): note side up, the card not sealed and not enlarged, in place of that side's hint. A verse
+  // card keeps "Read the verse" on its picture side.
+  const cardPrintable = !sendMoment && !isLetter && !sealed && Boolean(note.trim());
+  // A reply in front prints its own words (Part 3).
+  const replyPrintable = !sendMoment && Boolean(reply?.note.trim());
+  const printable = cardPrintable || replyPrintable;
+  const printsReply = replyPrintable && replyLanded && replyFront && step === 'out' && !ui.enlarged;
+  const readPrint = printsReply || (cardPrintable && step === 'out' && backUp && !ui.enlarged);
+  const readVerse = !sendMoment && !isLetter && !sealed && step === 'out' && !ui.enlarged && Boolean(card.verse) && !readPrint;
+  // With larger text it is a full button beside "Turn it back", and the line under it stays empty.
+  const printButton = readPrint && largeText;
+  const printLine = readPrint && !largeText;
   const turnedOver = step === 'out' && backUp;
+  // Once the card has been turned over (and after it's turned back), while it lies on the table, not enlarged.
+  const nextShown = Boolean(nextCard) && !sendMoment && !isLetter && step === 'out' && turnedOnce && !ui.enlarged;
   const quietShare = Boolean(onShare) && !sendMoment && !isLetter && !sealed;
+  // Under the line slot, ONE row of quiet buttons, at most two side by side, never a second row (the design check of
+  // November 17, Fix 1): Open the next card when cards wait, then Write back (or You wrote back), then Send {first name}
+  // a card, as on the iPhone and Android. On a reader's card (it has a ⋯ menu) "Share this card" is never in the row: it
+  // keeps its corner button and its ⋯ line. The sender's own look at a card from Sent keeps it as its one quiet button.
+  // The row's room is kept while any of them can be offered, so the card never moves when they show.
+  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || journey || writeBack || sendBack || (quietShare && !menu.length));
+  const quietButtons = ([
+    nextCard && nextShown ? {
+      key: 'next', full: `Open the next card (${nextCard.count} more)`, short: `Next card (${nextCard.count} more)`,
+      spoken: `Open the next card, ${nextCard.count} more waiting`, testId: 'cardTableNextCard', onSelect: nextCard.onOpen,
+    } : null,
+    // A travelling card (Part 4): "See its journey" joins the row, before "Write back"; what doesn't fit is under ⋯.
+    journey && turnedOver ? {
+      key: 'journey', full: journey.label, short: journey.short || journey.label, spoken: journey.spoken || journey.label,
+      testId: 'cardTableJourney', onSelect: journey.onSelect,
+    } : null,
+    writeBack && turnedOver ? {
+      key: 'write', full: writeBack.label, short: writeBack.short || writeBack.label, spoken: writeBack.spoken || writeBack.label,
+      testId: 'cardTableWriteBack', onSelect: writeBack.onSelect,
+    } : null,
+    sendBack && turnedOver ? {
+      key: 'send', full: sendBack.label, short: sendBack.short || sendBack.label, spoken: sendBack.spoken || sendBack.label,
+      testId: 'cardTableSendBack', onSelect: sendBack.onSelect,
+    } : null,
+    quietShare && turnedOver && !menu.length ? {
+      key: 'share', full: 'Share this card', short: 'Share', spoken: 'Share this card', testId: 'cardTableShareQuiet', onSelect: () => onShare?.(),
+    } : null,
+  ].filter(Boolean) as QuietButton[]).slice(0, 2);
   const showTopRight = !sendMoment && !isLetter && (step === 'out' || (sealed && (step === 'back' || step === 'front')));
   // The button is there only when there's something to press: never while things move by themselves.
   const sendButton = !sendMoment || send === 'ready' || send === 'in' || send === 'seal';
@@ -456,11 +639,12 @@ export default function CardTable({
     : sendMoment
     ? [words, send === 'addressed' ? `Addressed to ${toName}.` : '', send === 'sending' ? 'Sealing it.' : ''].filter(Boolean).join(' ')
     : step === 'out' && !sealed
-    ? `Card from ${fromName}: ${captionSentence} On the back: ${note}${mediaSentence}`
-    : `Christmas card from ${fromName}${sealed ? ', sealed until Christmas morning' : ''}`;
+    ? `Card from ${fromName}: ${captionSentence} On the back: ${note}${mediaSentence}${reply ? ` ${reply.fromName} wrote back: ${reply.note}` : ''}`
+    : `Christmas card from ${fromName}${sealed ? ', sealed until Christmas morning' : ''}${wordsSub ? `. ${wordsSub}` : ''}`;
   const day = postmarkDay(mailedOn || new Date().toISOString());
   const [month, date] = day.split(' ');
-  // Shown once it's turned over, and not while it's enlarged (it would lie over them).
+  // On the table once it's turned over (how much of them shows follows the card's own turn, from the engine), and not
+  // while it's enlarged (it would lie over them).
   const mediaShown = hasMedia && turnedOver && !ui.enlarged;
   if (mediaShown && !mediaSeen) setMediaSeen(true);
 
@@ -523,13 +707,48 @@ export default function CardTable({
                 year={card.year}
                 note={sealed ? '' : note}
                 signature={sealed ? null : card.signature}
+                leaves={leaves}
                 className={`${styles.side} ${styles.sideBack}`}
                 style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
               >
                 <SidePieces side="Back" />
               </PaperBack>
+              {/* A long note's first leaf (Part 9): on the back, a hair in front of it, and lifted about its top edge
+                  with the card's own depth (this flip's perspective). */}
+              {leaves ? (
+                <PaperLeaf
+                  leaves={leaves}
+                  paper={card.paper}
+                  lifted={!ui.leafUp}
+                  lying="rotateY(180deg) translateZ(1px)"
+                  className={styles.side}
+                  style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+                />
+              ) : null}
               </>)}
             </div>
+            {/* The reply lying on the card (Part 3): over its printed strip, turned 2°, lower with the note side up (Fix 3 of the
+                design check); a tap on it brings it to the front, a
+                tap on the card takes the card back to the front (the engine's onCardTap). Screen readers hear it in the
+                table's words, and Read it in print prints it. */}
+            {reply ? (
+              <div
+                className={`${styles.replySheet} ${replyLanded ? styles.replyLanded : ''} ${replyFront ? styles.replyFront : ''} ${backUp ? styles.replyOnNote : ''}`}
+                data-ui
+                data-testid="cardTableReply"
+                onClick={() => setReplyFront(true)}
+              >
+                <PaperBack
+                  number={card.number}
+                  paper={card.paper}
+                  fromName={reply.fromName}
+                  year={card.year}
+                  note={reply.note}
+                  signature={reply.signature ?? null}
+                  style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+                />
+              </div>
+            ) : null}
           </div>
           <div className={`${styles.layer} ${styles.lPocketShadow}`} data-el="lPocketShadow"><Art src={envArt('env-pocket-shadow.webp')} /></div>
           <div className={`${styles.layer} ${styles.lPocket}`} data-el="lPocket"><Art src={envArt('env-pocket.webp')} /></div>
@@ -556,8 +775,11 @@ export default function CardTable({
             <Art src={envArt('env-front.webp')} />
             <div className={styles.frontWords}>
               <Art className={styles.stampImg} src={stampSrc} />
-              {/* A letter Pantopus puts straight in the box has no postmark (and the postmark says Christmas). */}
-              {isLetter ? null : (
+              {/* A letter Pantopus puts straight in the box has no postmark (and the postmark says Christmas). A travelling
+                  card carries a postmark for every town on its way (Part 3). */}
+              {!isLetter && card.travel?.postmarks?.length ? (
+                <TravelPostmarks marks={card.travel.postmarks} arrive={!sendMoment && !startOnTable && replay === 0} />
+              ) : isLetter ? null : (
                 <div className={styles.pmBox}>
                   <Art src={art('postmark-blank.webp')} />
                   <svg viewBox="0 0 622 365" aria-hidden="true">
@@ -578,7 +800,11 @@ export default function CardTable({
             drawings 3 and 4), or under it on a narrow table, where the engine keeps them room. Not part of the card: they
             stay put while it moves, and screen readers reach them. */}
         {hasMedia ? (
-          <div className={`${styles.media} ${mediaShown ? styles.mediaShown : ''}`} inert={!mediaShown} data-testid="cardTableMedia">
+          <div
+            className={`${styles.media} ${mediaShown ? styles.mediaShown : ''} ${ui.enlarged ? styles.mediaAway : ''}`}
+            inert={!mediaShown}
+            data-testid="cardTableMedia"
+          >
             {photo ? (
               <div
                 className={styles.mediaPrint}
@@ -598,11 +824,14 @@ export default function CardTable({
                   datedOn={mood === 'nostalgia' ? mailedOn : null}
                   tilt={-3}
                   className="w-full"
+                  opens
+                  onViewing={setPhotoOpen}
+                  live={photo.live && mediaSeen && !(photo.covered && !uncovered) ? mediaFrom!(photo.live.file_id) : null}
                 />
               </div>
             ) : null}
             {voice ? (
-              <div className={`${styles.mediaVoice} ${photo ? '' : styles.mediaVoiceAlone}`} data-ui>
+              <div className={`${styles.mediaVoice} ${mood === 'reverence' ? styles.mediaVoiceGift : ''} ${photo ? '' : styles.mediaVoiceAlone}`} data-ui>
                 <CardGreeting
                   source={mediaFrom!(voice.file_id)}
                   durationMs={voice.duration_ms}
@@ -658,7 +887,10 @@ export default function CardTable({
               ))}
             </div>
           ) : null}
-          <div className={`${styles.words} ${words && !toast ? '' : styles.hidden}`} data-el="words" aria-live="polite">{words}</div>
+          <div className={`${styles.words} ${words && !toast ? '' : styles.hidden}`} data-el="words" aria-live="polite">
+            {words}
+            {wordsSub && words ? <small className={travelStyles.wordsSub} data-el="wordsSub" data-testid="cardTableTravelLine">{wordsSub}</small> : null}
+          </div>
           <div className={`${styles.toast} ${toast ? styles.toastOn : ''}`} role="status">{toast}</div>
           {verseOpen && card.verse ? (
             <div className={styles.bookmarkShade} data-ui onClick={() => setVerseOpen(false)}>
@@ -667,6 +899,7 @@ export default function CardTable({
                 aria-modal="true"
                 aria-labelledby="cardTableVerseRef"
                 className={styles.bookmark}
+                data-scroll
                 data-testid="cardTableVerse"
                 onClick={(event) => event.stopPropagation()}
               >
@@ -677,60 +910,104 @@ export default function CardTable({
               </section>
             </div>
           ) : null}
+          {printOpen && printable ? (
+            <div className={styles.bookmarkShade} data-ui onClick={closePrint}>
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cardTablePrintFrom"
+                className={`${styles.bookmark} ${styles.printSheet}`}
+                data-scroll
+                data-testid="cardTableInPrint"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className={styles.ribbon} aria-hidden="true" />
+                <p id="cardTablePrintFrom" className={styles.printFrom}>
+                  {printWhat === 'reply' && reply ? printFrom(firstNameOf(reply.fromName), reply.writtenOn) : printFrom(from, mailedOn)}
+                </p>
+                <p className={styles.printWords} dir="auto" data-testid="cardTablePrintWords">{printWhat === 'reply' && reply ? reply.note.trim() : note.trim()}</p>
+                <button ref={printCloseRef} type="button" className={styles.bookmarkClose} data-testid="cardTablePrintClose" onClick={closePrint}>Close</button>
+              </section>
+            </div>
+          ) : null}
           <div className={styles.bottom} data-el="bottom">
             {sendMoment && send === 'gone' ? <div className={styles.gone} data-ui data-testid="cardTableGone">{sendMoment.gone}</div> : null}
             <div className={`${styles.act} ${controlsHidden || (sendMoment && send === 'gone') ? styles.hidden : ''}`} data-el="act" style={sendMoment && send === 'gone' ? { display: 'none' } : undefined}>
-              <button
-                type="button"
-                className={`${styles.primary} ${sendButton ? '' : styles.hidden}`}
-                data-ui
-                data-testid={sendMoment ? 'cardTableSendStep' : undefined}
-                aria-hidden={!sendButton}
-                tabIndex={sendButton ? 0 : -1}
-                onClick={() => { setRefusal(null); if (isLetter && step === 'out') { letter?.onOut(); return; } engineRef.current?.primary(); }}
-              >
-                {primary || 'Turn it over'}
-              </button>
-              {/* A verse card: the hint becomes "Read the verse" once the card lies on the table (design plan 6.2). */}
-              {card.verse && !sendMoment ? (
-                // One slot for both, so the card doesn't move when one replaces the other.
+              <div className={styles.primaryRow}>
+                <button
+                  type="button"
+                  className={`${styles.primary} ${sendButton ? '' : styles.hidden}`}
+                  data-ui
+                  data-testid={sendMoment ? 'cardTableSendStep' : undefined}
+                  aria-hidden={!sendButton}
+                  tabIndex={sendButton ? 0 : -1}
+                  aria-label={primary === 'Read on' ? 'Read on, the note continues on a second leaf' : undefined}
+                  onClick={() => { setRefusal(null); if (isLetter && step === 'out') { letter?.onOut(); return; } engineRef.current?.primary(); }}
+                >
+                  {primary || 'Turn it over'}
+                </button>
+                {/* "Pass it on" beside "Turn it back" (travelling card Part 4): filled, or quiet once it went to one person. */}
+                {passOn && turnedOver && !sendMoment && !ui.enlarged ? (
+                  <button
+                    type="button"
+                    className={passOn.quiet ? styles.primary : travelStyles.passOnFilled}
+                    data-ui
+                    data-testid="cardTablePassOn"
+                    onClick={() => { setMenuOpen(false); passOn.onSelect(); }}
+                  >
+                    {passOn.label}
+                  </button>
+                ) : null}
+                {printButton ? (
+                  <button type="button" className={styles.primary} data-ui data-testid="cardTableReadInPrint" onClick={() => openPrint(printsReply ? 'reply' : 'card')}>Read it in print</button>
+                ) : null}
+              </div>
+              {/* A verse card: the hint becomes "Read the verse" once the card lies on the table (design plan 6.2); note
+                  side up, any card's hint becomes "Read it in print" (Part 2). */}
+              {(card.verse || printable) && !sendMoment ? (
+                // One slot for all three, so the card doesn't move when one replaces another.
                 <div className={styles.hintSlot}>
                   {readVerse ? (
                     <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadVerse" onClick={() => { setMenuOpen(false); setVerseOpen(true); }}>
                       Read the verse
                     </button>
-                  ) : <div className={styles.hint}>{hint}</div>}
+                  ) : printLine ? (
+                    <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadInPrint" onClick={() => openPrint(printsReply ? 'reply' : 'card')}>
+                      Read it in print
+                    </button>
+                  ) : <div className={styles.hint}>{readPrint ? '' : hint}</div>}
                 </div>
               ) : <div className={styles.hint}>{hint}</div>}
-              {/* Its room is kept while it can be offered, so the card never moves when it shows. Once the card is turned
-                  over: "Send {first name} a card" and, quietly beside it, "Share this card" (design plan 11.1; the corner
-                  icon stays). */}
-              {sendBack || quietShare ? (
-                <div className={`${styles.quietRow} ${turnedOver ? '' : styles.hidden}`} aria-hidden={!turnedOver}>
-                  {sendBack ? (
+              {/* One row of quiet buttons, at most two (Fix 1). Its room is kept while any can be offered, so the card never
+                  moves when they show; screen readers get the full words whichever show. */}
+              {rowRoom ? (
+                <div
+                  ref={quietRowRef}
+                  className={`${styles.quietRow} ${quietButtons.length ? '' : styles.hidden}`}
+                  aria-hidden={!quietButtons.length}
+                  data-testid="cardTableQuietRow"
+                >
+                  {(rowFit === 'one' || rowFit === 'oneShort' ? quietButtons.slice(0, 1) : quietButtons).map((button) => (
                     <button
+                      key={button.key}
                       type="button"
                       className={styles.quiet}
                       data-ui
-                      data-testid="cardTableSendBack"
-                      tabIndex={turnedOver ? 0 : -1}
-                      onClick={() => { setMenuOpen(false); sendBack.onSelect(); }}
+                      data-testid={button.testId}
+                      aria-label={button.spoken}
+                      onClick={() => { setMenuOpen(false); button.onSelect(); }}
                     >
-                      {sendBack.label}
+                      {rowFit === 'short' || rowFit === 'oneShort' ? button.short : button.full}
                     </button>
-                  ) : null}
-                  {quietShare ? (
-                    <button
-                      type="button"
-                      className={styles.quiet}
-                      data-ui
-                      data-testid="cardTableShareQuiet"
-                      tabIndex={turnedOver ? 0 : -1}
-                      onClick={() => { setMenuOpen(false); onShare?.(); }}
-                    >
-                      Share this card
-                    </button>
-                  ) : null}
+                  ))}
+                  <div ref={quietMeasureRef} className={styles.quietMeasure} aria-hidden="true">
+                    {quietButtons.map((button) => (
+                      <span key={button.key}>
+                        <span className={styles.quiet} data-words="full">{button.full}</span>
+                        <span className={styles.quiet} data-words="short">{button.short}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>

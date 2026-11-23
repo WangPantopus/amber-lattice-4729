@@ -135,6 +135,16 @@ final class MomentsMapViewModel {
     /// Part D: pins with an elevation float by day, and the sun they're drawn for (`MomentsFloat.swift`).
     var floatOn = false
     var sun: MomentSunDTO?
+    /// Only the Moments posted in the last 30 minutes, hour or day (`MomentsTimeFilter.swift`); kept while the app runs.
+    var timeFilter: MomentsTimeFilter = .all {
+        didSet { if timeFilter != oldValue { memo.reset() } }
+    }
+
+    /// "Live now" (`MomentsLiveChip.swift`): only rings live now; kept while the app runs, like the time filter.
+    var liveOnly = false {
+        didSet { if liveOnly != oldValue { memo.reset() } }
+    }
+
     /// The clock the end times are read against; moved on each read and each minute.
     private(set) var now = Date() {
         didSet { memo.reset() }
@@ -148,10 +158,14 @@ final class MomentsMapViewModel {
     var mapPoints = 600.0
 
     private var span = 0.025
+    /// The view is wider than the server shows Moments for (`MomentsGlobe.swift`): the map says to zoom in instead of
+    /// "nothing here".
+    private(set) var tooWide = false
     @ObservationIgnored private var viewport: MomentsViewport?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var nameTask: Task<Void, Never>?
     @ObservationIgnored private var namedAt: CLLocation?
+    @ObservationIgnored private var namedWide = false
     /// Moments watched here since the last read, and people muted or blocked: the map shows them so at once.
     @ObservationIgnored private var watched: Set<String> = [] {
         didSet { memo.reset() }
@@ -247,6 +261,8 @@ final class MomentsMapViewModel {
         lastRegion = region
         if let camera { lastCamera = camera }
         span = max(region.span.latitudeDelta, 0.0008)
+        let wide = Self.isTooWide(region.span)
+        if tooWide != wide { tooWide = wide }
         let zoom = Int(log2(360 / max(region.span.longitudeDelta, 0.0001)).rounded())
         viewport = MomentsViewport(
             south: region.center.latitude - region.span.latitudeDelta / 2,
@@ -261,7 +277,7 @@ final class MomentsMapViewModel {
             guard !Task.isCancelled else { return }
             await self?.load()
         }
-        nameArea(at: region.center)
+        nameArea(at: region.center, wide: wide)
         placeHeightTags(in: region)
         if let focus, !visibleRings.contains(where: { focus.ringIds.contains($0.id) }) { self.focus = nil }
         closeSpotIfSplit(span: span)
@@ -283,6 +299,7 @@ final class MomentsMapViewModel {
             rings = all
             heightsAnswered(reply.heightsOn)
             floatAnswered(reply.floatOn, sun: reply.sun)
+            MomentsScheduled.shared.moments = reply.scheduled
             loaded = true
             loadFailed = false
             lookAroundIfOpening()
@@ -305,11 +322,16 @@ final class MomentsMapViewModel {
 
     // MARK: - What shows
 
-    /// Every ring read, with what was watched or hidden since, and only Moments still running.
+    /// Every ring read, with what was watched or hidden since, and only Moments still running and inside the time filter
+    /// (and only live rings while "Live now" is on).
     var currentRings: [MomentRingDTO] {
         // Read even when remembered, so a screen that shows them is redrawn when they change.
-        _ = (rings, now)
-        return memo.current { MomentsMapMemo.running(rings, now: now, watched: watched, hidden: hiddenAuthors) }
+        _ = (rings, now, timeFilter, liveOnly)
+        return memo.current {
+            MomentsMapMemo.running(
+                rings, now: now, watched: watched, hidden: hiddenAuthors, since: timeFilter.since(now), liveOnly: liveOnly
+            )
+        }
     }
 
     /// The rings inside the visible map, and the Moments with no location (they show wherever the map is).
@@ -404,19 +426,6 @@ final class MomentsMapViewModel {
 
     // MARK: - Crowded spots
 
-    /// Board M2: the strip shows only this spot, and the pill takes you back.
-    /// `camera`: where back goes, when it isn't where the map is now (the open Duo's card had moved it).
-    func focus(on cluster: MomentsCluster, from camera: MapCamera? = nil) {
-        let title = cluster.placeName ?? areaName ?? "This spot"
-        focus = MomentsFocus(
-            title: title,
-            ringIds: Set(cluster.rings.map(\.id)),
-            previousCamera: camera ?? lastCamera,
-            latitude: cluster.coordinate.latitude,
-            longitude: cluster.coordinate.longitude
-        )
-    }
-
     /// Asks the view to move the camera (the moves and their rules: `MomentsMapViewModel+Moves.swift`).
     func ask(_ request: MomentsPlaceRequest) {
         if request.move == .closeIn { focus = nil }
@@ -452,28 +461,20 @@ final class MomentsMapViewModel {
 
     // MARK: - The area's name
 
-    private func nameArea(at coordinate: CLLocationCoordinate2D) {
+    /// `wide`: zoomed out past where Moments show (`MomentsGlobe.swift`), where the pill names the country instead.
+    private func nameArea(at coordinate: CLLocationCoordinate2D, wide: Bool) {
         let point = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        if let namedAt, namedAt.distance(from: point) < 250, areaName != nil { return }
+        if let namedAt, namedAt.distance(from: point) < (wide ? 50000 : 250), areaName != nil, namedWide == wide { return }
         nameTask?.cancel()
         nameTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
-            let name = await Self.areaName(at: point)
+            let name = wide ? await Self.countryName(at: point) : await Self.areaName(at: point)
             guard !Task.isCancelled, let self else { return }
             namedAt = point
+            namedWide = wide
             if let name { areaName = name }
         }
-    }
-
-    /// "Downtown Vancouver": the neighborhood and the town, or the town alone.
-    private static func areaName(at point: CLLocation) async -> String? {
-        guard let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first else { return nil }
-        let town = placemark.locality ?? placemark.subAdministrativeArea
-        // A long neighborhood name from the geocoder reads badly in the pill: the town alone then.
-        guard let neighborhood = placemark.subLocality, neighborhood.count <= 20 else { return town }
-        if let town, !neighborhood.contains(town) { return "\(neighborhood) \(town)" }
-        return neighborhood
     }
 
     static func homeCoordinate(store: ScreenStore) async -> UserCoordinate? {

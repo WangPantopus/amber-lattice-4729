@@ -7,7 +7,7 @@ const db = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const parsePoint = require('../../utils/parsePostGISPoint');
 const { homeAreaContext, myAreas, labelFor, openAreas, AREA_SELECT } = require('./areas');
-const { windowDays, DAY_MS } = require('./lifecycle');
+const { windowDays, staysUp, DAY_MS } = require('./lifecycle');
 const limits = require('./limits');
 const { UUID } = require('./feedCursor');
 
@@ -85,6 +85,8 @@ function mediaOf(body) {
 }
 
 async function endsAtFor(body, now) {
+  // PULSE_TYPES has no kind that stays today; should it gain one, that post gets no end time either.
+  if (staysUp(body.postType)) return null;
   if (body.postType === 'alert') {
     if (body.expiresAt == null) return new Date(now + limits.ALERT_DEFAULT_MS).toISOString();
     return new Date(body.expiresAt).toISOString();
@@ -167,13 +169,18 @@ async function prepareCreate({ userId, accountType, body, retry = false }) {
     point = parsePoint(home?.location);
   }
   const precision = point ? 'approx_area' : 'none';
+  // The Sky (phase A, `sky_places` on for the author): a post at the home floats over its area and keeps only the
+  // area's point (services/skyPlaces.js).
+  const floating = point && await require('../skyPlaces').skyOn(userId)
+    ? await require('../skyPlaces').floatingFields(point.latitude, point.longitude) : null;
+  if (floating) point = { latitude: floating.area.latitude, longitude: floating.area.longitude };
   point = point || parsePoint(area.centroid);
   const hold = checks.holds[0];
   const named = typeof body.locationName === 'string' && body.locationName.trim() ? body.locationName.trim() : null;
   return {
     plan: { area, label, scopes, held: !!hold },
     // The place the author named, shown as the card's "About" (contract §2.1).
-    metadata: named ? { pulse_about: named } : {},
+    metadata: { ...(named ? { pulse_about: named } : {}), ...(floating ? floating.metadata : {}) },
     fields: {
       read_scope: readScope, area_id: area.id,
       audience: 'nearby', visibility: readScope === 'public' ? 'public' : 'neighborhood',

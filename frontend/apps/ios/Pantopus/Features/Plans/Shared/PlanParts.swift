@@ -39,14 +39,29 @@ struct PlanSwatch: View {
     }
 }
 
+/// A plan's tag and its chips in one row, or the chips under the tag when they don't fit beside it, so a longer name
+/// (an occasion's, H3) never breaks mid-word at the largest text sizes.
+struct PlanTagRow<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.s2) { content }
+            VStack(alignment: .leading, spacing: Spacing.s2) { content }
+        }
+    }
+}
+
 /// "Watch party" on its tint, with the swatch.
 struct PlanTypeTag: View {
     let kind: PlanKind
+    /// Plans for the holidays H3: the occasion's name in place of the kind's ("Thanksgiving dinner").
+    var text: String?
 
     var body: some View {
         HStack(spacing: 7) {
             PlanSwatch(kind: kind)
-            Text(kind.title)
+            Text(text ?? kind.title)
                 .planFont(.label)
                 .foregroundStyle(Theme.Color.appText)
         }
@@ -55,7 +70,7 @@ struct PlanTypeTag: View {
         .frame(minHeight: 30)
         .background(Capsule().fill(kind.tint))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(kind.spokenTitle)
+        .accessibilityLabel(text ?? kind.spokenTitle)
     }
 }
 

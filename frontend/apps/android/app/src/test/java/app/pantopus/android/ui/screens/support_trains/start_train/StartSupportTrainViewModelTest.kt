@@ -2,12 +2,16 @@
 
 package app.pantopus.android.ui.screens.support_trains.start_train
 
+import androidx.lifecycle.SavedStateHandle
+import app.pantopus.android.data.api.models.geo.NormalizedAddress
 import app.pantopus.android.data.api.models.mail_compose.MailComposeRecipientsResponse
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.support_trains.CreateSupportTrainResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.mail_compose.MailComposeRepository
+import app.pantopus.android.data.store.Stored
 import app.pantopus.android.data.support_trains.SupportTrainsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -33,11 +37,30 @@ import java.util.Calendar
 class StartSupportTrainViewModelTest {
     private val supportTrains: SupportTrainsRepository = mockk()
     private val mailCompose: MailComposeRepository = mockk()
+    private val homes: HomesRepository = mockk()
     private val dispatcher = StandardTestDispatcher()
 
     @Before fun setUp() {
         Dispatchers.setMain(dispatcher)
+        coEvery { homes.myHomesStored(any()) } returns Stored()
     }
+
+    private fun newVm(): StartSupportTrainViewModel = StartSupportTrainViewModel(supportTrains, mailCompose, homes, SavedStateHandle())
+
+    /** Where help goes: a picked address with its point (step 1 needs one). */
+    private fun StartSupportTrainViewModel.withAddress(): StartSupportTrainViewModel =
+        apply {
+            pickAddress(
+                NormalizedAddress(
+                    address = "616 NE 4th Ave",
+                    city = "Camas",
+                    state = "WA",
+                    zipcode = "98607",
+                    latitude = 45.587,
+                    longitude = -122.399,
+                ),
+            )
+        }
 
     @After fun tearDown() {
         Dispatchers.resetMain()
@@ -63,7 +86,8 @@ class StartSupportTrainViewModelTest {
     private fun stubLaunchHappyPath() {
         coEvery { supportTrains.create(any()) } returns
             NetworkResult.Success(CreateSupportTrainResponse(id = "train_demo"))
-        coEvery { supportTrains.generateSlots(any(), any(), any()) } returns NetworkResult.Success(Unit)
+        coEvery { supportTrains.updateRecipientDetails(any(), any()) } returns NetworkResult.Success(Unit)
+        coEvery { supportTrains.generateSlots(any(), any(), any()) } returns NetworkResult.Success(7)
         coEvery { supportTrains.publish(any()) } returns NetworkResult.Success(Unit)
     }
 
@@ -71,7 +95,7 @@ class StartSupportTrainViewModelTest {
 
     @Test fun initial_state_is_who_and_why_and_cta_disabled() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             assertEquals(StartSupportTrainStep.WhoAndWhy, vm.form.value.step)
             assertFalse(vm.chrome.primaryCtaEnabled)
             assertEquals("Continue", vm.chrome.primaryCtaLabel)
@@ -80,18 +104,20 @@ class StartSupportTrainViewModelTest {
     @Test fun filling_beneficiary_and_reason_enables_continue() =
         runTest(dispatcher) {
             stubBeneficiarySearch()
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Chen family")
             vm.updateReason("Welcoming a new baby — meals would be wonderful.")
+            // Where help goes is needed too (A1).
+            assertFalse(vm.chrome.primaryCtaEnabled)
+            vm.withAddress()
             assertTrue(vm.chrome.primaryCtaEnabled)
             assertTrue(vm.canAdvanceFromWhoAndWhy())
         }
 
     @Test fun invite_recipient_branch_updates_cta_and_search_again() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery(StartSupportTrainSampleData.INVITE_QUERY)
-            vm.selectReason(StartSupportTrainReason.Baby)
             assertTrue(vm.isInviteRecipientBranch())
             assertEquals("Continue", vm.chrome.primaryCtaLabel)
             assertEquals("Search again", vm.chrome.secondaryCta?.label)
@@ -103,7 +129,7 @@ class StartSupportTrainViewModelTest {
 
     @Test fun change_starts_a_fresh_search_instead_of_claiming_no_match() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.selectBeneficiary(fakeRecipient())
             vm.clearBeneficiary()
             // The chosen name no longer sits in the field with no results, which
@@ -121,7 +147,7 @@ class StartSupportTrainViewModelTest {
                     NetworkResult.Failure(NetworkError.Server(500, "boom")),
                     NetworkResult.Success(MailComposeRecipientsResponse(recipients = emptyList())),
                 )
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Zelda Nomatch")
             advanceUntilIdle()
             assertTrue(vm.beneficiarySearchFailed.value)
@@ -139,7 +165,7 @@ class StartSupportTrainViewModelTest {
         runTest(dispatcher) {
             coEvery { mailCompose.recipients(any(), any()) } returns
                 NetworkResult.Success(MailComposeRecipientsResponse(recipients = emptyList()))
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.setEditingBeneficiaryQuery(true)
             vm.updateBeneficiaryQuery(StartSupportTrainSampleData.INVITE_QUERY)
             advanceUntilIdle()
@@ -152,7 +178,7 @@ class StartSupportTrainViewModelTest {
 
     @Test fun reason_clamps_at_char_limit() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             val overflow = "a".repeat(600)
             vm.updateReason(overflow)
             assertEquals(StartSupportTrainFormState.REASON_CHAR_LIMIT, vm.form.value.reason.length)
@@ -172,7 +198,7 @@ class StartSupportTrainViewModelTest {
                 startMillis = start,
                 endMillis = end,
                 durationMinutes = 60,
-                startHour = 17,
+                startMinutes = 17 * 60,
             )
         assertEquals(3, slots.size)
         assertEquals("17:00", slots.first().startTime)
@@ -181,7 +207,7 @@ class StartSupportTrainViewModelTest {
 
     @Test fun editing_dates_in_step_two_updates_preview() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             val initial = vm.generatedSlots().size
             assertTrue(initial >= 1)
             val cal = Calendar.getInstance()
@@ -191,7 +217,7 @@ class StartSupportTrainViewModelTest {
             assertEquals(initial - 3, vm.generatedSlots().size)
         }
 
-    @Test fun slot_generation_clamps_at_90_days() {
+    @Test fun slot_generation_stops_at_the_servers_90_day_range() {
         val cal = Calendar.getInstance()
         cal.set(2026, Calendar.JANUARY, 1, 0, 0, 0)
         cal.set(Calendar.MILLISECOND, 0)
@@ -203,14 +229,15 @@ class StartSupportTrainViewModelTest {
                 startMillis = start,
                 endMillis = end,
                 durationMinutes = 60,
-                startHour = 17,
+                startMinutes = 17 * 60,
             )
-        assertEquals(90, slots.size)
+        // A 90-day range holds 91 dates; the wizard refuses a longer range before launch (B8).
+        assertEquals(91, slots.size)
     }
 
     @Test fun end_before_start_collapses_end_into_start() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             val cal = Calendar.getInstance()
             cal.timeInMillis = vm.form.value.startDateMillis
             cal.add(Calendar.DAY_OF_YEAR, -3)
@@ -224,9 +251,10 @@ class StartSupportTrainViewModelTest {
     @Test fun primary_advances_through_three_steps() =
         runTest(dispatcher) {
             stubBeneficiarySearch()
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Chen family")
             vm.updateReason("Welcoming a new baby.")
+            vm.withAddress()
             vm.onPrimary()
             assertEquals(StartSupportTrainStep.WhatAndWhen, vm.form.value.step)
             vm.onPrimary()
@@ -237,9 +265,10 @@ class StartSupportTrainViewModelTest {
     @Test fun leading_back_returns_to_previous_step() =
         runTest(dispatcher) {
             stubBeneficiarySearch()
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Chen")
             vm.updateReason("Reason.")
+            vm.withAddress()
             vm.onPrimary()
             assertEquals(StartSupportTrainStep.WhatAndWhen, vm.form.value.step)
             vm.onLeading()
@@ -248,7 +277,7 @@ class StartSupportTrainViewModelTest {
 
     @Test fun close_from_first_step_dismisses() =
         runTest(dispatcher) {
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.onLeading()
             assertEquals(StartSupportTrainEvent.Dismiss, vm.pendingEvent.value)
         }
@@ -259,9 +288,10 @@ class StartSupportTrainViewModelTest {
         runTest(dispatcher) {
             stubBeneficiarySearch()
             stubLaunchHappyPath()
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Chen family")
             vm.updateReason("Welcoming a new baby.")
+            vm.withAddress()
             vm.onPrimary()
             vm.onPrimary()
             vm.onPrimary() // launch
@@ -281,9 +311,10 @@ class StartSupportTrainViewModelTest {
             stubBeneficiarySearch()
             coEvery { supportTrains.create(any()) } returns
                 NetworkResult.Failure(NetworkError.Server(500, "boom"))
-            val vm = StartSupportTrainViewModel(supportTrains, mailCompose)
+            val vm = newVm()
             vm.updateBeneficiaryQuery("Chen family")
             vm.updateReason("Reason.")
+            vm.withAddress()
             vm.onPrimary()
             vm.onPrimary()
             vm.onPrimary()

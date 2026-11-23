@@ -233,7 +233,7 @@ public struct AudienceProfileView: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
             onboardingStep(number: 1, title: "Set up payments", subtitle: "Turn on tiers so supporters can join.")
-            onboardingStep(number: 2, title: "Tell people you're here", subtitle: "Share your profile with neighbors and customers.")
+            onboardingStep(number: 2, title: "Tell people you're here", subtitle: "Share your profile with people near you and customers.")
             onboardingStep(number: 3, title: "Send your first broadcast", subtitle: "Post one useful update people can react to.")
         }
         .padding(14)

@@ -5,7 +5,8 @@
 //  Board F4 "Nothing planned yet": the next game as a watch-party nudge,
 //  "Plan with people you know" (a private plan, with `plans_private`), the
 //  other kinds to start, and "Invite a friend". Board F5 "See plans near
-//  you": the location ask, with the home as the other choice.
+//  you": the location ask, with the home as the other choice, under the
+//  person's own plans ("Yours") when they have any.
 //
 
 import SwiftUI
@@ -208,11 +209,27 @@ struct PlansEmptyCard: View {
 
 struct PlansLocationCard: View {
     let viewModel: PlansMapViewModel
+    let actions: PlansMapActions
     @State private var isAsking = false
+    @State private var openFolds: Set<String> = []
 
     var body: some View {
         PlansSheetScroll {
             VStack(alignment: .leading, spacing: Spacing.s4) {
+                // The person's own plans need no location: "Yours" as the list shows it once location is allowed,
+                // above the request, so a new person finds the dinner they answered (JOURNEYS section 2, change 4).
+                if !viewModel.visibleYourPlans.isEmpty {
+                    PlansListSection(
+                        title: PlansListSection.yoursTitle,
+                        cards: viewModel.visibleYourPlans,
+                        mine: true,
+                        viewModel: viewModel,
+                        actions: actions,
+                        openFolds: $openFolds
+                    )
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("plansYours")
+                }
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(Theme.Color.primary100)
                     .frame(width: 52, height: 52)

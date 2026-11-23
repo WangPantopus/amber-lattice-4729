@@ -52,10 +52,13 @@ public struct PlanAskResultDTO: Decodable, Sendable, Hashable {
     public let id: String
     public let status: PlanRequestStatus
     public let waitlistPosition: Int?
+    /// B2: while `paying`, when the held spot is let go.
+    public let holdExpiresAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status
         case waitlistPosition = "waitlist_position"
+        case holdExpiresAt = "hold_expires_at"
     }
 }
 
@@ -64,6 +67,8 @@ public struct PlanAskResultDTO: Decodable, Sendable, Hashable {
 public struct PlanAskResponse: Decodable, Sendable {
     public let request: PlanAskResultDTO
     public let plan: PlanDetailDTO
+    /// B2: on a priced plan, the shipped payment sheet's values for the held spot.
+    public let payment: PlanPaymentDTO?
 }
 
 /// `POST /api/plans/:id/still-coming`. False leaves the plan.
@@ -112,8 +117,8 @@ public struct CreatePlanBody: Encodable, Sendable {
     public let kind: PlanKind
     public let title: String
     public let about: String?
-    public let startsAt: String
-    public let endsAt: String
+    public var startsAt: String
+    public var endsAt: String
     /// Nil for a business's plan, which meets at one of its locations.
     public let place: PlanPlaceBody?
     public let spots: Int
@@ -136,9 +141,34 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var inviteUserIds: [String]?
     /// Repeating plans (step 2): how it repeats. Left out for a plan that doesn't (never for a business's).
     public var repeatPattern: PlanRepeatBody?
+    /// Plans for the holidays H1: guests say how many adults and kids. Left out unless the host's
+    /// `plans_guest_answers` is on.
+    public var kidsWelcome: Bool?
+    /// H2: the bring list, set on the form ("Add to this plan"). Left out without `plans_bring_list`.
+    public var bring: PlanBringBody?
+    /// H3: the occasion the plan was started from (a key). Left out for an ordinary plan.
+    public var occasion: String?
+    /// Plans for the holidays B1: a business's deal. Left out for "No deal".
+    public var deal: PlanDealInput?
+    /// B2: a business's price a spot, in cents (100 to 50000). Left out for a free plan.
+    public var priceCents: Int?
+    /// B5: guests pay their bill here, and take tips (left out: the server's start for the kind).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
+    /// The extras (08-extras): chip in. Left out unless the host switched it on (`plans_chip_in`).
+    public var chipIn: PlanChipInBody?
+    /// Find a date: 2 to 5 times guests tick (`plans_find_date`); `starts_at` is then the earliest.
+    public var dateOptions: [PlanDateOptionBody]?
+    public var gift: PlanGiftBody? // The gift exchange (`plans_gift_exchange`): the budget and when names are drawn.
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label, audience
+        case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal, gift
+        case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
+        case chipIn = "chip_in"
+        case dateOptions = "date_options"
+        case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
@@ -199,9 +229,29 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var businessLocationId: String?
     /// Repeating plans (step 2): a new pattern from this date on, or `.stop` (sent as `null`). Nil leaves it.
     public var repeatChange: PlanRepeatChange?
+    /// Plans for the holidays B1: a business's new deal, or `.remove` (sent as `null`). Nil leaves it.
+    public var deal: PlanDealChange?
+    /// B2: a new price a spot, or `.remove` (sent as `null`); only while nobody is in or paying.
+    public var priceCents: PlanPriceChange?
+    /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
+    public var kidsWelcome: Bool?
+    /// B5: guests pay their bill here, and take tips; any time (contract 10.2).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
+    /// The extras: chip in changed (who paid is kept), or `.remove` (sent as `null`, who paid is forgotten).
+    public var chipIn: PlanChipInChange?
+    /// Find a date: the offered times while picking (a kept time keeps its ticks).
+    public var dateOptions: [PlanDateOptionBody]?
+    public var gift: PlanGiftChange? // The gift exchange: a new budget or draw time, or `.remove` (sent as `null`).
 
     enum CodingKeys: String, CodingKey {
-        case title, about, place, spots, gps, label
+        case title, about, place, spots, gps, label, deal, gift
+        case dateOptions = "date_options"
+        case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
+        case chipIn = "chip_in"
+        case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"

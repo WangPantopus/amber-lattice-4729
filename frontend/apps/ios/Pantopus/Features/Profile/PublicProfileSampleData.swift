@@ -19,7 +19,7 @@ public enum PublicProfileSampleData {
             avatarURL: nil,
             isVerified: true,
             identity: .personal,
-            kicker: "Neighbor since 2022"
+            kicker: "On Pantopus since 2022"
         ),
         stats: [
             NeighborStat(
@@ -129,7 +129,7 @@ public enum PublicProfileSampleData {
         welcome: NeighborWelcome(
             title: "Be the welcome wagon",
             body: "Sasha just moved in. A quick \u{201C}hi, welcome to the block\u{201D} goes a long way — "
-                + "and first messages from verified neighbors travel fast."
+                + "and first messages from verified homes travel fast."
         ),
         posts: [],
         isNewNeighbor: true,

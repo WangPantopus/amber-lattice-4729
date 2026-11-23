@@ -68,9 +68,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.geo.GeoSuggestion
 import app.pantopus.android.data.gigs.GigCameraPhotos
 import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
+import app.pantopus.android.ui.components.ListKeptAboveKeyboard
 import app.pantopus.android.ui.components.PantopusFieldState
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSearchArea
 import app.pantopus.android.ui.screens.gigs.GigsCategory
 import app.pantopus.android.ui.screens.shared.form.FormFieldGroup
 import app.pantopus.android.ui.screens.shared.form.FormShell
@@ -100,6 +102,9 @@ fun PostGigV1Screen(
     val content = state as? PostGigV1UiState.Content
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // The location lists addresses near the person's home first (FASTVERIFY section 11).
+    val addressSearchArea = rememberAddressSearchArea()
+    LaunchedEffect(addressSearchArea) { viewModel.addressSearchArea = addressSearchArea }
 
     // P0.3 — real Material3 date + time pickers behind the date field.
     var showDateTimePicker by remember { mutableStateOf(false) }
@@ -369,7 +374,10 @@ fun PostGigV1Content(
             isRequired = true,
             fieldTestTag = "postGigV1_location",
         )
-        AddressSuggestions(state = state, actions = actions)
+        // The field sits low on the page: its list is kept above the keyboard (FASTVERIFY section 11).
+        ListKeptAboveKeyboard(rows = state.addressSuggestions, spacing = Spacing.s3) {
+            AddressSuggestions(state = state, actions = actions)
+        }
     }
 
     // A13.8 P5 — the rest of RN's editable field set, so an edit can touch
@@ -858,7 +866,7 @@ private fun DescriptionField(
                 decorationBox = { inner ->
                     if (value.isEmpty()) {
                         Text(
-                            text = "Tell neighbors what to carry, where to meet, and any stairs or timing constraints.",
+                            text = "Tell helpers what to carry, where to meet, and any stairs or timing constraints.",
                             style = PantopusTextStyle.small,
                             color = PantopusColors.appTextMuted,
                         )

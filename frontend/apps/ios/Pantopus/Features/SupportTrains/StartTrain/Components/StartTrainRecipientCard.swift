@@ -97,7 +97,7 @@ struct StartTrainRecipientCard: View {
                 .padding(.vertical, 2)
                 .background(Theme.Color.successBg)
                 .clipShape(Capsule())
-                .accessibilityLabel("Verified neighbor")
+                .accessibilityLabel("Verified resident")
             }
         }
     }
@@ -148,9 +148,9 @@ struct StartTrainRecipientCard: View {
 
     private var metaLine: String {
         if let address = recipient.homeAddress, !address.isEmpty {
-            return "Neighbor · \(address)"
+            return "On Pantopus · \(address)"
         }
-        return isVerified ? "Verified neighbor" : "Neighbor"
+        return isVerified ? "Verified resident" : "On Pantopus"
     }
 
     private var mutualsSummary: String {

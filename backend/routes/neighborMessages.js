@@ -33,7 +33,7 @@ const { encodeGeohash } = require('../utils/geohash');
 const { haversineMeters } = require('../utils/geo');
 const { escapeIlike } = require('../utils/escapeIlike');
 const { computeAddressHash, expandAbbreviations } = require('../utils/normalizeAddress');
-const { checkHomePermission } = require('../utils/homePermissions');
+const { checkHomePermission, fastVerified, FAST_CHECK_COLUMNS } = require('../utils/homePermissions');
 const { geocodeLimiter } = require('../middleware/rateLimiter');
 const geoProvider = require('../services/geo');
 const { resolveTier } = require('../services/placeIntelligenceService');
@@ -166,20 +166,23 @@ async function homesAtAddress(place, unit) {
 async function findVerifiedResident(homeId, { excludeUserId } = {}) {
   const { data, error } = await supabaseAdmin
     .from('HomeOccupancy')
-    .select('user_id')
+    .select(`home_id, user_id, is_active, verification_status, verification_source, ${FAST_CHECK_COLUMNS}`)
     .eq('home_id', homeId)
     .eq('is_active', true)
-    .eq('verification_status', 'verified')
-    // A message meant for the people at an address never reaches someone whose access is only a claim.
-    .neq('verification_source', 'claim');
+    .eq('verification_status', 'verified');
   if (error) {
     logger.warn('neighborMessages.recipient_lookup_error', { homeId, error: error.message });
     return null;
   }
-  const candidates = (data || [])
-    .map((r) => r.user_id)
-    .filter((uid) => uid && String(uid) !== String(excludeUserId || ''));
-  return candidates[0] || null;
+  const others = (data || []).filter((r) => r.user_id && String(r.user_id) !== String(excludeUserId || ''));
+  // A message meant for the people at an address never reaches someone whose access is only a claim, unless the
+  // claim stands Verified by a fast check (FASTVERIFY; homePermissions.isVerified). Proven residents come first.
+  const proven = others.find((r) => r.verification_source !== 'claim');
+  if (proven) return proven.user_id;
+  for (const row of others) {
+    if (await fastVerified(row)) return row.user_id;
+  }
+  return null;
 }
 
 /**
@@ -204,8 +207,9 @@ async function verifiedSenderHome(res, senderHomeId, userId) {
     res.status(403).json({ error: 'You do not have access to that home.' });
     return null;
   }
-  if (resolveTier(access) !== 'T4') {
-    res.status(403).json({ error: 'Only verified neighbors can send messages.' });
+  // Verified by mail or by a fast check (FASTVERIFY; homePermissions.isVerified).
+  if (resolveTier(access, await fastVerified(access.occupancy)) !== 'T4') {
+    res.status(403).json({ error: 'Only verified residents can send messages.' });
     return null;
   }
   const { data: senderHome, error } = await supabaseAdmin
@@ -352,7 +356,7 @@ router.post('/', verifyToken, sendBurstLimiter, validate(sendSchema), async (req
       .gte('created_at', weekAgo);
     if ((recentCount || 0) >= WEEKLY_SEND_CAP) {
       return res.status(429).json({
-        error: "You've reached this week's limit. This keeps neighbor messages calm and low-volume.",
+        error: "You've reached this week's limit. This keeps messages between homes calm and low-volume.",
       });
     }
 
@@ -384,7 +388,7 @@ router.post('/', verifyToken, sendBurstLimiter, validate(sendSchema), async (req
       createNotification({
         userId: target.recipientUserId,
         type: 'neighbor_message',
-        title: 'A message from a verified neighbor nearby',
+        title: 'A message from a verified home nearby',
         body: template.body,
         icon: '🏡',
         link: `/app/place/neighbor-message/${row.id}`,
@@ -484,7 +488,7 @@ router.post('/:id/reply', verifyToken, validate(replySchema), async (req, res) =
     const access = await replyAccess(row, userId);
     if (!access.canReply) {
       return res.status(403).json({
-        error: access.blockedByViewer ? "You've blocked this neighbor, so replies are off." : 'Replies to this message are off.',
+        error: access.blockedByViewer ? "You've blocked this sender, so replies are off." : 'Replies to this message are off.',
       });
     }
 
@@ -508,7 +512,7 @@ router.post('/:id/reply', verifyToken, validate(replySchema), async (req, res) =
       await createNotification({
         userId: row.sender_user_id,
         type: 'neighbor_message_reply',
-        title: 'A verified neighbor replied',
+        title: 'A verified home replied',
         body: reply.body,
         icon: '🏡',
         link: '/app/place',
@@ -622,7 +626,7 @@ router.post('/:id/block', verifyToken, async (req, res) => {
   } catch (err) {
     if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
     logger.error('neighborMessages.block_error', { error: err.message, userId });
-    return res.status(500).json({ error: 'Failed to block neighbor.' });
+    return res.status(500).json({ error: 'Failed to block this sender.' });
   }
 });
 

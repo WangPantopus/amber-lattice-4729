@@ -93,7 +93,7 @@ struct LocalProfileAboutSection: View {
                 }
             }
             if !contributionRows.isEmpty {
-                section("Around the neighborhood") {
+                section("Around here") {
                     card(contributionRows) { row in
                         AboutCountRowView(row: row)
                     }
@@ -200,7 +200,7 @@ struct LocalProfileAboutSection: View {
                 id: "helpful",
                 icon: .lightbulb,
                 tone: .helpful,
-                lead: "Neighbors marked \(header.firstName)'s posts helpful ",
+                lead: "Others marked \(header.firstName)'s posts helpful ",
                 count: marks == 1 ? "once" : "\(marks) times"
             ))
         }

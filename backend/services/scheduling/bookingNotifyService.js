@@ -11,7 +11,7 @@ const logger = require('../../utils/logger');
 const notificationService = require('../notificationService');
 const emailService = require('../emailService');
 const { buildIcs } = require('./icsService');
-const { isEmailSuppressed } = require('./schedulingShared');
+const { isEmailSuppressed, schedulingOn } = require('./schedulingShared');
 const notifyPrefs = require('./schedulingNotifyPrefs');
 const { getBusinessMemberIdsByRole } = require('../../utils/businessPermissions');
 const { loadChatPeople } = require('../chatPeople');
@@ -119,7 +119,7 @@ function bookingEmailHtml({ heading, intro, whenLabel, locationLabel, manageUrl,
       </div>` : ''}
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
-      <p style="color:#9ca3af;font-size:11px;margin:0;">Pantopus — Your neighborhood, organized.</p>
+      <p style="color:#9ca3af;font-size:11px;margin:0;">Pantopus — Your home, organized.</p>
       ${footerNote ? `<p style="color:#d1d5db;font-size:10px;margin:8px 0 0;">${escapeHtml(footerNote)}</p>` : ''}
     </div>
   </div>
@@ -269,8 +269,9 @@ async function notifyBookingEvent({ booking, eventType, page, kind, manageToken 
         link: booking.invitee_user_id === booking.host_user_id ? link : '/app/scheduling/my-bookings',
         metadata: { booking_id: booking.id, kind },
       });
-    } else if (booking.invitee_email) {
-      // Non-user invitee -> transactional email (always sent for these lifecycle events).
+    } else if (booking.invitee_email && schedulingOn()) {
+      // Non-user invitee -> transactional email (sent for these lifecycle events while public scheduling is on; with
+      // it off nobody outside Pantopus is written to about a booking).
       let attachments;
       if (copy.attachIcs) {
         const organizer = await inviteOrganizer(booking);
@@ -411,7 +412,7 @@ async function sendBookingReminder({ booking, eventType, page, kind, offsetMinut
       link: booking.invitee_user_id === booking.host_user_id ? link : '/app/scheduling/my-bookings',
       metadata: { booking_id: booking.id, kind },
     });
-  } else if (booking.invitee_email) {
+  } else if (booking.invitee_email && schedulingOn()) {
     if (await isEmailSuppressed(booking.invitee_email, booking.owner_type, booking.owner_id)) return;
     const organizer = await inviteOrganizer(booking);
     const attachments = [await buildBookingIcs({ booking, eventType, method: 'REQUEST', organizer })];

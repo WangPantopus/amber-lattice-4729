@@ -247,8 +247,9 @@ data class SupportTrainDetailActions(
     val onOpenManage: (() -> Unit)? = null,
     val onShare: () -> Unit = {},
     val onSignUp: () -> Unit = {},
-    /** Null hides the controls: none of these has a backend route yet. */
+    /** The helper's own signup's Edit (B1); null hides it. */
     val onEditSlot: ((SlotRowContent) -> Unit)? = null,
+    /** Null hides the controls: neither has a backend route yet. */
     val onSendCard: (() -> Unit)? = null,
     val onJoinAsBackup: (() -> Unit)? = null,
     /** Opens a chat with the train's organizer. Null hides "Message the host". */
@@ -357,6 +358,7 @@ internal fun SupportTrainDetailContentLayout(
             is SupportTrainDetailUiState.Loaded ->
                 LoadedBody(
                     content = state.content,
+                    onOpenManage = actions.onOpenManage?.takeIf { viewerIsOrganizer },
                     onSignUp = actions.onSignUp,
                     onEditSlot = actions.onEditSlot,
                     onSendCard = actions.onSendCard,
@@ -503,10 +505,12 @@ private fun OverflowMenuButton(onAction: () -> Unit) {
 
 // MARK: - Loaded body
 
+@Suppress("CyclomaticComplexMethod")
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun LoadedBody(
     content: SupportTrainDetailContent,
+    onOpenManage: (() -> Unit)? = null,
     onSignUp: () -> Unit,
     onEditSlot: ((SlotRowContent) -> Unit)?,
     onSendCard: (() -> Unit)?,
@@ -561,7 +565,11 @@ private fun LoadedBody(
             )
 
             SectionOverline("Slot calendar")
-            val signupsClosed = content.dock is SupportTrainDock.Closed
+            // No sign-up where the server would refuse one, and none for the person the train is for (B2).
+            val signupsClosed =
+                content.dock is SupportTrainDock.Closed ||
+                    content.viewerRole == SupportTrainViewerRole.RECIPIENT ||
+                    SupportTrainDetailProjection.signupsClosedReason(content.typeDates.status) != null
             CalendarCard(
                 content = content,
                 signupsClosed = signupsClosed,
@@ -599,7 +607,7 @@ private fun LoadedBody(
 
             content.exactAddress?.let { address ->
                 SectionOverline("Delivery address")
-                ExactAddressCard(address, content.deliveryInstructions)
+                ExactAddressCard(address, listOfNotNull(content.deliveryInstructions, content.specialInstructions))
             }
 
             Spacer(modifier = Modifier.height(Spacing.s3))
@@ -611,12 +619,20 @@ private fun LoadedBody(
         }
 
         // A fully covered train has no dock unless Send a card or Join as
-        // backup is wired (neither has a backend route yet).
-        val hasDock = content.dock !is SupportTrainDock.SendCardAndBackup || onSendCard != null || onJoinAsBackup != null
-        if (content.typeDates.slotsTotal > 0 && hasDock) {
+        // backup is wired (neither has a backend route yet). Organizers' dock is Manage (B2),
+        // even before the train has dates; the recipient has none.
+        val showDock =
+            when (content.dock) {
+                SupportTrainDock.None -> false
+                SupportTrainDock.Manage -> onOpenManage != null
+                SupportTrainDock.SendCardAndBackup -> content.typeDates.slotsTotal > 0 && (onSendCard != null || onJoinAsBackup != null)
+                else -> content.typeDates.slotsTotal > 0
+            }
+        if (showDock) {
             Dock(
                 dock = content.dock,
                 onSignUp = onSignUp,
+                onManage = onOpenManage ?: {},
                 onSendCard = onSendCard ?: {},
                 onJoinAsBackup = onJoinAsBackup ?: {},
             )
@@ -713,8 +729,10 @@ private fun SlotSectionBlock(
                     } else {
                         null
                     },
+                showSignUp = viewerRole != SupportTrainViewerRole.RECIPIENT,
+                // A helper edits their own signup while it's still ahead of them (B1).
                 onEdit =
-                    if (row.mine && onEditSlot != null) {
+                    if (row.canEditSignup && onEditSlot != null) {
                         { onEditSlot(row) }
                     } else {
                         null
@@ -831,7 +849,7 @@ private fun RowActionButton(
 @Composable
 private fun ExactAddressCard(
     address: String,
-    instructions: String?,
+    instructions: List<String>,
 ) {
     val shape = RoundedCornerShape(Radii.lg)
     Column(
@@ -862,8 +880,13 @@ private fun ExactAddressCard(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        if (!instructions.isNullOrBlank()) {
-            Text(text = instructions, color = PantopusColors.appTextSecondary, fontSize = 12.5.sp)
+        instructions.filter { it.isNotBlank() }.distinct().forEach { line ->
+            Text(
+                text = line,
+                color = PantopusColors.appTextSecondary,
+                fontSize = 12.5.sp,
+                modifier = Modifier.testTag("supportTrainDeliveryInstructions"),
+            )
         }
     }
 }
@@ -1152,6 +1175,7 @@ private fun GroupChatRow(onOpen: () -> Unit) {
 private fun Dock(
     dock: SupportTrainDock,
     onSignUp: () -> Unit,
+    onManage: () -> Unit,
     onSendCard: () -> Unit,
     onJoinAsBackup: () -> Unit,
 ) {
@@ -1174,6 +1198,9 @@ private fun Dock(
                 is SupportTrainDock.SignUp -> PrimarySignUpCTA(dock.label, onSignUp)
                 SupportTrainDock.SendCardAndBackup -> SplitCoveredDock(onSendCard, onJoinAsBackup)
                 is SupportTrainDock.Closed -> PrimarySignUpCTA(dock.reason, onTap = {}, enabled = false)
+                SupportTrainDock.Manage ->
+                    PrimarySignUpCTA("Manage train", onManage, icon = PantopusIcon.Settings, testTag = "supportTrainManageCTA")
+                SupportTrainDock.None -> Unit
             }
         }
     }
@@ -1184,14 +1211,16 @@ private fun PrimarySignUpCTA(
     label: String,
     onTap: () -> Unit,
     enabled: Boolean = true,
+    icon: PantopusIcon = PantopusIcon.Calendar,
+    testTag: String = "supportTrainSignUpCTA",
 ) {
     val shape = RoundedCornerShape(Radii.lg)
     Row(
         modifier =
             Modifier
-                .testTag("supportTrainSignUpCTA")
+                .testTag(testTag)
                 .fillMaxWidth()
-                .height(50.dp)
+                .heightIn(min = 50.dp)
                 .then(if (enabled) Modifier.pantopusShadow(PantopusElevations.primary, shape) else Modifier)
                 .clip(shape)
                 .background(if (enabled) PantopusColors.primary600 else PantopusColors.appBorderStrong)
@@ -1206,7 +1235,7 @@ private fun PrimarySignUpCTA(
     ) {
         Spacer(modifier = Modifier.weight(1f))
         PantopusIconImage(
-            icon = PantopusIcon.Calendar,
+            icon = icon,
             contentDescription = null,
             size = 17.dp,
             tint = if (enabled) PantopusColors.appTextInverse else PantopusColors.appTextSecondary,

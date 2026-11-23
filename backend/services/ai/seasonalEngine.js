@@ -86,7 +86,7 @@ const SEASONAL_TIPS = {
     },
     {
       condition: (ctx) => ctx.homePropertyType === 'condo' || ctx.homePropertyType === 'townhouse',
-      tip: 'Ice season is here. Shared walkways and driveways need de-icing — coordinate with neighbors for supplies.',
+      tip: 'Ice season is here. Shared walkways and driveways need de-icing — plan supplies with the homes around you.',
       homeTip: 'Your condo/townhouse community may benefit from shared de-icing supplies. Post a gig to get walkways treated.',
     },
     {
@@ -160,7 +160,7 @@ const SEASONAL_TIPS = {
   ],
   holiday_season: [
     {
-      tip: 'Package theft peaks in December. Consider coordinating with neighbors for delivery watching.',
+      tip: 'Package theft peaks in December. Consider asking someone nearby to watch for deliveries.',
       homeTip: null,
     },
   ],
@@ -220,7 +220,7 @@ const DEFAULT_TIPS = {
     { tip: 'Fall is gutter season: clear gutters and downspouts before the first hard rains, and have the furnace checked.', homeTip: null },
   ],
   holiday_season: [
-    { tip: 'Package theft peaks in December. Consider coordinating with neighbors for delivery watching.', homeTip: null },
+    { tip: 'Package theft peaks in December. Consider asking someone nearby to watch for deliveries.', homeTip: null },
   ],
 };
 
@@ -277,11 +277,11 @@ const OVERLAYS = {
     tips: [
       {
         condition: (ctx) => ctx.homeYearBuilt && ctx.homeYearBuilt < 1990,
-        tip: 'Extreme heat is the deadliest weather in the United States. Check on older neighbors, keep AC filters fresh, and know the nearest cooling center.',
+        tip: 'Extreme heat is the deadliest weather in the United States. Check on older people near you, keep AC filters fresh, and know the nearest cooling center.',
         homeTip: 'Older homes lose cool air through attic and duct leaks; an attic insulation and duct-seal check pays back fastest for your {{year}} home.',
       },
       {
-        tip: 'Extreme heat is the deadliest weather in the United States. Check on older neighbors, keep AC filters fresh, and know the nearest cooling center.',
+        tip: 'Extreme heat is the deadliest weather in the United States. Check on older people near you, keep AC filters fresh, and know the nearest cooling center.',
         homeTip: null,
       },
     ],

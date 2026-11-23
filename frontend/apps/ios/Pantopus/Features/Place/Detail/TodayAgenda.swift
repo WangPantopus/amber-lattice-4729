@@ -59,6 +59,9 @@ struct TodayAgendaItem: Identifiable, Equatable {
     let details: [String]
     let source: String?
     let actions: [Action]
+    /// One of the household's collections, for a person who may change the schedule:
+    /// a tap opens the pickup editor (JOURNEYS 1).
+    var editsPickup = false
 }
 
 // MARK: - What the agenda loads beyond the place
@@ -192,7 +195,8 @@ enum TodayAgenda {
             owner: event.isHousehold ? (inputs.guest ? .home : .household) : .address,
             details: details,
             source: (event.source ?? "Pantopus registry") + (event.confidence == "unverified" ? " · unconfirmed, please double-check" : ""),
-            actions: actions
+            actions: actions,
+            editsPickup: inputs.household && PickupSavedNote.isCollection(event.kind)
         )
     }
 

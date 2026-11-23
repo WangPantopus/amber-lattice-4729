@@ -34,6 +34,28 @@ class PlansEvents
 
         @Volatile private var postedNote: Pair<String, String>? = null
 
+        @Volatile private var postedSamePeople: Pair<String, String>? = null
+
+        @Volatile private var samePeopleNext: String? = null
+
+        /**
+         * "Plan the next one with the same people" on [fromPlanId] (the holidays' board 29): the host flow that copies it
+         * opens the new plan's page once it is posted, and the page opens the invite sheet on [fromPlanId]'s people. Taken
+         * once, as that flow starts.
+         */
+        fun planNextWithSamePeople(fromPlanId: String) {
+            samePeopleNext = fromPlanId
+        }
+
+        fun takeSamePeopleNext(): String? = samePeopleNext.also { samePeopleNext = null }
+
+        /** The past plan whose people [planId]'s invite sheet opens on, once (taken by the new plan's page). */
+        fun takePostedSamePeople(planId: String): String? {
+            val pending = postedSamePeople?.takeIf { it.first == planId } ?: return null
+            postedSamePeople = null
+            return pending.second
+        }
+
         /** The plan the person just posted, until the map has shown it. */
         val posted: StateFlow<String?> = _posted.asStateFlow()
 
@@ -45,8 +67,10 @@ class PlansEvents
             planId: String,
             then: PlanPostedInvite? = null,
             note: String? = null,
+            samePeopleFrom: String? = null,
         ) {
             postedInvite = then?.let { planId to it }
+            postedSamePeople = samePeopleFrom?.let { planId to it }
             postedNote = note?.let { planId to it }
             _posted.value = planId
         }

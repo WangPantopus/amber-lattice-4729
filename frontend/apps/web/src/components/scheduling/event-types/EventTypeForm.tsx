@@ -44,6 +44,7 @@ import {
   Stepper,
   TextAreaField,
   TextField,
+  AddressTextField,
   ToggleRow,
 } from "./fields";
 import PricingFields from "./PricingFields";
@@ -406,7 +407,16 @@ export default function EventTypeForm({ id }: { id: string }) {
               label: l.label,
             }))}
           />
-          {location && location.mode !== "ask" && (
+          {location && location.mode === "in_person" && (
+            <AddressTextField
+              label={location.detailLabel}
+              value={values.location_detail}
+              onChange={(v) => patch({ location_detail: v })}
+              placeholder={location.placeholder}
+              disabled={disabled}
+            />
+          )}
+          {location && location.mode !== "ask" && location.mode !== "in_person" && (
             <TextField
               label={location.detailLabel}
               value={values.location_detail}

@@ -39,7 +39,7 @@ export default function HomePrivacyMirrorPage() {
       <Link href="/app/place" className="inline-flex items-center gap-1 text-[13px] font-semibold text-app-text-secondary hover:text-app-text">
         <ChevronLeft size={16} strokeWidth={2.25} /> Your Place
       </Link>
-      <h1 className="mt-3 text-2xl font-extrabold text-app-text leading-tight">What neighbors see</h1>
+      <h1 className="mt-3 text-2xl font-extrabold text-app-text leading-tight">What others see</h1>
       <p className="mt-2 text-sm text-app-text-secondary leading-relaxed">
         This is your address as someone outside your household sees it, rendered by the same code that serves
         them. If it looks wrong here, it is wrong for them too.
@@ -61,7 +61,7 @@ export default function HomePrivacyMirrorPage() {
 
       {mirror ? (
         <>
-          <section aria-label="As a neighbor sees it" className="mt-6">
+          <section aria-label="As others see it" className="mt-6">
             <p className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary mb-2">{mirror.viewer_label}</p>
             <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 flex items-center gap-3">
               <span aria-hidden="true" className="inline-flex items-center justify-center shrink-0 w-11 h-11 rounded-full bg-app-home-bg text-app-home text-[17px] font-bold">
@@ -80,14 +80,14 @@ export default function HomePrivacyMirrorPage() {
             <p className="mt-2 text-[12.5px] text-app-text-muted">
               {mirror.discoverable
                 ? 'Street only, no house number. That is the whole card.'
-                : 'Your home is not discoverable right now, so neighbors see nothing unless you share it. This is what they would see if you did.'}
+                : 'Your home is not discoverable right now, so others see nothing unless you share it. This is what they would see if you did.'}
             </p>
           </section>
 
-          <section aria-label="Hidden from neighbors" className="mt-6 bg-app-surface border border-app-border rounded-2xl shadow-sm p-4">
+          <section aria-label="Hidden from others" className="mt-6 bg-app-surface border border-app-border rounded-2xl shadow-sm p-4">
             <div className="flex items-center gap-2 mb-2">
               <EyeOff size={15} strokeWidth={2.25} className="text-app-text-secondary shrink-0" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">Never shown to neighbors</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">Never shown to others</span>
             </div>
             <ul className="divide-y divide-app-border-subtle">
               {mirror.hidden.map((h) => (

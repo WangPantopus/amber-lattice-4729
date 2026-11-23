@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -33,11 +35,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,15 +52,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -77,6 +89,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,6 +106,7 @@ import app.pantopus.android.data.api.models.mailbox.StampBalance
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardMood
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardRack
+import app.pantopus.android.ui.screens.mailbox.cards.table.rememberSecondLeaf
 import app.pantopus.android.ui.screens.mailbox.components.MailKind
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceCard
@@ -201,7 +215,7 @@ internal fun ToStep(
  * those on it), a tap puts them on it or takes them off, a check shows who's on it, and nobody more joins once it's [full].
  */
 @Composable
-private fun People(
+internal fun People(
     people: List<MailRecipientDto>,
     onChoose: (CardRecipient) -> Unit,
     listed: Set<String>? = null,
@@ -334,7 +348,7 @@ private fun EmailForm(
         )
         Text(
             "They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. " +
-                "The email doesn’t show the card.",
+                "The email never shows your note.",
             fontSize = 14.sp,
             lineHeight = 20.sp,
             color = PantopusColors.cardTextQuiet,
@@ -357,7 +371,7 @@ private fun EmailForm(
 
 /** A text box on the desk: card stock, a thin edge, wax red while it's being typed in. It asks for the keyboard at once. */
 @Composable
-private fun DeskField(
+internal fun DeskField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -368,11 +382,13 @@ private fun DeskField(
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
     onDone: () -> Unit = {},
+    /** Takes the focus (and the keyboard) as it shows; off where the field isn't what the screen is for (Pass it on). */
+    autoFocus: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { if (autoFocus) runCatching { focus.requestFocus() } }
     val shape = RoundedCornerShape(Radii.lg)
     BasicTextField(
         value = value,
@@ -430,7 +446,7 @@ private fun DeskField(
 }
 
 @Composable
-private fun Hint(
+internal fun Hint(
     text: String,
     problem: Boolean = false,
 ) {
@@ -503,7 +519,17 @@ internal fun PickBar(
     onChoose: (String) -> Unit,
     onNext: () -> Unit,
 ) {
-    val picked = cards.designOf(chosen)
+    PickBarBody(cards.designOf(chosen), onLarge = onLarge, onNext = onNext)
+    PickRack(cards, large = large, onLarge = onLarge, onChoose = onChoose, onNext = onNext)
+}
+
+/** The bar itself: [picked] small with its caption and "See it larger" (or how to choose one), and "Write on this card". */
+@Composable
+internal fun PickBarBody(
+    picked: HolidayCardDesign?,
+    onLarge: (String?) -> Unit,
+    onNext: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk).testTag("sendCardPickBar")) {
         HorizontalDivider(color = PantopusColors.cardNoteEdge)
         Row(
@@ -553,6 +579,17 @@ internal fun PickBar(
                     .testTag("sendCardWriteOn"),
         )
     }
+}
+
+/** The card rack over Pick a card while a picture is open large ([large]), among the other cards of its collection. */
+@Composable
+internal fun PickRack(
+    cards: HolidayCardsResponse,
+    large: String?,
+    onLarge: (String?) -> Unit,
+    onChoose: (String) -> Unit,
+    onNext: () -> Unit,
+) {
     cards.designOf(large)?.let { design ->
         val collection = cards.collections.firstOrNull { design.id in it.designs }
         CardRack(
@@ -596,21 +633,27 @@ private fun CollectionRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         collections.forEach { collection ->
-            CollectionChip(collection, selected = collection.id == shown, onSelect = { onShow(collection.id) })
+            CardPill(
+                collection.name,
+                selected = collection.id == shown,
+                onSelect = { onShow(collection.id) },
+                tag = "sendCardCollection.${collection.id}",
+            )
         }
     }
 }
 
 /**
- * A collection's name on a pill: card stock, or wax red while it's shown, and then scrolled into view. It's drawn 36 dp
- * tall and takes touches across 48.
+ * A collection's name (or a part's, on a collection's page) on a pill: card stock, or wax red while it's shown, and then
+ * scrolled into view. It's drawn 36 dp tall and takes touches across 48.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CollectionChip(
-    collection: HolidayCardCollection,
+internal fun CardPill(
+    name: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    tag: String,
 ) {
     val inView = remember { BringIntoViewRequester() }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -631,11 +674,11 @@ private fun CollectionChip(
                 .then(if (selected) Modifier else Modifier.border(1.dp, PantopusColors.cardFieldEdge, CircleShape))
                 .selectable(selected = selected, role = Role.Tab, onClick = onSelect)
                 .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
-                .testTag("sendCardCollection.${collection.id}"),
+                .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            collection.name,
+            name,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.SemiBold,
@@ -708,7 +751,6 @@ private fun DesignTile(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(3.dp)
     Column(
         modifier =
             modifier
@@ -719,38 +761,7 @@ private fun DesignTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
-                    .shadow(if (selected) 6.dp else 4.dp, shape)
-                    .clip(shape)
-                    .background(HolidayCardArt.paper(design.paper))
-                    // A zero-width border would still draw a hairline: the ring only when it's chosen.
-                    .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
-        ) {
-            AsyncImage(
-                model = HolidayCardArt.picture(design.id, thumb = true),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
-            )
-            if (selected) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(PantopusColors.cardWax),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
-                }
-            }
-        }
+        PickPicture(design, selected)
         // Two across, a caption has two full lines; at the largest text it wraps on rather than being cut.
         Text(
             design.caption,
@@ -764,7 +775,77 @@ private fun DesignTile(
     }
 }
 
+/**
+ * A picture as Pick a card draws it, at its own shape on its paper, in a shadow: chosen, a wax-red ring and a check.
+ * [thumb]: the small copy only, as the grid uses. Otherwise (the shelves' larger cards) the small copy first and the
+ * large one over it once it's loaded, except while Data Saver holds the app back.
+ */
+@Composable
+internal fun PickPicture(
+    design: HolidayCardDesign,
+    selected: Boolean,
+    thumb: Boolean = true,
+) {
+    val context = LocalContext.current
+    val large = !thumb && !HolidayCardArt.dataSaverOn(context)
+    val shape = RoundedCornerShape(3.dp)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
+                .shadow(if (selected) 6.dp else 4.dp, shape)
+                .clip(shape)
+                .background(HolidayCardArt.paper(design.paper))
+                // A zero-width border would still draw a hairline: the ring only when it's chosen.
+                .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
+    ) {
+        AsyncImage(
+            model = HolidayCardArt.picture(design.id, thumb = true),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+        )
+        if (large) {
+            AsyncImage(
+                model = HolidayCardArt.picture(design.id, thumb = false),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+            )
+        }
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(PantopusColors.cardWax),
+                contentAlignment = Alignment.Center,
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
+            }
+        }
+    }
+}
+
 // ── Step 3: write on the back ────────────────────────────────
+
+/** Beside "Sign your name": what's beside FROM, or that the account couldn't keep the signature (founder, 2026-11-16). */
+private fun signHint(
+    signature: CardSignature?,
+    keeping: CardSignKeeping?,
+    fromName: String,
+): String =
+    when {
+        keeping?.state?.keepFailed == true ->
+            "This card is signed, but your signature couldn’t be kept for next time. Sign again to try once more."
+        signature != null && signature == keeping?.saved -> "Your saved signature is beside FROM."
+        signature != null -> "Signed beside FROM."
+        else -> "Or leave ${fromName.trim().substringBefore(' ')} typed."
+    }
 
 /** The back of the chosen card as the writing surface; "Turn it over" shows the picture; the letters counted. */
 @Composable
@@ -782,6 +863,8 @@ internal fun WriteStep(
     /** The server keeps signatures (`GET /api/mailbox/cards` `signature`, launch key `card_table`). */
     canSign: Boolean = false,
     onSignature: (CardSignature?) -> Unit = {},
+    /** The account keeps one signature for the next cards (`signature.saves`); null: no "Keep this signature" box. */
+    keeping: CardSignKeeping? = null,
     /** The card's own photo (memories plan step 4); "Add a photo" shows when [photos] can be added to this card. */
     photo: CardPhotoDraft? = null,
     photos: CardPhotoCalls? = null,
@@ -793,16 +876,24 @@ internal fun WriteStep(
     /** "Help me write it" (`GET /api/mailbox/cards` `note_help`, the server's launch key `card_note_help`); null: no button. */
     noteHelp: CardNoteHelper? = null,
 ) {
+    // The card's width as it's written on: the note's leaves are worked out at it (plan Part 9).
+    var cardWidth by remember { mutableIntStateOf(0) }
     var showBack by rememberSaveable { mutableStateOf(true) }
     var signing by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val count = message.letterCount()
-    val greeting = (to as? CardRecipient.Person)?.firstName ?: "friend"
+    // The grey example line: one person by first name; a list of two or more names no one.
+    val greeting =
+        when (to) {
+            is CardRecipient.Person -> to.firstName
+            is CardRecipient.Several -> "friends"
+            else -> "friend"
+        }
     val shape = RoundedCornerShape(3.dp)
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         HolidayCardFlip(
             showBack = showBack,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onSizeChanged { cardWidth = it.width },
             front = {
                 HolidayCardFront(
                     design = design.id,
@@ -819,6 +910,8 @@ internal fun WriteStep(
                     fromName = fromName,
                     year = year,
                     modifier = Modifier.shadow(10.dp, shape).clip(shape),
+                    // The note as it's typed sizes the pen and its rules (plan Part 1); the writing box draws the words.
+                    message = message,
                     design = design.id,
                     signature = signature,
                     writing = { style ->
@@ -868,6 +961,7 @@ internal fun WriteStep(
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("sendCardCount"),
             )
         }
+        SecondLeafLine(message, design.id, cardWidth)
         if (noteHelp != null) {
             // A note picked there lands on the back, face up.
             CardNoteHelpRow(noteHelp, design.id, to, message, limit, onOpen = { focusManager.clearFocus() }, onPicked = { showBack = true })
@@ -884,6 +978,7 @@ internal fun WriteStep(
                     onClick = {
                         focusManager.clearFocus()
                         showBack = true
+                        keeping?.onOpened?.invoke()
                         signing = true
                     },
                     kind = CardButtonKind.Paper,
@@ -891,18 +986,19 @@ internal fun WriteStep(
                     modifier = Modifier.testTag("sendCardSign"),
                 )
                 Text(
-                    if (signature != null) "Signed beside FROM." else "Or leave ${fromName.trim().substringBefore(' ')} typed.",
+                    signHint(signature, keeping, fromName),
                     fontSize = 13.sp,
                     color = DeskInk.quiet,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("sendCardSignHint"),
                 )
             }
         }
         if (signing) {
             CardSignaturePad(
                 initial = signature,
-                onDone = {
-                    onSignature(it)
+                keeping = keeping,
+                onDone = { signed, keep ->
+                    if (keeping != null) keeping.onSigned(signed, keep) else onSignature(signed)
                     signing = false
                 },
                 onTyped = {
@@ -953,7 +1049,7 @@ private fun MediaUnderTheNote(
             voice = voice,
             forFirst = (to as? CardRecipient.Person)?.firstName ?: "you",
             fromFirst = fromName.trim().substringBefore(' '),
-            gift = CardMood.of(design.number, design.id) == CardMood.Reverence,
+            gift = CardMood.of(design.number, design.id, design.mood) == CardMood.Reverence,
             calls = voices,
             buyStamp = buyStamp,
             beforeRecord = beforeAdd,
@@ -965,8 +1061,9 @@ private fun MediaUnderTheNote(
 // ── Step 4: seal it for the day ──────────────────────────────
 
 /**
- * The sealed envelope, when it arrives, until when it can be taken back, and "Look it over" (step 5, where it's sent
- * from; "Seal and send" here when the server can't show the look). Why it can't go on shows under the choices.
+ * The sealed envelope, when it arrives, and until when it can be taken back and what it costs (plan Part 5). Its two
+ * buttons are pinned under the page ([SealFooter]), so they show the moment the step opens; the page keeps [endRoom]
+ * at its end so the last line can scroll clear of them.
  */
 @Composable
 internal fun SealStep(
@@ -976,15 +1073,17 @@ internal fun SealStep(
     fromName: String,
     form: SendCardForm,
     onArrival: (String) -> Unit,
-    onLook: () -> Unit,
-    onSend: () -> Unit,
-    /** Digital stamps left (postage on, once read): when the look can't be shown, this step says what it costs. */
+    /** Digital stamps left (postage on, once read): this step says what it costs. */
     stamps: StampBalance? = null,
-    onGetStamps: () -> Unit = {},
+    /** Room at the end of the page for the pinned buttons. */
+    endRoom: Dp = 0.dp,
+    /** "Let it travel" (travelling card plan Part 2): on or off; null where the server doesn't offer it. */
+    travel: Boolean? = null,
+    onTravel: (Boolean) -> Unit = {},
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val options = arrivalOptions(cards.arrivals, to, form.theirs)
-    val needsStamps = form.lookUnavailable && stamps?.available == 0
+    val several = (to as? CardRecipient.Several)?.entries?.size
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s2).rotate(1f)) {
             MailPiece(envelopePreview(design, fromName, to, sealed = form.arrival == "sealed_christmas"))
@@ -1023,41 +1122,125 @@ internal fun SealStep(
                     ) { onArrival(arrival) }
                 }
             }
-            form.sealNotice?.let {
-                Text(
-                    it,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PantopusColors.cardTextProblem,
-                    modifier =
-                        Modifier
-                            .padding(top = Spacing.s3)
-                            .semantics { liveRegion = LiveRegionMode.Assertive }
-                            .testTag("sendCardError"),
-                )
-            }
+            // On the same paper, under the arrival choices (travelling card plan Part 2).
+            travel?.let { on -> TravelChoice(to, on, onTravel, modifier = Modifier.padding(top = 10.dp)) }
         }
-        // Before it's sent there's no knowing their clock; the sent card says the time on this one.
+        // Before it's sent there's no knowing their clock; the sent card says the time on this one. Both lines show here,
+        // so a sender who skips Look it over has read them (plan Part 5).
         DeskNote(sealNote(to), modifier = Modifier.padding(top = 14.dp))
-        if (form.lookUnavailable) StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3))
-        CardButton(
+        StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3), count = several ?: 1)
+        Spacer(Modifier.height(endRoom))
+    }
+}
+
+/**
+ * Step 4's buttons pinned at the bottom of "Seal it for the day" (the design check of November 17): "Seal and send", and
+ * under it the quiet "Look it over". No panel: the ground fades from clear at the top to its full colour at the main
+ * button's middle and stays full from there down, so no word of the page shows behind or under "Look it over" (the
+ * re-check of November 17). Why it can't go on shows as one line right above them.
+ */
+@Composable
+internal fun SealFooter(
+    to: CardRecipient,
+    form: SendCardForm,
+    /** Digital stamps left (postage on, once read): none left, the main button is "Get stamps to send". */
+    stamps: StampBalance?,
+    sealingNow: Boolean,
+    onSend: () -> Unit,
+    onSealNow: () -> Unit,
+    onLook: () -> Unit,
+    onGetStamps: () -> Unit,
+    /** What the page lies on under the buttons: the cloth's colour at the table, else the desk's. */
+    ground: Color,
+    modifier: Modifier = Modifier,
+) {
+    // The pinned area's top and the main button's middle, on the screen: the ground is full from that middle down.
+    var top by remember { mutableFloatStateOf(0f) }
+    var middle by remember { mutableFloatStateOf(0f) }
+    CompositionLocalProvider(LocalOnCloth provides LaunchFeatures.cardTable) {
+        Column(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { top = it.positionInRoot().y }
+                    .drawBehind {
+                        val full = if (size.height > 0f) ((middle - top) / size.height).coerceIn(0.05f, 1f) else 1f
+                        drawRect(Brush.verticalGradient(0f to ground.copy(alpha = 0f), full to ground, 1f to ground))
+                    }.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
+                    .testTag("sendCardSealPinned"),
+        ) {
+            form.sealNotice?.let { PinnedProblem(it) }
+            SealStepButtons(
+                to,
+                form,
+                needsStamps = stamps?.available == 0,
+                sealingNow,
+                onSend,
+                onSealNow,
+                onLook,
+                onGetStamps,
+                mainModifier = Modifier.onGloballyPositioned { middle = it.positionInRoot().y + it.size.height / 2f },
+            )
+        }
+    }
+}
+
+/**
+ * Step 4's two buttons (plan 5.1): "Seal and send" ("Seal it and get the link", "Seal and send 3 cards"; "Get stamps to
+ * send" with none left), and under it the quiet "Look it over", which isn't offered when the server can't show it.
+ */
+@Composable
+private fun SealStepButtons(
+    to: CardRecipient,
+    form: SendCardForm,
+    needsStamps: Boolean,
+    sealingNow: Boolean,
+    onSend: () -> Unit,
+    onSealNow: () -> Unit,
+    onLook: () -> Unit,
+    onGetStamps: () -> Unit,
+    /** The main button's place is read from here, for the ground behind the buttons. */
+    mainModifier: Modifier = Modifier,
+) {
+    val chosen = form.arrival != null
+    val busy = form.previewing || form.sending
+    CardButton(
+        sealNowLabel(to, needsStamps),
+        onClick =
             when {
-                needsStamps -> "Get stamps to send"
-                !form.lookUnavailable -> "Look it over"
-                to is CardRecipient.Link -> "Seal it and get the link"
-                else -> "Seal and send"
+                needsStamps -> onGetStamps
+                // The server can't show the look: it seals and sends from here, as before.
+                form.lookUnavailable && to !is CardRecipient.Several -> onSend
+                else -> onSealNow
             },
-            onClick =
-                when {
-                    needsStamps -> onGetStamps
-                    form.lookUnavailable -> onSend
-                    else -> onLook
-                },
-            enabled = form.arrival != null,
-            busy = !needsStamps && (form.previewing || form.sending),
-            modifier = Modifier.padding(top = Spacing.s5).testTag("sendCardSend"),
+        enabled = chosen && (needsStamps || !busy || sealingNow),
+        busy = !needsStamps && (form.sending || (form.previewing && sealingNow)),
+        modifier = mainModifier.heightIn(min = 52.dp).testTag("sendCardSend"),
+    )
+    if (!form.lookUnavailable) {
+        CardButton(
+            "Look it over",
+            onClick = onLook,
+            kind = CardButtonKind.Words,
+            enabled = chosen && !(busy && sealingNow),
+            busy = form.previewing && !sealingNow,
+            modifier = Modifier.padding(top = Spacing.s1).testTag("sendCardLookOver"),
         )
+    }
+}
+
+/** The main button's words on step 4: Look it over's own (plan 5.1). */
+private fun sealNowLabel(
+    to: CardRecipient,
+    needsStamps: Boolean,
+): String {
+    val several = (to as? CardRecipient.Several)?.entries?.size
+    return when {
+        needsStamps -> "Get stamps to send"
+        several == 1 -> "Seal and send 1 card"
+        several != null -> "Seal and send $several cards"
+        to is CardRecipient.Link -> "Seal it and get the link"
+        else -> "Seal and send"
     }
 }
 
@@ -1122,6 +1305,63 @@ private fun ArrivalChoice(
         }
     }
 }
+
+/**
+ * "Let it travel" (travelling card plan Part 2, decision D5): one row under the arrival choices, on to begin with. Off,
+ * the card is an ordinary card and nothing about it is public.
+ */
+@Composable
+private fun TravelChoice(
+    to: CardRecipient,
+    on: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(Radii.lg)
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.cardField)
+                .border(1.dp, PantopusColors.cardListEdge, shape)
+                .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+                .padding(14.dp)
+                .testTag("sendCardTravel"),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Let it travel",
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.cardTextStrong,
+            )
+            Text(travelSentence(to), fontSize = 13.sp, lineHeight = 18.sp, color = PantopusColors.cardTextQuiet)
+        }
+        Switch(
+            checked = on,
+            onCheckedChange = null,
+            colors =
+                SwitchDefaults.colors(
+                    checkedTrackColor = PantopusColors.cardWax,
+                    checkedThumbColor = PantopusColors.cardField,
+                    uncheckedTrackColor = PantopusColors.cardFieldEdge,
+                    uncheckedThumbColor = PantopusColors.cardField,
+                    uncheckedBorderColor = PantopusColors.cardFieldEdge,
+                ),
+        )
+    }
+}
+
+/** "Maya can pass this card on. Its towns show on a map, never names." */
+private fun travelSentence(to: CardRecipient): String =
+    when (to) {
+        is CardRecipient.Person -> "${to.firstName} can pass this card on. Its towns show on a map, never names."
+        else -> "They can pass this card on. Its towns show on a map, never names."
+    }
 
 /**
  * A choice's title and its sentence. Their mail comes at 7 a.m. where they live: never turned into this clock's time.
@@ -1285,4 +1525,28 @@ private fun envelopePreview(
 private fun notOnPantopusYet(many: Boolean): String {
     val yet = if (LaunchFeatures.cardTable) " yet" else ""
     return if (many) "Not on Pantopus$yet? Add their email" else "Not on Pantopus$yet? Send it to their email"
+}
+
+/**
+ * Under the writing box while the note will go over two leaves (plan Part 9): the box itself stays as it is, and the
+ * reader turns the first leaf over.
+ */
+@Composable
+private fun SecondLeafLine(
+    message: String,
+    design: String,
+    cardWidth: Int,
+) {
+    if (!LaunchFeatures.cardTable || !rememberSecondLeaf(message, design, cardWidth)) return
+    Text(
+        "This note runs onto a second leaf.",
+        fontSize = 13.sp,
+        color = DeskInk.quiet,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s1)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("sendCardSecondLeaf"),
+    )
 }

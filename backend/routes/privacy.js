@@ -136,7 +136,7 @@ router.patch('/settings', verifyToken, validate(updateSettingsSchema), async (re
         await syncLocalProfileLocality(userId);
       } catch (localityErr) {
         logger.error('Error syncing local profile locality', { error: localityErr.message, userId });
-        return res.status(500).json({ error: 'Failed to update profile neighborhood visibility' });
+        return res.status(500).json({ error: 'Failed to update profile area visibility' });
       }
     }
 

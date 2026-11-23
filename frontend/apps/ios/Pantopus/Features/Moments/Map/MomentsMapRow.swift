@@ -17,6 +17,9 @@ import SwiftUI
 extension MomentsMapViewModel {
     /// The empty card's line: the place where you are while the map shows it, else "around here".
     var emptyLine: String {
+        // With a filter on, the line says what it covers: other Moments may still be there.
+        if liveOnly { return MomentsLiveChip.emptyLine }
+        if let filtered = timeFilter.emptyLine { return filtered }
         if centerSource == .gps, let center, let herePlace, !herePlace.isEmpty, let region = lastRegion,
            abs(region.center.latitude - center.latitude) < region.span.latitudeDelta / 2,
            abs(region.center.longitude - center.longitude) < region.span.longitudeDelta / 2 {
@@ -34,7 +37,7 @@ extension MomentsMapViewModel {
 
     /// Whether the row shows: a crowded spot is open, someone's Moment isn't on the map, or yours is posting.
     func showsRow(postings: [MomentPosting]) -> Bool {
-        focus != nil || !postings.isEmpty || stripRings.contains(where: \.noLocation)
+        focus != nil || !postings.isEmpty || stripRings.contains(where: \.noLocation) || MomentsScheduled.shared.waiting
     }
 
     /// What Play all plays with no spot open: the new ones in view, nearest first. Empty when caught up.

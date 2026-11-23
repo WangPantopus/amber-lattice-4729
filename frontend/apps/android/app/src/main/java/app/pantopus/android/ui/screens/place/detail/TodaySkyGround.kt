@@ -63,9 +63,19 @@ internal class TodaySkyGround(
         )
     }
 
-    fun paint(scope: DrawScope) = with(scope) { paintGround() }
+    /**
+     * [doorX]: where the home's door stands across the scene when the ground is drawn larger (the house on Today); null:
+     * the scene's own place, 0.7 of the way across.
+     */
+    fun paint(
+        scope: DrawScope,
+        doorX: Float? = null,
+    ) = with(scope) { paintGround(doorX) }
 
-    private fun DrawScope.paintGround() {
+    /** The home's colour and light, for what stands on the ground at its own size (`TodaySkyHouseObjects.kt`). */
+    fun houseTones(): SkyHouseTones = SkyHouseTones(tones().house, moment.phase == SkyPalette.Phase.DUSK || night, night)
+
+    private fun DrawScope.paintGround(doorX: Float?) {
         val tones = tones()
         val w = scene.width
         val h = scene.height
@@ -91,15 +101,17 @@ internal class TodaySkyGround(
                 close()
             }
         drawPath(front, tones.frontHill)
-        val house = Offset(w * 0.7f, y + 7)
-        val light = HomeLight(scene, moment)
+        val house = Offset(doorX ?: (w * 0.7f), y + 7)
+        // Drawn larger, a glow cut to its box shows the box's edges: there the glows are drawn whole.
+        val larger = doorX != null
+        val light = HomeLight(scene, moment, wholeGlow = larger)
         when (home.kind) {
             SkyHome.Kind.HOUSE -> paintHouse(home, light, tones.house, weather == SkyPalette.Weather.SNOW, house)
             SkyHome.Kind.TOWNHOUSE -> paintTownhouses(light, tones.house, house, home.chimney)
             SkyHome.Kind.APARTMENT -> paintApartment(light, tones.house, house)
             SkyHome.Kind.MOBILE -> paintMobileHome(light, tones.house, house)
         }
-        if (bins.isNotEmpty()) paintBins(tones, house)
+        if (bins.isNotEmpty()) paintBins(tones, house, wholeGlow = larger)
         if (cold && !still && home.chimney) paintSmoke(house)
         paintTrees(tones, house)
     }
@@ -108,21 +120,25 @@ internal class TodaySkyGround(
     private fun DrawScope.paintBins(
         tones: Tones,
         origin: Offset,
+        wholeGlow: Boolean,
     ) {
         val right = origin.x - home.leftReach - 2
         // At the curb: a little in front of the house.
         val base = origin.y + 8
         if (moment.phase == SkyPalette.Phase.DUSK || night) {
             val width = bins.size * 9f + 12
-            drawRect(
+            val middle = Offset(right - width / 2 + 3, base - 5)
+            val glow =
                 Brush.radialGradient(
                     listOf(SkyPalette.windowGlow.copy(alpha = 0.22f), SkyPalette.windowGlow.copy(alpha = 0f)),
-                    Offset(right - width / 2 + 3, base - 5),
+                    middle,
                     18f,
-                ),
-                topLeft = Offset(right - width, base - 22),
-                size = Size(width + 6, 26f),
-            )
+                )
+            if (wholeGlow) {
+                drawCircle(glow, 18f, middle)
+            } else {
+                drawRect(glow, topLeft = Offset(right - width, base - 22), size = Size(width + 6, 26f))
+            }
         }
         bins.reversed().forEachIndexed { index, kind ->
             val colour =
@@ -262,6 +278,36 @@ internal class TodaySkyGround(
     }
 
     companion object {
+        /** The horizon above the scene's bottom. */
+        const val HORIZON = 34f
+
+        /**
+         * How far the far hill's crest stands above the horizon, [across] the scene (0 at its left edge, 1 at its
+         * right): the curve [paintGround] draws.
+         */
+        fun backHillRise(across: Float): Float {
+            // Each half of the crest: its four points across (as fractions) and above the horizon.
+            val left = floatArrayOf(0f, 0.22f, 0.42f, 0.6f) to floatArrayOf(-4f, 16f, 2f, 10f)
+            val right = floatArrayOf(0.6f, 0.78f, 0.9f, 1f) to floatArrayOf(10f, 18f, 6f, 12f)
+            val (xs, rises) = if (across <= 0.6f) left else right
+            val target = across.coerceIn(0f, 1f)
+            var low = 0f
+            var high = 1f
+            repeat(20) {
+                val middle = (low + high) / 2
+                if (cubic(xs, middle) < target) low = middle else high = middle
+            }
+            return cubic(rises, (low + high) / 2)
+        }
+
+        private fun cubic(
+            p: FloatArray,
+            t: Float,
+        ): Float {
+            val u = 1 - t
+            return u * u * u * p[0] + 3 * u * u * t * p[1] + 3 * u * t * t * p[2] + t * t * t * p[3]
+        }
+
         /** Where the bins stand in a card [width] × [height] dp, for the tap target over them. */
         fun binsCenter(
             width: Float,

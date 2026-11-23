@@ -43,6 +43,7 @@ import {
   Palette,
   Clock,
   CalendarClock,
+  CalendarDays,
   Plane,
   MailOpen,
   Archive,
@@ -62,6 +63,7 @@ import {
   ListTodo,
   HandCoins,
   ShieldCheck,
+  CircleDashed,
   Radio,
   Trash2,
   createLucideIcon,
@@ -81,12 +83,14 @@ const ChristmasMail = createLucideIcon('ChristmasMail', [
 
 // ── Navigation icons (sidebar, header, tabs) ─────────────────
 export const NavIcons = {
+  plans: CalendarDays,
   place: Home,
   hub: LayoutDashboard,
   // The phone tabs: Place · Today · Mail · Pulse (Mail third, founder decision 2026-11-13).
   today: Sun,
   /** The Pulse tab (named Nearby until the founder's November 7 decision). */
   pulse: Activity,
+  moments: CircleDashed,
   nearby: Compass,
   mail: Mail,
   /** Mail from November 1 to December 25 while Christmas cards are open (cardDoors useChristmasMail). */

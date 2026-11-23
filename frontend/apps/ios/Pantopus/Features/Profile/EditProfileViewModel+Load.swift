@@ -12,6 +12,12 @@
 import Foundation
 
 extension EditProfileViewModel {
+    /// Address suggestions favor the person's own home's area (founder 2026-11-17: suggestions everywhere).
+    func loadAddressSearchArea() async {
+        guard addressSuggestions.near == nil else { return }
+        addressSuggestions.near = await AddressSuggestions.anyHomePoint()
+    }
+
     /// Initial load; no-op when already loaded.
     func load() async {
         if case .loaded = state { return }

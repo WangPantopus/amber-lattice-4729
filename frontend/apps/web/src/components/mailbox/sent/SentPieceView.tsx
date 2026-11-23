@@ -9,9 +9,10 @@
 // ============================================================
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarClock, ChevronLeft, Loader2, Lock, MailWarning } from 'lucide-react';
-import { useEmailHolidayCardAgain, useHolidayCards, useSentCard, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
+import { useCardExchange, useEmailHolidayCardAgain, useHolidayCards, useSentCard, useTakeBackCardReply, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
 import { toast } from '@/components/ui/toast-store';
 import MailPiece from '../MailPiece';
 import { calendarDay } from '../MailRow';
@@ -23,11 +24,11 @@ import CardFlip from '../cards/CardFlip';
 import CardShareSheet from '../cards/CardShareSheet';
 import CardTable from '../cards/CardTable';
 import { askTakeBack, takeBackMessage } from '../cards/takeBack';
-import { cardMood, shortDay, WAX } from '../cards/cardArt';
+import { cardMood, firstNameOf, shortDay, WAX } from '../cards/cardArt';
 import CardPrint from '../cards/CardPrint';
 import CardGreeting from '../cards/CardGreeting';
 import CardLinkActions from '../cards/CardLinkActions';
-import { linkOpened, sentEnvelope, sentEnvelopeName, sentFirst, sentStatusLine, trailLabel, trailWhen } from './sentWords';
+import { linkOpened, sentEnvelope, sentEnvelopeName, sentFirst, sentStatusLine, sentTravelLine, trailLabel, trailWhen } from './sentWords';
 import { launchFeatures } from '@/lib/featureFlags';
 
 const label = 'text-[11px] font-semibold uppercase leading-4 tracking-[0.06em] text-app-text-secondary';
@@ -74,6 +75,18 @@ export default function SentPieceView({ id }: { id: string }) {
   const [onTable, setOnTable] = useState(false);
   const [sharing, setSharing] = useState(false);
   const backToSent = () => router.push('/app/mailbox/sent');
+  // Write back (mail-cards-experience Part 3): the joined pair opens from Sent for both people, the card's sender (once its
+  // reply has come) and the reply's writer.
+  const isReply = Boolean(piece?.card_reply);
+  const joined = useCardExchange(id, { enabled: Boolean(piece && (isReply || (piece.kind === 'card' && !piece.sealed))) });
+  const pair = joined.data ?? null;
+  const [joinedOpen, setJoinedOpen] = useState(false);
+  const takeBackReply = useTakeBackCardReply(piece?.card_reply?.card_id ?? id);
+  // Send this card to someone else (mail-cards-experience Part 6): only while another card can go now (a stamp left, or
+  // without stamps, today's card not used).
+  const canSendAgain = Boolean(holidayCards?.open) && launchFeatures.cardTable && (holidayCards?.postage_enabled
+    ? (holidayCards?.stamps?.available ?? 0) > 0
+    : !(holidayCards?.today && holidayCards.today.status !== 'withdrawn'));
 
   if (isLoading) {
     return (
@@ -163,6 +176,24 @@ export default function SentPieceView({ id }: { id: string }) {
           onClose={() => setOnTable(false)}
         />
       ) : null}
+      {/* The card and its reply, joined (Part 3): the card picture side up, the reply lying on it. */}
+      {joinedOpen && pair?.reply ? (
+        <CardTable
+          key="joined"
+          card={pair.original?.card ?? { design: piece.card_reply?.design ?? card.design ?? '', number: piece.card_reply?.number ?? card.number,
+            caption: piece.card_reply?.caption ?? card.caption, paper: piece.card_reply?.paper ?? card.paper ?? '#f7eee0',
+            table: piece.card_reply?.table ?? card.table, year: piece.card_reply?.year ?? card.year ?? new Date(piece.sent_at).getFullYear(), sealed: false }}
+          mediaFrom={pair.original ? (fileId) => (isReply ? { piece: pair.original!.id, fileId } : { sent: piece.id, fileId }) : null}
+          note={pair.original?.note ?? ''}
+          fromName={pair.original?.from_name ?? piece.envelope.from}
+          toName={pair.original?.to_name ?? sentEnvelopeName(piece)}
+          mailedOn={pair.original?.sent_on ?? null}
+          startOnTable
+          reply={{ note: pair.reply.note ?? '', fromName: pair.reply.from_name ?? '', signature: pair.reply.card_reply?.signature ?? null, writtenOn: pair.reply.sent_on }}
+          closeLabel="Back to your card"
+          onClose={() => setJoinedOpen(false)}
+        />
+      ) : null}
       {/* A card still sealed for them shares as the sealed envelope, here too: the surprise is theirs. */}
       {sharing && card.design ? (
         <CardShareSheet
@@ -172,6 +203,8 @@ export default function SentPieceView({ id }: { id: string }) {
             fromName: piece.envelope.from,
             mailedOn: piece.envelope.postmarked_on || piece.sent_at,
             signature: card.signature ?? null,
+            // A travelling card (Part 7): its envelope's postmarks, and how far it has gone from here.
+            travel: piece.travel?.journey ? { journey: piece.travel.journey, postmarks: piece.travel.postmarks ?? [], towns: piece.travel.towns, miles: piece.travel.miles } : null,
           }}
           slug={card.slug}
           mine
@@ -183,6 +216,13 @@ export default function SentPieceView({ id }: { id: string }) {
         <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-1 md:px-7 md:pt-6">
           <h2 className="text-2xl font-bold leading-8 tracking-tight text-app-text">{byLinkUnopened ? 'Your card by link' : <>Your {piece.kind === 'letter' ? 'letter' : 'card'} to {name}</>}</h2>
           <p className="mt-0.5 text-sm leading-5 text-app-text-secondary">Sent {shortDay(piece.sent_at)} · {sentStatusLine(piece)}</p>
+          {/* A card that travels (travelling card Part 6): "5 towns · 2,692 miles. Now in Tampa, FL." and its journey. */}
+          {piece.travel?.journey ? (
+            <p className="mt-1 text-sm leading-5 text-app-text" data-testid="mailSentTravel">
+              {sentTravelLine(piece) ? <>{sentTravelLine(piece)} </> : null}
+              <Link href={`/cards/journey/${piece.travel.journey}`} className="font-semibold text-app-text-strong underline underline-offset-4" data-testid="mailSentJourney">See its journey</Link>
+            </p>
+          ) : null}
           {piece.email_status ? (
             // Its email didn't go out: the server keeps trying for about an hour, then gives up. Say so, with the
             // address they typed, first on the page, and let them email it again (or take it back below).
@@ -232,6 +272,16 @@ export default function SentPieceView({ id }: { id: string }) {
               <section aria-label="The letter you sent" className="rounded-xl border border-app-border bg-app-surface p-5 [grid-area:card]">
                 <h3 className={label}>The letter you sent</h3>
                 <h4 className="mt-3 text-lg font-semibold text-app-text">{piece.subject}</h4>
+                {isReply && pair?.reply ? (
+                  <button
+                    type="button"
+                    data-testid="mailSentJoined"
+                    onClick={() => setJoinedOpen(true)}
+                    className={`${button} mt-3 border border-[#d6cbb6] bg-[#fffdf8] px-5 text-[15px] text-[#374151] hover:bg-[#f5efe3] focus-visible:ring-[#8b1d1d]`}
+                  >
+                    See it the way they did
+                  </button>
+                ) : null}
                 <p className="mt-4 whitespace-pre-wrap break-words text-base leading-7 text-app-text">{piece.note}</p>
               </section>
             ) : <section aria-label="The card you sent" className="[grid-area:card]">
@@ -249,8 +299,10 @@ export default function SentPieceView({ id }: { id: string }) {
                             width={card.photo.width}
                             height={card.photo.height}
                             alt={card.photo.alt}
-                            datedOn={cardMood(card.number, card.design) === 'nostalgia' ? (piece.envelope.postmarked_on ?? piece.sent_at) : null}
+                            datedOn={cardMood(card.number, card.design, card.mood) === 'nostalgia' ? (piece.envelope.postmarked_on ?? piece.sent_at) : null}
                             className="w-full"
+                            opens
+                            live={card.photo.live ? { sent: piece.id, fileId: card.photo.live.file_id } : null}
                           />
                         </div>
                       ) : null}
@@ -261,7 +313,7 @@ export default function SentPieceView({ id }: { id: string }) {
                             durationMs={card.voice.duration_ms}
                             forName={first}
                             fromName={piece.envelope.from}
-                            gift={cardMood(card.number, card.design) === 'reverence'}
+                            gift={cardMood(card.number, card.design, card.mood) === 'reverence'}
                           />
                         </div>
                       ) : null}
@@ -285,6 +337,26 @@ export default function SentPieceView({ id }: { id: string }) {
                       >
                         Share
                       </button>
+                      {!isReply && pair?.reply ? (
+                        <button
+                          type="button"
+                          data-testid="mailSentWroteBack"
+                          onClick={() => setJoinedOpen(true)}
+                          className={`${button} border border-[#d6cbb6] bg-[#fffdf8] px-5 text-[15px] text-[#374151] hover:bg-[#f5efe3] focus-visible:ring-[#8b1d1d]`}
+                        >
+                          {firstNameOf(pair.reply.from_name)} wrote back
+                        </button>
+                      ) : null}
+                      {canSendAgain && card.design ? (
+                        <button
+                          type="button"
+                          data-testid="mailSentSendAgain"
+                          onClick={() => router.push(`/app/mailbox/cards?again=${encodeURIComponent(card.design as string)}`)}
+                          className={`${button} border border-[#d6cbb6] bg-[#fffdf8] px-5 text-[15px] text-[#374151] hover:bg-[#f5efe3] focus-visible:ring-[#8b1d1d]`}
+                        >
+                          Send this card to someone else
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {front ? (
@@ -333,7 +405,31 @@ export default function SentPieceView({ id }: { id: string }) {
               </p>
             </section>
 
-            {piece.can_take_back ? (
+            {isReply && piece.card_reply?.can_take_back ? (
+              <div className="[grid-area:take]">
+                <section aria-label="Take it back" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e7dcc6] bg-[#fbf6ec] px-4 py-3.5 text-[#111827] [@media(prefers-color-scheme:dark)]:brightness-[0.94]">
+                  <CalendarClock className="h-5 w-5 flex-shrink-0 text-[#7c4a2d]" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold leading-5">Changed your mind?</p>
+                    <p className="text-[13px] leading-[18px] text-[#4e5563]">It waits for the carrier until {clock(piece.card_reply.take_back_until)} {shortDay(piece.card_reply.take_back_until)} (your clock).</p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="mailSentReplyTakeBack"
+                    disabled={takeBackReply.isPending}
+                    onClick={() => takeBackReply.mutate(undefined, {
+                      onSuccess: () => { toast.success('You took your reply back.'); router.push('/app/mailbox/sent'); },
+                      onError: (err) => { setTakeBackError(mailLoadMessage(err)); void refetch(); },
+                    })}
+                    className={`${button} border-[1.5px] border-[#8b1d1d] bg-transparent text-[#8b1d1d] hover:bg-[#8b1d1d]/5 focus-visible:ring-[#8b1d1d] disabled:opacity-60`}
+                  >
+                    {takeBackReply.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                    Take it back
+                  </button>
+                </section>
+                {takeBackError ? <p role="alert" className="mt-2 text-sm font-medium text-red-700">{takeBackError}</p> : null}
+              </div>
+            ) : piece.can_take_back ? (
               <div className="[grid-area:take]">
                 <section aria-label="Take it back" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e7dcc6] bg-[#fbf6ec] px-4 py-3.5 text-[#111827] [@media(prefers-color-scheme:dark)]:brightness-[0.94]">
                   <CalendarClock className="h-5 w-5 flex-shrink-0 text-[#7c4a2d]" aria-hidden />

@@ -66,7 +66,7 @@ public enum MailDaySettingKey: String, Sendable, Hashable, CaseIterable, Identif
         case .includeHome: "Home drawer"
         case .includeBusiness: "Business drawer"
         case .includeEarnCount: "Earn offers count"
-        case .includeCommunity: "Neighborhood notices"
+        case .includeCommunity: "Local notices"
         case .interruptTimeSensitive: "Time-sensitive mail"
         case .interruptPackagesOtd: "Packages out for delivery"
         case .interruptCertified: "Certified mail"

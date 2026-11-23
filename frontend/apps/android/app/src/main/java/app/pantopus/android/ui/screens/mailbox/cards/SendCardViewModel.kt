@@ -211,6 +211,10 @@ data class SendCardForm(
     val listTakingBack: String? = null,
     /** Why a card on the list couldn't be taken back: its id and the sentence. */
     val listTakeBackError: Pair<String, String>? = null,
+    /** "Send this card to someone else" (plan Part 6): its picture is kept, so step 1 goes straight to the note. */
+    val samePicture: Boolean = false,
+    /** "Let it travel" turned off (travelling card plan Part 2): it's on to begin with wherever the server offers it (D5). */
+    val travelOff: Boolean = false,
 ) {
     /** The person or address on the list whose card has this request ID. */
     fun listEntry(requestId: String): CardRecipient? {
@@ -229,7 +233,17 @@ data class SendCardForm(
 
     /** This form with its card's request ID, made now if it has none yet. */
     fun withRequestId(): SendCardForm = if (requestId != null) this else copy(requestId = UUID.randomUUID().toString())
+
+    /** After step 1: Pick a card, or straight to the note when the picture is kept (plan Part 6). */
+    val stepAfterTo: SendCardStep get() = if (samePicture && design != null) SendCardStep.Write else SendCardStep.Pick
+
+    /** A new card with [sent]'s picture kept, for "Send this card to someone else"; null [sent]: this card as it is. */
+    fun withPictureOf(sent: SendCardForm?): SendCardForm =
+        if (sent?.design == null) this else copy(design = sent.design, samePicture = true)
 }
+
+/** The send flow's route flag: "Send this card to someone else" from Sent keeps the named picture (plan Part 6). */
+const val SEND_CARD_SAME_PICTURE_KEY = "samePicture"
 
 /**
  * The card's own photo while the card is written (memories plan step 4): it uploads as soon as it's chosen. [local] is the
@@ -298,8 +312,9 @@ private const val LOOK_UNAVAILABLE = "Pantopus can’t show how your card will l
  * Reads `GET /api/mailbox/cards`; searches `GET /api/mailbox/compose/recipients?people=1`; looks it over with `POST
  * /api/mailbox/cards/preview`; sends `POST /api/mailbox/cards`; takes back `POST /api/mailbox/cards/:id/take-back`.
  */
+// The send flow's one model, at detekt's size limit before the travelling card; its switch and town are SendCardTown.
 @HiltViewModel
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class SendCardViewModel
     @Inject
     constructor(
@@ -319,16 +334,22 @@ class SendCardViewModel
         private val _form = MutableStateFlow(restoredForm())
         val form: StateFlow<SendCardForm> = _form.asStateFlow()
 
+        /** The account's saved signature (founder, 2026-11-16): a new card starts signed with it (CardSignaturePad.kt). */
+        val signatureKeeper = SavedSignatureKeeper(repo, viewModelScope, cards, fresh = !saved.contains(KEY_SIGNATURE), ::onSignature)
+
         /** "Help me write it" on the write step (SendCardNoteHelp.kt): its notes and its Undo, for this card. */
         val noteHelp = CardNoteHelper(repo, network, viewModelScope, message = { _form.value.message }, write = ::onMessageChange)
 
         /** The card's own photo and greeting while it's written (memories plan steps 4 and 7). */
         val drafts = SendCardMedia(viewModelScope, media, _form) { error, doing -> sendMessage(error, doing) }
 
-        /** "Send another card" under a card just sent (digital stamps on): a new card from the first step. */
-        fun startAnotherCard() {
+        /** "Let it travel" and "Where does it start?" (travelling card plan Part 2). */
+        internal val town = SendCardTown(cards, _form)
+
+        /** "Send another card" (digital stamps on): a new card from the first step; [samePicture] keeps this one's (Part 6). */
+        fun startAnotherCard(samePicture: Boolean = false) {
             _query.value = ""
-            _form.value = SendCardForm()
+            _form.value = SendCardForm(signature = signatureKeeper.saved).withPictureOf(_form.value.takeIf { samePicture })
         }
 
         private val _stampsNeeded = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
@@ -407,8 +428,10 @@ class SendCardViewModel
         fun reload() {
             if (cards.value == null) _load.value = SendCardLoad.Loading
             viewModelScope.launch {
+                val loaded = repo.load()
+                signatureKeeper.cardsRead(loaded is NetworkResult.Success || cards.value != null, _form.value.signature)
                 _load.value =
-                    when (val result = repo.load()) {
+                    when (val result = loaded) {
                         is NetworkResult.Success -> SendCardLoad.Done
                         is NetworkResult.Failure ->
                             SendCardLoad.Failed(
@@ -438,7 +461,7 @@ class SendCardViewModel
         fun choose(to: CardRecipient) {
             _form.update {
                 val theirs = it.theirs.takeIf { _ -> it.to == to }
-                it.copy(to = to, step = SendCardStep.Pick, tookBack = false, theirs = theirs, arrival = arrivalFor(to, it.arrival, theirs))
+                it.copy(to = to, step = it.stepAfterTo, tookBack = false, theirs = theirs, arrival = arrivalFor(to, it.arrival, theirs))
             }
             readTheirs()
         }
@@ -569,6 +592,7 @@ class SendCardViewModel
                     recipients,
                     signature = form.signature,
                     emailsKeepArrival = keep,
+                    travel = true.takeIf { town.travels(form) },
                 )
         }
 
@@ -578,11 +602,12 @@ class SendCardViewModel
          */
         private fun lookOverList() {
             val form = _form.value
-            if (form.previewing || form.sending || form.message.isBlank()) return
+            if (cantGoYet(form, TownThen.Look)) return
             val (started, body) = listToSend(form) ?: return
             _form.value = started.copy(previewing = true, sealError = null)
             viewModelScope.launch {
                 val result = repo.previewList(body)
+                if (result is NetworkResult.Failure && town.refused(result.error, TownThen.Look)) return@launch
                 _form.update {
                     when {
                         it.step != SendCardStep.Seal || it.to != started.to -> it.copy(previewing = false)
@@ -603,11 +628,12 @@ class SendCardViewModel
          */
         fun sendList() {
             val form = _form.value
-            if (form.sending || form.previewing) return
+            if (form.sending || form.previewing || town.askFirst(form, TownThen.SendList)) return
             val (started, body) = listToSend(form) ?: return
             _form.value = started.copy(sending = true, sendError = null)
             viewModelScope.launch {
                 val result = repo.sendList(body)
+                if (result is NetworkResult.Failure && town.refused(result.error, TownThen.SendList)) return@launch
                 if (result is NetworkResult.Failure && result.error.serverCode() == STAMPS_REQUIRED) {
                     val (needed, available) = result.error.stampCounts()
                     val cards = needed ?: body.recipients.size
@@ -671,12 +697,13 @@ class SendCardViewModel
             val to = form.to ?: return
             val design = form.design ?: return
             val arrival = form.arrival ?: return
-            if (form.previewing || form.sending || form.message.isBlank()) return
+            if (cantGoYet(form, TownThen.Look)) return
             val started = form.withRequestId()
             _form.value = started.copy(previewing = true, sealError = null)
             viewModelScope.launch {
                 val look =
                     repo.preview(
+                        travel = town.travels(form),
                         design = design,
                         message = form.message.trim(),
                         signature = form.signature,
@@ -689,7 +716,7 @@ class SendCardViewModel
                         requestId = started.requestId,
                         toLink = to is CardRecipient.Link,
                     )
-                if (!wentEarlier(look)) showLook(look, form)
+                if (!wentEarlier(look) && !town.refused((look as? CardLook.Failed)?.error, TownThen.Look)) showLook(look, form)
             }
         }
 
@@ -729,12 +756,13 @@ class SendCardViewModel
             val to = form.to ?: return
             val design = form.design ?: return
             val arrival = form.arrival ?: return
-            if (form.sending || form.previewing || form.message.isBlank()) return
+            if (cantGoYet(form, TownThen.Send)) return
             val started = form.withRequestId()
             _form.value = started.copy(sending = true, sendError = null, sealError = null)
             viewModelScope.launch {
                 val result =
                     repo.send(
+                        travel = town.travels(form),
                         design = design,
                         message = form.message.trim(),
                         signature = form.signature,
@@ -747,7 +775,7 @@ class SendCardViewModel
                         requestId = started.requestId,
                         toLink = to is CardRecipient.Link,
                     )
-                if (result is NetworkResult.Failure && wentEarlier(result.error)) return@launch
+                if (result is NetworkResult.Failure && answeredElsewhere(result.error)) return@launch
                 // The stamps ran out meanwhile (another device sent a card), or a photo or greeting has no bought stamp left:
                 // the stamp books open; the card, its photo and its greeting stay as they are.
                 if ((result as? NetworkResult.Failure)?.error?.wantsStamps(cards.value) == true) {
@@ -770,6 +798,18 @@ class SendCardViewModel
                 if (closed) readTheirs()
             }
         }
+
+        /**
+         * The send's refusal is answered by another screen: the card went earlier ([wentEarlier]), or a travelling card's
+         * town is asked for (travelling card plan Part 2), after which the send goes again.
+         */
+        private fun answeredElsewhere(error: NetworkError): Boolean = wentEarlier(error) || town.refused(error, TownThen.Send)
+
+        /** Not now: a look or send is running, there's no note, or a travelling card's town is asked for first ([then]). */
+        private fun cantGoYet(
+            form: SendCardForm,
+            then: TownThen,
+        ): Boolean = form.previewing || form.sending || form.message.isBlank() || town.askFirst(form, then)
 
         /** [wentEarlier] for a look that couldn't be shown. */
         private fun wentEarlier(look: CardLook): Boolean = look is CardLook.Failed && wentEarlier(look.error)
@@ -798,7 +838,7 @@ class SendCardViewModel
                 }
                 TAKEN_BACK -> {
                     _query.value = ""
-                    _form.value = SendCardForm(takenBackNote = sendMessage(error))
+                    _form.value = SendCardForm(signature = signatureKeeper.saved, takenBackNote = sendMessage(error))
                 }
                 else -> return false
             }
@@ -815,7 +855,7 @@ class SendCardViewModel
                 when (val result = repo.takeBack(card.id)) {
                     is NetworkResult.Success -> {
                         _query.value = ""
-                        _form.value = SendCardForm(tookBack = true)
+                        _form.value = SendCardForm(signature = signatureKeeper.saved, tookBack = true)
                     }
                     is NetworkResult.Failure ->
                         _form.update { it.copy(takingBack = false, takeBackError = takeBackMessage(result.error)) }
@@ -920,12 +960,14 @@ class SendCardViewModel
                 email = email,
                 to = to.takeIf { reachable != SendCardStep.To },
                 design = design,
+                samePicture = design != null && saved.get<Boolean>(SEND_CARD_SAME_PICTURE_KEY) == true,
                 message = message,
                 signature = signature,
                 photo = photo,
                 voice = voice,
                 arrival = saved.get<String>(KEY_ARRIVAL),
                 requestId = saved.get<String>(KEY_REQUEST_ID),
+                travelOff = saved.get<Boolean>(KEY_TRAVEL_OFF) == true,
                 listed = list?.first.orEmpty(),
                 listIds = list?.second.orEmpty(),
             )
@@ -1008,6 +1050,7 @@ class SendCardViewModel
                 }
             saved[KEY_ARRIVAL] = form.arrival.takeIf { form.step != SendCardStep.Sent }
             saved[KEY_REQUEST_ID] = form.requestId.takeIf { form.step != SendCardStep.Sent }
+            saved[KEY_TRAVEL_OFF] = form.travelOff.takeIf { form.step != SendCardStep.Sent && it }
         }
 
         private fun takeBackMessage(error: NetworkError): String =
@@ -1043,6 +1086,7 @@ class SendCardViewModel
             private const val STAMPS_REQUIRED = "STAMPS_REQUIRED"
 
             private const val KEY_STEP = "sendCard.step"
+            private const val KEY_TRAVEL_OFF = "sendCard.travelOff"
             private const val KEY_BY_EMAIL = "sendCard.byEmail"
             private const val KEY_EMAIL = "sendCard.email"
             private const val KEY_TO_USER = "sendCard.toUser"
@@ -1069,7 +1113,7 @@ private fun NetworkError.storedCard(): SentHolidayCard? {
 }
 
 /** The machine code a refusal carried (`{ error, code }`), when the server sent one. */
-private fun NetworkError.serverCode(): String? {
+internal fun NetworkError.serverCode(): String? {
     val body =
         when (this) {
             is NetworkError.ClientError -> body

@@ -253,7 +253,7 @@ describe('NeighborhoodPulseComposer', () => {
       const density = buildCommunityDensity();
       expect(density.neighbor_count).toBe(0);
       expect(density.invite_cta).toBe(true);
-      expect(density.density_message).toContain('No Pantopus neighbors');
+      expect(density.density_message).toContain('No one near you on Pantopus');
     });
   });
 

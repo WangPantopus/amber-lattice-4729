@@ -104,6 +104,8 @@ export function sentEnvelope(piece: SentPiece): MailItemV2 {
     sender_trust: 'pantopus_user',
     sender_business_name: null,
     postmark: piece.envelope.postmarked_on ? { town: null, date: piece.envelope.postmarked_on } : null,
+    // A reply they wrote (Part 3): drawn on its card's picture, as the other person's Mailbox shows it.
+    card_reply: piece.card_reply ? { ...piece.card_reply, signature: null } : null,
     card: piece.kind === 'letter' ? null : {
       design: piece.card.design ?? '',
       number: piece.card.number,
@@ -162,4 +164,14 @@ export function trailWhen(step: SentTrailStep): string | null {
   }
   if (step.on) return shortDay(step.on).replace(',', '').toUpperCase();
   return null;
+}
+
+/**
+ * A card that travels (travelling card Part 6): "5 towns · 2,692 miles. Now in Tampa, FL.", counted from this card on,
+ * once it has reached someone; null before that or for a card that doesn't travel.
+ */
+export function sentTravelLine(piece: Pick<SentPiece, 'travel'>): string | null {
+  const travel = piece.travel;
+  if (!travel?.now_in) return null;
+  return `${travel.towns} ${travel.towns === 1 ? 'town' : 'towns'} · ${travel.miles.toLocaleString('en-US')} miles. Now in ${travel.now_in}.`;
 }

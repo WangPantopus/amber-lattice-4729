@@ -17,9 +17,14 @@ public enum MomentsEndpoints {
 
     /// `POST /api/moments/place-preview` — the place a pin here reads as for
     /// others, whether it is the caller's home, and whether the 18+
-    /// confirmation is on file. Route `backend/routes/moments.js` (place-preview).
-    public static func placePreview(latitude: Double, longitude: Double) -> Endpoint {
-        Endpoint(method: .post, path: "/api/moments/place-preview", body: MomentsPlacePreviewBody(latitude: latitude, longitude: longitude))
+    /// confirmation is on file. With `weather`, also the weather a Moment taken here would keep now (v4.1), only ever
+    /// at the author's own fix. Route `backend/routes/moments.js` (place-preview).
+    public static func placePreview(latitude: Double, longitude: Double, weather: Bool = false) -> Endpoint {
+        Endpoint(
+            method: .post,
+            path: "/api/moments/place-preview",
+            body: MomentsPlacePreviewBody(latitude: latitude, longitude: longitude, weather: weather ? true : nil)
+        )
     }
 
     /// `POST /api/moments/place-preview` with no point (location off, contract v3.4): only the 18+ state and
@@ -168,6 +173,8 @@ public enum MomentsEndpoints {
 private struct MomentsPlacePreviewBody: Encodable {
     let latitude: Double
     let longitude: Double
+    /// Left out unless asked: a preview without it looks no weather up.
+    let weather: Bool?
 }
 
 private struct MomentsEmptyBody: Encodable {}

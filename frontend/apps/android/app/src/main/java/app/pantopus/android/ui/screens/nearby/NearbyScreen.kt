@@ -262,7 +262,7 @@ internal fun NeighborhoodContent(
                                 if (launchSurfaces.isNotEmpty()) MeterCard(current.meter)
                                 // The area is still forming or growing: ask the neighbors in (as iOS and web do).
                                 PrimaryButton(
-                                    title = "Invite your neighbors",
+                                    title = "Invite homes near you",
                                     onClick = onInvite,
                                     modifier = Modifier.fillMaxWidth().testTag("nearbyInvite"),
                                 )
@@ -479,7 +479,7 @@ private fun MeterCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "VERIFIED NEIGHBORS ${areaLabel(meter).uppercase()}",
+                "VERIFIED HOMES ${areaLabel(meter).uppercase()}",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp,
@@ -582,10 +582,10 @@ private fun NoPlaceCard(onClaim: () -> Unit) {
         ) {
             PantopusIconImage(PantopusIcon.Home, null, size = 28.dp, strokeWidth = 2f, tint = PantopusColors.home)
         }
-        Text("Add a home for neighborhood context", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText)
+        Text("Add a home to see what's near it", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText)
         // Launch cut #1 (Beacon): no Beacons to follow for the first launch.
         Text(
-            "Adding a home gives you neighborhood context and household tools. " +
+            "Adding a home shows you what's near it and gives you household tools. " +
                 if (LaunchFeatures.beacon) {
                     "You can browse Pulse and follow Beacons before setting it up."
                 } else {

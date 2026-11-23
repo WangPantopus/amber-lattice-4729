@@ -63,6 +63,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// Every scene answers the iPad window's questions through
+    /// `PantopusSceneDelegate` (its smallest size, where the window buttons go).
+    func application(
+        _: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options _: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = PantopusSceneDelegate.self
+        return configuration
+    }
+
     // MARK: - Push notifications
 
     private func registerReminderCategories() {
@@ -307,7 +319,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         )
         let deepLink = assistantPath
             ?? HomeTaskNotificationRoute.pushPath(userInfo)
-            ?? DeepLinkRouter.notificationPath(type: userInfo["type"] as? String, link: userInfo["link"] as? String)
+            ?? DeepLinkRouter.notificationPath(
+                type: userInfo["type"] as? String,
+                link: userInfo["link"] as? String,
+                opens: userInfo["opens"] as? String
+            )
             ?? (userInfo["deepLink"] as? String)
             // Briefing / monthly-receipt pushes carry no `link` — compose one
             // from `type` + `briefingKind` + `briefingDeliveryId`.

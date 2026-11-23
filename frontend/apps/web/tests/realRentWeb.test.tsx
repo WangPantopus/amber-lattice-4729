@@ -78,7 +78,7 @@ function section(opts: Partial<PlaceSection>): PlaceSection {
     access: 'available',
     status: 'ready',
     as_of: null,
-    source: 'Pantopus · verified neighbors on your block',
+    source: 'Pantopus · verified residents on your block',
     coverage: 'full',
     unavailable_reason: null,
     data: null,
@@ -144,7 +144,7 @@ describe('Real rent — the building state is the product', () => {
     expect(screen.getByText(/nothing shows at all until/i)).toBeInTheDocument();
     // The other half of the progress story is the invite, and it has to
     // be reachable — the Founders page is where it lives.
-    expect(screen.getByRole('link', { name: /Invite a neighbor from Block founders/i }))
+    expect(screen.getByRole('link', { name: /Invite a home from Block founders/i }))
       .toHaveAttribute('href', '/app/place/block');
   });
 

@@ -68,6 +68,8 @@ public struct EditProfileView: View {
         // edits without the Close button's "Discard changes?" prompt.
         .interactiveDismissDisabled(viewModel.isDirty)
         .task { await viewModel.load() }
+        // Address suggestions favor the person's own home's area (founder 2026-11-17).
+        .task { await viewModel.loadAddressSearchArea() }
         .task { await viewModel.loadNeighborsAndCity() }
         // Pins are read once the profile says whose they are.
         .task(id: viewModel.accountId) { await viewModel.loadPinned() }

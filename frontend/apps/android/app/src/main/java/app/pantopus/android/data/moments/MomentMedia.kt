@@ -6,6 +6,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
@@ -16,6 +17,8 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BitmapOverlay
+import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
@@ -28,6 +31,10 @@ import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import app.pantopus.android.data.api.models.moments.MomentLimitsResponse
 import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksPainter
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
+import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -297,8 +304,11 @@ object MomentMedia {
     /**
      * A video as it uploads, with [onProgress] from 0 to 1 while it exports: about 720p (720 px on its short side, never
      * scaled up) H.264 with AAC sound, at the bit rate that fits it in [maxBytes] ([videoBitrate]), unless the in-app
-     * camera already recorded it that way and it fits. With [part], only that stretch of the video. Then its poster
-     * frame (near the start) and two more frames (a third and two thirds in).
+     * camera already recorded it that way and it fits. With [part], only that stretch of the video. With [marks] (Text
+     * and Draw), they are laid over every frame, so a marked video is always exported. With [placement] (Resize), each
+     * frame goes onto the 9:16 canvas at it, over the background, so a placed video is always exported too and never
+     * posts without it. Then its poster frame (near the start) and two more frames (a third and two thirds in), which
+     * carry the marks and the placement too.
      */
     @OptIn(UnstableApi::class)
     suspend fun prepareVideo(
@@ -306,14 +316,24 @@ object MomentMedia {
         source: MomentMediaFile.Video,
         part: MomentVideoPart? = null,
         maxBytes: Long = MomentLimits().videoBytes,
+        marks: MomentMarks = MomentMarks(),
+        placement: MomentPlacement? = null,
         onProgress: (Float) -> Unit,
     ): PreparedVideo {
-        val asRecorded = source.recordedHere && part == null && source.file.length() in 1..maxBytes
+        val unchanged = marks.isEmpty && placement == null
+        val asRecorded = unchanged && source.recordedHere && part == null && source.file.length() in 1..maxBytes
         val video =
             if (asRecorded) {
                 source.file
             } else {
-                export(context, source.file, part, videoBitrate(part?.durationMs ?: source.durationMs, maxBytes), onProgress)
+                val bitrate = videoBitrate(part?.durationMs ?: source.durationMs, maxBytes)
+                val overlay =
+                    if (unchanged) null else withContext(Dispatchers.Default) { overlay(source.file, marks, placement) }
+                try {
+                    export(context, source.file, part, bitrate, overlay, placement, onProgress)
+                } finally {
+                    overlay?.recycle()
+                }
             }
         onProgress(1f)
         val duration = videoDurationMs(video).takeIf { it > 0 } ?: part?.durationMs ?: source.durationMs
@@ -341,25 +361,77 @@ object MomentMedia {
         return PreparedVideo(video = video, poster = poster, frames = frames.drop(1), durationMs = duration)
     }
 
+    /**
+     * The size a video exports at, its rotation applied: 720 px on its short side (a portrait video 720 across, a
+     * landscape one 720 high), or as it is when it's no larger. A marks overlay is drawn at exactly this size.
+     */
+    fun exportSize(file: File): Pair<Int, Int> {
+        val (width, height) = displaySize(file)
+        if (min(width, height) <= VIDEO_SHORT_SIDE || width <= 0 || height <= 0) return width to height
+        val targetHeight = exportHeight(width, height)
+        return (width.toFloat() * targetHeight / height).roundToInt() to targetHeight
+    }
+
+    /** Presentation sizes by height: a portrait video keeps 720 px across, a landscape one is 720 high. */
+    private fun exportHeight(
+        width: Int,
+        height: Int,
+    ): Int = if (height > width) (VIDEO_SHORT_SIDE.toFloat() * height / width).roundToEven() else VIDEO_SHORT_SIDE
+
+    /**
+     * [marks] drawn on a clear picture the size the video exports at, to lay over every frame. Its labels break their
+     * lines for the video's shown shape, as in the editor (its first frame), not the export size's rounded one. A placed
+     * video's is the canvas's background around the frame, then the marks ([MomentVideoPlacing.overlay]).
+     */
+    private fun overlay(
+        file: File,
+        marks: MomentMarks,
+        placement: MomentPlacement?,
+    ): Bitmap {
+        val (shownWidth, shownHeight) = displaySize(file)
+        if (placement != null) return MomentVideoPlacing.overlay(file, shownWidth, shownHeight, marks, placement).straightAlpha()
+        val (width, height) = exportSize(file)
+        val overlay = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        val shape = shownWidth.toFloat() / shownHeight.coerceAtLeast(1)
+        MomentMarksPainter.draw(Canvas(overlay), marks, overlay.width.toFloat(), overlay.height.toFloat(), shape = shape)
+        return overlay.straightAlpha()
+    }
+
+    /**
+     * Media3's overlay mixes in straight alpha (colour × alpha), while a bitmap keeps its colour premultiplied: handed over
+     * as it is, every soft edge (a letter's, a line's, a placed frame's) would be darkened twice. So the pixels go over
+     * unpremultiplied.
+     */
+    private fun Bitmap.straightAlpha(): Bitmap {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        isPremultiplied = false
+        setPixels(pixels, 0, width, 0, 0, width, height)
+        return this
+    }
+
     @OptIn(UnstableApi::class)
     private suspend fun export(
         context: Context,
         source: File,
         part: MomentVideoPart?,
         bitrate: Int,
+        overlay: Bitmap?,
+        placement: MomentPlacement?,
         onProgress: (Float) -> Unit,
     ): File {
         val (width, height) = displaySize(source)
         val shortSide = min(width, height)
         val out = newFile(context, "mp4")
         val presentation =
-            if (shortSide > VIDEO_SHORT_SIDE && width > 0 && height > 0) {
-                // Presentation sizes by height: a portrait video keeps 720 px across.
-                val targetHeight = if (height > width) (VIDEO_SHORT_SIDE.toFloat() * height / width).roundToEven() else VIDEO_SHORT_SIDE
-                listOf(Presentation.createForHeight(targetHeight))
-            } else {
-                emptyList()
+            when {
+                // Placed: each frame onto the 9:16 canvas at its placement (the canvas is the export's size).
+                placement != null -> listOf(MomentVideoPlacing.frame(placement))
+                shortSide > VIDEO_SHORT_SIDE && width > 0 && height > 0 -> listOf(Presentation.createForHeight(exportHeight(width, height)))
+                else -> emptyList()
             }
+        // The marks go over each frame once it is at its export size, the overlay exactly that size.
+        val marked = overlay?.let { listOf(OverlayEffect(ImmutableList.of(BitmapOverlay.createStaticBitmapOverlay(it)))) }.orEmpty()
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
                 val transformer =
@@ -409,7 +481,7 @@ object MomentMedia {
                 val item =
                     EditedMediaItem
                         .Builder(media)
-                        .setEffects(Effects(emptyList(), presentation))
+                        .setEffects(Effects(emptyList(), presentation + marked))
                         .build()
                 transformer.start(item, out.path)
                 val holder = ProgressHolder()
@@ -447,6 +519,21 @@ object MomentMedia {
                 retriever.release()
             }
         }.getOrDefault(0 to 0)
+
+    /** A video's first frame, upright, at most [longEdge] px on its long side; null when it can't be read. */
+    fun videoStill(
+        file: File,
+        longEdge: Int = PHOTO_LONG_EDGE,
+    ): Bitmap? =
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(file.path)
+                retriever.getFrameAtTime(0)?.let { frame -> scaleDown(frame, longEdge).also { if (it !== frame) frame.recycle() } }
+            } finally {
+                retriever.release()
+            }
+        }.getOrNull()
 
     /** Decodes [file] turned upright, about [longEdge] px on its long side at most. */
     fun decodeUpright(

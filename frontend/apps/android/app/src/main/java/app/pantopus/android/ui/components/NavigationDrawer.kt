@@ -84,6 +84,7 @@ enum class NavigationDrawerDestination {
     MyBeacon,
     MyListings,
     MyPulse,
+    SupportTrains,
     MyTasks,
     MyBids,
     OffersAndBids,
@@ -132,8 +133,9 @@ enum class NavigationDrawerDestination {
                 MyBeacon -> LaunchFeatures.beacon && LaunchFeatures.personas
                 // Launch cut #3 (Marketplace).
                 MyListings -> LaunchFeatures.marketplace
-                // Launch cut #4 (Open Gigs): bids, gig offers and open task posting.
-                MyBids, OffersAndBids, PostTask, BusinessPostTask -> LaunchFeatures.openGigs
+                // Launch cut #4 (Open Gigs): bids, gig offers and open task posting. My Tasks (the gigs
+                // you posted) is off in the menu too (founder, 2026-11-17); the home's own Tasks row stays.
+                MyTasks, MyBids, OffersAndBids, PostTask, BusinessPostTask -> LaunchFeatures.openGigs
                 // Launch cuts #6/#4/#3: the Discover hub browses businesses, open tasks and listings.
                 DiscoverNeighbors -> LaunchFeatures.businessDirectory && LaunchFeatures.openGigs && LaunchFeatures.marketplace
                 // Launch cut #7 (Household extras): bills and package tracking.
@@ -253,7 +255,7 @@ private val personalSections: List<NavigationDrawerSection> =
                 listOf(
                     item(PantopusIcon.Rss, "Beacon Updates", NavigationDrawerDestination.BeaconUpdates),
                     item(PantopusIcon.Search, "Search", NavigationDrawerDestination.Search),
-                    item(PantopusIcon.Compass, "Discover Neighbors", NavigationDrawerDestination.DiscoverNeighbors),
+                    item(PantopusIcon.Compass, "Discover people", NavigationDrawerDestination.DiscoverNeighbors),
                 ),
         ),
         NavigationDrawerSection(
@@ -264,6 +266,7 @@ private val personalSections: List<NavigationDrawerSection> =
                     item(PantopusIcon.Radio, "My Beacon", NavigationDrawerDestination.MyBeacon),
                     item(PantopusIcon.Tag, "My Listings", NavigationDrawerDestination.MyListings),
                     item(PantopusIcon.FileText, "My Pulse", NavigationDrawerDestination.MyPulse),
+                    item(PantopusIcon.Utensils, "Support Trains", NavigationDrawerDestination.SupportTrains),
                     item(PantopusIcon.ListChecks, "My Tasks", NavigationDrawerDestination.MyTasks),
                     item(PantopusIcon.Hand, "My Bids", NavigationDrawerDestination.MyBids),
                     item(PantopusIcon.Gavel, "Offers & Bids", NavigationDrawerDestination.OffersAndBids),

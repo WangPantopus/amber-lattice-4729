@@ -125,14 +125,18 @@ data class PlansMapUiState(
     val isEmpty: Boolean
         get() = listStatus == PlansListStatus.Loaded && list.isEmpty() && pins.isEmpty() && mineShown.isEmpty() && !hostFiltered
 
-    /** Every plan of the viewer's: invitations waiting for an answer first (as on iOS), then soonest first. */
+    /**
+     * Every plan of the viewer's: invitations waiting for an answer first (as on iOS), then soonest first. Under "Yours"
+     * (Plans for the holidays, board 1) all of them soonest first.
+     */
     val mineAll: List<PlanDto>
         get() {
             val open = { plan: PlanDto -> plan.planState != PlanState.CANCELLED && plan.planState != PlanState.ENDED }
             val soonest = compareBy<PlanDto> { PlanFormat.instant(it.startsAt) ?: Instant.MAX }
             val invited = mine?.invited.orEmpty().filter(open).sortedWith(soonest)
             val others = mine?.let { it.hosting + it.going + it.asked + it.waitlisted }.orEmpty().filter(open).sortedWith(soonest)
-            return (invited + others).distinctBy { it.id }
+            val all = (invited + others).distinctBy { it.id }
+            return if (flags.guestAnswersOn) all.sortedWith(soonest) else all
         }
 
     /** The viewer's own plans of the kind the chips show ("Your plans" follows the filters like the map). */
@@ -254,7 +258,11 @@ class PlansMapViewModel
                 resolveLocation()
                 return
             }
-            val location = _state.value.location ?: return
+            val location =
+                _state.value.location ?: run {
+                    if (_state.value.locationStatus == PlansLocationStatus.Missing) loadMine()
+                    return
+                }
             if (location.source == PlanLocation.Source.GPS) {
                 // A GPS fix counts as a location for five minutes: renew it on every return.
                 viewModelScope.launch {
@@ -293,6 +301,18 @@ class PlansMapViewModel
             }
         }
 
+        /**
+         * The person's own plans need no location: with none yet they are read anyway, so "Yours" shows over "See plans
+         * near you" and a new person finds the dinner they answered.
+         */
+        private fun loadMine() {
+            repository.mineCopy()?.let { kept -> _state.update { it.copy(mine = kept) } }
+            viewModelScope.launch {
+                val mine = repository.mine().data ?: return@launch
+                if (_state.value.locationStatus == PlansLocationStatus.Missing) _state.update { it.copy(mine = mine) }
+            }
+        }
+
         private fun resolveLocation(asked: Boolean = false) {
             viewModelScope.launch {
                 val resolved = locations.resolve(waitForFix = asked)
@@ -308,6 +328,7 @@ class PlansMapViewModel
                             locationOff = it.locationOff || asked,
                         )
                     }
+                    loadMine()
                 }
             }
         }

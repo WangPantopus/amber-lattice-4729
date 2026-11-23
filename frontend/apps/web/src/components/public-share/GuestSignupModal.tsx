@@ -12,6 +12,8 @@ type GuestSignupModalProps = {
   slotDate: string;
   appUrl: string;
   fallbackUrl: string | null;
+  /** On a computer: signing in to sign up replaces opening the app. */
+  signInHref?: string | null;
   enabledModes: ContributionMode[];
   onClose: () => void;
   onSuccess: () => void;
@@ -26,6 +28,7 @@ export default function GuestSignupModal({
   slotDate,
   appUrl,
   fallbackUrl,
+  signInHref = null,
   enabledModes,
   onClose,
   onSuccess,
@@ -134,6 +137,10 @@ export default function GuestSignupModal({
   }
 
   function handleOpenInApp() {
+    if (signInHref) {
+      window.location.assign(signInHref);
+      return;
+    }
     window.location.assign(appUrl);
     if (fallbackUrl) {
       const url = fallbackUrl;
@@ -160,13 +167,13 @@ export default function GuestSignupModal({
         aria-modal="true"
         aria-label={`Sign up for ${slotLabel}`}
         tabIndex={-1}
-        className="relative w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl focus:outline-none sm:rounded-2xl sm:p-8"
+        className="relative w-full max-w-md rounded-t-2xl bg-app-surface p-6 shadow-xl focus:outline-none sm:rounded-2xl sm:p-8"
       >
         {/* Close button */}
         {step !== 'success' && (
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+            className="absolute right-4 top-4 text-app-text-muted hover:text-app-text"
             aria-label="Close"
           >
             <svg
@@ -187,23 +194,26 @@ export default function GuestSignupModal({
         {/* Step: Choose signup method */}
         {step === 'choose' && (
           <div>
-            <h3 className="text-xl font-semibold text-gray-900">Sign up for {slotLabel}</h3>
-            <p className="mt-1 text-sm text-gray-500">{slotDate}</p>
+            <h3 className="text-xl font-semibold text-app-text">Sign up for {slotLabel}</h3>
+            <p className="mt-1 text-sm text-app-text-secondary">{slotDate}</p>
 
             <div className="mt-6 space-y-3">
               {/* Pantopus app option */}
               <button
                 onClick={handleOpenInApp}
-                className="flex w-full items-start gap-4 rounded-xl border-2 border-primary-200 bg-primary-50 p-4 text-left transition hover:border-primary-400"
+                className="flex w-full items-start gap-4 rounded-xl border-2 border-primary-200 bg-primary-50 p-4 dark:border-primary-700 dark:bg-primary-900/30 text-left transition hover:border-primary-400"
               >
-                <span className="mt-0.5 text-2xl">📱</span>
+                <span className="mt-0.5 text-2xl">{signInHref ? '🔑' : '📱'}</span>
                 <div>
-                  <p className="font-semibold text-gray-900">Sign up on Pantopus</p>
-                  <p className="mt-1 text-sm text-gray-600">
-                    One-tap signup, real-time updates, delivery coordination, and direct chat with
-                    the organizer.
+                  <p className="font-semibold text-app-text">
+                    {signInHref ? 'Sign in to sign up' : 'Sign up on Pantopus'}
                   </p>
-                  <span className="mt-2 inline-block rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
+                  <p className="mt-1 text-sm text-app-text-secondary">
+                    {signInHref
+                      ? 'Sign in or create an account, then sign up here on the web. You get updates and chat with the organizer.'
+                      : 'One-tap signup, real-time updates, delivery coordination, and direct chat with the organizer.'}
+                  </p>
+                  <span className="mt-2 inline-block rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/60 dark:text-primary-200">
                     Recommended
                   </span>
                 </div>
@@ -212,12 +222,12 @@ export default function GuestSignupModal({
               {/* Email option */}
               <button
                 onClick={() => setStep('form')}
-                className="flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-gray-300 hover:bg-gray-50"
+                className="flex w-full items-start gap-4 rounded-xl border border-app-border bg-app-surface p-4 text-left transition hover:border-primary-300 hover:bg-app-surface-sunken"
               >
                 <span className="mt-0.5 text-2xl">✉️</span>
                 <div>
-                  <p className="font-semibold text-gray-900">Sign up with email</p>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="font-semibold text-app-text">Sign up with email</p>
+                  <p className="mt-1 text-sm text-app-text-secondary">
                     Quick signup with just your name and email. The organizer will follow up with
                     delivery details.
                   </p>
@@ -232,7 +242,7 @@ export default function GuestSignupModal({
           <div>
             <button
               onClick={() => setStep('choose')}
-              className="mb-4 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+              className="mb-4 flex items-center gap-1 text-sm text-app-text-secondary hover:text-app-text"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -249,14 +259,14 @@ export default function GuestSignupModal({
               Back
             </button>
 
-            <h3 className="text-xl font-semibold text-gray-900">Sign up with email</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <h3 className="text-xl font-semibold text-app-text">Sign up with email</h3>
+            <p className="mt-1 text-sm text-app-text-secondary">
               {slotLabel} · {slotDate}
             </p>
 
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <div>
-                <label htmlFor="guest-name" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="guest-name" className="block text-sm font-medium text-app-text-secondary">
                   Your name
                 </label>
                 <input
@@ -266,13 +276,13 @@ export default function GuestSignupModal({
                   maxLength={100}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="mt-1 w-full rounded-lg border border-app-border bg-app-surface-sunken px-3 py-2 text-sm text-app-text placeholder:text-app-text-muted shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Jane Smith"
                 />
               </div>
 
               <div>
-                <label htmlFor="guest-email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="guest-email" className="block text-sm font-medium text-app-text-secondary">
                   Email
                 </label>
                 <input
@@ -285,7 +295,7 @@ export default function GuestSignupModal({
                     setEmail(e.target.value);
                     setExistingAccountWarning(false);
                   }}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="mt-1 w-full rounded-lg border border-app-border bg-app-surface-sunken px-3 py-2 text-sm text-app-text placeholder:text-app-text-muted shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="jane@example.com"
                 />
               </div>
@@ -294,7 +304,7 @@ export default function GuestSignupModal({
                 <div>
                   <label
                     htmlFor="contribution-mode"
-                    className="block text-sm font-medium text-gray-700"
+                    className="block text-sm font-medium text-app-text-secondary"
                   >
                     How will you help?
                   </label>
@@ -302,7 +312,7 @@ export default function GuestSignupModal({
                     id="contribution-mode"
                     value={contributionMode}
                     onChange={(e) => setContributionMode(e.target.value as ContributionMode)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    className="mt-1 w-full rounded-lg border border-app-border bg-app-surface-sunken px-3 py-2 text-sm text-app-text placeholder:text-app-text-muted shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   >
                     {enabledModes.map((mode) => (
                       <option key={mode} value={mode}>
@@ -312,7 +322,7 @@ export default function GuestSignupModal({
                   </select>
                 </div>
               ) : enabledModes.length === 1 ? (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-app-text-secondary">
                   Signing up to bring: <strong>{modeLabels[enabledModes[0]]}</strong>
                 </p>
               ) : null}
@@ -320,9 +330,9 @@ export default function GuestSignupModal({
               <div>
                 <label
                   htmlFor="note-to-recipient"
-                  className="block text-sm font-medium text-gray-700"
+                  className="block text-sm font-medium text-app-text-secondary"
                 >
-                  Note to recipient <span className="text-gray-400">(optional)</span>
+                  Note to recipient <span className="text-app-text-muted">(optional)</span>
                 </label>
                 <textarea
                   id="note-to-recipient"
@@ -330,26 +340,26 @@ export default function GuestSignupModal({
                   value={noteToRecipient}
                   onChange={(e) => setNoteToRecipient(e.target.value)}
                   rows={2}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="mt-1 w-full rounded-lg border border-app-border bg-app-surface-sunken px-3 py-2 text-sm text-app-text placeholder:text-app-text-muted shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Any dietary notes or a message for the family"
                 />
               </div>
 
               {error && (
-                <p className="text-sm text-red-600" role="alert">
+                <p className="text-sm text-red-600 dark:text-red-300" role="alert">
                   {error}
                 </p>
               )}
 
               {existingAccountWarning && (
                 <div
-                  className="rounded-xl border border-primary-200 bg-primary-50 p-4"
+                  className="rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-700 dark:bg-primary-900/30"
                   role="alert"
                 >
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="text-sm font-semibold text-app-text">
                     This email already has a Pantopus account.
                   </p>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="mt-1 text-sm text-app-text-secondary">
                     Sign up through Pantopus for chat and in-app location sharing, or continue with
                     email as a guest.
                   </p>
@@ -359,13 +369,13 @@ export default function GuestSignupModal({
                       onClick={handleOpenInApp}
                       className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
                     >
-                      Open Pantopus
+                      {signInHref ? 'Sign in' : 'Open Pantopus'}
                     </button>
                     <button
                       type="button"
                       disabled={submitting}
                       onClick={() => void submitGuestSignup(true)}
-                      className="rounded-full border border-primary-200 px-4 py-2 text-sm font-semibold text-primary-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-full border border-primary-200 px-4 py-2 text-sm font-semibold text-primary-700 hover:bg-app-surface dark:text-primary-200 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Continue with email
                     </button>
@@ -388,8 +398,8 @@ export default function GuestSignupModal({
         {step === 'success' && (
           <div className="text-center">
             <div className="text-4xl">🎉</div>
-            <h3 className="mt-3 text-xl font-semibold text-gray-900">You&rsquo;re signed up!</h3>
-            <p className="mt-2 text-sm text-gray-600">
+            <h3 className="mt-3 text-xl font-semibold text-app-text">You&rsquo;re signed up!</h3>
+            <p className="mt-2 text-sm text-app-text-secondary">
               {signedUpWithAccount ? (
                 <>
                   This signup is linked to your Pantopus account. The organizer can share delivery
@@ -397,8 +407,9 @@ export default function GuestSignupModal({
                 </>
               ) : (
                 <>
-                  We&rsquo;ve sent a confirmation to <strong>{email}</strong>. The organizer will
-                  share delivery details closer to the date.
+                  We&rsquo;ve sent a confirmation to <strong>{email}</strong>, with a link to cancel
+                  if your plans change. The organizer will share the delivery address with you
+                  closer to the date.
                 </>
               )}
             </p>
@@ -408,11 +419,11 @@ export default function GuestSignupModal({
                 onClick={handleOpenInApp}
                 className="w-full rounded-full bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
               >
-                Get the Pantopus App
+                {signInHref ? 'Sign in to Pantopus' : 'Get the Pantopus App'}
               </button>
               <button
                 onClick={onClose}
-                className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                className="w-full rounded-full border border-app-border px-4 py-2.5 text-sm font-semibold text-app-text-secondary hover:bg-app-surface-sunken"
               >
                 Done
               </button>

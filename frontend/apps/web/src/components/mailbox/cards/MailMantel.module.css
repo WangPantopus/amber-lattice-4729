@@ -1,0 +1,40 @@
+/* The mantel (mail-cards-experience Part 7): numbers in points from the plan and the approved sample (mantel.html). The
+   strip has no box and no edge, the page's own colour behind it. */
+.mantel {
+  --glow: rgba(255, 226, 170, 0.55);
+  --wallshadow: rgba(60, 40, 10, 0.26);
+  --shelf: url('/holiday-cards/table/mantel-shelf-light.webp');
+  position: relative; height: 182px; margin: 0 0 4px; overflow-x: clip;
+}
+@media (prefers-color-scheme: dark) {
+  .mantel {
+    --glow: rgba(255, 196, 120, 0.16);
+    --wallshadow: rgba(0, 0, 0, 0.6);
+    --shelf: url('/holiday-cards/table/mantel-shelf-dark.webp');
+  }
+}
+/* A warm pool of light behind the cards. */
+.glow { position: absolute; inset: -30px 0 0 0; background: radial-gradient(62% 70% at 46% 62%, var(--glow), transparent 72%); pointer-events: none; }
+/* The shelf: its left end 12 in, its top 143 down, 1200 × 50 (its shadow included), off the right edge. */
+.shelf {
+  position: absolute; left: 12px; top: 143px; width: 1200px; height: 50px; pointer-events: none;
+  background: var(--shelf) left top / 1200px 50px no-repeat;
+}
+.scroller { position: absolute; inset: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+.scroller::-webkit-scrollbar { display: none; }
+.row { position: relative; height: 182px; }
+/* A card stands on the shelf's top surface, its lower edge 38 above the strip's bottom, tipped back 11°. */
+.card {
+  position: absolute; bottom: 38px; width: 88px; height: 105.6px; padding: 0; border: 0; background: none; cursor: pointer;
+  transform-origin: 50% 100%; transform: perspective(520px) rotateX(11deg) rotate(var(--rz, 0deg));
+  filter: drop-shadow(7px 2px 5px var(--wallshadow)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+.card:focus-visible { outline: 2px solid #8b1d1d; outline-offset: 3px; border-radius: 2px; }
+.face { width: 88px; }
+/* Its shadow on the shelf: an ellipse 88 × 7 under it, 38% black at its middle. */
+.foot {
+  position: absolute; bottom: 32px; width: 88px; height: 7px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.38), transparent);
+}
+/* The fir sprig at the strip's left edge, its top 90 down, 104 × 68, in front of the cards. */
+.sprig { position: absolute; left: 0; top: 90px; width: 104px; height: 68px; z-index: 2; pointer-events: none; user-select: none; }

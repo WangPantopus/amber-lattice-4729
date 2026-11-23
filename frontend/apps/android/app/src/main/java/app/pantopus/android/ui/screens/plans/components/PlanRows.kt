@@ -79,6 +79,11 @@ sealed interface PlanRowEnd {
         val text: String,
     ) : PlanRowEnd
 
+    /** A business's plan with a deal (business track B1): the deal's tag, the server's words ("Deal", "20% off"). */
+    data class Deal(
+        val text: String,
+    ) : PlanRowEnd
+
     data object Chevron : PlanRowEnd
 
     data object Check : PlanRowEnd
@@ -167,7 +172,7 @@ private fun endGoesBelow(
     large: Boolean,
     crowded: Boolean,
 ): Boolean =
-    (large && (end is PlanRowEnd.Status || end is PlanRowEnd.Note || end is PlanRowEnd.Price)) ||
+    (large && (end is PlanRowEnd.Status || end is PlanRowEnd.Note || end is PlanRowEnd.Price || end is PlanRowEnd.Deal)) ||
         (crowded && end is PlanRowEnd.Status)
 
 /** Lines for the title and the second line: one each (board P2), two when crowded, more at large text. */
@@ -193,6 +198,7 @@ private fun PlanRowEndSlot(end: PlanRowEnd) {
                 color = PantopusColors.appTextMuted,
             )
         is PlanRowEnd.Price -> PlanPriceChip(text = end.text)
+        is PlanRowEnd.Deal -> PlanDealTag(text = end.text)
         PlanRowEnd.Chevron ->
             PantopusIconImage(
                 icon = PantopusIcon.ChevronRight,
@@ -486,6 +492,10 @@ fun PlanBanner(
     icon: PantopusIcon,
     tone: PlanBannerTone,
     modifier: Modifier = Modifier,
+    /** A button on the right (Plans for the holidays' "Change"); null for none. */
+    trailing: (@Composable () -> Unit)? = null,
+    /** One more row inside the banner, under its words ("See what to bring"); null for none. */
+    footer: (@Composable () -> Unit)? = null,
 ) {
     val (bg, boxBg, boxFg) =
         when (tone) {
@@ -494,12 +504,33 @@ fun PlanBanner(
             PlanBannerTone.Info -> Triple(PantopusColors.infoBg, PantopusColors.primary600, PantopusColors.appTextInverse)
             PlanBannerTone.Warning -> Triple(PantopusColors.warningBg, Color.Transparent, PantopusColors.warning)
         }
+    if (footer != null) {
+        Column(modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.xl)).background(bg)) {
+            PlanBannerWords(title, subtitle, icon, tone, boxBg, boxFg, trailing)
+            footer()
+        }
+    } else {
+        PlanBannerWords(title, subtitle, icon, tone, boxBg, boxFg, trailing, modifier.clip(RoundedCornerShape(Radii.xl)).background(bg))
+    }
+}
+
+/** A banner's icon box, its two lines and its button. */
+@Suppress("LongParameterList")
+@Composable
+private fun PlanBannerWords(
+    title: String,
+    subtitle: String?,
+    icon: PantopusIcon,
+    tone: PlanBannerTone,
+    boxBg: Color,
+    boxFg: Color,
+    trailing: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(Radii.xl))
-                .background(bg)
                 .padding(horizontal = 14.dp, vertical = Spacing.s3)
                 .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
@@ -532,6 +563,7 @@ fun PlanBanner(
                 Text(text = subtitle, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
             }
         }
+        trailing?.invoke()
     }
 }
 

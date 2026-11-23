@@ -34,6 +34,25 @@ extension MomentsComposerModel {
         }
     }
 
+    /// A place picked in the place picker: a venue near the pin names the Moment and moves its pin there (the server
+    /// finds it again by its id). Only venues are offered (see the sheet's filter).
+    func pickVenue(_ tag: PostPlaceTag) {
+        guard let id = tag.placeId, id.hasPrefix("osm:"), let basePin else { return }
+        placeKey = nil
+        venue = MomentVenue(placeId: id, name: tag.name, latitude: tag.latitude, longitude: tag.longitude, around: basePin)
+        findsPlace = false
+        // The Sky: a place picked turns "Pin it at a place" on.
+        if place?.sky != nil { pinsAtPlace = true }
+    }
+
+    /// "Remove location" in the place picker: back to the name the spot gets by itself.
+    func clearVenue() {
+        venue = nil
+        findsPlace = false
+        // The Sky: with no place picked the Moment is where it was taken again.
+        pinsAtPlace = false
+    }
+
     /// The Post sheet's "Don't show where". It stays on when there's no pin; it needs a connection.
     func setNoLocation(_ on: Bool) {
         if !on, noLocationLocked { return }
@@ -49,6 +68,12 @@ extension MomentsComposerModel {
     /// "Your home".
     var placeLine: String {
         if noLocationOn { return "No location" }
+        // The Sky: "At Esther Short Park"; at home "Around Washougal, WA"; else the name of where it was taken.
+        if let sky {
+            if let skyPlaceName { return SkyWords.at(skyPlaceName) }
+            if floats { return SkyWords.floatingOver(sky.area?.label ?? place?.areaLabel ?? "this area") }
+            return place?.placeLabel.isEmpty == false ? place?.placeLabel ?? "" : "Near you"
+        }
         if showArea { return place?.areaLabel ?? place?.placeLabel ?? "This area" }
         if let pickedVenue { return pickedVenue.name }
         if place?.atHome == true { return "Your home" }
@@ -56,9 +81,10 @@ extension MomentsComposerModel {
         return place?.placeLabel.isEmpty == false ? place?.placeLabel ?? "" : "Near you"
     }
 
-    /// The names to pick from: more than one fits the exact pin, and neither the area nor the home hides it.
+    /// The names to pick from: more than one fits the exact pin, and neither the area nor the home hides it. None
+    /// under the Sky, where a pin is only at a public place picked in the place picker.
     var placeChoices: [MomentPlaceChoiceDTO] {
-        guard let place, place.places.count > 1, !showArea, !noLocationOn, !place.atHome else { return [] }
+        guard let place, place.sky == nil, place.places.count > 1, !showArea, !noLocationOn, !place.atHome else { return [] }
         return place.places
     }
 
@@ -76,13 +102,20 @@ extension MomentsComposerModel {
 
     /// A venue picked in the place picker moves the pin off the home (the server checks its point again).
     var showsHomeNotice: Bool {
-        place?.atHome == true && !showArea && pickedVenue == nil && !noLocationOn
+        sky == nil && place?.atHome == true && !showArea && pickedVenue == nil && !noLocationOn
     }
 
-    /// The pin the sheet's map shows: at the venue picked, else `basePin`.
+    /// The pin the sheet's map shows: at the venue picked, else `basePin`. Under the Sky a place whose own point is
+    /// farther off than a place may be picked (the middle of a big park the photo was taken in) names the Moment and
+    /// the pin stays where it was taken, as the server keeps it.
     var pin: CLLocationCoordinate2D? {
-        if let pickedVenue { return CLLocationCoordinate2D(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude) }
-        return basePin
+        guard let pickedVenue else { return basePin }
+        if sky != nil, let basePin {
+            let spot = CLLocation(latitude: basePin.latitude, longitude: basePin.longitude)
+            let far = CLLocation(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude).distance(from: spot)
+            if far > pickWithinM { return basePin }
+        }
+        return CLLocationCoordinate2D(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude)
     }
 
     /// The venue that names the Moment: for an exact pin, while the pin is still the one it was picked around.
@@ -94,7 +127,9 @@ extension MomentsComposerModel {
 
     /// An exact pin can name a venue from the place picker (around the photo's spot, or where you are).
     var canFindPlace: Bool {
-        !showArea && basePin != nil && draft != nil && !noLocationOn
+        // The Sky: the place picker picks the place to pin at, anywhere but at home.
+        if let sky { return sky.canPin && basePin != nil && draft != nil && !noLocationOn }
+        return !showArea && basePin != nil && draft != nil && !noLocationOn
     }
 
     /// No location: switched on, or there's no pin at all (location off and nothing in the file).
@@ -107,7 +142,8 @@ extension MomentsComposerModel {
         basePin == nil
     }
 
-    /// How far from the pin the picker's places may be (the server's number, else 1500 m).
+    /// How far from the pin the picker's places may be (the server's number, else 1500 m). Under the Sky the server
+    /// gives less where the spot is built up and more in open country.
     var pickWithinM: Double {
         place?.pickWithinM ?? 1500
     }
@@ -138,6 +174,8 @@ extension MomentsComposerModel {
         if let pickedPosition { return "Post \(pickedPosition)" }
         // A video longer than one Moment's: said on the button, before it posts.
         if parts > 1 { return "Post as \(parts) Moments" }
+        // The Sky's "Share later": "Share at 6:40 pm · shows for 24 hours".
+        if let sharesAt { return SkyWords.shareAtButton(sharesAt, hours: hours) }
         return "Post · shows for \(hours == 1 ? "1 hour" : "\(hours) hours")"
     }
 }

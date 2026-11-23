@@ -16,7 +16,7 @@ import { Mail } from 'lucide-react';
 import type { MailItemV2 } from '@/types/mailbox';
 import MailPiece, { pieceSentence } from '../MailPiece';
 import { PieceLine, pieceLineBits } from '../MailRow';
-import { CardLinkSignIn, CardLinkWords, LINK_PAGE_PANEL, LinkPageSignIn, LinkPageSummary, type LinkPageLetter } from '../OpenLetterView';
+import { CardLinkSignIn, CardLinkWords, LINK_PAGE_PANEL, LinkPageSignIn, LinkPageSummary, linkPageFront, type LinkPageLetter } from '../OpenLetterView';
 import CardLinkScene from './CardLinkScene';
 import CardFront from './CardFront';
 import CardBack from './CardBack';
@@ -27,6 +27,7 @@ import { cardMood, daysAway, emailGoesAt, longDay, SERIF } from './cardArt';
 import CardPrint from './CardPrint';
 import CardGreeting from './CardGreeting';
 import CardTable from './CardTable';
+import { useNoteLeaves } from './CardPaper';
 import { launchFeatures } from '@/lib/featureFlags';
 
 // Their morning mail comes at 7 a.m. where they live: that's when it's in their Mailbox.
@@ -57,7 +58,7 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
   const card = piece.card!;
   const photo = card.photo ?? null;
   const voice = card.voice ?? null;
-  const mood = cardMood(card.number, card.design);
+  const mood = cardMood(card.number, card.design, card.mood);
   return (
     <>
       <CardFlip
@@ -76,6 +77,8 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
                 alt={photo.alt}
                 datedOn={mood === 'nostalgia' ? (piece.postmark?.date || piece.created_at) : null}
                 className="w-full"
+                opens
+                live={photo.live ? { own: photo.live.file_id } : null}
               />
             </div>
           ) : null}
@@ -130,6 +133,10 @@ export default function LookItOver({
   const addressee = piece.recipient_name || toName;
   const { stage, plays, open } = useCardOpening(false);
   const [showBack, setShowBack] = useState(false);
+  // A long note on two leaves, as the reader will see it (mail-cards-experience Part 9): Turn it over, Read on, Turn it back.
+  const leaves = useNoteLeaves(piece.content || '', card.number, launchFeatures.cardTable);
+  const [leafLifted, setLeafLifted] = useState(false);
+  const readOn = showBack && Boolean(leaves) && !leafLifted;
   const [onTable, setOnTable] = useState(false);
   // On Christmas morning the seal is off: the card leaves its envelope the way an unsealed one does.
   const unsealed: MailItemV2 = sealed ? { ...piece, card: { ...card, sealed: false } } : piece;
@@ -160,9 +167,9 @@ export default function LookItOver({
   ) : null;
 
   const intro = byLink
-    ? 'The first person to open your link keeps the card. The page it opens never shows the card; they open it in Pantopus once they join.'
+    ? `The first person to open your link keeps the card. The page it opens shows ${sealed ? 'the sealed envelope' : 'its picture'}, never your note; they open it in Pantopus once they join.`
     : byEmail
-    ? 'They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this address.'
+    ? 'They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this address.'
     : sealed
       ? 'It comes sealed and stays shut until Christmas morning. Use Back to change anything.'
       : card.arrival === 'christmas_morning'
@@ -178,7 +185,7 @@ export default function LookItOver({
     outcomeDescription: null,
     sentTo: preview.link_page.sent_to,
     createdAt: preview.link_page.sent_on,
-    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, by_link: preview.link_page.by_link },
+    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, front: preview.link_page.front ?? null, by_link: preview.link_page.by_link },
   } : null;
 
   return (
@@ -230,7 +237,7 @@ export default function LookItOver({
               <h3 className={`${sectionLabel} px-1`}>The page its link opens</h3>
               {launchFeatures.cardTable ? (
                 <div className="mt-2">
-                  <CardLinkScene framed>
+                  <CardLinkScene framed front={linkPageFront(linkPage)}>
                     <CardLinkWords letter={linkPage} />
                     <CardLinkSignIn letter={linkPage} />
                   </CardLinkScene>
@@ -290,15 +297,20 @@ export default function LookItOver({
                 : `A Christmas card from ${from.replace(/\.$/, '')}. It slides out of the envelope picture side up.`}
             </p>
             <div className={launchFeatures.cardTable ? 'mt-4' : 'mx-auto mt-4 max-w-[300px]'}>
-              <CardFromEnvelope piece={unsealed} recipientName={addressee} opening={stage === 'opening'} plays={plays} showBack={showBack}>
+              <CardFromEnvelope piece={unsealed} recipientName={addressee} opening={stage === 'opening'} plays={plays} showBack={showBack} leaves={leaves} leafLifted={leafLifted}>
                 <div className="mt-[18px] flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowBack((back) => !back)}
-                    aria-pressed={showBack}
+                    onClick={() => {
+                      // Turned over, it always starts at the first leaf; Read on lifts it; then it turns back.
+                      if (!showBack) { setLeafLifted(false); setShowBack(true); } else if (readOn) setLeafLifted(true); else setShowBack(false);
+                    }}
+                    aria-pressed={readOn ? undefined : showBack}
+                    aria-label={readOn ? 'Read on, the note continues on a second leaf' : undefined}
+                    data-testid="sendCardLookTurn"
                     className={`${button} border border-[#d6cbb6] bg-[#fffdf8] text-[#374151] hover:bg-[#f5efe3]`}
                   >
-                    {showBack ? 'Turn it back' : 'Turn it over'}
+                    {!showBack ? 'Turn it over' : readOn ? 'Read on' : 'Turn it back'}
                   </button>
                   {launchFeatures.cardTable ? (
                     <button

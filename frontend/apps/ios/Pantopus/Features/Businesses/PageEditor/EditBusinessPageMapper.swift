@@ -415,7 +415,7 @@ enum EditBusinessPageMapper {
         trimmed(text).isEmpty
             ? .prompt(EditBusinessPagePrompt(
                 iconKey: "fileText",
-                title: "Tell neighbors what you do",
+                title: "Tell people what you do",
                 subtitle: "A short paragraph helps your page rank in local search.",
                 ctaLabel: "Write"
             ))

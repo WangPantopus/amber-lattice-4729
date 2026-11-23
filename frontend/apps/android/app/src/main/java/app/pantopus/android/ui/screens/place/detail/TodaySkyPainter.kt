@@ -50,6 +50,11 @@ data class SkyDetails(
     val windMph: Double? = null,
     /** Where the wind blows from ("SW"); null when unknown. */
     val windFrom: String? = null,
+    /**
+     * The house on Today (`TodaySkyHouseObjects.kt`): the ground is drawn larger and these things stand on it. Null: the
+     * scene at its own size, as every other card and the widgets draw it.
+     */
+    val house: SkyHouseObjects? = null,
 )
 
 class TodaySkyPainter(
@@ -80,6 +85,24 @@ class TodaySkyPainter(
             0f
         }
 
+    /** The ground at the scene's own size or, with the house on Today ([spots]), larger with its things standing on it. */
+    private fun DrawScope.paintGround(
+        scene: SkyScene,
+        bins: List<String>,
+        spots: SkyHouseSpots?,
+    ) {
+        if (spots == null) {
+            TodaySkyGround(scene, weather, moment, wind, temperature < 50, still, bins, season, details).paint(this)
+            return
+        }
+        // The same ground on a smaller scene, drawn [SkyHouseSpots.scale] times larger from the card's corner.
+        val k = spots.scale
+        val small = SkyScene(scene.width / k, scene.height / k, scene.time, scene.sky, scene.rise)
+        val ground = TodaySkyGround(small, weather, moment, wind, temperature < 50, still, bins, season, details)
+        withTransform({ scale(k, k, pivot = Offset.Zero) }) { ground.paint(this, doorX = spots.door.x / k) }
+        details.house?.let { paintHouseObjects(spots, it, ground.houseTones()) }
+    }
+
     /**
      * [rise] (0..1) lifts the sun or moon into its place as the card loads; [drift] lowers the stars,
      * sun or moon and clouds as the card scrolls away.
@@ -92,7 +115,18 @@ class TodaySkyPainter(
         rise: Float = 1f,
         drift: Float = 0f,
     ) {
-        val scene = SkyScene(width, height, if (still) 2.0 else time, SkyPalette.sky(moment.phase, weather), rise)
+        val bins = note?.bins.orEmpty()
+        val spots = details.house?.let { SkyHouseSpots(width, height, details.home, bins.size) }
+        // The larger ground lifts the horizon with it, so the sun, the stars and the fog keep to it.
+        val scene =
+            SkyScene(
+                width,
+                height,
+                if (still) 2.0 else time,
+                SkyPalette.sky(moment.phase, weather),
+                rise,
+                ground = TodaySkyGround.HORIZON * (spots?.scale ?: 1f),
+            )
         val clear = weather == SkyPalette.Weather.CLEAR || weather == SkyPalette.Weather.PARTLY
         with(scope) {
             paintSky(scene)
@@ -107,7 +141,7 @@ class TodaySkyPainter(
             if (wind.streaks > 0) paintWind(scene, wind, night, still, season)
             if (weather == SkyPalette.Weather.STORM && !still) paintLightning(scene)
             if (smoke > 0) paintSmoke(scene, smoke, night)
-            TodaySkyGround(scene, weather, moment, wind, temperature < 50, still, note?.bins.orEmpty(), season, details).paint(this)
+            paintGround(scene, bins, spots)
             // Fog hugs the ground, in front of the house and below the reading.
             paintFog(scene)
             paintScrim(scene)
@@ -480,8 +514,10 @@ internal class SkyScene(
     val sky: SkyPalette.Sky,
     /** 0 below its place, 1 in it. */
     val rise: Float = 1f,
+    /** The horizon above the bottom: more when the ground is drawn larger. */
+    ground: Float = TodaySkyGround.HORIZON,
 ) {
-    val horizon = height - 34f
+    val horizon = height - ground
 
     /** A position that drifts at [speed] dp a second and wraps over [span]. */
     fun drift(

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -49,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.models.mailbox.SentCard
 import app.pantopus.android.data.api.models.mailbox.SentCardStep
+import app.pantopus.android.data.api.models.mailbox.SentCardTravel
 import app.pantopus.android.data.mailbox.HolidayCardsRepository
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.Shimmer
@@ -61,13 +63,24 @@ import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardBack
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFlip
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFront
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardTimes
+import app.pantopus.android.ui.screens.mailbox.cards.SEND_THIS_CARD_AGAIN
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
+import app.pantopus.android.ui.screens.mailbox.cards.canSendAnother
+import app.pantopus.android.ui.screens.mailbox.cards.rememberCardLeaves
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardGreetingVoice
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardPrintPhoto
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyState
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyTable
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardShareSheet
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableDialog
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableSendBack
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardTravel
 import app.pantopus.android.ui.screens.mailbox.cards.table.LetterCardPrint
+import app.pantopus.android.ui.screens.mailbox.cards.table.SEE_ITS_JOURNEY
+import app.pantopus.android.ui.screens.mailbox.cards.table.joined
+import app.pantopus.android.ui.screens.mailbox.cards.table.openJourney
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceMapper
 import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.MailLetterCard
@@ -95,7 +108,10 @@ import java.util.Locale
 @Composable
 fun MailSentCardScreen(
     onBack: () -> Unit,
+    /** "Send this card to someone else" (plan Part 6): the send flow with this picture kept, from Who it's for. */
+    onSendAgain: ((design: String) -> Unit)? = null,
     viewModel: MailSentCardViewModel = hiltViewModel(),
+    replies: CardReplyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val takingBack by viewModel.takingBack.collectAsStateWithLifecycle()
@@ -112,6 +128,25 @@ fun MailSentCardScreen(
     LaunchedEffect(Unit) { viewModel.closed.collect { onBack() } }
     LaunchedEffect(Unit) { viewModel.emailed.collect { toasts.success("We emailed them.") } }
 
+    // Write back (plan Part 3): a reply this person wrote opens as the joined card; a card of theirs that was answered
+    // offers "{First name} wrote back".
+    val sentCard = (state as? MailSentCardState.Loaded)?.card
+    LaunchedEffect(sentCard?.id) { sentCard?.id?.let { replies.load(it) } }
+    val replyState by replies.state.collectAsStateWithLifecycle()
+    var showsJoined by rememberSaveable { mutableStateOf(false) }
+    val ownReply = sentCard?.cardReply != null
+    // The writer took their reply back: there's nothing left to show here.
+    LaunchedEffect(replyState.exchange) { if (ownReply && replyState.exchange?.let { it.reply == null } == true) onBack() }
+    SentJoinedCard(
+        card = sentCard,
+        state = replyState,
+        replies = replies,
+        shows = showsJoined || ownReply,
+        onClose = {
+            showsJoined = false
+            if (ownReply) onBack()
+        },
+    )
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailSentPiece")) {
             BackToSent(onBack)
@@ -148,6 +183,27 @@ fun MailSentCardScreen(
                                     onEmailAgain = viewModel::emailAgain,
                                 ),
                         )
+                        // Only while another card can go now: a stamp left, or today's card not used.
+                        val design = shown.card.card?.design
+                        if (onSendAgain != null && design != null && cards.canSendAnother(null)) {
+                            CardButton(
+                                SEND_THIS_CARD_AGAIN,
+                                onClick = { onSendAgain(design) },
+                                kind = CardButtonKind.Paper,
+                                modifier = Modifier.testTag("sentSendThisCardAgain"),
+                            )
+                        }
+                        // The card was answered: who wrote back, opening the joined card.
+                        val answer = replyState.exchange?.reply?.takeIf { shown.card.cardReply == null }
+                        if (answer != null) {
+                            val first = answer.fromName.orEmpty().trim().substringBefore(' ').ifEmpty { "Someone" }
+                            CardButton(
+                                "$first wrote back",
+                                onClick = { showsJoined = true },
+                                kind = CardButtonKind.Paper,
+                                modifier = Modifier.testTag("sentWroteBack"),
+                            )
+                        }
                     }
             }
         }
@@ -164,10 +220,30 @@ fun MailSentCardScreen(
             },
             onKeep = { confirmTakeBack = false },
             freesToday = MailSentWords.sentToday(card, zone),
-            postage = cards?.postageEnabled == true,
+            postage = MailSentWords.stampComesBack(card, cards?.postageEnabled == true),
             notEmailedYet = MailSentWords.notEmailedYet(card),
         )
     }
+}
+
+/** The joined card from Sent (plan Part 3): the writer's own reply with Take it back while it waits, or the answered card. */
+@Composable
+private fun SentJoinedCard(
+    card: SentCard?,
+    state: CardReplyState,
+    replies: CardReplyViewModel,
+    shows: Boolean,
+    onClose: () -> Unit,
+) {
+    if (card == null || !shows) return
+    val mine = card.cardReply != null
+    val joined = state.exchange?.joined(viewerWrote = mine) ?: return
+    val takeBack =
+        state.exchange.pendingReply
+            ?.takeIf { mine && it.canTakeBack }
+            ?.let { listOf(CardTableSendBack("Take it back") { replies.takeBack() }) }
+            .orEmpty()
+    CardReplyTable(joined, onClose = onClose, actions = takeBack, closeLabel = if (mine) "Back to Sent" else "Close")
 }
 
 /** Back, with where it goes: "Sent". */
@@ -235,6 +311,8 @@ private fun SentCardPage(
             modifier = Modifier.padding(top = 2.dp),
         )
     }
+    // A card that travels (travelling card plan Part 6): how far it has gone, and its journey's page.
+    card.travel?.let { travel -> Travelling(travel) }
     // Its email didn't go out: said first, under where it is, before the envelope and the card.
     MailSentWords.emailTrouble(card)?.let { EmailTrouble(card, it, emailAgain) }
     emailAgain.error?.let { PageError(it, Modifier.testTag("mailSentPieceEmailError")) }
@@ -279,6 +357,29 @@ private fun SentCardPage(
     Trail(card, first, zone)
     if (card.canTakeBack) ChangedYourMind(card, zone, takingBack, onTakeBack)
     takeBackError?.let { PageError(it, Modifier.testTag("mailSentPieceError")) }
+}
+
+/** "5 towns · 2,692 miles. Now in Tampa, FL." and "See its journey", its web page inside the app (decision D6). */
+@Composable
+private fun Travelling(travel: SentCardTravel) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+        Text(
+            CardTravel.sentLine(travel.towns, travel.miles, travel.nowIn),
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            color = PantopusColors.appText,
+            modifier = Modifier.testTag("sentTravelLine"),
+        )
+        travel.journey?.takeIf { it.isNotBlank() }?.let { journey ->
+            CardButton(
+                SEE_ITS_JOURNEY,
+                onClick = { openJourney(context, journey) },
+                kind = CardButtonKind.Paper,
+                modifier = Modifier.testTag("sentSeeJourney"),
+            )
+        }
+    }
 }
 
 /** Why something on the page didn't work, said as it appears. */
@@ -354,10 +455,13 @@ private fun ColumnScope.BothSides(
     forFirst: String = "you",
 ) {
     var showBack by rememberSaveable { mutableStateOf(false) }
+    // A long note goes over two leaves, as the reader sees it (plan Part 9).
+    val leaves = rememberCardLeaves()
     val shape = RoundedCornerShape(3.dp)
     val caption = card.caption?.takeIf { it.isNotBlank() } ?: "A Christmas picture"
     HolidayCardFlip(
         showBack = showBack,
+        leaves = leaves,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -383,16 +487,18 @@ private fun ColumnScope.BothSides(
                 message = card.note,
                 design = card.design,
                 signature = card.signature,
+                leaves = leaves,
                 modifier = Modifier.shadow(6.dp, shape).clip(shape),
             )
         },
     )
     CardButton(
-        if (showBack) "Turn it back" else "Turn it over",
-        onClick = { showBack = !showBack },
+        leaves.turnLabel(showBack),
+        onClick = { leaves.press(showBack) { showBack = !showBack } },
         kind = CardButtonKind.Paper,
         fill = false,
         state = if (showBack) "Showing the back" else "Showing the picture",
+        spoken = leaves.turnSpoken(showBack),
         modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s3).testTag("mailSentPieceTurn"),
     )
     CardNoteSide(card, from, modifier = Modifier.padding(vertical = Spacing.s4).rotate(1f))
@@ -692,6 +798,7 @@ private fun sentLetterCard(card: SentCard): MailLetterCard? {
         // The sender's own photo, through Sent's route: never covered for them (memories plan).
         photo = face.photo?.let { CardPrintPhoto.sent(card.id, it) },
         voice = face.voice?.let { CardGreetingVoice.sent(card.id, it) },
+        mood = face.mood,
     )
 }
 

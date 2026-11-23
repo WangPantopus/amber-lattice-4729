@@ -1,8 +1,9 @@
-@file:Suppress("MagicNumber", "TooManyFunctions", "TooGenericExceptionCaught")
+@file:Suppress("MagicNumber", "TooManyFunctions", "TooGenericExceptionCaught", "LargeClass")
 
 package app.pantopus.android.ui.screens.moments.compose
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.lifecycle.SavedStateHandle
@@ -35,13 +36,21 @@ import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
+import app.pantopus.android.ui.screens.moments.components.line
 import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksEditing
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
+import app.pantopus.android.ui.screens.moments.map.metersBetween
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +89,32 @@ data class MomentVenue(
     val latitude: Double,
     val longitude: Double,
 )
+
+/**
+ * The Live mark (API v4.1): when the in-app camera took the photo or finished the video, and the fix the draft pinned at
+ * then. A Moment says "taken here" only while that is still true for the pin it is sent with (both phones, 2026-11-20).
+ */
+data class CameraShot(
+    val at: Instant,
+    val latitude: Double,
+    val longitude: Double,
+) {
+    /** No more than 10 minutes since the shot, and the pin sent within 150 m of the fix it had then. */
+    fun holdsFor(
+        pin: ComposePin,
+        now: Instant,
+    ): Boolean =
+        now.toEpochMilli() - at.toEpochMilli() <= LIVE_SHOT_MS &&
+            metersBetween(latitude, longitude, pin.latitude, pin.longitude) <= LIVE_SHOT_M
+
+    companion object {
+        /** How long after the shot a Moment may still say "taken here". */
+        const val LIVE_SHOT_MS = 10 * 60 * 1000L
+
+        /** How far the pin sent may be from the fix at the shot. */
+        const val LIVE_SHOT_M = 150.0
+    }
+}
 
 /** How far from the pin the place picker's venues may be when the server doesn't say (contract v3.3). */
 internal const val DEFAULT_PICK_WITHIN_M = 1500
@@ -154,6 +189,23 @@ data class MomentsComposeUiState(
     val videoParts: Int = 1,
     /** Post is waiting for the video to be made ready: how far along, 0 to 1; null while it isn't waiting. */
     val readying: Float? = null,
+    /** The Sky (`MomentsComposeSky.kt`, while the preview answers `sky: true`): "Pin it at a place" is on. */
+    val pinsAtPlace: Boolean = false,
+    /** The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); null posts now. */
+    val shareLaterKey: String? = null,
+    /** Text and Draw: the marks drawn into the photo on the sheet, kept to change again. */
+    val marks: MomentMarks = MomentMarks(),
+    /** Resize: where the photo sits on the 9:16 canvas it posts as; null while it is as taken. */
+    val placement: MomentPlacement? = null,
+    /** The marks editor while it is open. */
+    val marking: MomentMarksEditing? = null,
+    /**
+     * The Live mark (API v4.1): the photo or video on the sheet came from the in-app camera (when, and the fix it pinned at
+     * then); null for the album, a text card, and once 10 minutes have passed or Post found the pin had moved on.
+     */
+    val shot: CameraShot? = null,
+    /** "Show the weather": on unless this person turned it off last time (kept per account on this phone). */
+    val showWeather: Boolean = true,
 ) {
     val kind: String
         get() =
@@ -162,6 +214,12 @@ data class MomentsComposeUiState(
                 is MomentMediaFile.Video -> "video"
                 null -> "text"
             }
+
+    /**
+     * Retake, Edit and Back can leave the Post sheet: not while a Post is making its Moment, whose upload needs the photo
+     * or video on the sheet. A video still getting ready can be left (no Moment yet: Post just stops waiting).
+     */
+    val canRetake: Boolean get() = !posting || readying != null
 
     /**
      * The camera's and the card's chip: where it will pin, or "Your home" at home, as the Post sheet says (others read
@@ -179,7 +237,7 @@ data class MomentsComposeUiState(
     val placeChoices: List<MomentPlaceChoiceDto> get() = place?.places.orEmpty()
 
     /** More than one name fits an exact pin away from home: the place row opens the list. */
-    val canPickPlace: Boolean get() = !showArea && !noLocationOn && place?.atHome != true && placeChoices.size > 1
+    val canPickPlace: Boolean get() = !sky && !showArea && !noLocationOn && place?.atHome != true && placeChoices.size > 1
 
     /** The picked name, while it is still one of [placeChoices]. */
     val pickedPlace: MomentPlaceChoiceDto? get() = placeKey?.let { key -> placeChoices.firstOrNull { it.key == key } }
@@ -189,6 +247,9 @@ data class MomentsComposeUiState(
 
     /** A venue picked stays only while the Moment pins at the same spot, like [placeKeyFor]. */
     fun venueFor(newPin: ComposePin?): MomentVenue? = venue?.takeIf { samePin(newPin) }
+
+    /** The Sky's "Pin it at a place" stays on only while the Moment pins at the same spot, like [venueFor]. */
+    fun pinsAtPlaceFor(newPin: ComposePin?): Boolean = pinsAtPlace && samePin(newPin)
 
     private fun samePin(newPin: ComposePin?): Boolean =
         pin != null && newPin != null && pin.latitude == newPin.latitude && pin.longitude == newPin.longitude
@@ -200,7 +261,7 @@ data class MomentsComposeUiState(
     val noLocationLocked: Boolean get() = pin == null
 
     /** An exact pin can name a venue from the place picker (around the photo's spot, or where you are). */
-    val canFindPlace: Boolean get() = !showArea && pin != null && !noLocationOn
+    val canFindPlace: Boolean get() = (if (sky) place?.canPin == true else !showArea) && pin != null && !noLocationOn
 
     /** The venue that names the Moment: only for an exact pin. */
     val pickedVenue: MomentVenue? get() = venue?.takeIf { !showArea }
@@ -212,17 +273,47 @@ data class MomentsComposeUiState(
     val takenLine: String? get() = takenAt?.takeIf { media != null && takenLongAgo(it) }?.let { takenLabel(it) }
 
     /** The feet the "Show elevation" row shows and everyone will read; null with no reading the server would keep. */
-    val heightFeet: Int? get() = pin?.height?.let { MomentHeight.feet(it.meters, it.accuracyMeters, it.speedMps) }
+    val heightFeet: Int?
+        get() = pin?.height?.let { MomentHeight.feet(it.meters, it.accuracyMeters, it.speedMps, step = if (sky && floats) 100 else 10) }
 
     /**
      * The "Show elevation" row is on the sheet: only where the server allows it (heights are on for you and the spot
      * isn't your home), for an exact pin, with a reading. Never for an area or with no location.
      */
-    val offersHeight: Boolean get() = place?.canShowHeight == true && !showArea && !noLocationOn && heightFeet != null
+    val offersHeight: Boolean get() = place?.canShowHeight == true && (sky || !showArea) && !noLocationOn && heightFeet != null
 
     /** What goes with the post: the reading, only while the row is on the sheet and switched on. */
     val shownHeight: MomentAltitudeBody?
         get() = pin?.height?.takeIf { offersHeight && showHeight }?.let { MomentAltitudeBody(it.meters, it.accuracyMeters, it.speedMps) }
+
+    /**
+     * The Live line (board L1, API v4.1): a photo or video the camera just took, pinned at the fix, shown at its exact
+     * pin and known to be away from home: where the server keeps the mark. Never for the album, an area, a floating
+     * Moment, no location, or at home (nor when the preview couldn't say whether this is home). Post checks [shot] again
+     * against the pin it sends ([liveFor]).
+     */
+    val offersLive: Boolean
+        get() =
+            shot != null && media != null && pin?.capture == false && takenAt == null && !noLocationOn && !floats &&
+                place?.atHome == false
+
+    /** "31°F · Snow" for "Show the weather": the preview's reading at the fix, while the Live line shows; null without one. */
+    val weatherLine: String? get() = place?.weather?.takeIf { offersLive }?.line()?.first
+
+    /** What goes with the post: `show_weather` only while the row is on the sheet (so with the Live line) and switched on. */
+    val sendsWeather: Boolean get() = weatherLine != null && showWeather
+
+    /** `taken_here` for the pin being sent now: the Live line shows and the shot still holds for that pin. */
+    fun liveFor(
+        sent: ComposePin,
+        now: Instant,
+    ): Boolean = offersLive && shot?.holdsFor(sent, now) == true
+
+    /** `show_weather` for the pin being sent now: only with `taken_here`. */
+    fun weatherFor(
+        sent: ComposePin,
+        now: Instant,
+    ): Boolean = sendsWeather && liveFor(sent, now)
 }
 
 /**
@@ -252,6 +343,7 @@ class MomentsComposeViewModel
                     hours = choices.getInt("$accountId.hours", DEFAULT_HOURS).takeIf { it in ALLOWED_HOURS } ?: DEFAULT_HOURS,
                     audience = choices.getString("$accountId.audience", null).takeIf { it in ALLOWED_AUDIENCES } ?: "nearby",
                     showHeight = choices.getBoolean("$accountId.showHeight", false),
+                    showWeather = choices.getBoolean("$accountId.showWeather", true),
                 ),
             )
         val state: StateFlow<MomentsComposeUiState> = _state.asStateFlow()
@@ -261,6 +353,9 @@ class MomentsComposeViewModel
 
         /** One id per Moment being posted: a retry of the same Post gets back the Moment it made (contract v2+). */
         private var requestId: String = java.util.UUID.randomUUID().toString()
+
+        /** Ends the sheet's Live line 10 minutes after the camera's shot ([endLiveAfter]). */
+        private var liveTimer: Job? = null
 
         /** The limits, read once as posting opens (contract v3.11); the state carries them for the camera and the sheet. */
         private val limitsRead: Deferred<MomentLimits> =
@@ -282,6 +377,12 @@ class MomentsComposeViewModel
         /** How far [preparation] has come, 0 to 1. */
         private var readyProgress = 0f
 
+        /** Text and Draw's photo as it came, the editor's copy of it, and the marks being drawn into the one that posts. */
+        private val marksKeeper = MomentMarksKeeper(context, viewModelScope)
+
+        /** The marks editor's picture, once read. */
+        val marksPicture: StateFlow<Bitmap?> = marksKeeper.picture
+
         /** Opening (or coming back with location allowed): a fresh fix, the place it pins at, and the 18+ state. */
         fun start() {
             if (!locations.hasLocationPermission()) {
@@ -296,6 +397,7 @@ class MomentsComposeViewModel
                     return@launch
                 }
                 val here = ComposePin(fix.latitude, fix.longitude, fix.at, capture = false)
+                // Without the weather: the pin and the camera never wait on it (it's asked once a camera draft lands).
                 when (val preview = repository.placePreview(here.latitude, here.longitude)) {
                     is NetworkResult.Success -> {
                         val height = fixHeightFor(preview.data)
@@ -398,8 +500,12 @@ class MomentsComposeViewModel
         fun captured(
             media: MomentMediaFile,
             takenAt: Instant? = null,
+            /** The in-app camera made it just now (the Live mark); an album item pinned here passes false. */
+            fromCamera: Boolean = false,
         ) {
+            forgetMarks()
             val current = _state.value
+            val shot = current.here?.takeIf { fromCamera }?.let { CameraShot(Instant.now(), it.latitude, it.longitude) }
             _state.update {
                 it.copy(
                     media = media,
@@ -407,7 +513,9 @@ class MomentsComposeViewModel
                     place = current.herePlace,
                     placeKey = it.placeKeyFor(current.here),
                     venue = it.venueFor(current.here),
+                    pinsAtPlace = it.pinsAtPlaceFor(current.here),
                     takenAt = takenAt,
+                    shot = shot,
                     step = ComposeStep.Review,
                     caption = "",
                     notice = null,
@@ -415,6 +523,40 @@ class MomentsComposeViewModel
                 )
             }
             prepare(media)
+            liveTimer?.cancel()
+            if (shot != null) {
+                liveTimer = viewModelScope.launch { endLiveAfter(shot) }
+                askWeather(shot, current.herePlace)
+            }
+        }
+
+        /** The sheet's Live line and weather row go 10 minutes after the shot (Post checks the clock again). */
+        private suspend fun endLiveAfter(shot: CameraShot) {
+            kotlinx.coroutines.delay(CameraShot.LIVE_SHOT_MS)
+            _state.update { if (it.shot == shot) it.copy(shot = null) else it }
+        }
+
+        /**
+         * The weather "Show the weather" offers (API v4.1), asked once a camera draft lands on the sheet away from home,
+         * with a preview at the fix it pins at; a retake at the same fix reuses it. Never at home, never for the album.
+         */
+        private fun askWeather(
+            shot: CameraShot,
+            herePlace: MomentPlacePreviewDto?,
+        ) {
+            if (herePlace?.atHome != false || herePlace.weather != null) return
+            viewModelScope.launch {
+                val preview = repository.placePreview(shot.latitude, shot.longitude, weather = true)
+                val weather = (preview as? NetworkResult.Success)?.data?.weather ?: return@launch
+                _state.update {
+                    val sameFix = it.here?.latitude == shot.latitude && it.here?.longitude == shot.longitude
+                    it.copy(
+                        // Only the draft it was asked for; a retake meanwhile asks again.
+                        place = if (it.shot == shot) it.place?.copy(weather = weather) else it.place,
+                        herePlace = if (sameFix) it.herePlace?.copy(weather = weather) else it.herePlace,
+                    )
+                }
+            }
         }
 
         /**
@@ -426,6 +568,9 @@ class MomentsComposeViewModel
             dropPreparation()
             if (media !is MomentMediaFile.Video) return
             readyProgress = 0f
+            // Text and Draw on the video go over every frame of every part, and so does where Resize placed it.
+            val marks = _state.value.marks
+            val placement = _state.value.placement
             preparation =
                 viewModelScope.async {
                     val limits = limits()
@@ -436,8 +581,9 @@ class MomentsComposeViewModel
                         try {
                             parts.forEachIndexed { at, part ->
                                 // A video posted as one Moment is exported whole (the camera's may go up as it is).
+                                val stretch = part.takeIf { parts.size > 1 }
                                 made +=
-                                    MomentMedia.prepareVideo(context, media, part.takeIf { parts.size > 1 }, limits.videoBytes) { done ->
+                                    MomentMedia.prepareVideo(context, media, stretch, limits.videoBytes, marks, placement) { done ->
                                         readyProgress = (at + done) / parts.size
                                         _state.update { if (it.readying != null) it.copy(readying = readyProgress) else it }
                                     }
@@ -489,6 +635,11 @@ class MomentsComposeViewModel
                     _state.update { it.copy(posting = false, readying = null) }
                     throw cancelled
                 }
+            // Retake in the instant the video got ready (before this resumed): that Post ends here too, no Moment made.
+            if (_state.value.media != media) {
+                _state.update { it.copy(posting = false, readying = null) }
+                return null
+            }
             _state.update { it.copy(readying = null) }
             return when (ready) {
                 is VideoReady.Ready -> ready.videos
@@ -588,14 +739,18 @@ class MomentsComposeViewModel
             if (lat != null && lng != null) {
                 val place = (repository.placePreview(lat, lng) as? NetworkResult.Success)?.data
                 val pin = ComposePin(lat, lng, takenAt ?: Instant.now(), capture = true, height = photoHeightFor(place, picked))
+                forgetMarks()
                 _state.update {
                     it.copy(
                         media = media,
+                        // From the album: never the Live mark.
+                        shot = null,
                         pin = pin,
                         place = place,
                         hasConnections = place?.hasConnections ?: it.hasConnections,
                         placeKey = it.placeKeyFor(pin),
                         venue = it.venueFor(pin),
+                        pinsAtPlace = it.pinsAtPlaceFor(pin),
                         takenAt = takenAt,
                         step = ComposeStep.Review,
                         caption = "",
@@ -645,6 +800,7 @@ class MomentsComposeViewModel
                         place = place,
                         placeKey = it.placeKeyFor(pin),
                         venue = it.venueFor(pin),
+                        pinsAtPlace = it.pinsAtPlaceFor(pin),
                         takenAt = it.takenAt ?: located.capturedAt,
                     )
                 }
@@ -669,6 +825,7 @@ class MomentsComposeViewModel
                     place = it.herePlace,
                     placeKey = it.placeKeyFor(it.here),
                     venue = it.venueFor(it.here),
+                    pinsAtPlace = it.pinsAtPlaceFor(it.here),
                     takenAt = null,
                     step = ComposeStep.Review,
                     notice = null,
@@ -676,17 +833,22 @@ class MomentsComposeViewModel
             }
         }
 
-        /** P3's Retake (a photo or video) or Edit (a text card). */
+        /** P3's Retake (a photo or video) or Edit (a text card); never while a Post is making its Moment ([canRetake]). */
         fun backFromReview() {
-            requestId = java.util.UUID.randomUUID().toString()
             val current = _state.value
+            if (!current.canRetake) return
+            requestId = java.util.UUID.randomUUID().toString()
             dropPreparation()
             current.media?.file?.delete()
+            marksKeeper.drop()
             // The ones picked with it that were still waiting go too.
             waiting = emptyList()
             _state.update {
                 it.copy(
                     media = null,
+                    marks = MomentMarks(),
+                    placement = null,
+                    marking = null,
                     step = if (current.media == null) ComposeStep.Text else ComposeStep.Camera,
                     notice = null,
                     pickedTogether = 0,
@@ -695,13 +857,83 @@ class MomentsComposeViewModel
             }
         }
 
+        /** The Post screen's Text, Draw or Resize pill: the editor opens on the marks (never while a Post is in flight). */
+        fun openMarks(tool: MomentMarksTool) {
+            val current = _state.value
+            val media = current.media ?: return
+            if (current.posting || current.marking != null) return
+            _state.update { it.copy(marking = marksKeeper.editing(tool, it.marks, it.placement)) }
+            marksKeeper.read(media) { _state.update { it.copy(marking = null, notice = MARKS_UNREADABLE) } }
+        }
+
+        /** A change in the open editor: a line drawn or undone, an ink or a width picked, the picture moved. */
+        fun editMarks(change: (MomentMarksEditing) -> MomentMarksEditing) =
+            _state.update { current -> current.marking?.let { current.copy(marking = change(it)) } ?: current }
+
+        /**
+         * The editor's Done ([keep]) or its X. Done draws the marks into a new copy of the photo (on the 9:16 canvas where
+         * Resize placed it), which then posts (Post waits for it); the photo as it came is kept, to change them again. On a
+         * video it exports the video again with the marks over every frame (and every part); Post waits for that as for any
+         * video. Nothing changes under a Post in flight.
+         */
+        fun closeMarks(keep: Boolean) {
+            val current = _state.value
+            val editing = current.marking ?: return
+            marksKeeper.closed(editing)
+            val media = current.media?.takeIf { keep && !current.posting }
+            if (media == null || (editing.result == current.marks && editing.placement == current.placement)) {
+                _state.update { it.copy(marking = null) }
+                return
+            }
+            _state.update { it.copy(marking = null, marks = editing.result, placement = editing.placement) }
+            when (media) {
+                is MomentMediaFile.Video -> prepare(media)
+                is MomentMediaFile.Photo ->
+                    marksKeeper.draw(
+                        editing.result,
+                        editing.placement,
+                        media.file,
+                        onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
+                        onFailed = { drawn, placed -> _state.update { it.copy(marks = drawn, placement = placed, notice = MARKS_FAILED) } },
+                    )
+            }
+        }
+
+        /** Another picture takes the sheet: it starts with no marks, as taken, and nothing kept for the last one stays. */
+        private fun forgetMarks() {
+            marksKeeper.drop()
+            _state.update { it.copy(marks = MomentMarks(), placement = null, marking = null) }
+        }
+
+        /** Post right after the editor's Done waits for the marks to be drawn in, so what uploads carries them. */
+        private fun waitsForMarks(retried: Boolean): Boolean {
+            if (!marksKeeper.busy) return false
+            _state.update { it.copy(posting = true, notice = null) }
+            viewModelScope.launch {
+                val drawn = marksKeeper.awaitDrawn()
+                _state.update { it.copy(posting = false) }
+                if (drawn) post(retried)
+            }
+            return true
+        }
+
         fun setHours(hours: Int) = _state.update { it.copy(hours = hours) }
 
         fun setAudience(audience: String) = _state.update { it.copy(audience = audience) }
 
         fun setShowArea(on: Boolean) = _state.update { it.copy(showArea = on) }
 
+        /** The Sky's rows (`MomentsComposeSky.kt`). */
+        fun setPinAtPlace(on: Boolean) = _state.update { it.withPinAtPlace(on) }
+
+        fun setShareLater(on: Boolean) = _state.update { it.withShareLater(on) }
+
+        fun pickShareLater(key: String) = _state.update { it.copy(shareLaterKey = key) }
+
         fun setShowHeight(on: Boolean) = _state.update { it.copy(showHeight = on) }
+
+        /** "Show the weather" on the Post sheet (API v4.1). */
+        fun setShowWeather(on: Boolean) = _state.update { it.copy(showWeather = on) }
 
         /** A name from the place list: the first (automatic) one goes back to no pick. */
         fun pickPlace(key: String) =
@@ -719,12 +951,12 @@ class MomentsComposeViewModel
         fun pickVenue(tag: PostPlaceTag) {
             val id = tag.placeId?.takeIf { it.startsWith("osm:") } ?: return
             _state.update {
-                it.copy(venue = MomentVenue(id, tag.name, tag.latitude, tag.longitude), placeKey = null, findingPlace = false)
+                it.withVenue(MomentVenue(id, tag.name, tag.latitude, tag.longitude))
             }
         }
 
         /** "Remove location" in the picker: back to the name the spot gets by itself. */
-        fun clearVenue() = _state.update { it.copy(venue = null, findingPlace = false) }
+        fun clearVenue() = _state.update { it.copy(venue = null, findingPlace = false, pinsAtPlace = false) }
 
         fun setCaption(caption: String) = _state.update { it.copy(caption = caption.take(MAX_CAPTION)) }
 
@@ -742,7 +974,7 @@ class MomentsComposeViewModel
         /** Post: makes the Moment now (so its location is checked while fresh); a photo or video then uploads. */
         fun post(retried: Boolean = false) {
             val current = _state.value
-            if (current.posting) return
+            if (current.posting || waitsForMarks(retried)) return
             if (current.noLocationOn) return postWithoutLocation(current)
             val pin = current.pin ?: return
             _state.update { it.copy(posting = true, notice = null) }
@@ -756,12 +988,16 @@ class MomentsComposeViewModel
                     } else {
                         pin
                     }
+                val now = Instant.now()
+                endLapsedLive(current, usable, now)
                 val body =
                     CreateMomentBody(
                         kind = current.kind,
                         hours = current.hours,
                         audience = current.audience,
-                        showArea = current.showArea,
+                        // Under the Sky a Moment at home says so too: should the server's switch go off meanwhile, it still
+                        // shows only its area.
+                        showArea = current.floats,
                         caption = current.caption.trim().takeIf { it.isNotEmpty() && current.media != null },
                         text = current.text.trim().takeIf { current.media == null },
                         background = current.background.wire.takeIf { current.media == null },
@@ -778,15 +1014,35 @@ class MomentsComposeViewModel
                         placeKey = current.pickedPlace?.key?.takeIf { current.canPickPlace && current.pickedVenue == null },
                         // An album item pinned where you are says when it was taken (a capture pin carries its own).
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null && !usable.capture },
-                        venueId = current.pickedVenue?.placeId,
+                        venueId = current.pickedVenue?.placeId?.takeIf { !current.sky || current.pinsHere },
                         // The height of the pin that is sent, while "Show elevation" is on the sheet and switched on.
                         altitude = current.copy(pin = usable).shownHeight,
+                        // The Sky: pin at the place (the venue picked, else the one naming the spot), and "Share later".
+                        pin = "place".takeIf { current.pinsHere },
+                        shareLater = current.shareLaterChoice?.key,
+                        // The Live mark and the weather stamp (API v4.1): only what the sheet showed, and only while the shot
+                        // still holds for this pin (a re-read fix or the LOCATION_TOO_OLD retry included); the server checks again.
+                        takenHere = true.takeIf { current.liveFor(usable, now) },
+                        showWeather = true.takeIf { current.weatherFor(usable, now) },
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
                     postedOne()
                 }
             }
+        }
+
+        /**
+         * Post found the camera's shot no longer holds for the pin it sends (over 10 minutes, or 150 m away): the Moment
+         * goes without the mark, and the sheet's Live line and weather row go with it.
+         */
+        private fun endLapsedLive(
+            current: MomentsComposeUiState,
+            sent: ComposePin,
+            now: Instant,
+        ) {
+            if (!current.offersLive || current.liveFor(sent, now)) return
+            _state.update { if (it.shot == current.shot) it.copy(shot = null) else it }
         }
 
         /**
@@ -818,6 +1074,8 @@ class MomentsComposeViewModel
                         else -> {
                             val latitude = pinned?.let { moment.latitude ?: it.first }
                             posting.start(moment, media, latitude, pinned?.let { moment.longitude ?: it.second })
+                            // The photo that posts carries its marks: the one as it came isn't needed any more.
+                            marksKeeper.drop()
                         }
                     }
                     true
@@ -915,11 +1173,15 @@ class MomentsComposeViewModel
             if (videos.none { it.video == media.file }) runCatching { media.file.delete() }
         }
 
-        /** The next sheet opens with this one's "How long", "Who sees it" and "Show elevation" (on this phone, per account). */
+        /**
+         * The next sheet opens with this one's "How long", "Who sees it", "Show elevation" and "Show the weather" (on this
+         * phone, per account).
+         */
         private fun saveChoices(posted: MomentsComposeUiState) {
             val saved = choices.edit().putInt("$accountId.hours", posted.hours).putString("$accountId.audience", posted.audience)
             // Only a sheet that offered the switch says what the person wants.
             if (posted.offersHeight) saved.putBoolean("$accountId.showHeight", posted.showHeight)
+            if (posted.weatherLine != null) saved.putBoolean("$accountId.showWeather", posted.showWeather)
             saved.apply()
         }
 
@@ -946,6 +1208,7 @@ class MomentsComposeViewModel
                         location = MomentLocationBody(source = "none"),
                         clientRequestId = requestId,
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
+                        shareLater = current.shareLaterChoice?.key,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()
@@ -975,6 +1238,8 @@ class MomentsComposeViewModel
                         _state.update { it.copy(notice = NO_FIX) }
                     }
                 "PLACE_NOT_NEARBY" -> _state.update { it.copy(venue = null, notice = FAR_PLACE) }
+                // The Sky: no public place to pin at here (the switch goes back off), or "Tonight at 8" after 7 pm.
+                "NO_PLACE_HERE", "SHARE_TIME_PASSED" -> _state.update { it.skyRefused(error.serverCode) }
                 "NO_CONNECTIONS" -> _state.update { it.copy(hasConnections = false, noLocation = false, notice = NEEDS_CONNECTION) }
                 "MOMENTS_DAILY_LIMIT" ->
                     _state.update { it.copy(notice = "You've posted ${it.limits.dailyLimit} Moments today. Try again tomorrow.") }
@@ -988,6 +1253,7 @@ class MomentsComposeViewModel
             // A capture that was never posted doesn't stay on the phone, nor does what was made ready to post it.
             val current = _state.value
             if (!current.done) current.media?.file?.delete()
+            marksKeeper.drop()
             preparation?.cancel()
             readyVideos?.forEach { deleteFiles(it, keep = null) }
             super.onCleared()
@@ -1010,5 +1276,7 @@ class MomentsComposeViewModel
             const val NO_FIX = "We couldn't find where you are. Try again in a moment."
             const val FAR_PLACE = "That place is too far from this Moment's pin. Pick one nearby."
             const val NEEDS_CONNECTION = "A Moment with no location goes only to your connections. Add a connection first."
+            const val MARKS_UNREADABLE = "Couldn't open this photo to draw on."
+            const val MARKS_FAILED = "Couldn't make your changes to the photo. Try again."
         }
     }

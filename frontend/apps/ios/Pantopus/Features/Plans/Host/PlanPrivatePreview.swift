@@ -58,8 +58,8 @@ struct PlanPrivatePreviewScreen: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(spacing: Spacing.s2) {
-                PlanTypeTag(kind: model.kind)
+            PlanTagRow {
+                PlanTypeTag(kind: model.kind, text: model.privacy.occasion?.text)
                 PlanPrivateChip()
                 if model.isOnline { PlanOnlineChip() }
             }
@@ -89,6 +89,7 @@ struct PlanPrivatePreviewScreen: View {
 
     /// "Tue, Nov 17 · 6:30–7:30 AM"; a playdate shows its part of the day, as on the public preview.
     private var whenLine: String {
+        if model.picksDate { return "Picking a date" } // find a date: the card says so until the host picks
         guard model.kind == .playdate else { return PlanFormat.when(start: model.effectiveStart, end: model.end) }
         let hour = Calendar.current.component(.hour, from: model.effectiveStart)
         let part: PlanDayPart = hour < 12 ? .morning : hour < 17 ? .afternoon : hour < 21 ? .evening : .night

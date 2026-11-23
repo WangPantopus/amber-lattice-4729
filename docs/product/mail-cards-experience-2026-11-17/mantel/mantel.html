@@ -1,0 +1,97 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- The mantel sample the founder approved on November 17, 2026. Open this file from the repository; it reads the card pictures and fonts from the apps. The grey rows and the tab bar are stand-ins. -->
+<style>
+@font-face { font-family: Hand; src: url("../../../../frontend/apps/ios/Pantopus/Resources/Fonts/NothingYouCouldDo.ttf"); }
+@font-face { font-family: Pen; src: url("../../../../frontend/apps/ios/Pantopus/Resources/Fonts/LaBelleAurore.ttf"); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #d9d5cc; font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; display: flex; gap: 40px; padding: 40px; width: max-content; }
+.phone { width: 402px; height: 874px; border-radius: 46px; overflow: hidden; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,.25), 0 0 0 9px #111; }
+.light { --page: #f5f6f8; --ink: #111827; --muted: #6b7280; --wall-a: #f3ede2; --wall-b: #e9e1d2; --wood-a: #b9895a; --wood-b: #8a5f38; --wood-top-a: #d3a676; --wood-top-b: #bd8d5c; --row: #ffffff; --row-line: #e5e7eb; --wallshadow: rgba(60,40,10,.26); --glow: rgba(255,226,170,.55); }
+.dark { --page: #0e1014; --ink: #f3f4f6; --muted: #9ca3af; --wall-a: #1b1a1c; --wall-b: #121214; --wood-a: #6e4a2c; --wood-b: #4a2f1a; --wood-top-a: #8a603c; --wood-top-b: #6f4a2c; --row: #181b21; --row-line: #262a33; --wallshadow: rgba(0,0,0,.6); --glow: rgba(255,196,120,.16); }
+.phone { background: var(--page); color: var(--ink); }
+.status { height: 58px; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 34px 6px; font-weight: 600; font-size: 16px; }
+.head { display: flex; align-items: center; gap: 14px; padding: 10px 20px 12px; }
+.head .menu { width: 22px; height: 16px; border-top: 2.4px solid var(--ink); border-bottom: 2.4px solid var(--ink); position: relative; }
+.head .menu::after { content: ""; position: absolute; left: 0; right: 0; top: 4.4px; border-top: 2.4px solid var(--ink); }
+.head h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+/* The mantel */
+.mantel { position: relative; height: 182px; margin: 0 0 4px; overflow: hidden; }
+.mantel::before { content: ""; position: absolute; inset: -30px 0 0 0; background: radial-gradient(62% 70% at 46% 62%, var(--glow), transparent 72%); }
+.cards { position: absolute; left: 74px; bottom: 38px; display: flex; gap: 13px; align-items: flex-end; }
+.card { width: 88px; height: 105.6px; transform-origin: 50% 100%; transform: perspective(520px) rotateX(11deg) rotate(var(--rz, 0deg)); filter: drop-shadow(7px 2px 5px var(--wallshadow)) drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.face { position: relative; width: 88px; height: 105.6px; background: var(--paper, #f9f1e3); border-radius: .7px; overflow: hidden; container-type: inline-size; }
+.face img { position: absolute; left: 1.7cqw; top: 1.7cqw; width: 96.6cqw; height: 103cqw; object-fit: cover; }
+.face .cap { position: absolute; left: 4.2cqw; top: 107.2cqw; font: 4.8cqw/1 Hand; color: #1d2b63; white-space: nowrap; }
+.face .cap.verse { font: italic 4.4cqw/1 Georgia, serif; }
+.face .yr { position: absolute; left: 4.2cqw; top: 114.4cqw; font: 2.2cqw/1 Georgia, serif; letter-spacing: .42em; color: #2b2622; }
+.face .pm { position: absolute; left: 80cqw; top: 107cqw; width: 14cqw; height: 9cqw; border: .5px solid rgba(178,65,58,.8); border-radius: 50%; transform: rotate(-3deg); }
+.face::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 2.6cqw rgba(110,80,30,.22); background: linear-gradient(180deg, rgba(255,255,255,.10), transparent 30%, rgba(0,0,0,.06)); }
+.foot { position: absolute; left: 0; right: 0; bottom: 33px; height: 8px; display: flex; gap: 13px; padding-left: 74px; }
+.foot i { width: 88px; height: 7px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.38), transparent); transform: translateY(1px); }
+.plank-top { position: absolute; left: 12px; right: -40px; bottom: 26px; height: 13px; background: linear-gradient(180deg, var(--wood-top-b), var(--wood-top-a)); border-radius: 3px 0 0 0; }
+.plank { position: absolute; left: 12px; right: -40px; bottom: 8px; height: 19px; border-radius: 0 0 0 5px; background: linear-gradient(180deg, var(--wood-a), var(--wood-b)); box-shadow: 0 9px 12px -3px var(--wallshadow), inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 0 rgba(0,0,0,.3); overflow: hidden; }
+.plank svg, .plank-top svg { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: multiply; opacity: .55; }
+.sprig { position: absolute; left: 2px; bottom: 30px; width: 96px; height: 60px; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.35)); }
+/* The list under it */
+.day { padding: 14px 20px 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+.env { position: relative; margin: 0 16px 12px; height: 132px; border-radius: 6px; overflow: hidden; background: #8f2a22 url("../../../../frontend/apps/web/public/holiday-cards/table/env-front.webp") center/cover; box-shadow: 0 6px 14px rgba(0,0,0,.18); }
+.env .from { position: absolute; left: 16px; top: 12px; font: 17px Pen; color: #f6ecd9; opacity: .9; }
+.env .to { position: absolute; left: 70px; top: 48px; font: 30px Pen; color: #f6ecd9; }
+.env .label { position: absolute; left: 16px; bottom: 12px; font: 10px Georgia, serif; letter-spacing: .24em; color: #e7c98a; }
+.env img.stamp { position: absolute; right: 14px; top: 12px; width: 44px; }
+.row { margin: 0 16px 12px; height: 74px; border-radius: 14px; background: var(--row); border: 1px solid var(--row-line); display: flex; align-items: center; gap: 12px; padding: 0 14px; }
+.row b { width: 40px; height: 40px; border-radius: 10px; background: var(--row-line); }
+.row span { display: block; height: 9px; border-radius: 5px; background: var(--row-line); width: 190px; }
+.row span + span { width: 120px; margin-top: 9px; }
+.tabs { position: absolute; left: 18px; right: 18px; bottom: 22px; height: 62px; border-radius: 31px; background: color-mix(in srgb, var(--row) 86%, transparent); border: 1px solid var(--row-line); box-shadow: 0 8px 20px rgba(0,0,0,.12); }
+</style></head><body>
+<script>
+const W = "../../../../frontend/apps/web/public/holiday-cards/";
+const cards = [
+  { n: "55", cap: "On his way to you.", rz: -2.2, paper: "#f7f0e2" },
+  { n: "08", cap: "Come finish our snowman.", rz: 1.6, paper: "#f9f1e3" },
+  { n: "61", cap: "John 3:16 (KJV)", rz: -1, paper: "#f7f0e2", verse: true },
+  { n: "24", cap: "Another Christmas. Still you.", rz: 2.4, paper: "#f9f1df" },
+];
+function sprig() {
+  let seed = 11; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const greens = ["#2c5a37", "#3a7046", "#244c2e", "#447d50", "#31633c"];
+  let s = '<svg class="sprig" viewBox="0 0 96 60">';
+  const twig = (x0, y0, x1, y1, bend, n, len0) => {
+    const cx = (x0 + x1) / 2 - bend * (y1 - y0) * 0.5, cy = (y0 + y1) / 2 + bend * (x1 - x0) * 0.5;
+    let out = '<path d="M' + x0 + ' ' + y0 + ' Q' + cx + ' ' + cy + ' ' + x1 + ' ' + y1 + '" stroke="#5a3d22" stroke-width="1.8" fill="none" stroke-linecap="round"/>';
+    for (let i = 1; i <= n; i++) {
+      const t = i / (n + 1); const u = 1 - t;
+      const x = u * u * x0 + 2 * u * t * cx + t * t * x1, y = u * u * y0 + 2 * u * t * cy + t * t * y1;
+      const tx = 2 * u * (cx - x0) + 2 * t * (x1 - cx), ty = 2 * u * (cy - y0) + 2 * t * (y1 - cy);
+      const base = Math.atan2(ty, tx); const len = len0 * (1 - 0.55 * t) * (0.85 + rnd() * 0.3);
+      for (const side of [-1, 1]) {
+        const a = base + side * (0.72 + rnd() * 0.3);
+        out += '<path d="M' + x.toFixed(1) + ' ' + y.toFixed(1) + ' l' + (Math.cos(a) * len).toFixed(1) + ' ' + (Math.sin(a) * len).toFixed(1) + '" stroke="' + greens[Math.floor(rnd() * greens.length)] + '" stroke-width="1.25" stroke-linecap="round"/>';
+      }
+    }
+    return out;
+  };
+  s += twig(6, 52, 88, 20, 0.16, 30, 11);
+  s += twig(30, 44, 62, 8, -0.1, 16, 8.5);
+  s += twig(22, 47, 50, 56, 0.12, 12, 7.5);
+  s += '<circle cx="14" cy="47" r="3.6" fill="#b3261e"/><circle cx="21" cy="51" r="3" fill="#c9372c"/><circle cx="16.5" cy="53.5" r="2.5" fill="#9e1f18"/><circle cx="13" cy="45.8" r="1" fill="#ffd9d2"/><circle cx="20.2" cy="50" r=".8" fill="#ffd9d2"/></svg>';
+  return s;
+}
+const grain = '<svg preserveAspectRatio="none"><filter id="g"><feTurbulence type="fractalNoise" baseFrequency="0.006 0.42" numOctaves="3" seed="7"/><feColorMatrix values="0 0 0 0 .25  0 0 0 0 .14  0 0 0 0 .05  0 0 0 -1.6 1.15"/></filter><rect width="100%" height="100%" filter="url(#g)"/></svg>';
+function phone(mode) {
+  return '<div class="phone ' + mode + '"><div class="status"><span>9:41</span><span></span></div>'
+    + '<div class="head"><div class="menu"></div><h1>Mail</h1></div>'
+    + '<div class="mantel"><div class="plank-top">' + grain + '</div><div class="foot">' + cards.map(() => '<i></i>').join('') + '</div>'
+    + '<div class="cards">' + cards.map((c) => '<div class="card" style="--rz:' + c.rz + 'deg"><div class="face" style="--paper:' + c.paper + '"><img src="' + W + 'card/christmas-2026-' + c.n + '.jpg"><div class="cap' + (c.verse ? ' verse' : '') + '">' + c.cap + '</div><div class="yr">CHRISTMAS, 2026</div><div class="pm"></div></div></div>').join('') + '</div>'
+    + sprig() + '<div class="plank">' + grain + '</div></div>'
+    + '<div class="day">TODAY</div>'
+    + '<div class="env"><div class="from">Maya</div><div class="to">Nora</div><div class="label">CHRISTMAS CARD</div><img class="stamp" src="' + W + 'table/stamp-fir.webp"></div>'
+    + '<div class="row"><b></b><div><span></span><span></span></div></div>'
+    + '<div class="day">EARLIER</div>'
+    + '<div class="row"><b></b><div><span></span><span></span></div></div>'
+    + '<div class="row"><b></b><div><span></span><span></span></div></div>'
+    + '<div class="tabs"></div></div>';
+}
+document.body.innerHTML = phone('light') + phone('dark');
+</script></body></html>

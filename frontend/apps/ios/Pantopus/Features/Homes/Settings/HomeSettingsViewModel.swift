@@ -381,7 +381,7 @@ public final class HomeSettingsViewModel: GroupedListDataSource {
                 documents: "Lease, HOA, Tax",
                 accessCodes: "2 active codes",
                 trustedNeighbors: "3 approved",
-                privacy: "Verified neighbors only",
+                privacy: "Verified homes only",
                 people: "4 members · 1 pending",
                 inviteLink: "Active · expires in 12 days",
                 notifications: "Push, email digest"

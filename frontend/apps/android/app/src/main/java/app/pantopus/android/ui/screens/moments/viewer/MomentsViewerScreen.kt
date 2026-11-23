@@ -149,12 +149,11 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
-import app.pantopus.android.ui.screens.moments.components.MomentTakenPill
+import app.pantopus.android.ui.screens.moments.components.MomentMetaPills
 import app.pantopus.android.ui.screens.moments.components.MomentVerifiedCheck
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.components.rememberMomentImage
-import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -732,9 +731,10 @@ fun MomentsViewerScreen(
                     // The face and the name open the author's profile; your own Moment's header opens nothing.
                     onAuthor = ring?.ring?.author?.takeIf { !mine }?.profileOpener(onOpenProfile),
                 )
-                // A photo or video taken more than a day before it was posted says when (contract v3.3), under the name.
-                takenLabel(moment?.takenAt)?.takeIf { state.load is ViewerLoad.Ready }?.let { taken ->
-                    MomentTakenPill(label = taken, modifier = Modifier.padding(start = 58.dp, top = 2.dp))
+                // Under the name: "Live from here", then "Taken here", and the weather for a Moment the app's camera took
+                // at its spot (API v4.1); "Taken Oct 3" for a photo taken more than a day before it was posted (v3.3).
+                moment?.takeIf { state.load is ViewerLoad.Ready }?.let { shown ->
+                    MomentMetaPills(moment = shown, modifier = Modifier.padding(start = 58.dp, top = 2.dp, end = 12.dp))
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way
@@ -1281,7 +1281,12 @@ private fun ViewerHeader(
                     // Once it has ended, the header drops the time left ("This Moment has ended." is on screen).
                     val times =
                         listOfNotNull(
-                            agoLabel(moment?.createdAt ?: brief?.createdAt),
+                            // The Sky: a Moment shared later says "Earlier today" (or "Yesterday") in place of "12m ago".
+                            if (moment?.earlier == true) {
+                                earlierLabel(moment.createdAt)
+                            } else {
+                                agoLabel(moment?.createdAt ?: brief?.createdAt)
+                            },
                             leftLabel(moment?.expiresAt ?: brief?.expiresAt).takeIf { state.load != ViewerLoad.Ended },
                         ).joinToString(" · ")
                     // A long place name gives way; "2h ago · 4h left" always shows.

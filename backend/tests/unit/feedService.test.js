@@ -47,7 +47,8 @@ let postCounter = 0;
 
 function makePost(overrides = {}) {
   postCounter++;
-  const id = overrides.id || `post-${String(postCounter).padStart(4, '0')}`;
+  // Ids are UUIDs, as in the database: a page position is checked for a time and a UUID before it is used.
+  const id = overrides.id || `00000000-0000-4000-8000-${String(postCounter).padStart(12, '0')}`;
   return {
     id,
     user_id: OTHER_USER,
@@ -543,35 +544,35 @@ describe('Feed Service', () => {
 
     seedTable('Post', [
       makePost({
-        id: 'pinned-newer',
+        id: 'aaaaaaaa-0000-4000-8000-000000000005',
         user_id: OTHER_USER,
         distribution_targets: ['connections'],
         is_pinned: true,
         created_at: '2026-03-01T10:00:00.000Z',
       }),
       makePost({
-        id: 'pinned-older',
+        id: 'aaaaaaaa-0000-4000-8000-000000000004',
         user_id: OTHER_USER,
         distribution_targets: ['connections'],
         is_pinned: true,
         created_at: '2026-03-01T09:00:00.000Z',
       }),
       makePost({
-        id: 'unpinned-newest',
+        id: 'aaaaaaaa-0000-4000-8000-000000000003',
         user_id: OTHER_USER,
         distribution_targets: ['connections'],
         is_pinned: false,
         created_at: '2026-03-01T12:00:00.000Z',
       }),
       makePost({
-        id: 'unpinned-middle',
+        id: 'aaaaaaaa-0000-4000-8000-000000000002',
         user_id: OTHER_USER,
         distribution_targets: ['connections'],
         is_pinned: false,
         created_at: '2026-03-01T11:00:00.000Z',
       }),
       makePost({
-        id: 'unpinned-older',
+        id: 'aaaaaaaa-0000-4000-8000-000000000001',
         user_id: OTHER_USER,
         distribution_targets: ['connections'],
         is_pinned: false,
@@ -600,11 +601,11 @@ describe('Feed Service', () => {
     }
 
     expect(seenIds).toEqual([
-      'pinned-newer',
-      'pinned-older',
-      'unpinned-newest',
-      'unpinned-middle',
-      'unpinned-older',
+      'aaaaaaaa-0000-4000-8000-000000000005',
+      'aaaaaaaa-0000-4000-8000-000000000004',
+      'aaaaaaaa-0000-4000-8000-000000000003',
+      'aaaaaaaa-0000-4000-8000-000000000002',
+      'aaaaaaaa-0000-4000-8000-000000000001',
     ]);
   });
 
@@ -800,12 +801,13 @@ describe('Feed Service', () => {
   });
 
   it('map feed strips exact home address for non-author viewers', async () => {
+    // The map reads a post's home by id in the enrichment round (loadPostEmbeds), not as an embed.
+    seedTable('Home', [{ id: 'home-1', address: '123 Private Way', city: 'San Francisco' }]);
     seedTable('Post', [
       makePost({
         id: 'home-map-post',
         user_id: OTHER_USER,
         home_id: 'home-1',
-        home: { id: 'home-1', address: '123 Private Way', city: 'San Francisco' },
         location_precision: 'exact_place',
         distribution_targets: ['place'],
         latitude: SF_LAT,

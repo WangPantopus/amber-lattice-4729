@@ -485,7 +485,7 @@ public final class ExploreMapViewModel {
                     state: .confirmed,
                     latitude: lat,
                     longitude: lon,
-                    title: marker.title ?? marker.content ?? "Neighborhood post",
+                    title: marker.title ?? marker.content ?? "Local post",
                     metaLead: postMetaLead(marker),
                     distanceLabel: distanceLabel(miles),
                     distanceMiles: miles,
@@ -569,7 +569,9 @@ public final class ExploreMapViewModel {
     }
 
     private static func postMetaLead(_ marker: PostsMapMarkerDTO) -> String {
-        let kind = (marker.postType ?? "post").replacingOccurrences(of: "_", with: " ").capitalized
+        let kind = marker.postType == "neighborhood_win"
+            ? "Local Win"
+            : (marker.postType ?? "post").replacingOccurrences(of: "_", with: " ").capitalized
         guard let createdAt = marker.createdAt else { return kind }
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

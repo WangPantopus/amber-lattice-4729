@@ -163,6 +163,9 @@ async function settleInvoiceAfterRefund(payment) {
   if (error) logger.warn('Refunded invoice could not be voided', { paymentId: payment.id, invoiceId, error: error.message });
   // Only the call that voided it says so; a notice that fails never fails the refund.
   if (voided?.[0]) {
+    // The refunded sale leaves the customer record's count (shared piece 3); never fails the refund.
+    // eslint-disable-next-line global-require
+    void require('./businessCustomers').recountBusinessCustomer(voided[0].business_user_id, voided[0].recipient_user_id);
     notifyInvoiceRefunded(voided[0], payment).catch((err) => {
       logger.warn('Invoice refund notice skipped', { invoiceId, error: err.message });
     });
@@ -195,11 +198,22 @@ async function notifyInvoiceRefunded(invoice, payment) {
     idempotencyKey: `invoice-refunded:${invoice.id}`,
   });
 }
+// A plan payment's business share is re-priced after each partial refund (planPaid.repriceAfterPartialRefund), which
+// changes the payment's snapshot that an earlier refund request froze. Its final receipts already recorded exactly
+// are left out of a later reconciliation, so the next refund on it can go ahead; anything new or different is still
+// sent and proven. Every other payment kind is reconciled as before.
+function alreadyRecorded(payment, receipt, recorded) {
+  if (payment.payment_type !== 'plan_payment') return false;
+  const row = recorded.find(r => r.provider_refund_id === receipt.id);
+  return Boolean(row && ['succeeded', 'failed', 'canceled'].includes(row.status) && row.status === receipt.status
+    && row.amount_cents === receipt.amountCents && (row.request_id || null) === (receipt.requestId || null)
+    && row.payment_id === payment.id);
+}
 async function reconcile(paymentId) {
   let payment = await paymentById(paymentId);
   await verifyProvider(payment);
   const records = await localRecords(payment);
-  const receipts = await discover(payment, records.requests);
+  const receipts = (await discover(payment, records.requests)).filter(r => !alreadyRecorded(payment, r, records.receipts));
   const result = await rpc('record_payment_refund_receipts', { p_payment_id: payment.id,
     p_expected: snapshot(payment), p_receipts: receipts });
   payment = result.payment;

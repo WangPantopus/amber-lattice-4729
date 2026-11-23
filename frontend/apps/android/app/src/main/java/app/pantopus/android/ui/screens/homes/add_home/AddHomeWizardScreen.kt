@@ -71,8 +71,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.screens.shared.wizard.WizardChrome
 import app.pantopus.android.ui.screens.shared.wizard.WizardLeadingControl
 import app.pantopus.android.ui.screens.shared.wizard.WizardModel
@@ -103,6 +105,7 @@ const val ADD_HOME_SCREEN_TAG = "addHomeWizard"
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
+@Suppress("CyclomaticComplexMethod") // Each step and dialog of both forms, one place.
 fun AddHomeWizardScreen(
     onDismiss: () -> Unit,
     /** The wizard is done; the Home it created or asked to join, when the outcome named one. */
@@ -112,6 +115,8 @@ fun AddHomeWizardScreen(
     onOpenWaitingRoom: (String) -> Unit = {},
     /** Opened from the Place tab: finishing with a new Home opens Your Place for it, and the copy says so. */
     completionOpensPlace: Boolean = false,
+    /** Add Home in two steps finished: Your Place for the new Home, with its verify sheet open. Null: [onOpenHomes]. */
+    onOpenVerify: ((homeId: String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pendingEvent by viewModel.pendingEvent.collectAsStateWithLifecycle()
@@ -127,7 +132,8 @@ fun AddHomeWizardScreen(
             }
             is AddHomeOutboundEvent.OpenHomes -> {
                 viewModel.acknowledgeEvent()
-                onOpenHomes(event.homeId)
+                val verifyHome = event.homeId?.takeIf { event.openVerify }
+                if (verifyHome != null && onOpenVerify != null) onOpenVerify(verifyHome) else onOpenHomes(event.homeId)
             }
             is AddHomeOutboundEvent.OpenClaimOwnership -> {
                 viewModel.acknowledgeEvent()
@@ -171,12 +177,16 @@ fun AddHomeWizardScreen(
             when (state.form.currentStep) {
                 AddHomeStep.Address -> AddressStep(state, viewModel)
                 AddHomeStep.Confirm ->
-                    ConfirmStep(
-                        state = state,
-                        onApplyGeocodedZip = viewModel::applyGeocodedZip,
-                        detailsSection = { AddHomeDetailsSection(state = state, vm = viewModel) },
-                    )
-                AddHomeStep.Role -> RoleStep(state, viewModel)
+                    if (state.shortAdd) {
+                        ShortFindStep(state, viewModel)
+                    } else {
+                        ConfirmStep(
+                            state = state,
+                            onApplyGeocodedZip = viewModel::applyGeocodedZip,
+                            detailsSection = { AddHomeDetailsSection(state = state, vm = viewModel) },
+                        )
+                    }
+                AddHomeStep.Role -> if (state.shortAdd) ShortRoleStep(state, viewModel) else RoleStep(state, viewModel)
                 AddHomeStep.Review -> ReviewStep(state, onReviewDetails = viewModel::reviewAddedDetails)
                 AddHomeStep.Success -> SuccessStep(opensYourPlace = state.completionOpensYourPlace)
             }
@@ -411,10 +421,17 @@ private fun AddressStep(
         } else {
             null
         }
-    HeadlineBlock("Where do you live?")
-    SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+    if (state.shortAdd) {
+        HeadlineBlock("Find your home")
+        SubcopyBlock("Type your street address and pick it from the list.")
+    } else {
+        HeadlineBlock("Where do you live?")
+        SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+    }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
         AddHomeSearchField(query = state.homeSearchQuery, onQueryChange = vm::updateSearchQuery, onClear = vm::clearSearchQuery)
+        // Two steps: the line is about the address being typed, so it is here while the person types.
+        if (state.shortAdd) ShortPrivacyLine()
         if (state.isFindingAddress) CircularProgressIndicator(modifier = Modifier.semantics { contentDescription = "Finding your address" })
         state.addressSearchError?.let {
             Text(it, style = PantopusTextStyle.small)
@@ -454,7 +471,17 @@ private fun AddressStep(
         })
         ManualAddressButton(onClick = vm::addManuallyTapped)
         if (state.isManualEntry) {
-            ManualAddressField("Street address", state.form.address.street) { vm.updateField(AddressField.Street, it) }
+            // The street line suggests addresses too (FASTVERIFY section 11); a rural route, military or Puerto Rico
+            // address is still typed in full, field by field.
+            val streetSuggestions = rememberAddressSuggestions()
+            ManualAddressField("Street address", state.form.address.street) {
+                vm.updateField(AddressField.Street, it)
+                streetSuggestions?.onTextChanged(it)
+            }
+            AddressSuggestionList(streetSuggestions, testTagPrefix = "addHome.manualStreetSuggestion") { picked ->
+                focusManager.clearFocus()
+                vm.applyManualSuggestion(picked)
+            }
             ManualAddressField("Unit or apartment (optional)", state.form.address.unit) { vm.updateField(AddressField.Unit, it) }
             ManualAddressField("City", state.form.address.city) { vm.updateField(AddressField.City, it) }
             ManualAddressField("State", state.form.address.state) { vm.updateField(AddressField.State, it) }
@@ -865,7 +892,7 @@ private fun SuccessStep(opensYourPlace: Boolean) {
 // MARK: - Helpers
 
 @Composable
-private fun ZipMismatchBanner(
+internal fun ZipMismatchBanner(
     mismatch: AddHomeZipMismatch,
     onApply: () -> Unit,
 ) {
@@ -980,7 +1007,7 @@ private fun GeocodeConfirmationBlock(
 
 /** What USPS said, when it isn't a yes and the person can still continue. */
 @Composable
-private fun AddHomePostalNoticeRow(notice: AddHomePostalNotice) {
+internal fun AddHomePostalNoticeRow(notice: AddHomePostalNotice) {
     Row(
         modifier =
             Modifier
@@ -1187,7 +1214,7 @@ private fun addressLocationCopy(address: AddHomeGeocodedAddress): String {
 }
 
 @Composable
-private fun AddHomeSearchField(
+internal fun AddHomeSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
@@ -1402,7 +1429,7 @@ private fun RoleRow(
 }
 
 @Composable
-private fun RadioCircle(isSelected: Boolean) {
+internal fun RadioCircle(isSelected: Boolean) {
     val borderColor = if (isSelected) PantopusColors.primary600 else PantopusColors.appBorder
     Box(
         modifier =

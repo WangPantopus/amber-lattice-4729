@@ -3,16 +3,18 @@
 //  Pantopus
 //
 //  What Look it over shows for a card sent to an email address
-//  (`holiday_cards`): the email they get, drawn from its own words, and the
-//  page its link opens, as someone not signed in sees it. Neither shows the
-//  card: they open it in Pantopus once they join with that address.
+//  (`holiday_cards`): the email they get, drawn from its own words and
+//  picture, and the page its link opens, as someone not signed in sees it.
+//  Neither shows the note: they read it in Pantopus once they join with that
+//  address.
 //
 
 import SwiftUI
 
 /// The email an address gets, drawn from its own words: who it's from and
-/// the subject, the wax-red heading, the two sentences, the button, the
-/// footnote and the footer. It never shows the card.
+/// the subject, the picture at its top (the card's front, or the sealed
+/// envelope), the wax-red heading, the two sentences, the button, the
+/// footnote and the footer. It never shows the note.
 struct HolidayCardEmailPicture: View {
     let email: HolidayCardPreview.Email
     /// The address typed on step 1.
@@ -35,16 +37,23 @@ struct HolidayCardEmailPicture: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
-            VStack(spacing: 6) {
-                Icon(.mail, size: 30, strokeWidth: 1.8, color: MailPaper.waxText)
-                Text(email.heading)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(MailPaper.waxText)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: Spacing.s0) {
+                if let picture = email.picture {
+                    topPicture(picture)
+                }
+                VStack(spacing: 6) {
+                    if email.picture == nil {
+                        Icon(.mail, size: 30, strokeWidth: 1.8, color: MailPaper.waxText)
+                    }
+                    Text(email.heading)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(MailPaper.waxText)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, email.picture == nil ? Spacing.s5 : Spacing.s3)
+                .padding(.bottom, Spacing.s4)
             }
-            .padding(.horizontal, Spacing.s4)
-            .padding(.top, Spacing.s5)
-            .padding(.bottom, Spacing.s4)
             .frame(maxWidth: .infinity)
             .background(MailPaper.wax)
             VStack(alignment: .leading, spacing: 10) {
@@ -93,6 +102,27 @@ struct HolidayCardEmailPicture: View {
         .accessibilityIdentifier("sendCardLookEmail")
     }
 
+    /// The email's picture across its full width, in the 1200 × 630 shape of the
+    /// real one, so it keeps its place while it loads.
+    private func topPicture(_ url: URL) -> some View {
+        CachedAsyncImage(url: url, keepsOnDisk: false, maxPixelSize: 1200) { phase in
+            switch phase {
+            case let .success(image):
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            case .failure, .empty:
+                Rectangle().fill(MailPaper.wax)
+            @unknown default:
+                Rectangle().fill(MailPaper.wax)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1200.0 / 630.0, contentMode: .fit)
+        .clipped()
+        .accessibilityHidden(true)
+    }
+
     /// A sentence of the email, the sender's name in bold where it starts it.
     private func sentence(_ line: String, bold name: String?) -> some View {
         let text: Text = if let name, !name.isEmpty, line.hasPrefix(name) {
@@ -132,7 +162,7 @@ struct HolidayCardLinkPagePicture: View {
                     if page.senderVerified {
                         HStack(spacing: 6) {
                             Icon(.shieldCheck, size: 14, strokeWidth: 2.25, color: Theme.Color.success)
-                            Text("Verified neighbor")
+                            Text("Verified resident")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Theme.Color.success)
                         }

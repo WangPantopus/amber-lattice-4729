@@ -160,7 +160,7 @@ export default function NeighborMessageCompose() {
           <EmptyState
             icon={MapPinned}
             title="Claim your place first"
-            description="Messaging neighbors is for verified residents. Add and verify your address to unlock it."
+            description="Messaging homes near you is for verified residents. Add and verify your address to unlock it."
             actionLabel="Add your place"
             onAction={() => router.push('/app/homes')}
           />
@@ -188,7 +188,7 @@ export default function NeighborMessageCompose() {
             <IconTile icon={Check} tone="home" size={48} />
             <h2 className="text-lg font-bold text-app-text mt-3 -tracking-[0.01em]">Sent anonymously</h2>
             <p className="text-[13.5px] text-app-text-secondary mt-1.5 leading-[19px] max-w-[32ch]">
-              If a verified household lives there, they&apos;ll get it as &ldquo;from a verified neighbor nearby&rdquo; —
+              If a verified household lives there, they&apos;ll get it as &ldquo;from a verified home nearby&rdquo; —
               never your name or address.
             </p>
             <button
@@ -212,9 +212,9 @@ export default function NeighborMessageCompose() {
         <div className="px-4 sm:px-5 pt-6">
           <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-5 flex flex-col items-center text-center">
             <IconTile icon={ShieldCheck} tone="home" size={48} />
-            <h2 className="text-lg font-bold text-app-text mt-3 -tracking-[0.01em]">Verify to message neighbors</h2>
+            <h2 className="text-lg font-bold text-app-text mt-3 -tracking-[0.01em]">Verify to message homes near you</h2>
             <p className="text-[13.5px] text-app-text-secondary mt-1.5 leading-[19px] max-w-[30ch]">
-              Neighbor messaging is for verified residents only — it&apos;s what keeps the channel safe and trusted.
+              Messages between homes are for verified residents only — it&apos;s what keeps the channel safe and trusted.
               Verify your address to unlock it.
             </p>
             <button

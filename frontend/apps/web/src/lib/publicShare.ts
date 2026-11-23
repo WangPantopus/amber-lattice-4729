@@ -1,5 +1,7 @@
+import type { plans } from '@pantopus/api';
 import { cache } from 'react';
 import type { Metadata } from 'next';
+import type { CardJourneyGoal } from '@pantopus/api';
 import { ANDROID_PLAY_STORE_URL, API_BASE_URL, APP_NAME, APP_WEB_URL, IOS_APP_STORE_APP_ID, IOS_APP_STORE_URL, chosenUsername } from '@pantopus/utils';
 
 const API_BASE = API_BASE_URL.replace(/\/+$/, '');
@@ -15,7 +17,7 @@ export function normalizePublicProfileIdentifier(value: string): string {
   return String(value || '').trim().replace(/^@+/, '');
 }
 
-async function fetchPublicJson<T>(
+export async function fetchPublicJson<T>(
   path: string,
   options: { noStore?: boolean } = {},
 ): Promise<PublicFetchResult<T>> {
@@ -51,14 +53,35 @@ async function fetchPublicJson<T>(
 
 export type PublicCardDesigns = {
   year: number;
-  collections?: { id: string; name: string; designs: string[] }[];
-  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null }[];
+  /** In shelf order; `short`, `slug`, `line`, `pick` and `parts` as on HolidayCardCollection. */
+  collections?: { id: string; name: string; short?: string; slug?: string; line?: string; designs: string[]; pick?: string;
+    parts?: { name: string; designs: string[] }[] }[];
+  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string;
+    mood?: 'reverence' | 'santa' | 'nostalgia' | null; verse?: string | null }[];
+  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
+  free_cards?: number;
+  /** The shelves and a page per collection (server key card_shelves). Absent: today's pages. */
+  shelves?: boolean;
+  /** The order "One from each collection" draws the collections in (SPEC E2); absent: the collections' order. */
+  opening?: string[];
 };
+
+/** The shelves are on (server key card_shelves, card shelves SPEC Part D) and the collections carry their facts. */
+export function publicShelvesOn(data: Pick<PublicCardDesigns, 'shelves' | 'collections'>): boolean {
+  const collections = data.collections ?? [];
+  return data.shelves === true && collections.length > 0 && collections.every((c) => typeof c.slug === 'string' && Boolean(c.slug));
+}
 
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */
 export const fetchPublicCardDesigns = cache(async (): Promise<PublicFetchResult<PublicCardDesigns>> => (
   fetchPublicJson<PublicCardDesigns>('/api/mailbox/cards/designs')
 ));
+
+/** All cards this Christmas (D3), for /cards (404 while the travelling card is off). */
+export const fetchCardJourneyGoal = cache(async (): Promise<PublicFetchResult<CardJourneyGoal>> => {
+  const result = await fetchPublicJson<{ goal: CardJourneyGoal }>('/api/mailbox/cards/journeys');
+  return { data: result.data?.goal ?? null, status: result.status };
+});
 
 /** The invite code a shared card's link carries in `ref`, if it looks like one. It's only ever passed on to sign-up. */
 export function shareRefFrom(value: string | string[] | undefined): string | null {
@@ -84,11 +107,29 @@ export const fetchPublicPost = cache(async (id: string): Promise<PublicFetchResu
   return { data: result.data?.post ?? null, status: result.status };
 });
 
-/** A friend's invite link: who sent it (as neighbors see them), or valid: false for a code nobody has. */
-export type PublicJoin = { valid: boolean; referrer_name?: string; referrer_avatar?: string | null; code?: string };
+/**
+ * A friend's invite link: who sent it (as neighbors see them), or valid: false for a code nobody has. `creator`: the
+ * code is one the founder gave a creator (admin creator links).
+ */
+export type PublicJoin = { valid: boolean; referrer_name?: string; referrer_avatar?: string | null; code?: string; creator?: boolean };
 
 export const fetchPublicJoin = cache(async (code: string): Promise<PublicFetchResult<PublicJoin>> =>
   fetchPublicJson<PublicJoin>(`/api/users/public/join/${encodeURIComponent(code)}`, { noStore: true }));
+
+/**
+ * What a Christmas card page's store button carries through the install. With a `ref` that is a creator's code (admin
+ * creator links), its join link: both apps open `/join/<code>` into Create account with the code, so the account is
+ * recorded against the creator. The apps can take only one link, so that person starts on the app's first screen rather
+ * than on the cards. Anything else (no `ref`, a person's own invite code from a shared card, a code nobody has): the
+ * sending flow (`path`), exactly as before.
+ */
+export async function cardsStoreLink(path: string, ref: string | null): Promise<{ path: string; joins: boolean }> {
+  if (!ref) return { path, joins: false };
+  const { data } = await fetchPublicJoin(ref);
+  return data?.valid && data.creator === true && data.code
+    ? { path: `/join/${encodeURIComponent(data.code)}`, joins: true }
+    : { path, joins: false };
+}
 
 export const fetchPublicSupportTrain = cache(async (id: string): Promise<PublicFetchResult<any>> => {
   const result = await fetchPublicJson<any>(
@@ -156,6 +197,8 @@ export type PublicPlan = {
   about?: string;
   starts_at?: string | null;
   ends_at?: string | null;
+  /** "Picking a date" while the host picks one (08-extras section 2): the page shows it in place of the time. */
+  time_text?: string | null;
   starts_on?: string | null;
   day_part?: string | null;
   timezone?: string;
@@ -186,7 +229,76 @@ export type PublicPlan = {
   repeat?: { text: string; short: string; last_on: string } | null;
   /** A private plan. Without a live invitation in the link this is the only key, and there is no card to show. */
   private?: boolean;
+  /** The occasion that started it (H3): its name stands where the kind's would. */
+  occasion?: { key: string; text: string } | null;
+  /**
+   * Plans for the holidays (H1), while the host has the switch: with a way in (an invitation's token, the open link)
+   * or the guest's own key, the form and the guest's own answer. Absent otherwise: the page is today's.
+   */
+  answer?: PublicPlanAnswer | null;
+  /** With the guest's own key, while they are in: the place, the note for people in and who is going. */
+  for_guest?: PublicPlanForGuest | null;
+  /** The guest's key is a guest's the host removed: the invitation is no longer open, and nothing else. */
+  removed?: boolean;
 };
+
+export type PublicPlanGuestState = 'in' | 'waiting_ok' | 'maybe' | 'cant';
+
+export type PublicPlanAnswer = {
+  can: boolean;
+  via: 'open' | 'email' | 'link';
+  needs_email: boolean;
+  kids_welcome: boolean;
+  room_left: number;
+  host_says_yes_first: boolean;
+  /** The page was opened with the plan's live open link (contract 6.9): "Open app" carries it into the app. */
+  open_live?: boolean;
+  /** Find a date (the extras): while the host picks, the times to tick in place of the three answers. */
+  dates?: PublicPlanDates | null;
+  /** Photos afterwards (the extras): a guest who was in may look, on a plan that is over. */
+  photos?: { count: number; add_text: string; note: string } | null;
+  mine: {
+    state: PublicPlanGuestState;
+    name: string;
+    adults: number;
+    kids: number;
+    email_hint: string | null;
+    /** What changed since this guest answered; a waiting guest's page says so too (a move to the host's home). */
+    changed?: 'time' | 'place' | 'both' | null;
+  } | null;
+};
+
+export type PublicPlanForGuest = {
+  place: { name: string; address: string | null; latitude: number | null; longitude: number | null; link?: string | null };
+  guest_note: string | null;
+  going: string[];
+  /** The bring list (H2), while the host has it on. */
+  bring: PublicPlanBring | null;
+  changed: 'time' | 'place' | 'both' | null;
+  /** Chip in (the extras, 08-extras section 3), while the host has it on. Every word is the server's. */
+  chip_in?: PublicPlanChipIn | null;
+  /** The gift exchange (the extras): whom this guest drew is in their own page only. */
+  gift?: PublicPlanGift | null;
+};
+
+export type PublicPlanGift = plans.Gift;
+
+export type PublicPlanDates = {
+  state: 'picking';
+  host_line: string;
+  /** The line under "Save my times": "You’re in when {Host} picks a time you ticked." or, for someone who will wait for
+   * the host's yes, "When {Host} picks a time you ticked, {Host} lets you in." (08-extras section 2). */
+  mine_text?: string;
+  answered: number;
+  invited: number;
+  answered_text: string;
+  options: { id: string; starts_at: string; ends_at: string; text: string; can: number; can_text: string; mine?: boolean }[];
+  mine?: { answered: boolean };
+};
+
+export type PublicPlanChipIn = plans.ChipIn;
+
+export type PublicPlanBring = plans.Bring;
 
 export type PublicPlanBusiness = {
   name: string;
@@ -196,7 +308,17 @@ export type PublicPlanBusiness = {
   plans_hosted: number;
 };
 
-export type PublicPlanPrice = { cents: number; currency: string; per: 'person' | 'family' };
+export type PublicPlanPrice = {
+  cents: number;
+  currency: string;
+  per: 'person' | 'family';
+  // Sent while the business takes payment for spots (Plans for the holidays B2/B3): the server's own words.
+  text?: string;
+  line?: string;
+  join_text?: string;
+  refund_until?: string;
+  refund_text?: string;
+};
 
 export type PublicPlanInvite = {
   host_first_name: string;
@@ -210,8 +332,24 @@ export function planInviteToken(value: unknown): string | null {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value) ? value : null;
 }
 
-export const fetchPublicPlan = cache(async (id: string, invite: string | null = null): Promise<PublicFetchResult<PublicPlan>> => {
-  const query = invite ? `?invite=${encodeURIComponent(invite)}` : '';
+/** A guest's key or the open link's token: 43 base64url characters, as an invitation's token. */
+export const planSecret = planInviteToken;
+
+/**
+ * The plan's public answer. `invite` and `open` are the page's ways in; `guest` is the guest's own key, which the page
+ * reads from its HttpOnly cookie and sends from the server only (never in a link the page shows).
+ */
+export const fetchPublicPlan = cache(async (
+  id: string,
+  invite: string | null = null,
+  open: string | null = null,
+  guest: string | null = null,
+): Promise<PublicFetchResult<PublicPlan>> => {
+  const params = new URLSearchParams();
+  if (invite) params.set('invite', invite);
+  if (open) params.set('open', open);
+  if (guest) params.set('guest', guest);
+  const query = params.toString() ? `?${params.toString()}` : '';
   const result = await fetchPublicJson<PublicPlan>(
     `/api/public/plans/${encodeURIComponent(id)}${query}`,
     { noStore: true },

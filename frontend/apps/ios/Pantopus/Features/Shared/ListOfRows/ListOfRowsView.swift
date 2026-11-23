@@ -37,6 +37,8 @@ public struct ListOfRowsView<DataSource: ListOfRowsDataSource, Header: View>: Vi
     @State private var hasShownContent = false
     /// The search bar has the keyboard: a tap on the rows only closes it.
     @FocusState private var searchFocused: Bool
+    /// A screen's own view for a row, nil for the shell's (`rowContent(_:)`).
+    private var rowOverride: (@MainActor (RowModel) -> AnyView?)?
 
     /// Full init — provide a custom header view that renders between the
     /// chrome strip (search / chip / tab) and the state body.
@@ -46,6 +48,14 @@ public struct ListOfRowsView<DataSource: ListOfRowsDataSource, Header: View>: Vi
     ) {
         self.dataSource = dataSource
         self.customHeader = customHeader()
+    }
+
+    /// Draws a flat section's row with the screen's own view where `build` returns one (My posts draws each post
+    /// as its Pulse card); the shell's row otherwise. Tabs, paging, the empty and error states stay the shell's.
+    public func rowContent(_ build: @escaping @MainActor (RowModel) -> AnyView?) -> Self {
+        var copy = self
+        copy.rowOverride = build
+        return copy
     }
 
     public var body: some View {
@@ -157,7 +167,8 @@ public struct ListOfRowsView<DataSource: ListOfRowsDataSource, Header: View>: Vi
                 onRetryLoadMore: { Task { await dataSource.retryLoadMore() } },
                 onRefresh: { await dataSource.refresh() },
                 reservesFABSpace: dataSource.fab != nil,
-                isTyping: searchFocused
+                isTyping: searchFocused,
+                rowOverride: rowOverride
             )
             .onAppear { hasShownContent = true }
         case let .empty(content):
@@ -387,7 +398,7 @@ private struct ChipStripRow: View {
 
 // MARK: - Clear of the closed Duo's strip
 
-private extension View {
+extension View {
     /// For a row that scrolls sideways: it runs into the room after it as before, up to where something covers the
     /// screen across it. Closed, the iPhone Duo's strip beside the screen holds the clock and the Wi-Fi level with the
     /// tabs and chips, which ran on under them; Apple reports what covers the screen as an occlusion region. Open
@@ -488,6 +499,8 @@ private struct LoadedList: View {
     /// The search bar above has the keyboard: a tap on a row only closes it
     /// (founder request 2026-10-29); scrolling still scrolls.
     var isTyping = false
+    /// The screen's own view for a flat section's row, nil for `RowView`.
+    var rowOverride: (@MainActor (RowModel) -> AnyView?)?
 
     var body: some View {
         List {
@@ -579,7 +592,7 @@ private struct LoadedList: View {
         switch section.style {
         case .flat:
             ForEach(section.rows) { row in
-                RowView(row: row)
+                flatRow(row)
                     .closesKeyboardFirst(isTyping)
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
@@ -618,6 +631,14 @@ private struct LoadedList: View {
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
+        }
+    }
+
+    @ViewBuilder private func flatRow(_ row: RowModel) -> some View {
+        if let custom = rowOverride?(row) {
+            custom
+        } else {
+            RowView(row: row)
         }
     }
 

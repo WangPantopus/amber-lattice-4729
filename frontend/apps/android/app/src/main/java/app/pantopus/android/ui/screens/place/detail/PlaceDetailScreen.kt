@@ -52,6 +52,7 @@ import app.pantopus.android.ui.screens.place.leavesOut
 import app.pantopus.android.ui.screens.place.verifiesFirst
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifySheet
+import app.pantopus.android.ui.screens.place.verify.rememberVerifyOptions
 import app.pantopus.android.ui.screens.root.PullToRefreshUnderHeader
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
@@ -65,6 +66,7 @@ import app.pantopus.android.ui.theme.PantopusIcon
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList")
 fun PlaceDetailScreen(
     onBack: () -> Unit,
     onOpenBallot: () -> Unit = onBack,
@@ -75,6 +77,8 @@ fun PlaceDetailScreen(
     onAsk: ((AIScreenContext) -> Unit)? = null,
     // Today's Share: "Or share in Pantopus" (Post to Pulse, Send in a chat); null leaves them out.
     skyShare: SkySharePantopus? = null,
+    // Today at this address: the pickup editor opened for tip card 16, and the saved box's "See it in Today".
+    pickup: PickupJourney = PickupJourney(),
     viewModel: PlaceDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -88,6 +92,11 @@ fun PlaceDetailScreen(
     // A locked section's "Verify address" opens the same verify sheet as the dashboard.
     var showVerify by remember { mutableStateOf(false) }
     val verify: (() -> Unit)? = onStartVerify?.let { { showVerify = true } }
+    // Verified by a fast check (FASTVERIFY): the mail-level cards offer the postcard in place of their forms.
+    val verifyOptions =
+        rememberVerifyOptions(viewModel.calendarHomeId.takeIf { onStartVerify != null && viewModel.group in MAIL_LEVEL_GROUPS })
+    val mailCode: (() -> Unit)? =
+        onStartVerify?.takeIf { verifyOptions?.isFast == true }?.let { start -> { start(PlaceVerifyMethod.MAIL) } }
 
     // The section scrolls under its header, which slides away while it scrolls down and comes back near the top (founder
     // request 2026-11-07, as on iPhone). The refresh line under the header stays.
@@ -122,12 +131,14 @@ fun PlaceDetailScreen(
                         current = current,
                         viewModel = viewModel,
                         verify = verify,
+                        mailCode = mailCode,
                         refreshing = refreshing,
                         onBack = onBack,
                         onOpenBallot = onOpenBallot,
                         onAsk = onAsk?.let { ask -> askAboutSection(viewModel, ask) },
                         top = top,
                         skyShare = skyShare,
+                        pickup = pickup,
                     )
             }
         }
@@ -158,6 +169,8 @@ private fun LoadedDetail(
     current: PlaceDetailUiState.Loaded,
     viewModel: PlaceDetailViewModel,
     verify: (() -> Unit)?,
+    /** Opens the postcard page, for a person verified by a fast check (null for everyone else). */
+    mailCode: (() -> Unit)?,
     refreshing: Boolean,
     onBack: () -> Unit,
     onOpenBallot: () -> Unit,
@@ -166,6 +179,7 @@ private fun LoadedDetail(
     /** The header drawn over the top of the page: its first card starts below it. */
     top: Dp,
     skyShare: SkySharePantopus?,
+    pickup: PickupJourney,
 ) {
     if (viewModel.savedPlaceId != null &&
         (!viewModel.group.supportsSavedPlace || current.intelligence.groups.none { it.groupId in viewModel.group.groups })
@@ -200,6 +214,7 @@ private fun LoadedDetail(
             CompositionLocalProvider(
                 LocalPlaceDetailRetry provides viewModel::refresh,
                 LocalPlaceDetailVerify provides detailVerify,
+                LocalPlaceDetailMailCode provides mailCode.takeUnless { current.intelligence.nonResidentViewer },
                 LocalPlaceDetailVerifiesFirst provides current.intelligence.verifiesFirst,
                 LocalPlaceZone provides current.intelligence.homeZone,
             ) {
@@ -219,6 +234,7 @@ private fun LoadedDetail(
                             TodayAlertsCheck.CURRENT
                         },
                     skyShare = skyShare,
+                    pickup = pickup,
                 )
             }
             Spacer(modifier = Modifier.height(40.dp))
@@ -227,6 +243,7 @@ private fun LoadedDetail(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun GroupContent(
     group: PlaceDetailGroup,
     intel: PlaceIntelligence,
@@ -235,6 +252,7 @@ private fun GroupContent(
     onAsk: (() -> Unit)?,
     alertsCheck: TodayAlertsCheck,
     skyShare: SkySharePantopus?,
+    pickup: PickupJourney,
 ) {
     when (group) {
         // This page opens over the Place dashboard, where the ballot card is.
@@ -244,7 +262,12 @@ private fun GroupContent(
                 viewModel.takeIf { it.savedPlaceId == null && !intel.claimView },
                 onOpenBallot = onOpenBallot,
                 alertsCheck = alertsCheck,
-                tab = TodayTabParts(skyShare = skyShare),
+                // "See it in Today" is left out when the Today tab shows another Home.
+                tab =
+                    TodayTabParts(
+                        skyShare = skyShare,
+                        pickup = pickup.copy(onSeeInToday = pickup.onSeeInToday?.takeIf { viewModel.isTodaysHome }),
+                    ),
             )
         PlaceDetailGroup.YOUR_HOME -> PlaceHomeDetailContent(intel, onCorrectYear = onAsk)
         PlaceDetailGroup.RISK -> PlaceRiskDetailContent(intel, viewModel)
@@ -286,6 +309,35 @@ val LocalPlaceDetailRetry = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /** Opens the verify sheet: the tap for a locked section's "Verify address" (null where no flow is wired). */
 val LocalPlaceDetailVerify = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * Opens the postcard page for a person verified by a fast check (FASTVERIFY SPEC sections 1 and 2): residency letters
+ * and passes, Block founders, the fridge card and the rate watch need the mailed code. Null for everyone else, and
+ * while the server doesn't offer the verify options: the cards are then today's.
+ */
+val LocalPlaceDetailMailCode = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/** The detail pages that hold a mail-level card: only they read the verify options. */
+private val MAIL_LEVEL_GROUPS = setOf(PlaceDetailGroup.IDENTITY, PlaceDetailGroup.BLOCK, PlaceDetailGroup.RISK, PlaceDetailGroup.MONEY)
+
+/**
+ * A mail-level card for a person verified by a fast check: the server refuses it (`MAIL_PROOF_REQUIRED`), so the card
+ * says so and offers the postcard, in place of a form or a "Try again" that can't work (SPEC section 6 words).
+ */
+@Composable
+internal fun PlaceMailCodeCard(
+    title: String,
+    icon: PantopusIcon,
+    onMailCode: () -> Unit,
+) {
+    PlaceLockedCard(
+        title = title,
+        reason = "This needs a mailed code. Ask for the postcard in Place.",
+        cta = "Mail me a code",
+        icon = icon,
+        onTap = onMailCode,
+    )
+}
 
 /** The viewer set this Home up and hasn't verified it (T1): every lock is the verify step. */
 val LocalPlaceDetailVerifiesFirst = staticCompositionLocalOf { false }

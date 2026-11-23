@@ -82,7 +82,7 @@ public struct PackageGigView: View {
                     .foregroundStyle(Theme.Color.appTextStrong)
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Ask a neighbor")
+            .accessibilityLabel("Ask for help nearby")
             .accessibilityIdentifier("packageGig_eyebrow")
             Spacer(minLength: Spacing.s0)
             Color.clear.frame(width: 72, height: 1)
@@ -100,7 +100,7 @@ public struct PackageGigView: View {
     private var formFrame: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s3) {
-                Text("Ask a Neighbor")
+                Text("Ask for help nearby")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
 
@@ -141,7 +141,7 @@ public struct PackageGigView: View {
                             .background(Theme.Color.appSurfaceSunken)
                             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
                             .accessibilityIdentifier("packageGig_field_description")
-                            .accessibilityLabel("Additional instructions for the neighbor")
+                            .accessibilityLabel("Additional instructions for your helper")
 
                             compensationRow
                         }
@@ -255,7 +255,7 @@ public struct PackageGigView: View {
     private var safetyNote: some View {
         HStack(spacing: Spacing.s2) {
             Icon(.shieldCheck, size: 16, color: Theme.Color.success)
-            Text("Only Verified Neighbors with trust scores can see and accept package gigs")
+            Text("Only verified homes with trust scores can see and accept package gigs")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.success)
                 .fixedSize(horizontal: false, vertical: true)
@@ -301,7 +301,7 @@ public struct PackageGigView: View {
                     Text("Task Posted!")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(Theme.Color.appText)
-                    Text("\u{201C}\(created.title)\u{201D} has been posted. Verified Neighbors nearby will be notified.")
+                    Text("\u{201C}\(created.title)\u{201D} has been posted. Verified homes nearby will be notified.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .multilineTextAlignment(.center)
@@ -314,7 +314,7 @@ public struct PackageGigView: View {
                                 ? "Pre-filled from your mailbox"
                                 : "Pre-filled from your delivery"
                         )
-                        successRow(label: "Visibility", value: "Verified Neighbors within 0.5 mi")
+                        successRow(label: "Visibility", value: "Verified homes within 0.5 mi")
                     }
                     .padding(Spacing.s3)
                     .frame(maxWidth: .infinity)

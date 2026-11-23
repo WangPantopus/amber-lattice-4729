@@ -194,7 +194,7 @@ struct CardTableLinkPagePicture: View {
                 .font(.system(size: 18, design: .serif).italic())
                 .foregroundStyle(MailPaper.tableCreamSoft)
             if page.senderVerified {
-                Text("Verified neighbor")
+                Text("Verified resident")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(MailPaper.tableCream)
                     .padding(.horizontal, 10)

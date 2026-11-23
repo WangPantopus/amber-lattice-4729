@@ -56,12 +56,13 @@ extension ManageTrainViewModel {
     /// Derive the organizer dashboard from the detail payload. `nonisolated`
     /// so unit tests can assert it without an actor hop.
     nonisolated static func project(_ dto: SupportTrainDetailDTO) -> ManageTrainContent {
-        let slots = dto.slots ?? []
+        // A removed date is never shown or counted (A10).
+        let slots = dto.liveSlots
         let total = slots.count
         let filled = slots.filter(\.isCovered).count
         let open = max(0, total - filled)
         let percent = total > 0 ? Int((Double(filled) / Double(total) * 100).rounded()) : 0
-        let days = daysLeft(slots: slots)
+        let days = daysLeft(slots: slots, today: trainTodayDate(dto))
         let isActive = ["published", "active", "paused"].contains(dto.status ?? "")
         // The separate organizer reservation read establishes distinct helpers.
         let helpers = "—"
@@ -74,7 +75,8 @@ extension ManageTrainViewModel {
             slotFillValue: "\(filled)/\(total)",
             helpersValue: helpers,
             daysLeftValue: "\(days)d",
-            dropoutValue: "0",
+            // Dropouts come from the organizer's signup list (B12); "—" until it is read.
+            dropoutValue: "—",
             slotsFilled: filled,
             slotsOpen: open,
             slotsDropout: 0,
@@ -115,7 +117,7 @@ extension ManageTrainViewModel {
                 tone: .sky,
                 label: "Invite more helpers",
                 meta: nil,
-                sub: "Share a link with people you know.",
+                sub: "Share the link, or invite people you know.",
                 isDestructive: false
             ),
             OrganizeRowContent(
@@ -137,7 +139,7 @@ extension ManageTrainViewModel {
             tone: .red,
             label: "Close train",
             meta: nil,
-            sub: "Lock new signups and send a thank-you to everyone.",
+            sub: "Stop signups for good and thank everyone who helped.",
             isDestructive: true
         )
     }
@@ -150,11 +152,21 @@ extension ManageTrainViewModel {
         return "\(format(earliest, "MMM d")) → \(format(latest, "MMM d")) · \(dayCount) \(dayLabel)"
     }
 
-    private nonisolated static func daysLeft(slots: [SupportTrainSlotDTO]) -> Int {
+    /// Today where the train is, as a date at local midnight (for the date editor and counts).
+    nonisolated static func trainTodayDate(_ dto: SupportTrainDetailDTO) -> Date {
+        let parts = dto.trainToday.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return Calendar.current.startOfDay(for: Date()) }
+        return date
+    }
+
+    private nonisolated static func daysLeft(slots: [SupportTrainSlotDTO], today local: Date) -> Int {
         let calendar = utcCalendar()
         let dates = slots.compactMap { parseDate($0.slotDate) }
         guard let latest = dates.max() else { return 0 }
-        let today = calendar.startOfDay(for: Date())
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: local)
+        let today = calendar.date(from: parts) ?? calendar.startOfDay(for: Date())
         let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: latest)).day ?? 0
         return max(0, days)
     }

@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as api from '@pantopus/api';
+import type { VerifyOptions } from '@pantopus/api';
 import type { LucideIcon } from 'lucide-react';
 import {
   ShieldCheck,
@@ -31,10 +32,14 @@ import {
   Clock,
   Hourglass,
   ChevronRight,
+  Camera,
+  Mail,
+  Smartphone,
 } from 'lucide-react';
 import BottomSheet from '@/components/ui/BottomSheet';
 import { IconTile } from '@/components/archetypes/place';
 import { launchFeatures } from '@/lib/featureFlags';
+import { FAST_VERIFY_ROWS, FAST_VERIFY_WORDS } from './fastVerify/fastVerifyWords';
 
 export interface VerifyPromptSheetProps {
   open: boolean;
@@ -43,6 +48,11 @@ export interface VerifyPromptSheetProps {
   homeId: string;
   /** Display address, e.g. "1421 SE Oak St, Portland". */
   address: string;
+  /**
+   * The server's verify-options answer (FASTVERIFY). Null or absent while
+   * `home_fast_verify` is off: the sheet is today's, unchanged.
+   */
+  verifyOptions?: VerifyOptions | null;
 }
 
 type MethodId = 'mail' | 'landlord' | 'document';
@@ -92,7 +102,7 @@ const BENEFITS: { icon: LucideIcon; label: string; sub: string }[] = [
   launchFeatures.mailbox
     ? { icon: Mailbox, label: 'Your mailbox and your rank', sub: 'The digital mailbox opens, and you take a permanent Block Founder number' }
     : { icon: Award, label: 'Your rank on the block', sub: 'You take a permanent Block Founder number' },
-  { icon: MessageCircle, label: 'What only verified neighbors see', sub: 'Real rents on your block, neighbor messages, the Fridge Card, rate watch' },
+  { icon: MessageCircle, label: 'What only verified residents see', sub: 'Real rents on your block, messages between homes, the Fridge Card, rate watch' },
 ];
 
 function Overline({ children }: { children: React.ReactNode }) {
@@ -116,7 +126,7 @@ function Radio({ selected }: { selected: boolean }) {
   );
 }
 
-export default function VerifyPromptSheet({ open, onClose, homeId, address }: VerifyPromptSheetProps) {
+export default function VerifyPromptSheet({ open, onClose, homeId, address, verifyOptions = null }: VerifyPromptSheetProps) {
   const router = useRouter();
   // Mail leads: a postcard finishes on its own, while documents wait for a person to review them.
   const [selected, setSelected] = useState<MethodId>('mail');
@@ -181,6 +191,22 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address }: Ve
     onClose();
     router.push(`/app/homes/${homeId}/verify-residency/submitted?return=place`);
   };
+
+  // FASTVERIFY (drawing 3): the same sheet, with the server's choices as rows that open at a tap.
+  if (verifyOptions) {
+    return (
+      <FastVerifySheet
+        open={open}
+        onClose={onClose}
+        homeId={homeId}
+        address={address}
+        verifyOptions={verifyOptions}
+        documentInReview={documentInReview}
+        onOpen={(href) => { onClose(); router.push(href); }}
+        onOpenDocumentStatus={openDocumentStatus}
+      />
+    );
+  }
 
   const footer = (
     <button
@@ -290,6 +316,158 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address }: Ve
           A postcard takes 3–7 days; documents are reviewed by a person. Everything you have now stays available while you wait.
         </span>
       </div>
+    </BottomSheet>
+  );
+}
+
+// ── FASTVERIFY: the sheet's rows from the server's verify-options ─────────────
+
+/** The choices the web draws. "I'm at home now" is app-only (APP_ONLY), so it never is. */
+type WebRowId = 'phone' | 'document' | 'mail' | 'landlord';
+const WEB_ROWS: { id: WebRowId; icon: LucideIcon; group: 'fastest' | 'mail'; href: (homeId: string) => string }[] = [
+  { id: 'phone', icon: Smartphone, group: 'fastest', href: (h) => `/app/homes/${h}/verify-phone?return=place` },
+  { id: 'document', icon: Camera, group: 'fastest', href: (h) => `/app/homes/${h}/verify-residency?return=place` },
+  { id: 'mail', icon: Mail, group: 'mail', href: (h) => `/app/homes/${h}/verify-postcard?return=place` },
+  { id: 'landlord', icon: ShieldCheck, group: 'mail', href: (h) => `/app/homes/${h}/verify-landlord?return=place` },
+];
+
+function FastVerifySheet({
+  open,
+  onClose,
+  homeId,
+  address,
+  verifyOptions,
+  documentInReview,
+  onOpen,
+  onOpenDocumentStatus,
+}: {
+  open: boolean;
+  onClose: () => void;
+  homeId: string;
+  address: string;
+  verifyOptions: VerifyOptions;
+  documentInReview: boolean;
+  onOpen: (href: string) => void;
+  onOpenDocumentStatus: () => void;
+}) {
+  const option = (id: string) => verifyOptions.options.find((o) => o.id === id);
+  // The document row is a fast check only when the server reads the photo at once (`fast`; older answers had no
+  // hint and meant yes). A document a person reviews, or one already waiting on a reviewer, sits with mail.
+  const documentOption = option('document');
+  const documentFast = documentOption?.available === true && documentOption.fast !== false;
+  // A residency document waiting on a reviewer keeps today's row (and its status page). Read from the person's own
+  // claims: the server's IN_REVIEW reason also covers a reported card's hold, which is no document.
+  const inReview = documentInReview && !documentFast;
+  const groupOf = (row: (typeof WEB_ROWS)[number]) => (row.id === 'document' && !documentFast ? 'mail' : row.group);
+  const rows = WEB_ROWS.filter((row) => (row.id === 'document' && inReview) || option(row.id)?.available === true);
+  const fastest = rows.filter((row) => groupOf(row) === 'fastest');
+  const byMail = rows.filter((row) => groupOf(row) === 'mail');
+
+  const rowButton = (row: (typeof WEB_ROWS)[number], i: number) => {
+    if (row.id === 'document' && inReview) {
+      return (
+        <button
+          key={row.id}
+          type="button"
+          onClick={onOpenDocumentStatus}
+          data-testid="place-verify-document-in-review"
+          className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-app-hover ${
+            i > 0 ? 'border-t border-app-border-subtle' : ''
+          }`}
+        >
+          <IconTile icon={Hourglass} tone="muted" size={34} />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[14.5px] font-semibold text-app-text -tracking-[0.01em]">Document under review</span>
+            <span className="block text-[12.5px] text-app-text-secondary mt-0.5 leading-[17px]">
+              A person is reviewing your document. You&apos;ll get a notification when it&apos;s decided.
+            </span>
+          </span>
+          <ChevronRight size={18} strokeWidth={2.25} aria-hidden className="shrink-0 text-app-text-muted" />
+        </button>
+      );
+    }
+    // A document that isn't read at once is today's reviewed upload: today's words, no promise of speed.
+    const words = row.id === 'document' && !documentFast
+      ? { label: 'Upload a document', sub: 'A utility bill, lease, or ID. A person reviews it.' }
+      : FAST_VERIFY_ROWS[row.id];
+    return (
+      <button
+        key={row.id}
+        type="button"
+        onClick={() => onOpen(row.href(homeId))}
+        data-testid={`place-verify-${row.id}`}
+        className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-app-hover ${
+          i > 0 ? 'border-t border-app-border-subtle' : ''
+        }`}
+      >
+        <IconTile icon={row.icon} tone={groupOf(row) === 'fastest' ? 'sky' : 'muted'} size={34} />
+        <span className="flex-1 min-w-0">
+          <span className="block text-[14.5px] font-semibold text-app-text -tracking-[0.01em]">{words.label}</span>
+          <span className="block text-[12.5px] text-app-text-secondary mt-0.5 leading-[17px]">{words.sub}</span>
+        </span>
+        <ChevronRight size={18} strokeWidth={2.25} aria-hidden className="shrink-0 text-app-text-muted" />
+      </button>
+    );
+  };
+
+  const footer = (
+    <div className="text-center">
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full h-[48px] rounded-xl text-primary-600 dark:text-primary-300 font-semibold text-base hover:bg-app-hover transition-colors"
+      >
+        {FAST_VERIFY_WORDS.notNow}
+      </button>
+      <p className="mt-1 text-[12.5px] text-app-text-secondary">{FAST_VERIFY_WORDS.toolsEitherWay}</p>
+    </div>
+  );
+
+  return (
+    <BottomSheet open={open} onClose={onClose} footer={footer} labelledBy="fast-verify-title">
+      <div className="flex items-center gap-3 mb-3">
+        <IconTile icon={ShieldCheck} tone="home" size={38} />
+        <div className="flex-1 min-w-0">
+          <h2 id="fast-verify-title" className="text-lg font-bold text-app-text -tracking-[0.02em] leading-tight">
+            {FAST_VERIFY_WORDS.sheetTitle}
+          </h2>
+          <p className="text-[13px] text-app-text-secondary mt-0.5 truncate">{address}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="w-[30px] h-[30px] shrink-0 rounded-full bg-app-surface-sunken text-app-text-secondary hover:bg-app-hover flex items-center justify-center transition-colors"
+        >
+          <X size={16} strokeWidth={2.5} />
+        </button>
+      </div>
+      {verifyOptions.level === 'added' ? (
+        <span className="inline-flex items-center mb-2 rounded-full bg-app-home-bg text-app-home px-2.5 py-0.5 text-[12px] font-semibold">
+          {FAST_VERIFY_WORDS.homeAdded}
+        </span>
+      ) : null}
+      {/* "It takes under a minute" only while a fast check is on offer. */}
+      {fastest.length ? (
+        <p className="text-[14px] text-app-text-secondary leading-[20px] mb-5">{FAST_VERIFY_WORDS.sheetBody}</p>
+      ) : null}
+
+      {fastest.length ? (
+        <div className="mb-4">
+          <Overline>{FAST_VERIFY_WORDS.fastest}</Overline>
+          <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm overflow-hidden">
+            {fastest.map(rowButton)}
+          </div>
+        </div>
+      ) : null}
+      {byMail.length ? (
+        <div className="mb-2">
+          <Overline>{FAST_VERIFY_WORDS.orByMail}</Overline>
+          <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm overflow-hidden">
+            {byMail.map(rowButton)}
+          </div>
+        </div>
+      ) : null}
     </BottomSheet>
   );
 }

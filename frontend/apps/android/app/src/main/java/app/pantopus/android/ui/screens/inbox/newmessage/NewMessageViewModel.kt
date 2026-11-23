@@ -69,7 +69,7 @@ class NewMessageViewModel
         val emptyBody: String =
             "Find people by name or username, " +
                 "or invite someone who isn't on Pantopus yet."
-        val emptySearchHints: List<String> = listOf("A neighbor's name", "A username", "A local business")
+        val emptySearchHints: List<String> = listOf("A person's name", "A username", "A local business")
 
         private var accepted: List<RelationshipDto> = emptyList()
         private var recents: List<UnifiedConversationDto> = emptyList()
@@ -77,6 +77,12 @@ class NewMessageViewModel
 
         /** Today's "Send in a chat" can send to a group chat too; set before the first load. */
         var includesGroups: Boolean = false
+
+        /**
+         * Only the person's connections, filtered by the search text (no recent chats, no people search). A Support
+         * Train invitation takes only someone the organizer knows; set before the first load.
+         */
+        var connectionsOnly: Boolean = false
         private var verifiedResults: List<UserSearchResultDto> = emptyList()
         private var loadedOnce: Boolean = false
         private var loading = false
@@ -209,7 +215,7 @@ class NewMessageViewModel
             val trimmed = normalizedSearch()
             verifiedResults = emptyList()
             searchFailed = false
-            _isSearching.value = trimmed.length >= 2
+            _isSearching.value = trimmed.length >= 2 && !connectionsOnly
             rebuild()
             if (!_isSearching.value) return
             val seq = searchSequence
@@ -246,6 +252,15 @@ class NewMessageViewModel
 
         private fun rebuild() {
             val connectionsSection = makeConnectionsSection()
+            if (connectionsOnly) {
+                _state.value =
+                    when {
+                        connectionsSection.rows.isNotEmpty() -> NewMessageUiState.Loaded(listOf(connectionsSection))
+                        normalizedSearch().isEmpty() -> NewMessageUiState.Empty
+                        else -> NewMessageUiState.Loaded(emptyList())
+                    }
+                return
+            }
             val recentSection = makeRecentSection(excluding = connectionsSection.rows.map { it.userId }.toSet())
             val groupsSection = makeGroupsSection()
             val allVerifiedSection =
@@ -370,7 +385,7 @@ class NewMessageViewModel
                     "home" -> NewMessageIdentityBadge.Home
                     else -> NewMessageIdentityBadge.Personal
                 }
-            val locality = if (verified) "Verified neighbor" else null
+            val locality = if (verified) "Verified home" else null
             val sub = formatRelative(dto.lastMessageAt)?.let { "Last chat $it" } ?: "Last chat recently"
             return NewMessageContactRow(
                 id = "recent_$userId",

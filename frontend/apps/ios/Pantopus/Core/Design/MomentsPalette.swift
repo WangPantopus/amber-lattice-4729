@@ -30,6 +30,9 @@ public enum MomentsPalette {
     public static let pinSurface = dynamic(light: 0xFFFFFF, dark: 0x161B22)
     /// The tint behind "21h left" and "Replied" in Seen by, and the empty card's icon.
     public static let tint = dynamic(light: 0xE0F2FE, dark: 0x122A3D)
+    /// The Live mark (boards L2, L3): the sign on the viewer's dark pill, and the dot on a live ring's pin.
+    public static let live = rgb(0x34D399)
+    public static let liveDot = dynamic(light: 0x047857, dark: 0x34D399)
 
     /// A text card's two gradient stops (160°, top to bottom), by its background name.
     public static func card(_ name: String?) -> (top: Color, bottom: Color) {
@@ -45,6 +48,19 @@ public enum MomentsPalette {
 
     /// A floating pin's shadow on the map (part D, board F1): a deep blue-black, never pure black.
     public static let floatShadow = rgb(0x0E1622)
+
+    /// The six inks for Text and Draw on a Moment's picture (boards T2, T3), by name: white, black, yellow, red, sky
+    /// and green. Drawn into the picture itself, so the same in light and dark, and as a `UIColor` for Core Graphics.
+    public static func ink(_ name: String) -> UIColor {
+        switch name {
+        case "black": uiColor(0x111827)
+        case "yellow": uiColor(0xFACC15)
+        case "red": uiColor(0xDC2626)
+        case "sky": uiColor(0x38BDF8)
+        case "green": uiColor(0x22C55E)
+        default: uiColor(0xFFFFFF)
+        }
+    }
 
     /// A height band's colour (board H2's key), on the map's tag and in the key; always beside the number or a name.
     public static func height(_ band: MomentHeightBand) -> Color {

@@ -292,6 +292,7 @@ private fun stampUsage(
             "send" -> "Christmas card sent" to "1 stamp"
             "return" -> "Card came back" to "+1 stamp"
             "revoke" -> "Book refunded" to "−$count stamps"
+            "join" -> "Your card brought someone in" to "+$count free"
             else -> "Stamps" to "${move.delta}"
         }
     val day =

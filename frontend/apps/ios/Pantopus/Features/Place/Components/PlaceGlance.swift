@@ -166,7 +166,7 @@ enum PlaceGlanceSummary {
         if let read = topics(sections) { parts.append(read) }
         if letters { parts.append("Residency letters & passes") }
         if verify { parts.append("locked until you verify") }
-        if mirror { parts.append("what neighbors see") }
+        if mirror { parts.append("what others see") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -209,10 +209,18 @@ struct PlaceGlanceRow<Content: View>: View {
     let group: PlaceGlanceGroup
     let summary: String?
     @Binding var isOpen: Bool
+    /// The guidance pointer "See more" rings this row's + (the first row).
+    var guidanceAnchor: GuidanceCardID?
     @ViewBuilder var content: Content
 
     var body: some View {
-        PlaceFoldRow(title: group.title, summary: summary, isOpen: $isOpen, identifier: "place.glance.\(group.rawValue)") {
+        PlaceFoldRow(
+            title: group.title,
+            summary: summary,
+            isOpen: $isOpen,
+            identifier: "place.glance.\(group.rawValue)",
+            guidanceAnchor: guidanceAnchor
+        ) {
             Icon(group.icon, size: 19, strokeWidth: 2, color: Theme.Color.appTextSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)

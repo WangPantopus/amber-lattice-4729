@@ -198,7 +198,7 @@ public struct BusinessInboxView: View {
             EmptyState(
                 icon: .messageSquare,
                 headline: "No messages yet",
-                subcopy: "Conversations neighbors start with this business land here.",
+                subcopy: "Conversations people start with this business land here.",
                 tint: Theme.Color.businessBg,
                 accent: Theme.Color.business
             )
@@ -208,7 +208,7 @@ public struct BusinessInboxView: View {
             EmptyState(
                 icon: .atSign,
                 headline: "No posts mention your business yet",
-                subcopy: "Neighborhood posts matched to your categories show up here.",
+                subcopy: "Nearby posts matched to your categories show up here.",
                 tint: Theme.Color.businessBg,
                 accent: Theme.Color.business
             )

@@ -7,7 +7,7 @@
 // with the day it was mailed. Sizes scale with the card's width.
 // ============================================================
 
-import { cardPicture, paperStyle, postmarkDay, POSTMARK_RED, SERIF } from './cardArt';
+import { cardPicture, cardTrimmedPicture, paperStyle, postmarkDay, POSTMARK_RED, SERIF } from './cardArt';
 import { cardHand } from './cardFont';
 import { launchFeatures } from '@/lib/featureFlags';
 import { PaperFront } from './CardPaper';
@@ -19,7 +19,8 @@ export type CardFrontProps = {
   year: number;
   /** The day it was mailed (the postmark); none while it's being written. */
   mailedOn?: string | null;
-  size?: 'full' | 'thumb';
+  /** 'card': the full 1214 px picture inside a border of its paper, for a card drawn large ("See it larger", up to 720 px). */
+  size?: 'full' | 'thumb' | 'card';
   className?: string;
 };
 
@@ -52,8 +53,16 @@ export default function CardFront({ design, caption, paper, year, mailedOn, size
       className={`relative overflow-hidden ${className}`}
       style={{ ...paperStyle(paper), containerType: 'inline-size' }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={cardPicture(design, size)} alt="" className="block w-full select-none" draggable={false} />
+      {size === 'card' ? (
+        // The full picture has no border of its own: the paper gives it the 16-in-960 border the smaller files carry.
+        <div style={{ padding: '1.667cqw 1.667cqw 0' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cardTrimmedPicture(design)} alt="" className="block w-full select-none" draggable={false} />
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={cardPicture(design, size)} alt="" className="block w-full select-none" draggable={false} />
+      )}
       <div className="relative" style={{ height: '15cqw' }}>
         <p
           className={`${cardHand.className} absolute whitespace-nowrap text-center leading-none`}

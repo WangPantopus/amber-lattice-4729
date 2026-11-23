@@ -5,6 +5,8 @@ import app.pantopus.android.data.api.models.profile.PublicProfileDto
 import app.pantopus.android.data.api.models.settings.AuthMethodsResponse
 import app.pantopus.android.data.api.models.settings.PasswordUpdateBody
 import app.pantopus.android.data.api.models.settings.ResendVerificationBody
+import app.pantopus.android.data.api.models.users.GuidanceEnvelope
+import app.pantopus.android.data.api.models.users.GuidanceShownRequest
 import app.pantopus.android.data.api.models.users.ProfileResponse
 import app.pantopus.android.data.api.models.users.ProfileUpdateRequest
 import app.pantopus.android.data.api.models.users.ProfileUpdateResponse
@@ -59,6 +61,16 @@ interface UsersApi {
     suspend fun updateSkills(
         @Body body: UpdateSkillsRequest,
     ): UpdateSkillsResponse
+
+    /**
+     * `POST /api/users/guidance/shown` — a guidance card closed: one more `times` and a new `last_at` for it. Answers
+     * `{ guidance }`; 400 `GUIDANCE_CARD_UNKNOWN` for an id the server doesn't know, 404 while the server's switch is
+     * off. Route `backend/routes/users.js` (`router.post('/guidance/shown'`).
+     */
+    @POST("api/users/guidance/shown")
+    suspend fun guidanceShown(
+        @Body body: GuidanceShownRequest,
+    ): GuidanceEnvelope
 
     /** `GET /api/users/id/:id` — route `backend/routes/users.js:2041`. */
     @GET("api/users/id/{id}")

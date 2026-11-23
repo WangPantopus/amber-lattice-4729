@@ -55,6 +55,8 @@ fun CardButton(
     /** "Turn it over" says whether the card shows its back. */
     state: String? = null,
     icon: PantopusIcon? = null,
+    /** What a screen reader hears where the words don't say it all ("Read on", plan Part 9); null: [title]. */
+    spoken: String? = null,
 ) {
     val shape = RoundedCornerShape(Radii.lg)
     val (background, ink, edge) =
@@ -84,7 +86,7 @@ fun CardButton(
                 .clickable(enabled = tappable, onClick = onClick)
                 .padding(horizontal = if (fill) Spacing.s4 else 18.dp)
                 .clearAndSetSemantics {
-                    contentDescription = title
+                    contentDescription = spoken ?: title
                     role = Role.Button
                     state?.let { stateDescription = it }
                     if (!enabled) disabled()

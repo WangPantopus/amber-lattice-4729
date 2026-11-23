@@ -16,7 +16,21 @@ function shouldIncludeComparisonClaim(claim) {
   );
 }
 
-async function buildHomeClaimComparison(homeId) {
+// `forAdmin`: the review team sees each claimant's email and every evidence row with its file reference and details.
+// A home's owners see who is claiming and which kinds of proof they gave, without those.
+function claimantFor(user, forAdmin) {
+  if (!user || forAdmin) return user;
+  const { email, ...shown } = user;
+  return shown;
+}
+
+function evidenceFor(rows, forAdmin) {
+  if (forAdmin) return rows;
+  return rows.filter((row) => row.evidence_type !== 'idv')
+    .map(({ storage_ref, metadata, ...shown }) => shown);
+}
+
+async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
   const [homeResult, ownersResult, claimsResult] = await Promise.all([
     supabaseAdmin
       .from('Home')
@@ -92,7 +106,7 @@ async function buildHomeClaimComparison(homeId) {
     id: claim.id,
     home_id: claim.home_id,
     claimant_user_id: claim.claimant_user_id,
-    claimant: usersById[claim.claimant_user_id] || null,
+    claimant: claimantFor(usersById[claim.claimant_user_id] || null, forAdmin),
     claim_type: claim.claim_type,
     state: claim.state,
     claim_phase_v2: claim.claim_phase_v2 || homeClaimRoutingService.mapLegacyStateToPhaseV2(claim.state),
@@ -107,7 +121,7 @@ async function buildHomeClaimComparison(homeId) {
     risk_score: claim.risk_score,
     created_at: claim.created_at,
     updated_at: claim.updated_at,
-    evidence: evidenceByClaimId[claim.id] || [],
+    evidence: evidenceFor(evidenceByClaimId[claim.id] || [], forAdmin),
   }));
 
   return {

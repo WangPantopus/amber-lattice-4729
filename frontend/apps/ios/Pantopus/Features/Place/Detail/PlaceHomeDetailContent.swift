@@ -348,7 +348,7 @@ private struct EquityCalculator: View {
             }
             HStack(spacing: 6) {
                 Icon(.lock, size: 12, strokeWidth: 2, color: Theme.Color.appTextMuted)
-                Text("Private to you — never shown to neighbors")
+                Text("Private to you — never shown to others")
             }
             .font(Theme.Font.caption)
             .foregroundStyle(Theme.Color.appTextMuted)

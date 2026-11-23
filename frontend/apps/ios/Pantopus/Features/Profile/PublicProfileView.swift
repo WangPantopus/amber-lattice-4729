@@ -264,7 +264,7 @@ public struct PublicProfileView: View {
         } message: {
             Text("They aren't notified. You can send a new request later.")
         }
-        .alert("Verified neighbor", isPresented: $showTrustExplainer) {
+        .alert("Verified home", isPresented: $showTrustExplainer) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(trustExplainer)
@@ -332,7 +332,10 @@ public struct PublicProfileView: View {
                 pickedPreview = audience
                 showPreviewMenu = false
             }
-            .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.fraction(0.62), .large])
+            .presentationDetentsFittingContentOnIPad(
+                typeSize.isAccessibilitySize ? [.large] : [.fraction(0.62), .large],
+                dragIndicator: .visible
+            )
         }
         .fullScreenCover(item: $shownPreview) { audience in
             previewCover(audience)
@@ -350,7 +353,10 @@ public struct PublicProfileView: View {
             }
             .accessibilityIdentifier("profileSignOutConfirm")
         } message: {
-            Text("You'll need to sign in again to use your account. Signing out removes what Pantopus saved on this phone.")
+            Text(
+                "You'll need to sign in again to use your account. "
+                    + "Signing out removes what Pantopus saved on this \(DeviceWords.plainName)."
+            )
         }
         // A saved edit (name, username, tagline…) changes the page.
         .onReceive(NotificationCenter.default.publisher(for: .pantopusProfileDidChange)) { _ in

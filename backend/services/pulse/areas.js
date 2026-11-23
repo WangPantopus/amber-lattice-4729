@@ -2,12 +2,12 @@
 
 const db = require('../../config/supabaseAdmin');
 const { currentOccupancy, resolveHomeRole, NON_RESIDENT_ROLES } = require('../../utils/homeAccessPolicy');
-const { isVerifiedResident } = require('../../utils/homePermissions');
+const { isVerifiedResident, fastVerified, fastCheckStands, FAST_CHECK_COLUMNS } = require('../../utils/homePermissions');
 
 const AREA_SELECT = 'id, kind, name, slug, parent_id, state, opened_at';
 const HOME_SELECT = [
-  'home_id', 'is_active', 'role', 'role_base', 'verification_status', 'verification_source',
-  'verified_at', 'start_at', 'end_at', 'access_start_at', 'access_end_at', 'created_at',
+  'home_id', 'user_id', 'is_active', 'role', 'role_base', 'verification_status', 'verification_source',
+  'verified_at', 'start_at', 'end_at', 'access_start_at', 'access_end_at', 'created_at', FAST_CHECK_COLUMNS,
   'home:home_id (id, home_status, security_state)',
 ].join(', ');
 const NEARBY_METRES = 15 * 1609.344;
@@ -28,9 +28,19 @@ function eligibleHomeOccupancy(row) {
     && !['frozen', 'frozen_silent', 'disputed'].includes(row.home.security_state);
 }
 
-function verifiedHomeOccupancy(row) {
+// The Verified gate (homePermissions.isVerified): mail-level proof, or a standing fast check, which is async (the
+// flag and the set-aside check), so callers look those rows up first with fastVerifiedRows and pass the set in.
+function verifiedHomeOccupancy(row, fastRows = null) {
   return eligibleHomeOccupancy(row) && !NON_RESIDENT_ROLES.has(resolveHomeRole(row))
-    && isVerifiedResident({ occupancy: row });
+    && (isVerifiedResident({ occupancy: row }) || !!(fastRows && fastRows.has(row)));
+}
+
+/** The rows (of these) whose fast check makes them Verified. Only rows with a standing fast check are looked up. */
+async function fastVerifiedRows(rows) {
+  const fast = new Set();
+  await Promise.all((rows || []).filter((row) => fastCheckStands(row))
+    .map(async (row) => { if (await fastVerified(row)) fast.add(row); }));
+  return fast;
 }
 
 // Public area metadata only. Home ids, boundaries and measured distances never enter endpoint DTOs.
@@ -63,8 +73,18 @@ async function homeAreaContext(userId) {
     checked(db.rpc('pulse_user_home_area_context', { p_user_id: userId }))
       .then(value => ({ value }), error => ({ error })),
   ]);
+  return areaContextFromRows(occupancies, preferences, userAreas);
+}
+
+/**
+ * homeAreaContext's answer from the rows it reads: the person's active occupancies (HOME_SELECT, oldest first), their
+ * preferences row, and pulse_user_home_area_context's rows as { value } or { error }. Shared with the unread count's
+ * direct read (routes/notifications.js), which reads the same rows on a direct connection.
+ */
+async function areaContextFromRows(occupancies, preferences, userAreas) {
+  const fast = await fastVerifiedRows(occupancies);
   const homes = (occupancies || []).filter(eligibleHomeOccupancy)
-    .map(row => ({ id: row.home_id, verified: verifiedHomeOccupancy(row),
+    .map(row => ({ id: row.home_id, verified: verifiedHomeOccupancy(row, fast),
       pendingPostcard: row.verification_status === 'pending_postcard' }));
   const primary = homes.find(home => home.id === preferences?.default_home_id) || homes[0] || null;
   if (!homes.length) return { homes, primary, areas: [], matches: [], verifiedAreaIds: new Set() };
@@ -116,5 +136,5 @@ async function labelFor(author, areaId, context) {
   return 'visitor';
 }
 
-module.exports = { AREA_SELECT, HOME_SELECT, areaDto, openAreas, searchTowns, homeAreaContext,
-  myAreas, labelFor, eligibleHomeOccupancy, verifiedHomeOccupancy };
+module.exports = { AREA_SELECT, HOME_SELECT, areaDto, openAreas, searchTowns, homeAreaContext, areaContextFromRows,
+  myAreas, labelFor, eligibleHomeOccupancy, verifiedHomeOccupancy, fastVerifiedRows };

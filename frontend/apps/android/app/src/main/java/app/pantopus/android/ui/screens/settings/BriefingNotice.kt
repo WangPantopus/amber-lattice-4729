@@ -30,6 +30,8 @@ import app.pantopus.android.data.api.models.hub.NotificationPreferencesPatch
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthenticatedDispatchGuard
 import app.pantopus.android.data.hub.NotificationPreferencesRepository
+import app.pantopus.android.ui.components.ClockTime
+import app.pantopus.android.ui.components.phoneUses24HourClock
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimSessionScope
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimSessionScopeFactory
@@ -72,8 +74,9 @@ fun BriefingNotice(
         viewModel.markShown()
         viewModel.record()
     }
-    val morning = if (prefs.dailyBriefingEnabled) "On at ${prefs.dailyBriefingTimeLocal}" else "Off"
-    val evening = if (prefs.eveningBriefingEnabled) "On at ${prefs.eveningBriefingTimeLocal}" else "Off"
+    val is24Hour = phoneUses24HourClock()
+    val morning = if (prefs.dailyBriefingEnabled) "On at ${ClockTime.label(prefs.dailyBriefingTimeLocal, is24Hour)}" else "Off"
+    val evening = if (prefs.eveningBriefingEnabled) "On at ${ClockTime.label(prefs.eveningBriefingTimeLocal, is24Hour)}" else "Off"
     AlertDialog(
         onDismissRequest = { viewModel.finish() },
         title = { Text("Your daily briefings") },
@@ -142,10 +145,15 @@ class BriefingNoticeViewModel
         val saving = _saving.asStateFlow()
         private val _error = MutableStateFlow<String?>(null)
         val error = _error.asStateFlow()
+        private val _checked = MutableStateFlow(false)
+
+        /** This visit's read has answered (or failed): [preferences] now says whether the notice shows. */
+        val checked = _checked.asStateFlow()
 
         fun enter() {
             active = true
             acknowledged = false
+            _checked.value = false
             val entry = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
             entryScope?.cancel()
             entryScope = entry
@@ -155,24 +163,30 @@ class BriefingNoticeViewModel
                 scope.invalidated.collect { if (it) _preferences.value = null }
             }
             entry.launch {
-                if (!scope.confirmCurrent()) return@launch
-                val response = repository.preferences()
-                if (!active || !scope.confirmCurrent()) return@launch
-                val undecided =
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                        PackageManager.PERMISSION_GRANTED
-                _needsPermission.value = undecided
-                // Until "Continue" has asked this phone, for an account that saw the notice elsewhere.
-                val askHere = undecided && !devicePrefs.getBoolean(KEY_ASKED_HERE, false)
-                if (response is NetworkResult.Success && (response.data.dailyBriefingPromptedAt == null || askHere)) {
-                    _preferences.value = response.data
+                try {
+                    if (!scope.confirmCurrent()) return@launch
+                    val response = repository.preferences()
+                    if (!active || !scope.confirmCurrent()) return@launch
+                    val undecided =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                            PackageManager.PERMISSION_GRANTED
+                    _needsPermission.value = undecided
+                    // Until "Continue" has asked this phone, for an account that saw the notice elsewhere.
+                    val askHere = undecided && !devicePrefs.getBoolean(KEY_ASKED_HERE, false)
+                    if (response is NetworkResult.Success && (response.data.dailyBriefingPromptedAt == null || askHere)) {
+                        _preferences.value = response.data
+                    }
+                } finally {
+                    // The guidance cards wait for this answer (RootTabScreen); a cancelled read leaves it to the next visit.
+                    if (active && entryScope === entry) _checked.value = true
                 }
             }
         }
 
         fun leave() {
             active = false
+            _checked.value = false
             entryScope?.cancel()
             _preferences.value = null
             _saving.value = false

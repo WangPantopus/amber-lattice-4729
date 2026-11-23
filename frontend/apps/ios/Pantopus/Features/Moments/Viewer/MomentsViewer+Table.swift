@@ -146,11 +146,12 @@ extension MomentsViewer {
     private func tableFlatHalf(fold: CGRect, height: CGFloat) -> some View {
         VStack(spacing: Spacing.s0) {
             tableHeader
-                // "Taken Oct 3" (an old photo) under the name, in the room above the buttons: nothing moves for it.
+                // "Taken Oct 3" (an old photo), or Live / Taken here and the weather, under the name, in the room above
+                // the buttons: nothing moves for them.
                 .overlay(alignment: .bottomLeading) {
-                    if let taken = model.metaTaken {
-                        // The pill sits 58 pt in (the phone header's name); here the name starts 56 in (face 44, gap 12).
-                        MomentsTakenPill(taken: taken)
+                    if let meta = model.metaPills {
+                        // The pills sit 58 pt in (the phone header's name); here the name starts 56 in (face 44, gap 12).
+                        MomentsMetaPills(meta: meta)
                             .offset(x: -2)
                             .alignmentGuide(.bottom) { $0[.top] }
                     }
@@ -163,9 +164,9 @@ extension MomentsViewer {
                     .clipShape(RoundedRectangle(cornerRadius: Radii.xl3, style: .continuous))
                     .environment(\.colorScheme, systemScheme)
                     .padding(.horizontal, Spacing.s3)
-                    // Below an old photo's "Taken" pill, which hangs about 27 pt under the header (as on the phone, the
-                    // pill stays in view above the list).
-                    .padding(.top, model.metaTaken == nil ? Spacing.s3 : 36)
+                    // Below the pills under the header, which hang about 27 pt under it (as on the phone, they stay in
+                    // view above the list).
+                    .padding(.top, model.metaPills == nil ? Spacing.s3 : 36)
                     .padding(.bottom, 23 + 48 + 12)
                     .transition(.opacity)
             } else {

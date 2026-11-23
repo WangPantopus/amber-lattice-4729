@@ -2440,7 +2440,7 @@ extension GigDetailViewModel {
     static func posterCounterparty(gig: GigDTO, viewerUserId: String?) -> ContentDetailCounterparty? {
         guard let posterId = gig.userId, !posterId.isEmpty else { return nil }
         let creator = gig.creator
-        let name = creator?.resolvedDisplayName ?? "Neighbor"
+        let name = creator?.resolvedDisplayName ?? "Someone nearby"
         let handle = creator?.resolvedHandle.map { "@\($0)" }
         let showsButton = viewerUserId.map { $0 != posterId } ?? true
         return ContentDetailCounterparty(
@@ -2867,7 +2867,7 @@ extension GigDetailViewModel {
     /// verified, else their rating ("4.8 · 12 jobs"), else no line.
     static func bidderTrustLine(_ bidder: GigCreator?) -> String? {
         guard let bidder else { return nil }
-        if bidder.resolvedVerified { return "Verified neighbor" }
+        if bidder.resolvedVerified { return "Verified home" }
         guard let rating = bidder.averageRating, rating > 0 else { return nil }
         let base = String(format: "%.1f", rating)
         guard let jobs = bidder.gigsCompleted, jobs > 0 else { return base }

@@ -278,7 +278,7 @@ private struct RealRentBuildingCard: View {
                     .foregroundStyle(Theme.Color.appTextSecondary)
                 PlaceProgressBar(current: data.reports, needed: data.needed)
                 Text(
-                    "\(data.needed) shared rents open the block's real range — the quartiles verified neighbors here actually pay, which a county-wide estimate can never tell you. Add yours, and ask a neighbor: the invite cards live on your Block page."
+                    "\(data.needed) shared rents open the block's real range — the quartiles verified residents here actually pay, which a county-wide estimate can never tell you. Add yours, and ask a home near you: the invite cards live on your Block page."
                 )
                 .font(.system(size: 12.5))
                 .lineSpacing(2)
@@ -327,7 +327,7 @@ private struct RealRentReadyCard: View {
                         .lineSpacing(2)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }
-                Text("Reported by verified residents of this block — quartiles and a sample size only, never a neighbor's own figure.")
+                Text("Reported by verified residents of this block — quartiles and a sample size only, never one home's own figure.")
                     .font(.system(size: 11.5))
                     .lineSpacing(2)
                     .foregroundStyle(Theme.Color.appTextMuted)

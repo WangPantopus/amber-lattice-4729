@@ -133,17 +133,23 @@ private struct StartSupportTrainWhoAndWhyStep: View {
             TrainChip()
             HeadlineBlock("Who is this for, and why?")
             SubcopyBlock(
-                "A support train coordinates meals, rides, and help around someone going through something. Pick the person and the moment."
+                "A support train coordinates meals around someone going through something. Pick the person and say what's happening."
             )
             beneficiarySection
-            ReasonPicker(selected: viewModel.selectedReason) {
-                viewModel.selectReason($0)
-            }
+            // The occasion picker is gone: nothing sent it (C3).
             if viewModel.isInviteRecipientBranch {
                 invitePrivacyHint
             } else {
                 contextNoteSection
                 privacySection
+                if !viewModel.inviteOnly, !viewModel.blockVisible {
+                    // The default (A2): who can open a train with both switches off.
+                    Text("Both off: anyone with the link. It isn't listed anywhere; share the link with the people you choose.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("startSupportTrainLinkAudienceNote")
+                }
             }
             StepRail(current: 1)
         }
@@ -174,7 +180,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
                     if viewModel.beneficiarySearchFailed {
                         searchFailedRow
                     } else {
-                        Text("Search neighbors, or type a name to invite them directly.")
+                        Text("Search people on Pantopus, or type a name.")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.Color.appTextMuted)
                     }
@@ -278,7 +284,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 ZStack(alignment: .topLeading) {
                     if viewModel.reason.isEmpty {
-                        Text("Add a few details so neighbors know what kind of help fits.")
+                        Text("Add a few details so helpers know what kind of help fits.")
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.Color.appTextMuted)
                             .padding(.top, Spacing.s2)
@@ -295,7 +301,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
                 }
                 HStack(spacing: Spacing.s1) {
                     Icon(.lock, size: 10, color: Theme.Color.appTextMuted)
-                    Text("Shared only with people you invite")
+                    Text("Visible to the audience you choose for this train")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.Color.appTextMuted)
                     Spacer()
@@ -321,8 +327,8 @@ private struct StartSupportTrainWhoAndWhyStep: View {
         VStack(spacing: Spacing.s0) {
             privacyToggleRow(
                 icon: .usersRound,
-                title: "Invite only",
-                subtitle: "Only people you add can see and sign up",
+                title: "My connections only",
+                subtitle: "Only your connections and people you invite can open it",
                 isOn: Binding(
                     get: { viewModel.inviteOnly },
                     set: { viewModel.toggleInviteOnly($0) }
@@ -332,7 +338,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
             privacyToggleRow(
                 icon: .home,
-                title: "Block-visible",
+                title: "List it for people near you",
                 // The Tasks list shows block-visible trains to people nearby
                 // (about 25 mi); it doesn't check verification or a block.
                 subtitle: "People nearby on Pantopus can see and offer",
@@ -394,7 +400,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
             Icon(.shield, size: 14, color: Theme.Color.appTextSecondary)
                 .padding(.top, 1)
             // No invite goes to the recipient, so nothing is waiting on them to accept.
-            Text("Invite-only by default. Other neighbors won't see it on the block.")
+            Text("Only people you share the link with can open it.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
@@ -415,60 +421,77 @@ private struct StartSupportTrainWhatAndWhenStep: View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             HeadlineBlock("What's the rotation?")
             SubcopyBlock(
-                "Pick the kind of help, the dates the train runs, and how long each slot is. We'll generate the calendar next."
+                "Pick the dates the train runs, the days and time meals arrive, and where they go. We'll generate the calendar next."
             )
-            kindSection
+            // Only meal trains are built; Rides, Childcare, Errands and Dog walks stay hidden (C3).
             dateRangeSection
+            weekdaySection
+            startTimeSection
             slotDurationSection
+            LabeledField("WHERE HELP GOES") {
+                SupportTrainWhereSection(model: viewModel.whereModel, identifier: "startSupportTrainWhere")
+            }
+            if let problem = viewModel.scheduleProblem {
+                Text(problem)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Theme.Color.warmAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("startSupportTrainScheduleProblem")
+            }
         }
     }
 
-    private var kindSection: some View {
-        LabeledField("KIND") {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: Spacing.s2),
-                    GridItem(.flexible(), spacing: Spacing.s2)
-                ],
-                spacing: Spacing.s2
-            ) {
-                ForEach(SupportTrainKind.allCases) { kind in
-                    kindCell(kind)
+    private static let weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"]
+    private static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    private var weekdaySection: some View {
+        LabeledField("DAYS") {
+            HStack(spacing: Spacing.s2) {
+                ForEach(0..<7, id: \.self) { day in
+                    let isOn = viewModel.weekdays.contains(day)
+                    Button { viewModel.toggleWeekday(day) } label: {
+                        Text(Self.weekdayLetters[day])
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(isOn ? Theme.Color.appTextInverse : Theme.Color.appTextStrong)
+                            .frame(minWidth: 36, minHeight: 36)
+                            .background(isOn ? Theme.Color.primarySolid : Theme.Color.appSurface)
+                            .overlay(Circle().stroke(isOn ? Theme.Color.primary600 : Theme.Color.appBorder, lineWidth: 1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Self.weekdayNames[day])
+                    .accessibilityAddTraits(isOn ? .isSelected : [])
+                    .accessibilityIdentifier("startSupportTrainWeekday_\(day)")
                 }
             }
         }
     }
 
-    private func kindCell(_ value: SupportTrainKind) -> some View {
-        let isSelected = viewModel.kind == value
-        return Button {
-            viewModel.selectKind(value)
-        } label: {
-            HStack(spacing: Spacing.s2) {
-                Icon(
-                    value.icon,
-                    size: 16,
-                    color: isSelected ? Theme.Color.primaryInkStrong : Theme.Color.appTextSecondary
-                )
-                Text(value.title)
+    private var startTimeSection: some View {
+        LabeledField("ARRIVES FROM") {
+            HStack {
+                Text("Start time")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isSelected ? Theme.Color.primaryInkStrong : Theme.Color.appText)
+                    .foregroundStyle(Theme.Color.appText)
                 Spacer()
+                DatePicker(
+                    "",
+                    selection: Binding(get: { viewModel.startTime }, set: { viewModel.startTime = $0 }),
+                    displayedComponents: .hourAndMinute
+                )
+                .labelsHidden()
+                .accessibilityLabel("Start time")
+                .accessibilityIdentifier("startSupportTrainStartTime")
             }
             .padding(.horizontal, Spacing.s3)
-            .frame(height: 44)
-            .background(isSelected ? Theme.Color.primary50 : Theme.Color.appSurface)
+            .padding(.vertical, Spacing.s2)
+            .background(Theme.Color.appSurface)
             .overlay(
                 RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
-                    .stroke(
-                        isSelected ? Theme.Color.primary600 : Theme.Color.appBorder,
-                        lineWidth: 1
-                    )
+                    .stroke(Theme.Color.appBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("startSupportTrainKind_\(value.rawValue)")
     }
 
     private var dateRangeSection: some View {
@@ -480,6 +503,7 @@ private struct StartSupportTrainWhatAndWhenStep: View {
                         get: { viewModel.startDate },
                         set: { viewModel.setStartDate($0) }
                     ),
+                    range: Calendar.current.startOfDay(for: Date())...,
                     identifier: "startSupportTrainStartDate"
                 )
                 dateRow(
@@ -596,6 +620,7 @@ private struct StartSupportTrainReviewStep: View {
                     ?? viewModel.beneficiaryQuery
             )
             reviewLine("Kind", value: viewModel.kind.title)
+            reviewLine("Where", value: viewModel.whereModel.summary ?? "")
             reviewLine("Slot length", value: viewModel.slotDuration.title)
             reviewLine("Slots", value: "\(viewModel.generatedSlots.count)")
             if !viewModel.reason.isEmpty {
@@ -689,34 +714,76 @@ private struct StartSupportTrainReviewStep: View {
 
     private var optionsSection: some View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
-            commentsToggle
+            helperDetailsSection
             visibilitySection
         }
     }
 
-    private var commentsToggle: some View {
-        Toggle(isOn: Binding(
-            get: { viewModel.allowComments },
-            set: { viewModel.toggleAllowComments($0) }
-        )) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Allow comments")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.Color.appText)
-                Text("Helpers can leave a note when they sign up.")
-                    .pantopusTextStyle(.caption)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
+    /// What helpers should know, as the web asks it (A1).
+    private var helperDetailsSection: some View {
+        LabeledField("FOR HELPERS") {
+            VStack(alignment: .leading, spacing: Spacing.s2) {
+                Stepper(
+                    value: Binding(get: { viewModel.householdSize }, set: { viewModel.householdSize = $0 }),
+                    in: 0...50
+                ) {
+                    Text(viewModel.householdSize == 0 ? "Household size: not set" : "Household of \(viewModel.householdSize)")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.Color.appText)
+                }
+                .accessibilityIdentifier("startSupportTrainHousehold")
+                detailField(
+                    "Allergies (peanuts, shellfish…)",
+                    text: Binding(get: { viewModel.allergies }, set: { viewModel.allergies = $0 }),
+                    id: "Allergies"
+                )
+                detailField("Diet (vegetarian…)", text: Binding(get: { viewModel.diet }, set: { viewModel.diet = $0 }), id: "Diet")
+                if let problem = viewModel.detailsProblem {
+                    Text(problem)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Color.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("startSupportTrainDetailsProblem")
+                }
+                detailField(
+                    "Instructions (gate code, doorbell…)",
+                    text: Binding(get: { viewModel.instructions }, set: { viewModel.updateInstructions($0) }),
+                    id: "Instructions"
+                )
+                Toggle(isOn: Binding(get: { viewModel.contactless }, set: { viewModel.contactless = $0 })) {
+                    Text("Contactless drop-off")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.Color.appText)
+                }
+                .tint(Theme.Color.primary600)
+                .accessibilityIdentifier("startSupportTrainContactless")
+                Text(
+                    "Allergies and household show to anyone who can open the train; " +
+                        "instructions only to helpers you share the address with."
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(Spacing.s3)
+            .background(Theme.Color.appSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
+                    .stroke(Theme.Color.appBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
         }
-        .tint(Theme.Color.primary600)
-        .padding(Spacing.s3)
-        .background(Theme.Color.appSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
-                .stroke(Theme.Color.appBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
-        .accessibilityIdentifier("startSupportTrainAllowComments")
+    }
+
+    private func detailField(_ placeholder: String, text: Binding<String>, id: String) -> some View {
+        TextField(placeholder, text: text, axis: .vertical)
+            .font(.system(size: 13.5))
+            .padding(Spacing.s2)
+            .typesInFieldOnTap()
+            .background(Theme.Color.appSurfaceSunken)
+            .clipShape(RoundedRectangle(cornerRadius: Radii.sm, style: .continuous))
+            .accessibilityLabel(id)
+            .accessibilityIdentifier("startSupportTrain\(id)Field")
     }
 
     private var visibilitySection: some View {
@@ -795,7 +862,8 @@ private struct StartSupportTrainSuccessStep: View {
                 .foregroundStyle(Theme.Color.appText)
                 .accessibilityAddTraits(.isHeader)
             Text(
-                "\(viewModel.generatedSlots.count) slots are open and visible to " +
+                // The dates the server saved, not the ones the phone made (a passed one is skipped).
+                "\(viewModel.savedDateCount ?? viewModel.generatedSlots.count) slots are open and visible to " +
                     "\(viewModel.visibility.audience). " +
                     "Review who signs up from the new train's dashboard."
             )
@@ -803,6 +871,18 @@ private struct StartSupportTrainSuccessStep: View {
             .foregroundStyle(Theme.Color.appTextSecondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, Spacing.s3)
+            if let name = viewModel.recipientNotLinkedName {
+                // The account picked isn't linked to the train (A13): say so, and what that means.
+                Text(
+                    "\(name) isn't one of your connections, so the train isn't linked to their account. " +
+                        "Share the link with them, or connect first and add them later."
+                )
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.warmAmber)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Spacing.s3)
+                .accessibilityIdentifier("startSupportTrainRecipientNotLinked")
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityIdentifier("startSupportTrainSuccess")

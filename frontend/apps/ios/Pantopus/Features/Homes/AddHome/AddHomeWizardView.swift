@@ -34,6 +34,8 @@ public struct AddHomeWizardView: View {
     /// Residency claim filed against an existing home — route to the
     /// waiting room.
     private let onOpenWaitingRoom: (String) -> Void
+    /// Two steps (FASTVERIFY): the new Home opens with its verify sheet (the Home's id and street).
+    private let onOpenHomeToVerify: ((String, String) -> Void)?
 
     public init(
         onOpenHomes: @escaping () -> Void,
@@ -46,6 +48,7 @@ public struct AddHomeWizardView: View {
         self.onOpenHome = onOpenHome
         self.onOpenClaimOwnership = onOpenClaimOwnership
         self.onOpenWaitingRoom = onOpenWaitingRoom
+        onOpenHomeToVerify = nil
     }
 
     init(
@@ -53,13 +56,15 @@ public struct AddHomeWizardView: View {
         onOpenHomes: @escaping () -> Void,
         onOpenHome: ((String) -> Void)? = nil,
         onOpenClaimOwnership: @escaping (String) -> Void = { _ in },
-        onOpenWaitingRoom: @escaping (String) -> Void = { _ in }
+        onOpenWaitingRoom: @escaping (String) -> Void = { _ in },
+        onOpenHomeToVerify: ((String, String) -> Void)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.onOpenHomes = onOpenHomes
         self.onOpenHome = onOpenHome
         self.onOpenClaimOwnership = onOpenClaimOwnership
         self.onOpenWaitingRoom = onOpenWaitingRoom
+        self.onOpenHomeToVerify = onOpenHomeToVerify
     }
 
     public var body: some View {
@@ -113,6 +118,8 @@ public struct AddHomeWizardView: View {
             restoreIfNeeded()
             viewModel.applyInitialSearchQuery()
             Task { await viewModel.resumeCreation() }
+            Task { await viewModel.loadShortAdd() }
+            Task { await viewModel.loadSearchArea() }
             // Fire the initial step view event since transitions only
             // fire on user-driven step changes after this point.
             if let stepNumber = viewModel.currentStep.stepNumber {
@@ -170,8 +177,18 @@ public struct AddHomeWizardView: View {
     private var stepContent: some View {
         switch viewModel.currentStep {
         case .address: AddressStep(viewModel: viewModel)
-        case .confirm: AddHomeConfirmStep(viewModel: viewModel)
-        case .role: RoleStep(viewModel: viewModel)
+        case .confirm:
+            if viewModel.isShortAdd {
+                AddHomeShortFindStep(viewModel: viewModel)
+            } else {
+                AddHomeConfirmStep(viewModel: viewModel)
+            }
+        case .role:
+            if viewModel.isShortAdd {
+                AddHomeShortRoleStep(viewModel: viewModel)
+            } else {
+                RoleStep(viewModel: viewModel)
+            }
         case .review: ReviewStep(viewModel: viewModel)
         case .success: SuccessStep(opensYourPlace: viewModel.completionOpensYourPlace)
         }
@@ -214,7 +231,11 @@ public struct AddHomeWizardView: View {
             dismiss()
         case .openHomes:
             storedForm = ""
-            if let onOpenHome, let homeId = viewModel.createdHomeId, viewModel.completionOpensYourPlace {
+            if viewModel.isShortAdd, let onOpenHomeToVerify, let homeId = viewModel.createdHomeId,
+               viewModel.completionOpensYourPlace {
+                // Two steps: Your Place for the new Home, with "Verify you live here" open.
+                onOpenHomeToVerify(homeId, viewModel.createdStreet)
+            } else if let onOpenHome, let homeId = viewModel.createdHomeId, viewModel.completionOpensYourPlace {
                 onOpenHome(homeId)
             } else {
                 onOpenHomes()

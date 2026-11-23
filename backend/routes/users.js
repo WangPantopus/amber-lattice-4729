@@ -13,7 +13,7 @@ const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
-const { getPublicResidencySummary } = require('../utils/publicResidencyProfile');
+const { getPublicResidencySummary, residencyFromRows } = require('../utils/publicResidencyProfile');
 const { generateCsrfToken } = require('../utils/csrf');
 const { isConnected, isSearchable, loadUserSearchAccess, isScopedBlocked, isUnpublishedBusiness, unpublishedBusinessIds, canViewProfileField } = require('../utils/visibilityPolicy');
 const affinityService = require('../services/gig/affinityService');
@@ -926,6 +926,49 @@ const verifyEmailCodeLimiter = rateLimit({
   message: VERIFY_EMAIL_LIMIT,
 });
 
+const mailClaimCode = require('../services/mailClaimCode');
+
+// /mail-code checks the one-time code from a letter's or card's page. Only refused tries count, like /verify-email:
+// 10 in 15 minutes per network (IP, IPv6 by its /64), a link that doesn't work included; then, only for a working link,
+// 6 an hour per letter and 6 an hour per address the code went to. So nobody without the link can use up an address's
+// tries. Supabase Auth's verify limit, shared by everyone on hosted, is spent only on codes that get this far.
+const MAIL_CODE_TRIES_LIMIT = { error: 'Too many wrong codes. Try again later with a new code, or sign in another way.', code: 'CODE_TRIES' };
+const mailCodeAccepted = (_req, res) => res.locals.mailCodeRefused !== true;
+// Per letter and address, a refusal counts only when a code was checked (not a code that had already stopped).
+const mailCodeCheckAccepted = (_req, res) => res.locals.mailCodeRefused !== true || res.locals.mailCodeUnchecked === true;
+const mailCodeTriesLimiter = (windowMs, max, keyGenerator, requestWasSuccessful = mailCodeAccepted) => rateLimit({
+  windowMs, max, keyGenerator, skipSuccessfulRequests: true, requestWasSuccessful, message: MAIL_CODE_TRIES_LIMIT,
+});
+const mailCodeNetworkLimiter = mailCodeTriesLimiter(15 * 60 * 1000, 10, clientIpKey);
+const mailCodeLetterLimiters = [
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (req) => `mail:${String(req.body?.mail_id || '').toLowerCase()}`, mailCodeCheckAccepted),
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (_req, res) => `to:${res.locals.mailCodeAddress}`, mailCodeCheckAccepted),
+];
+// The letter behind the link and the address its code went to (res.locals.mailCodeAddress), before the per-letter and
+// per-address limits. A link that doesn't work is refused here, counted only per network.
+async function mailCodeLetter(req, res, next) {
+  try {
+    const found = await mailClaimCode.letterAndAddress({ mailId: req.body.mail_id, token: req.body.token, email: req.body.email });
+    if (found.refusal) {
+      res.locals.mailCodeRefused = true;
+      return res.status(found.refusal.status).json({ error: found.refusal.error, code: found.refusal.code });
+    }
+    res.locals.mailCodeAddress = found.address;
+    return next();
+  } catch (err) {
+    logger.error('Mail code letter read failed', { error: err.message });
+    return res.status(500).json({ error: 'Couldn’t sign you in just now. Try again in a moment.' });
+  }
+}
+
+// The code just accepted is what confirmed the address: Supabase Auth set email_confirmed_at in this same sign-in
+// (both times on its own clock, milliseconds apart). An account confirmed earlier has them far apart.
+function codeJustConfirmed(user) {
+  const confirmedAt = Date.parse(user?.email_confirmed_at || '');
+  const signedInAt = Date.parse(user?.last_sign_in_at || '');
+  return Number.isFinite(confirmedAt) && Number.isFinite(signedInAt) && Math.abs(signedInAt - confirmedAt) < 10 * 1000;
+}
+
 const OAUTH_USER_SELECT = 'id, username, name, first_name, last_name, email, verified, role';
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 128;
@@ -1152,6 +1195,16 @@ const resetPasswordSchema = Joi.object({
 const resendVerificationSchema = Joi.object({
   redirectTo: Joi.string().max(2048).optional(),
   email: Joi.string().email().required(),
+});
+
+const mailCodeSchema = Joi.object({
+  mail_id: Joi.string().guid().required(),
+  token: Joi.string().max(256).required(),
+  code: Joi.string().trim().pattern(/^\d{6,10}$/).required()
+    .messages({ 'string.pattern.base': 'Enter the code from the email.', 'any.required': 'Enter the code from the email.' }),
+  // A card by link went to no address: the one the person typed when they asked for the code.
+  email: Joi.string().trim().email().max(320).allow('', null),
+  device: deviceDescriptorSchema.optional(),
 });
 
 const verifyEmailSchema = Joi.object({
@@ -1870,6 +1923,13 @@ router.post(
       }
 
       const userId = authData.user.id;
+      // An address sent a letter's one-time code it never used (services/mailClaimCode) already has an Auth user that
+      // isn't confirmed, made with that code; generateLink hands it back without this password. GoTrue's own times say
+      // so (it was made before this sign-up's link): set the password. The User insert below still proves no account
+      // owns the address.
+      const madeAt = Date.parse(authData.user.created_at || '');
+      const linkAt = Date.parse(authData.user.confirmation_sent_at || '');
+      const madeEarlier = Number.isFinite(madeAt) && Number.isFinite(linkAt) && linkAt - madeAt > 5000;
       const normalizedFirst = firstName ? String(firstName).trim() : '';
       const normalizedMiddle = middleName ? String(middleName).trim() : '';
       const normalizedLast = lastName ? String(lastName).trim() : '';
@@ -1940,16 +2000,21 @@ router.post(
           return res.status(201).json(registrationReply(req.body, repeat));
         }
 
-        // Rollback: delete auth user if database insert fails
-        logger.info('Rolling back - deleting auth user', { userId });
-        try {
-          await supabaseAdmin.auth.admin.deleteUser(userId);
-          logger.info('Auth user deleted successfully in rollback', { userId });
-        } catch (rollbackErr) {
-          logger.error('Failed to rollback auth user', {
-            error: rollbackErr.message,
-            userId,
-          });
+        // Rollback: delete auth user if database insert fails. An Auth user a letter's one-time code made before this
+        // sign-up (madeEarlier) stays: deleting it would stop that pending code working.
+        if (madeEarlier) {
+          logger.info('Rollback kept an Auth user a pending code made', { userId });
+        } else {
+          logger.info('Rolling back - deleting auth user', { userId });
+          try {
+            await supabaseAdmin.auth.admin.deleteUser(userId);
+            logger.info('Auth user deleted successfully in rollback', { userId });
+          } catch (rollbackErr) {
+            logger.error('Failed to rollback auth user', {
+              error: rollbackErr.message,
+              userId,
+            });
+          }
         }
 
         if (isUniqueConstraintError(dbError)) {
@@ -1968,6 +2033,22 @@ router.post(
                 }
               : undefined,
         });
+      }
+
+      if (madeEarlier && !authData.user.email_confirmed_at) {
+        // Setting the password clears the confirmation link generateLink just made, so mint the link again after it.
+        const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+        const relink = passwordError ? null : await signUpWithRetry({ email, password, options: {
+          emailRedirectTo: `${getAuthRedirectBaseUrl(req)}/verify-email`,
+          data: { username: finalUsername, firstName, middleName, lastName },
+        } }).catch(() => null);
+        if (passwordError || !relink?.data?.hashedToken) {
+          logger.error('Registration: setting the password on an earlier Auth user failed', { userId, error: passwordError?.message || relink?.error?.message || 'no link' });
+          await supabaseAdmin.from('User').delete().eq('id', userId);
+          return res.status(503).json({ code: 'REGISTRATION_UNAVAILABLE', error: 'Sign-up is temporarily unavailable. Please try again.' });
+        }
+        authData.hashedToken = relink.data.hashedToken;
+        logger.info('Registration: password set on an Auth user an unused code made', { userId });
       }
 
       logger.info('User registered successfully', {
@@ -2794,6 +2875,111 @@ router.post('/refresh', refreshLimiter, refreshDpop, async (req, res) => {
   }
 });
 
+// ============ OWN PROFILE ============
+// Required here, not at the top (scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up).
+const directDb = require('../config/directDb');
+
+// The profile's parts through the Data API: read alongside the User row. Mail preferences a person doesn't have yet
+// are created only once the row is known to exist (by the route, after this).
+async function apiProfileParts(userId, viewerId) {
+  const [userRead, skillsResult, inviteProgress, residency, mailPrefsRead] = await Promise.all([
+    supabaseAdmin
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single(),
+    supabaseAdmin
+      .from('UserSkill')
+      .select('skill_name')
+      .eq('user_id', userId)
+      .order('display_order', { ascending: true }),
+    inviteRewardService.getInviteProgress(userId),
+    getPublicResidencySummary(userId, viewerId),
+    supabaseAdmin
+      .from('MailPreferences')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ]);
+  return { userRead, skillsResult, inviteProgress, residency, mailPrefsRead };
+}
+
+// The same rows in one query on a direct connection (config/directDb.js), shaped as the Data API sends them
+// (to_json / json_build_object). $1 the person. The verified ownerships keep the Data API read's (unordered) form,
+// and the city and state of each owned Home come along for the residency summary's owner-only case.
+const PROFILE_SQL = `
+select
+  (select to_json(u) from "User" u where u.id = $1) as "user",
+  (select coalesce(json_agg(json_build_object('skill_name', s.skill_name) order by s.display_order), '[]')
+   from "UserSkill" s where s.user_id = $1) as skills,
+  (select to_json(m) from "MailPreferences" m where m.user_id = $1) as mail,
+  (select count(*) from "UserReferral" r where r.referrer_id = $1) as invited,
+  (select count(*) from "UserReferral" r where r.referrer_id = $1 and r.referred_user_id is not null) as converted,
+  (select coalesce(json_agg(json_build_object('home_id', o.home_id, 'user_id', o.user_id, 'is_active', o.is_active,
+       'verification_status', o.verification_status, 'verification_source', o.verification_source,
+       'verified_at', o.verified_at, 'fast_check_kind', o.fast_check_kind, 'fast_check_at', o.fast_check_at,
+       'fast_check_expires_at', o.fast_check_expires_at, 'fast_check_recheck_due_at', o.fast_check_recheck_due_at,
+       'fast_check_confirmed_at', o.fast_check_confirmed_at, 'created_at', o.created_at,
+       'home', case when h.id is null then null else json_build_object('id', h.id, 'city', h.city, 'state', h.state) end)
+     order by o.created_at), '[]')
+   from "HomeOccupancy" o left join "Home" h on h.id = o.home_id
+   where o.user_id = $1 and o.is_active = true) as occupancies,
+  (select coalesce(json_agg(json_build_object('home_id', w.home_id, 'subject_type', w.subject_type)), '[]')
+   from "HomeOwner" w where w.subject_id = $1 and w.owner_status = 'verified') as owners,
+  (select coalesce(json_object_agg(h.id, json_build_object('city', h.city, 'state', h.state)), '{}')
+   from "Home" h where h.id in (select w.home_id from "HomeOwner" w where w.subject_id = $1 and w.owner_status = 'verified'))
+   as owner_homes`;
+
+async function directProfileParts(userId, viewerId) {
+  const [row] = await directDb.read('profile', PROFILE_SQL, [userId]);
+  if (!row) throw new Error('No profile row');
+  // Kept invite progress is used as the Data API path uses it; otherwise the counts read here make it.
+  const inviteProgress = inviteRewardService.cachedInviteProgress(userId)
+    || inviteRewardService.inviteProgressFromCounts(userId, Number(row.invited), Number(row.converted));
+  // getPublicResidencySummary's anonymous case, then its rules on these rows.
+  const residency = viewerId
+    ? await residencyFromRows(row.occupancies, { data: row.owners, error: null }, async (homeId) => row.owner_homes[homeId] || null)
+    : { hasHome: false, city: null, state: null, verified: false };
+  return {
+    userRead: { data: row.user, error: row.user ? null : { code: 'PGRST116' } },
+    skillsResult: { data: row.skills, error: null },
+    inviteProgress,
+    residency,
+    mailPrefsRead: { data: row.mail, error: null },
+  };
+}
+
+// Which parts of two reads differ (shadow mode).
+function profilePartsDiffer(a, b) {
+  const view = (p) => ({ user: p.userRead.data || null, skills: p.skillsResult.data || null, invite: p.inviteProgress,
+    residency: p.residency, mail: p.mailPrefsRead.data || null });
+  const [x, y] = [view(a), view(b)];
+  return Object.keys(x).filter((key) => JSON.stringify(x[key]) !== JSON.stringify(y[key]));
+}
+
+// DIRECT_DB_READS (config/directDb.js) picks the path, as for the Home access check (utils/homePermissions.js): "on"
+// reads direct and falls back to the Data API on any failure; "shadow" answers from the Data API and compares.
+async function profileParts(userId, viewerId) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await directProfileParts(userId, viewerId);
+    } catch (error) {
+      directDb.fellBack('profile', error);
+      return apiProfileParts(userId, viewerId);
+    }
+  }
+  if (mode !== 'shadow') return apiProfileParts(userId, viewerId);
+  const started = performance.now();
+  const direct = directProfileParts(userId, viewerId)
+    .then((parts) => ({ parts, ms: performance.now() - started }), (error) => ({ error }));
+  const api = await apiProfileParts(userId, viewerId);
+  const apiMs = performance.now() - started;
+  direct.then(({ parts, ms, error }) => directDb.compared('profile', error
+    ? { error } : { differs: profilePartsDiffer(api, parts), directMs: ms, apiMs }));
+  return api;
+}
+
 /**
  * GET /api/users/profile
  * Get current user's profile
@@ -2804,27 +2990,8 @@ router.get('/profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // The profile's parts are read alongside the User row. Mail preferences a person doesn't have
-    // yet are created only once the row is known to exist.
-    const [{ data: userData, error }, skillsResult, inviteProgress, residency, mailPrefsRead] = await Promise.all([
-      supabaseAdmin
-        .from('User')
-        .select('*')
-        .eq('id', userId)
-        .single(),
-      supabaseAdmin
-        .from('UserSkill')
-        .select('skill_name')
-        .eq('user_id', userId)
-        .order('display_order', { ascending: true }),
-      inviteRewardService.getInviteProgress(userId),
-      getPublicResidencySummary(userId, req.user?.id || null),
-      supabaseAdmin
-        .from('MailPreferences')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle(),
-    ]);
+    const { userRead: { data: userData, error }, skillsResult, inviteProgress, residency, mailPrefsRead } =
+      await profileParts(userId, req.user?.id || null);
 
     if (error || !userData) {
       logger.warn('Profile not found', { userId });
@@ -2890,10 +3057,135 @@ router.get('/profile', verifyToken, async (req, res) => {
         updatedAt: userData.updated_at,
       },
       invite_progress: inviteProgress,
+      guidance: guidanceFor(userData),
+      // The house on Today (utils/featureFlags.js `todayHouseEnabled`): the apps treat a missing key as off.
+      today_house: todayHouseEnabled(),
     });
   } catch (err) {
     logger.error('Profile fetch error', { error: err.message, userId: req.user.id });
     res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// ============ GUIDANCE CARDS ============
+// The centre cards and pointer bubbles that explain the app to a new account (founder approval 2026-11-16). The apps
+// decide when a card shows; the server keeps which cards the person has closed, in User.guidance_seen:
+// { "<card id>": { "times": <int>, "last_at": "<ISO time>" } }, so a card closed on one app stays closed on the others.
+// The profile above carries `guidance` = { enabled, new_account, seen }; both routes below answer { guidance }.
+// (Required here, not at the top: scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up.)
+const { guidanceCardsEnabled, todayHouseEnabled } = require('../utils/featureFlags');
+const GUIDANCE_CARD_IDS = new Set([
+  // First open of each screen.
+  'welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments', 'tab_plans',
+  // Pointers.
+  'tip_ask', 'tip_messages', 'tip_menu', 'tip_verify', 'tip_place_row', 'tip_pulse_post', 'tip_pulse_area',
+  'tip_mail_me_home',
+  // Right after doing something for the first time.
+  'done_home_setup', 'done_verified', 'done_first_post', 'done_first_moment', 'done_first_plan', 'done_connected',
+  'done_first_letter', 'done_household',
+  // Reminders of the next step.
+  'next_add_address', 'next_setup_home', 'next_verify', 'next_invite',
+  // Introducing something new.
+  'new_plans',
+]);
+const GUIDANCE_ID_PATTERN = /^[a-z][a-z0-9_]{2,40}$/;
+// Introductions are named new_<word>, so a later one needs no server change.
+const GUIDANCE_INTRODUCTION_PATTERN = /^new_[a-z][a-z0-9_]*$/;
+// Introduction ids are open-ended; this keeps one account's map small.
+const GUIDANCE_MAX_INTRODUCTIONS = 50;
+const GUIDANCE_NEW_ACCOUNT_MS = 14 * 24 * 60 * 60 * 1000;
+
+function guidanceSeenMap(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** The profile's `guidance`: the switch, whether the account is under 14 days old, and the cards it has closed. */
+function guidanceFor(user) {
+  const createdAt = Date.parse(user?.created_at || '');
+  const newAccount = Number.isFinite(createdAt) && Date.now() - createdAt < GUIDANCE_NEW_ACCOUNT_MS;
+  if (!guidanceCardsEnabled()) return { enabled: false, new_account: newAccount, seen: {} };
+  return { enabled: true, new_account: newAccount, seen: guidanceSeenMap(user?.guidance_seen) };
+}
+
+function isGuidanceCardId(id, seen) {
+  if (typeof id !== 'string' || !GUIDANCE_ID_PATTERN.test(id)) return false;
+  if (GUIDANCE_CARD_IDS.has(id)) return true;
+  if (!GUIDANCE_INTRODUCTION_PATTERN.test(id)) return false;
+  if (Object.prototype.hasOwnProperty.call(seen, id)) return true;
+  const introductions = Object.keys(seen).filter((key) => key.startsWith('new_') && !GUIDANCE_CARD_IDS.has(key));
+  return introductions.length < GUIDANCE_MAX_INTRODUCTIONS;
+}
+
+// With the switch off the routes are not there: the same 404 as any unknown path (app.js).
+function requireGuidanceCards(req, res, next) {
+  if (guidanceCardsEnabled()) return next();
+  return res.status(404).json({ error: 'Route not found', path: req.baseUrl + req.path, method: req.method });
+}
+
+async function loadGuidanceUser(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('User')
+    .select('id, created_at, guidance_seen')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function saveGuidanceSeen(userId, seen) {
+  const { data, error } = await supabaseAdmin
+    .from('User')
+    .update({ guidance_seen: seen })
+    .eq('id', userId)
+    .select('id, created_at, guidance_seen')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * POST /api/users/guidance/shown   body { card: "<card id>" }
+ * A card closed: adds one to its `times` and sets its `last_at` to now. Answers { guidance }. An id that is not one of
+ * the cards answers 400 GUIDANCE_CARD_UNKNOWN. Writes go through verifyToken's per-person write limit, as the other
+ * profile writes do.
+ */
+router.post('/guidance/shown', requireGuidanceCards, verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const user = await loadGuidanceUser(userId);
+    if (!user) return res.status(404).json({ error: 'User profile not found' });
+
+    const seen = guidanceSeenMap(user.guidance_seen);
+    const card = req.body?.card;
+    if (!isGuidanceCardId(card, seen)) {
+      return res.status(400).json({ error: 'Unknown guidance card', code: 'GUIDANCE_CARD_UNKNOWN' });
+    }
+
+    const previous = Object.prototype.hasOwnProperty.call(seen, card) ? seen[card] : null;
+    const times = Number.isInteger(previous?.times) && previous.times > 0 ? previous.times + 1 : 1;
+    const saved = await saveGuidanceSeen(userId, { ...seen, [card]: { times, last_at: new Date().toISOString() } });
+    if (!saved) return res.status(404).json({ error: 'User profile not found' });
+    res.json({ guidance: guidanceFor(saved) });
+  } catch (err) {
+    logger.error('Guidance shown error', { error: err.message, userId });
+    res.status(500).json({ error: 'Failed to save guidance' });
+  }
+});
+
+/**
+ * POST /api/users/guidance/reset
+ * Clears the person's own map of closed cards, so every card can show again. For testing and the founder's own
+ * checks; no app shows a button for it. Answers { guidance }.
+ */
+router.post('/guidance/reset', requireGuidanceCards, verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const saved = await saveGuidanceSeen(userId, {});
+    if (!saved) return res.status(404).json({ error: 'User profile not found' });
+    res.json({ guidance: guidanceFor(saved) });
+  } catch (err) {
+    logger.error('Guidance reset error', { error: err.message, userId });
+    res.status(500).json({ error: 'Failed to reset guidance' });
   }
 });
 
@@ -3982,12 +4274,10 @@ function inviteUrl(code) {
 // Never throws: a missed credit must not fail sign-up.
 async function creditReferralJoin(userId, code) {
   try {
-    const { data: link, error: linkErr } = await supabaseAdmin
-      .from('UserReferral')
-      .select('referrer_id')
-      .eq('invite_code', code)
-      .maybeSingle();
-    if (linkErr) throw linkErr;
+    // A creator's code (services/creatorLinks.js) is found in any letter case; everyone's own codes are exact.
+    // Required here, not at the top: the privacy gate allowlists a line above by its number.
+    const creatorLinks = require('../services/creatorLinks');
+    const link = await creatorLinks.findReferralLink(code, 'referrer_id, source');
     if (!link || link.referrer_id === userId) return;
 
     const { data: credited, error: creditedErr } = await supabaseAdmin
@@ -4005,7 +4295,8 @@ async function creditReferralJoin(userId, code) {
         invite_code: generateInviteCode(),
         referred_user_id: userId,
         converted_at: new Date().toISOString(),
-        source: 'join_link',
+        // Joined through a creator's code: the founder's creator sales report counts these.
+        source: link.source === creatorLinks.CREATOR_SOURCE ? creatorLinks.CREATOR_JOIN_SOURCE : 'join_link',
       });
       if (!error) {
         inviteRewardService.forgetInviteProgress(link.referrer_id);
@@ -4145,11 +4436,8 @@ router.get('/public/join/:code', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const { data: referral } = await supabaseAdmin
-      .from('UserReferral')
-      .select('id, referrer_id, invite_code')
-      .eq('invite_code', code)
-      .maybeSingle();
+    const creatorLinks = require('../services/creatorLinks');
+    const referral = await creatorLinks.findReferralLink(code, 'id, referrer_id, invite_code, source');
 
     if (!referral) {
       return res.json({ valid: false });
@@ -4166,13 +4454,15 @@ router.get('/public/join/:code', async (req, res) => {
     // anyone without one) by the account (services/chatPeople.js).
     const { loadChatPeople, chatPersonRow } = require('../services/chatPeople');
     const shownReferrer = referrer ? chatPersonRow(referrer, await loadChatPeople([referrer.id])) : null;
-    const referrerName = shownReferrer?.name || shownReferrer?.first_name || chosenUsernameOrNull(shownReferrer?.username) || 'A neighbor';
+    const referrerName = shownReferrer?.name || shownReferrer?.first_name || chosenUsernameOrNull(shownReferrer?.username) || 'Someone';
 
     res.json({
       valid: true,
       referrer_name: referrerName,
       referrer_avatar: shownReferrer?.profile_picture_url || null,
       code: referral.invite_code,
+      // A creator's code (the Christmas card pages' store button carries only these through an install).
+      ...(referral.source === creatorLinks.CREATOR_SOURCE ? { creator: true } : {}),
     });
   } catch (err) {
     logger.error('public join lookup error', { error: err.message, code: req.params.code });
@@ -4428,6 +4718,134 @@ router.post('/verify-email', verifyEmailNetworkLimiter, validate(verifyEmailSche
   } catch (err) {
     logger.error('Email verification error', { error: err.message });
     return res.status(500).json({ error: 'Failed to verify email' });
+  }
+});
+
+/**
+ * POST /api/users/mail-code  { mail_id, token, code, email?, device? }
+ * Sign in with the one-time code a letter's or card's page asked for (POST /api/mailbox/claim/:mailId/code): the code
+ * proves the address the letter was sent to (by link, the address typed), so the person is signed in with that
+ * address's account, made now when it has none (no password, no name: the app asks for a name, and "Forgot password"
+ * or another code signs them in again). The letter's link must still be good; the claim itself is POST
+ * /api/mailbox/claim/:mailId, which checks the address as for any account. A wrong, used or replaced code answers 400
+ * CODE_WRONG, one older than 10 minutes 400 CODE_EXPIRED, and after 5 tries at one code (the 5th wrong) 400
+ * CODE_STOPPED until a new code is sent. Answers like /login, with `newAccount`.
+ */
+router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mailCodeLetter, mailCodeLetterLimiters, authRouteDpop(), async (req, res) => {
+  const { mail_id: mailId, code } = req.body;
+  const address = res.locals.mailCodeAddress;
+  const wrongCode = () => {
+    res.locals.mailCodeRefused = true;
+    return res.status(400).json({ error: 'That code didn’t work. Check the newest email from Pantopus, or send a new code.', code: 'CODE_WRONG' });
+  };
+  // A code that has already stopped is refused without asking Supabase Auth: it counts per network, but not toward the
+  // letter's and address's hourly tries, which the person's next code needs.
+  const expiredCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'That code has expired. Send a new one.', code: 'CODE_EXPIRED' });
+  };
+  const stoppedCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'This code has stopped working after too many wrong tries. Send a new code.', code: 'CODE_STOPPED' });
+  };
+  try {
+    // A code takes 5 tries, counted for the address across every link and network (services/mailClaimCode). An
+    // address never sent a code has nothing to try: the same answer as a wrong code. One sent too long ago has expired.
+    const turn = await mailClaimCode.takeTry({ address, mailId, req });
+    if (turn.noCode) return wrongCode();
+    if (turn.expired) return expiredCode({ checked: false });
+    if (turn.stopped) return stoppedCode({ checked: false });
+
+    const authClient = createAuthClient();
+    const { data, error } = await authClient.auth.verifyOtp({ email: address, token: code, type: 'email' });
+    if (authSessionService.isAuthServiceBusy(error)) {
+      logger.error('Mail code check failed - Supabase Auth refused or unreachable', { status: error.status, code: error.code });
+      await mailClaimCode.giveBackTry(turn.tryId);
+      return res.status(503).json({ error: 'Sign-in is busy right now. Your code still works: try again in a minute.', code: 'AUTH_BUSY' });
+    }
+    if (error || !data?.session?.access_token || !data?.user?.id) {
+      // The last try was wrong: the code stops working everywhere, Supabase Auth's own check included.
+      if (turn.tryNumber >= mailClaimCode.TRIES_PER_CODE) {
+        await mailClaimCode.stopCode(address, turn.userId);
+        return stoppedCode({ checked: true });
+      }
+      return wrongCode();
+    }
+    const { session, user } = data;
+    const userId = user.id;
+
+    // An address nobody had proven (an unused code made its account, or a sign-up form nobody confirmed) may carry a
+    // password set by someone who never proved it. This code just proved it, so that password stops working: on every
+    // accepted code, before the expiry check, since verifyOtp has already confirmed the address either way.
+    if (codeJustConfirmed(user)) {
+      let scrubError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        ({ error: scrubError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: crypto.randomBytes(32).toString('base64url') }));
+        if (!scrubError) break;
+        await wait(300 * (attempt + 1));
+      }
+      if (scrubError) {
+        logger.error('Mail code: clearing an unproven password failed', { userId, error: scrubError.message });
+        await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_scrub_failed', userId });
+        return res.status(503).json({ error: 'Couldn’t sign you in just now. Try again in a moment.', code: 'AUTH_BUSY' });
+      }
+    }
+
+    if (!mailClaimCode.codeIsFresh(user)) {
+      await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_expired', userId });
+      return expiredCode({ checked: true });
+    }
+
+    const existing = await getOAuthProfileById(userId);
+    const userData = await ensureOAuthUserProfile({ userId, email: user.email || address, meta: {}, source: 'mail_code' });
+    if (!userData) {
+      await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_no_profile', userId });
+      return res.status(503).json({ error: 'Couldn’t set up your account just now. Try again in a moment.', code: 'AUTH_BUSY' });
+    }
+    const newAccount = !existing;
+    if (newAccount) {
+      recordFunnelEvent('t1_account_created', { userId, anonId: null, meta: { provided_username: false, account_type: 'individual', source: 'mail_code' } });
+    }
+    logger.info('Mail code sign-in', { userId, mailId, newAccount });
+
+    const bind = await safeHook('mail_code_bind', () => authDeviceService.bindAtIssue({
+      userId,
+      session,
+      device: deviceFromBody(req),
+      dpop: req.dpop || null,
+      req,
+      authMethod: 'email_code',
+      context: 'interactive',
+    }));
+
+    applyAuthTransport(req, res, session.access_token, session.refresh_token, userId);
+    const tokenFields = isCookieTransport(req) ? {} : {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      expiresIn: session.expires_in,
+      expiresAt: session.expires_at,
+    };
+    return res.json({
+      message: 'Login successful',
+      ...tokenFields,
+      ...sessionFields(req, bind),
+      newAccount,
+      user: {
+        id: userData.id,
+        email: userData.email,
+        username: userData.username,
+        name: userData.name,
+        firstName: userData.first_name,
+        lastName: userData.last_name,
+        role: userData.role,
+        verified: true,
+      },
+    });
+  } catch (err) {
+    logger.error('Mail code sign-in error', { error: err.message, mailId });
+    return res.status(500).json({ error: 'Couldn’t sign you in just now. Try again in a moment.' });
   }
 });
 
@@ -6039,6 +6457,17 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
     for (const { table, run } of restrictDeletes) {
       const { error } = await run();
       if (error) return stopDeletion('restrict', table, error);
+    }
+
+    // ── 3b. Plans: the person's photos afterwards ────────────────
+    // Every picture they added to anyone's plan (its files and its entry) and the files of every plan they hosted,
+    // while the Plan rows that name those files still exist (services/plans/planPhotos.js). Storage trouble is logged
+    // and doesn't stop the deletion, as with Moments' files below.
+    try {
+      const count = await require('../services/plans/planPhotos').removeAccountPhotos(userId);
+      if (count) logger.info('Account deletion removed plan photos', { userId, count });
+    } catch (err) {
+      logger.warn('Account deletion left plan photos', { userId, error: err.message });
     }
 
     // ── 4. Delete User row ───────────────────────────────────────

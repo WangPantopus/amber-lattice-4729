@@ -51,7 +51,7 @@ export function pieceTrust(item: Pick<MailItemV2, 'sender_trust' | 'from_pantopu
     case 'pantopus_user':
       return item.sender_business_name?.trim()
         ? { label: 'Business on Pantopus', color: '#4e5563', mark: null }
-        : { label: 'Pantopus neighbor', color: '#4e5563', mark: null };
+        : { label: 'Pantopus member', color: '#4e5563', mark: null };
     default: return { label: 'Unverified sender', color: '#a81a1a', mark: null };
   }
 }
@@ -79,6 +79,10 @@ export function pieceSentence(item: MailItemV2, opened: boolean): string {
   if (item.card) {
     const state = item.card.sealed ? ', sealed until Christmas morning' : opened ? ', opened' : ', in its envelope';
     return `Christmas card from ${item.sender_display || 'someone'}${state}`;
+  }
+  if (item.card_reply) {
+    // Write back (mail-cards-experience Part 3): a reply to your card.
+    return `${(item.sender_display || 'Someone').trim().split(/\s+/)[0]} wrote back to your Christmas card${opened ? ', opened' : ''}`;
   }
   const what = item.special_delivery ? `Special delivery ${KIND_WORDS[kind].toLowerCase()}` : KIND_WORDS[kind];
   const from = item.sender_display || 'an unknown sender';
@@ -266,6 +270,41 @@ export default function MailPiece({ item, recipientName, recipientLine, opened, 
         </div>
       </div>
     );
+  } else if (item.card_reply && launchFeatures.cardTable && envelope) {
+    // A reply (Part 3): the opened-card row, the card leaning out of its red envelope, with a cream slip across it that
+    // says "{First name} wrote back" in the pen.
+    const pen = `${cardPen.style.fontFamily}, ui-serif, Georgia, serif`;
+    const [month = '', date = ''] = postDate.split(' ');
+    const who = (from.trim().split(/\s+/)[0]) || 'Someone';
+    const reply = item.card_reply;
+    body = (
+      <div
+        className="relative h-[150px] rounded-md"
+        style={{ backgroundColor: '#9f2f28', backgroundImage: `url(${TABLE_ART}env-front.webp)`, backgroundSize: 'cover', backgroundPosition: '50% 12%', boxShadow: SHADOW }}
+        data-testid="mailPieceReply"
+      >
+        <div
+          className="absolute -top-[14px] left-4 w-[125px] -rotate-3 rounded-[2px]"
+          style={{ aspectRatio: '5 / 6', backgroundColor: reply.paper || '#f7f0e2', boxShadow: '0 6px 14px rgba(40, 8, 6, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3)' }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {reply.design ? <img src={cardPicture(reply.design, 'thumb')} alt="" className="absolute left-[2px] right-[2px] top-[2px] h-[86%] w-[calc(100%-4px)] rounded-[1px] object-cover" /> : null}
+        </div>
+        <div
+          className="absolute left-2.5 top-[106px] w-[200px] rotate-[-3deg] rounded-[2px] px-3 py-1 text-[21px] leading-[26px] text-[#1b2a5c]"
+          style={{ fontFamily: pen, backgroundColor: '#f6ecd9', backgroundImage: `url(${TABLE_ART}paper.webp)`, backgroundSize: '160px', backgroundBlendMode: 'multiply', boxShadow: '0 5px 12px rgba(40, 8, 6, 0.42)' }}
+        >
+          <span className="block truncate">{sentTo ? 'You wrote back' : `${who} wrote back`}</span>
+        </div>
+        <div className="absolute left-[158px] right-3 top-[18px] text-[#f4e2bf]">
+          <div className="truncate text-[22px] leading-[26px]" style={{ fontFamily: pen }}>{sentTo ? `To ${sentTo.trim().split(/\s+/)[0]}` : `From ${who}`}</div>
+          <div className="mt-1 line-clamp-2 text-[15px] italic leading-[19px] text-[#fbeed2]" style={{ fontFamily: SERIF }}>{reply.caption || 'A Christmas card'}</div>
+          <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#d8b76f]" style={{ fontFamily: SERIF }}>
+            {month} {date}{opened ? ' · Opened' : ''}
+          </div>
+        </div>
+      </div>
+    );
   } else if (item.card && launchFeatures.cardTable && torn) {
     // An opened card shows its picture (design plan Part 4): the whole card, taken out, leans over the envelope's top
     // edge; who it's from (in Sent: to), its caption and the day beside it. The envelope keeps its red paper and height.
@@ -308,7 +347,7 @@ export default function MailPiece({ item, recipientName, recipientLine, opened, 
           {town ? <div className="truncate">{town}</div> : null}
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={cardStampFile(item.card.number, item.card.design)} alt="" className="absolute right-3 top-2.5 h-[54px] w-auto" />
+        <img src={cardStampFile(item.card.number, item.card.design, item.card.mood)} alt="" className="absolute right-3 top-2.5 h-[54px] w-auto" />
         {postDate ? (
           // In cream ink at 60% so it reads on the dark red (design plan 1.6); the table keeps its black ink.
           <div className="absolute right-[30px] top-2 aspect-[622/365] w-[108px] opacity-60">

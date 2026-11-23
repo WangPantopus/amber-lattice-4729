@@ -123,7 +123,7 @@ function preserveNewerPreviews(rows: UnifiedConversationItem[], saved: Conversat
       || compareConversationTime(prior.last_message_at, row.last_message_at) <= 0
       || (row._type === 'conversation' && (prior._type !== 'conversation'
         || !prior.room_ids.every((id) => row.room_ids.includes(id))))) return row;
-    return { ...row, last_message_at: prior.last_message_at, last_message_preview: prior.last_message_preview,
+    return { ...row, last_message_at: prior.last_message_at, last_message_preview: prior.last_message_preview, last_message_moment: prior.last_message_moment,
       total_unread: prior.total_unread };
   });
 }

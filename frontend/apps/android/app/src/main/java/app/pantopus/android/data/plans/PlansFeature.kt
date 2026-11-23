@@ -34,6 +34,23 @@ data class PlansFlags(
     val onlinePlans: Boolean = false,
     /** `plans_kinds` (Plans step 4): the four newer kinds can be posted. A plan of one already posted reads either way. */
     val newKinds: Boolean = false,
+    /**
+     * `plans_guest_answers` (Plans for the holidays, H1): a private plan has room for up to 100, kids welcome, one link
+     * for everyone, Who's coming, Maybe, and the list's "Yours". Read for the host, as the server reads it.
+     */
+    val guestAnswers: Boolean = false,
+    /** `plans_bring_list` (Plans for the holidays, H2): the host form's "Bring list" row and the A9 editor. */
+    val bringList: Boolean = false,
+    /** `plans_occasions` (Plans for the holidays, H3): the kind picker's "Coming up" strip. */
+    val occasions: Boolean = false,
+    /** `plans_same_people` (the holidays' extras, section 6): the invite sheet's "People from a past plan". */
+    val samePeople: Boolean = false,
+    /** `plans_chip_in` (extras section 3): the host form's "Chip in" row. A card that carries chip in reads either way. */
+    val chipIn: Boolean = false,
+    /** `plans_find_date` (extras section 2): the host form's "Let guests pick the date" row. A picking plan reads either way. */
+    val findDate: Boolean = false,
+    /** `plans_gift_exchange` (extras section 4): the host form's "Gift exchange" row. A card that carries it reads either way. */
+    val giftExchange: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
@@ -51,6 +68,30 @@ data class PlansFlags(
 
     /** The type picker, the empty state and the map's chips show nine kinds rather than five. */
     val kindsOn: Boolean get() = plans && newKinds
+
+    /**
+     * Plans for the holidays, H1: the host form's "Room for" (to 100) and "Kids welcome", the invite sheet's "One link
+     * for everyone", Who's coming and the list's "Yours". It needs private plans (the server's own rule).
+     */
+    val guestAnswersOn: Boolean get() = privateOn && guestAnswers
+
+    /** Plans for the holidays, H2: a private plan's form offers a bring list. A list already made reads either way. */
+    val bringOn: Boolean get() = privateOn && bringList
+
+    /** Plans for the holidays, H3: the kind picker shows "Coming up" (it needs the newer kinds, as the server does). */
+    val occasionsOn: Boolean get() = kindsOn && occasions
+
+    /** The same people again (08-extras section 6): it invites, so it needs private plans, as the server does. */
+    val samePeopleOn: Boolean get() = privateOn && samePeople
+
+    /** Chip in (08-extras section 3): a private plan of a person's, so it needs private plans. */
+    val chipInOn: Boolean get() = privateOn && chipIn
+
+    /** Find a date (08-extras section 2): a private plan of a person's, so it needs private plans. */
+    val findDateOn: Boolean get() = privateOn && findDate
+
+    /** Gift exchange (08-extras section 4): a private plan of a person's, so it needs private plans. */
+    val giftOn: Boolean get() = privateOn && giftExchange
 }
 
 /**
@@ -176,6 +217,13 @@ class PlansFeature
                     val repeat = async { read(FLAG_REPEAT) }
                     val onlinePlans = async { read(FLAG_ONLINE) }
                     val newKinds = async { read(FLAG_KINDS) }
+                    val guestAnswers = async { read(FLAG_GUEST_ANSWERS) }
+                    val bringList = async { read(FLAG_BRING_LIST) }
+                    val occasions = async { read(FLAG_OCCASIONS) }
+                    val samePeople = async { read(FLAG_SAME_PEOPLE) }
+                    val chipIn = async { read(FLAG_CHIP_IN) }
+                    val findDate = async { read(FLAG_FIND_DATE) }
+                    val giftExchange = async { read(FLAG_GIFT) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
@@ -183,6 +231,13 @@ class PlansFeature
                     val repeatOn = repeat.await()
                     val onlineOn = onlinePlans.await()
                     val kindsOn = newKinds.await()
+                    val guestAnswersOn = guestAnswers.await()
+                    val bringOn = bringList.await()
+                    val occasionsOn = occasions.await()
+                    val samePeopleOn = samePeople.await()
+                    val chipInOn = chipIn.await()
+                    val findDateOn = findDate.await()
+                    val giftOn = giftExchange.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -193,6 +248,13 @@ class PlansFeature
                             repeat = repeatOn ?: current.repeat,
                             onlinePlans = onlineOn ?: current.onlinePlans,
                             newKinds = kindsOn ?: current.newKinds,
+                            guestAnswers = guestAnswersOn ?: current.guestAnswers,
+                            bringList = bringOn ?: current.bringList,
+                            occasions = occasionsOn ?: current.occasions,
+                            samePeople = samePeopleOn ?: current.samePeople,
+                            chipIn = chipInOn ?: current.chipIn,
+                            findDate = findDateOn ?: current.findDate,
+                            giftExchange = giftOn ?: current.giftExchange,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -217,8 +279,10 @@ class PlansFeature
             }
 
         /**
-         * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`) and kinds
-         * (`plans_kinds`). A shorter string from before a flag existed reads that flag off ("11" reads the rest off).
+         * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`), kinds
+         * (`plans_kinds`), guest answers (`plans_guest_answers`), the bring list (`plans_bring_list`) and occasions
+         * (`plans_occasions`), then the extras' (`plans_same_people`, `plans_chip_in`, `plans_find_date`, `plans_gift_exchange`). A shorter string from before a
+         * flag existed reads that flag off ("11" reads the rest off).
          */
         @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
@@ -230,6 +294,13 @@ class PlansFeature
                 repeat = raw.getOrNull(3) == '1',
                 onlinePlans = raw.getOrNull(INDEX_ONLINE) == '1',
                 newKinds = raw.getOrNull(INDEX_KINDS) == '1',
+                guestAnswers = raw.getOrNull(INDEX_GUEST_ANSWERS) == '1',
+                bringList = raw.getOrNull(INDEX_BRING_LIST) == '1',
+                occasions = raw.getOrNull(INDEX_OCCASIONS) == '1',
+                samePeople = raw.getOrNull(INDEX_SAME_PEOPLE) == '1',
+                chipIn = raw.getOrNull(INDEX_CHIP_IN) == '1',
+                findDate = raw.getOrNull(INDEX_FIND_DATE) == '1',
+                giftExchange = raw.getOrNull(INDEX_GIFT) == '1',
             )
         }
 
@@ -238,8 +309,21 @@ class PlansFeature
             flags: PlansFlags,
         ) {
             val raw =
-                listOf(flags.plans, flags.playdates, flags.privatePlans, flags.repeat, flags.onlinePlans, flags.newKinds)
-                    .joinToString("") { if (it) "1" else "0" }
+                listOf(
+                    flags.plans,
+                    flags.playdates,
+                    flags.privatePlans,
+                    flags.repeat,
+                    flags.onlinePlans,
+                    flags.newKinds,
+                    flags.guestAnswers,
+                    flags.bringList,
+                    flags.occasions,
+                    flags.samePeople,
+                    flags.chipIn,
+                    flags.findDate,
+                    flags.giftExchange,
+                ).joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
 
@@ -255,5 +339,19 @@ class PlansFeature
             const val FLAG_KINDS = "plans_kinds"
             const val INDEX_ONLINE = 4
             const val INDEX_KINDS = 5
+            const val FLAG_GUEST_ANSWERS = "plans_guest_answers"
+            const val INDEX_GUEST_ANSWERS = 6
+            const val FLAG_BRING_LIST = "plans_bring_list"
+            const val INDEX_BRING_LIST = 7
+            const val FLAG_OCCASIONS = "plans_occasions"
+            const val INDEX_OCCASIONS = 8
+            const val FLAG_SAME_PEOPLE = "plans_same_people"
+            const val INDEX_SAME_PEOPLE = 9
+            const val FLAG_CHIP_IN = "plans_chip_in"
+            const val INDEX_CHIP_IN = 10
+            const val FLAG_FIND_DATE = "plans_find_date"
+            const val INDEX_FIND_DATE = 11
+            const val FLAG_GIFT = "plans_gift_exchange"
+            const val INDEX_GIFT = 12
         }
     }

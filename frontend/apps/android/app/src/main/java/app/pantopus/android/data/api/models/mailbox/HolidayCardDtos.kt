@@ -1,6 +1,7 @@
 package app.pantopus.android.data.api.models.mailbox
 
 import app.pantopus.android.data.api.models.mailbox.v2.MailCard
+import app.pantopus.android.data.api.models.mailbox.v2.MailCardPostmark
 import app.pantopus.android.data.api.models.mailbox.v2.MailPostmark
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -43,6 +44,60 @@ data class HolidayCardsResponse(
     val media: HolidayCardMediaRules? = null,
     /** "Help me write it" can be used now (the server's launch key `card_note_help`); absent: no button. */
     @Json(name = "note_help") val noteHelp: Boolean = false,
+    /** "Let it travel" (the server's switch `card_travel`, travelling card plan Part 2); absent while it's off: no switch. */
+    val travel: HolidayCardTravelRules? = null,
+    /**
+     * "Pick a card" as shelves (the server's switch `card_shelves`, card shelves SPEC Part B): one large card from each
+     * collection, then a shelf per collection. Absent while it's off, and from older servers: today's screen.
+     */
+    val shelves: Boolean = false,
+    /**
+     * The collections' ids in the order "One from each collection" draws them (card shelves SPEC E2); the shelves keep
+     * [collections]' order. Absent from older servers: the collections' order.
+     */
+    val opening: List<String> = emptyList(),
+)
+
+/**
+ * `travel` on `GET /api/mailbox/cards`: the switch is on to begin with ([on], decision D5), the sender's town ("Boise,
+ * ID"; null: "Where does it start?" is asked once, D4), and how many people one person may pass a card to (D1).
+ */
+@JsonClass(generateAdapter = true)
+data class HolidayCardTravelRules(
+    val on: Boolean = true,
+    val town: String? = null,
+    val places: Int = 2,
+)
+
+/** A town from `GET /api/mailbox/cards/towns` (the Census lists the server carries): its id, name, state and label. */
+@JsonClass(generateAdapter = true)
+data class CardTown(
+    val id: String,
+    val town: String,
+    val state: String? = null,
+    /** "Vancouver, WA". */
+    val label: String,
+    /** The ZIP code it was found by, when it was. */
+    val zip: String? = null,
+)
+
+/** `GET /api/mailbox/cards/towns?q=`: up to 8 towns; with no q, the town nearest where the person is ("Use …"), or null. */
+@JsonClass(generateAdapter = true)
+data class CardTownsResponse(
+    val towns: List<CardTown> = emptyList(),
+    val suggested: CardTown? = null,
+)
+
+/** `PUT /api/mailbox/cards/town` body: a town's id from the list. */
+@JsonClass(generateAdapter = true)
+data class CardTownBody(
+    val id: String,
+)
+
+/** `PUT /api/mailbox/cards/town` answer: the town as kept ("Vancouver, WA"). */
+@JsonClass(generateAdapter = true)
+data class CardTownKept(
+    val town: String? = null,
 )
 
 /** One note "Help me write it" offers: a way of saying it (`heartfelt`, `light` or `brief`) and the words. */
@@ -120,6 +175,16 @@ data class CardPhoto(
     val height: Int? = null,
     val alt: String? = null,
     val covered: Boolean = false,
+    /** The photo is a Live Photo: its few seconds of video (contract section 13), covered whenever the photo is. */
+    val live: CardLive? = null,
+)
+
+/** A Live Photo's moving part: an MP4 or QuickTime clip of at most 10 seconds, read from the same routes as its photo. */
+@JsonClass(generateAdapter = true)
+data class CardLive(
+    @Json(name = "file_id") val fileId: String,
+    @Json(name = "mime_type") val mimeType: String? = null,
+    @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
 /** A card's voice greeting (memories plan step 7): its file and its length as the server measured it. */
@@ -136,7 +201,7 @@ data class CardMediaUploaded(
     @Json(name = "expires_at") val expiresAt: String? = null,
 )
 
-/** A stored photo (upright, at most 1600 px on its long side, no metadata) or voice greeting. */
+/** A stored photo (upright, at most 2400 px on its long side, no metadata) or voice greeting. */
 @JsonClass(generateAdapter = true)
 data class CardMediaFile(
     @Json(name = "file_id") val fileId: String,
@@ -146,12 +211,24 @@ data class CardMediaFile(
     @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
-/** Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. */
+/**
+ * Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. [saves]: the
+ * account can keep one signature for the next cards (founder, 2026-11-16; `PUT`/`DELETE /api/mailbox/cards/signature`),
+ * and [saved] is the one it keeps (null: none, or an older server).
+ */
 @JsonClass(generateAdapter = true)
 data class CardSignatureBox(
     val w: Int = CardSignature.WIDTH,
     val h: Int = CardSignature.HEIGHT,
     @Json(name = "max_bytes") val maxBytes: Int = CardSignature.MAX_BYTES,
+    val saves: Boolean = false,
+    val saved: CardSignature? = null,
+)
+
+/** `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept. */
+@JsonClass(generateAdapter = true)
+data class CardSignatureBody(
+    val signature: CardSignature,
 )
 
 /**
@@ -201,6 +278,11 @@ data class HolidayCardDesign(
     val table: String? = null,
     /** The whole verse printed on a Christmas with Jesus Christ picture (59-67), shown under the card; others have none. */
     val verse: String? = null,
+    /**
+     * The table it opens on (card shelves SPEC A4): `reverence`, `santa` or `nostalgia`, from its collection. Absent from
+     * older servers: the app decides by its number ([app.pantopus.android.ui.screens.mailbox.cards.table.CardMood]).
+     */
+    val mood: String? = null,
 )
 
 /** A collection on "Pick a card" (Christmas as a Kid …): its name, who it's for, and its pictures in order. */
@@ -211,6 +293,21 @@ data class HolidayCardCollection(
     /** Who it's for, in a line under the row of names. */
     val line: String = "",
     /** Its pictures' ids, in the order the grid shows them. */
+    val designs: List<String> = emptyList(),
+    /** Its short name ("Jesus Christ"), for the website's row of collections. Absent from older servers. */
+    val short: String? = null,
+    /** Its public name in a link (`/cards/collection/<slug>`). Absent from older servers. */
+    val slug: String? = null,
+    /** The design id of the card that stands for it in "One from each collection"; absent: no large card for it. */
+    val pick: String? = null,
+    /** Its parts in story order (Christmas with Jesus Christ only); together they are [designs], in order. */
+    val parts: List<HolidayCardPart> = emptyList(),
+)
+
+/** A part of a collection ("The first Christmas"): its name and its pictures' ids, in order. */
+@JsonClass(generateAdapter = true)
+data class HolidayCardPart(
+    val name: String = "",
     val designs: List<String> = emptyList(),
 )
 
@@ -284,7 +381,26 @@ data class SentHolidayCard(
     @Json(name = "sent_at") val sentAt: String? = null,
     /** The link to send on, right after sending a card by link (the answer's own `link`, kept with the card here). */
     @Transient val link: String? = null,
+    /** A card that travels (the server's switch `card_travel`): its journey; absent for every other card. */
+    val travel: SentCardTravel? = null,
 )
+
+/**
+ * `travel` on a card its sender sees (travelling card plan Part 6): the journey's id, and on Sent, from this card on,
+ * the towns, the miles and the town it's in now ("5 towns · 2,692 miles. Now in Tampa, FL.").
+ */
+@JsonClass(generateAdapter = true)
+data class SentCardTravel(
+    val journey: String? = null,
+    val towns: Int? = null,
+    val miles: Int? = null,
+    @Json(name = "now_in") val nowIn: String? = null,
+    /** The postmarks on its envelope, oldest first: one for a card that started a journey, more for one passed on. */
+    val postmarks: List<MailCardPostmark> = emptyList(),
+) {
+    /** Passed on, not started: free, never the day's card, so taking it back gives no stamp and frees no day. */
+    val passedOn: Boolean get() = postmarks.size >= 2
+}
 
 /** `POST /api/mailbox/cards`: today's card, to one person found by name or by email to someone not on Pantopus. */
 @JsonClass(generateAdapter = true)
@@ -307,6 +423,8 @@ data class SendHolidayCardBody(
     @Json(name = "photo_alt") val photoAlt: String? = null,
     /** The card's voice greeting's file id (needs [requestId]); null: none. */
     val voice: String? = null,
+    /** "Let it travel" left on (travelling card plan Part 2): true; null (left out) for an ordinary card. */
+    val travel: Boolean? = null,
 )
 
 /** `GET /api/mailbox/cards/share-video/:design` (the server's launch key `card_share_video`): where the picture's video is. */
@@ -357,6 +475,8 @@ data class SendHolidayCardListBody(
      * server offers every email choice ([HolidayCardArrivals.emailAll]), else left out.
      */
     @Json(name = "emails_keep_arrival") val emailsKeepArrival: Boolean? = null,
+    /** "Let it travel" left on: each card of the list starts a journey of its own; null (left out) otherwise. */
+    val travel: Boolean? = null,
 )
 
 /** A person or an address on a list, and its card's request ID. */
@@ -435,6 +555,50 @@ data class SendHolidayCardResponse(
     val link: String? = null,
 )
 
+/**
+ * `POST /api/mailbox/cards/:id/pass-on` (and its look) body (travelling card plan Part 4): the same card goes on, free,
+ * to a person, an email address or by link, with the passer's note and signature, under one request ID per draft, in
+ * one of the card's two places (`piece.card.travel.next_place`).
+ */
+@JsonClass(generateAdapter = true)
+data class CardPassOnBody(
+    val to: HolidayCardRecipient,
+    val message: String,
+    val signature: CardSignature? = null,
+    @Json(name = "request_id") val requestId: String,
+    val place: Int,
+)
+
+/** `POST /api/mailbox/cards/:id/pass-on/preview` → 200: every check the pass-on runs passed; nothing was sent. */
+@JsonClass(generateAdapter = true)
+data class CardPassOnPreview(
+    @Json(name = "pass_on") val passOn: CardPassOnLook,
+)
+
+/** A pass-on as it would go: who it's to, how, when it arrives, until when it can come back, and the passer's town. */
+@JsonClass(generateAdapter = true)
+data class CardPassOnLook(
+    val place: Int? = null,
+    @Json(name = "to_name") val toName: String? = null,
+    @Json(name = "by_email") val byEmail: Boolean = false,
+    @Json(name = "by_link") val byLink: Boolean = false,
+    @Json(name = "arrives_at") val arrivesAt: String? = null,
+    @Json(name = "arrives_on") val arrivesOn: String? = null,
+    @Json(name = "take_back_until") val takeBackUntil: String? = null,
+    /** "Tampa, FL": the passer's town as it goes on the journey. */
+    val town: String? = null,
+    /** The postmark this pass-on strikes (the passer's town and today there): the sealing table's newest postmark. */
+    val postmark: MailCardPostmark? = null,
+)
+
+/** `POST /api/mailbox/cards/:id/pass-on/take-back` → 200: the place is free again. */
+@JsonClass(generateAdapter = true)
+data class CardPassOnTakenBack(
+    @Json(name = "taken_back") val takenBack: Boolean = false,
+    @Json(name = "card_id") val cardId: String? = null,
+    val place: Int? = null,
+)
+
 /** `GET /api/mailbox/cards/:id/link`: the link of a card by link that's still waiting for someone. */
 @JsonClass(generateAdapter = true)
 data class HolidayCardLinkResponse(
@@ -489,11 +653,16 @@ data class HolidayCardPreviewPiece(
 )
 
 /**
- * The email a card to an email address sends: its subject, the heading, two sentences, the button, the footnote and the
- * footer's lines.
+ * The email a card to an email address sends: the picture at its top, its subject, the heading, two sentences, the
+ * button, the footnote and the footer's lines.
  */
 @JsonClass(generateAdapter = true)
 data class HolidayCardPreviewEmail(
+    /**
+     * The picture at the top of the email (launch key `card_table` on the server): the card's front lying on its open
+     * envelope, or the sealed envelope for a card sealed until Christmas. Null from a server without it.
+     */
+    val picture: String? = null,
     val subject: String = "",
     val heading: String = "",
     val lines: List<String> = emptyList(),
@@ -560,6 +729,10 @@ data class SentCard(
     @Json(name = "email_send_at") val emailSendAt: String? = null,
     /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
     @Json(name = "email_to") val emailTo: String? = null,
+    /** A reply this person wrote back to a card (plan Part 3): the card it answers; a letter otherwise. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
+    /** A card that travels (the server's switch `card_travel`): its journey, towns, miles and the town it's in now. */
+    val travel: SentCardTravel? = null,
 )
 
 /** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */
@@ -588,6 +761,8 @@ data class SentCardFace(
     /** The picture's name on its public page and its table colour (launch key `card_table`). */
     val slug: String? = null,
     val table: String? = null,
+    /** The table it opens on: `reverence`, `santa` or `nostalgia` (absent from older servers: decided by number). */
+    val mood: String? = null,
     /** The whole verse on a Christmas with Jesus Christ picture, not while it's sealed ("Read the verse"). */
     val verse: String? = null,
     /** The sender's own signature beside FROM (plan 8.2; the card's page only), also while it's sealed for them. */

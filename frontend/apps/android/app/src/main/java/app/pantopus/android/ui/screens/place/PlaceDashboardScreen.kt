@@ -70,6 +70,10 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.guidance.GuidanceAction
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.LocalGuidance
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.ballot.BallotGovernmentsSheet
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
@@ -84,12 +88,15 @@ import app.pantopus.android.ui.screens.place.components.PlaceHomeCard
 import app.pantopus.android.ui.screens.place.components.PlaceWorthALook
 import app.pantopus.android.ui.screens.place.components.WorthItem
 import app.pantopus.android.ui.screens.place.components.placeSurface
+import app.pantopus.android.ui.screens.place.components.placeVerifiedMark
 import app.pantopus.android.ui.screens.place.components.rememberGlanceOpen
 import app.pantopus.android.ui.screens.place.detail.RadonToday
 import app.pantopus.android.ui.screens.place.detail.TodayAskEntry
 import app.pantopus.android.ui.screens.place.messaging.PlaceMessagesActionRow
+import app.pantopus.android.ui.screens.place.verify.LocationRecheckEffect
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifySheet
+import app.pantopus.android.ui.screens.place.verify.rememberVerifyOptions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -109,7 +116,7 @@ const val PLACE_DASHBOARD_HOME_ID_KEY = "homeId"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun PlaceDashboardScreen(
     homeId: String,
     onOpenSection: (homeId: String, slug: String) -> Unit,
@@ -122,7 +129,7 @@ fun PlaceDashboardScreen(
     modifier: Modifier = Modifier,
     /** "Verified homes nearby": the density window, the meter and the invite (founder decision 2026-11-07). */
     onOpenVerifiedHomes: () -> Unit = {},
-    /** "Invite your neighbors": the share sheet with the person's own invite link. */
+    /** "Invite homes near you": the share sheet with the person's own invite link. */
     onInviteNeighbors: () -> Unit = {},
     onOpenMailDay: () -> Unit = {},
     onOpenPrivacyMirror: () -> Unit = {},
@@ -148,6 +155,9 @@ fun PlaceDashboardScreen(
     onOpenTask: ((taskId: String) -> Unit)? = null,
     /** Today's home setup on this Home's radon question (Risk and environment's next step); null leaves it out. */
     onOpenTodayRadon: (() -> Unit)? = null,
+    /** Add Home in two steps just made this Home: the verify sheet opens once the dashboard has loaded. */
+    openVerify: Boolean = false,
+    onVerifyOpened: () -> Unit = {},
     viewModel: PlaceDashboardViewModel = hiltViewModel(key = "place-$homeId"),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -182,7 +192,17 @@ fun PlaceDashboardScreen(
 
     var showSwitcher by remember { mutableStateOf(false) }
     var showVerify by remember { mutableStateOf(false) }
+    GuidanceVerifyAction(ready = state is PlaceDashboardUiState.Loaded) { showVerify = true }
+    val loaded = state is PlaceDashboardUiState.Loaded
+    LaunchedEffect(openVerify, loaded) {
+        if (openVerify && loaded) {
+            showVerify = true
+            onVerifyOpened()
+        }
+    }
     val verifyAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.label.orEmpty()
+    // A fast check names the home by its street line, as the drawings do ("billed to 5207 Example Trust Lane?").
+    val checkAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.line1?.ifBlank { null } ?: verifyAddress
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
 
@@ -235,6 +255,10 @@ fun PlaceDashboardScreen(
                     unreadCount = unreadCount,
                     onOpenSwitcher = { showSwitcher = true },
                     onVerify = { showVerify = true },
+                    onMailCode = {
+                        viewModel.reloadOnReturn()
+                        onStartVerify(PlaceVerifyMethod.MAIL, verifyAddress)
+                    },
                     onOpenDetail = { group -> onOpenSection(homeId, group.slug) },
                     onOpenPulse = onOpenPulse,
                     onComposeMessage = onComposeMessage,
@@ -271,7 +295,7 @@ fun PlaceDashboardScreen(
             onStart = { method ->
                 showVerify = false
                 viewModel.reloadOnReturn()
-                onStartVerify(method, verifyAddress)
+                onStartVerify(method, checkAddress)
             },
             onDismiss = { showVerify = false },
             onOpenDocumentStatus = {
@@ -362,11 +386,26 @@ internal fun PlaceDashboardContent(
     onOpenTask: ((taskId: String) -> Unit)? = null,
     /** Today's radon question, when it is this person's next step here (Risk and environment). */
     onOpenRadon: (() -> Unit)? = null,
+    /** "Mail me a code" under a fast check's mark: the postcard. */
+    onMailCode: () -> Unit = {},
 ) {
     val isVerified = intel.tier == PlaceTier.T4
+    // Faster home verification (FASTVERIFY): the server's level here, read again with each fresh dashboard. Null while
+    // `home_fast_verify` is off, and the home card is today's.
+    val verifyOptions = rememberVerifyOptions(homeId.takeIf { it.isNotBlank() && claim == null }, refreshKey = intel.generatedAt)
+    val verifiedMark = placeVerifiedMark(verifyOptions, intel.homeZone)
+    // "We check once more on another day when you open Pantopus at home."
+    LocationRecheckEffect(homeId.takeIf { it.isNotBlank() && claim == null }, verifyOptions, intel.homeZone)
     // Verifying is the next step for a claimed resident and for a private setup (by mail). Guests and service
     // providers can't verify, so they get no verify prompts; older servers don't say, and claimed decides.
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))
+    // The guidance cards read the same (16, 17, 23, 26 and 27).
+    val guidance = LocalGuidance.current
+    // Card 16's button is “Set pickup day” while the household has no pickup schedule.
+    val needsPickupDay = intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay
+    LaunchedEffect(homeId, isVerified, showsVerify, claim, needsPickupDay) {
+        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null, needsPickupDay = needsPickupDay)
+    }
     val ballot = BallotPlacement.ballot(intel)
     var ballotGovernments by remember { mutableStateOf<BallotGovernments?>(null) }
     val (openGroups, toggleGroup) = rememberGlanceOpen(homeId)
@@ -443,6 +482,9 @@ internal fun PlaceDashboardContent(
                     onOpenHome = { onOpenDetail(PlaceDetailGroup.YOUR_HOME) },
                     onRetry = onRetry,
                     modifier = Modifier.padding(horizontal = 16.dp).padding(top = 8.dp),
+                    verified = verifiedMark,
+                    onMessageHomes = { onComposeMessage(intel.place.label) },
+                    onMailCode = onMailCode,
                 )
             }
             item(key = "worth") {
@@ -464,8 +506,7 @@ internal fun PlaceDashboardContent(
                         onOpenMailDay = onOpenMailDay,
                         modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp),
                         // Ticks "Set your pickup day" itself once the calendar runs on the household's own day.
-                        needsPickupDay =
-                            intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay,
+                        needsPickupDay = needsPickupDay,
                     )
                 }
             }
@@ -543,7 +584,7 @@ internal fun PlaceDashboardContent(
 /** The header, the home card, "Worth a look" and the first-week card precede the glance in the list. */
 private const val GLANCE_PRECEDING_ITEMS = 4
 
-/** "Private by default. See what neighbors see of this address." (Wedge v2 §2). */
+/** "Private by default. See what others see of this address." (Wedge v2 §2). */
 @Composable
 private fun PrivacyMirrorRow(
     onOpen: () -> Unit,
@@ -564,7 +605,7 @@ private fun PrivacyMirrorRow(
     ) {
         PantopusIconImage(PantopusIcon.ShieldCheck, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appTextSecondary)
         Text(
-            "Private by default. See what neighbors see of this address.",
+            "Private by default. See what others see of this address.",
             fontSize = 13.sp,
             color = PantopusColors.appTextSecondary,
             modifier = Modifier.weight(1f),
@@ -591,7 +632,7 @@ private fun PlaceNeighborsEntry(
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "Verified neighbors",
+            "Verified homes near you",
             fontSize = 18.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.SemiBold,
@@ -604,7 +645,7 @@ private fun PlaceNeighborsEntry(
                 if (messages) {
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.MessageSquarePlus,
-                        title = "Message a neighbor",
+                        title = "Message a home near you",
                         subtitle = "Send a private heads-up to a home on your block.",
                         onTap = { onComposeMessage(address) },
                     )
@@ -612,7 +653,7 @@ private fun PlaceNeighborsEntry(
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.Inbox,
                         title = "Your inbox",
-                        subtitle = "Heads-ups from verified neighbors nearby.",
+                        subtitle = "Heads-ups from verified homes nearby.",
                         onTap = onOpenInbox,
                     )
                 }
@@ -628,7 +669,7 @@ private fun PlaceNeighborsEntry(
                     PlaceHairline()
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.Share,
-                        title = "Invite your neighbors",
+                        title = "Invite homes near you",
                         subtitle = "Share a link that shows them their own address first.",
                         onTap = onInviteNeighbors,
                         modifier = Modifier.testTag("place.inviteNeighbors"),
@@ -810,7 +851,10 @@ internal fun PlaceBellAndChat(
 ) {
     Row {
         if (onAsk != null) {
-            IconButton(onClick = onAsk, modifier = Modifier.size(Spacing.s12).testTag("place.askPantopus")) {
+            IconButton(
+                onClick = onAsk,
+                modifier = Modifier.size(Spacing.s12).guidanceAnchor(GuidanceTarget.Ask).testTag("place.askPantopus"),
+            ) {
                 PantopusIconImage(
                     icon = PantopusIcon.Sparkles,
                     contentDescription = "Ask Pantopus",
@@ -877,7 +921,7 @@ fun PlaceVerifyBanner(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
     icon: PantopusIcon = PantopusIcon.ShieldCheck,
-    message: String = "Verify your address to message neighbors and get your badge.",
+    message: String = "Verify your address to message homes near you and get your badge.",
     action: String = "Verify address",
 ) {
     Row(
@@ -1002,4 +1046,16 @@ internal fun PlaceDeniedState(modifier: Modifier = Modifier) {
         subcopy = "You don't have permission to view this place.",
         modifier = modifier,
     )
+}
+
+/** Guidance card 26's “Verify address” opens the same sheet as Your Place's own button, once the dashboard shows. */
+@Composable
+private fun GuidanceVerifyAction(
+    ready: Boolean,
+    onVerify: () -> Unit,
+) {
+    val guidance = LocalGuidance.current
+    LaunchedEffect(guidance?.action, ready) {
+        if (ready && guidance?.takeAction(GuidanceAction.Verify) == true) onVerify()
+    }
 }

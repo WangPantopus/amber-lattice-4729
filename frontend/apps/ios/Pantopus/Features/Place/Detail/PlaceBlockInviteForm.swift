@@ -60,7 +60,7 @@ struct BlockInviteForm: View {
     private var header: some View {
         HStack(spacing: 11) {
             PlaceIconTile(icon: .mailbox, tone: .sky, size: 34)
-            Text("Invite a neighbor by mail")
+            Text("Invite a home by mail")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)
             Spacer(minLength: 0)
@@ -75,7 +75,7 @@ struct BlockInviteForm: View {
             .font(.system(size: 12.5))
             .lineSpacing(2)
             .foregroundStyle(Theme.Color.appTextSecondary)
-            promise("You're named only as a neighbor on your street — never your name, never your house number.")
+            promise("You're named only as someone on your street — never your name, never your house number.")
             promise("Every card carries a working opt-out. One use silences that address for good, from every sender.")
             promise("One card per address per season, from anyone — an address already on Pantopus is never mailed.")
         }
@@ -95,12 +95,25 @@ struct BlockInviteForm: View {
         }
     }
 
+    private static let streetId = "place.blockFounders.streetWithSuggestions"
+
     private var fields: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            field(label: "Street address", placeholder: "1425 SE Oak St", text: $vm.recipientLine1)
-                .onChange(of: vm.recipientLine1) { _, text in vm.addressSuggestions.textChanged(text) }
-            AddressSuggestionList(suggestions: vm.addressSuggestions, identifier: "place.blockFounders.addressSuggestion") { item in
-                Task { await vm.chooseAddressSuggestion(item) }
+            // The form sits low on the page: when suggestions appear the street moves to the top of what the
+            // keyboard leaves, so they show under it instead of behind the keyboard.
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: Spacing.s2) {
+                    field(label: "Street address", placeholder: "1425 SE Oak St", text: $vm.recipientLine1)
+                        .onChange(of: vm.recipientLine1) { _, text in vm.addressSuggestions.textChanged(text) }
+                    AddressSuggestionList(suggestions: vm.addressSuggestions, identifier: "place.blockFounders.addressSuggestion") { item in
+                        Task { await vm.chooseAddressSuggestion(item) }
+                    }
+                }
+                .id(Self.streetId)
+                .onChange(of: vm.addressSuggestions.suggestions.isEmpty) { _, empty in
+                    guard !empty else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.streetId, anchor: .top) }
+                }
             }
             field(label: "City", placeholder: "Portland", text: $vm.recipientCity)
             HStack(spacing: Spacing.s2) {

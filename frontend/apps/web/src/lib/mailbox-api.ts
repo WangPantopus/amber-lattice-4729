@@ -9,7 +9,7 @@
 
 import { get, post, uploadFile, apiRequest, mailbox, mailCompose } from '@pantopus/api';
 import { launchFeatures } from '@/lib/featureFlags';
-import type { DeletedMail, HolidayCards, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult, WaitingHolidayCard } from '@pantopus/api';
+import type { CardSignature, DeletedMail, HolidayCards, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult, WaitingHolidayCard } from '@pantopus/api';
 
 /** PATCH helper — not barrel-exported from @pantopus/api */
 function patch<T>(url: string, data?: Record<string, any>): Promise<T> {
@@ -129,6 +129,16 @@ export async function getHolidayCards(): Promise<HolidayCards> {
   return call(() => mailbox.getHolidayCards());
 }
 
+/** Keep this signature for the next cards (the account's saved signature). */
+export async function saveCardSignature(signature: CardSignature): Promise<CardSignature> {
+  return (await call(() => mailbox.saveCardSignature(signature))).signature;
+}
+
+/** Forget the account's saved signature. */
+export async function forgetCardSignature(): Promise<void> {
+  await call(() => mailbox.forgetCardSignature());
+}
+
 /** The card waiting for a new account (TABCARD 3), or null; throws MailboxApiError when the server couldn't say. */
 export async function getWaitingHolidayCard(): Promise<WaitingHolidayCard | null> {
   return (await call(() => mailbox.getWaitingHolidayCard())).card ?? null;
@@ -171,6 +181,34 @@ export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: 
 
 export async function takeBackHolidayCard(cardId: string): Promise<{ taken_back: true }> {
   return call(() => mailbox.takeBackHolidayCard(cardId));
+}
+
+// Write back (server key card_replies; mail-cards-experience Part 3): the joined card, and the card's one reply.
+export async function getCardExchange(id: string): Promise<mailbox.CardExchange> {
+  return call(() => mailbox.getCardExchange(id));
+}
+export async function sendCardReply(cardId: string, body: mailbox.CardReplyBody): Promise<{ reply: mailbox.CardReplySummary }> {
+  return call(() => mailbox.sendCardReply(cardId, body));
+}
+export async function takeBackCardReply(cardId: string): Promise<{ taken_back: true; card_id: string }> {
+  return call(() => mailbox.takeBackCardReply(cardId));
+}
+
+// The travelling card (server key card_travel): towns, passing a card on, and its journey.
+export async function getCardTowns(q?: string): Promise<{ towns: mailbox.CardTown[]; suggested?: mailbox.CardTown | null }> {
+  return call(() => mailbox.getCardTowns(q));
+}
+export async function saveCardTown(id: string): Promise<{ town: string }> {
+  return call(() => mailbox.saveCardTown(id));
+}
+export async function previewPassOn(cardId: string, body: mailbox.PassOnBody): Promise<{ pass_on: mailbox.PassOnPreview }> {
+  return call(() => mailbox.previewPassOn(cardId, body));
+}
+export async function passOnCard(cardId: string, body: mailbox.PassOnBody): Promise<{ card: mailbox.SentHolidayCard; link?: string }> {
+  return call(() => mailbox.passOnCard(cardId, body));
+}
+export async function takeBackPassOn(passedId: string): Promise<{ taken_back: true; card_id: string; place: number | null }> {
+  return call(() => mailbox.takeBackPassOn(passedId));
 }
 
 // ============================================================

@@ -12,6 +12,9 @@ import type { StructuredMailSendPayload } from './mailbox';
 
 // ─── Escrow types ──────────────────────────────────────────
 
+/** A card's front on its link's page: the stock picture, its printed caption, its paper and the cloth it lies on. */
+export interface CardLinkFront { design: string; caption: string; paper: string; table: string | null; mood?: 'reverence' | 'santa' | 'nostalgia' | null }
+
 /**
  * The public preview of a letter sent to someone who isn't on Pantopus: who it is from and a short preview,
  * never the letter itself (GET /api/mailbox/claim/:mailId).
@@ -31,8 +34,13 @@ export interface EscrowedMailView {
     sentTo: string;
     createdAt: string;
     expiresAt: string | null;
-    /** A Christmas card: the page says only that it is one (no picture, no note), and whether it's sealed. */
-    card?: { holiday: string; year: number; sealed: boolean; by_link?: boolean } | null;
+    /**
+     * A Christmas card: whether it's sealed, and its front (the stock picture the sender picked, as the public
+     * /cards/<slug> page draws it), null while it's sealed until Christmas. Never its note, signature, photo or voice.
+     */
+    card?: { holiday: string; year: number; sealed: boolean; front?: CardLinkFront | null; by_link?: boolean;
+      /** A card that travels (server key card_travel): its envelope's postmarks, the towns and the miles it came. */
+      travel?: { postmarks: { town: string; state: string | null; on: string }[]; towns: number; miles: number } } | null;
   };
 }
 
@@ -203,6 +211,22 @@ export async function getEscrowedMailPublic(
   return get<EscrowedMailView>(
     `/api/mailbox/claim/${encodeURIComponent(mailId)}`,
     { token },
+  );
+}
+
+/**
+ * Send a one-time code to the address a letter or card waiting on its link was sent to (a card by link: `email`, which
+ * the person types). The answer is the same whether or not the address has an account. Then sign in with
+ * auth.signInWithMailCode and claim it. Calls POST /api/mailbox/claim/:mailId/code
+ */
+export async function sendEscrowCode(
+  mailId: string,
+  token: string,
+  email?: string,
+): Promise<{ sent_to: string; minutes: number }> {
+  return post<{ sent_to: string; minutes: number }>(
+    `/api/mailbox/claim/${encodeURIComponent(mailId)}/code`,
+    { token, ...(email ? { email } : {}) },
   );
 }
 

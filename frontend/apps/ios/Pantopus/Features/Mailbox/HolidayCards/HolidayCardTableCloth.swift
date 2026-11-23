@@ -38,7 +38,9 @@ struct HolidayCardTableCloth: View {
                     tint
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            // The light is 40 pt larger than the cloth all round, which makes the stack larger: pinned to its top-left
+            // corner the cloth covers the screen (centred, it stopped 40 pt short of the right and bottom edges).
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .clipped()
         }
         .ignoresSafeArea()
@@ -67,5 +69,40 @@ extension View {
                     Rectangle().fill(MailPaper.cardRowLine).frame(height: 1)
                 }
         }
+    }
+
+    /// Pinned buttons with a quiet one under the main one: the fade runs from clear at the top edge to the page's full
+    /// colour at the main button's middle (`fadeHeight` down), and from there to the screen's bottom it is solid, so
+    /// nothing on the page reads behind the quiet button. No box, no line.
+    func holidayCardSolidUnder(_ scheme: ColorScheme, atTable: Bool, fadeHeight: CGFloat) -> some View {
+        let base = atTable ? MailPaper.tableNight : HolidayCardDesk.background(scheme)
+        return background(alignment: .top) {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [base.opacity(0), base], startPoint: .top, endPoint: .bottom)
+                    .frame(height: max(1, fadeHeight))
+                base
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// A pinned button's background (experience plan 5.2): no panel, only a soft fade into the page's colour, so what
+    /// scrolls under it shows until it reaches the button.
+    func holidayCardButtonFade(_ scheme: ColorScheme, atTable: Bool) -> some View {
+        let base = atTable ? MailPaper.tableNight : HolidayCardDesk.background(scheme)
+        return background(
+            LinearGradient(
+                stops: [
+                    .init(color: base.opacity(0), location: 0),
+                    .init(color: base.opacity(atTable ? 0.7 : 0.92), location: 0.45),
+                    .init(color: base.opacity(atTable ? 0.85 : 1), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        )
     }
 }

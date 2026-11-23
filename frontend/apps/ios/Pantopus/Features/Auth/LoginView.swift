@@ -486,7 +486,7 @@ extension LoginView {
         guard let path, let url = URL(string: path) else { return nil }
         let thing: String
         switch DeepLinkRouter.shared.resolve(url: url) {
-        case .plan, .planRequests: thing = "open the plan you were sent"
+        case .plan, .planRequests, .planGuests, .planCheck: thing = "open the plan you were sent"
         case .post: thing = "open the post you were sent"
         case .supportTrain, .supportTrainManage: thing = "open the Support Train you were sent"
         case .invite: thing = "answer your invitation"
@@ -568,12 +568,12 @@ private struct BrandLockup: View {
     var body: some View {
         VStack(spacing: Spacing.s2) {
             PantopusLockup(size: 36)
-            Text("Your neighborhood, verified.")
+            Text("Your home, verified.")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Pantopus — Your neighborhood, verified.")
+        .accessibilityLabel("Pantopus — Your home, verified.")
     }
 }
 

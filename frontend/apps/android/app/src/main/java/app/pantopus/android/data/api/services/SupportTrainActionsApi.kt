@@ -7,17 +7,22 @@ import app.pantopus.android.data.api.models.support_trains.CancelReservationBody
 import app.pantopus.android.data.api.models.support_trains.EnableSupportTrainFundBody
 import app.pantopus.android.data.api.models.support_trains.ReserveSlotBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainFundDto
+import app.pantopus.android.data.api.models.support_trains.SupportTrainInviteBody
+import app.pantopus.android.data.api.models.support_trains.SupportTrainInvitesResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainNudgeBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainNudgeDraftResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainOrganizersResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainSlotDto
+import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainBody
 import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainSlotBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -237,5 +242,50 @@ interface SupportTrainActionsApi {
     @POST("api/activities/support-trains/{id}/fund/disable")
     suspend fun disableFund(
         @Path("id") supportTrainId: String,
+    ): ResponseBody
+
+    /**
+     * `PATCH /:id` — primary or co-organizer: the audience (`sharing_mode`) or where help goes
+     * (`delivery_location`; a home must be one the organizer belongs to, else 403 `HOME_NOT_ACCESSIBLE`).
+     */
+    @PATCH("api/activities/support-trains/{id}")
+    suspend fun updateTrain(
+        @Path("id") supportTrainId: String,
+        @Body body: UpdateSupportTrainBody,
+    ): ResponseBody
+
+    /**
+     * `PUT /:id/recipient-profile` — household size, allergies, diet, drop-off window, contactless and
+     * instructions. A raw JSON body, so a cleared field is sent as null.
+     */
+    @PUT("api/activities/support-trains/{id}/recipient-profile")
+    suspend fun updateRecipientProfile(
+        @Path("id") supportTrainId: String,
+        @Body body: RequestBody,
+    ): ResponseBody
+
+    /** `POST /:id/invites` — invite a connection (or someone sharing a home); 403 `NOT_KNOWN` otherwise. */
+    @POST("api/activities/support-trains/{id}/invites")
+    suspend fun invite(
+        @Path("id") supportTrainId: String,
+        @Body body: SupportTrainInviteBody,
+    ): ResponseBody
+
+    /** `GET /:id/invites` — who the organizers invited. */
+    @GET("api/activities/support-trains/{id}/invites")
+    suspend fun invites(
+        @Path("id") supportTrainId: String,
+    ): SupportTrainInvitesResponse
+
+    /**
+     * `PATCH /:id/reservations/:reservationId` — the helper edits their own reserved signup (B1). Every key but
+     * `note_to_recipient` is required (null included), so the body is raw JSON; 409 `CONFLICT` when the signup changed
+     * since `expected_updated_at`.
+     */
+    @PATCH("api/activities/support-trains/{id}/reservations/{reservationId}")
+    suspend fun editReservation(
+        @Path("id") supportTrainId: String,
+        @Path("reservationId") reservationId: String,
+        @Body body: RequestBody,
     ): ResponseBody
 }

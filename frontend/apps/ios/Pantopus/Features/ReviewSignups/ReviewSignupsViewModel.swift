@@ -222,7 +222,7 @@ public final class ReviewSignupsViewModel: ListOfRowsDataSource {
     private var emptySubcopy: String {
         switch selectedFilter {
         case ReviewSignupsFilter.pending:
-            "When a neighbor signs up for a slot, they'll appear here for you to review."
+            "When someone signs up for a slot, they'll appear here for you to review."
         case ReviewSignupsFilter.confirmed:
             "Confirmed slots will show up here once you approve their signup."
         case ReviewSignupsFilter.edited:
@@ -230,7 +230,7 @@ public final class ReviewSignupsViewModel: ListOfRowsDataSource {
         case ReviewSignupsFilter.canceled:
             "When a helper cancels their slot, it moves here so you can backfill."
         default:
-            "Share the train so neighbors can grab a slot. You'll see new signups here for review before they're confirmed."
+            "Share the train so people can grab a slot. You'll see new signups here for review before they're confirmed."
         }
     }
 

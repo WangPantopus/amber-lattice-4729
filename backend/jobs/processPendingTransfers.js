@@ -18,9 +18,11 @@
 
 const supabaseAdmin = require('../config/supabaseAdmin');
 const walletService = require('../services/walletService');
+const stripeService = require('../stripe/stripeService');
 const walletSettlement = require('../services/walletSettlementService');
 const { getBusinessPrimaryOwnerId, getBusinessPayoutAccount } = require('../utils/businessPermissions');
 const { capturedFeeCents } = require('../stripe/gigPaymentProof');
+const { recordBusinessContact } = require('../services/businessCustomers');
 const { PAYMENT_STATES, transitionPaymentStatus } = require('../stripe/paymentStateMachine');
 const { createNotification } = require('../services/notificationService');
 const { sendAlert, SEVERITY } = require('../services/alertingService');
@@ -75,12 +77,17 @@ async function notifyBusinessPayout(payment, { amountFormatted, sent }) {
     userId: ownerId,
     type: 'payout_sent',
     title: sent ? `${amountFormatted} sent to ${name}'s payout account` : `${amountFormatted} on its way to ${name}`,
-    body: sent
-      ? 'An invoice payment reached the business\'s Stripe account. Its balance and payouts are in the Stripe dashboard.'
-      : 'An invoice payment cleared. It goes to the business\'s Stripe account shortly.',
+    body: payment.payment_type === 'plan_payment'
+      ? (sent ? 'A plan payment reached the business\'s Stripe account. Its balance and payouts are in the Stripe dashboard.'
+        : 'A plan payment cleared. It goes to the business\'s Stripe account shortly.')
+      : sent
+        ? 'An invoice payment reached the business\'s Stripe account. Its balance and payouts are in the Stripe dashboard.'
+        : 'An invoice payment cleared. It goes to the business\'s Stripe account shortly.',
     icon: '💰',
     link: `/app/businesses/${businessId}/dashboard?tab=payments`,
-    metadata: { invoice_id: payment.metadata?.invoice_id, payment_id: payment.id, business_id: businessId },
+    metadata: payment.payment_type === 'plan_payment'
+      ? { plan_id: payment.metadata?.plan_id, payment_id: payment.id, business_id: businessId }
+      : { invoice_id: payment.metadata?.invoice_id, payment_id: payment.id, business_id: businessId },
   });
 }
 
@@ -116,6 +123,46 @@ async function recoverStrandedTransfers() {
     try { await reconcileWalletRelease(payment.id); }
     catch (err) { logger.error('Wallet release remains pending', { paymentId: payment.id, error: err.message }); }
   }
+}
+
+// A paid spot on a business's plan (Plans for the holidays B2): paid to the business itself, never before payout_after.
+function isPlanPayment(payment) {
+  return payment.payment_type === 'plan_payment';
+}
+
+/**
+ * A plan spot or plan bill refunded in part before its payout (Plans for the holidays B4/B5, contract 10.4: a group
+ * price that came back, a staff refund of part of a bill). The shared release below takes only a payment with nothing
+ * refunded and stays so; this one goes through its own database function, which nothing else reaches.
+ */
+function isPartiallyRefundedPlanPayment(payment, status) {
+  return isPlanPayment(payment) && ['plan_spot', 'plan_bill'].includes(payment.sold_type) && status === PAYMENT_STATES.REFUNDED_PARTIAL;
+}
+
+/** Pays out a plan payment refunded in part, at its re-priced share. Answers true when it was paid out now. */
+async function releasePartiallyRefundedPlanPayment(payment) {
+  // A refund recorded elsewhere (the webhook) before the share was re-priced: re-price it now.
+  if (String(payment.metadata?.repriced_refunded_amount ?? '') !== String(payment.refunded_amount)) {
+    try {
+      await require('../services/plans/planPaid').repriceAfterPartialRefund(payment.id);
+    } catch (err) {
+      logger.warn('processPendingTransfers: plan payment not re-priced yet', { paymentId: payment.id, error: err.message });
+      return false;
+    }
+  }
+  const { data, error } = await supabaseAdmin.rpc('plan_payment_release_after_partial_refund', { p_payment_id: payment.id });
+  if (error || !data || data.error) {
+    logger.warn('processPendingTransfers: plan payment refunded in part not released', { paymentId: payment.id, error: error?.message || data?.error });
+    return false;
+  }
+  if (!data.changed) return false;
+  const paid = data.payment;
+  await collectDebtsAfterIncome(paid.payee_id, paid.id);
+  const sent = paid.payee_id === payment.metadata?.business_user_id ? await sendBusinessWalletToPayoutAccount(paid.payee_id) : 0;
+  notifyBusinessPayout({ ...payment, ...paid }, { amountFormatted: `$${(paid.amount_to_payee / 100).toFixed(2)}`, sent: sent > 0 }).catch((err) => {
+    logger.warn('processPendingTransfers: business payout notice skipped', { paymentId: payment.id, error: err.message });
+  });
+  return true;
 }
 
 // A payment for a business invoice: a gig_payment with no gig, tagged by the invoice route.
@@ -158,9 +205,13 @@ async function confirmInvoiceForRelease(payment) {
     payment.payee_id = ownerId;
   }
   if (invoice.status !== 'paid') {
+    const paidAt = payment.captured_at || new Date().toISOString();
     await supabaseAdmin.from('BusinessInvoice')
-      .update({ status: 'paid', paid_at: payment.captured_at || new Date().toISOString() })
+      .update({ status: 'paid', paid_at: paidAt })
       .eq('id', invoice.id).neq('status', 'paid').neq('status', 'void');
+    // The business now knows this person as a customer (shared piece 3); never fails the release.
+    await recordBusinessContact({ businessUserId: payment.metadata?.business_user_id, userId: payment.payer_id,
+      feature: 'invoice', basis: 'own', at: paidAt });
   }
   return true;
 }
@@ -204,8 +255,13 @@ async function processPendingTransfers() {
       created_at,
       dispute_id,
       dispute_status,
+      payout_after,
+      sold_type,
       metadata
     `;
+    // A payment may also name the earliest its payout goes (shared piece 4: a plan's payout waits until 48 hours
+    // after the plan ends). Without it, the cooling-off below is the only wait, as before.
+    const payoutDue = `payout_after.is.null,payout_after.lte."${nowIso}"`;
 
     const [standardReadyRes, legacyReadyRes] = await Promise.all([
       supabaseAdmin
@@ -214,7 +270,8 @@ async function processPendingTransfers() {
         .in('payment_status', [PAYMENT_STATES.CAPTURED_HOLD, PAYMENT_STATES.REFUNDED_PARTIAL, PAYMENT_STATES.REFUNDED_FULL])
         .is('transfer_completed_at', null)
         .lte('cooling_off_ends_at', nowIso)
-        .or('dispute_id.is.null,dispute_status.eq.won'),
+        .or('dispute_id.is.null,dispute_status.eq.won')
+        .or(payoutDue),
       // Legacy safety-net: older captured_hold rows may have null cooling_off_ends_at.
       // Treat them as transferable once they are at least 48h old.
       supabaseAdmin
@@ -224,7 +281,8 @@ async function processPendingTransfers() {
         .is('transfer_completed_at', null)
         .is('cooling_off_ends_at', null)
         .lte('created_at', legacyCoolingFallbackIso)
-        .or('dispute_id.is.null,dispute_status.eq.won'),
+        .or('dispute_id.is.null,dispute_status.eq.won')
+        .or(payoutDue),
     ]);
 
     if (standardReadyRes.error || legacyReadyRes.error) {
@@ -264,7 +322,9 @@ async function processPendingTransfers() {
         // completed and confirmed) can never apply; it is released straight into the owner's wallet.
         const invoicePayment = isInvoicePayment(payment);
         const protectedWalletPayment = ['gig_payment', 'tip'].includes(payment.payment_type) && !invoicePayment;
-        const admittedStates = protectedWalletPayment ? ['captured_hold', 'refunded_partial', 'refunded_full'] : ['captured_hold'];
+        const partialPlanPayment = isPartiallyRefundedPlanPayment(payment, fresh?.payment_status);
+        const admittedStates = protectedWalletPayment ? ['captured_hold', 'refunded_partial', 'refunded_full']
+          : partialPlanPayment ? ['refunded_partial'] : ['captured_hold'];
         if (!fresh || !admittedStates.includes(fresh.payment_status) || (fresh.dispute_id && fresh.dispute_status !== 'won')) {
           logger.info('processPendingTransfers: skipping (state changed)', {
             paymentId: payment.id,
@@ -285,6 +345,11 @@ async function processPendingTransfers() {
           continue;
         }
 
+        if (partialPlanPayment) {
+          if (await releasePartiallyRefundedPlanPayment(payment)) successCount++; else skipCount++;
+          continue;
+        }
+
         if (protectedWalletPayment) {
           // A cancelled task's charged poster-fault fee has its own settlement:
           // only the worker share of the fee, never the task payment path. Only
@@ -299,6 +364,17 @@ async function processPendingTransfers() {
           continue;
         } else {
           if (invoicePayment && !(await confirmInvoiceForRelease(payment))) { skipCount++; continue; }
+          // Where the business pays the card fee, its share is fixed only once the card company has reported that fee
+          // (contract K9); until then the payment waits for the next run.
+          if (payment.metadata?.card_fee_by === 'business' && !payment.metadata?.card_fee_reported_at) {
+            const settled = await stripeService.settleCardFeeShare(payment.id).catch((err) => {
+              logger.warn('processPendingTransfers: card fee not reported yet', { paymentId: payment.id, error: err.message });
+              return null;
+            });
+            if (!settled?.metadata?.card_fee_reported_at) { skipCount++; continue; }
+            payment.amount_to_payee = settled.amount_to_payee;
+            transferAmount = settled.amount_to_payee;
+          }
           // ─── Transition to transfer_scheduled (concurrency guard) ───
           try {
             await transitionPaymentStatus(payment.id, PAYMENT_STATES.TRANSFER_SCHEDULED);
@@ -333,6 +409,15 @@ async function processPendingTransfers() {
               payment.payer_id,
               { description: 'Invoice payment received' },
             );
+          } else if (isPlanPayment(payment)) {
+            await walletService.creditGigIncome(
+              payment.payee_id,
+              transferAmount,
+              payment.gig_id,
+              payment.id,
+              payment.payer_id,
+              { description: 'Plan spot paid' },
+            );
           } else {
             await walletService.creditGigIncome(
               payment.payee_id,
@@ -355,7 +440,8 @@ async function processPendingTransfers() {
         const paidTowardDebt = await collectDebtsAfterIncome(payment.payee_id, payment.id);
         // An invoice paid to the business itself goes straight on to its own payout account; its owner hears of it
         // (a business account has no sign-in, so nobody reads its notices).
-        const businessPayee = invoicePayment && payment.payee_id === payment.metadata?.business_user_id;
+        const planPayment = isPlanPayment(payment);
+        const businessPayee = (invoicePayment || planPayment) && payment.payee_id === payment.metadata?.business_user_id;
         const sentToPayoutAccount = businessPayee ? await sendBusinessWalletToPayoutAccount(payment.payee_id) : 0;
         // Money that went straight to what the payee owed isn't withdrawable; its own notice says where it went.
         const withdrawLine = paidTowardDebt > 0 ? '' : ' You can withdraw to your bank anytime.';
@@ -406,6 +492,8 @@ async function processPendingTransfers() {
           });
         }
 
+        // A guest who paid for a plan spot already had "You're in · Paid"; the payout is the business's news alone.
+        if (planPayment) continue;
         // Notify requester: payment complete
         createNotification({
           userId: payment.payer_id,

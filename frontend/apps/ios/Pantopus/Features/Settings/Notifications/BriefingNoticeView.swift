@@ -46,6 +46,10 @@ struct BriefingNoticeView: View {
     var body: some View {
         Color.clear.frame(width: 0, height: 0)
             .task { await load() }
+            // No guidance card while this sheet is deciding or up (GUIDE spec §2).
+            .onChange(of: notice == nil) { _, _ in noteGuidanceWait() }
+            .onChange(of: mayShow) { _, _ in noteGuidanceWait() }
+            .onDisappear { GuidanceCenter.shared.briefingNoticeBusy = false }
             .sheet(item: Binding(get: { mayShow ? notice : nil }, set: { notice = $0 })) { shown in
                 if shown.kind == .suggestions {
                     suggestionsNotice
@@ -62,7 +66,7 @@ struct BriefingNoticeView: View {
                             Text("Times follow your briefing location’s time zone. We only notify you when there’s something useful.")
                             Text(
                                 "Change the times or turn either briefing off in Settings → Notifications. " +
-                                    "Your phone also needs to allow Pantopus notifications."
+                                    "Your \(DeviceWords.plainName) also needs to allow Pantopus notifications."
                             )
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             if let error { Text(error).foregroundStyle(Theme.Color.error) }
@@ -84,7 +88,7 @@ struct BriefingNoticeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .foregroundStyle(Theme.Color.appText)
-                    .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+                    .presentationDetentsFittingContentOnIPad(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
                     .interactiveDismissDisabled(saving || needsPermission)
                     .accessibilityIdentifier("briefingDefaultsNotice")
                     .task { _ = await recordNotice() }
@@ -119,15 +123,18 @@ struct BriefingNoticeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .foregroundStyle(Theme.Color.appText)
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDetentsFittingContentOnIPad(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         // One tap answers it; closing it without one would only bring it back.
         .interactiveDismissDisabled()
         .accessibilityIdentifier("suggestionsNotice")
     }
 
+    /// The times in the phone's own clock style ("On at 7:30 AM"), as Settings → Notifications shows them.
     private func summary(_ prefs: NotificationPreferencesDTO) -> String {
-        let morning = prefs.dailyBriefingEnabled ? "On at \(prefs.dailyBriefingTimeLocal)" : "Off"
-        let evening = prefs.eveningBriefingEnabled ? "On at \(prefs.eveningBriefingTimeLocal)" : "Off"
+        let morningTime = NotificationSettingsViewModel.clockLabel(prefs.dailyBriefingTimeLocal)
+        let eveningTime = NotificationSettingsViewModel.clockLabel(prefs.eveningBriefingTimeLocal)
+        let morning = prefs.dailyBriefingEnabled ? "On at \(morningTime)" : "Off"
+        let evening = prefs.eveningBriefingEnabled ? "On at \(eveningTime)" : "Off"
         return "Morning: \(morning)\nEvening: \(evening)"
     }
 
@@ -136,7 +143,13 @@ struct BriefingNoticeView: View {
         prefs.suggestionsSupported && prefs.suggestionsEnabled == nil
     }
 
+    private func noteGuidanceWait() {
+        GuidanceCenter.shared.briefingNoticeBusy = notice != nil && mayShow
+    }
+
     private func load() async {
+        GuidanceCenter.shared.briefingNoticeBusy = true
+        defer { noteGuidanceWait() }
         do {
             try scope.requireCurrent()
             let response = try await model.readPreferences(force: true)

@@ -395,20 +395,23 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
     }
 
     /// A14.5 — horizontally scrolling single-select value chips under
-    /// the row label (briefing send time, quiet-hours bounds). The raw
-    /// option string is both the label and the wire value. Half folded
-    /// like a book, the strip keeps to the larger side of the fold and
-    /// scrolls there, as on a phone, instead of putting chips on the crease.
+    /// the row label (briefing send time, quiet-hours bounds). The data
+    /// source names each option (`chipLabel`); the raw option stays the
+    /// wire value and the chip's id. The strip opens with the selected
+    /// chip in view. Half folded like a book, the strip keeps to the
+    /// larger side of the fold and scrolls there, as on a phone, instead
+    /// of putting chips on the crease.
     private func chipStrip(rowId: String, options: [String], selected: String) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(options, id: \.self) { option in
                     let isActive = option == selected
                     let traits: AccessibilityTraits = isActive ? [.isButton, .isSelected] : [.isButton]
+                    let label = dataSource.chipLabel(rowId, value: option)
                     Button {
                         flipChip(rowId: rowId, options: options, value: option, selected: selected)
                     } label: {
-                        Text(option)
+                        Text(label)
                             .font(.system(size: 13, weight: isActive ? .bold : .medium))
                             .foregroundStyle(isActive ? Theme.Color.primaryInkStrong : Theme.Color.appTextSecondary)
                             .padding(.horizontal, Spacing.s3)
@@ -424,14 +427,16 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .id(option)
                     .accessibilityIdentifier("groupedListChipOption_\(rowId)_\(option)")
-                    .accessibilityLabel(option)
+                    .accessibilityLabel(label)
                     .accessibilityAddTraits(traits)
                 }
             }
             .padding(.trailing, Spacing.s1)
         }
         .accessibilityIdentifier("groupedListChipStrip_\(rowId)")
+        .opensOnChip(selected)
         .besideFold()
     }
 
@@ -614,7 +619,7 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
         case let .slider(stops, index):
             if stops.indices.contains(index) { parts.append("currently \(stops[index])") }
         case let .chips(_, selected):
-            parts.append("currently \(selected)")
+            parts.append("currently \(dataSource.chipLabel(row.id, value: selected))")
         case let .channelTriad(p, e, s, locked):
             for (glyph, isOn) in [(ChannelGlyph.p, p), (.e, e), (.s, s)] {
                 let word = locked.contains(glyph) ? "locked on" : (isOn ? "on" : "off")
@@ -638,5 +643,16 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+private extension View {
+    /// Opens a chip strip with the chip whose id is `selected` in view: a later choice can start past the edge
+    /// (12-hour labels are wider; "8:00 AM" does on a phone). With no anchor the strip scrolls only as far as
+    /// that takes, so a strip that already shows its choice opens as it always did.
+    func opensOnChip(_ selected: String) -> some View {
+        ScrollViewReader { scroller in
+            self.onAppear { scroller.scrollTo(selected) }
+        }
     }
 }

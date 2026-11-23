@@ -93,6 +93,8 @@ import app.pantopus.android.ui.components.MessagesButton
 import app.pantopus.android.ui.components.MessagesEntryHolder
 import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.plans.PlansGateViewModel
 import app.pantopus.android.ui.screens.plans.components.PLAN_PRIVATE_SPOKEN
 import app.pantopus.android.ui.screens.plans.components.PlanPinBadge
@@ -327,6 +329,15 @@ private fun PlansSheetHost(
         reduceMotion = reduceMotion,
         modifier = Modifier.fillMaxSize(),
     ) { current ->
+        // A hosted repeating plan's Skip, Change and Stop repeating, under "Yours".
+        val seriesActions: (PlanDto) -> PlanSeriesActions = { plan ->
+            PlanSeriesActions(
+                onSkip = { viewModel.skipDate(plan) },
+                onChange = { actions.onChangePlan(plan.id) },
+                onStop = { viewModel.stopRepeating(plan) },
+                busy = state.seriesBusy,
+            )
+        }
         when {
             state.postedId != null && selected != null ->
                 if (selected.isBusiness) {
@@ -360,6 +371,8 @@ private fun PlansSheetHost(
                     onUseLocation = askLocation,
                     onUseHome = viewModel::useHome,
                     onOpenSettings = { context.openAppSettings() },
+                    // The person's own plans need no location: "Yours" shows over the request.
+                    yours = { PlansYours(state, onOpen = { actions.onOpenPlan(it.id) }, seriesActions = seriesActions) },
                 )
             state.selectedId != null && selected != null ->
                 PlanCardContent(
@@ -403,14 +416,7 @@ private fun PlansSheetHost(
                     onRetry = viewModel::refresh,
                     onOpenId = actions.onOpenPlan,
                     onHostFilter = viewModel::setHostFilter,
-                    seriesActions = { plan ->
-                        PlanSeriesActions(
-                            onSkip = { viewModel.skipDate(plan) },
-                            onChange = { actions.onChangePlan(plan.id) },
-                            onStop = { viewModel.stopRepeating(plan) },
-                            busy = state.seriesBusy,
-                        )
-                    },
+                    seriesActions = seriesActions,
                 )
         }
     }
@@ -739,7 +745,12 @@ private fun PlansTopChrome(
     // button last (founder decision 2026-11-08).
     val menu: @Composable () -> Unit = {
         onOpenMenu?.let {
-            GlassCircleButton(icon = PantopusIcon.Menu, label = "Menu", onClick = it, modifier = Modifier.testTag("plans.menu"))
+            GlassCircleButton(
+                icon = PantopusIcon.Menu,
+                label = "Menu",
+                onClick = it,
+                modifier = Modifier.guidanceAnchor(GuidanceTarget.Menu).testTag("plans.menu"),
+            )
         }
     }
     val chat: @Composable () -> Unit = {
