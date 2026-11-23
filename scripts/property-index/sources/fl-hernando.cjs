@@ -13,6 +13,7 @@ const { spawn } = require('node:child_process');
 const { download, zipDates, zipMembers, streamLines } = require('../lib/tables.cjs');
 const { number, positive } = require('../lib/values.cjs');
 const { fillHomes, describe, monthOf } = require('../lib/fill.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 const { countyRoll } = require('./fl-roll.cjs');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
@@ -111,13 +112,14 @@ async function fillHouseAreas(zip, records, parcels, structures, singleUnitHouse
   }
 
   let added = 0;
-  for (const { kind, home_type, restricted, address, facts } of records) {
+  for (const record of records) {
+    const { kind, home_type, restricted, address, facts } = record;
     if (kind !== 'property' || home_type !== 'house' || restricted || !address?.zip || address.unit || address.building || !facts || facts.living_sqft !== undefined) continue;
     const area = areas.get(facts.parcel_number);
     if (!area || streetKey(address) !== area.situs || address.zip !== area.zip) continue;
     // The state may count only the house or count the same set of structures. Hold any unexplained building count.
     if (facts.buildings_on_parcel !== 1 && facts.buildings_on_parcel !== structures.get(facts.parcel_number).total) continue;
-    facts.living_sqft = area.living;
+    hold(record, 'living_sqft', area.living);
     added += 1;
   }
   return added;
@@ -188,7 +190,7 @@ async function* build({ work, today }) {
   log(describe(COUNTY, counts));
   const sites = await readSites(zips.locations, parcels);
   const areasAdded = await fillHouseAreas(zips.era, roll.records, parcels, structures, singleUnitHouses, sites);
-  log(`${COUNTY}: ${areasAdded} houses gained ERA living area`);
+  log(`${COUNTY}: ERA living area held for ${areasAdded} houses`);
   yield {
     ...roll,
     name: COUNTY,
@@ -196,6 +198,7 @@ async function* build({ work, today }) {
     dataset: `${roll.dataset}, ${monthOf([...zipDates(zips.structures).values()][0])} CAMA data and ${monthOf([...zipDates(zips.era).values()][0])} ERA file`,
     method: 'county',
     source: 'fl-hernando',
+    held_from: { new_columns: { living_sqft: 'Hernando County Property Appraiser, ERA field 199 (Square Footage of Living Area)' } },
     title: 'County records',
   };
 }
