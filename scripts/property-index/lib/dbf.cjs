@@ -9,9 +9,9 @@ const { log } = require('./log.cjs');
  * @param {string} zip         The zip file
  * @param {string} member      The .dbf inside it
  * @param {string[]} columns   What this connector reads; a missing one stops the build (the source changed)
- * @param {object} [options]   { optional: columns that some counties' files don't have }
+ * @param {object} [options]   optional columns may be absent; includeDeleted yields null for deleted rows to preserve geometry alignment
  */
-async function* dbfRows(zip, member, columns, { optional = [] } = {}) {
+async function* dbfRows(zip, member, columns, { optional = [], includeDeleted = false } = {}) {
   const unzip = spawn('unzip', ['-p', zip, member], { stdio: ['ignore', 'pipe', 'ignore'] });
   const exited = new Promise((resolve, reject) => {
     unzip.on('error', reject);
@@ -55,6 +55,9 @@ async function* dbfRows(zip, member, columns, { optional = [] } = {}) {
         for (const [name, offset, length] of wanted) row[name] = buffer.toString('latin1', position + offset, position + offset + length).replace(/\0+/g, '').trim();
         rows += 1;
         yield row;
+      } else if (includeDeleted) {
+        // Keep its ordinal when pairing the table with a geometry file.
+        yield null;
       }
       position += recordLength;
     }

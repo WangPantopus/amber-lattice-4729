@@ -276,13 +276,13 @@ const heldFor = (fips) => (modeFor(fips) === 'live' ? HELD.filter((name) => held
  * whose words need a year it doesn't have isn't served. bath_totals takes facts out instead: the copy's full and half
  * baths split from a bare total, which its facts (and its building's) hold as before until the county is on the list.
  * mapped_lots adds words only: `copy.mapped` ({ from }) names each lot fact the copy (or its building) still states with the
- * value marked, in the county's words, for Property details and Place to say where it came from.
+ * value marked, in the county's words. A county that requires a label serves newly filled house lots only as measured rows.
  * @param {object} copy     a stored copy
  * @param {string[]} names  the lists that show, in order
  */
 function joinHeld(copy, names) {
   if (!copy || (!copy.held && !copy.held_from)) return copy;
-  const { held: kept = {}, held_from: words = {}, ...out } = copy;
+  const { held: kept = {}, held_from: words = {}, require_mapped_lot_label: requireLotLabel, ...out } = copy;
   if (names.includes('new_columns') && kept.new_columns) {
     out.facts = { ...copy.facts, ...(kept.new_columns.facts || {}) };
     if (copy.building) out.building = { ...copy.building, ...(kept.new_columns.building || {}) };
@@ -312,12 +312,26 @@ function joinHeld(copy, names) {
       if (split && out[part]) out[part] = Object.fromEntries(Object.entries(out[part]).filter(([name]) => !(name in split)));
     }
   }
-  if (names.includes('mapped_lots') && kept.mapped_lots) {
+  const showMapLabel = names.includes('mapped_lots');
+  if (kept.mapped_lots && (showMapLabel || requireLotLabel)) {
     const from = {};
     for (const part of ['facts', 'building']) {
       for (const [name, value] of Object.entries(kept.mapped_lots[part] || {})) {
         const said = words.mapped_lots?.[name];
-        if (typeof said === 'string' && out[part]?.[name] === value) from[name] = said;
+        if (out[part]?.[name] !== value) continue;
+        const labeled = showMapLabel && typeof said === 'string' && said.trim();
+        if (requireLotLabel) {
+          // Dallas fills a missing house lot. Keep it out of raw facts (also used by Add Home and older clients).
+          // The measured row is drawn only by clients that can show its source, with recorded facts taking precedence.
+          out[part] = { ...out[part] };
+          delete out[part][name];
+          if (labeled && part === 'facts') {
+            out.measured = {
+              facts: { ...out.measured?.facts, [name]: value },
+              from: { ...out.measured?.from, [name]: said },
+            };
+          }
+        } else if (labeled) from[name] = said;
       }
     }
     if (Object.keys(from).length) out.mapped = { from };
