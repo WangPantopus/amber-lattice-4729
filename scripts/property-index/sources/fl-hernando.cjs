@@ -195,10 +195,10 @@ async function* build({ work, today }) {
     ...roll,
     name: COUNTY,
     publisher: 'Florida Department of Revenue and the Hernando County Property Appraiser',
-    dataset: `${roll.dataset}, ${monthOf([...zipDates(zips.structures).values()][0])} CAMA data and ${monthOf([...zipDates(zips.era).values()][0])} ERA file`,
+    dataset: `${roll.dataset} and ${monthOf([...zipDates(zips.structures).values()][0])} CAMA data`,
     method: 'county',
     source: 'fl-hernando',
-    held_from: { new_columns: { living_sqft: 'Hernando County Property Appraiser, ERA field 199 (Square Footage of Living Area)' } },
+    held_from: { new_columns: { living_sqft: `Hernando County Property Appraiser, ${monthOf([...zipDates(zips.era).values()][0])} ERA field 199 (Square Footage of Living Area)` } },
     title: 'County records',
   };
 }
