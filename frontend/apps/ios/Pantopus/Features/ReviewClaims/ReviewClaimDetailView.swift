@@ -168,11 +168,13 @@ public struct ReviewClaimDetailView: View {
                             ReviewClaimApprovalSection(approval: approval, detail: detail, viewModel: viewModel)
                         }
                     }
-                    OverlineSection(title: evidenceOverline(detail.evidence.count)) {
-                        evidenceContent(detail.evidence)
-                            .accessibilityIdentifier("reviewClaimDetail_evidence")
-                        Button("Review private documents") { evidenceTarget = viewModel.makeEvidenceViewModel() }
-                            .disabled(viewModel.reviewingAction != nil || detail.claim.requiresDisputeReview)
+                    if isReviewable {
+                        OverlineSection(title: evidenceOverline(detail.evidence.count)) {
+                            evidenceContent(detail.evidence)
+                                .accessibilityIdentifier("reviewClaimDetail_evidence")
+                            Button("Review private documents") { evidenceTarget = viewModel.makeEvidenceViewModel() }
+                                .disabled(viewModel.reviewingAction != nil || detail.claim.requiresDisputeReview)
+                        }
                     }
                     if let statement = ReviewClaimMap.statement(for: detail.claim) {
                         OverlineSection(title: "Review note") {

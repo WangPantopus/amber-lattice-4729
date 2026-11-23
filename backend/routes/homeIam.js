@@ -34,6 +34,7 @@ const verifyToken = require('../middleware/verifyToken');
 const { invalidateRoleCache } = require('../middleware/verifyToken');
 const logger = require('../utils/logger');
 const { OLD_TO_NEW_PERM, homeAccessExpiresAt } = require('../utils/homeAccessPolicy');
+const { isOpenForReview } = require('../services/homeClaimRoutingService');
 const homeAuthorityService = require('../services/homeAuthorityService');
 const homeExternalShareService = require('../services/homeExternalShareService');
 const homeInstantClaimService = require('../services/homeInstantClaimService');
@@ -134,17 +135,17 @@ router.get('/:id/me', verifyToken, async (req, res) => {
       && !!claim_window_ends_at
       && new Date(claim_window_ends_at) > new Date();
 
-    // Ownership claim state: show rejected/needs_more_info so dashboard can display the right message
+    // Only an open request for more information belongs on the dashboard.
     let ownership_claim_state = null;
     const { data: latestClaim } = await supabaseAdmin
       .from('HomeOwnershipClaim')
-      .select('state')
+      .select('state, claim_phase_v2, terminal_reason, merged_into_claim_id, expires_at')
       .eq('home_id', homeId)
       .eq('claimant_user_id', userId)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (latestClaim?.state === 'rejected' || latestClaim?.state === 'needs_more_info') {
+    if (latestClaim?.state === 'needs_more_info' && isOpenForReview(latestClaim)) {
       ownership_claim_state = latestClaim.state;
     }
 

@@ -522,7 +522,7 @@ router.get('/:id/ownership-claims', verifyToken, async (req, res) => {
     if (error) throw error;
 
     // Mask claimant details by default
-    const maskedClaims = (claims || []).map(c => ({
+    const maskedClaims = (claims || []).filter(c => homeClaimRoutingService.isOpenForReview(c)).map(c => ({
       ...c,
       claimant: {
         masked: true,
@@ -534,6 +534,7 @@ router.get('/:id/ownership-claims', verifyToken, async (req, res) => {
       },
     }));
 
+    res.set('Cache-Control', 'private, no-store');
     res.json({ claims: maskedClaims });
   } catch (err) {
     if (sendUnavailable(res, err)) return;
@@ -582,6 +583,7 @@ router.get('/:id/ownership-claims/compare', verifyToken, async (req, res) => {
  */
 router.get('/:id/ownership-claims/:claimId', verifyToken, async (req, res) => {
   try {
+    res.set('Cache-Control', 'private, no-store');
     const result = await homeClaimReviewService.read({ homeId: req.params.id, claimId: req.params.claimId, actorId: req.user.id });
     const approval = await homeClaimIdentityService.reviewerApprovalOrNull(result.claimId);
     res.json({ claim: { ...result.claim, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.claim.evidence) }, approval });

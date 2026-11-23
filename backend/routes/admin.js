@@ -11,6 +11,7 @@ const verifyToken = require('../middleware/verifyToken');
 const { requireAdmin } = require('../middleware/verifyToken');
 const logger = require('../utils/logger');
 const homeClaimReviewService = require('../services/homeClaimReviewService');
+const homeClaimRoutingService = require('../services/homeClaimRoutingService');
 const homeClaimIdentityService = require('../services/homeClaimIdentityService');
 const { getRequestSessionScope, requireExpectedSessionScope } = require('../utils/requestSessionScope');
 const funnelReport = require('../services/funnelReport');
@@ -310,10 +311,12 @@ router.get('/claims/:claimId', async (req, res) => {
   try {
     if (!requireExpectedSessionScope(req, res)) return;
     const result = await homeClaimReviewService.read({ claimId: req.params.claimId, actorId: req.user.id, platformAdmin: true });
-    const approval = await homeClaimIdentityService.reviewerApprovalOrNull(result.claimId);
+    const archived = !homeClaimRoutingService.isOpenForReview(result.claim);
+    const approval = !archived
+      ? await homeClaimIdentityService.reviewerApprovalOrNull(result.claimId) : null;
     res.set('Cache-Control', 'private, no-store');
     res.json({ claim: { ...result.claim, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.claim.evidence) },
-      home: result.home, claimant: result.claimant, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.evidence), approval,
+      home: result.home, claimant: result.claimant, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.evidence), evidence_archived: archived, approval,
       claim_session: { ...getRequestSessionScope(req), home_id: result.homeId, claim_id: result.claimId } });
   } catch (error) { homeClaimReviewService.sendError(res, error); }
 });

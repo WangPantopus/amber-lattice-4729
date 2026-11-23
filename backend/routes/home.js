@@ -1854,6 +1854,7 @@ router.get('/discover', verifyToken, async (req, res) => {
       supabaseAdmin
         .from('HomeResidencyClaim')
         .select('home_id, status')
+        .eq('status', 'pending')
         .eq('user_id', userId)
         .in('home_id', homeIds),
     ]);
@@ -2005,6 +2006,7 @@ router.get('/:id/public-profile', verifyToken, async (req, res) => {
       supabaseAdmin
         .from('HomeResidencyClaim')
         .select('id, status, created_at')
+        .eq('status', 'pending')
         .eq('home_id', homeId)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })

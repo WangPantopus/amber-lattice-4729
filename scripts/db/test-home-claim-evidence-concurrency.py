@@ -104,14 +104,14 @@ try:
  ok(mutate(4,'reserve'));ok(mutate(4,'begin_upload'));w.run('BEGIN;');ok(withdraw(4));before=projection(4)
  t,out,errs=concurrent(mutate(4,'finalize'));r=finish(t,out,errs)
  assert r.get('code')=='CLAIM_NOT_ELIGIBLE' and projection(4)==before,r
- # Even a shared-household claimant retains only exact pending-file retirement,
- # backed by its protected withdrawal receipt; this grants no read/membership.
- ok(mutate(4,'retire'))
- print('PASS: withdrawal fences pending publication and exact uploader can retire it',flush=True)
+ # The worker can reclaim a reservation that never finished uploading.
+ assert json.loads(w.run(mutate(4,'retire'))[0]).get('code')=='CLAIM_NOT_ELIGIBLE'
+ print('PASS: withdrawal ends access to the unpublished upload',flush=True)
  ok(mutate(5,'reserve'));ok(mutate(5,'begin_upload'));w.run('BEGIN;');ok(mutate(5,'finalize'))
  t,out,errs=concurrent(withdraw(5));r=finish(t,out,errs);assert r.get('ok') is True,r
- assert ok(mutate(5,'retire'))['record']['state']=='retired'
- print('PASS: publication then non-private withdrawal permits protected pending retirement',flush=True)
+ assert json.loads(w.run(mutate(5,'retire'))[0]).get('code')=='CLAIM_NOT_ELIGIBLE'
+ assert w.run('SELECT state FROM public."HomeClaimEvidenceIntent" WHERE id='+lit(uploads[5])+';')==['ready']
+ print('PASS: withdrawal preserves filed evidence without applicant access',flush=True)
  for i in range(6,20):ready(i)
  verify,receipt=inspection(6)
  blocked(6,'reviewer permission revoked before verification','INSERT INTO public."HomePermissionOverride"(home_id,user_id,permission,allowed) VALUES('+lit(homes[6])+','+lit(owner)+",'ownership.manage',false);",verify,'CLAIM_EVIDENCE_DENIED')
