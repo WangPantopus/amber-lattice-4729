@@ -569,6 +569,7 @@ router.get('/:id/ownership-claims/compare', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Home not found' });
     }
 
+    res.set('Cache-Control', 'private, no-store');
     res.json(comparison);
   } catch (err) {
     if (sendUnavailable(res, err)) return;

@@ -9,25 +9,11 @@ function mapById(rows, idField = 'id') {
   return map;
 }
 
-function shouldIncludeComparisonClaim(claim) {
-  return (
-    homeClaimRoutingService.isClaimActiveRecord(claim) ||
-    homeClaimRoutingService.hasQualifyingActiveChallenge(claim)
-  );
-}
-
-// `forAdmin`: the review team sees each claimant's email and every evidence row with its file reference and details.
-// A home's owners see who is claiming and which kinds of proof they gave, without those.
+// An open comparison shows proof types. Document access goes through the private review.
 function claimantFor(user, forAdmin) {
   if (!user || forAdmin) return user;
   const { email, ...shown } = user;
   return shown;
-}
-
-function evidenceFor(rows, forAdmin) {
-  if (forAdmin) return rows;
-  return rows.filter((row) => row.evidence_type !== 'idv')
-    .map(({ storage_ref, metadata, ...shown }) => shown);
 }
 
 async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
@@ -58,7 +44,7 @@ async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
 
   const owners = ownersResult.data || [];
   const allClaims = claimsResult.data || [];
-  const claims = allClaims.filter((claim) => shouldIncludeComparisonClaim(claim));
+  const claims = allClaims.filter((claim) => homeClaimRoutingService.isOpenForReview(claim));
 
   const userIds = [
     ...new Set([
@@ -80,7 +66,7 @@ async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
       ? { data: [], error: null }
       : supabaseAdmin
         .from('HomeVerificationEvidence')
-        .select('id, claim_id, evidence_type, provider, status, confidence_level, storage_ref, metadata, created_at, updated_at')
+        .select('id, claim_id, evidence_type, provider, status, confidence_level, created_at, updated_at')
         .in('claim_id', claimIds)
         .order('created_at', { ascending: true }),
   ]);
@@ -91,6 +77,7 @@ async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
   const usersById = mapById(usersResult.data || []);
   const evidenceByClaimId = {};
   for (const evidence of evidenceResult.data || []) {
+    if (evidence.evidence_type === 'idv') continue;
     if (!evidenceByClaimId[evidence.claim_id]) {
       evidenceByClaimId[evidence.claim_id] = [];
     }
@@ -99,7 +86,7 @@ async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
 
   const incumbentOwners = owners.map((owner) => ({
     ...owner,
-    user: usersById[owner.subject_id] || null,
+    user: claimantFor(usersById[owner.subject_id] || null, forAdmin),
   }));
 
   const comparisonClaims = claims.map((claim) => ({
@@ -121,7 +108,7 @@ async function buildHomeClaimComparison(homeId, { forAdmin = false } = {}) {
     risk_score: claim.risk_score,
     created_at: claim.created_at,
     updated_at: claim.updated_at,
-    evidence: evidenceFor(evidenceByClaimId[claim.id] || [], forAdmin),
+    evidence: evidenceByClaimId[claim.id] || [],
   }));
 
   return {

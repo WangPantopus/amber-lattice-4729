@@ -62,7 +62,9 @@ function isClaimActiveRecord(claim) {
 
 // The claim record and its documents leave normal app access when the claim ends.
 function isOpenForReview(claim, now = Date.now()) {
-  return isClaimActiveRecord(claim) && !['approved', 'rejected', 'revoked'].includes(claim.state)
+  if (!claim || claim.merged_into_claim_id) return false;
+  const reviewing = isClaimActiveRecord(claim) || (!claim.claim_phase_v2 && claim.state === 'disputed');
+  return reviewing && !['approved', 'rejected', 'revoked'].includes(claim.state)
     && (!claim.terminal_reason || claim.terminal_reason === 'none')
     && (!claim.expires_at || Date.parse(claim.expires_at) > now);
 }
