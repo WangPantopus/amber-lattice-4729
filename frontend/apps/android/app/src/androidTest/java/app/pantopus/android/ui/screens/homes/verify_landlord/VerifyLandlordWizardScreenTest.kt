@@ -72,7 +72,7 @@ class VerifyLandlordWizardScreenTest {
         var dismissed = false
         compose.setContent {
             PantopusTheme {
-                VerifyLandlordWizardScreen({ dismissed = true }, {}, vm)
+                VerifyLandlordWizardScreen({ dismissed = true }, {}, {}, vm)
             }
         }
         compose.onNodeWithTag(WizardShellTags.PRIMARY_CTA).performClick()
@@ -96,7 +96,7 @@ class VerifyLandlordWizardScreenTest {
         var dismissed = false
         compose.setContent {
             PantopusTheme {
-                VerifyLandlordWizardScreen({ dismissed = true }, {}, vm)
+                VerifyLandlordWizardScreen({ dismissed = true }, {}, {}, vm)
             }
         }
         compose.onNodeWithTag(WizardShellTags.PRIMARY_CTA).performClick()

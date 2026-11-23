@@ -87,6 +87,7 @@ const val VERIFY_LANDLORD_SCREEN_TAG: String = "verifyLandlordWizard"
 @Composable
 fun VerifyLandlordWizardScreen(
     onDismiss: () -> Unit,
+    onOpenDocumentVerification: (String) -> Unit,
     onOpenPostcardVerification: (String) -> Unit,
     viewModel: VerifyLandlordWizardViewModel = hiltViewModel(),
 ) {
@@ -127,6 +128,10 @@ fun VerifyLandlordWizardScreen(
                 viewModel.acknowledgeEvent()
                 onDismiss()
             }
+            is VerifyLandlordOutboundEvent.OpenDocumentVerification -> {
+                viewModel.acknowledgeEvent()
+                onOpenDocumentVerification(event.homeId)
+            }
             is VerifyLandlordOutboundEvent.OpenPostcardVerification -> {
                 viewModel.acknowledgeEvent()
                 onOpenPostcardVerification(event.homeId)
@@ -148,7 +153,11 @@ fun VerifyLandlordWizardScreen(
                 (state.submitState as? VerifyLandlordSubmitState.Error)?.let {
                     ErrorSummaryBanner(VerifyLandlordValidationErrors(), serverMessage = it.message, title = state.submissionErrorTitle)
                 }
-                StartStep(content = state.startContent)
+                if (state.noLandlord) {
+                    Text("This home has no verified landlord yet. You can verify your address with a document.")
+                } else {
+                    StartStep(content = state.startContent)
+                }
             }
             VerifyLandlordStep.Details -> DetailsStep(state = state, viewModel = viewModel)
             VerifyLandlordStep.Sent ->

@@ -15,7 +15,7 @@ import { openInfoRequest } from '@/components/homes/ClaimApprovalChecklist';
 import ClaimInfoRequestNote from '@/components/homes/ClaimInfoRequestNote';
 import { myClaimsQuery } from '@/lib/myHomes';
 import { toast } from '@/components/ui/toast-store';
-import { useVerifyOptions, invalidateVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
+import { useMailAvailable, useVerifyOptions, invalidateVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
 import { FAST_VERIFY_WORDS } from '@/components/place/fastVerify/fastVerifyWords';
 
 type EvidenceType = 'utility_bill' | 'lease';
@@ -61,6 +61,7 @@ export default function VerifyResidencyPage() {
   // FASTVERIFY phase 4: someone holding a claim, with the bill read at once on (home_fast_verify_document), gets the
   // Bill check: one photo, read at once; anything unsure goes to today's review. Off (or an answer to a reviewer's
   // request): today's upload, unchanged.
+  const mailAvailable = useMailAvailable(homeId);
   const verifyOptions = useVerifyOptions(homeId).data;
   const [billOutcome, setBillOutcome] = useState<'review' | 'unreadable' | null>(null);
   // Once the Bill check has answered it stays on screen (the refreshed options then say the document is in review).
@@ -70,9 +71,9 @@ export default function VerifyResidencyPage() {
     && (documentOption.fast ?? verifyOptions?.level === 'added'));
 
   // What a Pantopus reviewer asked for on this claim (Request info), until a document answers it.
-  const myClaims = useQuery(myClaimsQuery());
-  const claimForNote = (myClaims.data?.claims ?? []).find((c) => (existingClaimId ? c.id === existingClaimId
-    : sameHomeId(c.home_id, homeId) && c.claim_type === 'resident' && c.status === 'under_review'));
+  const myClaims = useQuery({ ...myClaimsQuery(), ...(existingClaimId ? { staleTime: 0 } : {}) });
+  const claimForNote = (myClaims.data?.claims ?? []).find((c) => sameHomeId(c.home_id, homeId) && c.claim_type === 'resident'
+    && c.status === 'under_review' && (!existingClaimId || c.id === existingClaimId));
   const asked = claimForNote ? openInfoRequest(claimForNote) : null;
 
   const [selectedDoc, setSelectedDoc] = useState<EvidenceType | null>(null);
@@ -215,6 +216,13 @@ export default function VerifyResidencyPage() {
     }
   }, [homeId, existingClaimId, selectedDoc, pickedFile, uploadSession, router, returnQuery, billMode, queryClient]);
 
+  if (existingClaimId && !claimForNote && uploadSession.scope) {
+    if (myClaims.isFetching) return <p className="p-6" role="status">Checking your claim…</p>;
+    if (myClaims.isError) return <button className="p-6 underline" onClick={() => void myClaims.refetch()}>Retry claim status</button>;
+    return <div className="space-y-3 p-6"><p>This claim is closed or unavailable.</p>
+      <Link href="/app/homes" className="underline">Back to My Homes</Link></div>;
+  }
+
   if (!uploadSession.scope) return <div className="p-6"><p role="status">{uploadSession.error || 'Verifying your current session…'}</p>
     {uploadSession.error && <button type="button" onClick={uploadSession.retry}>Retry</button>}</div>;
 
@@ -238,9 +246,9 @@ export default function VerifyResidencyPage() {
               <p role="status" className="rounded-2xl border border-app-border bg-app-surface p-5 text-[15px] leading-[22px]">
                 We couldn&apos;t read this clearly, so a person will review it. You can also verify another way.
               </p>
-              <Link href={`/app/homes/${homeId}/verify-postcard${returnQuery}`} className="w-full min-h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold flex items-center justify-center">
+              {mailAvailable && <Link href={`/app/homes/${homeId}/verify-postcard${returnQuery}`} className="w-full min-h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold flex items-center justify-center">
                 {FAST_VERIFY_WORDS.mailMeACode}
-              </Link>
+              </Link>}
               <Link href={`/app/homes/${homeId}/verify-residency/submitted${returnQuery}`} className="w-full min-h-[48px] rounded-xl text-primary-600 dark:text-primary-300 font-semibold flex items-center justify-center hover:bg-app-hover">
                 {FAST_VERIFY_WORDS.notNow}
               </Link>
@@ -278,7 +286,7 @@ export default function VerifyResidencyPage() {
                 </button>
               )}
               <p className="flex items-start gap-2 rounded-xl bg-primary-50 dark:bg-primary-950/30 px-3.5 py-3 text-[13.5px] text-primary-800 dark:text-primary-200">
-                <Info size={16} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />You&apos;re verified as soon as you use this photo. A person at Pantopus also reviews it afterwards.
+                <Info size={16} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />If the document matches your name and home address, you may be verified right away. Otherwise, a reviewer will check it.
               </p>
               <p className="flex items-start gap-2 text-[13px] text-app-text-secondary">
                 <Lock size={15} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />Cover account numbers if you like. We only read the name, address and date.
@@ -441,8 +449,7 @@ export default function VerifyResidencyPage() {
         </button>
 
         <p className="text-center text-xs text-app-text-muted mt-6">
-          Reviewed by a person. Prefer not to upload anything? A postcard with a code takes 3–7 days and is yours to
-          keep.
+          Reviewed by a person. {mailAvailable && <Link className="underline" href={`/app/homes/${homeId}/verify-postcard${returnQuery}`}>Verify by mail instead</Link>}
         </p>
       </main>
     </div>

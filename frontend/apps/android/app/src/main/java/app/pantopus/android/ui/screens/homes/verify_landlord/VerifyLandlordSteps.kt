@@ -325,5 +325,7 @@ sealed interface VerifyLandlordOutboundEvent {
      * Submit succeeded — pop the wizard and push the standalone A12.7
      * Mail verification screen so the user can review their mailing address.
      */
+    data class OpenDocumentVerification(val homeId: String) : VerifyLandlordOutboundEvent
+
     data class OpenPostcardVerification(val homeId: String) : VerifyLandlordOutboundEvent
 }

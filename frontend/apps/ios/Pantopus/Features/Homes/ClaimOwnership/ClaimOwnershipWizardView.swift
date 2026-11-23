@@ -50,14 +50,20 @@ public struct ClaimOwnershipWizardView: View {
                 kind: .bill,
                 address: billVerified?.address ?? viewModel.startContent.homeLabel,
                 isRenter: billVerified?.isRenter ?? false,
-                onMailCode: { (billVerified?.onMailCode ?? onClose)() },
-                onGoToPlace: { (billVerified?.onGoToPlace ?? onClose)() }
-            )
+                onMailCode: billMailAction
+            ) {
+                (billVerified?.onGoToPlace ?? onClose)()
+            }
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
         } else {
             wizard
         }
+    }
+
+    private var billMailAction: (() -> Void)? {
+        guard let billVerified, HomeVerifyOptionsStore.shared.cached(homeId: viewModel.homeId)?.offers(.mail) == true else { return nil }
+        return { billVerified.onMailCode() }
     }
 
     private var wizard: some View {

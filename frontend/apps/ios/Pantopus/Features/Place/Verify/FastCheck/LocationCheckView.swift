@@ -41,7 +41,7 @@ struct LocationCheckView: View {
                     kind: .location,
                     address: viewModel.address,
                     isRenter: isRenter,
-                    onMailCode: onMailCode,
+                    onMailCode: HomeVerifyOptionsStore.shared.cached(homeId: viewModel.homeId)?.offers(.mail) == true ? onMailCode : nil,
                     onGoToPlace: onGoToPlace
                 )
             } else {

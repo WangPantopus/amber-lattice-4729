@@ -96,7 +96,7 @@ fun PlaceDetailScreen(
     val verifyOptions =
         rememberVerifyOptions(viewModel.calendarHomeId.takeIf { onStartVerify != null && viewModel.group in MAIL_LEVEL_GROUPS })
     val mailCode: (() -> Unit)? =
-        onStartVerify?.takeIf { verifyOptions?.isFast == true }?.let { start -> { start(PlaceVerifyMethod.MAIL) } }
+        onStartVerify?.takeIf { verifyOptions?.isFast == true && verifyOptions.available("mail") != null }?.let { start -> { start(PlaceVerifyMethod.MAIL) } }
 
     // The section scrolls under its header, which slides away while it scrolls down and comes back near the top (founder
     // request 2026-11-07, as on iPhone). The refresh line under the header stays.

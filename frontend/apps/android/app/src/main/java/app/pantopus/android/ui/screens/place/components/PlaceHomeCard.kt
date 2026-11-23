@@ -98,7 +98,7 @@ fun placeVerifiedMark(
     val date = PlacePresentation.fmtMonthDay(fast?.at ?: options.verifiedAt, zone)
     return PlaceVerifiedMark(
         by = kind?.let { k -> listOfNotNull("by $k", date).joinToString(" · ") },
-        needsMail = options.isFast,
+        needsMail = options.isFast && options.available("mail") != null,
     )
 }
 

@@ -76,7 +76,7 @@ beforeEach(() => {
   // These cases exercise the ordinary verification branch after a successful
   // lookup confirms no landlord or tenant lease, not after a missing mock throws.
   mockTenantStatus.mockReset().mockImplementation(async (homeId: string) => ({
-    home_id: homeId, landlord: { has_landlord: false }, lease: { state: 'none', lease: null },
+    home_id: homeId, mail_available: true, landlord: { has_landlord: false }, lease: { state: 'none', lease: null },
   }));
   mockConfirmOpen.mockReset();
   mockReload.mockReset();
@@ -112,9 +112,9 @@ describe('pending_postcard state', () => {
     expect(screen.getByText('Enter verification code')).toBeInTheDocument();
   });
 
-  test('shows "Resend code" button', () => {
+  test('keeps postcard changes in the postcard verification screen', () => {
     render(<VerificationCenter homeId={HOME_ID} />);
-    expect(screen.getByText('Resend code')).toBeInTheDocument();
+    expect(screen.queryByText('Resend code')).not.toBeInTheDocument();
   });
 });
 
@@ -141,9 +141,9 @@ describe('provisional_bootstrap state', () => {
     expect(screen.getByText('Upload proof')).toBeInTheDocument();
   });
 
-  test('shows "Mail me a code" button', () => {
+  test('shows "Mail me a code" when the service offers it', async () => {
     render(<VerificationCenter homeId={HOME_ID} />);
-    expect(screen.getByText('Mail me a code')).toBeInTheDocument();
+    expect(await screen.findByText('Mail me a code')).toBeInTheDocument();
   });
 });
 
@@ -276,11 +276,11 @@ describe('button actions', () => {
     expect(mockPush).toHaveBeenCalledWith(`/app/homes/${HOME_ID}/claim-owner/evidence`);
   });
 
-  test('"Mail me a code" navigates to verify-postcard page', () => {
+  test('"Mail me a code" navigates to verify-postcard page', async () => {
     mockAccess = buildAccess({ verification_status: 'provisional_bootstrap' });
     render(<VerificationCenter homeId={HOME_ID} />);
 
-    fireEvent.click(screen.getByText('Mail me a code'));
+    fireEvent.click(await screen.findByText('Mail me a code'));
     expect(mockPush).toHaveBeenCalledWith(`/app/homes/${HOME_ID}/verify-postcard`);
   });
 });

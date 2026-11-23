@@ -25,6 +25,10 @@ struct MyHomesListView: View {
 
     var body: some View {
         VStack(spacing: Spacing.s0) {
+            if let url = URL(string: InviteLinks.publicPageURLString(path: "/app/landlord/properties")) {
+                Link("Rental properties on the web", destination: url)
+                    .frame(minHeight: 44)
+            }
             if savedAttempts.removal {
                 Button("Check an unfinished removal") { showingRemovalRecovery = true }
                     .frame(minHeight: 44)

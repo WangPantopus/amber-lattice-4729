@@ -4,7 +4,7 @@
 // (POST /api/upload/ownership-evidence/:homeId/:claimId) stays exactly as it is: the document always goes to today's
 // review queue. When the switch is on and the person holds a claim here, the server also reads the picture with the
 // Anthropic client (services/ai/llm.js), asking only for the name, the address and the date and how sure it is of
-// each. All three sure, the name the account's (or the account holder's the person gave), the address this Home's,
+// each. All three sure, the document an accepted kind, the name the claimant's, the address this Home's,
 // the date within 90 days: the claim is marked Verified (kind 'document') and the answer says 'verified'. Anything
 // else is 'needs_review' (today's path), or 'unreadable'. A rejection in the review queue clears the mark and tells
 // the person (billRejected). 3 photos a day. Nothing read is kept: the answer and the date only.
@@ -55,18 +55,17 @@ const SYSTEM = `You read one document a person photographed to show they live at
 For each, say whether you are sure (name_sure, address_sure, date_sure): sure means printed clearly and unambiguous. Never read or repeat account numbers, amounts or anything else. kind is what the document is. readable is false when the picture is not a document, is too blurry, or shows no name or address. Use "" for anything you can't read.`;
 
 /** Words of a name, lowercase, without punctuation. */
-const nameWords = (value) => String(value || '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').replace(/['-]/g, '').split(/\s+/).filter(Boolean);
+const nameWords = (value) => String(value || '').toLowerCase().normalize('NFC').replace(/[^\p{L}\p{M}\s'-]/gu, ' ').replace(/['-]/g, '').split(/\s+/).filter(Boolean);
 
 /** Does a printed name match this person (last name, and the first name or its initial)? */
 function nameMatches(printed, { firstName, lastName }) {
   const last = nameWords(lastName);
   const first = nameWords(firstName)[0];
-  if (!last.length) return false;
+  if (!first || !last.length) return false;
   return printed.some((name) => {
     const words = nameWords(name.includes(',') ? name.split(',').reverse().join(' ') : name);
     const hasLast = last.every((part) => words.includes(part));
     if (!hasLast) return false;
-    if (!first) return true;
     const others = words.filter((w) => !last.includes(w));
     return others.some((w) => w === first || (w.length === 1 && w === first[0]));
   });
@@ -127,7 +126,7 @@ async function read(block) {
  * After a residency document is saved: the fast_check part of the upload's answer, or null when it doesn't apply
  * (the switch off for the person, no claim here). Never throws: the upload stands either way.
  */
-async function afterUpload({ homeId, claimId, user, file, accountHolderName = null }) {
+async function afterUpload({ homeId, claimId, user, file }) {
   try {
     if (!(await fastCheck.flagOn(fastCheck.FLAGS.base, user)) || !(await fastCheck.flagOn(fastCheck.FLAGS.document, user))) return null;
     // Only a residency document of the person's own (an ownership document is for the ownership review alone).
@@ -154,7 +153,7 @@ async function afterUpload({ homeId, claimId, user, file, accountHolderName = nu
       void fastCheck.countTry(KIND, 'error', ['read_unavailable']);
       return { result: 'needs_review' };
     }
-    if (reading.readable === false) {
+    if (reading.readable !== true) {
       void fastCheck.countTry(KIND, 'miss', ['unreadable']);
       return { result: 'unreadable' };
     }
@@ -163,10 +162,11 @@ async function afterUpload({ homeId, claimId, user, file, accountHolderName = nu
       db.from('User').select('first_name, last_name').eq('id', user.id).maybeSingle(),
     ]);
     if (!home) return { result: 'needs_review' };
-    const given = nameWords(accountHolderName);
-    const holder = given.length >= 2
-      ? { firstName: given[0], lastName: given.slice(1).join(' ') }
-      : { firstName: account && account.first_name, lastName: account && account.last_name };
+    if (!['utility_bill', 'bank_statement', 'lease'].includes(reading.kind)) {
+      void fastCheck.countTry(KIND, 'miss', ['document_type']);
+      return { result: 'needs_review' };
+    }
+    const holder = { firstName: account?.first_name, lastName: account?.last_name };
     const sure = reading.name_sure === true && reading.address_sure === true && reading.date_sure === true;
     const checks = {
       name: nameMatches(Array.isArray(reading.names) ? reading.names : [], holder),

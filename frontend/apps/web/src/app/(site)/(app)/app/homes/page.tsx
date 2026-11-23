@@ -123,12 +123,15 @@ export default function HomesPage() {
       // A private task workspace is not a verification receipt. Keep its
       // document claim visible even though the Home already appears below.
       const homeIds = new Set(list.filter((h) => h.access_kind !== 'private_setup').map((h) => h.id));
+      const sharedIds = new Set(list.filter(h => h.access_kind === 'shared').map(h => h.id));
       const claims = claimsRes?.claims;
       if (!Array.isArray(claims)) throw new Error('Your verification progress could not be loaded. Please retry.');
       // Each claim is named by the address you claimed (your own entry), as on iOS and Android.
-      const enriched = claims.filter((c) => claimInProgress(c.status) && c.home_id && !homeIds.has(c.home_id))
+      const enriched = claims.filter((c) => claimInProgress(c.status) && c.home_id
+        && (!homeIds.has(c.home_id) || (c.claim_type === 'owner' && sharedIds.has(c.home_id))))
         .map((claim) => { const { line, city } = claimAddress(claim); return { claim, addressLine: line, cityLine: city }; });
-      const asked = claims.filter((c) => claimInProgress(c.status) && c.home_id && homeIds.has(c.home_id) && openInfoRequest(c));
+      const asked = claims.filter((c) => claimInProgress(c.status) && c.home_id && homeIds.has(c.home_id)
+        && !(c.claim_type === 'owner' && sharedIds.has(c.home_id)) && openInfoRequest(c));
       // A page that opened on the kept list becomes ready with its first confirmed answer.
       if (!background || ready.current === null) ready.current = current;
       setHomes(list); setPendingClaims(enriched); setAskedClaims(asked);
@@ -321,9 +324,12 @@ export default function HomesPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-app-text">My Homes</h1>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          <Link href="/app/landlord/properties" className="text-sm font-semibold underline">Rental properties</Link>
           <Link href="/app/homes/new" className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">
             Add home
           </Link>
+          </div>
         </div>
         {savedRemoval && <div className="mb-5"><Link href="/app/homes/member-removals" className="text-sm text-blue-700 dark:text-blue-400 underline">Check an unfinished removal</Link></div>}
         {!loading && !error && refreshError && (
@@ -388,7 +394,7 @@ export default function HomesPage() {
                             This claim does not grant household access.
                             {hasPrivateSetup ? ' Your private tasks remain available while verification is pending.' : ''}
                           </p>
-                          <p className="mt-2 text-sm text-app-text-secondary">{asked ? 'Upload documents →' : 'Continue →'}</p>
+                          <p className="mt-2 text-sm text-app-text-secondary">{asked ? 'Upload documents →' : residency ? 'Continue →' : 'Continue ownership verification →'}</p>
                         </div>
                         <button
                           type="button"

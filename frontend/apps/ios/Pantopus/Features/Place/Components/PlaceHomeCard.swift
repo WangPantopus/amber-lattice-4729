@@ -77,7 +77,7 @@ struct PlaceHomeCard: View {
                 PlaceTextButton(title: "Enter mailed code", minHeight: 44, action: onEnterMailedCode)
                     .padding(.top, 6)
                     .accessibilityIdentifier("place.homeCard.enterMailedCode")
-            } else if let onMailCode, verifyOptions?.needsMail == true, !claimInReview {
+            } else if let onMailCode, verifyOptions?.canRequestNeededMail == true, !claimInReview {
                 PlaceRowDivider().padding(.top, 14)
                 mailCodeLine(onMailCode).padding(.top, 10)
             }

@@ -13,7 +13,7 @@ export interface FastVerifiedProps {
   address: string;
   /** Renters also see what others near them pay. */
   renter: boolean;
-  onMailCode: () => void;
+  onMailCode?: () => void;
   onContinue: () => void;
 }
 
@@ -55,17 +55,17 @@ export default function FastVerified({ kind, address, renter, onMailCode, onCont
           <Lock size={17} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0 text-app-text-muted" />
           <div>
             <div className="text-[15px] text-app-text leading-[21px]">Residency letters and home Mail</div>
-            <div className="text-[13px] text-app-text-secondary mt-0.5">Ask for the postcard whenever you need them.</div>
+            <div className="text-[13px] text-app-text-secondary mt-0.5">{onMailCode ? 'Ask for a postcard to finish verification.' : 'Mail verification is currently unavailable.'}</div>
           </div>
         </div>
-        <button
+        {onMailCode && <button
           type="button"
           onClick={onMailCode}
           className="mt-3 inline-flex items-center gap-1 text-[15px] font-semibold text-app-text hover:text-primary-600 dark:hover:text-primary-300"
         >
           Mail me a code
           <ArrowRight size={15} strokeWidth={2.25} aria-hidden />
-        </button>
+        </button>}
       </div>
 
       <button

@@ -313,8 +313,8 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'phone' && await used(ceilingRead)) reason = 'UNAVAILABLE';
     } else if (id === 'mail') {
       // eslint-disable-next-line global-require
-      const mailVendorService = require('./addressValidation/mailVendorService');
-      if (proven || nonResident || !mailVendorService.canSendPostcards()) reason = 'UNAVAILABLE';
+      const postcardRequests = require('./homePostcardRequestService');
+      if (proven || nonResident || !await postcardRequests.available({ homeId, actorId: userId }).catch(() => false)) reason = 'UNAVAILABLE';
       else if (reported) reason = 'IN_REVIEW';
     } else if (id === 'landlord') {
       if (proven || nonResident || !(await used(landlordRead))) reason = 'UNAVAILABLE';

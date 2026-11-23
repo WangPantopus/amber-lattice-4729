@@ -2598,6 +2598,10 @@ public struct HubTabRoot: View {
                 onClose: {
                     if !path.isEmpty { path.removeLast() }
                 },
+                onOpenDocumentVerification: { resolvedHomeId in
+                    if !path.isEmpty { path.removeLast() }
+                    path.append(.verifyResidency(homeId: resolvedHomeId))
+                },
                 onOpenPostcardVerification: { resolvedHomeId in
                     // Replace the wizard with the postcard tracker so
                     // Back returns to the home dashboard, not the
@@ -3477,6 +3481,7 @@ public struct HubTabRoot: View {
             SettingsView(
                 onClose: { Task { @MainActor in pop() } },
                 onEditProfile: { Task { @MainActor in push(.editProfile) } },
+                onOpenVerificationHomes: { Task { @MainActor in path.append(.myHomes) } },
                 onOpenReviewClaims: {
                     // Close the settings sheet/screen then push the admin
                     // queue at the Hub level so its top-bar back chevron
@@ -3509,6 +3514,7 @@ public struct HubTabRoot: View {
                 initialRoute: .payments,
                 onClose: { Task { @MainActor in pop() } },
                 onEditProfile: { Task { @MainActor in push(.editProfile) } },
+                onOpenVerificationHomes: { Task { @MainActor in path.append(.myHomes) } },
                 onOpenReviewClaims: {
                     Task { @MainActor in
                         if !path.isEmpty { path.removeLast() }
@@ -3530,6 +3536,7 @@ public struct HubTabRoot: View {
                 initialRoute: .securityDevices,
                 onClose: { Task { @MainActor in pop() } },
                 onEditProfile: { Task { @MainActor in push(.editProfile) } },
+                onOpenVerificationHomes: { Task { @MainActor in path.append(.myHomes) } },
                 onOpenReviewClaims: {
                     Task { @MainActor in
                         if !path.isEmpty { path.removeLast() }

@@ -26,10 +26,12 @@ struct BillCheckStep: View {
             HStack(alignment: .top, spacing: Spacing.s3) {
                 Icon(.info, size: 16, color: Theme.Color.primary700)
                     .accessibilityHidden(true)
-                Text("You're verified as soon as you use this photo. A person at Pantopus also reviews it afterwards.")
-                    .pantopusTextStyle(.caption)
-                    .foregroundStyle(Theme.Color.primary700)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "If your name and address match, you may be verified right away. Otherwise, a reviewer will check the document."
+                )
+                .pantopusTextStyle(.caption)
+                .foregroundStyle(Theme.Color.primary700)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(Spacing.s3)
             .frame(maxWidth: .infinity, alignment: .leading)

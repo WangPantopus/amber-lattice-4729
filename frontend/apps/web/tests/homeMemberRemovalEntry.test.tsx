@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as api from '@pantopus/api';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MembersPage from '../src/app/(site)/(app)/app/homes/[id]/members/page';
 import WaitingRoomPage from '../src/app/(site)/(app)/app/homes/[id]/waiting-room/page';
 
@@ -10,10 +11,10 @@ jest.mock('next/navigation', () => ({ useParams: () => ({ id: '10000000-0000-400
 jest.mock('../src/components/home/member-removals/useSavedRemoval', () => ({ useSavedRemoval: () => true }));
 jest.mock('../src/hooks/useHomeAccess', () => ({ useHomeAccess: () => ({ loading: false, needsVerification: true,
   access: { verification_status: 'pending_approval' }, reload: jest.fn() }) }));
-jest.mock('@pantopus/api', () => ({ getApiBaseUrl: jest.fn(() => 'http://127.0.0.1:18080'), getAuthToken: jest.fn(() => 'synthetic'),
+jest.mock('@pantopus/api', () => ({ authSessionMarker: () => 'session', getApiBaseUrl: jest.fn(() => 'http://127.0.0.1:18080'), getAuthToken: jest.fn(() => 'synthetic'),
   AUTH_SESSION_CHANGE_KEY: 'session-marker', onTokenChange: jest.fn(() => () => {}),
   homeIam: { getHomeMembers: jest.fn(), getMyHomeAccess: jest.fn(), getAuditLog: jest.fn(), removeMember: jest.fn() },
-  homeOwnership: { getRemovalVotes: jest.fn() }, getHouseholdAccessRequests: jest.fn(), post: jest.fn() }));
+  homeOwnership: { getRemovalVotes: jest.fn(), getCurrentPostcardStatus: jest.fn(async () => ({ can_request: false })) }, getHouseholdAccessRequests: jest.fn(), post: jest.fn() }));
 const home = '10000000-0000-4000-8000-000000000001';
 const target = '10000000-0000-4000-8000-000000000002';
 const row = (role: string, id = target, username = 'fixture_member') => ({ id: '10000000-0000-4000-8000-000000000003',
@@ -61,7 +62,7 @@ test('a held old success cannot restore members after a newer failed current rea
   expect(screen.queryByRole('button', { name: /Review removal of/ })).not.toBeInTheDocument();
 });
 test('waiting-room self-leave opens protected review without claiming removal or renewed access', async () => {
-  render(<WaitingRoomPage/>);
+  render(<QueryClientProvider client={new QueryClient()}><WaitingRoomPage/></QueryClientProvider>);
   await screen.findByRole('heading', { name: 'Waiting for approval' });
   fireEvent.click(screen.getByRole('button', { name: /This isn't my home/ }));
   expect(mockPush).toHaveBeenCalledWith(`/app/homes/member-removals?home=${home}&self=1`);

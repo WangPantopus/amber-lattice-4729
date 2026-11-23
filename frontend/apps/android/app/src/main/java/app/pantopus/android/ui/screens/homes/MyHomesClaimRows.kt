@@ -45,7 +45,8 @@ internal fun claimsInReview(
     homes: List<MyHome>,
 ): List<OwnershipClaimDto> {
     val listed = homes.filter { it.accessKind != "private_setup" }.map { it.id }.toSet()
-    return claims.filter { it.isInReview && it.homeId !in listed }
+    val shared = homes.filter { it.accessKind == "shared" }.map { it.id }.toSet()
+    return claims.filter { it.isInReview && (it.homeId !in listed || (it.claimType == "owner" && it.homeId in shared)) }
 }
 
 /**

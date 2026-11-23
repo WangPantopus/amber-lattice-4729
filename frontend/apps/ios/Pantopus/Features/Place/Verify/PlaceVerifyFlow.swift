@@ -131,10 +131,15 @@ struct PlaceVerifySheet: View {
     @State private var selected: PlaceVerifyMethod = .mail
     /// A landlord request can only be answered by a verified landlord, so that
     /// door joins once the Home has one (or the person already has a request).
-    @State private var doors: [PlaceVerifyMethod] = [.mail, .document]
+    @State private var doors: [PlaceVerifyMethod] = [.document]
     /// A residency document the person sent waits on a reviewer: the document
     /// door says so instead of offering another upload.
     @State private var documentInReview = false
+
+    private var availableSelection: PlaceVerifyMethod? {
+        let available = doors.filter { $0 != .document || !documentInReview }
+        return available.contains(selected) ? selected : available.first
+    }
 
     var body: some View {
         Group {
@@ -166,8 +171,10 @@ struct PlaceVerifySheet: View {
                 }
                 .padding(.bottom, 16)
             }
-            PrimaryButton(title: "Start verification") { onStart(selected) }
-                .padding(.top, 4)
+            if let availableSelection {
+                PrimaryButton(title: "Start verification") { onStart(availableSelection) }
+                    .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 30)
@@ -178,11 +185,11 @@ struct PlaceVerifySheet: View {
 
     private func loadLandlordDoor() async {
         guard let homeId else { return }
-        // An unreadable status keeps the two doors that work without a landlord.
         guard let status: TenantHomeStatusResponse = try? await APIClient.shared.request(
             TenantEndpoints.homeStatus(homeId: homeId)
-        ), status.matches(homeId: homeId), status.offersLandlordConfirmation else { return }
-        doors = [.mail, .document, .landlord]
+        ), status.matches(homeId: homeId), !Task.isCancelled else { return }
+        doors = (status.mailAvailable == true ? [.mail, .document] : [.document])
+            + (status.offersLandlordConfirmation ? [.landlord] : [])
     }
 
     /// The person's own claims, as the Waiting Room reads them: a residency
@@ -199,7 +206,6 @@ struct PlaceVerifySheet: View {
         }
         guard inReview else { return }
         documentInReview = true
-        if selected == .document { selected = .mail }
     }
 
     /// Shared with the faster sheet (`PlaceVerifyFastSheet.swift`).
@@ -259,12 +265,12 @@ struct PlaceVerifySheet: View {
                                 label: m.label,
                                 sub: m.sub,
                                 tone: .sky,
-                                trailing: AnyView(radio(selected: selected == m))
+                                trailing: AnyView(radio(selected: availableSelection == m))
                             )
                         }
                         .buttonStyle(.plain)
                         // A radio choice, so VoiceOver says which method is selected.
-                        .accessibilityAddTraits(selected == m ? .isSelected : [])
+                        .accessibilityAddTraits(availableSelection == m ? .isSelected : [])
                     }
                     if index < doors.count - 1 { divider }
                 }
@@ -294,8 +300,7 @@ struct PlaceVerifySheet: View {
     private var calmNote: some View {
         HStack(alignment: .top, spacing: 9) {
             Icon(.clock, size: 15, strokeWidth: 2, color: Theme.Color.appTextMuted).padding(.top, 1)
-            Text("A postcard takes 3–7 days; documents are reviewed by a person. "
-                + "Everything you have now stays available while you wait.")
+            Text("A reviewer checks your document. Everything you have now stays available while you wait.")
                 .font(.system(size: 12.5))
                 .lineSpacing(2)
                 .foregroundStyle(Theme.Color.appTextSecondary)

@@ -238,7 +238,7 @@ internal fun FastVerifiedPage(
     kind: FastCheckKind,
     address: String,
     renter: Boolean,
-    onMailCode: () -> Unit,
+    onMailCode: (() -> Unit)?,
     onDone: () -> Unit,
 ) {
     FastCheckPage(
@@ -298,24 +298,26 @@ internal fun FastVerifiedPage(
                 Column {
                     Text("Residency letters and home Mail", fontSize = 14.5.sp, lineHeight = 20.sp, color = PantopusColors.appText)
                     Text(
-                        "Ask for the postcard whenever you need them.",
+                        if (onMailCode == null) "Mail verification is currently unavailable." else "Ask for the postcard whenever you need them.",
                         fontSize = 12.5.sp,
                         lineHeight = 17.sp,
                         color = PantopusColors.appTextSecondary,
                     )
                 }
             }
-            Row(
-                modifier =
-                    Modifier
-                        .heightIn(min = 44.dp)
-                        .clickable(role = Role.Button, onClick = onMailCode)
-                        .testTag("fastCheck.mailCode"),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Mail me a code", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
-                PantopusIconImage(PantopusIcon.ArrowRight, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appText)
+            if (onMailCode != null) {
+                Row(
+                    modifier =
+                        Modifier
+                            .heightIn(min = 44.dp)
+                            .clickable(role = Role.Button, onClick = onMailCode)
+                            .testTag("fastCheck.mailCode"),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Mail me a code", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+                    PantopusIconImage(PantopusIcon.ArrowRight, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appText)
+                }
             }
         }
     }
