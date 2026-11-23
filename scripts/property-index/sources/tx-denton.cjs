@@ -5,6 +5,10 @@
 // accounts aren't homes. Exemption, owner and mailing columns are never read (lib/pacs.cjs).
 
 const path = require('node:path');
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const { SUPPRESSIONS_PATH } = require('../../../backend/services/propertyRecords/format');
+const { addressSuppressed, parcelSuppressed } = require('../../../backend/services/propertyRecords/suppressions');
 const { download, USER_AGENT } = require('../lib/tables.cjs');
 const { streetParts, year, realUnit, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
@@ -108,7 +112,28 @@ async function latestExport(today) {
   throw new Error('The district no longer publishes a certified file for all properties');
 }
 
+// The district can protect an account after certification. Apply the standing private takedowns to
+// every rebuild, before aggregating buildings or writing records. Local replays use the same document.
+function standingExclusions(work) {
+  const bucket = process.env.PROPERTY_INDEX_BUCKET;
+  let list;
+  try {
+    const bytes = bucket
+      ? execFileSync('aws', ['s3', 'cp', `s3://${bucket}/index/${SUPPRESSIONS_PATH}`, '-', '--only-show-errors'], { stdio: ['ignore', 'pipe', 'ignore'] })
+      : fs.readFileSync(path.join(work, 'tx-denton', SUPPRESSIONS_PATH));
+    list = JSON.parse(bytes);
+  } catch {
+    throw new Error('The private Denton exclusions could not be read');
+  }
+  const validHashes = values => Array.isArray(values) && values.every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
+  if (typeof list?.salt !== 'string' || !list.salt || !validHashes(list.hashes) || !validHashes(list.parcel_hashes?.[FIPS]) || !list.parcel_hashes[FIPS].length) {
+    throw new Error('The private Denton exclusions are incomplete');
+  }
+  return list;
+}
+
 async function* build({ work, today }) {
+  const exclusions = standingExclusions(work);
   const latest = await latestExport(today);
   const zip = path.join(work, 'tx-denton', `${latest.year}-CERTIFIED-DATA-ALL-PROPERTIES.zip`);
   await download(latest.url, zip);
@@ -117,6 +142,7 @@ async function* build({ work, today }) {
   const stats = {};
   const rows = [];
   for await (const row of properties(zip, stats)) {
+    if (parcelSuppressed(exclusions, FIPS, row.id) || (row.partial && parcelSuppressed(exclusions, FIPS, row.group))) continue;
     if (/REFERENCE/.test(words.get(row.state) || '') || row.state === 'PLAN') stats.reference = (stats.reference || 0) + 1;
     else rows.push(row);
   }
@@ -128,7 +154,7 @@ async function* build({ work, today }) {
   for (const row of rows) {
     const record = fromProperty(row, main.get(row.id), words, subdivisions);
     if (!record) noAddress += 1;
-    else if (!records.has(record.id)) records.set(record.id, record);
+    else if (!addressSuppressed(exclusions, FIPS, record.address) && !records.has(record.id)) records.set(record.id, record);
   }
   const list = [...records.values()];
   log(`${COUNTY}: ${list.length} accounts, ${noAddress} without a street number`);

@@ -303,7 +303,7 @@ async function householdPart({ homeId, home, raw, access, actorId, problems, cop
     ]);
     return householdFacts.project({ home, nicheData: raw.niche_data, copy, countyRecord, canEdit, viewerId: actorId, verifiedWriters, reports, countyPage,
       // The county's record goes first for everyone, including those who don't see it.
-      floorPlan: householdFacts.usableFloorPlan(sheet, homeRecords.liveCopy(raw)), otherRecord, seesEntries, countyCheck: countyLinks.enabled(),
+      floorPlan: householdFacts.usableFloorPlan(sheet, await homeRecords.liveCopy(raw)), otherRecord, seesEntries, countyCheck: countyLinks.enabled(),
       systems, documents: householdDocuments.offer(access) });
   } catch (error) {
     logger.warn('Home household facts unavailable', { homeId, error: error.message });
@@ -340,7 +340,7 @@ async function propertyDetail(homeId, actorId, { sharedFacts = false } = {}) {
       // column Add Home only filled from ATTOM's copy reads as a live county's record (householdFacts.shownColumns).
       const facts = sees || householdFacts.isResident(access);
       const { home, raw } = await readHome(homeId, access, { provider: facts, early });
-      return { home: facts ? { ...home, ...householdFacts.shownColumns(raw, homeRecords.liveCopy(raw)) } : home,
+      return { home: facts ? { ...home, ...householdFacts.shownColumns(raw, await homeRecords.liveCopy(raw)) } : home,
         attom_property_detail: null, source: 'unavailable', unavailable_reason: 'OWNER_ONLY', county_record: null,
         household: sees || planOnly ? await householdPart({ homeId, home, raw, access, actorId, problems, seesEntries: sees }) : null };
     }
@@ -398,7 +398,7 @@ async function factChange({ homeId, actorId, asked, fields }) {
     const home = await checked(db.from('Home').select(`id, address, address2, city, state, zipcode, home_type, niche_data, ${householdFacts.COLUMN_FACTS.map(([, column]) => column).join(', ')}`)
       .eq('id', homeId).maybeSingle());
     if (!object(home)) throw failure();
-    const copy = homeRecords.liveCopy(home);
+    const copy = await homeRecords.liveCopy(home);
     return householdFacts.plan({ home, copy, seesRecord: !access || access.isOwner, asked, fields, actorId, floorPlan: householdFacts.usableFloorPlan(floorPlans.storedCopy(home), copy),
       check: countyLinks.enabled() });
   } catch (error) {
@@ -415,7 +415,7 @@ async function reportRecordProblem(homeId, actorId, { section, field = null, not
   return authority.withCurrentAccess({ homeId, actorId }, async access => {
     if (!access.isOwner) throw failure('HOME_RECORD_PROBLEM_DENIED', 403);
     const { raw } = await readHome(homeId, access, { provider: true });
-    const copy = homeRecords.liveCopy(raw);
+    const copy = await homeRecords.liveCopy(raw);
     const shown = copy ? serializePropertyRecord(copy)?.sections.find(candidate => candidate.id === section) : null;
     // A card can hold the building's floor plans beside the record's rows; "something here" is the most this can say about those.
     const named = /^floor_plan/.test(field || '') ? null : field;
@@ -437,7 +437,7 @@ async function answerFloorPlan(homeId, actorId, answer) {
   return authority.withCurrentAccess({ homeId, actorId }, async access => {
     if (!householdFacts.isResident(access)) throw failure('HOME_FLOOR_PLAN_DENIED', 403);
     const { raw } = await readHome(homeId, access, { provider: true });
-    const sheet = householdFacts.usableFloorPlan(await floorPlans.forHome(raw), homeRecords.liveCopy(raw));
+    const sheet = householdFacts.usableFloorPlan(await floorPlans.forHome(raw), await homeRecords.liveCopy(raw));
     if (sheet?.match !== 'exact') throw failure('HOME_FLOOR_PLAN_INVALID', 400);
     const canEdit = access.permissions.includes('home.edit');
     const previous = raw.niche_data?.floor_plan_answer || null;

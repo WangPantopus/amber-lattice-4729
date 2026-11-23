@@ -97,7 +97,7 @@ function exact(record, requested, here) {
   // One protected unit restricts that unit, not its neighbors.
   if (record.restricted) return answer('restricted', { requested_subject: requested });
   const building = record.parent ? here.find((other) => other.kind === 'building' && other.id === record.parent) : null;
-  return answer('exact', { subject: subjectOf(record), record, requested_subject: requested, ...(building ? { building } : {}) });
+  return answer('exact', { subject: subjectOf(record), record, requested_subject: requested, ...(building && !building.restricted ? { building } : {}) });
 }
 
 function buildingOnly(record, requested, reason) {
