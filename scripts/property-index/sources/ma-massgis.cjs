@@ -180,6 +180,12 @@ function bostonWord(value) {
   return BOSTON_WORDS[text] || text;
 }
 
+// The FY2026 house and condo qualification accepts 0–15 of each bath type. A blank component is unknown.
+function bostonBathCount(text) {
+  const count = number(text);
+  return Number.isInteger(count) && count >= 0 && count <= 15 ? count : null;
+}
+
 function fromBoston(row, fips, county) {
   const code = String(row.LU ?? '').split(' ')[0].trim();
   const [kind, homeType, useWord] = BOSTON_USES[code] || ['other', null, null];
@@ -203,12 +209,11 @@ function fromBoston(row, fips, county) {
   if (home) {
     put(facts, 'rooms', positive(row.TT_RMS));
     put(facts, 'bedrooms', positive(row.BED_RMS));
-    const full = number(row.FULL_BTH);
-    const half = number(row.HLF_BTH);
-    const count = (value) => Number.isInteger(value) && value >= 0;
-    put(facts, 'full_baths', count(full) ? positive(full) : null);
-    put(facts, 'half_baths', count(half) ? positive(half) : null);
-    if (count(full) && count(half)) put(facts, 'bathrooms', positive(full + half * 0.5));
+    const full = bostonBathCount(row.FULL_BTH);
+    const half = bostonBathCount(row.HLF_BTH);
+    put(facts, 'full_baths', positive(full));
+    put(facts, 'half_baths', positive(half));
+    if (full !== null && half !== null) put(facts, 'bathrooms', positive(full + half * 0.5));
     put(facts, 'fireplaces', positive(row.FIREPLACES));
     put(facts, 'parking_spaces', positive(row.NUM_PARKING));
     put(facts, 'condition', bostonWord(row.OVERALL_COND));
