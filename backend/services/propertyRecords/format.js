@@ -10,7 +10,7 @@
  *                                         and how fresh, and which counties a ZIP or city can be in. Replacing this
  *                                         file is what switches readers over, or back.
  *   releases/<fips>/<release>/manifest.json.gz, data.bin    one county's release, never changed once written.
- *   suppressions.json                     addresses taken down at someone's request, as salted hashes.
+ *   suppressions.json                     salt, address hashes and optional parcel_hashes by county for standing exclusions.
  *   switches/<name>.json                  which counties an environment serves, and how (router.js).
  *
  * data.bin is the county's records as gzip'd JSON arrays, back to back, sorted by
