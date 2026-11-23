@@ -19,12 +19,31 @@ const ITEMS = 'https://www.arcgis.com/sharing/rest/content/items/';
 const PARCELS = '3c7673fd8b364515933cb950b115b32c';
 const SITES = '424d6efc421342a5ab43d246f96e7f1b';
 
+function clintonRings(shp, shx) {
+  // Clinton writes empty XY polygons as a 44-byte polygon header with no parts or points.
+  // Give the shared reader a null shape at that same ordinal. Leave every coordinate untouched.
+  if (shx.length < 100 || (shx.length - 100) % 8 || shx.readUInt32BE(24) * 2 !== shx.length) {
+    throw new Error('Invalid Clinton shape index');
+  }
+  for (let i = 100; i < shx.length; i += 8) {
+    if (shx.readUInt32BE(i + 4) !== 22) continue; // SHX lengths are in 16-bit words.
+    const at = shx.readUInt32BE(i) * 2;
+    if (at < 100 || at + 52 > shp.length || shp.readUInt32BE(at) !== 1 + (i - 100) / 8 || shp.readUInt32BE(at + 4) !== 22) {
+      throw new Error('Clinton shape index and data disagree');
+    }
+    if (shp.readUInt32LE(at + 8) === 5 && shp.readUInt32LE(at + 44) === 0 && shp.readUInt32LE(at + 48) === 0) {
+      shp.writeUInt32LE(0, at + 8);
+    }
+  }
+  return shapeRings(shp);
+}
+
 async function parcelMap(file) {
   const member = (suffix) => execFileSync('unzip', ['-p', file, 'cntyparcels.' + suffix], { maxBuffer: 256 * 1024 * 1024 });
   const projection = member('prj').toString();
   if (!projection.startsWith('PROJCS["NAD_1983_StatePlane_Ohio_South_FIPS_3402_Feet",') ||
       !/UNIT\["Foot_US",0\.3048006096\d*\]\]\s*$/.test(projection)) throw new Error('The Clinton parcel projection changed');
-  const polygons = shapeRings(member('shp'));
+  const polygons = clintonRings(member('shp'), member('shx'));
   const rows = dbfRows(file, 'cntyparcels.dbf', ['Parcel_Num', 'Tax_Year'], { includeDeleted: true });
   const parcels = new Map();
   const boxes = new Set();
