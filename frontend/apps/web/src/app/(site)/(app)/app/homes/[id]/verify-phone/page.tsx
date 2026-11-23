@@ -14,12 +14,12 @@ import { ChevronLeft, ChevronRight, Info, Lock, Camera, Mail, ShieldCheck } from
 import { IconTile } from '@/components/archetypes/place';
 import { useMe } from '@/lib/me';
 import { myHomesQuery } from '@/lib/myHomes';
-import { useVerifyOptions, invalidateVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
+import { useVerifyOptions, useMailAvailable, invalidateVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
 import { FAST_VERIFY_ROWS, FAST_VERIFY_WORDS } from '@/components/place/fastVerify/fastVerifyWords';
 
-const OFF_WORDS = "This way to verify isn't available. Verify by mail instead.";
+const OFF_WORDS = "This way to verify isn't available. Choose another way to verify.";
 const REASON_WORDS: Record<string, string> = {
-  ONE_HOME: 'A fast check covers one home. Verify this one by mail.',
+  ONE_HOME: 'A fast check covers one home. Choose another way to verify this address.',
   LIMIT: 'Too many tries for now. Try again later, or verify another way.',
   UNAVAILABLE: "The phone check isn't available right now. Verify another way.",
 };
@@ -99,6 +99,7 @@ export default function VerifyPhonePage() {
   const queryClient = useQueryClient();
   const toPlace = search.get('return') === 'place';
   const verify = useVerifyOptions(homeId);
+  const mailAvailable = useMailAvailable(homeId);
   const me = useMe();
   const homes = useQuery(myHomesQuery());
   const home = homes.data?.homes.find((h) => h.id === homeId) ?? null;
@@ -211,8 +212,8 @@ export default function VerifyPhonePage() {
       <main className="mx-auto max-w-xl px-4 py-6 space-y-5 text-app-text">
         {header}
         <p role="status" className="rounded-2xl border border-app-border bg-app-surface p-5 text-[15px]">{words}</p>
-        <Link href={`/app/homes/${homeId}/verify-postcard${toPlace ? '?return=place' : ''}`} className={`${primaryButton} flex items-center justify-center`}>
-          {FAST_VERIFY_WORDS.mailMeACode}
+        <Link href={`/app/homes/${homeId}/${mailAvailable ? 'verify-postcard' : 'verify-residency'}${toPlace ? '?return=place' : ''}`} className={`${primaryButton} flex items-center justify-center`}>
+          {mailAvailable ? FAST_VERIFY_WORDS.mailMeACode : 'Verify with a document'}
         </Link>
       </main>
     );

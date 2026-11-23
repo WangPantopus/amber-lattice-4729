@@ -53,10 +53,11 @@ async function main() {
   page=await context.newPage();page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/app/homes',{waitUntil:'domcontentloaded',timeout:120000});
   await status('Your residency requests');
-  for(const n of [601,604,605])await expect(page.locator(`a[href="/app/homes/${id(n)}/residency"]`).filter({hasText:'Check status'})).toBeVisible();
+  for(const n of [601,605])await expect(page.locator(`a[href="/app/homes/${id(n)}/residency"]`).filter({hasText:'Check status'})).toBeVisible();
   await expect(page.getByText(street+', 601',{exact:true})).toBeVisible();await expect(page.getByText(street+', 605',{exact:true})).toBeVisible();
   await expect(page.getByText('Home verification',{exact:true})).toHaveCount(0);
-  await saved('distinct-personal-requests');
+  await expect(page.getByRole('region',{name:'Your residency requests'}).getByText(street+' Unit 604',{exact:true})).toHaveCount(0);
+  await saved('open-personal-requests');
   await page.locator(`a[href="/app/homes/${id(601)}/residency"]`).filter({hasText:'Check status'}).click();
   await status('Waiting for household review');await expect(page.locator('a[href$="/verify-residency"]')).toHaveCount(0);await expect(page.getByText(street+', 601',{exact:true})).toBeVisible();
   await saved('household-review-next-step');
@@ -71,7 +72,9 @@ async function main() {
   await page.goto(base+`/app/homes/${id(604)}/residency`);await status('Send your request again');
   await expect(page.getByRole('link',{name:'Check address and send again',exact:true})).toHaveAttribute('href',`/app/homes/new?joinHome=${id(604)}`);await saved('rejected-next-step');
   await page.goto(base+`/app/homes/${id(605)}/residency`);await status('Your address isn’t verified yet');
-  await expect(page.getByRole('link',{name:'Verify by mail',exact:true})).toHaveAttribute('href',`/app/homes/${id(605)}/verify-postcard`);await saved('mail-is-a-separate-request');
+  await expect(page.getByRole('link',{name:'Verify by mail',exact:true})).toHaveCount(0);
+  await expect(page.getByText('Your request is saved. Mail verification is currently unavailable.')).toBeVisible();
+  await saved('mail-unavailable-request-saved');
   assert.equal((await control('state')).events.filter(e=>e.event==='request'&&e.path.includes('postcard')).length,0);
   await page.goto(base+`/app/homes/${id(601)}/residency`);await status('Waiting for household review');
   await control('hold',{suffix:'/my-residency'});await page.getByRole('button',{name:'Refresh status',exact:true}).click();
@@ -81,11 +84,11 @@ async function main() {
   await status('You’re part of this household');await control('release',{});await page.waitForTimeout(500);
   await status('You’re part of this household');await expect(page.getByRole('heading',{name:'Waiting for household review',exact:true})).toHaveCount(0);await saved('retired-reply-after-current-approval');
   await control('residency-state',{home:601,state:'removed'});await page.getByRole('button',{name:'Refresh status',exact:true}).click();await status('You don’t have household access');
-  await expect(page.getByRole('link',{name:'Open Home',exact:true})).toHaveCount(0);await expect(page.getByText('Approved',{exact:true})).toBeVisible();await saved('old-approval-after-removal');
+  await expect(page.getByRole('link',{name:'Open Home',exact:true})).toHaveCount(0);await expect(page.getByText('Approved',{exact:true})).toHaveCount(0);await saved('closed-claim-after-removal');
   await control('residency-state',{home:601,state:'frozen'});await page.getByRole('button',{name:'Refresh status',exact:true}).click();await status('This Home can’t be verified right now');await saved('unavailable-home-personal-history');
   await page.goto(base+'/app/homes');await status('Your residency requests');
-  await expect(page.locator(`a[href="/app/homes/${id(601)}/residency"]`).filter({hasText:'Check status'})).toBeVisible();
-  await saved('removed-request-stays-personal');assert.deepEqual(errors,[]);
+  await expect(page.getByRole('region',{name:'Your residency requests'}).locator(`a[href="/app/homes/${id(601)}/residency"]`)).toHaveCount(0);
+  await saved('closed-request-absent');assert.deepEqual(errors,[]);
   await control('residency-history',{count:51});await page.reload();await status('Your residency requests');
   await expect(page.getByRole('button',{name:'Load more requests',exact:true})).toBeVisible();
   await control('residency-read-fault',{kind:'error'});await page.getByRole('button',{name:'Load more requests',exact:true}).click();
@@ -94,7 +97,7 @@ async function main() {
   await expect(page.getByText('Personal historical request 50',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Load more requests',exact:true})).toHaveCount(0);
   await expect(page.getByText(/^Personal historical request \d+$/)).toHaveCount(51);assert.deepEqual(errors,[]);await saved('complete-personal-history');
-  console.log('PASS: rejected and mail next steps, retired responses, current approval, later removal/freeze, personal history and narrow layouts; no mail request');
+  console.log('PASS: rejected requests and unavailable mail, retired responses, current approval, later removal/freeze, personal history and narrow layouts; no mail request');
  } finally {
   if(page)await page.screenshot({path:path.join(evidence,'final-screen.png'),fullPage:true}).catch(()=>{});
   fs.writeFileSync(path.join(evidence,'events.json'),JSON.stringify({events,errors},null,2),{mode:0o600});await context?.close();

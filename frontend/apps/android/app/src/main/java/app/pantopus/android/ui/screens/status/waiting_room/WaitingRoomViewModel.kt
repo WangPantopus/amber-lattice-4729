@@ -7,6 +7,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.homes.OwnershipClaimDto
+import app.pantopus.android.data.api.models.tenant.TenantHomeStatusResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.homes.HomesRepository
@@ -301,6 +302,7 @@ class WaitingRoomViewModel
                         reviewCaption = null,
                         needsDocuments = claim.approval?.let { it.proof == "missing" } ?: (claim.hasEvidence == false),
                         addressVerified = home.addressVerified,
+                        mailAvailable = verificationOptions()?.mailAvailable == true,
                         residency = claimIsResidency,
                         approval = claim.approval,
                         canOpenHome = canOpenHome,
@@ -347,24 +349,19 @@ class WaitingRoomViewModel
                 return
             }
             _leavesToMyHomes.value = false
-            val offersLandlord = offersLandlordConfirmation()
+            val options = verificationOptions()
             _phase.value =
                 WaitingRoomPhase.Verification(
                     HomeVerificationContent.make(
                         status = HomeVerificationStatus.from(access.verificationStatus),
-                        offersLandlord = offersLandlord,
+                        offersLandlord = options?.offersLandlordConfirmation == true,
+                        mailAvailable = options?.mailAvailable == true,
                     ),
                 )
         }
 
-        /**
-         * The landlord card helps only when a verified landlord can answer, or
-         * the person already has a request there. An unreadable status hides it.
-         */
-        private suspend fun offersLandlordConfirmation(): Boolean {
-            val status = (tenantRepo.homeStatus(homeId) as? NetworkResult.Success)?.data ?: return false
-            return status.matches(homeId) && status.offersLandlordConfirmation
-        }
+        private suspend fun verificationOptions(): TenantHomeStatusResponse? =
+            (tenantRepo.homeStatus(homeId) as? NetworkResult.Success)?.data?.takeIf { it.matches(homeId) }
 
         /**
          * Route one Verification Center action card. Keys are declared on

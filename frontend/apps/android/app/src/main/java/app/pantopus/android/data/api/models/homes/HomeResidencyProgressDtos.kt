@@ -59,6 +59,7 @@ data class PersonalHomeResidencyProgress(
      * what older apps know. Older servers omit it, and a value this app doesn't know falls back to [nextStep].
      */
     val probation: String? = null,
+    @Json(name = "mail_available") val mailAvailable: Boolean = false,
 ) {
     /** Proof by mail ends probation, and it's the way back after a no (Pantopus reviews it then, again if needed). */
     val verifiesOnProbation: Boolean get() = probation in setOf("active", "ended", "declined")
@@ -85,6 +86,13 @@ data class PersonalHomeResidencyProgress(
         }
 
     val explanation: String get() =
+        if (verifiesOnProbation && !mailAvailable) {
+            "Household access is limited. Mail verification is currently unavailable. Contact support if you need help."
+        } else {
+            availableExplanation
+        }
+
+    val availableExplanation: String get() =
         when (probation) {
             "active" ->
                 "Nobody in the household answered your request in 7 days, so you're on probation. " +
@@ -123,13 +131,15 @@ data class PersonalHomeResidencyProgress(
                 if (needsResidencyRequest) {
                     "Check this Home’s address, apartment and how you live here, then send your request. " +
                         "We don't mail anything until you ask for a postcard."
+                } else if (!mailAvailable) {
+                    "Your request is saved. Mail verification is currently unavailable."
                 } else {
                     "Your request is saved. To finish, verify your address by mail: request a postcard, " +
                         "then enter the code printed on it."
                 }
             "resubmit" -> "Check the street, apartment and how you live here, then send your request again."
             "access_review" -> "To come back, add this Home again or ask someone in the household to invite you."
-            "ownership_verification" -> "Ownership has its own review. Verifying your address by mail doesn't make you an owner."
+            "ownership_verification" -> "Continue your ownership claim to see which steps are left."
             else -> "This Home isn't accepting changes right now. Your request is still saved."
         }
 }

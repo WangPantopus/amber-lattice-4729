@@ -118,15 +118,16 @@ data class HomeVerificationContent(
             // Adds the landlord card; only a verified landlord can answer that
             // request, so callers pass the tenant status they read.
             offersLandlord: Boolean = false,
+            mailAvailable: Boolean = true,
         ): HomeVerificationContent =
             HomeVerificationContent(
                 status = status,
                 halo = halo(status, isInChallengeWindow),
                 headline = headline(status, isInChallengeWindow),
-                body = body(status, isInChallengeWindow),
+                body = body(status, isInChallengeWindow, mailAvailable),
                 countdown =
                     countdown(status, isInChallengeWindow, challengeWindowEndsAt, postcardExpiresAt),
-                actions = actions(status, offersLandlord),
+                actions = actions(status, offersLandlord, mailAvailable),
             )
 
         private fun halo(
@@ -172,6 +173,7 @@ data class HomeVerificationContent(
         private fun body(
             status: HomeVerificationStatus,
             isInChallengeWindow: Boolean,
+            mailAvailable: Boolean,
         ): String =
             when (status) {
                 HomeVerificationStatus.PendingPostcard ->
@@ -184,8 +186,8 @@ data class HomeVerificationContent(
                     "A household member needs to approve your request. " +
                         "Reopen this screen to check for updates."
                 HomeVerificationStatus.PendingDoc ->
-                    "Your uploaded documents are waiting for a Pantopus reviewer. " +
-                        "Meanwhile, you can verify your address by mail."
+                    "Your uploaded documents are waiting for a Pantopus reviewer." +
+                        if (mailAvailable) " Meanwhile, you can verify your address by mail." else ""
                 HomeVerificationStatus.Provisional ->
                     if (isInChallengeWindow) {
                         "Your access is provisional while existing members can review. " +
@@ -245,6 +247,14 @@ data class HomeVerificationContent(
                 .withLocale(Locale.getDefault())
                 .withZone(ZoneId.systemDefault())
 
+        private val DOCUMENT_STATUSES =
+            setOf(
+                HomeVerificationStatus.ProvisionalBootstrap,
+                HomeVerificationStatus.PendingDoc,
+                HomeVerificationStatus.Provisional,
+                HomeVerificationStatus.Unverified,
+            )
+
         /** Statuses where a landlord request can still help. */
         private val LANDLORD_STATUSES =
             setOf(
@@ -256,6 +266,7 @@ data class HomeVerificationContent(
         private fun actions(
             status: HomeVerificationStatus,
             offersLandlord: Boolean,
+            mailAvailable: Boolean,
         ): List<HomeVerificationAction> {
             val actions = mutableListOf<HomeVerificationAction>()
             if (status == HomeVerificationStatus.PendingPostcard) {
@@ -268,10 +279,7 @@ data class HomeVerificationContent(
                         actionKey = ActionKey.ENTER_CODE,
                     )
             }
-            if (status == HomeVerificationStatus.ProvisionalBootstrap ||
-                status == HomeVerificationStatus.PendingDoc ||
-                status == HomeVerificationStatus.Provisional
-            ) {
+            if (status in DOCUMENT_STATUSES) {
                 actions +=
                     HomeVerificationAction(
                         id = "uploadProof",
@@ -296,7 +304,7 @@ data class HomeVerificationContent(
                         actionKey = ActionKey.LANDLORD_VERIFICATION,
                     )
             }
-            if (status != HomeVerificationStatus.PendingPostcard &&
+            if (mailAvailable && status != HomeVerificationStatus.PendingPostcard &&
                 status != HomeVerificationStatus.PendingApproval
             ) {
                 actions +=

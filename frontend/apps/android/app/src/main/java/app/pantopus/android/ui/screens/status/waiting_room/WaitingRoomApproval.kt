@@ -62,10 +62,14 @@ object WaitingRoomApproval {
     /** What a claim in review waits on, in a few words (web `approvalSummary`). */
     fun summary(approval: ClaimApprovalProgressDto): String {
         val identityDone = approval.identity == "verified"
+        if (!identityDone && (approval.identity == "processing" || !approval.identityCheckAvailable)) {
+            if (approval.proof == "missing") return "Document needed"
+            return if (approval.identity == "processing") "Checking your ID" else "Waiting for identity review"
+        }
         return when {
             identityDone && approval.proof == "verified" -> "Waiting for approval"
             !identityDone && approval.proof == "missing" -> "Identity and document needed"
-            !identityDone -> if (approval.identity == "processing") "Checking your ID" else "Identity check needed"
+            !identityDone -> "Identity check needed"
             approval.proof == "pending" -> "Document in review"
             else -> "Document needed"
         }

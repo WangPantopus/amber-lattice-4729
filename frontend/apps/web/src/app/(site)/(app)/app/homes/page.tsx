@@ -18,6 +18,7 @@ import { confirmStore } from '@/components/ui/confirm-store';
 import { validateResidencyPage, residencyRequestLabel, residencyReviewLabel } from '@/components/homes/residencyProgressModel';
 import { unitText } from '@/components/homes/creation/homeCreationModel';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useMailAvailable } from '@/components/place/fastVerify/useVerifyOptions';
 import ClaimApprovalChecklist, { claimStatusLabel, openInfoRequest } from '@/components/homes/ClaimApprovalChecklist';
 import ClaimInfoRequestNote from '@/components/homes/ClaimInfoRequestNote';
 import { EVERYTHING, RECONNECTED, onSyncTopic } from '@/lib/syncSignals';
@@ -37,6 +38,16 @@ function claimInProgress(status: string) {
 // Returning to the page (switching tabs, clicking back into the window) refreshes the list in
 // the background at most this often. An account change always clears and reloads at once.
 const FOCUS_REFRESH_MS = 30_000;
+
+function HeldHomeMailLink({ homeId }: { homeId: string }) {
+  const mailAvailable = useMailAvailable(homeId);
+  if (!mailAvailable) return null;
+  return (
+    <Link href={`/app/homes/${homeId}/verify-postcard`} className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">
+      Verify by mail
+    </Link>
+  );
+}
 
 export default function HomesPage() {
   const router = useRouter();
@@ -455,9 +466,9 @@ export default function HomesPage() {
                           <div className="text-sm text-app-text-secondary">{cityLine}</div>
                           <div className="mt-2 inline-flex items-center rounded-full border border-app-border px-2.5 py-1 text-xs font-semibold text-app-text-strong">{occ}</div>
                           {privateSetup && <p className="mt-2 text-sm text-app-text-secondary">{claimHeld
-                            ? 'We need to check this address first. Verify it by mail to open your household tools.'
+                            ? 'We need to check this address before you can open your household tools.'
                             : instantClaim
-                              ? 'Claim it now to use your household tools and invite your household. Verifying by mail later gets you messages between homes and your verified badge.'
+                              ? 'Claim it now to use your household tools and invite your household.'
                               : 'Start with your own tasks while verification is pending.'}</p>}
                           {verification && <p className="mt-2 text-sm text-app-text-secondary">Household access is awaiting verification. Continue your request to see its current status.</p>}
                           {askedRequest ? <ClaimInfoRequestNote request={askedRequest} className="mt-3" /> : null}
@@ -469,10 +480,7 @@ export default function HomesPage() {
                               {claimingId === h.id ? 'Claiming…' : 'Claim it now'}
                             </button>
                           )}
-                          {claimHeld && (
-                            <Link href={`/app/homes/${h.id}/verify-postcard`}
-                              className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">Verify by mail</Link>
-                          )}
+                          {claimHeld && <HeldHomeMailLink homeId={h.id} />}
                           {askedHref && (
                             <Link href={askedHref} className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">Upload documents</Link>
                           )}

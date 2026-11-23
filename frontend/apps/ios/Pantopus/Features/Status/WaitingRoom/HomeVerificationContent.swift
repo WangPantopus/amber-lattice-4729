@@ -145,20 +145,21 @@ public extension HomeVerificationContent {
         isInChallengeWindow: Bool = false,
         challengeWindowEndsAt: String? = nil,
         postcardExpiresAt: String? = nil,
-        offersLandlord: Bool = false
+        offersLandlord: Bool = false,
+        mailAvailable: Bool = true
     ) -> HomeVerificationContent {
         HomeVerificationContent(
             status: status,
             halo: halo(for: status, isInChallengeWindow: isInChallengeWindow),
             headline: headline(for: status, isInChallengeWindow: isInChallengeWindow),
-            body: body(for: status, isInChallengeWindow: isInChallengeWindow),
+            body: body(for: status, isInChallengeWindow: isInChallengeWindow, mailAvailable: mailAvailable),
             countdown: countdown(
                 for: status,
                 isInChallengeWindow: isInChallengeWindow,
                 challengeWindowEndsAt: challengeWindowEndsAt,
                 postcardExpiresAt: postcardExpiresAt
             ),
-            actions: actions(for: status, offersLandlord: offersLandlord)
+            actions: actions(for: status, offersLandlord: offersLandlord, mailAvailable: mailAvailable)
         )
     }
 
@@ -207,7 +208,8 @@ public extension HomeVerificationContent {
 
     private static func body(
         for status: HomeVerificationStatus,
-        isInChallengeWindow: Bool
+        isInChallengeWindow: Bool,
+        mailAvailable: Bool
     ) -> String {
         switch status {
         case .pendingPostcard:
@@ -219,7 +221,8 @@ public extension HomeVerificationContent {
         case .pendingApproval:
             "A household member needs to approve your request. Reopen this screen to check for updates."
         case .pendingDoc:
-            "Your uploaded documents are waiting for a Pantopus reviewer. Meanwhile, you can verify your address by mail."
+            "Your uploaded documents are waiting for a Pantopus reviewer." +
+                (mailAvailable ? " Meanwhile, you can verify your address by mail." : "")
         case .provisional:
             isInChallengeWindow
                 ? "Your access is provisional while existing members can review. " +
@@ -277,7 +280,7 @@ public extension HomeVerificationContent {
 
     // MARK: Actions
 
-    private static func actions(for status: HomeVerificationStatus, offersLandlord: Bool) -> [HomeVerificationAction] {
+    private static func actions(for status: HomeVerificationStatus, offersLandlord: Bool, mailAvailable: Bool) -> [HomeVerificationAction] {
         var actions: [HomeVerificationAction] = []
         if status == .pendingPostcard {
             actions.append(
@@ -290,7 +293,7 @@ public extension HomeVerificationContent {
                 )
             )
         }
-        if status == .provisionalBootstrap || status == .pendingDoc || status == .provisional {
+        if status == .provisionalBootstrap || status == .pendingDoc || status == .provisional || status == .unverified {
             actions.append(
                 HomeVerificationAction(
                     id: "uploadProof",
@@ -314,7 +317,7 @@ public extension HomeVerificationContent {
                 )
             )
         }
-        if status != .pendingPostcard, status != .pendingApproval {
+        if mailAvailable, status != .pendingPostcard, status != .pendingApproval {
             actions.append(
                 HomeVerificationAction(
                     id: "requestMailedCode",
