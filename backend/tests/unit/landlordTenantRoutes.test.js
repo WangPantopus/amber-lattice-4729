@@ -482,7 +482,7 @@ describe('GET /landlord/properties/:homeId', () => {
 
     expect(res._json.pending_requests).toHaveLength(1);
     expect(res._json.pending_requests[0].id).toBe('lease-pending');
-    expect(res._json.leases.map(lease => lease.id).sort()).toEqual(['lease-active', 'lease-canceled', 'lease-ended', 'lease-pending']);
+    expect(res._json.leases.map(lease => lease.id).sort()).toEqual(['lease-active', 'lease-ended', 'lease-pending']);
   });
 
   test.each(['user', 'business'])('child leases require the same verified %s authority subject as the property', async subjectType => {

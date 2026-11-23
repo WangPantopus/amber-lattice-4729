@@ -109,7 +109,10 @@ internal fun BillCheckContent(
                     }
                 }
             }
-            BillNote("If the document matches your name and home address, you may be verified right away. Otherwise, a reviewer will check it.", PantopusIcon.Info)
+            BillNote(
+                "If the document matches your name and home address, you may be verified right away. Otherwise, a reviewer will check it.",
+                PantopusIcon.Info,
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PantopusIconImage(

@@ -173,11 +173,12 @@ private fun rememberVerifyMethods(homeId: String?): List<PlaceVerifyMethod> {
                 .tenantRepository()
         val status = (repository.homeStatus(homeId) as? NetworkResult.Success)?.data
         if (status != null && status.matches(homeId)) {
-            methods = buildList {
-                if (status.mailAvailable) add(PlaceVerifyMethod.MAIL)
-                add(PlaceVerifyMethod.DOCUMENT)
-                if (status.offersLandlordConfirmation) add(PlaceVerifyMethod.LANDLORD)
-            }
+            methods =
+                buildList {
+                    if (status.mailAvailable) add(PlaceVerifyMethod.MAIL)
+                    add(PlaceVerifyMethod.DOCUMENT)
+                    if (status.offersLandlordConfirmation) add(PlaceVerifyMethod.LANDLORD)
+                }
         }
     }
     return methods

@@ -298,7 +298,7 @@ internal fun FastVerifiedPage(
                 Column {
                     Text("Residency letters and home Mail", fontSize = 14.5.sp, lineHeight = 20.sp, color = PantopusColors.appText)
                     Text(
-                        if (onMailCode == null) "Mail verification is currently unavailable." else "Ask for the postcard whenever you need them.",
+                        if (onMailCode == null) "Mail is currently unavailable." else "Request a postcard to finish verification.",
                         fontSize = 12.5.sp,
                         lineHeight = 17.sp,
                         color = PantopusColors.appTextSecondary,

@@ -42,7 +42,11 @@ class FastVerifiedViewModel
                 val home = (homes.myHomesStored().data?.homes).orEmpty().firstOrNull { it.id.equals(homeId, ignoreCase = true) }
                 val mailAvailable = repository.refresh(homeId)?.available("mail") != null
                 _state.update {
-                    it.copy(address = it.address.ifBlank { home?.address.orEmpty() }, renter = home?.roleBase == "lease_resident", mailAvailable = mailAvailable)
+                    it.copy(
+                        address = it.address.ifBlank { home?.address.orEmpty() },
+                        renter = home?.roleBase == "lease_resident",
+                        mailAvailable = mailAvailable,
+                    )
                 }
             }
         }
@@ -56,5 +60,11 @@ fun BillVerifiedScreen(
     viewModel: FastVerifiedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    FastVerifiedPage(FastCheckKind.BILL, state.address.ifBlank { "this address" }, state.renter, onMailCode = onMailCode.takeIf { state.mailAvailable }, onDone = onDone)
+    FastVerifiedPage(
+        FastCheckKind.BILL,
+        state.address.ifBlank { "this address" },
+        state.renter,
+        onMailCode = onMailCode.takeIf { state.mailAvailable },
+        onDone = onDone,
+    )
 }

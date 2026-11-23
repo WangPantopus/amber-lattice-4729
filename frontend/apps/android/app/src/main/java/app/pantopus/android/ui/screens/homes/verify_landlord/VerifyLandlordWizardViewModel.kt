@@ -202,33 +202,8 @@ open class VerifyLandlordWizardViewModel
             val matchesActor = status.requestContext.actorId == session.actorId
             if (!status.matches(homeId) || !matchesActor) return false
             _state.update { it.copy(noLandlord = status.landlord?.hasLandlord == false, mailAvailable = status.mailAvailable) }
-            val existing = saved.state == "pending" || saved.state == "active"
-            if (existing) {
-                val lease = saved.lease ?: return false
-                val matchesLease = lease.id == status.requestContext.leaseId && lease.homeId == homeId
-                val matchesState = lease.state == saved.state && lease.state == status.requestContext.leaseState
-                if (!matchesLease || !matchesState) return false
-                if (leaseAttachment.hasDraft && lease.metadata?.leaseFileId != leaseAttachment.uploadIdentity) return false
-                _state.update {
-                    it.copy(
-                        currentStep = VerifyLandlordStep.Sent,
-                        submitState = VerifyLandlordSubmitState.Submitted,
-                        submissionOutcomeUnknown = false,
-                        approvalResult =
-                            VerifyLandlordApprovalResult(
-                                kind =
-                                    if (saved.state == "active") {
-                                        VerifyLandlordApprovalResult.Kind.AlreadyActive
-                                    } else {
-                                        VerifyLandlordApprovalResult.Kind.AlreadyPending
-                                    },
-                                submittedAt = lease.createdAt,
-                                requestedStartAt = lease.startAt,
-                                message = lease.metadata?.message,
-                            ),
-                    )
-                }
-            } else if (saved.state in setOf("none", "denied", "ended")) {
+            if (saved.state in setOf("pending", "active")) return restoreLease(status, saved)
+            if (saved.state in setOf("none", "denied", "ended")) {
                 val landlord = status.landlord ?: return false
                 _state.update {
                     it.copy(
@@ -245,6 +220,38 @@ open class VerifyLandlordWizardViewModel
                 }
             } else {
                 return false
+            }
+            return true
+        }
+
+        private fun restoreLease(
+            status: TenantHomeStatusResponse,
+            saved: TenantHomeStatusResponse.LeaseStatus,
+        ): Boolean {
+            val lease = saved.lease ?: return false
+            val matchesLease = lease.id == status.requestContext.leaseId && lease.homeId == homeId
+            val matchesState = lease.state == saved.state && lease.state == status.requestContext.leaseState
+            val matchesDraft =
+                saved.state != "pending" || !leaseAttachment.hasDraft || lease.metadata?.leaseFileId == leaseAttachment.uploadIdentity
+            if (!matchesLease || !matchesState || !matchesDraft) return false
+            _state.update {
+                it.copy(
+                    currentStep = VerifyLandlordStep.Sent,
+                    submitState = VerifyLandlordSubmitState.Submitted,
+                    submissionOutcomeUnknown = false,
+                    approvalResult =
+                        VerifyLandlordApprovalResult(
+                            kind =
+                                if (saved.state == "active") {
+                                    VerifyLandlordApprovalResult.Kind.AlreadyActive
+                                } else {
+                                    VerifyLandlordApprovalResult.Kind.AlreadyPending
+                                },
+                            submittedAt = lease.createdAt,
+                            requestedStartAt = lease.startAt,
+                            message = lease.metadata?.message,
+                        ),
+                )
             }
             return true
         }
