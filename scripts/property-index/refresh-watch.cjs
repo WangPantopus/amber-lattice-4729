@@ -190,7 +190,9 @@ function watch(opts) {
     bySource.get(line.source).push(line);
   }
   const ran = builds.map(({ source, build, publish }) => {
-    const lines = bySource.get(source) || [];
+    // A manual source:county job does not refresh the statewide job or imply its other counties went missing.
+    const [connector, fips] = source.split(':');
+    const lines = (bySource.get(connector) || []).filter((line) => !fips || line.fips === fips);
     const count = (outcome) => lines.filter((line) => line.outcome === outcome).length;
     const result = build ? 'build failed' : publish ? 'publish failed or refused' : 'ok';
     const previous = attempts.sources[source] || {};
