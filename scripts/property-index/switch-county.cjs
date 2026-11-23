@@ -57,7 +57,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { statePath, releasePath, switchesPath } = require('../../backend/services/propertyRecords/format');
+const { statePath, releasePath, switchesPath, municipalRelease } = require('../../backend/services/propertyRecords/format');
 const { FACTS } = require('../../backend/services/propertyRecords/facts');
 const { stateOfCounty, city } = require('../../backend/services/propertyRecords/addressKey');
 const { log } = require('./lib/log.cjs');
@@ -149,15 +149,16 @@ if (mode === 'shadow' || mode === 'live' || mode === 'municipal') {
     const state = stateOfCounty(county);
     if (!stateFiles.has(state)) stateFiles.set(state, JSON.parse(read(statePath(state)) || '{}'));
     const entry = stateFiles.get(state).jurisdictions?.[county];
+    const release = municipality ? municipalRelease(entry, municipality) : entry;
     const homes = entry && entry.status !== 'withdrawn' ? homesIn(county, entry.release) : null;
     if (!entry) problems.push(`${county} has no release in ${state}'s file`);
-    else if (municipality && !Object.hasOwn(entry.municipal_rolls || {}, municipality)) problems.push(`${county}'s release has no documented municipal roll for ${municipality}`);
+    else if (!release) problems.push(`${county}'s release has no documented municipal roll for ${municipality}`);
     else if (entry.status === 'withdrawn') problems.push(`${county}'s source was withdrawn`);
     else if (homes === null) problems.push(`${county}'s release ${entry.release} has no report to show it holds homes`);
     else if (!homes) problems.push(`${county}'s release ${entry.release} holds no homes, only parcels or other records`);
     // A county whose serving release marks no lot as the map's would show nothing new: publish it first.
     else if (mappedLots && mode === 'live' && !entry.held_from?.mapped_lots) problems.push(`${county}'s release ${entry.release} marks no lot sizes as the parcel map's: publish it first`);
-    else releases.set(county, entry);
+    else releases.set(county, release);
   }
 }
 

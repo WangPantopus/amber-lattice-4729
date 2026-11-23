@@ -8,6 +8,8 @@
 // read from Boston's file; nor are owner occupancy and the residential exemption, which say something about a person.
 
 const path = require('node:path');
+const { createReadStream } = require('node:fs');
+const { createHash } = require('node:crypto');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
 const { download } = require('../lib/tables.cjs');
 const { getJson, layerRows, socrataRows, cached } = require('../lib/services.cjs');
@@ -20,6 +22,10 @@ const { log } = require('../lib/log.cjs');
 const LAYER = 'https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Property_Tax_Parcels/FeatureServer/0';
 const BOSTON_FILE = 'https://data.boston.gov/dataset/e02c44d2-3c64-459c-8fe2-e1ce5f38a035/resource/ee73430d-96c0-423e-ad21-c4cfb54c8961/download/fy2026-property-assessment-data_rev.csv';
 const BOSTON_YEAR = 2026;
+// City resource_show ee73430d-96c0-423e-ad21-c4cfb54c8961: created 2025-12-26, file revised 2026-05-22.
+// Only the qualified bytes receive this revision date; a statewide edit cannot renew the city file.
+const BOSTON_FILE_REVISED = '2026-05-22';
+const BOSTON_SHA256 = 'd0b656f516162c56a92782a255c731b967bd551b3e26cf412e080fdf041791fa';
 const BOSTON = 35;
 const CAMBRIDGE = 49;
 const CAMBRIDGE_DATASET = ['data.cambridgema.gov', 'eey2-rv59'];
@@ -376,9 +382,14 @@ async function* build({ work }) {
     }
     log(`${county}: ${records.length} records, ${unreadable} without a readable address`);
     const hasBoston = ids.includes(BOSTON);
+    let qualifiedBoston = false;
     if (hasBoston) {
       const file = path.join(work, 'ma-massgis', 'boston.csv');
       download(BOSTON_FILE, file);
+      const hash = createHash('sha256');
+      for await (const chunk of createReadStream(file)) hash.update(chunk);
+      qualifiedBoston = hash.digest('hex') === BOSTON_SHA256;
+      if (!qualifiedBoston) log('Boston: file revision changed; municipal roll held for qualification');
       const boston = [];
       for await (const row of csvRows(file, BOSTON_COLUMNS)) boston.push(...fromBoston(row, fips, county));
       linkBostonCondos(boston);
@@ -408,9 +419,9 @@ async function* build({ work }) {
     yield {
       fips, state: 'MA', name: county, publisher: hasBoston ? 'MassGIS and the City of Boston' : ids.includes(CAMBRIDGE) ? 'MassGIS and the City of Cambridge' : 'MassGIS', dataset: 'assessors\' parcel data', method: 'state', source: 'ma-massgis', title: 'State records',
       // Massachusetts assesses a fiscal year's taxes on January 1 before that fiscal year begins.
-      ...(hasBoston ? { municipal_rolls: { BOSTON: {
+      ...(qualifiedBoston ? { municipal_rolls: { BOSTON: {
         publisher: 'City of Boston Assessing Department', dataset: `FY${BOSTON_YEAR} property assessment roll`,
-        as_of: `${BOSTON_YEAR - 1}-01-01`,
+        as_of: `${BOSTON_YEAR - 1}-01-01`, file_revised: BOSTON_FILE_REVISED,
         // Require the same postal name on the site record. Shared names such as Chestnut Hill do not establish Boston.
         postal_aliases: ['ALLSTON', 'BRIGHTON', 'CHARLESTOWN', 'DORCHESTER', 'EAST BOSTON', 'HYDE PARK', 'JAMAICA PLAIN',
           'MATTAPAN', 'ROSLINDALE', 'ROXBURY', 'ROXBURY CROSSING', 'SOUTH BOSTON', 'WEST ROXBURY'],

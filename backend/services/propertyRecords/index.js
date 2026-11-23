@@ -21,6 +21,7 @@ const router = require('./router');
 const counts = require('./counts');
 const reader = require('./reader');
 const identity = require('./identity');
+const { municipalRelease } = require('./format');
 const { parse, sortKey, zip5, city: cityKey, stateCode } = require('./addressKey');
 
 const MATCH_RANK = { exact: 0, building_only: 1, parcel_only: 2, ambiguous: 3, restricted: 4, unsupported: 5, stale: 6 };
@@ -41,7 +42,7 @@ function exactMunicipalAnswer(answer, query, fips, county, municipality) {
   const record = answer.record;
   const site = record?.address;
   const unavailable = { match: 'unsupported', reason: 'no_release' };
-  if (answer.match !== 'exact' || !site || !roll?.as_of || !roll.publisher || !roll.dataset) return unavailable;
+  if (answer.match !== 'exact' || !site || !roll) return unavailable;
   if (cityKey(record.facts?.municipality) !== municipality || !query.zip || query.zip !== site.zip) return unavailable;
   const postalMatch = query.city === cityKey(site.city) && roll.postal_aliases?.includes(query.city);
   if (query.city !== municipality && !postalMatch) return unavailable;
@@ -49,10 +50,11 @@ function exactMunicipalAnswer(answer, query, fips, county, municipality) {
   const house = record.kind === 'property' && record.home_type === 'house';
   const condo = record.kind === 'unit' && record.home_type === 'condo' && Boolean(query.unit);
   if (!(house || condo) || (answer.building && cityKey(answer.building.facts?.municipality) !== municipality)) return unavailable;
-  return {
-    ...answer, jurisdiction: fips, municipality,
-    county: { ...county, publisher: roll.publisher, dataset: roll.dataset, as_of: roll.as_of, method: 'county', title: 'City records' },
-  };
+  const scoped = municipalRelease(county, municipality);
+  if (!scoped) return unavailable;
+  const source = { jurisdiction: fips, municipality, county: scoped };
+  if (Date.now() > Date.parse(scoped.stale_after)) return { match: 'stale', reason: 'release_past_date', ...source };
+  return { ...answer, ...source };
 }
 
 /**

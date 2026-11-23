@@ -56,6 +56,19 @@ const releasePath = (fips, release) => `releases/${fips}/${release}`;
 const SUPPRESSIONS_PATH = 'suppressions.json';
 const switchesPath = (name) => `switches/${name}.json`;
 
+/** The municipal evidence and the earlier deadline of the two files. Old releases lack the municipal dates. */
+function municipalRelease(county, municipality) {
+  const roll = county?.municipal_rolls?.[municipality];
+  if (!roll?.publisher || !roll.dataset || ![roll.as_of, roll.file_revised, roll.stale_after].every(
+    (date) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)),
+  )) return null;
+  const staleAfter = county.stale_after && county.stale_after < roll.stale_after ? county.stale_after : roll.stale_after;
+  return {
+    ...county, publisher: roll.publisher, dataset: roll.dataset, as_of: roll.as_of,
+    file_revised: roll.file_revised, stale_after: staleAfter, method: 'county', title: 'City records',
+  };
+}
+
 /** The block that holds this key, by its position in the manifest's first keys; -1 when the key sorts before them all. */
 function findBlock(keys, key) {
   let low = 0;
@@ -73,4 +86,4 @@ function findBlock(keys, key) {
   return found;
 }
 
-module.exports = { FORMAT, BLOCK_RAW_BYTES, KINDS, SUPPRESSIONS_PATH, servesRecords, statePath, releasePath, switchesPath, findBlock };
+module.exports = { FORMAT, BLOCK_RAW_BYTES, KINDS, SUPPRESSIONS_PATH, servesRecords, municipalRelease, statePath, releasePath, switchesPath, findBlock };

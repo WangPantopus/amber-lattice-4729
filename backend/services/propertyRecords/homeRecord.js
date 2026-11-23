@@ -29,6 +29,7 @@ const { changeNicheData } = require('../homeNicheData');
 const config = require('../../config/propertyRecords');
 const logger = require('../../utils/logger');
 const { FACTS } = require('./facts');
+const { municipalRelease } = require('./format');
 const { city: cityKey, parse, zip5, stateCode } = require('./addressKey');
 const { lookup, StorageUnavailable } = require('./index');
 const reader = require('./reader');
@@ -206,9 +207,8 @@ function storedCopy(home) {
   const municipality = router.municipalityFor(copy.jurisdiction);
   if (municipality || copy.municipal_match) {
     const match = copy.municipal_match;
-    const county = countyNow(home, copy);
-    if (!county || county.release !== copy.release || !county.municipal_rolls?.[municipality]
-      || (county.stale_after && Date.now() > Date.parse(county.stale_after))) return null;
+    const county = municipalRelease(countyNow(home, copy), municipality);
+    if (!county || county.release !== copy.release || Date.now() > Date.parse(county.stale_after)) return null;
     if (!match || match.municipality !== municipality || match.city !== cityKey(home.city) || match.state !== stateCode(home.state)) return null;
   }
   return copy.address_stamp === addressStamp(homeAddress(home)) ? copy : null;

@@ -57,7 +57,7 @@ const crypto = require('crypto');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
 const reader = require('./reader');
-const { servesRecords } = require('./format');
+const { servesRecords, municipalRelease } = require('./format');
 const { city, stateOfCounty } = require('./addressKey');
 
 const READ_EVERY_MS = 60 * 1000;
@@ -177,7 +177,7 @@ async function checkLive() {
       if (stateOfCounty(fips) !== state) continue;
       const county = stateFile?.jurisdictions?.[fips];
       const municipality = counties[fips]?.municipality;
-      if (!county || (municipality && !county.municipal_rolls?.[municipality])) missing.push(fips);
+      if (!county || (municipality && !municipalRelease(county, municipality))) missing.push(fips);
     }
   }
   if (missing.join() !== missingLive.join() && missing.length) logger.warn('property_records.live_county_missing', { counties: missing });

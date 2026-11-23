@@ -20,7 +20,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { switchesPath, servesRecords } = require('../../backend/services/propertyRecords/format');
+const { switchesPath, servesRecords, municipalRelease } = require('../../backend/services/propertyRecords/format');
+const { city } = require('../../backend/services/propertyRecords/addressKey');
 
 const WARN_DAYS = 30;
 // Sources published by hand on purpose, and why: listed apart rather than as missing from the schedule. Their live counties
@@ -155,7 +156,6 @@ function watch(opts) {
   const schedule = readSchedule(opts.workflow);
   const cronOf = new Map(schedule.flatMap(({ cron, sources }) => sources.map((source) => [source, cron])));
   const { builds, counties: outcomes } = readOutcomes(opts.outcomes);
-  const counties = store.states().flatMap((state) => Object.values(state.jurisdictions || {}));
   const switches = store.json(switchesPath('production')) || { counties: {} };
   const serving = new Map(Object.entries(switches.counties || {}).filter(([, county]) => servesRecords(county.mode)));
   const municipalCount = [...serving.values()].filter((county) => county.mode === 'municipal').length;
@@ -164,6 +164,15 @@ function watch(opts) {
     if (!entry) return '';
     return entry.mode === 'municipal' ? `, ${entry.municipality} only` : ', live';
   };
+  const errors = [];
+  const counties = store.states().flatMap((state) => Object.values(state.jurisdictions || {})).map((county) => {
+    const entry = serving.get(county.fips);
+    if (entry?.mode !== 'municipal') return county;
+    const roll = municipalRelease(county, city(entry.municipality));
+    if (roll) return { ...roll, as_of: roll.file_revised };
+    errors.push({ line: `${county.name} ${county.state} (${county.fips})${scope(county.fips)}: missing a qualified municipal roll with a file revision and deadline` });
+    return { ...county, stale_after: null };
+  });
   // A county its source's build no longer gives at all (every row without an address, say): only sources that built and whose
   // publish said something, so a publish that failed outright isn't read as every county gone.
   const toldOf = new Set(outcomes.map((line) => line.fips));
@@ -171,7 +180,6 @@ function watch(opts) {
   const builtWhole = new Set(builds.filter(({ source, build }) => !build && spoke.has(source)).map(({ source }) => source));
   const notGiven = counties.filter((county) => county.status !== 'withdrawn' && builtWhole.has(county.source) && !toldOf.has(county.fips));
   const attempts = store.json(ATTEMPTS) || { sources: {} };
-  const errors = [];
   const warnings = [];
   const summary = [`## Refresh watch, ${now.toISOString().slice(0, 16).replace('T', ' ')} UTC`, ''];
 
@@ -242,14 +250,15 @@ function watch(opts) {
     if (!isLive || !county.stale_after) continue;
     const left = daysTo(county.stale_after, now);
     if (left > WARN_DAYS) continue;
-    near.push({ left, row: [`${county.name} ${county.state} (${county.fips})`, county.source, county.as_of, county.stale_after, left < 0 ? `past by ${-left}` : String(left), cronOf.get(county.source) || 'on no schedule'] });
+    near.push({ left, row: [`${county.name} ${county.state} (${county.fips})${serving.get(county.fips)?.mode === 'municipal' ? scope(county.fips) : ''}`, county.source, county.as_of, county.stale_after, left < 0 ? `past by ${-left}` : String(left), cronOf.get(county.source) || 'on no schedule'] });
     const line = `${county.name} ${county.state} (${county.fips})${scope(county.fips)}: ${left < 0 ? `past its date (${county.stale_after}) by ${-left} days` : `${left} days to its date (${county.stale_after})`}; ${county.source} dated ${county.as_of}`;
     if (left <= RED_DAYS) errors.push({ left, line });
     else warnings.push(`${line}${cronOf.has(county.source) ? '' : ', and its source is on no schedule'}`);
   }
   near.sort((a, b) => a.left - b.left);
   errors.sort((a, b) => a.left - b.left);
-  summary.push(`### Live counties within ${WARN_DAYS} days of their date`, '');
+  const areas = municipalCount ? 'counties and municipal scopes' : 'counties';
+  summary.push(`### Live ${areas} within ${WARN_DAYS} days of their date`, '');
   summary.push(...(near.length ? table(['County', 'Source', 'Dated', 'Stops serving', 'Days left', 'Schedule (UTC)'], near.map(({ row }) => row)) : ['None.', '']));
   const byHand = new Map([...unscheduled].filter(([source]) => BY_HAND.has(source)));
   for (const source of byHand.keys()) unscheduled.delete(source);
@@ -281,7 +290,7 @@ function watch(opts) {
   const text = summary.join('\n');
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
   else console.log(text);
-  console.log(`Refresh watch: ${builds.length} sources this run, ${near.length} live counties within ${WARN_DAYS} days, ${overdue.length} sources overdue, ${red.length} lines that fail a scheduled run`);
+  console.log(`Refresh watch: ${builds.length} sources this run, ${near.length} live ${areas} within ${WARN_DAYS} days, ${overdue.length} sources overdue, ${red.length} lines that fail a scheduled run`);
   if (red.length && opts.red) process.exitCode = 1;
 }
 
