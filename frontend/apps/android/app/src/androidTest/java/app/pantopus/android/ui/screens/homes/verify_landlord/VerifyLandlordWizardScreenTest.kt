@@ -56,6 +56,7 @@ class VerifyLandlordWizardScreenTest {
                     "home-1",
                     TenantRequestContextDto("home-1", "actor-1", null, null),
                     TenantHomeStatusResponse.LeaseStatus("none"),
+                    landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
                 ),
             )
         return VerifyLandlordWizardViewModel(
@@ -131,6 +132,8 @@ class VerifyLandlordWizardScreenTest {
                     "home-1",
                     TenantRequestContextDto("home-1", "actor-1", "lease-1", "pending"),
                     TenantHomeStatusResponse.LeaseStatus("pending", lease),
+                    landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
+                    mailAvailable = true,
                 ),
             )
         compose.runOnIdle { vm.restoreSavedRequest() }

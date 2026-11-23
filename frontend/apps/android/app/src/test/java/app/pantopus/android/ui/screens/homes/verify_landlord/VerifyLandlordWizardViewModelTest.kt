@@ -121,6 +121,7 @@ abstract class VerifyLandlordWizardTestFixture {
             "home-1",
             TenantRequestContextDto("home-1", "actor-1", null, null),
             TenantHomeStatusResponse.LeaseStatus("none"),
+            landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
         )
 
     protected fun savedRequest() =
@@ -128,6 +129,8 @@ abstract class VerifyLandlordWizardTestFixture {
             "home-1",
             TenantRequestContextDto("home-1", "actor-1", "lease-1", "pending"),
             TenantHomeStatusResponse.LeaseStatus("pending", stubLease),
+            landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
+            mailAvailable = true,
         )
 }
 
