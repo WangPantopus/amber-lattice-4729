@@ -13,7 +13,7 @@ const { download } = require('../lib/tables.cjs');
 const { getJson, layerRows, socrataRows, cached } = require('../lib/services.cjs');
 const { csvRows } = require('../lib/csv.cjs');
 const { houseNumbers, readAddresses, year, isoDate, zipCode, realUnit, onRecord, unitAfterStreet } = require('../lib/addresses.cjs');
-const { positive, put, word } = require('../lib/values.cjs');
+const { number, positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -203,10 +203,12 @@ function fromBoston(row, fips, county) {
   if (home) {
     put(facts, 'rooms', positive(row.TT_RMS));
     put(facts, 'bedrooms', positive(row.BED_RMS));
-    const [full, half] = [positive(row.FULL_BTH), positive(row.HLF_BTH)];
-    put(facts, 'full_baths', full);
-    put(facts, 'half_baths', half);
-    if (full || half) facts.bathrooms = (full || 0) + (half || 0) * 0.5;
+    const full = number(row.FULL_BTH);
+    const half = number(row.HLF_BTH);
+    const count = (value) => Number.isInteger(value) && value >= 0;
+    put(facts, 'full_baths', count(full) ? positive(full) : null);
+    put(facts, 'half_baths', count(half) ? positive(half) : null);
+    if (count(full) && count(half)) put(facts, 'bathrooms', positive(full + half * 0.5));
     put(facts, 'fireplaces', positive(row.FIREPLACES));
     put(facts, 'parking_spaces', positive(row.NUM_PARKING));
     put(facts, 'condition', bostonWord(row.OVERALL_COND));
@@ -400,6 +402,14 @@ async function* build({ work }) {
     for (const building of condoBuildings(towned, { fips, county })) records.push(building);
     yield {
       fips, state: 'MA', name: county, publisher: hasBoston ? 'MassGIS and the City of Boston' : ids.includes(CAMBRIDGE) ? 'MassGIS and the City of Cambridge' : 'MassGIS', dataset: 'assessors\' parcel data', method: 'state', source: 'ma-massgis', title: 'State records',
+      // Massachusetts assesses a fiscal year's taxes on January 1 before that fiscal year begins.
+      ...(hasBoston ? { municipal_rolls: { BOSTON: {
+        publisher: 'City of Boston Assessing Department', dataset: `FY${BOSTON_YEAR} property assessment roll`,
+        as_of: `${BOSTON_YEAR - 1}-01-01`,
+        // Require the same postal name on the site record. Shared names such as Chestnut Hill do not establish Boston.
+        postal_aliases: ['ALLSTON', 'BRIGHTON', 'CHARLESTOWN', 'DORCHESTER', 'EAST BOSTON', 'HYDE PARK', 'JAMAICA PLAIN',
+          'MATTAPAN', 'ROSLINDALE', 'ROXBURY', 'ROXBURY CROSSING', 'SOUTH BOSTON', 'WEST ROXBURY'],
+      } } } : {}),
       as_of: edited, stale_after_days: 540, records,
     };
   }

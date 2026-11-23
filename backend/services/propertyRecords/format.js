@@ -21,6 +21,7 @@
  */
 
 const FORMAT = 1;
+const servesRecords = (mode) => mode === 'live' || mode === 'municipal';
 // Blocks close at the first new street name and number past this many bytes of JSON.
 const BLOCK_RAW_BYTES = 32 * 1024;
 
@@ -72,4 +73,4 @@ function findBlock(keys, key) {
   return found;
 }
 
-module.exports = { FORMAT, BLOCK_RAW_BYTES, KINDS, SUPPRESSIONS_PATH, statePath, releasePath, switchesPath, findBlock };
+module.exports = { FORMAT, BLOCK_RAW_BYTES, KINDS, SUPPRESSIONS_PATH, servesRecords, statePath, releasePath, switchesPath, findBlock };

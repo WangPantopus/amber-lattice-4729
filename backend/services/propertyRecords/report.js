@@ -123,6 +123,7 @@ async function loadReport({ days = 7, until = new Date() } = {}) {
   const names = await namesFor(list.filter((row) => row.fips).map((row) => row.fips));
   for (const row of list.filter((entry) => entry.fips)) {
     row.mode = router.modeFor(row.fips);
+    if (row.mode === 'municipal') row.municipality = router.municipalityFor(row.fips);
     const county = states.get(row.state)?.jurisdictions?.[row.fips];
     row.name = county?.name || names.get(row.fips) || null;
     // Unknown when the index can't be read here, which isn't the same as no release.
@@ -146,8 +147,8 @@ async function loadReport({ days = 7, until = new Date() } = {}) {
     vendors,
     attom_calls: vendors.attom || 0,
     queue: asked.filter((row) => row.has_release === false),
-    ready: asked.filter((row) => row.has_release && row.mode !== 'live'),
-    stale_soon: counties.filter((row) => row.mode === 'live' && Number.isFinite(row.days_left) && row.days_left <= STALE_SOON_DAYS).sort((a, b) => a.days_left - b.days_left),
+    ready: asked.filter((row) => row.has_release && !router.serves(row.fips)),
+    stale_soon: counties.filter((row) => router.serves(row.fips) && Number.isFinite(row.days_left) && row.days_left <= STALE_SOON_DAYS).sort((a, b) => a.days_left - b.days_left),
     counties,
     no_county: list.filter((row) => !row.fips).sort(byUnanswered),
   };

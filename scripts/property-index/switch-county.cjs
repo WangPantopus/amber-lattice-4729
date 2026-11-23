@@ -10,6 +10,7 @@
 //   node scripts/property-index/switch-county.cjs --county 53011 --mode off --target local --root <dir>
 //     --withhold sale_price,sale_date   these facts stay off its screens (stored copies keep them); `none` brings them all back
 //     --estimates on|off   a live county's owners see a Pantopus estimate, or don't (backend/services/propertyRecords/valueEstimate.js)
+//   --mode municipal:Boston serves exact houses and named condo units in a documented city roll.
 //   Leave out --mode to keep its mode.
 //   node scripts/property-index/switch-county.cjs --shared-facts --county 17031 --mode live --target production --bucket <name>
 //     --shared-facts with --mode live or off: an address with several homes on record in the county shows what all of
@@ -58,15 +59,18 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { statePath, releasePath, switchesPath } = require('../../backend/services/propertyRecords/format');
 const { FACTS } = require('../../backend/services/propertyRecords/facts');
-const { stateOfCounty } = require('../../backend/services/propertyRecords/addressKey');
+const { stateOfCounty, city } = require('../../backend/services/propertyRecords/addressKey');
 const { log } = require('./lib/log.cjs');
 
 const opt = (name) => { const i = process.argv.indexOf(name); return (i > 0 && process.argv[i + 1]) || ''; };
 const refuse = (why) => { console.error(why); process.exit(2); };
 
 const counties = [...new Set(opt('--county').split(',').map((code) => code.trim()).filter(Boolean))];
-const mode = opt('--mode').trim();
+const requestedMode = opt('--mode').trim();
+const municipalMode = /^municipal:(.+)$/.exec(requestedMode);
+const mode = municipalMode ? 'municipal' : requestedMode;
 const target = opt('--target').trim();
+const municipality = city(municipalMode?.[1]);
 const withhold = opt('--withhold').trim();
 const estimates = opt('--estimates').trim();
 const sharedFacts = process.argv.includes('--shared-facts');
@@ -89,7 +93,8 @@ const root = opt('--root');
 const remote = `s3://${opt('--bucket')}/${opt('--prefix') || 'index'}`;
 
 if (!counties.length) refuse('A county is its five-digit FIPS code');
-if (mode && !['off', 'shadow', 'live'].includes(mode)) refuse('A county is off, shadow or live');
+if (mode && !['off', 'shadow', 'live', 'municipal'].includes(mode)) refuse('Unknown serving mode');
+if (mode === 'municipal' && (!municipality || counties.length !== 1 || list)) refuse('Use --mode municipal:<city> with one county and a documented city roll');
 if (!/^[a-z]+$/.test(target)) refuse('Name the environment: production or staging');
 if (estimates && !['on', 'off'].includes(estimates)) refuse('Estimates are on or off');
 if ([sharedFacts, similarHomes, appealPacket, newColumns, derivedRows, measuredRows, bathTotals, mappedLots, listedUnits, pastDate].filter(Boolean).length > 1) refuse('One list at a time: --shared-facts, --similar-homes, --appeal-packet, --new-columns, --derived-rows, --measured-rows, --bath-totals, --mapped-lots, --listed-units or --past-date');
@@ -138,7 +143,7 @@ function homesIn(county, release) {
 // A wrong code would quietly do nothing, so a county with no release can't be turned on. Nor can one whose release holds
 // no homes, only parcels or other records: every lookup there would find no home.
 const releases = new Map();
-if (mode === 'shadow' || mode === 'live') {
+if (mode === 'shadow' || mode === 'live' || mode === 'municipal') {
   const stateFiles = new Map();
   for (const county of known) {
     const state = stateOfCounty(county);
@@ -146,6 +151,7 @@ if (mode === 'shadow' || mode === 'live') {
     const entry = stateFiles.get(state).jurisdictions?.[county];
     const homes = entry && entry.status !== 'withdrawn' ? homesIn(county, entry.release) : null;
     if (!entry) problems.push(`${county} has no release in ${state}'s file`);
+    else if (municipality && !Object.hasOwn(entry.municipal_rolls || {}, municipality)) problems.push(`${county}'s release has no documented municipal roll for ${municipality}`);
     else if (entry.status === 'withdrawn') problems.push(`${county}'s source was withdrawn`);
     else if (homes === null) problems.push(`${county}'s release ${entry.release} has no report to show it holds homes`);
     else if (!homes) problems.push(`${county}'s release ${entry.release} holds no homes, only parcels or other records`);
@@ -163,7 +169,13 @@ if (file.v !== 1 || !file.counties) refuse('A switch file this tool can\'t read'
 const changes = list ? [] : known.map((county) => {
   const before = file.counties[county] || { mode: 'off (not named)' };
   const next = { ...before, ...(mode ? { mode } : {}), ...(withheld ? { withheld } : {}), ...(estimates ? { estimates: estimates === 'on' } : {}) };
-  if (!['off', 'shadow', 'live'].includes(next.mode)) problems.push(`${county} is named for the first time, so it needs --mode`);
+  if (municipality) next.municipality = municipality;
+  if (next.mode !== 'municipal') delete next.municipality;
+  if (!['off', 'shadow', 'live', 'municipal'].includes(next.mode)) problems.push(`${county} is named for the first time, so it needs --mode`);
+  if (next.mode === 'municipal') {
+    if (estimates === 'on') problems.push('Municipal mode serves only exact roll records');
+    delete next.estimates;
+  }
   if (!next.withheld?.length) delete next.withheld;
   if (!next.estimates) delete next.estimates;
   return { county, before, next };
@@ -190,9 +202,10 @@ file.updated_at = new Date().toISOString();
 write(name, `${JSON.stringify(file, null, 1)}\n`);
 
 const count = (wanted) => Object.values(file.counties).filter((entry) => entry.mode === wanted).length;
+const modeLabel = (entry) => entry.mode === 'municipal' ? `municipal:${entry.municipality}` : entry.mode;
 for (const { county, before, next } of changes) {
   const release = releases.get(county);
-  log(`${target}: ${county} ${before.mode} -> ${next.mode}${release ? `, release ${release.release} as of ${release.as_of}` : ''}; withheld: ${(next.withheld || []).join(', ') || 'none'}; estimates: ${next.estimates ? (next.mode === 'live' ? 'on' : 'on once live') : 'off'}`);
+  log(`${target}: ${county} ${modeLabel(before)} -> ${modeLabel(next)}${release ? `, release ${release.release} as of ${release.as_of}` : ''}; withheld: ${(next.withheld || []).join(', ') || 'none'}; estimates: ${next.estimates ? (next.mode === 'live' ? 'on' : 'on once live') : 'off'}`);
 }
 if (list) {
   for (const county of known) {
@@ -200,4 +213,4 @@ if (list) {
     log(`${target}: ${county} ${list[1]} ${namedBefore.get(county)} -> ${mode}; the county is ${line}${line === 'live' ? '' : ', so this applies once it is live'}`);
   }
 }
-log(`${target} now names ${count('live')} live, ${count('shadow')} shadow, ${count('off')} off, estimates on in ${Object.values(file.counties).filter((entry) => entry.estimates).length}, shared facts in ${(file.shared_facts || []).length}, similar homes in ${(file.similar_homes || []).length}, appeal packets in ${(file.appeal_packet || []).length}, new columns in ${(file.new_columns || []).length}, derived rows in ${(file.derived_rows || []).length}, measured rows in ${(file.measured_rows || []).length}, bath totals as Bathrooms only in ${(file.bath_totals || []).length}, lot sizes labeled as the parcel map's in ${(file.mapped_lots || []).length}, listed units in ${(file.listed_units || []).length}, answers past their date in ${(file.past_date || []).length}; servers follow within about a minute`);
+log(`${target} now names ${count('live')} live, ${count('shadow')} shadow, ${count('off')} off${count('municipal') ? `, ${count('municipal')} municipal` : ''}, estimates on in ${Object.values(file.counties).filter((entry) => entry.estimates).length}, shared facts in ${(file.shared_facts || []).length}, similar homes in ${(file.similar_homes || []).length}, appeal packets in ${(file.appeal_packet || []).length}, new columns in ${(file.new_columns || []).length}, derived rows in ${(file.derived_rows || []).length}, measured rows in ${(file.measured_rows || []).length}, bath totals as Bathrooms only in ${(file.bath_totals || []).length}, lot sizes labeled as the parcel map's in ${(file.mapped_lots || []).length}, listed units in ${(file.listed_units || []).length}, answers past their date in ${(file.past_date || []).length}; servers follow within about a minute`);

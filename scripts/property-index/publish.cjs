@@ -29,7 +29,7 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
-const { FORMAT, statePath, releasePath, switchesPath } = require('../../backend/services/propertyRecords/format');
+const { FORMAT, statePath, releasePath, switchesPath, servesRecords } = require('../../backend/services/propertyRecords/format');
 const { log } = require('./lib/log.cjs');
 const { selfFind, described, MIN_SELF_FIND } = require('./lib/self-find.cjs');
 const { sameSources } = require('./lib/registry.cjs');
@@ -179,7 +179,7 @@ function liveCounties(store) {
   for (const name of ['production', 'staging']) {
     const bytes = store.get(switchesPath(name));
     if (!bytes) continue;
-    for (const [fips, county] of Object.entries(JSON.parse(bytes.toString('utf8')).counties || {})) if (county.mode === 'live') live.add(fips);
+    for (const [fips, county] of Object.entries(JSON.parse(bytes.toString('utf8')).counties || {})) if (servesRecords(county.mode)) live.add(fips);
   }
   return live;
 }

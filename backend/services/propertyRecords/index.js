@@ -35,13 +35,33 @@ function countiesFor(stateFile, zip, city) {
   return stateFile.zips?.[zip] || stateFile.cities?.[city] || [];
 }
 
+// Resolve the full county before this check, so removing a neighboring town cannot manufacture an exact match.
+function exactMunicipalAnswer(answer, query, fips, county, municipality) {
+  const roll = county.municipal_rolls?.[municipality];
+  const record = answer.record;
+  const site = record?.address;
+  const unavailable = { match: 'unsupported', reason: 'no_release' };
+  if (answer.match !== 'exact' || !site || !roll?.as_of || !roll.publisher || !roll.dataset) return unavailable;
+  if (cityKey(record.facts?.municipality) !== municipality || !query.zip || query.zip !== site.zip) return unavailable;
+  const postalMatch = query.city === cityKey(site.city) && roll.postal_aliases?.includes(query.city);
+  if (query.city !== municipality && !postalMatch) return unavailable;
+  if (['pre', 'post', 'suffix', 'building', 'unit'].some((part) => (query[part] || '') !== (site[part] || ''))) return unavailable;
+  const house = record.kind === 'property' && record.home_type === 'house';
+  const condo = record.kind === 'unit' && record.home_type === 'condo' && Boolean(query.unit);
+  if (!(house || condo) || (answer.building && cityKey(answer.building.facts?.municipality) !== municipality)) return unavailable;
+  return {
+    ...answer, jurisdiction: fips, municipality,
+    county: { ...county, publisher: roll.publisher, dataset: roll.dataset, as_of: roll.as_of, method: 'county', title: 'City records' },
+  };
+}
+
 /**
  * @param {object} address { line1, unit, city, state, zip }
  * @param {object} [options]
  * @param {(fips: string) => boolean} [options.serves] Which counties may answer; by default the ones that are live
  * @returns {Promise<object>} { match, jurisdiction, county, release, ... } (identity.js)
  */
-async function lookup(address, { serves = (fips) => router.modeFor(fips) === 'live' } = {}) {
+async function lookup(address, { serves = router.serves } = {}) {
   const state = stateCode(address.state);
   const parsed = parse(address.line1, address.unit, { state, zip: address.zip });
   if (!parsed) return { match: 'unsupported', reason: 'unreadable_address' };
@@ -63,7 +83,11 @@ async function lookup(address, { serves = (fips) => router.modeFor(fips) === 'li
     if (suppressions?.hashes?.includes(suppressionHash(suppressions.salt, fips, query))) return { match: 'restricted', ...facts };
     const stored = await reader.recordsAt(fips, county.release, sortKey(parsed));
     const records = router.listedUnitsFor(fips) ? identity.withListedUnits(stored) : stored;
-    return { ...identity.resolve(query, records, { sharedFacts: router.sharedFactsFor(fips) }), ...facts };
+    const answer = identity.resolve(query, records, { sharedFacts: router.sharedFactsFor(fips) });
+    const municipality = router.municipalityFor(fips);
+    if (!municipality) return { ...answer, ...facts };
+
+    return exactMunicipalAnswer(answer, query, fips, county, municipality);
   }));
   answers.sort((a, b) => MATCH_RANK[a.match] - MATCH_RANK[b.match]);
   // A ZIP across a county line: two counties each claiming this address can't both be right.
