@@ -109,17 +109,17 @@ final class WaitingRoomContentTests: XCTestCase {
         XCTAssertEqual(moreInfo.content.headline, "We need one more thing")
         XCTAssertEqual(moreInfo.homeId, "h1")
 
-        let loaded = await loadedClaim(createdAt: "2026-06-12T12:00:00Z")
+        let loaded = await loadedClaim(createdAt: "2026-06-12T12:00:00Z", mailAvailable: true)
         XCTAssertEqual(loaded.content.timeline[0].sub, WaitingRoomViewModel.dayCaption("2026-06-12T12:00:00Z"))
         XCTAssertNotNil(loaded.content.timeline[0].sub)
         XCTAssertNil(loaded.content.timeline[1].sub)
 
-        let invalid = await loadedClaim(createdAt: "invalid-date")
+        let invalid = await loadedClaim(createdAt: "invalid-date", mailAvailable: false)
         XCTAssertNil(invalid.content.timeline[0].sub)
         XCTAssertNil(invalid.content.timeline[1].sub)
     }
 
-    private func loadedClaim(createdAt: String) async -> WaitingRoomViewModel {
+    private func loadedClaim(createdAt: String, mailAvailable: Bool) async -> WaitingRoomViewModel {
         SequencedURLProtocol.reset()
         defer { SequencedURLProtocol.reset() }
         SequencedURLProtocol.routeResponses = [
@@ -129,7 +129,12 @@ final class WaitingRoomContentTests: XCTestCase {
                 "status":"under_review","created_at":"\(createdAt)","updated_at":"2026-07-18T12:00:00Z"}]}
                 """)
             ],
-            "/api/homes/home-1": [.status(403, body: "{}")]
+            "/api/homes/home-1": [.status(403, body: "{}")],
+            "/api/v1/tenant/home/home-1/status": [
+                .status(200, body: """
+                {"home_id":"home-1","request_context":{"home_id":"home-1","actor_id":"user-1"},"mail_available":\(mailAvailable)}
+                """)
+            ]
         ]
         let model = WaitingRoomViewModel(homeId: "home-1", api: APIClient(
             environment: .current,
@@ -139,7 +144,8 @@ final class WaitingRoomContentTests: XCTestCase {
         await model.refresh()
         XCTAssertEqual(model.phase, .loaded)
         XCTAssertEqual(model.content.claimRef, "CLAIM-1")
-        XCTAssertEqual(SequencedURLProtocol.capturedRequests.map(\.httpMethod), ["GET", "GET"])
+        XCTAssertEqual(SequencedURLProtocol.capturedRequests.map(\.httpMethod), ["GET", "GET", "GET"])
+        XCTAssertEqual(model.content.inlineActions.contains { $0.id == "verifyByMail" }, mailAvailable)
         return model
     }
 }
