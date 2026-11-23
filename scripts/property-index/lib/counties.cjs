@@ -35,31 +35,36 @@ function readDbf(bytes) {
   return rows;
 }
 
-/** Each polygon's rings as flat [lng, lat, ...] arrays. */
-function readShp(bytes) {
-  const polygons = [];
-  let at = 100;
-  while (at < bytes.length) {
-    const length = bytes.readInt32BE(at + 4) * 2;
-    const body = at + 8;
-    if (bytes.readInt32LE(body) === 5) {
-      const numParts = bytes.readInt32LE(body + 36);
-      const numPoints = bytes.readInt32LE(body + 40);
-      const parts = [];
-      for (let i = 0; i < numParts; i += 1) parts.push(bytes.readInt32LE(body + 44 + i * 4));
-      parts.push(numPoints);
-      const points = body + 44 + numParts * 4;
-      const rings = [];
+/** XY rings in file order, including an empty entry for a null shape. PolygonZ/M store the same XY section. */
+function* shapeRings(bytes) {
+  if (bytes.readInt32BE(0) !== 9994 || bytes.readUInt32BE(24) * 2 !== bytes.length) throw new Error('Invalid shapefile length or header');
+  let sequence = 0;
+  for (let at = 100; at < bytes.length;) {
+    const end = at + 8 + bytes.readUInt32BE(at + 4) * 2;
+    if (end > bytes.length || bytes.readUInt32BE(at) !== ++sequence) throw new Error('Invalid shapefile record');
+    const body = bytes.subarray(at + 8, end);
+    at = end;
+    const rings = [];
+    if ([5, 15, 25].includes(body.readUInt32LE(0))) {
+      const numParts = body.readUInt32LE(36);
+      const numPoints = body.readUInt32LE(40);
+      const points = 44 + numParts * 4;
+      if (!numParts || points + numPoints * 16 > body.length || body.readUInt32LE(44) !== 0) throw new Error('Invalid polygon layout');
       for (let i = 0; i < numParts; i += 1) {
-        const ring = new Float64Array((parts[i + 1] - parts[i]) * 2);
-        for (let j = 0; j < ring.length; j += 1) ring[j] = bytes.readDoubleLE(points + (parts[i] * 2 + j) * 8);
+        const first = body.readUInt32LE(44 + i * 4);
+        const next = i + 1 < numParts ? body.readUInt32LE(48 + i * 4) : numPoints;
+        if (next < first || next > numPoints) throw new Error('Invalid polygon part');
+        const ring = new Float64Array((next - first) * 2);
+        for (let j = 0; j < ring.length; j += 1) ring[j] = body.readDoubleLE(points + first * 16 + j * 8);
         rings.push(ring);
       }
-      polygons.push(rings);
-    } else polygons.push([]);
-    at = body + length;
+    }
+    yield rings;
   }
-  return polygons;
+}
+
+function readShp(bytes) {
+  return [...shapeRings(bytes)];
 }
 
 function inRings(rings, x, y) {
@@ -179,4 +184,4 @@ function loadCounties(work) {
   return { locate, names: new Map(counties.map((county) => [county.fips, county.name])) };
 }
 
-module.exports = { loadCounties, readDbf, readShp, inRings };
+module.exports = { loadCounties, readDbf, readShp, shapeRings, inRings };
