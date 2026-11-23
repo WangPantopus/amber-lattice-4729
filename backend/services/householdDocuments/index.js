@@ -135,7 +135,7 @@ async function read({ homeId, actorId, bytes }) {
     for (const key of Object.keys(SYSTEMS)) {
       if (found.systems[key]) answer.facts.push(systemProposal(key, found.systems[key], ledger));
     }
-    const states = householdFacts.statesFor({ home, copy: access.isOwner ? homeRecords.liveCopy(home) : null, viewerId: actorId });
+    const states = householdFacts.statesFor({ home, copy: access.isOwner ? await homeRecords.liveCopy(home) : null, viewerId: actorId });
     for (const key of FACT_ORDER) {
       const fact = found.facts[key];
       const proposal = fact && householdFacts.proposalFor(states, key, fact.value);

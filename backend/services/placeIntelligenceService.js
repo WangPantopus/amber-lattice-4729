@@ -170,7 +170,7 @@ function sectionApplies(id, viewer) {
 async function similarHomesTeaser(recordRow) {
   try {
     const { data: stored } = await recordRow();
-    const found = stored ? await similarHomes.forHome(stored, homeRecords.liveCopy(stored)) : null;
+    const found = stored ? await similarHomes.forHome(stored, await homeRecords.liveCopy(stored)) : null;
     return found ? similarHomes.teaser(found) : null;
   } catch (err) {
     logger.warn('placeIntelligence: similar homes teaser failed', { error: err.message });
@@ -191,7 +191,7 @@ function appealPacketLink(homeId) {
 
 async function propertyTaxCheck(recordRow) {
   const { data: stored } = await recordRow();
-  const copy = stored ? homeRecords.liveCopy(stored) : null;
+  const copy = stored ? await homeRecords.liveCopy(stored) : null;
   const on = Boolean(copy && propertyRecordsRouter.similarHomesFor(copy.jurisdiction));
   const found = copy ? await similarHomes.forHome(stored, copy) : null;
   if (!found) return { on, cards: [] };
@@ -1405,7 +1405,7 @@ async function withShownColumns(home, recordRow) {
     const { data: stored, error } = await recordRow();
     if (error || !stored) return home;
     const row = { ...home, niche_data: stored.niche_data };
-    return { ...home, ...householdFacts.shownColumns(row, homeRecords.liveCopy(row)) };
+    return { ...home, ...householdFacts.shownColumns(row, await homeRecords.liveCopy(row)) };
   } catch (err) {
     logger.warn('placeIntelligence: Home facts read failed', { homeId: home.id, error: err.message });
     return home;

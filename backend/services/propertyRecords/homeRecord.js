@@ -33,6 +33,7 @@ const { municipalRelease } = require('./format');
 const { city: cityKey, parse, zip5, stateCode } = require('./addressKey');
 const { lookup, StorageUnavailable } = require('./index');
 const reader = require('./reader');
+const { DENTON_FIPS, addressSuppressed, parcelSuppressed } = require('./suppressions');
 const registryUnits = require('./registryUnits');
 const router = require('./router');
 const counts = require('./counts');
@@ -346,11 +347,30 @@ function noteLookup(surface, address, found) {
   }
 }
 
+// Denton's private standing exclusions also apply to copies made by an earlier release.
+async function copySuppressed(home, copy) {
+  if (copy.jurisdiction !== DENTON_FIPS) return false;
+  const list = await reader.suppressions(copy.jurisdiction);
+  const subjectParcel = /^pp:(?:property|parcel|unit|building|other):48121:(\d+)$/.exec(copy.subject?.id || '')?.[1];
+  if (parcelSuppressed(list, copy.jurisdiction, copy.facts?.parcel_number) || parcelSuppressed(list, copy.jurisdiction, subjectParcel)) return true;
+  if (!list?.hashes?.length) return false;
+  const address = homeAddress(home);
+  const onRecord = parse(copy.facts?.address_on_record || '');
+  return addressSuppressed(list, copy.jurisdiction, parse(address.line1, address.unit, { state: stateCode(address.state), zip: address.zip }))
+    || ((copy.subject?.kind !== 'unit' || onRecord?.unit) && addressSuppressed(list, copy.jurisdiction, onRecord));
+}
+
 /** The copy a live county's screens answer from, with no lookup. One behind its county's release starts its refresh. */
-function liveCopy(home) {
+async function liveCopy(home) {
   if (!config.enabled() || !home) return null;
   const stored = storedCopy(home);
   if (!stored || !router.showsCopies(stored.jurisdiction)) return null;
+  try {
+    if (await copySuppressed(home, stored)) return null;
+  } catch (err) {
+    if (!(err instanceof StorageUnavailable)) throw err;
+    return null;
+  }
   refreshSoon(home, stored);
   return setAside(home, stored) ? null : dated(router.served(stored), countyNow(home, stored));
 }
@@ -377,6 +397,12 @@ async function readForHome(home) {
   const stored = storedCopy(home);
   // Taking a county off its live list takes its copies off the screens too; they stay on the Home for when it comes back.
   if (stored && router.showsCopies(stored.jurisdiction)) {
+    try {
+      if (await copySuppressed(home, stored)) return { copy: null, lookup: 'none', match: 'restricted', jurisdiction: stored.jurisdiction };
+    } catch (err) {
+      if (!(err instanceof StorageUnavailable)) throw err;
+      return { copy: null, lookup: 'pending' };
+    }
     refreshSoon(home, stored);
     if (!setAside(home, stored)) return { copy: dated(router.served(stored), countyNow(home, stored)), lookup: null };
     if (countyNow(home, stored).status === 'withdrawn') return { copy: null, lookup: 'none', reason: 'withdrawn', jurisdiction: stored.jurisdiction };

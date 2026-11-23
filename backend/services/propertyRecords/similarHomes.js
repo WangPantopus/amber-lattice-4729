@@ -29,7 +29,7 @@ const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
 const reader = require('./reader');
 const router = require('./router');
-const { suppressionHash } = require('./index');
+const { addressSuppressed, parcelSuppressed } = require('./suppressions');
 const { parse, sortKey, zip5, city: cityKey, stateCode } = require('./addressKey');
 const { ASSESSMENT_SHARE, ASSESSED_AT_FULL_VALUE } = require('../../data/valuePractice');
 
@@ -143,14 +143,13 @@ async function read(home, copy, options) {
   // comparison of county values, and the appeal packet built on it, is only as good as a roll we know is current.
   if (!county || county.status === 'withdrawn' || (county.stale_after && Date.now() > Date.parse(county.stale_after))) return null;
   const query = { ...parsed, zip: zip5(home.zipcode), city: cityKey(home.city) };
-  const [street, suppressions] = await Promise.all([reader.recordsNear(fips, county.release, sortKey(parsed)), reader.suppressions()]);
+  const [street, suppressions] = await Promise.all([reader.recordsNear(fips, county.release, sortKey(parsed)), reader.suppressions(fips)]);
   // The home's own record as this release has it, so both sides of the comparison come from one roll.
   const own = street.find((record) => record.id === copy.subject?.id && record.kind === copy.subject?.kind);
   if (!own || own.restricted) return null;
   const withheld = router.withholding(fips);
-  const hidden = new Set(suppressions?.hashes || []);
   const shown = street
-    .filter((record) => !hidden.size || !record.address || !hidden.has(suppressionHash(suppressions.salt, fips, { ...record.address, unit: record.address.unit || '' })))
+    .filter((record) => !addressSuppressed(suppressions, fips, record.address) && !parcelSuppressed(suppressions, fips, record.facts?.parcel_number))
     .map((record) => (withheld && record.facts ? { ...record, facts: Object.fromEntries(Object.entries(record.facts).filter(([name]) => !withheld.has(name))) } : record));
   const mine = shown.find((record) => record.id === own.id);
   const found = mine ? compare(mine, shown, query, state, options) : null;
