@@ -3,11 +3,28 @@
 const crypto = require('node:crypto');
 
 const DENTON_FIPS = '48121';
+const DENTON_BASELINE_PATH = 'suppressions/48121/2026-11-23.json';
+const BASELINE_ACCOUNTS = 51;
 
-function hasDentonExclusions(list) {
-  const hashes = list?.parcel_hashes?.[DENTON_FIPS];
-  const valid = values => Array.isArray(values) && values.every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
-  return typeof list?.salt === 'string' && Boolean(list.salt) && valid(list.hashes) && valid(hashes) && hashes.length > 0;
+function validHashes(values) {
+  return Array.isArray(values) && values.every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
+}
+
+// The reviewed, create-only baseline has one distinct address and parcel per account.
+function validDentonBaseline(list) {
+  const complete = values => validHashes(values) && values.length === BASELINE_ACCOUNTS && new Set(values).size === BASELINE_ACCOUNTS;
+  return typeof list?.salt === 'string' && Boolean(list.salt) && complete(list.hashes) && complete(list.parcel_hashes?.[DENTON_FIPS]);
+}
+
+// An active list may add takedowns. Counts alone cannot establish that it kept every standing one.
+function coversDentonExclusions(list, required) {
+  if (!required || list?.salt !== required.salt) return false;
+  const covers = (values, needed) => {
+    if (!validHashes(values)) return false;
+    const members = new Set(values);
+    return needed.every(value => members.has(value));
+  };
+  return covers(list.hashes, required.hashes) && covers(list.parcel_hashes?.[DENTON_FIPS], required.parcel_hashes[DENTON_FIPS]);
 }
 
 function suppressionHash(salt, fips, address) {
@@ -27,4 +44,4 @@ function parcelSuppressed(list, fips, parcel) {
   return hashes.includes(hash);
 }
 
-module.exports = { DENTON_FIPS, hasDentonExclusions, suppressionHash, addressSuppressed, parcelSuppressed };
+module.exports = { DENTON_FIPS, DENTON_BASELINE_PATH, validDentonBaseline, coversDentonExclusions, suppressionHash, addressSuppressed, parcelSuppressed };

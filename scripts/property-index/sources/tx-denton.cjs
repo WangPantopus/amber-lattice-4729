@@ -8,7 +8,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const { SUPPRESSIONS_PATH } = require('../../../backend/services/propertyRecords/format');
-const { hasDentonExclusions, addressSuppressed, parcelSuppressed } = require('../../../backend/services/propertyRecords/suppressions');
+const { DENTON_BASELINE_PATH, validDentonBaseline, coversDentonExclusions, addressSuppressed, parcelSuppressed } = require('../../../backend/services/propertyRecords/suppressions');
 const { download, USER_AGENT } = require('../lib/tables.cjs');
 const { streetParts, year, realUnit, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
@@ -116,16 +116,19 @@ async function latestExport(today) {
 // every rebuild, before aggregating buildings or writing records. Local replays use the same document.
 function standingExclusions(work) {
   const bucket = process.env.PROPERTY_INDEX_BUCKET;
-  let list;
-  try {
-    const bytes = bucket
-      ? execFileSync('aws', ['s3', 'cp', `s3://${bucket}/index/${SUPPRESSIONS_PATH}`, '-', '--only-show-errors'], { stdio: ['ignore', 'pipe', 'ignore'] })
-      : fs.readFileSync(path.join(work, 'tx-denton', SUPPRESSIONS_PATH));
-    list = JSON.parse(bytes);
-  } catch {
-    throw new Error('The private Denton exclusions could not be read');
+  function readDocument(name) {
+    try {
+      const bytes = bucket
+        ? execFileSync('aws', ['s3', 'cp', `s3://${bucket}/index/${name}`, '-', '--only-show-errors'], { stdio: ['ignore', 'pipe', 'ignore'] })
+        : fs.readFileSync(path.join(work, 'tx-denton', name));
+      return JSON.parse(bytes);
+    } catch {
+      throw new Error('The private Denton exclusions could not be read');
+    }
   }
-  if (!hasDentonExclusions(list)) {
+  const baseline = readDocument(DENTON_BASELINE_PATH);
+  const list = readDocument(SUPPRESSIONS_PATH);
+  if (!validDentonBaseline(baseline) || !coversDentonExclusions(list, baseline)) {
     throw new Error('The private Denton exclusions are incomplete');
   }
   return list;

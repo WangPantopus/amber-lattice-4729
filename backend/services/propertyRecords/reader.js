@@ -23,7 +23,7 @@ const { fileURLToPath } = require('url');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
-const { DENTON_FIPS, hasDentonExclusions } = require('./suppressions');
+const { DENTON_FIPS, DENTON_BASELINE_PATH, validDentonBaseline, coversDentonExclusions } = require('./suppressions');
 const { FORMAT, SUPPRESSIONS_PATH, statePath, releasePath, switchesPath, findBlock } = require('./format');
 
 const READ_TIMEOUT_MS = 3000;
@@ -285,18 +285,20 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
     return states.get(state).held();
   }
 
-  let lastDentonList = null;
-  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, (bytes) => {
-    const list = JSON.parse(bytes.toString('utf8'));
-    if (hasDentonExclusions(list)) lastDentonList = list;
-    return list;
+  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, bytes => JSON.parse(bytes.toString('utf8')));
+  const dentonBaseline = refreshed(DENTON_BASELINE_PATH, bytes => {
+    const baseline = JSON.parse(bytes.toString('utf8'));
+    if (!validDentonBaseline(baseline)) throw new Error('Incomplete Denton baseline');
+    return baseline;
   });
+  let lastDentonList = null;
 
-  // Other counties also use older address-only lists. Denton needs its account exclusions even
-  // on cold starts and keeps its last validated list if the private object disappears.
+  // A cold reader must verify the shared object against the independent private baseline. Once
+  // warm, it accepts only a superset of the last verified list, including any later additions.
   async function suppressions(fips) {
     const list = await suppressionsFile();
     if (fips !== DENTON_FIPS) return list;
+    if (list && list !== lastDentonList && coversDentonExclusions(list, lastDentonList || await dentonBaseline())) lastDentonList = list;
     if (!lastDentonList) throw new StorageUnavailable('Denton exclusions unavailable');
     return lastDentonList;
   }
