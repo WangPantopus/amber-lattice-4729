@@ -714,6 +714,7 @@ export interface PersonalResidencyRequest {
   updated_at: string | null;
 }
 export interface PersonalResidencyProgress {
+  mail_available?: boolean;
   home_id: string;
   request: PersonalResidencyRequest | null;
   current_access: 'shared' | 'private_setup' | 'none';

@@ -170,6 +170,7 @@ public final class WaitingRoomViewModel {
                         reviewCaption: nil,
                         needsDocuments: claim.approval.map { $0.proof == "missing" } ?? (claim.hasEvidence == false),
                         addressVerified: home.addressVerified,
+                        mailAvailable: await verificationOptions()?.mailAvailable == true,
                         residency: claimIsResidency,
                         approval: claim.approval,
                         canOpenHome: canOpenHome
@@ -204,11 +205,12 @@ public final class WaitingRoomViewModel {
             return
         }
         leavesToMyHomes = false
-        let offersLandlord = await offersLandlordConfirmation()
+        let options = await verificationOptions()
         phase = .verification(
             HomeVerificationContent.make(
                 status: HomeVerificationStatus.from(raw: access.verificationStatus),
-                offersLandlord: offersLandlord
+                offersLandlord: options?.offersLandlordConfirmation == true,
+                mailAvailable: options?.mailAvailable == true
             )
         )
     }
@@ -222,13 +224,11 @@ public final class WaitingRoomViewModel {
         return access.access != nil || access.verificationKind != nil
     }
 
-    /// The landlord card helps only when a verified landlord can answer, or
-    /// the person already has a request there. An unreadable status hides it.
-    private func offersLandlordConfirmation() async -> Bool {
+    private func verificationOptions() async -> TenantHomeStatusResponse? {
         guard let status: TenantHomeStatusResponse = try? await api.request(
             TenantEndpoints.homeStatus(homeId: homeId)
-        ) else { return false }
-        return status.matches(homeId: homeId) && status.offersLandlordConfirmation
+        ), status.matches(homeId: homeId) else { return nil }
+        return status
     }
 
     /// Route one Verification Center action card. Keys are declared on

@@ -58,8 +58,12 @@ public enum WaitingRoomApproval {
     static func summary(_ approval: ClaimApprovalProgressDTO) -> String {
         let identityDone = approval.identity == "verified"
         if identityDone, approval.proof == "verified" { return "Waiting for approval" }
+        if !identityDone, approval.identity == "processing" || !approval.identityCheckAvailable {
+            if approval.proof == "missing" { return "Document needed" }
+            return approval.identity == "processing" ? "Checking your ID" : "Waiting for identity review"
+        }
         if !identityDone, approval.proof == "missing" { return "Identity and document needed" }
-        if !identityDone { return approval.identity == "processing" ? "Checking your ID" : "Identity check needed" }
+        if !identityDone { return "Identity check needed" }
         return approval.proof == "pending" ? "Document in review" : "Document needed"
     }
 

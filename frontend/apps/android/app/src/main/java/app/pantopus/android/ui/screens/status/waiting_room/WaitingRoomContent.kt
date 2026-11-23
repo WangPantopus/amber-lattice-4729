@@ -283,23 +283,24 @@ data class WaitingRoomContent(
             reviewCaption: String? = "Started 9h ago",
             needsDocuments: Boolean = false,
             addressVerified: Boolean = false,
+            mailAvailable: Boolean = true,
             residency: Boolean = false,
             approval: ClaimApprovalProgressDto? = null,
             canOpenHome: Boolean = true,
         ): WaitingRoomContent {
-            val needsIdentity = approval != null && approval.identity != "verified"
+            val needsIdentity = approval?.identityCheckAvailable == true && approval.identity !in setOf("verified", "processing")
             val wait = waitCopy(needsDocuments = needsDocuments, needsIdentity = needsIdentity, residency = residency)
             val meanwhile =
-                if (addressVerified) {
-                    "Your address is verified, so you can use your Home meanwhile."
-                } else {
-                    "Meanwhile, you can verify your address by mail."
+                when {
+                    addressVerified -> " Your address is verified, so you can use your Home meanwhile."
+                    mailAvailable -> " Meanwhile, you can verify your address by mail."
+                    else -> ""
                 }
             return WaitingRoomContent(
                 title = ROOM_TITLE,
                 halo = activeHalo(needsDocuments, needsIdentity),
                 headline = activeHeadline(needsDocuments, needsIdentity),
-                subcopy = "$wait $meanwhile",
+                subcopy = wait + meanwhile,
                 address = address,
                 claimRef = claimRef,
                 reviewerNote = null,
@@ -326,7 +327,7 @@ data class WaitingRoomContent(
                             tone = if (needsDocuments) WaitingRoomActionTone.Primary else WaitingRoomActionTone.Standard,
                             actionKey = "update_evidence",
                         ),
-                        verifyByMailAction().takeUnless { addressVerified },
+                        verifyByMailAction().takeIf { mailAvailable && !addressVerified },
                         cancelClaimAction(),
                     ),
                 primaryCta = viewClaim,

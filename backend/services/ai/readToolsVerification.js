@@ -28,7 +28,7 @@ const MAX_HOMES = 5;
 const verificationReadToolDefinitions = [
   {
     name: 'get_home_verification',
-    description: "Where the person's own home claims and address verification stand, as their claim and postcard screens show them: each claim they made on a home (ownership, or a renter's residency documents) and whether it is under review or decided, their verification and residency request at each home, and their verification postcard (requested, sent, code expired, verified), each with what happens next. Use it for \"did my postcard go out?\", \"why is my claim still pending?\" or \"am I verified yet?\". It covers only their own claims, so never guess about anyone else's. Pantopus promises no review time: never give one. Read it again each time they ask, even when you answered before in this conversation: claims and postcards change. When you can show link buttons (show_link), link to the screens it names (home_claim_status is the claim's waiting room, home_verify_postcard the postcard screen) with the home_id it gives.",
+    description: "Where the person's own home claims and address verification stand, as their claim and postcard screens show them: their open claims on a home (ownership, or a renter's residency documents) and any remaining steps, their verification and residency request at each home, and their verification postcard (requested, sent, code expired, verified), each with what happens next. Use it for \"did my postcard go out?\", \"why is my claim still pending?\" or \"am I verified yet?\". It covers only their own claims, so never guess about anyone else's. Pantopus promises no review time: never give one. Read it again each time they ask, even when you answered before in this conversation: claims and postcards change. When you can show link buttons (show_link), link to the screens it names (home_claim_status is the claim's waiting room, home_verify_postcard the postcard screen) with the home_id it gives.",
     input_schema: {
       type: 'object',
       properties: { home_id: { type: ['string', 'null'], description: 'One home, or null for all of theirs.' } },
@@ -40,39 +40,38 @@ const verificationReadToolDefinitions = [
 
 // ─── The screens' words ────────────────────────────────────────────────────
 
-// The claim waiting room (WaitingRoomContent.active and its notices; My Claims for decided claims).
-function claimForModel(claim, zone, hasAccess = false) {
+// listOwnClaims returns only claims the applicant can still act on or follow.
+function claimForModel(claim, zone, offerMail) {
   const residency = claim.claim_type === 'resident';
-  const decided = claim.status !== 'under_review';
-  let status;
-  let screen;
-  if (claim.status === 'under_review' && claim.has_evidence === false) {
-    status = 'Add your documents';
-    screen = `${residency
+  const needsProof = claim.approval ? claim.approval.proof === 'missing' : claim.has_evidence === false;
+  const identity = claim.approval?.identity;
+  const needsIdentity = Boolean(identity && identity !== 'verified');
+  const identityAction = needsIdentity && identity !== 'processing' && claim.approval.identity_check_available;
+  const request = claim.info_request && !claim.info_request.responded_at;
+  let status = 'Under review';
+  let screen = "Your documents are waiting for a Pantopus reviewer. We'll notify you when it's decided.";
+  if (request) {
+    status = 'We need one more thing';
+    screen = "Open your claim to see the reviewer's request and upload the requested document.";
+  } else if (needsProof) {
+    status = identityAction ? 'Two steps left' : 'Add your documents';
+    screen = residency
       ? 'Upload a lease or utility bill with your name and this address so a Pantopus reviewer can check that you live here.'
-      : 'Upload a deed, closing disclosure or property tax bill so a Pantopus reviewer can check ownership.'} The review starts after you upload documents.`;
-  } else if (claim.status === 'under_review') {
-    status = 'Under review';
-    screen = "Your documents are waiting for a Pantopus reviewer. We'll notify you when it's decided.";
+      : 'Upload a deed, closing disclosure or property tax bill so a Pantopus reviewer can check ownership.';
+  } else if (needsIdentity) {
+    status = identityAction ? 'Confirm your identity' : 'Under review';
+    screen = 'Your documents are on file.';
   }
-  // Without access to the home their address there isn't verified, and the room offers mail verification;
-  // the postcard screen adds that it confirms an address, not ownership (HomeResidencyProgress).
-  if (claim.status === 'under_review' && !hasAccess) {
-    screen += residency
-      ? ' Meanwhile, you can verify your address by mail.'
-      : " Meanwhile, you can verify your address by mail. Ownership has its own review: verifying your address by mail doesn't make you an owner.";
-  } else if (claim.status === 'approved') {
-    status = 'Verified';
-    screen = residency ? "Your residency claim was approved: you're verified as living here." : "Your ownership claim was approved: you're the owner.";
-  } else {
-    status = claim.status === 'rejected' ? 'Not approved' : 'Revoked';
-    screen = `Your ${residency ? 'residency' : 'ownership'} claim has been decided. Check My Claims for the outcome.`;
+  if (needsIdentity) {
+    if (identity === 'processing') screen += ' Your identity check is in progress.';
+    else if (!claim.approval.identity_check_available) screen += ' A reviewer must confirm your identity before approval.';
+    else screen += ' Open the identity step in your claim to continue.';
   }
+  if (offerMail && !request) screen += ' Meanwhile, you can verify your address by mail.';
   return {
     kind: residency ? 'residency documents' : 'ownership',
     status,
     submitted: dayLabel(claim.created_at, zone),
-    ...(decided ? { decided: dayLabel(claim.updated_at, zone) } : {}),
     screen_says: screen,
   };
 }
@@ -82,7 +81,7 @@ const VERIFICATION_SCREEN = {
   pending_postcard: ['Check your mailbox', 'A verification code has been mailed to this address. Enter the code to complete verification.'],
   provisional_bootstrap: ['Limited access', 'You have provisional access with limited features. Verify your address to unlock full home management.'],
   pending_approval: ['Waiting for approval', 'A household member needs to approve your request. Reopen this screen to check for updates.'],
-  pending_doc: ['Document under review', 'Your uploaded documents are waiting for a Pantopus reviewer. Meanwhile, you can verify your address by mail.'],
+  pending_doc: ['Document under review', 'Your uploaded documents are waiting for a Pantopus reviewer.'],
   provisional: ['Provisional access', 'Verify your address to unlock full home management features.'],
   suspended_challenged: ['Access suspended', 'Your access has been challenged by a household member. Contact support if you believe this is an error.'],
   unverified: ['Verification required', 'Complete verification to access this home.'],
@@ -112,6 +111,9 @@ function residencyForModel(progress) {
     ? NO_REQUEST_YET
     : RESIDENCY_SCREEN[progress.next_step];
   if (!words) return null;
+  if (progress.next_step === 'address_verification' && progress.request && !progress.mail_available) {
+    return { status: words[0], screen_says: 'Your request is saved. Mail verification is currently unavailable.' };
+  }
   return { status: words[0], screen_says: words[1] };
 }
 
@@ -230,20 +232,21 @@ async function getHomeVerification(args, ctx) {
     // The postcard counts when there is one or the postcard screen offers something; its refusal
     // ("use ownership verification") only while a claim or a verification is pending.
     const mail = postcard && !postcard.unreadable ? postcard : null;
-    const mailOffered = Boolean(mail && (mail.postcard || mail.can_request || mail.can_verify || mail.can_resume));
+    const canUseMail = Boolean(mail && (mail.can_request || mail.can_verify || mail.can_resume));
+    const mailOffered = Boolean(mail?.postcard || canUseMail);
     const mailShown = mailOffered || Boolean(mail?.restriction_message && (claim?.status === 'under_review' || verification));
     // The waiting room's "a code has been mailed" is the postcard screen's to say: it knows whether one was.
     if (verification && authority.verification_status === 'pending_postcard' && mailOffered) {
       verification = { kind: verification.kind, status: verification.status };
     }
     const parts = {
-      claim: claim ? claimForModel(claim, zone, Boolean(authority?.hasAccess)) : null,
+      claim: claim ? claimForModel(claim, zone, canUseMail) : null,
       verification,
       residency_request: progress?.unreadable ? null : residencyForModel(progress),
       postcard: mailShown ? postcardForModel(mail, zone) : null,
     };
     const next = [
-      parts.claim && parts.claim.status !== 'Verified' ? parts.claim.screen_says : null,
+      parts.claim?.screen_says,
       mailOffered ? postcardNext(mail, zone) : null,
       !parts.claim && verification?.screen_says ? verification.screen_says : null,
     ].filter(Boolean);
