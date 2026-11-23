@@ -113,6 +113,7 @@ function copyFromAnswer(answer, address) {
     ...(county.notice ? { notice: county.notice } : {}),
     // Where each held fact of a list came from, in words, when it isn't the county's own column (format.js `held_from`).
     ...(county.held_from ? { held_from: county.held_from } : {}),
+    ...(county.require_mapped_lot_label && held?.mapped_lots ? { require_mapped_lot_label: true } : {}),
     stored_at: new Date().toISOString(),
     address_stamp: addressStamp(address),
     facts,
