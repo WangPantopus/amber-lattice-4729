@@ -91,8 +91,9 @@ export default function RentalAuthoritySetup({ properties, onChanged }: {
         {owned || ownAuthority?.status !== 'pending' || ownAuthority.added_via !== 'owner_delegation' ? <button disabled={busy} className={button} onClick={() => void write({
           home_id: home, subject_type: subject.subject_type, subject_id: subject.subject_id, action: owned ? 'enable' : 'request',
         })}>{owned ? 'Enable landlord access' : 'Request manager access'}</button> : <p role="status">Waiting for owner approval</p>}
-        {!owned && subject.subject_type === 'user' && <p><Link className="text-sm font-semibold underline"
-          href={'/app/homes/' + home + '/claim-owner/evidence'}>I own this property · Verify ownership</Link></p>}
+        {!owned && <p>{subject.subject_type === 'user'
+          ? <Link className="text-sm font-semibold underline" href={'/app/homes/' + home + '/claim-owner/evidence'}>I own this property · Verify ownership</Link>
+          : <a className="text-sm font-semibold underline" href="mailto:support@pantopus.com?subject=Business%20property%20ownership%20verification">My business owns this property · Contact support</a>}</p>}
       </>}
     </div>}
     {data.managers.length > 0 && <div className="border-t border-app-border pt-3">
