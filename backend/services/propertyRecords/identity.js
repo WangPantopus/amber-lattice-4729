@@ -80,9 +80,9 @@ function inTown(query, records) {
   return named.length === 1 ? named : records;
 }
 
-function unitMatches(query, address) {
+function unitMatches(query, address, requireRequestedBuilding) {
   if (!query.unit || !address.unit) return false;
-  if (query.building && address.building) return query.building === address.building && query.unit === address.unit;
+  if (query.building && (address.building || requireRequestedBuilding)) return query.building === address.building && query.unit === address.unit;
   // "BLDG A UNIT 101" on record; the person's line may say "A101" or just "101".
   return query.unit === address.unit || (Boolean(address.building) && query.unit === `${address.building}${address.unit}`);
 }
@@ -139,8 +139,9 @@ function agreedFacts(candidates) {
  * @param {object[]} records  What the release holds at this street name and house number
  * @param {object} [options]
  * @param {boolean} [options.sharedFacts] The county shows what an address's several homes all agree on (`agreed`)
+ * @param {boolean} [options.requireRequestedBuilding] An explicit building in a unit request must also be recorded on the matching unit.
  */
-function resolve(address, records, { sharedFacts = false } = {}) {
+function resolve(address, records, { sharedFacts = false, requireRequestedBuilding = false } = {}) {
   // "BLDG A" with no unit under it: the building letter is what tells homes apart there.
   const query = !address.unit && address.building ? { ...address, unit: address.building, building: '' } : address;
   const here = inUrbanization(query, inTown(query, inZip(query, onStreet(query, records))));
@@ -160,7 +161,7 @@ function resolve(address, records, { sharedFacts = false } = {}) {
   const parcels = here.filter((record) => record.kind === 'parcel' || record.kind === 'other');
 
   if (query.unit) {
-    const own = [...units, ...properties].filter((record) => unitMatches(query, record.address));
+    const own = [...units, ...properties].filter((record) => unitMatches(query, record.address, requireRequestedBuilding));
     if (own.length === 1) return exact(own[0], requested, here);
     if (own.length > 1) return ambiguous(own, requested, 'several_records_for_this_unit');
     // The unit has no record of its own: what's known is the building it's in. The county's list of the building's
