@@ -2,7 +2,7 @@
 // An Ohio County Auditor's "Public Records Extract" (ISSG's real estate system, the "Full Real Estate Data (CAMA & Tax in XML format)" download): one XML
 // table per record type, each row one element whose attributes are its columns, with a published File Layout.xlsx inside. Year built, living area,
 // rooms, bedrooms, full and half baths, stories, acres, the appraised land and improvement values (Ohio appraises at full market value; tax is figured
-// on 35% of it) and the last single-parcel sale the Auditor marked valid. Five tables are read, and only the columns named here: the owner, payment,
+// on 35% of it) and the last single-parcel sale the Auditor marked valid. Only the named columns are read: the owner, payment,
 // tax, distribution and delinquency tables are never opened, and the parcel table's owner, taxpayer and lender columns are never asked for. The
 // extract holds up to three tax years; the build reads the latest. Each county's connector names its file and states its terms.
 
@@ -71,9 +71,11 @@ const inRange = (value, most) => {
 // condominium units, 560-565 mobile homes on their land, 500-505 vacant residential land and 599 other residential structures; 1xx is
 // agricultural and 401-403 apartments. The county's own residential codes outside that list (517, a residence qualified for the farm value),
 // 599 and farm codes are a home of no named type when the Auditor has a dwelling card for the parcel, and land otherwise.
+const singleFamily = (code) => /^51[0-5]$/.test(code);
+
 function useOf(code, dwelling, unit) {
   const c = String(code || '').trim();
-  if (/^51[0-5]$/.test(c)) return unit ? ['unit', 'condo'] : ['property', 'house'];
+  if (singleFamily(c)) return unit ? ['unit', 'condo'] : ['property', 'house'];
   if (/^55[0-5]$/.test(c)) return unit ? ['unit', 'condo'] : ['property', 'townhouse'];
   if (/^56[0-5]$/.test(c)) return ['property', 'mobile_home'];
   if (/^5[23][0-5]$/.test(c)) return ['building', 'multi_unit'];
@@ -96,7 +98,7 @@ function fromParcel({ FIPS, COUNTY, strictParcelIdentity }, row, place, dwelling
   const code = value?.code;
   if (strictParcelIdentity && /^55[0-5]$/.test(code) && !address.unit) return null;
   let [kind, homeType] = useOf(code, dwelling, address.unit);
-  if (strictParcelIdentity && address.unit && /^51[0-5]$/.test(code)) [kind, homeType] = ['property', 'house'];
+  if (strictParcelIdentity && address.unit && singleFamily(code)) [kind, homeType] = ['property', 'house'];
   // A building on an agricultural parcel does not make the farm's entire acreage and value a home's lot and value.
   if (strictParcelIdentity && /^1\d\d$/.test(code)) [kind, homeType] = ['parcel', null];
   const facts = { parcel_number: parcel, county: COUNTY, fips: FIPS };
@@ -172,6 +174,16 @@ async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdent
     if (land + improvement > held.largest) Object.assign(held, { largest: land + improvement, code: row.Land_Use_Code, use: row.Land_Use });
     values.set(row.Parcel_Number, held);
   }
+  // A parcel's largest value component can be a house on a farm or on land the appraisal classifies differently.
+  // Confirm the parcel-wide classification before presenting the whole parcel as a single-family home's record.
+  const confirmedHouses = new Set();
+  if (strictParcelIdentity) {
+    for await (const row of xmlTable(zip, 'Parcel Appraisal.xml', 'Parcel_Appraisal', ['Parcel_Number', 'Tax_Year', 'Land_Use_Code'])) {
+      if (!ofYear(row) || !singleFamily(values.get(row.Parcel_Number)?.code)) continue;
+      if (singleFamily(row.Land_Use_Code)) confirmedHouses.add(row.Parcel_Number);
+      else ambiguous.add(row.Parcel_Number);
+    }
+  }
   // The latest sale of one parcel, with a building, that the Auditor marked valid, at a home's price.
   const sales = new Map();
   for await (const row of xmlTable(zip, 'Parcel Transfer.xml', 'Parcel_Transfer', TRANSFER_COLUMNS)) {
@@ -188,7 +200,9 @@ async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdent
     if (!ofYear(row)) continue;
     if (/^YES$/i.test(row.Retired)) { retired += 1; continue; }
     if (ambiguous.has(row.Parcel_Number)) continue;
-    const record = fromParcel({ FIPS, COUNTY, strictParcelIdentity }, row, places.get(row.Parcel_Number), dwellings.get(row.Parcel_Number), values.get(row.Parcel_Number), sales.get(row.Parcel_Number));
+    const value = values.get(row.Parcel_Number);
+    if (strictParcelIdentity && singleFamily(value?.code) && !confirmedHouses.has(row.Parcel_Number)) continue;
+    const record = fromParcel({ FIPS, COUNTY, strictParcelIdentity }, row, places.get(row.Parcel_Number), dwellings.get(row.Parcel_Number), value, sales.get(row.Parcel_Number));
     if (!record) noAddress += 1;
     else if (!records.has(record.id)) records.set(record.id, record);
   }
