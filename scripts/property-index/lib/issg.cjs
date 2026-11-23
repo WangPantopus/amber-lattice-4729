@@ -136,9 +136,9 @@ function fromParcel({ FIPS, COUNTY, strictParcelIdentity }, row, place, dwelling
   return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(place.City) || '').toUpperCase(), zip: zipCode(place.ZipCode) }, facts };
 }
 
-async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdentity }, { work }) {
+async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdentity, retries }, { work }) {
   const zip = path.join(work, SOURCE, path.basename(new URL(FILE).pathname));
-  download(FILE, zip);
+  download(FILE, zip, {}, { retries });
   const asOf = zipDates(zip).get('Parcel.xml');
   if (!asOf) throw new Error('The extract no longer dates its parcel table');
   const parcels = [];
@@ -235,8 +235,8 @@ const DICTIONARY = {
 };
 
 /** A county's connector: { fips, county, file, source, publisher }. */
-function issgCounty({ fips, county, file, source, publisher, strictParcelIdentity = false }) {
-  const settings = { FIPS: fips, COUNTY: county, FILE: file, SOURCE: source, PUBLISHER: publisher, strictParcelIdentity };
+function issgCounty({ fips, county, file, source, publisher, strictParcelIdentity = false, retries }) {
+  const settings = { FIPS: fips, COUNTY: county, FILE: file, SOURCE: source, PUBLISHER: publisher, strictParcelIdentity, retries };
   return { build: (options) => build(settings, options), dictionary: DICTIONARY };
 }
 

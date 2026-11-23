@@ -6,13 +6,13 @@ const { execFileSync } = require('node:child_process');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
 const { issgCounty } = require('../lib/issg.cjs');
 const { download, zipDates } = require('../lib/tables.cjs');
-const { readShp } = require('../lib/counties.cjs');
+const { shapeRings } = require('../lib/counties.cjs');
 const { dbfRows } = require('../lib/dbf.cjs');
 const { zipCode, realUnit } = require('../lib/addresses.cjs');
 const { markMapLot } = require('../lib/held.cjs');
 
 const auditor = issgCounty({
-  fips: '39027', county: 'Clinton County', publisher: 'Clinton County Auditor', source: 'oh-clinton', strictParcelIdentity: true,
+  fips: '39027', county: 'Clinton County', publisher: 'Clinton County Auditor', source: 'oh-clinton', strictParcelIdentity: true, retries: 0,
   file: 'https://clintoncountyauditor.org/api/Document/PublicRecordsXML.zip',
 });
 const ITEMS = 'https://www.arcgis.com/sharing/rest/content/items/';
@@ -24,18 +24,17 @@ async function parcelMap(file) {
   const projection = member('prj').toString();
   if (!projection.startsWith('PROJCS["NAD_1983_StatePlane_Ohio_South_FIPS_3402_Feet",') ||
       !/UNIT\["Foot_US",0\.3048006096\d*\]\]\s*$/.test(projection)) throw new Error('The Clinton parcel projection changed');
-  const polygons = readShp(member('shp'));
-  const rows = dbfRows(file, 'cntyparcels.dbf', ['Parcel_Num', 'Tax_Year'], { keepDeleted: true });
-  let index = 0;
+  const polygons = shapeRings(member('shp'));
+  const rows = dbfRows(file, 'cntyparcels.dbf', ['Parcel_Num', 'Tax_Year'], { includeDeleted: true });
   const parcels = new Map();
   const boxes = new Set();
   const shared = new Set();
   for await (const row of rows) {
-    const rings = polygons[index++];
-    if (!rings) throw new Error('Clinton parcel rows and shapes do not align');
+    const shape = polygons.next();
+    if (shape.done) throw new Error('Clinton parcel rows and shapes do not align');
     let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity, twiceArea = 0;
     // The rings have opposite winding around holes. Work in local coordinates to avoid losing precision.
-    for (const ring of rings) {
+    for (const ring of shape.value) {
       for (let i = 0; i < ring.length; i += 2) {
         const x = ring[i], y = ring[i + 1];
         xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
@@ -50,7 +49,7 @@ async function parcelMap(file) {
     // The publisher repeats polygons for some condos. Repeated parcels or coincident bounds cannot supply a private lot.
     parcels.set(row.Parcel_Num, parcels.has(row.Parcel_Num) ? null : { year: Number(row.Tax_Year), sqft: Math.round(Math.abs(twiceArea) / 2), box });
   }
-  if (index !== polygons.length) throw new Error('Clinton parcel rows and shapes do not align');
+  if (!polygons.next().done) throw new Error('Clinton parcel rows and shapes do not align');
   for (const [id, parcel] of parcels) if (!parcel?.sqft || shared.has(parcel.box)) parcels.delete(id);
   return parcels;
 }
@@ -82,8 +81,8 @@ async function* build(options) {
   const dir = path.join(options.work, 'oh-clinton');
   const parcelFile = path.join(dir, 'cntyparcels.zip');
   const siteFile = path.join(dir, 'address-nodes.zip');
-  download(ITEMS + PARCELS + '/data', parcelFile);
-  download(ITEMS + SITES + '/data', siteFile);
+  download(ITEMS + PARCELS + '/data', parcelFile, {}, { retries: 0 });
+  download(ITEMS + SITES + '/data', siteFile, {}, { retries: 0 });
   const areas = await parcelMap(parcelFile);
   const mapDate = zipDates(parcelFile).get('cntyparcels.shp');
   if (!mapDate) throw new Error('The Clinton parcel map is undated');
@@ -105,6 +104,7 @@ async function* build(options) {
     }
     const from = 'Measured from Clinton County’s parcel map (' + mapDate + ')';
     county.held_from = { mapped_lots: { lot_sqft: from, lot_acres: from } };
+    county.require_mapped_lot_label = true;
     yield county;
   }
 }
