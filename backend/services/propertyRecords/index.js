@@ -43,7 +43,7 @@ function exactMunicipalAnswer(answer, query, fips, county, municipality) {
   const postalMatch = query.city === cityKey(site.city) && roll.postal_aliases?.includes(query.city);
   if (query.city !== municipality && !postalMatch) return unavailable;
   if (['pre', 'post', 'suffix', 'building', 'unit'].some((part) => (query[part] || '') !== (site[part] || ''))) return unavailable;
-  const house = record.kind === 'property' && record.home_type === 'house';
+  const house = record.kind === 'property' && (record.home_type === 'house' || record.home_type === 'mobile_home');
   const condo = record.kind === 'unit' && record.home_type === 'condo' && Boolean(query.unit);
   if (!(house || condo) || (answer.building && cityKey(answer.building.facts?.municipality) !== municipality)) return unavailable;
   const scoped = municipalRelease(county, municipality);
