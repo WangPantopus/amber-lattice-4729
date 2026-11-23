@@ -6,17 +6,13 @@
  * asks (registry.js; scripts/property-index/registry-t2.cjs).
  */
 
-const crypto = require('crypto');
+const { suppressionHash } = require('./suppressions');
 const identity = require('./identity');
 const { registryId } = require('./registryFormat');
 const { parse, parts, sortKey, zip5, city: cityKey, stateCode } = require('./addressKey');
 
 const MATCH_RANK = { exact: 0, building_only: 1, ambiguous: 2, restricted: 3, unsupported: 4, stale: 5 };
-
-function suppressionHash(salt, fips, query) {
-  return crypto.createHash('sha256')
-    .update([salt, fips, query.number, query.pre, query.name, query.suffix, query.post, query.unit].join('|')).digest('hex');
-}
+const REGISTRY_IDENTITY = { requireRequestedBuilding: true };
 
 /** Each record's ID, and a unit's point when it shares its building's. */
 function complete(fips, records) {
@@ -108,7 +104,7 @@ async function readAnotherWay(address, parsed, state, query, { unread, readable 
       const county = stateFile.jurisdictions[fips];
       const here = { jurisdiction: fips, release: county.release, ...facts };
       if (suppressions?.hashes?.includes(suppressionHash(suppressions.salt, fips, asked))) return { match: 'restricted', ...here };
-      const result = identity.resolve(asked, complete(fips, await read.recordsAt(fips, county.release, sortKey(way))));
+      const result = identity.resolve(asked, complete(fips, await read.recordsAt(fips, county.release, sortKey(way))), REGISTRY_IDENTITY);
       if (result.match === 'exact' || result.match === 'building_only') found.push({ ...result, ...here, read_as: way.reading });
     }
   }
@@ -153,7 +149,7 @@ async function answer(address, read, { streetReadings = false } = {}) {
     if (suppressions?.hashes?.includes(suppressionHash(suppressions.salt, fips, query))) return { match: 'restricted', ...here };
     const records = complete(fips, await recordsAt(fips, county.release, sortKey(parsed)));
     if (zip && records.some((record) => record.address.zip === zip)) zipNamed.add(fips);
-    return { ...identity.resolve(query, records), ...here };
+    return { ...identity.resolve(query, records, REGISTRY_IDENTITY), ...here };
   }));
   answers.sort((a, b) => MATCH_RANK[a.match] - MATCH_RANK[b.match]);
   // Two counties with something at this line: a ZIP across a county line, and the line in both. Not ours to pick,

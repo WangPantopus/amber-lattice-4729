@@ -19,6 +19,7 @@
 //     --accept-shrink-for "<fips> ..."  with --accept-falls (or --accept-falls-for naming them): the counties named only may
 //                     also publish far fewer records (the registry: addresses), when a fix drops records that shouldn't exist.
 //                     Each is logged with both counts; a county live in any switch file never takes it (that's the founder's).
+//     --municipal-only <fips>:<municipality>  republish just this existing county with its qualified city roll.
 //     --outcomes <file>  adds one line per county built: published, unchanged, kept back or refused, and why (counts only), for the
 //                     run's refresh watch (refresh-watch.cjs)
 //   node scripts/property-index/publish.cjs --rollback <fips> --state <ST> --bucket <name> [--prefix index]
@@ -29,7 +30,7 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
-const { FORMAT, statePath, releasePath, switchesPath, servesRecords } = require('../../backend/services/propertyRecords/format');
+const { FORMAT, statePath, releasePath, switchesPath, servesRecords, municipalRelease } = require('../../backend/services/propertyRecords/format');
 const { log } = require('./lib/log.cjs');
 const { selfFind, described, MIN_SELF_FIND, identityGroups } = require('./lib/self-find.cjs');
 const { sameSources } = require('./lib/registry.cjs');
@@ -58,6 +59,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--bulk') opts.bulk = true;
     else if (argv[i] === '--min-retention') opts.minRetention = Number(argv[++i]);
     else if (argv[i] === '--moved') opts.moved = argv[++i].split(/\s+/).filter(Boolean);
+    else if (argv[i] === '--municipal-only') opts.municipalOnly = argv[++i];
     else if (argv[i] === '--outcomes') opts.outcomes = argv[++i];
     else throw new Error('Unknown argument');
   }
@@ -65,7 +67,8 @@ function parseArgs(argv) {
   return opts;
 }
 
-function createStore({ bucket, prefix }) {
+function createStore({ bucket, prefix, municipalOnly }) {
+  let stateETag; // A scoped publish replaces one existing state manifest, conditional on the exact copy it read.
   const url = (name) => `s3://${bucket}/${prefix}/${name}`;
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'property-index-'));
   return {
@@ -73,9 +76,16 @@ function createStore({ bucket, prefix }) {
     get(name) {
       const file = path.join(scratch, 'read');
       try {
-        aws(['cp', url(name), file]);
+        if (municipalOnly && name.startsWith('states/')) {
+          stateETag = execFileSync('aws', ['s3api', 'get-object', '--bucket', bucket, '--key', `${prefix}/${name}`,
+            '--query', 'ETag', '--output', 'text', file], { encoding: 'utf8' }).trim();
+          if (!stateETag || stateETag === 'None') throw new Error('Missing state ETag');
+        } else {
+          aws(['cp', url(name), file]);
+        }
         return fs.readFileSync(file);
       } catch (_) {
+        if (municipalOnly) throw new Error(`Cannot verify existing index object ${name} for municipal publication`);
         return null;
       }
     },
@@ -89,7 +99,12 @@ function createStore({ bucket, prefix }) {
     putJson(name, data) {
       const file = path.join(scratch, 'write');
       fs.writeFileSync(file, JSON.stringify(data));
-      aws(['cp', file, url(name), '--content-type', 'application/json', '--cache-control', 'no-cache']);
+      if (municipalOnly) {
+        execFileSync('aws', ['s3api', 'put-object', '--bucket', bucket, '--key', `${prefix}/${name}`, '--body', file,
+          '--if-match', stateETag, '--content-type', 'application/json', '--cache-control', 'no-cache'], { stdio: ['ignore', 'ignore', 'inherit'] });
+      } else {
+        aws(['cp', file, url(name), '--content-type', 'application/json', '--cache-control', 'no-cache']);
+      }
     },
   };
 }
@@ -230,7 +245,7 @@ function outcomeOf(entry, outcome, why = null) {
   return { fips: entry.fips, state: entry.state, name: entry.name || null, source: entry.source || null, release: entry.release, as_of: entry.as_of || null, outcome, why };
 }
 
-function publish(store, { out, prefix, republish, acceptFalls = false, acceptFallsFor = [], acceptShrinkFor = [], bulk = false, minRetention, moved = [], outcomes }) {
+function publish(store, { out, prefix, republish, acceptFalls = false, acceptFallsFor = [], acceptShrinkFor = [], bulk = false, minRetention, moved = [], outcomes, municipalOnly }) {
   const told = (lines) => { if (outcomes && lines.length) fs.appendFileSync(outcomes, lines.map((line) => `${JSON.stringify(line)}\n`).join('')); };
   // The national floor's estimates (--prefix index/estimates) are counted, not held to the reader's answers.
   const records = prefix === 'index';
@@ -242,6 +257,27 @@ function publish(store, { out, prefix, republish, acceptFalls = false, acceptFal
     byState.get(entry.state).push(entry);
   }
   const stateFiles = new Map([...byState.keys()].map((state) => [state, readState(store, state)]));
+  if (municipalOnly) {
+    const [fips, municipality] = municipalOnly.split(':');
+    const [entry] = entries;
+    const roll = municipalRelease(entry, municipality);
+    if (entries.length !== 1 || entry.fips !== fips || !roll || Date.now() > Date.parse(roll.stale_after)) {
+      throw new Error('Municipal publish requires just the requested county and its current qualified city roll');
+    }
+    const serving = stateFiles.get(entry.state).jurisdictions[fips];
+    if (!serving?.release || serving.source !== entry.source || serving.status !== 'active') {
+      throw new Error('Municipal publish requires the existing active county release from the same source');
+    }
+    for (const target of ['staging', 'production']) {
+      const switches = JSON.parse(store.get(switchesPath(target)));
+      if (!switches?.counties) throw new Error('Cannot verify existing serving switches');
+      const gate = switches.counties[fips];
+      if (gate && !['off', 'shadow'].includes(gate.mode) && !(gate.mode === 'municipal' && gate.municipality === municipality)) {
+        throw new Error('The existing serving switch exceeds the requested municipal scope');
+      }
+    }
+    if (moved.length || acceptFalls || acceptFallsFor.length || acceptShrinkFor.length) throw new Error('Municipal publish requires all retention checks');
+  }
   const decided = new Map(entries.map((entry) => [entry.fips, leftAsServing(store, entry, stateFiles.get(entry.state).jurisdictions[entry.fips], { republish, records })]));
   // Every release at once, which a whole state of them needs; not those of builds that stay unpublished whatever their checks
   // say, so a run leaves no unused copies of counties it didn't change. A refused county's files go unused but stay to read.
@@ -288,8 +324,11 @@ function publish(store, { out, prefix, republish, acceptFalls = false, acceptFal
     }
     if (changed) {
       // A rollback doesn't wait for a build, so one may have landed while this state's files uploaded. It stays.
-      for (const [fips, county] of Object.entries(readState(store, state).jurisdictions)) {
-        if (county.rolled_back_at && county.rolled_back_at !== rolledBackBefore[fips]) stateFile.jurisdictions[fips] = county;
+      // The municipal write uses If-Match on its original read, so any concurrent change makes that write fail.
+      if (!municipalOnly) {
+        for (const [fips, county] of Object.entries(readState(store, state).jurisdictions)) {
+          if (county.rolled_back_at && county.rolled_back_at !== rolledBackBefore[fips]) stateFile.jurisdictions[fips] = county;
+        }
       }
       store.putJson(statePath(state), withMaps({ ...stateFile, updated_at: new Date().toISOString() }, stateFile.jurisdictions));
       log(`${state}: switched over`);
@@ -305,6 +344,8 @@ function rollback(store, fips, state) {
   if (!county?.previous) throw new Error(`${fips} has no previous release`);
   stateFile.jurisdictions[fips] = {
     ...county,
+    // The prior binary has no proven link to the municipal evidence on the release being taken back.
+    municipal_rolls: undefined,
     release: county.previous,
     as_of: county.previous_as_of,
     previous: null,

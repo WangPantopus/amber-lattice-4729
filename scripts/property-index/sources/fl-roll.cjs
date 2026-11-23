@@ -124,7 +124,7 @@ function readAddress(line1, line2, kind) {
   return trailing ? parse(trailing[1], trailing[2]) : parse(line, line2);
 }
 
-async function buildCounty(work, year, [name, number, fips]) {
+async function buildCounty(work, year, [name, number, fips], singleUnitHouses) {
   const zip = path.join(work, 'fl-roll', `${number}.zip`);
   const { url, stage } = currentFile(name, number, year);
   download(url, zip);
@@ -140,6 +140,10 @@ async function buildCounty(work, year, [name, number, fips]) {
     if (!parsed) {
       noAddress += 1;
       continue;
+    }
+    // A parcel-level dwelling measurement needs a single house even when the use code alone says single-family.
+    if (singleUnitHouses && homeType === 'house' && positive(row.NO_RES_UNTS) === 1) {
+      singleUnitHouses.add(row.PARCEL_ID);
     }
     const address = { ...parsed, city: String(row.PHY_CITY || '').trim().toUpperCase(), zip: zip5(row.PHY_ZIPCD) };
     const facts = { parcel_number: row.PARCEL_ID, county, fips, address_on_record: [row.PHY_ADDR1, row.PHY_ADDR2].map(word).filter(Boolean).join(' ') };
@@ -205,6 +209,7 @@ async function* build({ work, today = new Date(), compare = null }) {
 }
 
 // One county's roll, for a connector whose county's own file leaves homes out.
-const countyRoll = (work, fips, today = new Date()) => buildCounty(work, rollYear(today), COUNTIES.find((county) => county[2] === fips));
+const countyRoll = (work, fips, today = new Date(), singleUnitHouses) =>
+  buildCounty(work, rollYear(today), COUNTIES.find((county) => county[2] === fips), singleUnitHouses);
 
 module.exports = { build, countyRoll };

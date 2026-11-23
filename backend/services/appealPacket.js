@@ -56,7 +56,7 @@ const longDay = (iso) => homeRecords.dateLabel(String(iso || '').slice(0, 10));
  * @returns {Promise<{ ok: true, home, copy, found, appeal, state } | { ok: false, reason: string }>}
  */
 async function facts(home, { list = false } = {}) {
-  const copy = home ? homeRecords.liveCopy(home) : null;
+  const copy = home ? await homeRecords.liveCopy(home) : null;
   if (!copy || !router.appealPacketFor(copy.jurisdiction)) return { ok: false, reason: 'off' };
   // The similar homes themselves are read only to print the PDF.
   const found = await similarHomes.forHome(home, copy, list ? { list: true } : undefined);

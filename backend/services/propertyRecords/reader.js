@@ -23,6 +23,7 @@ const { fileURLToPath } = require('url');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
+const { DENTON_FIPS, DENTON_BASELINE_PATH, validDentonBaseline, coversDentonExclusions } = require('./suppressions');
 const { FORMAT, SUPPRESSIONS_PATH, statePath, releasePath, switchesPath, findBlock } = require('./format');
 
 const READ_TIMEOUT_MS = 3000;
@@ -284,7 +285,24 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
     return states.get(state).held();
   }
 
-  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, (bytes) => JSON.parse(bytes.toString('utf8')));
+  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, bytes => JSON.parse(bytes.toString('utf8')));
+  const dentonBaseline = refreshed(DENTON_BASELINE_PATH, bytes => {
+    const baseline = JSON.parse(bytes.toString('utf8'));
+    if (!validDentonBaseline(baseline)) throw new Error('Incomplete Denton baseline');
+    return baseline;
+  });
+  let lastDentonList = null;
+
+  // A cold reader must verify the shared object against the independent private baseline. Once
+  // warm, it accepts only a superset of the last verified list, including any later additions.
+  async function suppressions(fips) {
+    const list = await suppressionsFile();
+    if (fips !== DENTON_FIPS) return list;
+    if (list && list !== lastDentonList && coversDentonExclusions(list, lastDentonList || await dentonBaseline())) lastDentonList = list;
+    if (!lastDentonList) throw new StorageUnavailable('Denton exclusions unavailable');
+    return lastDentonList;
+  }
+
 
   const switchesFile = (name, parse, freshMs) => refreshed(switchesPath(name), parse, freshMs);
 
@@ -382,7 +400,7 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
   /** For /health: whether storage is paused, and how long since it last answered. */
   const health = () => ({ paused: Boolean(pausedSince), answered_ms_ago: answeredAt ? Date.now() - answeredAt : null });
 
-  return { stateFile, heldStateFile, recordsAt, recordsNear, suppressions: suppressionsFile, switchesFile, file, health };
+  return { stateFile, heldStateFile, recordsAt, recordsNear, suppressions, switchesFile, file, health };
 }
 
 const shared = createReader();

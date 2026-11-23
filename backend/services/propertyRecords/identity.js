@@ -26,6 +26,9 @@
  */
 
 const same = (a, b) => (a || '') === (b || '');
+// Dallas can file a protected parcel and a separate condo account at the same unit.
+const protectsUnitSites = (fips) => fips === '48113';
+const UNIT_SITE_FIELDS = ['pre', 'name', 'suffix', 'post', 'city', 'zip', 'building', 'unit'];
 // Equal, or one side doesn't say.
 const agrees = (a, b) => !a || !b || a === b;
 
@@ -80,9 +83,9 @@ function inTown(query, records) {
   return named.length === 1 ? named : records;
 }
 
-function unitMatches(query, address) {
+function unitMatches(query, address, requireRequestedBuilding) {
   if (!query.unit || !address.unit) return false;
-  if (query.building && address.building) return query.building === address.building && query.unit === address.unit;
+  if (query.building && (address.building || requireRequestedBuilding)) return query.building === address.building && query.unit === address.unit;
   // "BLDG A UNIT 101" on record; the person's line may say "A101" or just "101".
   return query.unit === address.unit || (Boolean(address.building) && query.unit === `${address.building}${address.unit}`);
 }
@@ -97,7 +100,7 @@ function exact(record, requested, here) {
   // One protected unit restricts that unit, not its neighbors.
   if (record.restricted) return answer('restricted', { requested_subject: requested });
   const building = record.parent ? here.find((other) => other.kind === 'building' && other.id === record.parent) : null;
-  return answer('exact', { subject: subjectOf(record), record, requested_subject: requested, ...(building ? { building } : {}) });
+  return answer('exact', { subject: subjectOf(record), record, requested_subject: requested, ...(building && !building.restricted ? { building } : {}) });
 }
 
 function buildingOnly(record, requested, reason) {
@@ -139,8 +142,10 @@ function agreedFacts(candidates) {
  * @param {object[]} records  What the release holds at this street name and house number
  * @param {object} [options]
  * @param {boolean} [options.sharedFacts] The county shows what an address's several homes all agree on (`agreed`)
+ * @param {boolean} [options.requireRequestedBuilding] An explicit building in a unit request must also be recorded on the matching unit.
+ * @param {boolean} [options.protectUnitSites] Withhold an exact unit when another protected account has the same site, building and unit.
  */
-function resolve(address, records, { sharedFacts = false } = {}) {
+function resolve(address, records, { sharedFacts = false, requireRequestedBuilding = false, protectUnitSites = false } = {}) {
   // "BLDG A" with no unit under it: the building letter is what tells homes apart there.
   const query = !address.unit && address.building ? { ...address, unit: address.building, building: '' } : address;
   const here = inUrbanization(query, inTown(query, inZip(query, onStreet(query, records))));
@@ -160,8 +165,18 @@ function resolve(address, records, { sharedFacts = false } = {}) {
   const parcels = here.filter((record) => record.kind === 'parcel' || record.kind === 'other');
 
   if (query.unit) {
-    const own = [...units, ...properties].filter((record) => unitMatches(query, record.address));
-    if (own.length === 1) return exact(own[0], requested, here);
+    const own = [...units, ...properties].filter((record) => unitMatches(query, record.address, requireRequestedBuilding));
+    if (own.length === 1) {
+      const home = own[0];
+      if (!protectUnitSites || home.restricted) return exact(home, requested, here);
+      const protectedPeer = here.some((other) => other.restricted &&
+        unpadded(other.address.number) === unpadded(home.address.number) &&
+        UNIT_SITE_FIELDS.every((key) => same(other.address[key], home.address[key])));
+      if (protectedPeer) {
+        return answer('restricted', { requested_subject: requested, reason: 'restricted_unit_site' });
+      }
+      return { ...exact(home, requested, here), unit_site_checked: true };
+    }
     if (own.length > 1) return ambiguous(own, requested, 'several_records_for_this_unit');
     // The unit has no record of its own: what's known is the building it's in. The county's list of the building's
     // units says whether that unit exists; either way no unit facts go out.
@@ -208,4 +223,4 @@ function withListedUnits(records) {
   return [...records, ...listed.map((record) => ({ ...record, address: { ...record.address, unit: record.address.listed_unit } }))];
 }
 
-module.exports = { resolve, onStreet, inZip, withListedUnits, AGREED_FACTS };
+module.exports = { resolve, onStreet, inZip, withListedUnits, protectsUnitSites, AGREED_FACTS };

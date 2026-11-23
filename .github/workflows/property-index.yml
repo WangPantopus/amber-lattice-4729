@@ -40,7 +40,7 @@ on:
         options: [build, rollback, switch, shared-facts, similar-homes, appeal-packet, new-columns, derived-rows, measured-rows, bath-totals, mapped-lots, listed-units, past-date, estimates, floor-points, area-trends, models, gaps]
         default: build
       sources:
-        description: "Connectors in scripts/property-index/sources, space separated (build), or state codes (estimates, floor-points)"
+        description: "Connectors in scripts/property-index/sources, space separated (build). ma-massgis:25025 rebuilds only Suffolk for Boston. Or state codes (estimates, floor-points)"
         required: false
         default: "wa-clark"
       moved:
@@ -61,7 +61,7 @@ on:
         options: [staging, production]
         default: staging
       mode:
-        description: "off, shadow or live; blank keeps it (switch). live or off (shared-facts, similar-homes, appeal-packet, new-columns, derived-rows, measured-rows, bath-totals, mapped-lots, listed-units, past-date)"
+        description: "off, shadow, live or municipal:Boston; blank keeps it (switch). live or off (shared-facts, similar-homes, appeal-packet, new-columns, derived-rows, measured-rows, bath-totals, mapped-lots, listed-units, past-date)"
         required: false
         default: ""
       withhold:
@@ -195,16 +195,30 @@ jobs:
           # Each source's build and publish, and what happened to each county, for the refresh watch.
           outcomes="$RUNNER_TEMP/refresh-outcomes"
           mkdir -p "$outcomes"
+          if [[ "$SOURCES" == *ma-massgis:25025* && "$SOURCES" != ma-massgis:25025 ]]; then
+            echo 'Dispatch the Suffolk build by itself.' >&2
+            exit 1
+          fi
           for source in $SOURCES; do
             out="$RUNNER_TEMP/property-index/$source"
             built=0
             published=0
             # What built still publishes; the run ends failed so someone looks.
-            node --max-old-space-size=12288 scripts/property-index/build.cjs --source "$source" --out "$out" --work "$RUNNER_TEMP/property-index-work" || built=$?
-            node scripts/property-index/publish.cjs --out "$out" --bucket "$PROPERTY_INDEX_BUCKET" $REPUBLISH $ACCEPT_FALLS ${ACCEPT_FOR:+--accept-falls-for "$ACCEPT_FOR"} ${MOVED:+--moved "$MOVED"} ${SHRINK:+--accept-shrink-for "$SHRINK"} --outcomes "$outcomes/counties.jsonl" || published=$?
+            connector="$source"
+            only=""
+            municipal=""
+            if [[ "$source" == ma-massgis:25025 ]]; then
+              connector=ma-massgis
+              only=25025
+              municipal=25025:BOSTON
+            fi
+            PROPERTY_INDEX_ONLY="$only" node --max-old-space-size=12288 scripts/property-index/build.cjs --source "$connector" --out "$out" --work "$RUNNER_TEMP/property-index-work" || built=$?
+            if [[ -z "$municipal" || "$built" == 0 ]]; then
+              node scripts/property-index/publish.cjs --out "$out" --bucket "$PROPERTY_INDEX_BUCKET" ${municipal:+--municipal-only "$municipal"} $REPUBLISH $ACCEPT_FALLS ${ACCEPT_FOR:+--accept-falls-for "$ACCEPT_FOR"} ${MOVED:+--moved "$MOVED"} ${SHRINK:+--accept-shrink-for "$SHRINK"} --outcomes "$outcomes/counties.jsonl" || published=$?
+            fi
             printf '%s\t%s\t%s\n' "$source" "$built" "$published" >> "$outcomes/builds.tsv"
             if [ "$built" != 0 ] || [ "$published" != 0 ]; then status=1; fi
-            rm -rf "$out" "$RUNNER_TEMP/property-index-work/$source"
+            rm -rf "$out" "$RUNNER_TEMP/property-index-work/$connector"
           done
           exit $status
       # What each source and county did, every live county within 30 days of the date its record stops serving, every scheduled
@@ -236,7 +250,7 @@ jobs:
       - name: Missing-facts ledger
         if: ${{ !cancelled() && (inputs.action == 'gaps' || inputs.action == 'build' || inputs.action == 'rollback' || (github.event_name == 'schedule' && github.event.schedule != '29 5 12 4,5 *')) }}
         env:
-          COUNTIES: ${{ inputs.action == 'gaps' && inputs.county || '' }}
+          COUNTIES: ${{ inputs.action == 'gaps' && inputs.county || (inputs.action == 'build' && contains(inputs.sources, 'ma-massgis:25025') && '25025') || '' }}
           BUDGET: ${{ inputs.action != 'gaps' && '60' || '' }}
         run: |
           case "$COUNTIES" in
