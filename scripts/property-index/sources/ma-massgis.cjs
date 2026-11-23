@@ -252,7 +252,7 @@ function fromBoston(row, fips, county) {
   // Keep the assessor account ID stable even when its record describes an accessory space.
   const idKind = code === 'CD' ? 'unit' : code === 'R1' ? 'property' : kind;
   const id = `pp:${idKind}:${fips}:${row.PID}`;
-  const parent = kind === 'unit' && word(row.CM_ID) ? `pp:building:${fips}:${row.CM_ID}` : null;
+  const parent = code === 'CD' && word(row.CM_ID) ? `pp:building:${fips}:${row.CM_ID}` : null;
   return addresses.map((address) => ({
     id,
     kind,
@@ -336,13 +336,14 @@ function fromCambridge(row, fips, county) {
 function linkBostonCondos(records) {
   const mains = new Map(records.filter((record) => record.kind === 'building' && record.home_type === 'condo').map((record) => [record.id, record]));
   for (const record of records) {
-    if (record.kind !== 'unit' || !record.parent) continue;
+    if (!record.parent) continue;
     const main = mains.get(record.parent);
     if (!main) {
       delete record.parent;
       continue;
     }
-    (main.rosterSet ||= new Set()).add(record.address.unit);
+    // Accessory accounts keep their assessor building link but are not residential units.
+    if (record.kind === 'unit') (main.rosterSet ||= new Set()).add(record.address.unit);
   }
   for (const main of mains.values()) {
     if (main.rosterSet) {
