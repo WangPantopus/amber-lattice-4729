@@ -31,16 +31,17 @@ const SEMCOG_BUILDINGS = 'https://gis.semcog.org/server/rest/services/Hosted/Bui
 const SEMCOG_NOTICE = 'year built: Copyright \u00a9 2019 SEMCOG. All Rights Reserved. Reproduction or Use Without Permission is Prohibited.';
 const SINGLE_FAMILY = 81;
 const COLUMNS = ['KEYPIN', 'PIN', 'CVTTAXDESCRIPTION', 'CLASSCODE', 'SITEADDRESS', 'SITECITY', 'SITEZIP5', 'ASSESSEDVALUE', 'TAXABLEVALUE', 'NUM_BEDS', 'NUM_BATHS', 'STRUCTURE_DESC', 'LIVING_AREA_SQFT', 'Shape.area'];
-// Michigan's property classes.
-const CLASSES = { 401: 'Residential, improved', 402: 'Residential, vacant', 403: 'Residential, building on leased land', 407: 'Residential condominium', 201: 'Commercial, improved', 202: 'Commercial, vacant', 301: 'Industrial, improved', 302: 'Industrial, vacant', 101: 'Agricultural, improved', 102: 'Agricultural, vacant' };
+// Oakland County Equalization's 2025 residential summary and Michigan Treasury's Property Class Codes.
+// A 403 common element is assessed with other parcels. Class 410 covers a building on leased land or a taxable lease.
+const CLASSES = { 401: 'Residential, improved', 402: 'Residential, vacant', 403: 'Residential common element, assessed with others', 407: 'Residential condominium', 410: 'Residential building on leased land or taxable lease', 201: 'Commercial, improved', 202: 'Commercial, vacant', 301: 'Industrial, improved', 302: 'Industrial, vacant', 101: 'Agricultural, improved', 102: 'Agricultural, vacant' };
 const APARTMENT = /APART|MULTI ?TENANT/i;
 const TWO_FAMILY = /DUPLEX/i;
 
 function useOf(code, structure, unit) {
   const n = Number(code);
   if (n === 407 || (n === 401 && unit)) return ['unit', 'condo'];
-  if (n === 402 || n === 102 || n === 202 || n === 302) return ['parcel', null];
-  if (n === 401 || n === 403 || n === 101) {
+  if (n === 402 || n === 403 || n === 102 || n === 202 || n === 302) return ['parcel', null];
+  if (n === 401 || n === 101) {
     if (APARTMENT.test(structure)) return ['building', 'apartment'];
     return ['property', TWO_FAMILY.test(structure) ? 'townhouse' : 'house'];
   }
