@@ -70,7 +70,6 @@ async function lookup(address, { serves = router.serves } = {}) {
   if (!counties.length) return { match: 'unsupported', reason: 'no_release' };
 
   const query = { ...parsed, zip, city: cityKey(address.city) };
-  const suppressions = await reader.suppressions();
   const answers = await Promise.all(counties.map(async (fips) => {
     const county = stateFile.jurisdictions[fips];
     const facts = { jurisdiction: fips, county };
@@ -78,6 +77,7 @@ async function lookup(address, { serves = router.serves } = {}) {
     // Past its date a county's answer can't be vouched for, unless its past_date switch keeps it answering from the
     // release it serves (router.js): homeRecord.js then says how old that release is.
     if (county.stale_after && Date.now() > Date.parse(county.stale_after) && !router.pastDateFor(fips)) return { match: 'stale', reason: 'release_past_date', ...facts };
+    const suppressions = await reader.suppressions(fips);
     if (addressSuppressed(suppressions, fips, query)) return { match: 'restricted', ...facts };
     const stored = await reader.recordsAt(fips, county.release, sortKey(parsed));
     // Keep a protected candidate in identity resolution so removing it cannot select a different home.

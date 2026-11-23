@@ -23,6 +23,7 @@ const { fileURLToPath } = require('url');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
+const { DENTON_FIPS, hasDentonExclusions } = require('./suppressions');
 const { FORMAT, SUPPRESSIONS_PATH, statePath, releasePath, switchesPath, findBlock } = require('./format');
 
 const READ_TIMEOUT_MS = 3000;
@@ -284,7 +285,22 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
     return states.get(state).held();
   }
 
-  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, (bytes) => JSON.parse(bytes.toString('utf8')));
+  let lastDentonList = null;
+  const suppressionsFile = refreshed(SUPPRESSIONS_PATH, (bytes) => {
+    const list = JSON.parse(bytes.toString('utf8'));
+    if (hasDentonExclusions(list)) lastDentonList = list;
+    return list;
+  });
+
+  // Other counties also use older address-only lists. Denton needs its account exclusions even
+  // on cold starts and keeps its last validated list if the private object disappears.
+  async function suppressions(fips) {
+    const list = await suppressionsFile();
+    if (fips !== DENTON_FIPS) return list;
+    if (!lastDentonList) throw new StorageUnavailable('Denton exclusions unavailable');
+    return lastDentonList;
+  }
+
 
   const switchesFile = (name, parse, freshMs) => refreshed(switchesPath(name), parse, freshMs);
 
@@ -382,7 +398,7 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
   /** For /health: whether storage is paused, and how long since it last answered. */
   const health = () => ({ paused: Boolean(pausedSince), answered_ms_ago: answeredAt ? Date.now() - answeredAt : null });
 
-  return { stateFile, heldStateFile, recordsAt, recordsNear, suppressions: suppressionsFile, switchesFile, file, health };
+  return { stateFile, heldStateFile, recordsAt, recordsNear, suppressions, switchesFile, file, health };
 }
 
 const shared = createReader();

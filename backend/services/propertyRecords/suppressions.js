@@ -2,6 +2,14 @@
 
 const crypto = require('node:crypto');
 
+const DENTON_FIPS = '48121';
+
+function hasDentonExclusions(list) {
+  const hashes = list?.parcel_hashes?.[DENTON_FIPS];
+  const valid = values => Array.isArray(values) && values.every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
+  return typeof list?.salt === 'string' && Boolean(list.salt) && valid(list.hashes) && valid(hashes) && hashes.length > 0;
+}
+
 function suppressionHash(salt, fips, address) {
   return crypto.createHash('sha256')
     .update([salt, fips, address.number, address.pre, address.name, address.suffix, address.post, address.unit].join('|')).digest('hex');
@@ -19,4 +27,4 @@ function parcelSuppressed(list, fips, parcel) {
   return hashes.includes(hash);
 }
 
-module.exports = { suppressionHash, addressSuppressed, parcelSuppressed };
+module.exports = { DENTON_FIPS, hasDentonExclusions, suppressionHash, addressSuppressed, parcelSuppressed };

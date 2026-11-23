@@ -8,7 +8,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const { SUPPRESSIONS_PATH } = require('../../../backend/services/propertyRecords/format');
-const { addressSuppressed, parcelSuppressed } = require('../../../backend/services/propertyRecords/suppressions');
+const { hasDentonExclusions, addressSuppressed, parcelSuppressed } = require('../../../backend/services/propertyRecords/suppressions');
 const { download, USER_AGENT } = require('../lib/tables.cjs');
 const { streetParts, year, realUnit, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
@@ -125,8 +125,7 @@ function standingExclusions(work) {
   } catch {
     throw new Error('The private Denton exclusions could not be read');
   }
-  const validHashes = values => Array.isArray(values) && values.every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
-  if (typeof list?.salt !== 'string' || !list.salt || !validHashes(list.hashes) || !validHashes(list.parcel_hashes?.[FIPS]) || !list.parcel_hashes[FIPS].length) {
+  if (!hasDentonExclusions(list)) {
     throw new Error('The private Denton exclusions are incomplete');
   }
   return list;

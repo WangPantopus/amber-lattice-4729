@@ -33,7 +33,7 @@ const { municipalRelease } = require('./format');
 const { city: cityKey, parse, zip5, stateCode } = require('./addressKey');
 const { lookup, StorageUnavailable } = require('./index');
 const reader = require('./reader');
-const { addressSuppressed, parcelSuppressed } = require('./suppressions');
+const { DENTON_FIPS, addressSuppressed, parcelSuppressed } = require('./suppressions');
 const registryUnits = require('./registryUnits');
 const router = require('./router');
 const counts = require('./counts');
@@ -349,8 +349,8 @@ function noteLookup(surface, address, found) {
 
 // Denton's private standing exclusions also apply to copies made by an earlier release.
 async function copySuppressed(home, copy) {
-  if (copy.jurisdiction !== '48121') return false;
-  const list = await reader.suppressions();
+  if (copy.jurisdiction !== DENTON_FIPS) return false;
+  const list = await reader.suppressions(copy.jurisdiction);
   const subjectParcel = /^pp:(?:property|parcel|unit|building|other):48121:(\d+)$/.exec(copy.subject?.id || '')?.[1];
   if (parcelSuppressed(list, copy.jurisdiction, copy.facts?.parcel_number) || parcelSuppressed(list, copy.jurisdiction, subjectParcel)) return true;
   if (!list?.hashes?.length) return false;

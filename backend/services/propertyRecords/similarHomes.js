@@ -143,7 +143,7 @@ async function read(home, copy, options) {
   // comparison of county values, and the appeal packet built on it, is only as good as a roll we know is current.
   if (!county || county.status === 'withdrawn' || (county.stale_after && Date.now() > Date.parse(county.stale_after))) return null;
   const query = { ...parsed, zip: zip5(home.zipcode), city: cityKey(home.city) };
-  const [street, suppressions] = await Promise.all([reader.recordsNear(fips, county.release, sortKey(parsed)), reader.suppressions()]);
+  const [street, suppressions] = await Promise.all([reader.recordsNear(fips, county.release, sortKey(parsed)), reader.suppressions(fips)]);
   // The home's own record as this release has it, so both sides of the comparison come from one roll.
   const own = street.find((record) => record.id === copy.subject?.id && record.kind === copy.subject?.kind);
   if (!own || own.restricted) return null;
