@@ -163,14 +163,14 @@ public final class WaitingRoomViewModel {
                         canOpenHome: canOpenHome
                     )
                 } else {
-                    .active(
+                    await .active(
                         address: home.address,
                         claimRef: ref,
                         submittedOn: Self.dayCaption(claim.createdAt),
                         reviewCaption: nil,
                         needsDocuments: claim.approval.map { $0.proof == "missing" } ?? (claim.hasEvidence == false),
                         addressVerified: home.addressVerified,
-                        mailAvailable: await verificationOptions()?.mailAvailable == true,
+                        mailAvailable: verificationOptions()?.mailAvailable == true,
                         residency: claimIsResidency,
                         approval: claim.approval,
                         canOpenHome: canOpenHome

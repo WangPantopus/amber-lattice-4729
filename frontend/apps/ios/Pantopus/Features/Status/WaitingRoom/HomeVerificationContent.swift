@@ -221,7 +221,8 @@ public extension HomeVerificationContent {
         case .pendingApproval:
             "A household member needs to approve your request. Reopen this screen to check for updates."
         case .pendingDoc:
-            "Your uploaded documents are waiting for a Pantopus reviewer." + (mailAvailable ? " Meanwhile, you can verify your address by mail." : "")
+            "Your uploaded documents are waiting for a Pantopus reviewer." +
+                (mailAvailable ? " Meanwhile, you can verify your address by mail." : "")
         case .provisional:
             isInChallengeWindow
                 ? "Your access is provisional while existing members can review. " +

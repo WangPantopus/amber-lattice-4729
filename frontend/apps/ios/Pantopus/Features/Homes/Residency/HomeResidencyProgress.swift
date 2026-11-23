@@ -123,7 +123,7 @@ struct PersonalHomeResidencyProgress: Decodable, Equatable {
     let currentAccess: String
     let nextStep: NextStep
     let rawProbation: String?
-    var mailAvailable: Bool? = nil
+    var mailAvailable: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case request
@@ -251,8 +251,8 @@ final class HomeResidencyProgressViewModel {
         case .home: return progress.currentAccess == "shared" && progress.nextStep == .home
         // Proof by mail ends probation, and it's the way back after a no (Pantopus reviews it then, again if needed).
         case .mail: return progress.mailAvailable == true && (progress.nextStep == .ownershipVerification
-            || (progress.nextStep == .addressVerification && !progress.needsResidencyRequest)
-            || [.active, .ended, .declined].contains(progress.probation))
+                || (progress.nextStep == .addressVerification && !progress.needsResidencyRequest)
+                || [.active, .ended, .declined].contains(progress.probation))
         case .ownership: return progress.nextStep == .ownershipVerification
         case .addHome: return progress.nextStep == .resubmit || progress.needsResidencyRequest
         }
