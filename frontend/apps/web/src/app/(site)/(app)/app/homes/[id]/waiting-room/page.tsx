@@ -8,6 +8,9 @@ import {
   AlertCircle, KeyRound, Upload, ShieldCheck, LogOut, HelpCircle, ChevronRight,
 } from 'lucide-react';
 import { getAuthToken } from '@pantopus/api';
+import { useQuery } from '@tanstack/react-query';
+import { myClaimsQuery } from '@/lib/myHomes';
+import { useMailAvailable } from '@/components/place/fastVerify/useVerifyOptions';
 import { useHomeAccess } from '@/hooks/useHomeAccess';
 import { removalLink } from '@/components/home/member-removals/removalModel';
 import ErrorState from '@/components/ui/ErrorState';
@@ -53,16 +56,21 @@ function WaitingRoomContent() {
   // on /app/place (the B3 reveal).
   const returnToPlace = searchParams.get('return') === 'place';
   const returnQuery = returnToPlace ? '?return=place' : '';
-  const verifiedDest = returnToPlace ? '/app/place?verified=1' : `/app/homes/${homeId}/dashboard`;
+  const mailAvailable = useMailAvailable(homeId);
+  const checkOwnership = !!access && !needsVerification && !returnToPlace;
+  const claims = useQuery({ ...myClaimsQuery(), enabled: checkOwnership });
+  const ownerPending = claims.data?.claims.some(c => c.home_id === homeId && c.claim_type === 'owner' && c.status === 'under_review');
+  const verifiedDest = returnToPlace ? '/app/place?verified=1'
+    : ownerPending || claims.isError ? '/app/homes' : `/app/homes/${homeId}/dashboard`;
 
   useEffect(() => { if (!getAuthToken()) router.push('/login'); }, [router]);
 
   // Auto-redirect once verified — back to /app/place if that's where we came from.
   useEffect(() => {
-    if (!loading && access && !needsVerification) {
+    if (!loading && access && !needsVerification && (!checkOwnership || !claims.isFetching)) {
       router.replace(verifiedDest);
     }
-  }, [loading, access, needsVerification, router, verifiedDest]);
+  }, [loading, access, needsVerification, checkOwnership, claims.isFetching, router, verifiedDest]);
 
   const handleMoveOut = useCallback(() => {
     router.push(removalLink(homeId, 'self'));
@@ -135,8 +143,8 @@ function WaitingRoomContent() {
               onClick={() => router.push(`/app/homes/${homeId}/verify-postcard${returnQuery}`)} />
           )}
 
-          {(status === 'provisional_bootstrap' || status === 'pending_doc' || status === 'provisional') && (
-            <ActionCard icon={Upload} label="Upload proof" desc="A utility bill, lease, or ID — reviewed by a person"
+          {(['provisional_bootstrap', 'pending_doc', 'provisional', 'unverified'].includes(status)) && (
+            <ActionCard icon={Upload} label="Upload proof" desc="A utility bill or lease reviewed by a person"
               onClick={() => router.push(`/app/homes/${homeId}/verify-residency${returnQuery}`)} />
           )}
 
@@ -146,7 +154,7 @@ function WaitingRoomContent() {
               onClick={() => router.push(`/app/homes/${homeId}/verify-landlord${returnQuery}`)} />
           )}
 
-          {status !== 'pending_postcard' && status !== 'pending_approval' && (
+          {mailAvailable && status !== 'pending_postcard' && status !== 'pending_approval' && (
             <ActionCard icon={Mail} label="Verify with mailed code" desc="Receive a code at this address"
               onClick={() => router.push(`/app/homes/${homeId}/verify-postcard${returnQuery}`)} />
           )}

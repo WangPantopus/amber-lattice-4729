@@ -11,7 +11,6 @@ function InviteCoOwnerContent() {
   const router = useRouter();
   const { id: homeId } = useParams<{ id: string }>();
 
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [fastTrack, setFastTrack] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -47,12 +46,6 @@ function InviteCoOwnerContent() {
 
       <div className="space-y-4">
         <label className="block space-y-1.5">
-          <span className="text-sm font-semibold text-app-text-strong">Name</span>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
-            className="w-full px-3 py-2.5 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-        </label>
-
-        <label className="block space-y-1.5">
           <span className="text-sm font-semibold text-app-text-strong">Email</span>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" autoComplete="email"
             className="w-full px-3 py-2.5 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400" />
@@ -61,10 +54,10 @@ function InviteCoOwnerContent() {
         {/* Fast track toggle */}
         <div className="flex items-center justify-between bg-app-surface border border-app-border rounded-xl p-4">
           <div className="flex-1 mr-3">
-            <p className="text-sm font-semibold text-app-text">Fast-track verification</p>
-            <p className="text-xs text-app-text-secondary mt-0.5">Skip the challenge window for trusted co-owners</p>
+            <p className="text-sm font-semibold text-app-text">Vouch for this co-owner</p>
+            <p className="text-xs text-app-text-secondary mt-0.5">A reviewer will still check their identity and ownership documents.</p>
           </div>
-          <button type="button" role="switch" aria-checked={fastTrack} aria-label="Fast-track verification" onClick={() => setFastTrack(!fastTrack)}
+          <button type="button" role="switch" aria-checked={fastTrack} aria-label="Vouch for this co-owner" onClick={() => setFastTrack(!fastTrack)}
             className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${fastTrack ? 'bg-emerald-600' : 'bg-gray-300'}`}>
             <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${fastTrack ? 'translate-x-5' : ''}`} />
           </button>

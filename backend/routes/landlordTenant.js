@@ -22,9 +22,10 @@ const logger = require('../utils/logger');
 const { writeAuditLog } = require('../utils/homePermissions');
 const { ownershipClaimLimiter } = require('../middleware/rateLimiter');
 const homeSecurityPolicy = require('../utils/homeSecurityPolicy');
+const postcardRequests = require('../services/homePostcardRequestService');
 const landlordAuthorityService = require('../services/addressValidation/landlordAuthorityService');
 const { assertCallerOwnsLease, resolveVerifiedAuthorityForActor } = require('../utils/authorityResolution');
-const { requireExpectedSessionScope } = require('../utils/requestSessionScope');
+const { getRequestSessionScope, requireExpectedSessionScope } = require('../utils/requestSessionScope');
 const { loadChatPeople, chatPersonRow } = require('../services/chatPeople');
 
 // ============================================================
@@ -174,6 +175,46 @@ router.post(
 );
 
 // ──────────────────────────────────────────────────────────────
+// Verified owners can activate their own rental or approve a management request.
+router.get('/landlord/authority/setup', verifyToken, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    const { data, error } = await supabaseAdmin.rpc('get_rental_authority_setup', { p_actor: req.user.id });
+    if (error) throw error;
+    return res.json({ ...data, session: getRequestSessionScope(req) });
+  } catch (err) {
+    logger.warn('Rental setup unavailable', { code: err.code });
+    return res.status(503).json({ error: 'Could not load rental verification. Please retry.' });
+  }
+});
+
+const rentalSetupInput = Joi.object({
+  home_id: Joi.string().uuid().required(),
+  action: Joi.string().valid('enable', 'request', 'approve', 'decline', 'revoke').required(),
+  subject_type: Joi.string().valid('user', 'business').when('action', { is: Joi.valid('enable', 'request'), then: Joi.required(), otherwise: Joi.forbidden() }),
+  subject_id: Joi.string().uuid().when('action', { is: Joi.valid('enable', 'request'), then: Joi.required(), otherwise: Joi.forbidden() }),
+  authority_id: Joi.string().uuid().when('action', { is: Joi.valid('approve', 'decline', 'revoke'), then: Joi.required(), otherwise: Joi.forbidden() }),
+});
+
+router.post('/landlord/authority/setup', verifyToken, ownershipClaimLimiter, validate(rentalSetupInput), async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (!requireExpectedSessionScope(req, res, { required: true })) return;
+  const { home_id, action, subject_type, subject_id, authority_id } = req.body;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('manage_rental_authority', {
+      p_home: home_id, p_actor: req.user.id, p_action: action, p_subject_type: subject_type ?? null,
+      p_subject_id: subject_id ?? null, p_authority: authority_id ?? null,
+    });
+    if (error?.code === '42501') return res.status(403).json({ error: 'This account cannot complete that action for this property.' });
+    if (error?.code === 'P0001') return res.status(409).json({ error: 'This request changed. Reload before continuing.' });
+    if (error) throw error;
+    return res.json(data);
+  } catch (err) {
+    logger.warn('Rental authority decision unavailable', { code: err.code });
+    return res.status(503).json({ error: 'Could not confirm the change. Reload to see its status.' });
+  }
+});
+
 // GET /landlord/properties
 // List properties where the user (or their businesses) has authority.
 // ──────────────────────────────────────────────────────────────
@@ -293,7 +334,9 @@ router.get(
         .in('state', ['active', 'pending', 'ended', 'canceled'])
         .order('created_at', { ascending: false });
       if (leasesErr) throw leasesErr;
-      const displayLeases = await namedResidents((leases || []).map(lease => ({ ...lease, metadata: leaseRequestMetadata(lease.metadata) })));
+      const displayLeases = await namedResidents((leases || [])
+        .filter(lease => lease.state !== 'canceled' || lease.source !== 'tenant_request')
+        .map(lease => ({ ...lease, metadata: lease.state === 'pending' ? leaseRequestMetadata(lease.metadata) : {} })));
 
       // Fetch pending tenant requests (leases sourced from tenant)
       const pendingRequests = displayLeases.filter(
@@ -588,19 +631,15 @@ router.get('/tenant/home/:homeId/status', verifyToken, async (req, res) => {
       .eq('home_id', homeId).eq('primary_resident_user_id', req.user.id)
       .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(1).maybeSingle();
     if (leaseError) throw leaseError;
-    const denied = lease?.state === 'canceled' && (lease.metadata?.landlord_decision?.intent?.action === 'deny'
-      || Object.hasOwn(lease.metadata || {}, 'denial_reason'));
     const expired = lease?.state === 'active' && lease.end_at && Date.parse(lease.end_at) <= Date.now();
-    const state = !lease || (lease.state === 'canceled' && !denied) ? 'none' : denied ? 'denied' : expired ? 'ended' : lease.state;
+    const state = !lease || lease.state === 'canceled' ? 'none' : expired ? 'ended' : lease.state;
     const ownLease = lease && state !== 'none' ? {
       id: lease.id, home_id: lease.home_id, state, source: lease.source,
       start_at: lease.start_at, end_at: lease.end_at, created_at: lease.created_at,
-      metadata: {
-        ...leaseRequestMetadata(lease.metadata),
-        ...(denied ? { denied_reason: typeof lease.metadata?.denial_reason === 'string' ? lease.metadata.denial_reason : null } : {}),
-      },
+      metadata: state === 'pending' ? leaseRequestMetadata(lease.metadata) : {},
     } : null;
-    return res.json({ home_id: homeId,
+    const mailAvailable = await postcardRequests.available({ homeId, actorId: req.user.id }).catch(() => false);
+    return res.json({ home_id: homeId, mail_available: mailAvailable,
       request_context: { home_id: homeId, actor_id: req.user.id, lease_id: lease?.id || null, lease_state: lease?.state || null },
       landlord: authority ? { has_landlord: true, landlord_entity_type: authority.subject_type, verification_tier: authority.verification_tier }
         : { has_landlord: false },

@@ -6,10 +6,10 @@ import * as api from '@pantopus/api';
 import { confirmStore } from '@/components/ui/confirm-store';
 import { useInvitationDecision } from './useInvitationDecision';
 import { invitationDecisionMessage } from './invitationDecisionModel';
+import { invitationRoleLabel } from '../invitationPreviewModel';
 
 const button = 'min-h-11 rounded-xl border border-app-border px-4 py-3 text-sm font-semibold disabled:opacity-50';
-/** "restricted_member" → "Restricted member". */
-const humanRole = (role?: string | null) => { const words = (role || 'member').replaceAll('_', ' ').trim(); return words.charAt(0).toUpperCase() + words.slice(1); };
+
 export default function AuthenticatedInvitationPage({ token }: { token: string }) {
   const recovery = useInvitationDecision(token), router = useRouter();
   const [switching, setSwitching] = useState(false), [switchError, setSwitchError] = useState('');
@@ -102,7 +102,7 @@ export default function AuthenticatedInvitationPage({ token }: { token: string }
       <h2 className="text-xl font-semibold break-words">{context.preview.home?.name || 'This Home'}</h2>
       <p className="text-app-text-secondary">{context.preview.home?.city}</p>
       <p>Invited by {context.preview.inviter?.name || 'the household'}</p>
-      <p className="rounded-lg bg-blue-50 p-3 text-blue-950">Offered role: {humanRole(context.preview.invitation.proposed_role)}</p>
+      <p className="rounded-lg bg-blue-50 p-3 text-blue-950">Offered role: {invitationRoleLabel(context.preview.invitation.proposed_role)}</p>
       <p className="text-sm text-app-text-secondary">Household permissions determine what you can open or manage. This invitation gives you household access. To send messages between homes or get a residency letter, verify the address yourself.</p>
       {context.preview.invitation.access_start_at && <p className="text-sm">Access starts {new Date(context.preview.invitation.access_start_at).toLocaleString()}.</p>}
       {context.preview.invitation.access_end_at && <p className="text-sm">Access ends {new Date(context.preview.invitation.access_end_at).toLocaleString()}.</p>}

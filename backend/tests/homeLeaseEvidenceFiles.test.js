@@ -33,7 +33,7 @@ function bind() {
   file.metadata.lease_id = lease;
   publish();
   db.seedTable('HomeLease', [{ id: lease, home_id: home, primary_resident_user_id: actor,
-    source: 'tenant_request', metadata: { lease_file_id: id } }]);
+    source: 'tenant_request', state: 'pending', metadata: { lease_file_id: id } }]);
 }
 beforeEach(() => {
   db.resetTables();

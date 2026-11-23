@@ -81,7 +81,7 @@ const METHODS: Method[] = [
     id: 'document',
     icon: Upload,
     label: 'Upload a document',
-    sub: 'A utility bill, lease, or ID. A person reviews it.',
+    sub: 'A utility bill or lease. A person reviews it.',
     href: (h) => `/app/homes/${h}/verify-residency?return=place`,
   },
   {
@@ -133,7 +133,8 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
   // A landlord request can only be answered by a verified landlord, so that
   // door joins once the Home has one (or the person already has a request).
   const [landlordHomeId, setLandlordHomeId] = useState<string | null>(null);
-  const methods = landlordHomeId === homeId ? METHODS : METHODS.filter((m) => m.id !== 'landlord');
+  const [mailHomeId, setMailHomeId] = useState<string | null>(null);
+  const methods = METHODS.filter(m => (m.id !== 'landlord' || landlordHomeId === homeId) && (m.id !== 'mail' || mailHomeId === homeId));
   // A residency document the person sent that waits on a reviewer: the document
   // door says so (and links to its status) instead of offering another upload.
   const [documentHomeId, setDocumentHomeId] = useState<string | null>(null);
@@ -173,15 +174,17 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
         if (canceled || status?.home_id !== homeId) return;
         const offers = status.landlord?.has_landlord === true || (status.lease?.state ?? 'none') !== 'none';
         setLandlordHomeId(offers ? homeId : null);
+        setMailHomeId(status.mail_available === true ? homeId : null);
       } catch {
-        // An unreadable status keeps the two doors that work without a landlord.
+        if (!canceled) { setMailHomeId(null); setLandlordHomeId(null); }
       }
     })();
     return () => { canceled = true; };
   }, [open, homeId]);
 
+  const method = choices.find((m) => m.id === selected) ?? choices[0];
   const handleStart = () => {
-    const method = choices.find((m) => m.id === selected) ?? choices[0];
+    if (!method) return;
     onClose();
     router.push(method.href(homeId));
   };
@@ -211,6 +214,7 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
   const footer = (
     <button
       type="button"
+      disabled={choices.length === 0}
       onClick={handleStart}
       className="w-full h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold text-base -tracking-[0.01em] flex items-center justify-center gap-2 shadow-sm transition-colors"
     >
@@ -286,7 +290,7 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
                 </button>
               );
             }
-            const isSelected = selected === m.id;
+            const isSelected = method?.id === m.id;
             return (
               <button
                 key={m.id}
@@ -313,7 +317,7 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
       <div className="flex items-start gap-2 px-0.5">
         <Clock size={15} strokeWidth={2} className="shrink-0 mt-0.5 text-app-text-muted" />
         <span className="text-[12.5px] text-app-text-secondary leading-[18px]">
-          A postcard takes 3–7 days; documents are reviewed by a person. Everything you have now stays available while you wait.
+          Documents are reviewed by a person. Everything you have now stays available while you wait.
         </span>
       </div>
     </BottomSheet>
@@ -388,7 +392,7 @@ function FastVerifySheet({
     }
     // A document that isn't read at once is today's reviewed upload: today's words, no promise of speed.
     const words = row.id === 'document' && !documentFast
-      ? { label: 'Upload a document', sub: 'A utility bill, lease, or ID. A person reviews it.' }
+      ? { label: 'Upload a document', sub: 'A utility bill or lease. A person reviews it.' }
       : FAST_VERIFY_ROWS[row.id];
     return (
       <button

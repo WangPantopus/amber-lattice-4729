@@ -73,7 +73,7 @@ fun PhoneCheckScreen(
                 FastCheckKind.PHONE,
                 state.address.ifBlank { "this address" },
                 state.renter,
-                onMailCode = onMailCode,
+                onMailCode = onMailCode.takeIf { state.options?.available("mail") != null },
                 onDone = onDone,
             )
         PhoneCheckStage.NO_MATCH -> PhoneNoMatchPage(state, onDone = onDone, onOpenMethod = onOpenMethod)

@@ -222,7 +222,7 @@ struct PlaceIdentityDetailContent: View {
     /// them (`MAIL_PROOF_REQUIRED`), so the page offers the postcard instead of a form. Nil options (the switch
     /// off, or not read yet) keep today's page.
     private var lettersNeedMail: Bool {
-        HomeVerifyOptionsStore.shared.cached(homeId: vm.homeId)?.needsMail == true
+        HomeVerifyOptionsStore.shared.cached(homeId: vm.homeId)?.canRequestNeededMail == true
     }
 
     private func mailCodeCard(icon: PantopusIcon, title: String) -> some View {

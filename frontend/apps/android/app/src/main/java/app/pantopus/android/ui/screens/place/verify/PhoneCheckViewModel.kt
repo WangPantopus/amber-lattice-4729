@@ -173,8 +173,8 @@ class PhoneCheckViewModel
                         when (result.data.result) {
                             "verified" -> {
                                 // Place and the sheet read the new level at once.
-                                repository.refresh(homeId)
-                                _state.update { it.copy(verifying = false, stage = PhoneCheckStage.VERIFIED) }
+                                val options = repository.refresh(homeId)
+                                _state.update { it.copy(verifying = false, stage = PhoneCheckStage.VERIFIED, options = options) }
                             }
                             "no_match" -> {
                                 val options = repository.refresh(homeId)

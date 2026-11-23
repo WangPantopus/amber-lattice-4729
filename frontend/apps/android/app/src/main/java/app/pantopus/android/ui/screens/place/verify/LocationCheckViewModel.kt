@@ -83,8 +83,8 @@ class LocationCheckViewModel
                     is NetworkResult.Success ->
                         when (result.data.result) {
                             "verified", "confirmed" -> {
-                                repository.refresh(homeId)
-                                _state.update { it.copy(stage = LocationCheckStage.VERIFIED) }
+                                val options = repository.refresh(homeId)
+                                _state.update { it.copy(stage = LocationCheckStage.VERIFIED, options = options) }
                             }
                             "too_rough" -> showMiss(LocationMiss.TOO_ROUGH)
                             "not_counted" -> showMiss(LocationMiss.NOT_COUNTED)

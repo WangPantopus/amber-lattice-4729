@@ -97,6 +97,15 @@ describe('admin Review-claims tabbed queue', () => {
         created_at: new Date(NOW - 2 * 3_600_000).toISOString(),
         updated_at: new Date(NOW - 2 * 3_600_000).toISOString(),
       },
+      {
+        id: 'claim-vouched',
+        home_id: 'home-1',
+        claimant_user_id: 'user-B',
+        claim_type: 'owner',
+        state: 'pending_challenge_window',
+        method: 'vouch',
+        created_at: new Date(NOW).toISOString(),
+      },
       // disputed = pending bucket
       {
         id: 'claim-disputed',
@@ -161,7 +170,7 @@ describe('admin Review-claims tabbed queue', () => {
       expect(res.body.claims).toBeDefined();
 
       const ids = res.body.claims.map((c) => c.id).sort();
-      expect(ids).toEqual(['claim-disputed', 'claim-fresh-pending', 'claim-old-pending']);
+      expect(ids).toEqual(['claim-disputed', 'claim-fresh-pending', 'claim-old-pending', 'claim-vouched']);
 
       const oldPending = res.body.claims.find((c) => c.id === 'claim-old-pending');
       expect(oldPending.home).toMatchObject({ id: 'home-1', address: '418 Elm St', city: 'Portland' });
@@ -204,7 +213,7 @@ describe('admin Review-claims tabbed queue', () => {
       const enriched = res.body.claims.find((c) => c.id === 'claim-approved-1');
       expect(enriched.home.id).toBe('home-1');
       expect(enriched.claimant.username).toBe('maria');
-      expect(enriched.evidence_count).toBe(1);
+      expect(enriched.evidence_count).toBe(0);
     });
   });
 
@@ -233,7 +242,7 @@ describe('admin Review-claims tabbed queue', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
-        pending: 3,
+        pending: 4,
         approved: 2,
         rejected: 1,
       });
@@ -245,7 +254,7 @@ describe('admin Review-claims tabbed queue', () => {
       // returning the count payload.
       const res = await authedGet(app, '/api/admin/claims/counts');
       expect(res.status).toBe(200);
-      expect(res.body.pending).toBe(3);
+      expect(res.body.pending).toBe(4);
     });
   });
 

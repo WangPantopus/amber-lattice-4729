@@ -7,6 +7,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.homes.HomeFastVerifyRepository
 import app.pantopus.android.data.homes.HomesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ import javax.inject.Inject
 data class FastVerifiedUiState(
     val address: String = "",
     val renter: Boolean = false,
+    val mailAvailable: Boolean = false,
 )
 
 @HiltViewModel
@@ -28,6 +30,7 @@ class FastVerifiedViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val homes: HomesRepository,
+        repository: HomeFastVerifyRepository,
     ) : ViewModel() {
         private val homeId: String = savedStateHandle.get<String>(PLACE_VERIFY_HOME_ID_KEY).orEmpty()
         private val _state =
@@ -37,8 +40,13 @@ class FastVerifiedViewModel
         init {
             viewModelScope.launch {
                 val home = (homes.myHomesStored().data?.homes).orEmpty().firstOrNull { it.id.equals(homeId, ignoreCase = true) }
+                val mailAvailable = repository.refresh(homeId)?.available("mail") != null
                 _state.update {
-                    it.copy(address = it.address.ifBlank { home?.address.orEmpty() }, renter = home?.roleBase == "lease_resident")
+                    it.copy(
+                        address = it.address.ifBlank { home?.address.orEmpty() },
+                        renter = home?.roleBase == "lease_resident",
+                        mailAvailable = mailAvailable,
+                    )
                 }
             }
         }
@@ -52,5 +60,11 @@ fun BillVerifiedScreen(
     viewModel: FastVerifiedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    FastVerifiedPage(FastCheckKind.BILL, state.address.ifBlank { "this address" }, state.renter, onMailCode = onMailCode, onDone = onDone)
+    FastVerifiedPage(
+        FastCheckKind.BILL,
+        state.address.ifBlank { "this address" },
+        state.renter,
+        onMailCode = onMailCode.takeIf { state.mailAvailable },
+        onDone = onDone,
+    )
 }

@@ -9,6 +9,7 @@
  * "verified". STRIPE_IDENTITY_SECRET_KEY can be a restricted key that only
  * reads and writes Identity, so payments can stay in test mode.
  */
+const { isOpenForReview } = require('./homeClaimRoutingService');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 
@@ -200,12 +201,13 @@ async function ownClaim({ homeId, claimId, userId }) {
   if (!UUID.test(homeId || '') || !UUID.test(claimId || '')) throw failure('CLAIM_NOT_FOUND', 404);
   const { data, error } = await supabaseAdmin
     .from('HomeOwnershipClaim')
-    .select('id, home_id, claimant_user_id')
+    .select('id, home_id, claimant_user_id, state, claim_phase_v2, terminal_reason, merged_into_claim_id, expires_at')
     .eq('id', claimId)
     .maybeSingle();
   if (error) throw failure();
   // Someone else's claim reads as missing, so ids can't be probed.
-  if (!data || data.home_id !== homeId || data.claimant_user_id !== userId) throw failure('CLAIM_NOT_FOUND', 404);
+  if (!data || data.home_id !== homeId || data.claimant_user_id !== userId
+    || !isOpenForReview(data)) throw failure('CLAIM_NOT_FOUND', 404);
   return data;
 }
 

@@ -14,6 +14,7 @@ import app.pantopus.android.ui.screens.shared.grouped_list.GroupedListScreen
 @Composable
 fun VerificationCenterScreen(
     onBack: () -> Unit = {},
+    onOpenVerificationHomes: () -> Unit,
     viewModel: VerificationCenterViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -25,7 +26,7 @@ fun VerificationCenterScreen(
         callbacks =
             GroupedListCallbacks(
                 onBack = onBack,
-                onTapRow = viewModel::onRow,
+                onTapRow = { if (it == "photoid.status") onOpenVerificationHomes() else viewModel.onRow(it) },
                 onRetry = viewModel::load,
             ),
     )

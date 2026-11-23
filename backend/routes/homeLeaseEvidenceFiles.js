@@ -90,10 +90,10 @@ async function read(req) {
     || ['merged', 'archived'].includes(home.home_status) || !(await row('User', req.user.id, 'id'))) {
     throw fail('LEASE_FILE_ACCESS_DENIED', 'This lease file is unavailable.', 403);
   }
-  const lease = file.metadata.lease_id ? await row('HomeLease', file.metadata.lease_id, 'id,home_id,primary_resident_user_id,source,metadata') : null;
+  const lease = file.metadata.lease_id ? await row('HomeLease', file.metadata.lease_id, 'id,home_id,primary_resident_user_id,source,state,metadata') : null;
   if (file.metadata.lease_id && (!lease || lease.home_id !== homeId
     || lease.primary_resident_user_id !== file.user_id || lease.metadata?.lease_file_id !== file.id
-    || lease.source !== 'tenant_request')) {
+    || lease.source !== 'tenant_request' || lease.state !== 'pending')) {
     throw fail('LEASE_FILE_NOT_FOUND', 'Lease file not found.', 404);
   }
   if (file.user_id !== req.user.id && (!lease

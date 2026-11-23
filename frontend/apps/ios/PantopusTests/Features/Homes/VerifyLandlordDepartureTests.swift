@@ -215,7 +215,7 @@ extension VerifyLandlordWizardViewModelTests {
     func testNoSavedRequestLeavesExistingStartAndDetailsAvailable() async {
         let body = """
         {"home_id":"home-1","request_context":{"home_id":"home-1","actor_id":"actor-1"},
-        "lease":{"state":"none","lease":null}}
+        "landlord":{"has_landlord":true},"lease":{"state":"none","lease":null}}
         """
         await withRecoveryVM(responses: [.status(200, body: body)]) { vm in
             await vm.restoreSavedRequest()
@@ -311,7 +311,10 @@ extension VerifyLandlordWizardViewModelTests {
     }
 
     func testForegroundNoRequestPreservesDetailsAndEnteredDraft() async {
-        let none = #"{"home_id":"home-1","request_context":{"home_id":"home-1","actor_id":"actor-1"},"lease":{"state":"none"}}"#
+        let none = """
+        {"home_id":"home-1","request_context":{"home_id":"home-1","actor_id":"actor-1"},
+        "landlord":{"has_landlord":true},"lease":{"state":"none"}}
+        """
         await withRecoveryVM(responses: [.status(200, body: none, delay: 0.1)]) { vm in
             vm.primaryTapped()
             vm.setMessageToLandlord("Keep my entered draft")

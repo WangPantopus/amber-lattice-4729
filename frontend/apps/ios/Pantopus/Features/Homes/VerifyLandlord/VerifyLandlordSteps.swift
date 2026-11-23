@@ -381,4 +381,5 @@ public enum VerifyLandlordOutboundEvent: Sendable, Equatable {
     /// Submit succeeded — pop the wizard and push the standalone A12.7
     /// Postcard verification screen so the user can track delivery.
     case openPostcardVerification(homeId: String)
+    case openDocumentVerification(homeId: String)
 }

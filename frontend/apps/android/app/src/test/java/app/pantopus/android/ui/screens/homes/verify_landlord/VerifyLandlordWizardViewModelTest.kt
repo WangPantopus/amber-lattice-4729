@@ -121,6 +121,7 @@ abstract class VerifyLandlordWizardTestFixture {
             "home-1",
             TenantRequestContextDto("home-1", "actor-1", null, null),
             TenantHomeStatusResponse.LeaseStatus("none"),
+            landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
         )
 
     protected fun savedRequest() =
@@ -128,6 +129,8 @@ abstract class VerifyLandlordWizardTestFixture {
             "home-1",
             TenantRequestContextDto("home-1", "actor-1", "lease-1", "pending"),
             TenantHomeStatusResponse.LeaseStatus("pending", stubLease),
+            landlord = TenantHomeStatusResponse.Landlord(hasLandlord = true),
+            mailAvailable = true,
         )
 }
 
@@ -583,7 +586,7 @@ class VerifyLandlordWizardViewModelTest : VerifyLandlordWizardTestFixture() {
             assertNull(vm.pendingEvent.value)
         }
 
-    @Test fun submit_without_verified_landlord_falls_back_to_postcard() =
+    @Test fun submit_without_verified_landlord_opens_document_verification() =
         runTest {
             coEvery { tenantRepository.requestApproval(any(), any(), any()) } returns
                 NetworkResult.Failure(
@@ -597,7 +600,7 @@ class VerifyLandlordWizardViewModelTest : VerifyLandlordWizardTestFixture() {
             vm.seedPopulatedForm()
             vm.onPrimary() // submit
             assertEquals(
-                VerifyLandlordOutboundEvent.OpenPostcardVerification("home-42"),
+                VerifyLandlordOutboundEvent.OpenDocumentVerification("home-42"),
                 vm.pendingEvent.value,
             )
             assertEquals(VerifyLandlordSubmitState.Idle, vm.state.value.submitState)
@@ -682,19 +685,16 @@ class VerifyLandlordWizardViewModelTest : VerifyLandlordWizardTestFixture() {
             )
         }
 
-    @Test fun sent_step_secondary_starts_postcard_fallback() =
+    @Test fun sent_step_offers_no_postcard_when_mail_is_unavailable() =
         runTest {
             val vm = makeVm("home-9")
             vm.onPrimary()
             vm.seedPopulatedForm()
             vm.onPrimary() // submit -> Sent
             assertEquals(VerifyLandlordStep.Sent, vm.state.value.currentStep)
-            assertEquals("Review mail verification", vm.chrome.secondaryCta?.label)
+            assertNull(vm.chrome.secondaryCta)
             vm.onSecondary()
-            assertEquals(
-                VerifyLandlordOutboundEvent.OpenPostcardVerification("home-9"),
-                vm.pendingEvent.value,
-            )
+            assertNull(vm.pendingEvent.value)
         }
 
     @Test fun move_in_date_must_be_iso_shaped() {

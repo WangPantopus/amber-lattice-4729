@@ -482,7 +482,7 @@ describe('GET /landlord/properties/:homeId', () => {
 
     expect(res._json.pending_requests).toHaveLength(1);
     expect(res._json.pending_requests[0].id).toBe('lease-pending');
-    expect(res._json.leases.map(lease => lease.id).sort()).toEqual(['lease-active', 'lease-canceled', 'lease-ended', 'lease-pending']);
+    expect(res._json.leases.map(lease => lease.id).sort()).toEqual(['lease-active', 'lease-ended', 'lease-pending']);
   });
 
   test.each(['user', 'business'])('child leases require the same verified %s authority subject as the property', async subjectType => {
@@ -1145,14 +1145,13 @@ describe('POST /tenant/accept-invite', () => {
 describe('existing tenant status projection', () => {
   const homeId = 'f3190000-0000-4000-8000-000000000010';
   beforeEach(() => { seedHome({ id: homeId }); seedAuthority({ home_id: homeId }); });
-  test('returns only own request fields and maps the stored denial reason', async () => {
+  test('keeps the finished application private after a denial', async () => {
     seedLease({ home_id: homeId, primary_resident_user_id: 'test-user-id', state: 'canceled',
       metadata: { message: 'Own message', denial_reason: 'Reviewed reason', private_field: 'do-not-return', landlord_decision: { secret: 'hidden' } } });
     const res = mockRes(); await tenantStatusHandler(mockReq({ params: { homeId } }), res);
     expect(res._status).toBe(200);
     expect(res._headers['Cache-Control']).toBe('private, no-store');
-    expect(res._json.lease.state).toBe('denied');
-    expect(res._json.lease.lease.metadata).toEqual({ message: 'Own message', denied_reason: 'Reviewed reason' });
+    expect(res._json.lease).toEqual({ state: 'none', lease: null });
     expect(res._json.landlord).not.toHaveProperty('subject_id');
     expect(JSON.stringify(res._json)).not.toMatch(/private_field|landlord_decision|primary_resident_user_id/);
   });

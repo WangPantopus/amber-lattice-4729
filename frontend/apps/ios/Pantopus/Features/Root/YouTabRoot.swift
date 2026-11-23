@@ -1104,6 +1104,7 @@ public struct YouTabRoot: View {
             SettingsView(
                 onClose: { Task { @MainActor in pop() } },
                 onEditProfile: { showsEditProfile = true },
+                onOpenVerificationHomes: { Task { @MainActor in path.append(.myHomes) } },
                 onOpenAudienceProfile: { Task { @MainActor in path.append(.audienceProfile) } },
                 onSignedOut: { Task { @MainActor in pop() } }
             )
@@ -1112,6 +1113,7 @@ public struct YouTabRoot: View {
                 initialRoute: .payments,
                 onClose: { Task { @MainActor in pop() } },
                 onEditProfile: { showsEditProfile = true },
+                onOpenVerificationHomes: { Task { @MainActor in path.append(.myHomes) } },
                 onOpenAudienceProfile: { Task { @MainActor in path.append(.audienceProfile) } },
                 onSignedOut: { Task { @MainActor in pop() } }
             )
@@ -2839,6 +2841,10 @@ public struct YouTabRoot: View {
             VerifyLandlordWizardView(
                 homeId: homeId,
                 onClose: { if !path.isEmpty { path.removeLast() } },
+                onOpenDocumentVerification: { resolvedHomeId in
+                    if !path.isEmpty { path.removeLast() }
+                    path.append(.verifyResidency(homeId: resolvedHomeId))
+                },
                 onOpenPostcardVerification: { resolvedHomeId in
                     // Replace the wizard with the postcard tracker so
                     // Back returns to the waiting room, not the wizard.

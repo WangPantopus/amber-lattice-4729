@@ -55,6 +55,7 @@ public struct SettingsView: View {
     private let initialRoute: SettingsStackRoute?
     private let onClose: @MainActor () -> Void
     private let onEditProfile: @MainActor () -> Void
+    private let onOpenVerificationHomes: @MainActor () -> Void
     private let onOpenReviewClaims: @MainActor () -> Void
     private let onOpenWallet: @MainActor () -> Void
     /// Identity Center's Public profile card. The host opens its audience
@@ -66,6 +67,7 @@ public struct SettingsView: View {
         initialRoute: SettingsStackRoute? = nil,
         onClose: @escaping @MainActor () -> Void = {},
         onEditProfile: @escaping @MainActor () -> Void = {},
+        onOpenVerificationHomes: @escaping @MainActor () -> Void = {},
         onOpenReviewClaims: @escaping @MainActor () -> Void = {},
         onOpenWallet: @escaping @MainActor () -> Void = {},
         onOpenAudienceProfile: @escaping @MainActor () -> Void = {},
@@ -75,6 +77,7 @@ public struct SettingsView: View {
         self.initialRoute = initialRoute
         self.onClose = onClose
         self.onEditProfile = onEditProfile
+        self.onOpenVerificationHomes = onOpenVerificationHomes
         self.onOpenReviewClaims = onOpenReviewClaims
         self.onOpenWallet = onOpenWallet
         self.onOpenAudienceProfile = onOpenAudienceProfile
@@ -172,7 +175,7 @@ public struct SettingsView: View {
         case .securityDevices:
             DevicesView { popLast() }
         case .verification:
-            VerificationCenterView { popLast() }
+            VerificationCenterView(viewModel: VerificationCenterViewModel(onOpenClaims: onOpenVerificationHomes)) { popLast() }
         case .help:
             HelpCenterView { popLast() }
         case .about:

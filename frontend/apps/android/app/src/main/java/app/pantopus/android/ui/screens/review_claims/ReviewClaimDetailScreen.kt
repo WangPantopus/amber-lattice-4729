@@ -369,14 +369,16 @@ private fun LoadedShell(
                         )
                     }
                 }
-                OverlineSection(title = evidenceOverline(detail.evidence.size)) {
-                    TextButton(onClick = onOpenEvidence, modifier = Modifier.testTag("reviewClaimDetail_openPrivateEvidence")) {
-                        Text("Open private documents")
+                if (isReviewable) {
+                    OverlineSection(title = evidenceOverline(detail.evidence.size)) {
+                        TextButton(onClick = onOpenEvidence, modifier = Modifier.testTag("reviewClaimDetail_openPrivateEvidence")) {
+                            Text("Open private documents")
+                        }
+                        EvidenceContent(
+                            evidence = detail.evidence,
+                            modifier = Modifier.testTag("reviewClaimDetail_evidence"),
+                        )
                     }
-                    EvidenceContent(
-                        evidence = detail.evidence,
-                        modifier = Modifier.testTag("reviewClaimDetail_evidence"),
-                    )
                 }
                 statementFor(detail.claim)?.let { statement ->
                     OverlineSection(title = "Review note") {

@@ -15,6 +15,12 @@ export interface InvitationPreview {
   alreadyUsed?: boolean;
 }
 
+export function invitationRoleLabel(role?: string | null) {
+  if (role === 'lease_resident') return 'Resident';
+  const words = (role || 'member').trim().replaceAll('_', ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 const uuid = (value: unknown) => typeof value === 'string'
   && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const date = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value));

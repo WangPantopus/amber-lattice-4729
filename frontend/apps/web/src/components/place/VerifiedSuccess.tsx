@@ -70,7 +70,8 @@ export default function VerifiedSuccess({ onContinue, homeId: verifiedHomeId = n
         kind={fast.kind}
         address={home?.address || 'your home'}
         renter={access.data?.hasAccess === true && access.data.role_base === 'lease_resident'}
-        onMailCode={() => router.push(`/app/homes/${homeId}/verify-postcard?return=place`)}
+        onMailCode={verify.data?.options.some(o => o.id === 'mail' && o.available)
+          ? () => router.push(`/app/homes/${homeId}/verify-postcard?return=place`) : undefined}
         onContinue={onContinue}
       />
     );

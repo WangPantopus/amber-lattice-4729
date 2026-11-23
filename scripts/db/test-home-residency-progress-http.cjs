@@ -42,10 +42,14 @@ async function request(route = `/${home}/my-residency`, actor = applicant) {
   assert.match(response.headers.get('cache-control'), /private, no-store/);
   return { status: response.status, body: await response.json() };
 }
-async function progress(next = 'household_review', access = 'none') {
+async function progress(next = 'household_review', access = 'none', closed = false) {
   const r = await request(); assert.equal(r.status, 200, JSON.stringify(r));
-  assert.equal(r.body.home_id, home); assert.equal(r.body.request.id, claimId);
-  assert.equal(r.body.request.submitted_address, 'My submitted street, Unit 602');
+  assert.equal(r.body.home_id, home);
+  if (closed) assert.equal(r.body.request, null);
+  else {
+    assert.equal(r.body.request.id, claimId);
+    assert.equal(r.body.request.submitted_address, 'My submitted street, Unit 602');
+  }
   assert.equal(r.body.next_step, next); assert.equal(r.body.current_access, access);
   const encoded = JSON.stringify(r.body);
   for (const secret of ['Private residency fixture', 'changed-private-sentinel', 'reviewed_by', 'cold_start_mode', 'user_id', 'vendor_job_id', 'code_hash']) assert(!encoded.includes(secret));
@@ -92,15 +96,16 @@ async function main() {
     for (const mode of ['self_bootstrap', 'external_postcard', 'stale_authority_postcard']) {
       changeClaim(`cold_start_mode=${q(mode)}`); await progress('address_verification');
     }
-    restore(); changeClaim("status='rejected'"); await progress('resubmit');
-    restore(); changeClaim("status='verified',reviewed_at=now()"); await progress('access_review');
+    restore(); changeClaim("status='rejected'"); await progress('resubmit', 'none', true);
+    assert.deepEqual((await request('/my-residency')).body.requests, []);
+    restore(); changeClaim("status='verified',reviewed_at=now()"); await progress('access_review', 'none', true);
     changeOccupancy("verification_status='verified',verified_at=now()");
     // This owned DB has not permanently adopted the accepted member-view
     // defaults migration. Scope the positive permission to this fixture actor.
     sql(`INSERT INTO public."HomePermissionOverride"(home_id,user_id,permission,allowed) VALUES(${q(home)},${q(applicant)},'home.view',true);`);
-    await progress('home', 'shared');
+    await progress('home', 'shared', true);
     sql(`UPDATE public."HomePermissionOverride" SET allowed=false WHERE home_id=${q(home)} AND user_id=${q(applicant)} AND permission='home.view';`);
-    await progress('access_review'); restore();
+    await progress('access_review', 'none', true); restore();
     for (const fields of ["is_active=false", "access_end_at=now()-interval '1 second'", "start_at=now()+interval '1 day'", "end_at=now()+interval '1 day'", "verification_status='provisional'", "verified_at=now()", "verification_expires_at=now()+interval '1 day'"]) {
       changeOccupancy(fields); await progress('access_review'); restore();
     }

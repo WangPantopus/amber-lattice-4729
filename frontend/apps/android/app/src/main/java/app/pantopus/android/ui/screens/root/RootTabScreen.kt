@@ -6888,7 +6888,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     PasswordChangeScreen(onBack = { navController.popBackStack() })
                 }
                 composable(ChildRoutes.SETTINGS_VERIFICATION) {
-                    VerificationCenterScreen(onBack = { navController.popBackStack() })
+                    VerificationCenterScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenVerificationHomes = { navController.navigate(ChildRoutes.MY_HOMES) },
+                    )
                 }
                 composable(ChildRoutes.SETTINGS_DEVICES) {
                     DevicesScreen(onBack = { navController.popBackStack() })
@@ -8244,6 +8247,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 ) {
                     VerifyLandlordWizardScreen(
                         onDismiss = { navController.popBackStack() },
+                        onOpenDocumentVerification = { resolvedHomeId ->
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.verifyResidency(resolvedHomeId))
+                        },
                         onOpenPostcardVerification = { resolvedHomeId ->
                             // Replace the wizard with the postcard tracker so
                             // Back returns to the home dashboard, not the

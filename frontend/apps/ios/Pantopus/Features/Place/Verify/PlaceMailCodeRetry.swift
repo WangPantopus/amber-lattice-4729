@@ -18,7 +18,7 @@ struct PlaceMailCodeRetry: View {
     let retry: () async -> Void
 
     private var needsMail: Bool {
-        onMailCode != nil && HomeVerifyOptionsStore.shared.cached(homeId: homeId)?.needsMail == true
+        onMailCode != nil && HomeVerifyOptionsStore.shared.cached(homeId: homeId)?.canRequestNeededMail == true
     }
 
     var body: some View {

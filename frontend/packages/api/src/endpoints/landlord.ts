@@ -139,6 +139,24 @@ export async function requestAuthority(data: {
   return post('/api/v1/landlord/authority/request', data);
 }
 
+export type RentalSubject = { subject_type: 'user' | 'business'; subject_id: string };
+export interface RentalAuthoritySetup {
+  session: { actor_id: string; session_scope: string };
+  subjects: (RentalSubject & { label: string })[];
+  owned: (RentalSubject & { home_id: string; address: string; address2: string | null; city: string; state: string })[];
+  managers: { id: string; home_id: string; subject_type: string; status: 'pending' | 'verified'; username: string; name: string | null }[];
+}
+export type RentalAuthorityAction =
+  | ({ action: 'request' | 'enable'; home_id: string } & RentalSubject)
+  | { action: 'approve' | 'decline' | 'revoke'; home_id: string; authority_id: string };
+
+export function getRentalSetup(): Promise<RentalAuthoritySetup> {
+  return get('/api/v1/landlord/authority/setup');
+}
+export function manageRentalAuthority(data: RentalAuthorityAction, sessionScope: string): Promise<{ id: string; home_id: string; status: AuthorityStatus }> {
+  return post('/api/v1/landlord/authority/setup', data, { headers: { 'X-Pantopus-Session-Scope': sessionScope } });
+}
+
 // ── Properties ──────────────────────────────────────────────
 
 /** List properties where the user has authority */

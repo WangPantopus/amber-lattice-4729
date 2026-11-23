@@ -565,7 +565,8 @@ private extension MyHomesListViewModel {
     /// setup is not a verification receipt, so its claim still shows (web).
     var shownClaims: [OwnershipClaimDTO] {
         let listed = Set(entries.filter { $0.accessKind != "private_setup" }.map(\.id))
-        return claims.filter { $0.isInReview && !listed.contains($0.homeId) }
+        let shared = Set(entries.filter { $0.accessKind == "shared" }.map(\.id))
+        return claims.filter { $0.isInReview && (!listed.contains($0.homeId) || ($0.claimType == "owner" && shared.contains($0.homeId))) }
     }
 
     func loadClaims(revision: Int, force: Bool) async {

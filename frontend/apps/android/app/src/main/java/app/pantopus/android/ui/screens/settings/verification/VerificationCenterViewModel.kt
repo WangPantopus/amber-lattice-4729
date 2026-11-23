@@ -146,13 +146,8 @@ class VerificationCenterViewModel
                             GroupedListRow(
                                 id = "photoid.status",
                                 label = "Government-issued ID",
-                                subtext = "Used by business listings only",
-                                control =
-                                    RowControl.ChipStatus(
-                                        "Optional",
-                                        RowControl.ChipTone.Neutral,
-                                        includesChevron = false,
-                                    ),
+                                subtext = "Open My Homes to continue identity verification for your ownership claim.",
+                                control = RowControl.Chevron,
                             ),
                         ),
                 )

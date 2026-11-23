@@ -128,6 +128,8 @@ export default function NewHomePage() {
 
 function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreation> }) {
   const router = useRouter();
+  const [rental, setRental] = useState(false);
+  useEffect(() => { setRental(new URLSearchParams(window.location.search).get('rental') === '1'); }, []);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
@@ -473,8 +475,8 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
       ...(countyCheck && countyChecked ? { county_checked: true } : {}),
       description: description.trim() || undefined,
       amenities: shortAdd ? undefined : Object.fromEntries(Object.entries(amenities).filter(([, v]) => v)),
-      is_owner: isOwner,
-      role: isOwner ? 'owner' : shortAdd ? residencyRole : 'renter',
+      is_owner: !rental && isOwner,
+      role: rental ? 'property_manager' : isOwner ? 'owner' : shortAdd ? residencyRole : 'renter',
       move_in_date: moveInDate || undefined,
       entry_instructions: entryInstructions.trim() || undefined,
       parking_instructions: parkingInstructions.trim() || undefined,
@@ -882,17 +884,21 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
   // The Home is saved: Place opens with the verify sheet (the instant claim made it yours already).
   const leftForPlace = useRef(false);
   useEffect(() => {
-    if (!shortAdd || leftForPlace.current) return;
+    if ((!shortAdd && !rental && !(recovery.pending?.version === 1 && recovery.pending.outcome?.role === 'property_manager')) || leftForPlace.current) return;
     if (recovery.pending?.outcome?.state !== 'completed' || !recovery.canAcknowledge || recovery.busy) return;
     leftForPlace.current = true;
     void (async () => {
       const original = await recovery.acknowledge();
       if (!original) { leftForPlace.current = false; return; }
       const homeId = original.version === 1 ? original.outcome?.home?.id : null;
-      if (homeId) router.replace(`/app/place?home=${encodeURIComponent(homeId)}&verify=1`);
+      const claimId = original.version === 1 ? original.outcome?.ownership_claim_id : null;
+      if (homeId && original.version === 1 && original.outcome?.role === 'property_manager') {
+        router.replace(`/app/landlord/properties?home=${homeId}`);
+      } else if (homeId && claimId) router.replace(`/app/homes/${homeId}/claim-owner/evidence?claimId=${encodeURIComponent(claimId)}`);
+      else if (homeId) router.replace(`/app/place?home=${encodeURIComponent(homeId)}&verify=1`);
       else { router.push('/app/homes'); router.refresh(); }
     })();
-  }, [shortAdd, recovery, router]);
+  }, [shortAdd, rental, recovery, router]);
 
   const submit = async () => {
     setError('');
@@ -916,6 +922,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     try {
       const targetHomeId = existingHomeId || addressCheckResult?.home_id || null;
       if (isClaimingExistingHome && targetHomeId) {
+        if (rental) { router.push(`/app/landlord/properties?home=${targetHomeId}`); return; }
         if (isOwner) {
           router.push(`/app/homes/${targetHomeId}/claim-owner/evidence`);
           return;
@@ -966,7 +973,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
   const homeTypeIcon = HOME_TYPES.find(t => t.value === homeType)?.icon || '🏠';
   const activeAmenities = AMENITIES_OPTIONS.filter(a => amenities[a.key]);
 
-  if (shortAdd && recovery.pending?.outcome?.state === 'completed' && !recovery.error) {
+  if ((shortAdd || rental) && recovery.pending?.outcome?.state === 'completed' && !recovery.error) {
     return <main className="mx-auto max-w-xl px-4 py-10"><p role="status" className="text-app-text-secondary">Opening your Place…</p></main>;
   }
   if (!recovery.ready || recovery.pending || recovery.busy || recovery.blocked) {
@@ -1068,7 +1075,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     </div>
   );
 
-  if (shortAdd) {
+  if (shortAdd || rental) {
     const addressConfirmed = !!validatedAddressId && !postalNotice && !noUnitAttested;
     const cityLine = normalized ? [normalized.city, [normalized.state, normalized.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
     const ROLES = [
@@ -1094,7 +1101,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
             >
               <ChevronLeft size={22} strokeWidth={2.25} />
             </button>
-            <h1 className="text-center text-[17px] font-semibold text-app-text">Add your home</h1>
+            <h1 className="text-center text-[17px] font-semibold text-app-text">{rental ? 'Add a rental property' : 'Add your home'}</h1>
             <div className="text-right text-sm text-app-text-secondary whitespace-nowrap">{step === 2 ? '2 of 2' : '1 of 2'}</div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-1.5" aria-hidden>
@@ -1114,7 +1121,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-app-home-bg text-app-home px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em]">
                   <HomeIcon size={13} strokeWidth={2.25} aria-hidden /> Your home
                 </span>
-                <h2 id="short-home-title" className="mt-3 text-[26px] font-bold -tracking-[0.02em] text-app-text">Find your home</h2>
+                <h2 id="short-home-title" className="mt-3 text-[26px] font-bold -tracking-[0.02em] text-app-text">{rental ? 'Find the rental address' : 'Find your home'}</h2>
                 <p id="short-home-address-label" className="mt-1 text-[15px] text-app-text-secondary">Type your street address and pick it from the list.</p>
               </div>
 
@@ -1224,9 +1231,18 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
               </p>
 
               <button type="button" onClick={() => void continueShort()} disabled={!normalized || validatingAddress} className={primaryButton}>
-                {validatingAddress ? 'Checking…' : 'This is my home'}
+                {validatingAddress ? 'Checking…' : rental ? 'Use this property' : 'This is my home'}
               </button>
             </>
+          ) : rental ? (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold">Set up rental verification</h2>
+              <p>{normalized?.label || normalized?.address}</p>
+              <p className="text-sm text-app-text-secondary">Verify ownership or request permission from the property owner to manage tenants and leases.</p>
+              <button type="button" className={primaryButton} disabled={loading || !normalized} onClick={() => void submit()}>
+                {loading ? 'Opening…' : 'Continue to rental verification'}
+              </button>
+            </div>
           ) : (
             <>
               <div>

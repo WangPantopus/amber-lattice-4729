@@ -55,6 +55,7 @@ export interface ClaimEvidence {
 }
 
 export interface ClaimDetail {
+  evidence_archived?: boolean;
   claim: any;
   home: any;
   claimant: any;

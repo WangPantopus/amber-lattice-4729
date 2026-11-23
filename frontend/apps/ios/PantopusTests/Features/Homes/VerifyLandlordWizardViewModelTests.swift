@@ -191,8 +191,8 @@ final class VerifyLandlordWizardViewModelTests: XCTestCase {
         }
         vm.primaryTapped()
         await vm.submit()
-        await waitFor("pendingEvent == .openPostcardVerification") {
-            vm.pendingEvent == .openPostcardVerification(homeId: "home-1")
+        await waitFor("pendingEvent == .openDocumentVerification") {
+            vm.pendingEvent == .openDocumentVerification(homeId: "home-1")
         }
         XCTAssertEqual(vm.submitState, .idle)
     }
@@ -273,7 +273,7 @@ final class VerifyLandlordWizardViewModelTests: XCTestCase {
         vm.primaryTapped()
         await vm.submit()
         XCTAssertEqual(vm.currentStep, .sent)
-        XCTAssertEqual(vm.chrome.secondaryCTA?.label, "Review mail verification")
+        XCTAssertNil(vm.chrome.secondaryCTA, "Mail must be available for this person and home")
         await vm.startPostcardFallback()
         XCTAssertEqual(vm.pendingEvent, .openPostcardVerification(homeId: "home-9"))
     }

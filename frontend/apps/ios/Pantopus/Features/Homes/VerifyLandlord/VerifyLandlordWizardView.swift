@@ -20,12 +20,14 @@ public struct VerifyLandlordWizardView: View {
     @State private var visible = false
     @State private var viewModel: VerifyLandlordWizardViewModel
     private let onClose: @MainActor () -> Void
+    private let onOpenDocumentVerification: @MainActor (String) -> Void
     private let onOpenPostcardVerification: @MainActor (String) -> Void
 
     init(
         homeId: String,
         startContent: VerifyLandlordStartContent? = nil,
         onClose: @escaping @MainActor () -> Void,
+        onOpenDocumentVerification: @escaping @MainActor (String) -> Void,
         onOpenPostcardVerification: @escaping @MainActor (String) -> Void
     ) {
         _viewModel = State(initialValue: VerifyLandlordWizardViewModel(
@@ -33,6 +35,7 @@ public struct VerifyLandlordWizardView: View {
             startContent: startContent
         ))
         self.onClose = onClose
+        self.onOpenDocumentVerification = onOpenDocumentVerification
         self.onOpenPostcardVerification = onOpenPostcardVerification
     }
 
@@ -84,7 +87,13 @@ public struct VerifyLandlordWizardView: View {
             if let message = submitErrorMessage {
                 VerifyErrorSummaryBanner(errors: .init(), serverMessage: message, title: viewModel.submissionErrorTitle)
             }
-            VerifyStartStep(content: viewModel.startContent)
+            if viewModel.noLandlord {
+                Text("This home has no verified landlord yet. You can verify your address with a document.")
+                    .pantopusTextStyle(.body)
+                    .padding()
+            } else {
+                VerifyStartStep(content: viewModel.startContent)
+            }
         case .details:
             VerifyDetailsStep(viewModel: viewModel)
         case .sent:
@@ -106,6 +115,8 @@ public struct VerifyLandlordWizardView: View {
         switch event {
         case .dismiss:
             onClose()
+        case let .openDocumentVerification(homeId):
+            onOpenDocumentVerification(homeId)
         case let .openPostcardVerification(homeId):
             onOpenPostcardVerification(homeId)
         }
@@ -136,6 +147,7 @@ private struct StickyAttentionHint: View {
     VerifyLandlordWizardView(
         homeId: "home-preview",
         onClose: {},
+        onOpenDocumentVerification: { _ in },
         onOpenPostcardVerification: { _ in }
     )
 }

@@ -62,6 +62,8 @@ data class VerifyLandlordUiState(
      */
     val approvalResult: VerifyLandlordApprovalResult? = null,
     val isLoadingStatus: Boolean = false,
+    val noLandlord: Boolean = false,
+    val mailAvailable: Boolean = false,
     val statusNeedsRetry: Boolean = false,
     val submissionOutcomeUnknown: Boolean = false,
     val attachment: VerifyLandlordAttachmentState = VerifyLandlordAttachmentState(),
@@ -199,37 +201,14 @@ open class VerifyLandlordWizardViewModel
             val saved = status.lease ?: return false
             val matchesActor = status.requestContext.actorId == session.actorId
             if (!status.matches(homeId) || !matchesActor) return false
-            val existing = saved.state == "pending" || saved.state == "active"
-            if (existing) {
-                val lease = saved.lease ?: return false
-                val matchesLease = lease.id == status.requestContext.leaseId && lease.homeId == homeId
-                val matchesState = lease.state == saved.state && lease.state == status.requestContext.leaseState
-                if (!matchesLease || !matchesState) return false
-                if (leaseAttachment.hasDraft && lease.metadata?.leaseFileId != leaseAttachment.uploadIdentity) return false
-                _state.update {
-                    it.copy(
-                        currentStep = VerifyLandlordStep.Sent,
-                        submitState = VerifyLandlordSubmitState.Submitted,
-                        submissionOutcomeUnknown = false,
-                        approvalResult =
-                            VerifyLandlordApprovalResult(
-                                kind =
-                                    if (saved.state == "active") {
-                                        VerifyLandlordApprovalResult.Kind.AlreadyActive
-                                    } else {
-                                        VerifyLandlordApprovalResult.Kind.AlreadyPending
-                                    },
-                                submittedAt = lease.createdAt,
-                                requestedStartAt = lease.startAt,
-                                message = lease.metadata?.message,
-                            ),
-                    )
-                }
-            } else if (saved.state in setOf("none", "denied", "ended")) {
+            _state.update { it.copy(noLandlord = status.landlord?.hasLandlord == false, mailAvailable = status.mailAvailable) }
+            if (saved.state in setOf("pending", "active")) return restoreLease(status, saved)
+            if (saved.state in setOf("none", "denied", "ended")) {
+                val landlord = status.landlord ?: return false
                 _state.update {
                     it.copy(
                         currentStep =
-                            if (it.currentStep == VerifyLandlordStep.Details) {
+                            if (landlord.hasLandlord && it.currentStep == VerifyLandlordStep.Details) {
                                 VerifyLandlordStep.Details
                             } else {
                                 VerifyLandlordStep.Start
@@ -241,6 +220,38 @@ open class VerifyLandlordWizardViewModel
                 }
             } else {
                 return false
+            }
+            return true
+        }
+
+        private fun restoreLease(
+            status: TenantHomeStatusResponse,
+            saved: TenantHomeStatusResponse.LeaseStatus,
+        ): Boolean {
+            val lease = saved.lease ?: return false
+            val matchesLease = lease.id == status.requestContext.leaseId && lease.homeId == homeId
+            val matchesState = lease.state == saved.state && lease.state == status.requestContext.leaseState
+            val matchesDraft =
+                saved.state != "pending" || !leaseAttachment.hasDraft || lease.metadata?.leaseFileId == leaseAttachment.uploadIdentity
+            if (!matchesLease || !matchesState || !matchesDraft) return false
+            _state.update {
+                it.copy(
+                    currentStep = VerifyLandlordStep.Sent,
+                    submitState = VerifyLandlordSubmitState.Submitted,
+                    submissionOutcomeUnknown = false,
+                    approvalResult =
+                        VerifyLandlordApprovalResult(
+                            kind =
+                                if (saved.state == "active") {
+                                    VerifyLandlordApprovalResult.Kind.AlreadyActive
+                                } else {
+                                    VerifyLandlordApprovalResult.Kind.AlreadyPending
+                                },
+                            submittedAt = lease.createdAt,
+                            requestedStartAt = lease.startAt,
+                            message = lease.metadata?.message,
+                        ),
+                )
             }
             return true
         }
@@ -281,7 +292,11 @@ open class VerifyLandlordWizardViewModel
             }
             when (_state.value.currentStep) {
                 VerifyLandlordStep.Start -> {
-                    _state.update { it.copy(currentStep = VerifyLandlordStep.Details) }
+                    if (_state.value.noLandlord) {
+                        pendingEvent.value = VerifyLandlordOutboundEvent.OpenDocumentVerification(homeId)
+                    } else {
+                        _state.update { it.copy(currentStep = VerifyLandlordStep.Details) }
+                    }
                 }
                 VerifyLandlordStep.Details ->
                     if (!_state.value.isSubmitting) {
@@ -295,7 +310,7 @@ open class VerifyLandlordWizardViewModel
             if (!isCurrentSession()) return
             // Only the Sent step carries a secondary — the mailed-code
             // fallback (RN's "Verify with a mailed code" alternative path).
-            if (_state.value.currentStep != VerifyLandlordStep.Sent) return
+            if (_state.value.currentStep != VerifyLandlordStep.Sent || !_state.value.mailAvailable) return
             if (!_state.value.isSubmitting) {
                 pendingWork = viewModelScope.launch { startPostcardFallback() }
             }
@@ -518,8 +533,10 @@ open class VerifyLandlordWizardViewModel
                     }
                 }
                 result.error.code == HTTP_BAD_REQUEST &&
-                    message == "This property has no verified landlord. Cannot submit a lease request." ->
-                    startPostcardFallback()
+                    message == "This property has no verified landlord. Cannot submit a lease request." -> {
+                    _state.update { it.copy(submitState = VerifyLandlordSubmitState.Idle, noLandlord = true) }
+                    pendingEvent.value = VerifyLandlordOutboundEvent.OpenDocumentVerification(homeId)
+                }
                 else ->
                     _state.update {
                         it.copy(
@@ -553,7 +570,12 @@ open class VerifyLandlordWizardViewModel
                         progressLabel = WizardProgressLabel.StepOf(1, TOTAL_STEPS),
                         progressFraction = 1f / TOTAL_STEPS,
                         leading = WizardLeadingControl.Close,
-                        primaryCtaLabel = if (state.statusNeedsRetry) "Retry status" else "Start verification",
+                        primaryCtaLabel =
+                            when {
+                                state.statusNeedsRetry -> "Retry status"
+                                state.noLandlord -> "Verify with a document"
+                                else -> "Start verification"
+                            },
                         primaryCtaEnabled = !state.isLoadingStatus,
                         secondaryCta = null,
                         isSubmitting = state.isLoadingStatus,
@@ -588,10 +610,11 @@ open class VerifyLandlordWizardViewModel
                         primaryCtaLabel = if (state.statusNeedsRetry) "Retry status" else "Done",
                         primaryCtaEnabled = !state.isSubmitting,
                         secondaryCta =
-                            WizardSecondaryCta(
-                                label = "Review mail verification",
-                                testTag = "verifyLandlordMailCodeCTA",
-                            ),
+                            if (state.mailAvailable) {
+                                WizardSecondaryCta(label = "Review mail verification", testTag = "verifyLandlordMailCodeCTA")
+                            } else {
+                                null
+                            },
                         isSubmitting = state.isSubmitting,
                         dirty = false,
                         showsProgressBar = true,

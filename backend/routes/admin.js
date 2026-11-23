@@ -11,6 +11,7 @@ const verifyToken = require('../middleware/verifyToken');
 const { requireAdmin } = require('../middleware/verifyToken');
 const logger = require('../utils/logger');
 const homeClaimReviewService = require('../services/homeClaimReviewService');
+const homeClaimRoutingService = require('../services/homeClaimRoutingService');
 const homeClaimIdentityService = require('../services/homeClaimIdentityService');
 const { getRequestSessionScope, requireExpectedSessionScope } = require('../utils/requestSessionScope');
 const funnelReport = require('../services/funnelReport');
@@ -24,12 +25,9 @@ router.use(verifyToken, requireAdmin);
 // PENDING CLAIMS — List all claims awaiting review
 // ============================================================
 
-// Maps the three Review-claims tabs (Pending / Approved / Rejected) to
-// the underlying HomeOwnershipClaim.state values. Pending matches the
-// historical /pending-claims set so the existing tab keeps the same
-// payload after the bucket-based query is introduced.
+// The pending queue also receives co-owner invitations recorded as a vouch.
 const BUCKET_STATES = {
-  pending: ['submitted', 'pending_review', 'needs_more_info', 'disputed'],
+  pending: ['submitted', 'pending_review', 'pending_challenge_window', 'needs_more_info', 'disputed'],
   approved: ['approved'],
   rejected: ['rejected'],
 };
@@ -63,7 +61,7 @@ async function enrichClaims(claims) {
     }
   }
 
-  const claimIds = list.map(c => c.id);
+  const claimIds = list.filter(claim => homeClaimRoutingService.isOpenForReview(claim)).map(claim => claim.id);
   const byId = new Map(list.map(c => [c.id, c]));
   let evidenceCountMap = {};
   const sinceRequestMap = {};
@@ -172,6 +170,9 @@ router.get('/pending-claims', async (req, res) => {
         claim_type,
         state,
         claim_phase_v2,
+        terminal_reason,
+        merged_into_claim_id,
+        expires_at,
         challenge_state,
         method,
         risk_score,
@@ -231,6 +232,9 @@ router.get('/claims', async (req, res) => {
         claim_type,
         state,
         claim_phase_v2,
+        terminal_reason,
+        merged_into_claim_id,
+        expires_at,
         challenge_state,
         method,
         risk_score,
@@ -310,10 +314,12 @@ router.get('/claims/:claimId', async (req, res) => {
   try {
     if (!requireExpectedSessionScope(req, res)) return;
     const result = await homeClaimReviewService.read({ claimId: req.params.claimId, actorId: req.user.id, platformAdmin: true });
-    const approval = await homeClaimIdentityService.reviewerApprovalOrNull(result.claimId);
+    const archived = !homeClaimRoutingService.isOpenForReview(result.claim);
+    const approval = !archived
+      ? await homeClaimIdentityService.reviewerApprovalOrNull(result.claimId) : null;
     res.set('Cache-Control', 'private, no-store');
     res.json({ claim: { ...result.claim, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.claim.evidence) },
-      home: result.home, claimant: result.claimant, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.evidence), approval,
+      home: result.home, claimant: result.claimant, evidence: homeClaimIdentityService.withoutIdentityEvidence(result.evidence), evidence_archived: archived, approval,
       claim_session: { ...getRequestSessionScope(req), home_id: result.homeId, claim_id: result.claimId } });
   } catch (error) { homeClaimReviewService.sendError(res, error); }
 });
