@@ -25,12 +25,9 @@ router.use(verifyToken, requireAdmin);
 // PENDING CLAIMS — List all claims awaiting review
 // ============================================================
 
-// Maps the three Review-claims tabs (Pending / Approved / Rejected) to
-// the underlying HomeOwnershipClaim.state values. Pending matches the
-// historical /pending-claims set so the existing tab keeps the same
-// payload after the bucket-based query is introduced.
+// The pending queue also receives co-owner invitations recorded as a vouch.
 const BUCKET_STATES = {
-  pending: ['submitted', 'pending_review', 'needs_more_info', 'disputed'],
+  pending: ['submitted', 'pending_review', 'pending_challenge_window', 'needs_more_info', 'disputed'],
   approved: ['approved'],
   rejected: ['rejected'],
 };
@@ -64,7 +61,7 @@ async function enrichClaims(claims) {
     }
   }
 
-  const claimIds = list.map(c => c.id);
+  const claimIds = list.filter(claim => homeClaimRoutingService.isOpenForReview(claim)).map(claim => claim.id);
   const byId = new Map(list.map(c => [c.id, c]));
   let evidenceCountMap = {};
   const sinceRequestMap = {};
@@ -173,6 +170,9 @@ router.get('/pending-claims', async (req, res) => {
         claim_type,
         state,
         claim_phase_v2,
+        terminal_reason,
+        merged_into_claim_id,
+        expires_at,
         challenge_state,
         method,
         risk_score,
@@ -232,6 +232,9 @@ router.get('/claims', async (req, res) => {
         claim_type,
         state,
         claim_phase_v2,
+        terminal_reason,
+        merged_into_claim_id,
+        expires_at,
         challenge_state,
         method,
         risk_score,
