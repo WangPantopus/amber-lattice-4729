@@ -7,6 +7,8 @@
 // Owner and mailing columns aren't asked for from either service.
 
 const path = require('node:path');
+const { createHash } = require('node:crypto');
+const fgdb = require('../lib/fgdb.cjs');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
 const { getJson, layerRows, socrataRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit } = require('../lib/addresses.cjs');
@@ -119,15 +121,50 @@ function fromPluto(row, fips, county) {
 }
 
 /** When the state published its file, from the layer's own description: the as-of date of every county it gives. */
-async function publishedOn() {
-  const description = (await getJson(`${LAYER}?f=json`, 'The layer\'s description')).description || '';
+function publicationDate(description) {
   const published = /Publication Date:\s*([A-Z][a-z]+)\s+(\d{4})/.exec(description);
   if (!published) throw new Error('The layer no longer says when it was published');
   return new Date(`${published[1]} 1, ${published[2]} UTC`).toISOString().slice(0, 10);
 }
 
+async function publishedOn() {
+  const info = await getJson(`${LAYER}?f=json`, 'The layer\'s description');
+  return publicationDate(info.description || '');
+}
+
+// The state's May 2026 ZIP and the stored Erie REST extract agree on these columns, including row order
+// where a parcel key repeats. Check the projected rows before countyRelease can return a release.
+function* erieRows(table) {
+  const digest = createHash('sha256');
+  for (const row of fgdb.rows(table, ['COUNTY_NAME', ...COLUMNS])) {
+    if (row.COUNTY_NAME !== 'Erie') continue;
+    // REST gives map acres to eight decimal places. Shared-shape detection compares those values for equality.
+    if (row.CALC_ACRES != null) row.CALC_ACRES = Number(row.CALC_ACRES.toFixed(8));
+    digest.update(JSON.stringify(COLUMNS.map((column) => row[column] ?? null)) + '\n');
+    yield row;
+  }
+  if (digest.digest('hex') !== '183c045d88ca9d4ce42569c43fef0c04ec32420a42c3117013aec12512f0190a') {
+    throw new Error('Erie archive rows differ from the verified state release');
+  }
+}
+
+/** Read the extracted .gdb directory from the state's NYS-Tax-Parcels.zip. */
+function erieArchive(dir) {
+  const tables = fgdb.catalog(dir);
+  const name = 'NYS_Tax_Parcels_Public';
+  const table = tables.get(name);
+  if (!table || !tables.has('GDB_Items')) throw new Error('The state archive lacks its public parcel table or metadata');
+  for (const item of fgdb.rows(tables.get('GDB_Items'), ['Name', 'Documentation'])) {
+    if (item.Name !== name) continue;
+    const asOf = publicationDate(item.Documentation || '');
+    if (asOf !== '2026-05-01') throw new Error('The Erie archive publication date has not been verified');
+    return { asOf, rows: erieRows(table) };
+  }
+  throw new Error('The state archive lacks publication metadata for its parcel table');
+}
+
 /** One county's release from the state's file. `name` is the state's county name (a key of COUNTIES). */
-async function countyRelease(work, name, asOf) {
+async function countyRelease(work, name, asOf, archiveRows) {
   const fips = COUNTIES[name];
   const county = `${COUNTY_WORDS[name] || name} County`;
   const records = [];
@@ -135,7 +172,7 @@ async function countyRelease(work, name, asOf) {
   let noAddress = 0;
   const calculated = new Map();
   const shapes = new Map();
-  const rows = cached(path.join(work, 'ny-parcels', `${fips}.jsonl.gz`), () => layerRows(LAYER, COLUMNS, { where: `COUNTY_NAME = '${name}'`, pageSize: 5000 }));
+  const rows = archiveRows ?? cached(path.join(work, 'ny-parcels', `${fips}.jsonl.gz`), () => layerRows(LAYER, COLUMNS, { where: `COUNTY_NAME = '${name}'`, pageSize: 5000 }));
   for await (const row of rows) {
     const acres = positive(row.CALC_ACRES);
     if (acres) shapes.set(acres, (shapes.get(acres) || 0) + 1);
@@ -200,4 +237,4 @@ async function* build({ work }) {
   }
 }
 
-module.exports = { build, CLASSES, COUNTIES, publishedOn, countyRelease };
+module.exports = { build, CLASSES, COUNTIES, publishedOn, countyRelease, erieArchive };
