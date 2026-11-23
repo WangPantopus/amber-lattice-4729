@@ -32,6 +32,7 @@ const { FACTS } = require('./facts');
 const { municipalRelease } = require('./format');
 const { city: cityKey, parse, zip5, stateCode } = require('./addressKey');
 const { lookup, StorageUnavailable } = require('./index');
+const { protectsUnitSites } = require('./identity');
 const reader = require('./reader');
 const { DENTON_FIPS, addressSuppressed, parcelSuppressed } = require('./suppressions');
 const registryUnits = require('./registryUnits');
@@ -102,6 +103,7 @@ function copyFromAnswer(answer, address) {
     match: answer.match,
     reason: answer.reason || null,
     requested_subject: answer.requested_subject,
+    ...(answer.unit_site_checked ? { unit_site_checked: true } : {}),
     subject: answer.subject,
     ...(county.municipal_rolls && !answer.municipality ? { has_municipal_rolls: true } : {}),
     ...(answer.municipality ? { municipal_match: { municipality: answer.municipality, city: cityKey(address.city), state: stateCode(address.state) } } : {}),
@@ -200,9 +202,17 @@ function provenanceOf(copy) {
   };
 }
 
+function checkedUnitCopyRequired(copy) {
+  return copy?.match === 'exact' && copy.requested_subject === 'unit' && protectsUnitSites(copy.jurisdiction);
+}
+
 function storedCopy(home) {
   const copy = home?.niche_data?.property_record;
   if (!copy || copy.schema !== SCHEMA) return null;
+  if (checkedUnitCopyRequired(copy)) {
+    const current = countyNow(home, copy);
+    if (copy.unit_site_checked !== true || (current && current.release !== copy.release)) return null;
+  }
   // A previous county-wide copy has no proof of the requested town. Re-read it on narrowing.
   // The original Suffolk release predates the municipal marker. A cold server cannot assume the whole county serves.
   if (!router.switchesKnown() && (copy.has_municipal_rolls || copy.municipal_match || copy.jurisdiction === '25025')) return null;
@@ -218,10 +228,14 @@ function storedCopy(home) {
 
 // True when the copy was written: the Home row's change tells its household's open screens to read again.
 // Only this key changes, on the row as it stands now: an entry the household made during the lookup stays.
-async function storeCopy(home, copy) {
+async function storeCopy(home, copy, expected = null) {
   if (!home?.id || home.niche_data === undefined) return false;
   try {
     const nicheData = await changeNicheData(home.id, (stored) => {
+      // A late privacy check may clear only the copy it examined.
+      const current = stored.property_record;
+      if (expected && (current?.address_stamp !== expected.address_stamp || current?.stored_at !== expected.stored_at ||
+          current?.unit_site_checked !== expected.unit_site_checked)) return null;
       if (copy) stored.property_record = copy;
       else delete stored.property_record;
       return stored;
@@ -415,6 +429,8 @@ async function readForHome(home) {
     if (answer.match === 'unsupported' && answer.reason === 'no_release') return null;
     const copy = copyFromAnswer(answer, address);
     if (!copy) {
+      const prior = home.niche_data?.property_record;
+      if (answer.match === 'restricted' && checkedUnitCopyRequired(prior)) await storeCopy(home, null, prior);
       const shared = servedAgreed(answer, address);
       return { copy: null, lookup: 'none', match: answer.match, reason: answer.reason || null, jurisdiction: answer.jurisdiction, ...(shared ? { shared } : {}) };
     }
