@@ -25,6 +25,7 @@
  */
 
 const crypto = require('crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { changeNicheData } = require('../homeNicheData');
 const config = require('../../config/propertyRecords');
 const logger = require('../../utils/logger');
@@ -217,10 +218,11 @@ function storedCopy(home) {
 
 // True when the copy was written: the Home row's change tells its household's open screens to read again.
 // Only this key changes, on the row as it stands now: an entry the household made during the lookup stays.
-async function storeCopy(home, copy) {
+async function storeCopy(home, copy, superseded) {
   if (!home?.id || home.niche_data === undefined) return false;
   try {
     const nicheData = await changeNicheData(home.id, (stored) => {
+      if (superseded && !isDeepStrictEqual(stored.property_record, superseded)) return null;
       if (copy) stored.property_record = copy;
       else delete stored.property_record;
       return stored;
@@ -386,6 +388,14 @@ async function readForHome(home) {
   try {
     const address = homeAddress(home);
     const answer = await lookupForScreen(address);
+    const prior = home.niche_data?.property_record;
+    if (answer.match === 'unsupported' && prior?.municipal_match) {
+      // A corrected city roll can reclassify an old home as an accessory account.
+      const current = municipalRelease(countyNow(home, prior), router.municipalityFor(prior.jurisdiction));
+      if (current?.status === 'active' && current.release !== prior.release && Date.now() <= Date.parse(current.stale_after)) {
+        await storeCopy(home, null, prior);
+      }
+    }
     if (answer.match === 'unsupported' && answer.reason === 'no_release') return null;
     const copy = copyFromAnswer(answer, address);
     if (!copy) {

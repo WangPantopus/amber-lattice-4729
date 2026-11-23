@@ -165,8 +165,14 @@ function fromMassGis(row, fips, county, town) {
 
 // Boston's land use codes (its data key).
 const BOSTON_USES = {
-  R1: ['property', 'house', 'Single family'], R2: ['building', 'multi_unit', 'Two family'], R3: ['building', 'multi_unit', 'Three family'], R4: ['building', 'multi_unit', 'Four to six family'],
-  A: ['building', 'apartment', 'Apartments, seven units or more'], CD: ['unit', 'condo', 'Condominium'], CM: ['building', 'condo', 'Condominium main'], RL: ['parcel', null, 'Residential land'],
+  R2: ['building', 'multi_unit', 'Two family'], R3: ['building', 'multi_unit', 'Three family'], R4: ['building', 'multi_unit', 'Four to six family'],
+  A: ['building', 'apartment', 'Apartments, seven units or more'], CM: ['building', 'condo', 'Condominium main'], RL: ['parcel', null, 'Residential land'],
+};
+// An R1 or CD account identifies a dwelling only with its residential use description.
+const BOSTON_DWELLINGS = {
+  'R1:SINGLE FAM DWELLING': ['property', 'house', 'Single family dwelling'],
+  'R1:MOBILE HOME': ['property', 'mobile_home', 'Mobile home'],
+  'CD:RESIDENTIAL CONDO': ['unit', 'condo', 'Residential condo'],
 };
 const BOSTON_COLUMNS = ['PID', 'CM_ID', 'ST_NUM', 'ST_ALPHA', 'ST_NUM2', 'ST_NAME', 'UNIT_NUM', 'CITY', 'ZIP_CODE', 'NUM_BLDGS', 'LU', 'LU_DESC', 'BLDG_TYPE', 'RES_FLOOR', 'RES_UNITS', 'LAND_SF', 'GROSS_AREA',
   'LIVING_AREA', 'LAND_VALUE', 'BLDG_VALUE', 'TOTAL_VALUE', 'GROSS_TAX', 'YR_BUILT', 'STRUCTURE_CLASS', 'ROOF_STRUCTURE', 'ROOF_COVER', 'EXT_FNISHED', 'OVERALL_COND', 'BED_RMS', 'FULL_BTH', 'HLF_BTH', 'TT_RMS',
@@ -194,7 +200,8 @@ function bostonBathCount(text) {
 
 function fromBoston(row, fips, county) {
   const code = String(row.LU ?? '').split(' ')[0].trim();
-  const [kind, homeType, useWord] = BOSTON_USES[code] || ['other', null, null];
+  const dwelling = BOSTON_DWELLINGS[`${code}:${String(row.LU_DESC ?? '').trim().toUpperCase()}`];
+  const [kind, homeType, useWord] = dwelling || BOSTON_USES[code] || ['other', null, null];
   const facts = { parcel_number: row.PID, county, fips, municipality: 'Boston', land_use: useWord || word(row.LU_DESC) || null };
   if (!facts.land_use) delete facts.land_use;
   const building = kind === 'building';
@@ -210,8 +217,8 @@ function fromBoston(row, fips, county) {
   put(facts, 'style', kind !== 'parcel' && kind !== 'other' ? bostonWord(row.BLDG_TYPE) : null);
   if (building && code !== 'CM') put(facts, 'units', positive(row.RES_UNITS));
   const money = (text) => positive(String(text ?? '').replace(/[$,\s]/g, ''));
-  if (kind !== 'unit') put(facts, 'lot_sqft', money(row.LAND_SF));
-  put(facts, 'buildings_on_parcel', kind !== 'unit' ? positive(row.NUM_BLDGS) : null);
+  if (code !== 'CD') put(facts, 'lot_sqft', money(row.LAND_SF));
+  put(facts, 'buildings_on_parcel', code !== 'CD' ? positive(row.NUM_BLDGS) : null);
   if (home) {
     put(facts, 'rooms', positive(row.TT_RMS));
     put(facts, 'bedrooms', positive(row.BED_RMS));
@@ -242,8 +249,10 @@ function fromBoston(row, fips, county) {
 
   const addresses = readAddresses(last ? [first, last] : [first], street, realUnit(row.UNIT_NUM));
   if (!addresses.length) return [];
-  const id = kind === 'building' && code === 'CM' ? `pp:building:${fips}:${row.PID}` : `pp:${kind}:${fips}:${row.PID}`;
-  const parent = code === 'CD' && word(row.CM_ID) ? `pp:building:${fips}:${row.CM_ID}` : null;
+  // Keep the assessor account ID stable even when its record describes an accessory space.
+  const idKind = code === 'CD' ? 'unit' : code === 'R1' ? 'property' : kind;
+  const id = `pp:${idKind}:${fips}:${row.PID}`;
+  const parent = kind === 'unit' && word(row.CM_ID) ? `pp:building:${fips}:${row.CM_ID}` : null;
   return addresses.map((address) => ({
     id,
     kind,
@@ -421,7 +430,7 @@ async function* build({ work }) {
       // Massachusetts assesses a fiscal year's taxes on January 1 before that fiscal year begins.
       ...(qualifiedBoston ? { municipal_rolls: { BOSTON: {
         publisher: 'City of Boston Assessing Department', dataset: `FY${BOSTON_YEAR} property assessment roll`,
-        as_of: `${BOSTON_YEAR - 1}-01-01`, file_revised: BOSTON_FILE_REVISED,
+        as_of: `${BOSTON_YEAR - 1}-01-01`, file_revised: BOSTON_FILE_REVISED, dwelling_descriptions_checked: true,
         // Require the same postal name on the site record. Shared names such as Chestnut Hill do not establish Boston.
         postal_aliases: ['ALLSTON', 'BRIGHTON', 'CHARLESTOWN', 'DORCHESTER', 'EAST BOSTON', 'HYDE PARK', 'JAMAICA PLAIN',
           'MATTAPAN', 'ROSLINDALE', 'ROXBURY', 'ROXBURY CROSSING', 'SOUTH BOSTON', 'WEST ROXBURY'],
