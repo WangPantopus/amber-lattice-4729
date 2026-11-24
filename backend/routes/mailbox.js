@@ -2330,7 +2330,7 @@ router.get('/cards/designs', (req, res) => {
       ({ id, number, slug, caption, paper, collection, table, mood, ...(verse ? { verse } : {}) })),
     // The shelves, a page per collection (launch key card_shelves). Absent: today's pages.
     ...(cardShelvesOn() ? { shelves: true } : {}),
-    // With digital stamps on for everyone: the free cards an account starts with, for the pages' "first 3 are free".
+    // With digital stamps on for everyone: the free cards an account starts with, for the pages' "first 7 are free".
     ...(mailStamps.enabled() ? { free_cards: mailStamps.FREE_CARDS } : {}),
   });
 });

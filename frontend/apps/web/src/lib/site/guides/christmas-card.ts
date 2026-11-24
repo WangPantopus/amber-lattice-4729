@@ -57,7 +57,7 @@ export const christmasCard: Guide = {
     {
       h2: 'Sending a card with Pantopus',
       blocks: [
-        { p: 'Pantopus’s [Christmas cards](/cards) come in nine collections. Write a few words on the back, sign it with your finger, and seal it: it arrives with the 7 a.m. mail, or stays sealed until 7 a.m. on Christmas morning wherever they live. Send to someone on Pantopus by name, to anyone by email or by a link, or one card to a list of up to 20 people. Add a photo and your voice, or ask “Help me write it” for three notes to start from. Someone without the app opens it from the email with a six-digit code. Your first 3 cards are free, and you can take a card back until the morning pickup.' },
+        { p: 'Pantopus’s [Christmas cards](/cards) come in nine collections. Write a few words on the back, sign it with your finger, and seal it: it arrives with the 7 a.m. mail, or stays sealed until 7 a.m. on Christmas morning wherever they live. Send to someone on Pantopus by name, to anyone by email or by a link, or one card to a list of up to 20 people. Add a photo and your voice, or ask “Help me write it” for three notes to start from. Someone without the app opens it from the email with a six-digit code. Your first 7 cards are free, and you can take a card back until the morning pickup.' },
       ],
     },
   ],
@@ -67,7 +67,7 @@ export const christmasCard: Guide = {
     { q: 'What should I write in a Christmas card?', a: 'Two or three sentences about the two of you: a memory from this year, a thank-you, or something to look forward to.' },
     { q: 'Does the person need the app to open my card?', a: 'No. They open it from the email or link in a browser, with a six-digit code sent to their email.' },
     { q: 'Can I send one card to many people?', a: 'Yes. On Pantopus one card can go to a list of up to 20 people at once.' },
-    { q: 'Is it free to send a Christmas card on Pantopus?', a: 'Your first 3 cards are free. After that, each card takes a stamp, sold in books.' },
+    { q: 'Is it free to send a Christmas card on Pantopus?', a: 'Your first 7 cards are free. After that, each card takes a stamp, sold in books.' },
   ],
   sources: [],
   pantopus: {

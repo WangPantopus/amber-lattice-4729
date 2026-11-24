@@ -41,7 +41,7 @@ function ChristmasCards() {
         </ul>
         <div>
           <Link className={styles.btnRed} href="/cards">
-            Send a card · your first 3 are free
+            Send a card · your first 7 are free
           </Link>
         </div>
       </div>
@@ -67,7 +67,7 @@ export const MAIL: PillarContent = {
     { value: '7:00 a.m.', label: 'mail arrives once a morning, in your own time zone' },
     { value: 'Three drawers', label: 'for you, your home and your business' },
     { value: 'Read for you', label: 'a short summary and the key facts of each letter' },
-    { value: 'First 3 free', label: 'Christmas cards, sealed until Christmas morning' },
+    { value: 'First 7 free', label: 'Christmas cards, sealed until Christmas morning' },
   ],
   clip: { name: 'mail', label: 'The Mail tab: a Christmas card is written and sealed, then the morning mail arrives', caption: 'Mail · stamped, sealed, on time' },
   can: {
@@ -179,7 +179,7 @@ export const MAIL: PillarContent = {
       </>
     ),
     links: [
-      { href: '/cards', label: 'Christmas cards', text: 'Every card, by collection. Pick one, sign it and seal it; your first three are free.' },
+      { href: '/cards', label: 'Christmas cards', text: 'Every card, by collection. Pick one, sign it and seal it; your first seven are free.' },
       { href: '/place', label: 'Your place', text: 'Mail is for a home. See what is true about yours, free.', listed: true },
     ],
   },
@@ -210,7 +210,7 @@ export const MAIL: PillarContent = {
       { q: 'Will a sender know I opened their letter?', a: 'No. Sent mail never says whether a piece was opened.' },
       {
         q: 'How do I send a Christmas card?',
-        a: 'Pick a card, write a few words, sign it and seal it. It can stay sealed until 7:00 a.m. on Christmas morning, wherever they live. Your first three are free.',
+        a: 'Pick a card, write a few words, sign it and seal it. It can stay sealed until 7:00 a.m. on Christmas morning, wherever they live. Your first seven are free.',
       },
     ],
   },
