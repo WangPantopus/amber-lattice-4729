@@ -330,6 +330,33 @@
       "built": 1967,
       "value": 365000
     },
+    "1249475": {
+      "name": "North Miami Beach",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of North Miami Beach Building Department",
+          "url": "https://www.citynmb.com/149/Building-Department",
+          "line": "Accepts building permit applications, issues all building and trade permits and verifies compliance with the Florida Building Code; its officials inspect new and existing structures.",
+          "q": "Where do I find building permits in North Miami Beach?",
+          "a": "The City of North Miami Beach's Building Department accepts building permit applications, issues all building and trade permits and verifies compliance with the Florida Building Code. Its building, plumbing, electrical and mechanical officials inspect new and existing structures for compliance."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of North Miami Beach Planning and Zoning Division",
+          "url": "https://www.citynmb.com/290/Planning-Zoning",
+          "line": "Links the Official Zoning Map, the Zoning and Land Development Code and an interactive GIS zoning map that finds a property's zoning district by address.",
+          "q": "Where is North Miami Beach's zoning?",
+          "a": "The City of North Miami Beach's Planning and Zoning Division links the Official Zoning Map and the Zoning and Land Development Code, and an interactive GIS zoning map finds a property's zoning district by address."
+        }
+      ],
+      "built": 1967,
+      "value": 366700
+    },
     "1249675": {
       "name": "North Port",
       "county": "12115",
@@ -819,6 +846,33 @@
       "built": 1959,
       "value": 387200
     },
+    "2740382": {
+      "name": "Maplewood",
+      "county": "27123",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Maplewood Community Development, Building Inspection Division",
+          "url": "https://maplewoodmn.gov/264/Building-Inspections",
+          "line": "Reviews plans, issues permits and conducts inspections under the State Building Code; the page has handouts for residential projects from decks and fences to roofs, siding and windows.",
+          "q": "Where do I find building permits in Maplewood?",
+          "a": "The City of Maplewood's Building Inspection Division reviews plans, issues permits and conducts inspections under the requirements of the State Building Code. Its Building Permits and Inspections page has handouts for residential projects, from additions, decks and fences to roofs, siding and windows."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Maplewood Community Development, Planning Division",
+          "url": "https://maplewoodmn.gov/358/Planning",
+          "line": "Administers the city's zoning and subdivision ordinances, which govern how property can be used and divided; the Interactive Zoning Map gives a parcel's zoning, land use and flood map information.",
+          "q": "Where is Maplewood's zoning?",
+          "a": "The City of Maplewood's Planning Division administers the city's zoning and subdivision ordinances, which govern how property can be used and divided. The City's Interactive Zoning Map gives zoning, land use and flood map information for a parcel."
+        }
+      ],
+      "built": 1979,
+      "value": 323200
+    },
     "2758000": {
       "name": "Saint Paul",
       "county": "27123",
@@ -1146,6 +1200,60 @@
       ],
       "built": 1980,
       "value": 252900
+    },
+    "3921434": {
+      "name": "Delaware",
+      "county": "39041",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Delaware Planning & Community Development, Building Division",
+          "url": "https://www.cityofdelawareoh.gov/Government/Departments/Planning-Community-Development/Building-Division",
+          "line": "A State-Certified Building Department: all new construction, alterations, improvements and replacements need an approved permit before work starts; plumbing permits go to the Delaware County Health District.",
+          "q": "Where do I find building permits in Delaware?",
+          "a": "The City of Delaware's Building Division is a State-Certified Building Department: all new construction, alterations, improvements and replacements require an approved permit application before construction starts, followed by inspections. The City does not review plumbing permits; those applications are filed with the Delaware County Health District."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Delaware Planning & Community Development, Planning and Zoning Division",
+          "url": "https://www.cityofdelawareoh.gov/Government/Departments/Planning-Community-Development/Planning-Zoning",
+          "line": "Reviews zoning and development permits and applications and administers the Zoning Code; the page links the Zoning Map and the Zoning Code.",
+          "q": "Where is Delaware's zoning?",
+          "a": "The City of Delaware's Planning and Zoning Division reviews zoning and development permits and applications and administers the Zoning Code, and its page links the Zoning Map and the Zoning Code."
+        }
+      ],
+      "built": 1995,
+      "value": 318400
+    },
+    "3925914": {
+      "name": "Fairborn",
+      "county": "39057",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Fairborn Development Services, Building Code & Inspection Division",
+          "url": "https://www.fairbornoh.gov/government/development_services/building_code___inspection_division/index.php",
+          "line": "The State of Ohio codes are enforced locally by the City's Chief Building Official; as of January 5, 2026, all construction documents are submitted electronically through the online permit portal.",
+          "q": "Where do I find building permits in Fairborn?",
+          "a": "In Fairborn, the State of Ohio building codes are enforced locally by the City's Chief Building Official, and the City enforces the 2019 Residential Code of Ohio for homes. As of January 5, 2026, all construction documents must be submitted in electronic format through the City's online permit portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Fairborn Development Services, Planning Division",
+          "url": "https://www.fairbornoh.gov/government/development_services/planning_division/zoning.php",
+          "line": "The first step in development is checking that a property's zoning fits the proposed use; each zoning district lists its permitted and conditional uses, and the page links the Zoning Map and the Fairborn Zoning Code.",
+          "q": "Where is Fairborn's zoning?",
+          "a": "In Fairborn, the first step in the development process is to determine whether a property's zoning is compatible with the proposed use. Each zoning district identifies its uses as permitted or conditional, and the Planning Division's page links the Zoning Map and the Fairborn Zoning Code."
+        }
+      ],
+      "built": 1970,
+      "value": 175000
     },
     "3929106": {
       "name": "Gahanna",
@@ -1557,6 +1665,33 @@
       "built": 1993,
       "value": 319400
     },
+    "4825452": {
+      "name": "Farmers Branch",
+      "county": "48113",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Farmers Branch Building Inspection Division",
+          "url": "https://www.farmersbranchtx.gov/building-inspections-permits",
+          "line": "Administers the city's building and zoning ordinances through site plan review, permits and inspections; permits are applied for online through the Citizen Self Service Portal, and the City adopted the 2024 International Codes beginning October 1, 2025.",
+          "q": "Where do I find building permits in Farmers Branch?",
+          "a": "The City of Farmers Branch's Building Inspection Division administers the city's building and zoning ordinances, coordinating site plan review, permits and inspections. Permits are applied for and inspections requested online through the Citizen Self Service Portal, and beginning October 1, 2025 the City adopted the 2024 International Codes and the 2023 NEC."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Farmers Branch Planning Division",
+          "url": "https://www.farmersbranchtx.gov/zoning-other-development-ordinances",
+          "line": "The Comprehensive Zoning Ordinance applies to the use and development of all land in the City, with setbacks, lot size, building height and site standards; the City's online map gives a property's zoning classification.",
+          "q": "Where is Farmers Branch's zoning?",
+          "a": "In Farmers Branch, the Comprehensive Zoning Ordinance applies to the use and development of all land within the City, including dimensional standards such as setbacks, lot size and building height. The City's interactive online map gives a property's zoning classification."
+        }
+      ],
+      "built": 2001,
+      "value": 364600
+    },
     "4826232": {
       "name": "Flower Mound",
       "county": "48121",
@@ -1640,6 +1775,33 @@
       "other_counties": true,
       "built": 1997,
       "value": 378500
+    },
+    "4843012": {
+      "name": "Little Elm",
+      "county": "48121",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Town of Little Elm Building Permits Division",
+          "url": "https://www.littleelm.gov/86/Building-Permits",
+          "line": "Processes and issues all construction-related permits; permits are applied for through MyGov, the Town's Development Services request center.",
+          "q": "Where do I find building permits in Little Elm?",
+          "a": "The Town of Little Elm's Building Permits Division oversees the processing and issuing of all construction-related permits, and permits are applied for through MyGov, the Town's Development Services request center."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Town of Little Elm Planning and Zoning division",
+          "url": "https://www.littleelm.gov/115/Planning-Zoning",
+          "line": "Administers the Town's development regulations and supports the Planning & Zoning Commission and the Board of Adjustment; the page links the Zoning Ordinance.",
+          "q": "Where is Little Elm's zoning?",
+          "a": "The Town of Little Elm's Planning and Zoning division administers the Town's development regulations and supports the Town Council, the Planning & Zoning Commission and the Board of Adjustment, and its page links the Development Regulations - Zoning Ordinance."
+        }
+      ],
+      "built": 2011,
+      "value": 420700
     },
     "4847892": {
       "name": "Mesquite",
@@ -3967,6 +4129,114 @@
       ],
       "built": 1965,
       "value": 718900
+    },
+    "0656924": {
+      "name": "Pico Rivera",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Pico Rivera Building Division",
+          "url": "https://www.pico-rivera.org/building-safety/",
+          "line": "Enforces the ordinances and laws regulating construction and occupancy of commercial, industrial and residential structures; plan check and permit application forms can be downloaded from the page.",
+          "q": "Where do I find building permits in Pico Rivera?",
+          "a": "The City of Pico Rivera's Building Division enforces the ordinances and laws regulating construction and occupancy of commercial, industrial and residential structures. Its plan check and permit application forms can be downloaded from the City's site and submitted to the Division."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Pico Rivera Planning Division",
+          "url": "https://www.pico-rivera.org/planning-division/",
+          "line": "Assists developers and residents with zoning regulations and reviews applications for zoning consistency; the page links the Zoning Map and the Zoning Code.",
+          "q": "Where is Pico Rivera's zoning?",
+          "a": "The City of Pico Rivera's Planning Division assists developers and residents with zoning regulations and reviews applications for zoning consistency, and its page links the Zoning Map and the Zoning Code."
+        }
+      ],
+      "built": 1957,
+      "value": 648600
+    },
+    "0604758": {
+      "name": "Beaumont",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Beaumont Building & Safety",
+          "url": "https://beaumontca.gov/16/Building-Safety",
+          "line": "All permits and plan submittals are submitted digitally; permits are accepted only electronically, by email.",
+          "q": "Where do I find building permits in Beaumont?",
+          "a": "In Beaumont, all permits and plan submittals must be submitted digitally: the City's Building & Safety accepts permits only electronically, by email."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Beaumont Planning, Zoning Information",
+          "url": "https://www.beaumontca.gov/120/Zoning-Information",
+          "line": "The Zoning Code, comprehensively updated and adopted December 16, 2025, sets the zoning districts; the Planning Viewer finds a property's zoning by address or Assessor's Parcel Number.",
+          "q": "Where is Beaumont's zoning?",
+          "a": "Beaumont's Zoning Code, comprehensively updated and adopted by the City Council on December 16, 2025, establishes the zoning districts that govern the use of land. The City's Planning Viewer gives zoning designations searchable by address or Assessor's Parcel Number, with links to the relevant code sections."
+        }
+      ],
+      "built": 2006,
+      "value": 503500
+    },
+    "0633588": {
+      "name": "Highland",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Highland Building Department",
+          "url": "https://www.highlandca.gov/311/Permits",
+          "line": "Permits are required for new buildings, additions, residential work such as decks, fences and pools, renovations, reroofing, and electrical, solar, plumbing and HVAC systems; the Building Department issues building, electrical, mechanical, plumbing and demolition permits.",
+          "q": "Where do I find building permits in Highland?",
+          "a": "In Highland, permits are required for new buildings, additions, residential work such as decks, garages, fences, pools and water heaters, renovations, reroofing or roof repairs, and electrical, solar, plumbing and HVAC systems. The City's Building Department issues building, electrical, mechanical, plumbing and demolition permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Highland Planning, Zoning",
+          "url": "https://www.highlandca.gov/298/Zoning",
+          "line": "Title 16 of the Highland Municipal Code sets the allowable land uses and standards for each zoning district; the page links the Zoning Map and the Highland GIS.",
+          "q": "Where is Highland's zoning?",
+          "a": "The City of Highland is divided into zoning districts, and Title 16 of the Highland Municipal Code establishes the allowable land uses and the standards for structures and improvements in each. The City's Zoning page links the Zoning Map and the Highland GIS."
+        }
+      ],
+      "built": 1983,
+      "value": 485600
+    },
+    "0659514": {
+      "name": "Rancho Palos Verdes",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Rancho Palos Verdes Community Development, Building and Safety Division",
+          "url": "https://www.rpvca.gov/289/Building-Safety",
+          "line": "Handles plan review, permitting and inspections; re-roofs, electrical, mechanical and plumbing items, solar and nonstructural interior remodels are over-the-counter permits, while additions, ADUs and structural remodels go through plan check review.",
+          "q": "Where do I find building permits in Rancho Palos Verdes?",
+          "a": "The City of Rancho Palos Verdes' Building and Safety Division handles plan review, permitting, inspections and the coordination of geological and soils evaluations. Re-roofs, electrical, mechanical and plumbing items, solar and nonstructural interior remodels are over-the-counter permits, while additions, ADUs and structural remodels go through plan check review."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Rancho Palos Verdes Community Development, Planning & Zoning Division",
+          "url": "https://www.rpvca.gov/163/Planning-Zoning",
+          "line": "Reviews development projects for compliance with land use and environmental standards and provides zoning and other land use information to property owners and the public.",
+          "q": "Where is Rancho Palos Verdes' zoning?",
+          "a": "The City of Rancho Palos Verdes' Planning & Zoning Division applies and enforces the City's Development Codes and land use policies, reviews development projects for compliance with land use and environmental standards, and provides zoning and other land use information to property owners and other members of the public."
+        }
+      ],
+      "built": 1967,
+      "value": 1609400
     }
   }
 }
