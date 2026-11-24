@@ -1552,3 +1552,11 @@ Approved by you on November 24: every account starts with seven free stamps inst
 - [ ] **The card report** ([#4778](https://github.com/WangPantopus/skinny-pantopus/pull/4778)). It is at `/app/admin/funnel` on the web (admins only): the cards by UTC day with the window's totals on top (senders, cards sent and how, taken back, link pages seen, codes, claimed, joined, joiners who sent their own within 7 days, replies, pass-ons, stamp books sold by size, and the loop number, which is joiners who sent their own per sender), then the ladder, Plans and first-week numbers the summary already had. "Pages seen" is a ceiling, not people. Counting starts when this reaches production; nothing before it is recorded.
 - [ ] **Yours: promote `dev` to `master`** (one merge-commit PR, as usual). This applies the two migrations to production (`20261124120000_seven_free_stamps` and `20261124121000_card_funnel_events`). Nothing to switch on.
 - [ ] Not checked: the iPhone and Android apps as released (they print the server's number and list both free rows as "Your free cards", from reading their code), anything on staging or production, and real email delivery.
+
+## Ad links (added November 24)
+
+For the paid ad that sends people to the address lookup: give each ad its own link, `pantopus.com/start?r=ad-<name>` (or `/tax-check?r=ad-<name>`). The code starts with `ad-` and holds up to 64 characters; anything longer is cut at 64.
+
+- [ ] **Ad codes on the lookup** ([#4818](https://github.com/WangPantopus/skinny-pantopus/pull/4818)). A code starting with `ad-` is remembered like a card's code, but the page never says "From the card in your mailbox"; every other code behaves as before. Nothing reads or stores the click ids ad platforms add to a link (`fbclid`, `gclid`).
+- [ ] **Each ad's numbers** are on `/app/admin/funnel` (admins only), under "By source": lookups, aha cards, shares, walls, sign-ups started, accounts and the account rate for each code, most lookups first. "No code" is everyone who came without one.
+- [ ] **Not counted yet: accounts under their ad's code.** An account made after an ad lookup in the same browser shows under "No code", not under its ad, because the server records a new account with the browser's anonymous id but not the code. Until that is fixed, "Sign-ups started" is the last step counted per ad.
