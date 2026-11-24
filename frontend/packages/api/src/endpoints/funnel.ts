@@ -22,7 +22,17 @@ export type ClientFunnelEventType =
   | 't0_aha_viewed'
   | 't0_share_clicked'
   | 't0_wall_viewed'
-  | 'register_started';
+  | 'register_started'
+  // The lookup's new order (LOOKUPORDER): the record button, the Ask row, the end of the page.
+  | 't0_record_opened'
+  | 't0_ask_opened'
+  | 't0_end_reached';
+
+/**
+ * The order the lookup was drawn in (`meta.layout` on the lookup page's t0_* beacons): v1 the order before
+ * LOOKUPORDER, v2 the server's `layout`. The funnel report splits the ladder by it.
+ */
+export type FunnelLayout = 'v1' | 'v2';
 
 const ANON_ID_KEY = 'pantopus_anon_id';
 const ROUTE_KEY = 'pantopus_route';

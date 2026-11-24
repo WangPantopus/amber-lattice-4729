@@ -331,7 +331,11 @@ export interface FunnelAroundYouCounts {
   reposts: number;
 }
 
-export interface FunnelLadder { previews: number; aha_views: number; shares: number; walls: number; registers: number; accounts: number }
+export interface FunnelLadder {
+  previews: number; aha_views: number; shares: number; walls: number; registers: number; accounts: number;
+  /** The lookup's record taps, Ask opens and visitors who reached its end (LOOKUPORDER); absent from older servers. */
+  record_opens?: number; ask_opens?: number; ends_reached?: number;
+}
 
 export interface FunnelSummary {
   days: number;
@@ -343,6 +347,8 @@ export interface FunnelSummary {
   events: Record<string, number>;
   /** The same ladder per `?r=` code the visitor arrived with, most lookups first; `(direct)` is no code. */
   by_route: { route: string; ladder: FunnelLadder; rates: Record<string, number | null> }[];
+  /** The same ladder per order the web drew the lookup in (v1, v2), only the layouts seen; absent from older servers. */
+  by_layout?: { layout: 'v1' | 'v2'; ladder: FunnelLadder; rates: Record<string, number | null> }[];
   plans: { events: Record<string, number>; rates: Record<string, number | null> };
   activation: { cohort_users: number; activated_users: number; matured_users: number; activated_matured_users: number;
     pending_users: number; matured_rate: number | null; truncated: boolean };

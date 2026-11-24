@@ -11,6 +11,11 @@
 //   wall / register / account rates   the ladder itself
 //   by route      the same ladder split by the `?r=` route stamped on
 //                 every beacon (EDDM cards, invite postcards) → CAC per route
+//   lookup steps  the lookup's record taps, Ask opens and visitors who
+//                 reached its end (LOOKUPORDER), per lookup, in the ladder
+//                 and in every route's ladder
+//   by layout     the same ladder split by the order the web drew the
+//                 lookup in (meta.layout v1 | v2), for the side-by-side
 //   plans         Nearby Plans: hosted → viewed → asked → in → went well,
 //                 repeat hosts, auto-rule accepts, the same per plan kind
 //   plan_venues   plans and guests per public place a host chose from the
@@ -43,6 +48,7 @@ const PILOT_DIMENSIONS = ['kind', 'action', 'decision', 'trigger'];
 const MAX_VENUES = 50;
 const WEEK_MS = 7 * 86400000;
 const NO_ROUTE = '(direct)';
+const LAYOUTS = ['v1', 'v2'];
 // Nearby Plans as one ladder (the event → its step). `attended` is a guest
 // saying it went great or ok, the first time they answer.
 const PLAN_STEPS = Object.freeze({
@@ -114,19 +120,28 @@ function finish(ladder) {
   const walls = size(ladder, 't0_wall_viewed');
   const registers = size(ladder, 'register_started');
   const accounts = ladder.events.t1_account_created;
+  const recordOpens = size(ladder, 't0_record_opened');
+  const askOpens = size(ladder, 't0_ask_opened');
+  const endsReached = size(ladder, 't0_end_reached');
   const nonCalmVisitors = ahaViews > 0 && ladder.aha.non_calm + ladder.aha.calm > 0
     ? Math.round(ahaViews * (ladder.aha.non_calm / (ladder.aha.non_calm + ladder.aha.calm)))
     : 0;
   return {
     events: ladder.events,
     visitors: Object.fromEntries(FUNNEL_EVENT_TYPES.map((t) => [t, ladder.visitors[t].size])),
-    ladder: { previews, aha_views: ahaViews, shares, walls, registers, accounts },
+    ladder: {
+      previews, aha_views: ahaViews, shares, walls, registers, accounts,
+      record_opens: recordOpens, ask_opens: askOpens, ends_reached: endsReached,
+    },
     rates: {
       aha: rate(nonCalmVisitors, previews),
       share: rate(shares, previews),
       wall: rate(walls, previews),
       register: rate(registers, previews),
       account: rate(accounts, previews),
+      record: rate(recordOpens, previews),
+      ask: rate(askOpens, previews),
+      end: rate(endsReached, previews),
     },
     aha: { non_calm: ladder.aha.non_calm, calm: ladder.aha.calm, by_tone: ladder.aha.by_tone, by_section: ladder.aha.by_section },
     share: { by_method: ladder.share.by_method },
@@ -319,18 +334,25 @@ function routeOf(row) {
   return typeof meta.route === 'string' && meta.route.trim() ? meta.route.trim().slice(0, 64) : NO_ROUTE;
 }
 
+// The order the web drew the lookup in, stamped on its t0_* beacons; null for
+// anything else (the phones' beacons, older web builds, other events).
+function layoutOf(row) {
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  return LAYOUTS.includes(meta.layout) ? meta.layout : null;
+}
+
 /**
  * The server records a new account (t1_account_created) with the browser's anonymous id but not the code it arrived
  * with. Such an account counts under the code that same anonymous id last carried on an earlier beacon in the window
  * (the lookup, the wall, the sign-up form). No earlier coded beacon, or no anonymous id (a card joiner's code sign-in):
  * it stays under (direct). Only the split by route changes; the overall ladder doesn't.
  */
-function accountRouteFinder(rows) {
+function accountRouteFinder(rows, keyOf = routeOf, none = NO_ROUTE) {
   const coded = new Map();
   for (const row of rows || []) {
     if (row.event_type === 't1_account_created' || !row.anon_id) continue;
-    const route = routeOf(row);
-    if (route === NO_ROUTE) continue;
+    const route = keyOf(row);
+    if (route === none) continue;
     const anon = String(row.anon_id);
     if (!coded.has(anon)) coded.set(anon, []);
     coded.get(anon).push({ at: timestamp(row.created_at), route });
@@ -347,6 +369,23 @@ function accountRouteFinder(rows) {
     }
     return best ? best.route : null;
   };
+}
+
+/**
+ * Pure: the ladder for each order the web drew the lookup in (v1, v2). Rows without a layout are left out; a new
+ * account counts under the layout its anonymous id last carried, as with routes. Only the layouts seen are listed.
+ */
+function summarizeLayouts(rows) {
+  const layouts = new Map(LAYOUTS.map((layout) => [layout, emptyLadder()]));
+  const accountLayout = accountRouteFinder(rows, layoutOf, null);
+  const seen = new Set();
+  for (const row of rows || []) {
+    const layout = layoutOf(row) || accountLayout(row);
+    if (!layout) continue;
+    seen.add(layout);
+    ingest(layouts.get(layout), row);
+  }
+  return LAYOUTS.filter((layout) => seen.has(layout)).map((layout) => ({ layout, ...finish(layouts.get(layout)) }));
 }
 
 function summarizeFunnel(rows) {
@@ -366,6 +405,7 @@ function summarizeFunnel(rows) {
   return {
     ...finish(all),
     by_route: byRoute,
+    by_layout: summarizeLayouts(rows),
     plans: summarizePlans(rows),
     rows: (rows || []).length,
     truncated: (rows || []).length >= MAX_ROWS,
@@ -661,6 +701,6 @@ async function loadFunnelSummary({ days = 30 } = {}) {
 }
 
 module.exports = {
-  summarizeFunnel, summarizeActivation, summarizePlanVenues, summarizeCards, summarizeAroundYou, loadFunnelSummary, MAX_ROWS,
+  summarizeFunnel, summarizeLayouts, summarizeActivation, summarizePlanVenues, summarizeCards, summarizeAroundYou, loadFunnelSummary, MAX_ROWS,
   NO_ROUTE,
 };
