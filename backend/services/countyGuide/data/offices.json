@@ -1842,6 +1842,38 @@
           "a": "The Charlottesville City Treasurer collects real estate tax in two equal installments, due June 5 and December 5, by mail or online. The City Assessor sets each property's value."
         }
       ]
+    },
+    "55079": {
+      "read": "2026-11-23",
+      "property_search_office": "Milwaukee County Land Information Office, Property Information Search",
+      "property_search_url": "https://experience.arcgis.com/experience/874abfa323e2457084f1dfd62e977268/",
+      "property_search_via": "https://county.milwaukee.gov/EN/Administrative-Services/Land-Information-Office/FAQs",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Milwaukee County Register of Deeds",
+          "url": "https://county.milwaukee.gov/EN/Register-of-Deeds/Real-Estate-Records",
+          "line": "Records and keeps the real estate documents for about 300,000 parcels; its Tapestry application searches and prints them online, or copies come by mail or in person.",
+          "q": "Where are deeds recorded in Milwaukee County?",
+          "a": "The Milwaukee County Register of Deeds records deeds and keeps the real estate documents for about 300,000 parcels in the county. Its Tapestry application searches and prints them online; copies also come by mail or in person."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Milwaukee County Treasurer",
+          "url": "https://county.milwaukee.gov/EN/Treasurer",
+          "line": "Collects delinquent property tax in 18 of the county's 19 suburban municipalities and keeps the county's property tax data."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Milwaukee County Register of Deeds",
+          "url": "https://www.propertyfraudalert.com/WIMilwaukee",
+          "line": "Monitors a subscriber's name in the Register's office and alerts them to a recording that may affect their property.",
+          "via": "https://county.milwaukee.gov/EN/Register-of-Deeds"
+        }
+      ]
     }
   }
 }
