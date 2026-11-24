@@ -77,6 +77,10 @@ const CITIES = [
   // Bernardino County), CA; Perris (Riverside County), CA; Venice (Sarasota County), FL; Sunny Isles Beach (Miami-Dade
   // County), FL; Commerce City (Adams County), CO; Hoffman Estates and Glenview (Cook County), IL.
   '0602462', '0648816', '0619192', '0687042', '0656700', '1273900', '1269555', '0816495', '1735411', '1729938',
+  // November 24, 2026, twenty-second: Glendora, Baldwin Park, Culver City and Covina (Los Angeles County), CA; Eastvale
+  // (Riverside County), CA; Rohnert Park (Sonoma County), CA; The Colony (Denton County), TX; Bremerton (Kitsap
+  // County) and Puyallup (Pierce County), WA; Lancaster (Fairfield County), OH.
+  '0630014', '0603666', '0617568', '0616742', '0621230', '0662546', '4872530', '5307695', '5356695', '3941720',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
