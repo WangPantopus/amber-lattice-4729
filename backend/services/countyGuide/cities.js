@@ -35,6 +35,9 @@ const CITIES = [
   // November 24, 2026, seventh: San Bernardino, Fontana, Rancho Cucamonga and Ontario (San Bernardino County); Temecula
   // and Murrieta (Riverside County); Tracy, Manteca and Lodi (San Joaquin County); Petaluma (Sonoma County), CA.
   '0665000', '0624680', '0659451', '0653896', '0678120', '0650076', '0680238', '0645484', '0642202', '0656784',
+  // November 24, 2026, eighth: Pasadena, Torrance and Pomona (Los Angeles County), Vallejo, Fairfield and Vacaville
+  // (Solano County), CA; Mesquite and Baytown, TX.
+  '0656000', '0680000', '0658072', '0681666', '0623182', '0681554', '4847892', '4806128',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
