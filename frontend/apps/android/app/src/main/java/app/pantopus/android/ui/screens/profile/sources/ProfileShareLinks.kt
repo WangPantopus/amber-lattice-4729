@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.ui.components.sheetKeyboardRules
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -259,7 +260,7 @@ internal fun ShareLinkSheet(
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    maxItemsInEachRow = 3,
+                    maxItemsInEachRow = if (profileLargeText()) 1 else 3,
                 ) {
                     if (note == null) {
                         LinkButton("Copy link", primary = true, enabled = link.live, modifier = Modifier.weight(1f)) { onCopy(link) }

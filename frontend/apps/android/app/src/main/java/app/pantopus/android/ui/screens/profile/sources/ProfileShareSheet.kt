@@ -67,6 +67,7 @@ import app.pantopus.android.ui.screens.profile.PreviewAudience
 import app.pantopus.android.ui.screens.profile.PreviewBanner
 import app.pantopus.android.ui.screens.profile.ProfileAvatar
 import app.pantopus.android.ui.screens.profile.ProfileIconButton
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.screens.scheduling.bookingpage.QrCanvas
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -399,7 +400,8 @@ private fun LinkCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            maxItemsInEachRow = 3,
+            // At the largest text sizes each button takes a row of its own, as the profile's own actions do.
+            maxItemsInEachRow = if (profileLargeText()) 1 else 3,
         ) {
             ShareButton("Copy link", primary = true, onClick = onCopy, tag = "profileSources.share.copy", modifier = Modifier.weight(1f))
             ShareButton("Send", primary = false, onClick = onSend, tag = "profileSources.share.send", modifier = Modifier.weight(1f))
