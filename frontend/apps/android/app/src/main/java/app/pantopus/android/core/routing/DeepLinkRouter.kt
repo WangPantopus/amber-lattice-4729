@@ -142,6 +142,15 @@ object DeepLinkRouter {
          */
         data class VerifyLandlord(val id: String) : Destination
 
+        /** `pantopus://homes/:id/record` — the Home's record page ("Your home's record"). */
+        data class HomeRecord(val id: String) : Destination
+
+        /** `pantopus://homes/:id/claim-owner` — the claim-ownership wizard for this Home (the home record's button). */
+        data class ClaimOwnership(val id: String) : Destination
+
+        /** `pantopus://homes/:id/verify-residency` — the address-verification wizard for this Home. */
+        data class VerifyResidency(val id: String) : Destination
+
         /**
          * `pantopus://homes/:id/verify-postcard` — opens the A12.7
          * sibling status screen directly. [code] is the mailed code a scanned card carries in the link's fragment
@@ -1093,8 +1102,15 @@ object DeepLinkRouter {
                         }
                     // Ownership pushes link the web's evidence page; the app opens the
                     // claim's Waiting Room, which offers both upload and verify-by-mail.
+                    // A bare `/homes/:id/claim-owner` (the home record's button) opens the claim wizard.
                     "claim-owner" ->
-                        if (trailing.getOrNull(1) == "evidence") Destination.WaitingRoom(id) else Destination.HomeDetail(id)
+                        when (trailing.getOrNull(1)) {
+                            "evidence" -> Destination.WaitingRoom(id)
+                            null -> Destination.ClaimOwnership(id)
+                            else -> Destination.HomeDetail(id)
+                        }
+                    "verify-residency" -> if (trailing.size == 1) Destination.VerifyResidency(id) else Destination.HomeDetail(id)
+                    "record" -> if (trailing.size == 1) Destination.HomeRecord(id) else Destination.HomeDetail(id)
                     "verify-landlord", "verify_landlord" -> Destination.VerifyLandlord(id)
                     "verify-postcard", "verify_postcard" ->
                         Destination.PostcardVerification(
