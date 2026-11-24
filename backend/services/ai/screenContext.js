@@ -30,6 +30,8 @@ function cleanContext(context) {
     surface: context.surface,
     id: isUuid(context.id) ? context.id : null,
     home_id: isUuid(context.home_id) ? context.home_id : null,
+    // A saved address's Place screen (LOOKUPORDER SPEC 5.3): the person's own SavedPlace.
+    saved_place_id: isUuid(context.saved_place_id) ? context.saved_place_id : null,
     section: typeof context.section === 'string' && Object.hasOwn(PLACE_SLUG_SECTIONS, context.section) ? context.section : null,
   };
 }
@@ -38,6 +40,7 @@ function cleanContext(context) {
 function screenName(context) {
   const screen = cleanContext(context);
   if (!screen) return null;
+  if (screen.surface === 'place' && !screen.home_id && screen.saved_place_id) return 'a saved place on the Place tab';
   if (screen.surface === 'place') return screen.section ? `the Place tab, the "${screen.section}" screen` : 'the Place tab';
   return { today: 'the Today tab', nearby: 'the Pulse tab', post: 'a post on Pulse', plans: 'the Plans tab', plan: 'a plan' }[screen.surface];
 }
@@ -85,9 +88,13 @@ async function screenContextText(context, ctx) {
         return result.posts ? asText(screen, { area: result.area, posts: result.posts.slice(0, 8) }, ' (newest posts)') : null;
       }
       case 'place': {
-        // Without a home id the screen shows a saved place, not the default home that
-        // getPlaceFacts would read, so there is no context to give.
-        if (!screen.home_id) return null;
+        // Without a home id the screen shows a saved place: its own facts when the app names it, never the
+        // default home that getPlaceFacts would read.
+        if (!screen.home_id) {
+          if (!screen.saved_place_id) return null;
+          const saved = await readTools.getSavedPlaceFacts({ saved_place_id: screen.saved_place_id, label: null }, ctx, { screen: true });
+          return saved.sections ? asText(screen, saved) : null;
+        }
         // The Place tab's Today screen shows the Today tab's cards (PlaceDetailViewModel, group .today).
         if (screen.section === 'today') {
           const result = await readTools.getToday({ home_id: screen.home_id }, ctx);

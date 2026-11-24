@@ -103,6 +103,8 @@ const chatSchema = Joi.object({
     surface: Joi.string().max(40).required(),
     id: Joi.string().uuid().optional().allow(null),
     home_id: Joi.string().uuid().optional().allow(null),
+    // A saved address's Place screen (LOOKUPORDER SPEC 5.3); read only if it is the person's own.
+    saved_place_id: Joi.string().uuid().optional().allow(null),
     section: Joi.string().max(40).optional().allow(null),
   }).optional().allow(null),
 });

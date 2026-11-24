@@ -311,6 +311,7 @@ const TOOL_TIMEOUT_MS = 5000;
 // Reads that compose several providers, and the plan card's place search, need longer.
 const TOOL_TIMEOUTS_MS = {
   get_place_facts: 12000,
+  get_saved_place_facts: 12000,
   get_today: 12000,
   find_plans: 8000,
   get_plan: 8000,
@@ -599,6 +600,7 @@ async function _getUserContext(userId) {
         shown_on_today: home.is_default,
       })),
       saved_places: (places || []).map(p => ({
+        saved_place_id: p.id,
         label: p.label,
         type: p.place_type,
         city: p.city,

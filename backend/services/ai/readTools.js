@@ -138,6 +138,19 @@ const readToolDefinitions = [
     },
   },
   {
+    name: 'get_saved_place_facts',
+    description: "Public facts about one of the person's saved places (an address they saved privately to look at, not a home they belong to), as its Place screen shows them: the stand-out fact, risks (flood, earthquake, wildfire), radon and lead, drinking water, EPA sites, air, weather and alerts, the area's typical home value, property tax and price trend, rent, and civic districts, each with its source. Area-level public records, never that home's own record. Give saved_place_id or label as get_user_context lists them; with neither and more than one saved place, it lists them.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        saved_place_id: { type: ['string', 'null'], description: 'A saved place id from get_user_context or the screen, or null.' },
+        label: { type: ['string', 'null'], description: 'The saved place\'s label as the person says it, or null.' },
+      },
+      required: ['saved_place_id', 'label'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_today',
     description: "Today at the person's home: weather and the hourly forecast, air quality, alerts, sunrise and sunset, \"good day to\" picks, and in short the address calendar (pickup days and other dates), radon and the next election; plans today and household tasks due.",
     input_schema: {
@@ -684,6 +697,74 @@ async function getPlaceFacts(args, ctx, { screen = false, brief = false } = {}) 
   };
 }
 
+const SAVED_PLACE_NOTE = "A place they saved privately to look at: public, area-level facts for its point, as its Place screen shows them. Not that home's own record, and not a home they belong to; say which facts are county-wide or area-wide.";
+
+/** The person's own saved place by id, else by label (exact, then contained), else their only one; null when none fits. */
+function chooseSavedPlace(places, { saved_place_id: id, label }) {
+  if (isUuid(id)) return places.find((place) => place.id === id) || null;
+  const wanted = typeof label === 'string' ? label.trim().toLowerCase() : '';
+  if (wanted) {
+    return places.find((place) => String(place.label || '').trim().toLowerCase() === wanted)
+      || places.find((place) => String(place.label || '').toLowerCase().includes(wanted))
+      || null;
+  }
+  return places.length === 1 ? places[0] : null;
+}
+
+/**
+ * Facts for one of the person's saved places: the preview its Place screen shows (routes/savedPlaces.js builds the
+ * same one, for the stored point, never by geocoding its label), with the sections in get_place_facts's shape.
+ * Only the person's own SavedPlace rows are read.
+ */
+async function getSavedPlaceFacts(args, ctx, { screen = false } = {}) {
+  const { data, error } = await supabaseAdmin
+    .from('SavedPlace')
+    .select('id, label, place_type, latitude, longitude, city, state')
+    .eq('user_id', ctx.userId)
+    .order('created_at', { ascending: true })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  const places = data || [];
+  if (!places.length) return { error: 'They have no saved places. A place is saved from an address lookup ("Save this address").' };
+  const place = chooseSavedPlace(places, args || {});
+  if (!place) {
+    return {
+      note: 'Which saved place? Ask them, or call again with one of these.',
+      saved_places: places.map((p) => ({ saved_place_id: p.id, label: p.label, city: p.city || null, state: p.state || null })),
+    };
+  }
+  const lat = Number(place.latitude);
+  const lng = Number(place.longitude);
+  const savedPlace = { saved_place_id: place.id, label: place.label, city: place.city || null, state: place.state || null };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { saved_place: savedPlace, error: 'This saved place has no location, so it has no facts.' };
+  // Required here: the lookup's preview lives with its route, and a saved place's Place screen reads the same one.
+  const { placePreviewWithBallot } = require('../../routes/public');
+  const preview = await placePreviewWithBallot({ lat, lng, city: place.city || null, state: place.state || null, line: place.label, zipcode: null });
+  const zone = ctx.timeZone;
+  const money = preview.money ? withoutEmpty({
+    typical_home_value: preview.money.value ? { amount: preview.money.value.amount, scope: preview.money.value.scope, source: preview.money.value.source } : null,
+    typical_property_tax_a_year: preview.money.tax ? { amount: preview.money.tax.amount, scope: preview.money.tax.scope, source: preview.money.tax.source } : null,
+    price_index: preview.money.trend ? {
+      county: preview.money.trend.county_name || null,
+      county_change_last_year_pct: preview.money.trend.county_last_change_pct ?? null,
+      change_since_first_year_pct: preview.money.trend.since_change_pct,
+      first_year: preview.money.trend.since_year,
+      year: preview.money.trend.year,
+      source: preview.money.trend.source,
+      note: 'A price-change index for the county, never a home value or a sale price.',
+    } : null,
+    note: 'Area figures, not this home.',
+  }) : null;
+  return {
+    saved_place: savedPlace,
+    note: SAVED_PLACE_NOTE,
+    ...(preview.aha ? { stand_out: { headline: preview.aha.headline, detail: preview.aha.detail, grade: preview.aha.grade } } : {}),
+    ...(money ? { money } : {}),
+    ...(preview.not_checked?.length ? { could_not_check: preview.not_checked.map((n) => n.label) } : {}),
+    sections: (preview.sections || []).map((section) => (screen ? sectionBrief(section, zone) : sectionForModel(section, zone))),
+  };
+}
+
 async function openTasks(homeId, userId, { status = 'open' } = {}) {
   const result = await homeRecordService.listCollection({ homeId, actorId: userId, kind: 'task' });
   const records = (result.records || []).filter((task) => {
@@ -816,6 +897,7 @@ const READ_EXECUTORS = {
   find_posts: findPosts,
   get_post: getPost,
   get_place_facts: getPlaceFacts,
+  get_saved_place_facts: getSavedPlaceFacts,
   get_today: getToday,
   list_home_tasks: listHomeTasks,
   get_household: getHousehold,
@@ -856,6 +938,7 @@ module.exports = {
   findPosts,
   getToday,
   getPlaceFacts,
+  getSavedPlaceFacts,
   // For the days ahead (readToolsSchedule.js).
   openTasks,
   taskForModel,

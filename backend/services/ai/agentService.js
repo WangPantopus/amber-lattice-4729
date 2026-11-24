@@ -252,6 +252,7 @@ const TOOL_STATUS = {
   find_recommendations: 'Looking at what people near you recommend…',
   find_around_you: 'Looking at what’s around you…',
   get_place_facts: 'Checking your home…',
+  get_saved_place_facts: 'Checking your saved place…',
   get_today: 'Checking today…',
   get_schedule: 'Looking at the days ahead…',
   list_home_tasks: 'Looking at your tasks…',
