@@ -142,15 +142,19 @@ struct ProfileSourcesHeader<Actions: View>: View {
     private func mark(size: CGFloat) -> some View {
         Group {
             if let rings = content.rings {
-                ProfileRingMark(rings: rings, size: size) { portrait(size: size * 80 / 176) }
+                ProfileRingMark(rings: rings, size: size, spoken: markLabel) { portrait(size: size * 80 / 176) }
             } else {
-                portrait(size: size * 80 / 176)
-                    .frame(width: size, height: size)
+                ZStack {
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel(markLabel)
+                        .accessibilityAddTraits(.isImage)
+                    portrait(size: size * 80 / 176)
+                }
+                .frame(width: size, height: size)
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(markLabel)
-        .accessibilityAddTraits(.isImage)
+        .accessibilityElement(children: .contain)
     }
 
     private func portrait(size: CGFloat) -> some View {

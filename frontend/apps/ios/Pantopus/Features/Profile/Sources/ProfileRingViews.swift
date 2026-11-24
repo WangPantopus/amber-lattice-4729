@@ -57,6 +57,8 @@ enum RingStroke {
 struct ProfileRingMark<Portrait: View>: View {
     let rings: ProfileRings
     var size: CGFloat = 176
+    /// What VoiceOver reads for the rings and the photo; the photo's own buttons (its Moments) stay their own.
+    var spoken: String = ""
     @ViewBuilder let portrait: () -> Portrait
 
     var body: some View {
@@ -64,6 +66,9 @@ struct ProfileRingMark<Portrait: View>: View {
             Canvas { context, canvas in
                 draw(in: &context, side: min(canvas.width, canvas.height))
             }
+            .accessibilityElement()
+            .accessibilityLabel(spoken)
+            .accessibilityAddTraits(.isImage)
             portrait()
                 .frame(width: size * 80 / 176, height: size * 80 / 176)
         }
