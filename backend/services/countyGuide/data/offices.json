@@ -1814,9 +1814,9 @@
           "title": "Property tax",
           "office": "District of Columbia Office of Tax and Revenue",
           "url": "https://otr.cfo.dc.gov/page/real-property-payments-billing",
-          "line": "Takes real property tax online, by mail or in person; its page lists the bill due dates and offers electronic bill notices.",
+          "line": "Its payments page leads to paying real property tax online, by mail or in person, to the bill due dates and to signing up for electronic bill notices.",
           "q": "Where do I pay property tax in the District of Columbia?",
-          "a": "The District's Office of Tax and Revenue collects real property tax, online, by mail or in person. Its payments page lists the bill due dates and offers electronic bill notices."
+          "a": "The District's Office of Tax and Revenue collects real property tax. Its payments page leads to paying online, by mail or in person, to the bill due dates and to signing up for electronic bill notices."
         }
       ]
     },
@@ -1827,12 +1827,10 @@
       "rows": [
         {
           "id": "recorder",
-          "title": "Deeds and recorded documents",
-          "office": "Charlottesville Circuit Court Clerk",
+          "title": "Deed filing and court records",
+          "office": "Charlottesville Circuit Court Clerk's Office",
           "url": "https://www.charlottesville.gov/178/Online-Resources",
-          "line": "Records deeds; its page has the deed filing fee calculator and explains remote access to its records through a third-party vendor, paid per view.",
-          "q": "Where are deeds recorded in Charlottesville?",
-          "a": "The Charlottesville Circuit Court Clerk's Office records deeds. Its page explains remote access to its records through a third-party vendor, paid per view."
+          "line": "Its page has the deed filing fee calculator and says remote access to its public court records is through a third-party vendor, paid per view."
         },
         {
           "id": "treasurer",
