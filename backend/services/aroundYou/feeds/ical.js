@@ -6,7 +6,7 @@
 
 const { DateTime } = require('luxon');
 const { rrulestr } = require('rrule');
-const { readFeed } = require('./http');
+const { guardedFetch } = require('../guardedFetch');
 
 const AHEAD_MS = 7 * 24 * 3_600_000;
 const MAX_PER_CALENDAR = 5;
@@ -194,8 +194,12 @@ function calendarRows(region, source, text, now = Date.now()) {
     .filter((row) => row.url);
 }
 
+// A calendar's address may have come from the source finder (a model reading the open web), so it is read through the
+// fetch guard: public addresses only, checked on every connection and redirect.
 async function readCalendar(source) {
-  return readFeed(source.url, { accept: 'text/calendar, text/plain' });
+  const answer = await guardedFetch(source.url, { accept: 'text/calendar, text/plain' });
+  if (answer.status !== 200) throw new Error(`HTTP ${answer.status} from ${new URL(answer.url).host}`);
+  return answer.body.toString('utf8');
 }
 
 module.exports = { readCalendar, calendarRows, parseCalendar };

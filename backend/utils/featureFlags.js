@@ -30,6 +30,18 @@ function aroundYouEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// Sources for a new county (Around you everywhere layer, piece 4): the source finder asks Claude, with web search, for
+// a county's own news and event sources and proposes them for review on /app/admin/sources. AROUND_YOU_SOURCE_FINDER is
+// '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else. Off, nothing calls Claude. It needs
+// AROUND_YOU on too.
+function aroundYouSourceFinderEnabled(env = process.env) {
+  if (!aroundYouEnabled(env)) return false;
+  const value = String(env.AROUND_YOU_SOURCE_FINDER || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md): GET /api/profile-page/*
 // composes a person's page for each viewer, the person chooses what their link shows, and the old profile reads follow
 // those choices for signed-out callers (rule 4.7). PROFILE_SOURCES is '1' (on) or '0' (off); unset, it is on for
@@ -273,6 +285,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 
 module.exports = {
   aroundYouEnabled,
+  aroundYouSourceFinderEnabled,
   profileSourcesEnabled,
   profileLinksEnabled,
   guidanceCardsEnabled,

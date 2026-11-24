@@ -20,6 +20,7 @@ const fema = require('../services/aroundYou/feeds/fema');
 const roadwork = require('../services/aroundYou/feeds/roadwork');
 const ical = require('../services/aroundYou/feeds/ical');
 const { writeChecked } = require('../services/aroundYou/checked');
+const { runNextRegion } = require('../services/aroundYou/sourceFinder');
 
 let running = false;
 
@@ -121,6 +122,13 @@ async function run() {
       logger.warn('Around you feeds: rows not written for a region', { region: region.region, error: err.message });
     }
   }
+
+  // Sources for a new county (piece 4): one region a run whose own sources were never looked for goes to the source
+  // finder, which proposes them for review (nothing while AROUND_YOU_SOURCE_FINDER is off).
+  stats.source_finder = await runNextRegion().catch((err) => {
+    logger.warn('Around you feeds: the source finder failed', { error: err.message });
+    return null;
+  });
   return stats;
 }
 

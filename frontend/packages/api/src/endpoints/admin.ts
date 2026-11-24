@@ -350,3 +350,103 @@ export interface FunnelSummary {
 export async function getFunnelSummary(days = 30): Promise<FunnelSummary> {
   return get(`/api/admin/funnel/summary?days=${encodeURIComponent(String(days))}`);
 }
+
+// ── Around you: sources for a new county (platform admins) ─────
+
+/** What the server's own check of one address found (seeder_sources.check_note). */
+export interface AroundSourceNote {
+  /** proposed: it reads. refused: the site refuses automated readers. no_feed / unreadable: nothing to read. */
+  status: 'proposed' | 'refused' | 'no_feed' | 'unreadable' | 'dropped';
+  checked_at: string;
+  kind: string | null;
+  why: string | null;
+  home_page: string | null;
+  reason: string | null;
+  format: string | null;
+  feed_title: string | null;
+  items: number | null;
+  /** Items from the last 7 days (a calendar: events in the next 7 days). */
+  recent_7d: number | null;
+  /** Items from the last 2 days: what the content fetcher keeps today (it reads a story for 48 hours). */
+  recent_2d?: number | null;
+  /** Items naming the city or county (the words are in place_words). */
+  names_place: number | null;
+  place_words: string | null;
+  newest_at: string | null;
+  samples: string[];
+  subscription: { asked: boolean | null; sign: string } | null;
+  tried: string[];
+  reviewed_at?: string;
+}
+
+export interface AroundSource {
+  id: string;
+  source_id: string;
+  source_type: 'rss' | 'ical';
+  url: string | null;
+  display_name: string;
+  category: string;
+  active: boolean;
+  review_state: 'proposed' | 'approved' | 'rejected' | null;
+  proposed_by: 'finder' | 'hand' | null;
+  access: 'free' | 'subscription' | null;
+  keep_hours: number | null;
+  note: AroundSourceNote | null;
+}
+
+export interface AroundSourceRun {
+  state: 'running' | 'done' | 'failed';
+  trigger: 'job' | 'button';
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  summary: {
+    claude: { outcome: string; candidates?: number; input?: number; output?: number; cache_read?: number; searches?: number; requests?: number } | null;
+    proposed: number;
+    noted: number;
+    known: number;
+    dropped: { name: string; reason: string }[];
+    ms: number;
+    /** The Claude step gave no answer, so the feeds job will hand this place to the finder again. */
+    retry?: boolean;
+  } | null;
+}
+
+export interface AroundSourceRegion {
+  region: string;
+  display_name: string | null;
+  state: string | null;
+  county_name: string | null;
+  provisioned_by: string;
+  sources_checked_at: string | null;
+  run: AroundSourceRun | null;
+  sources: AroundSource[];
+}
+
+export async function getAroundSources(): Promise<{ finder_on: boolean; kinds: { id: string; label: string }[]; regions: AroundSourceRegion[] }> {
+  return get('/api/admin/around-sources');
+}
+
+/** Runs the finder for one region in the background. */
+export async function findAroundSources(region: string): Promise<{ started: boolean; finder_on: boolean; run: AroundSourceRun | null }> {
+  return post(`/api/admin/around-sources/regions/${encodeURIComponent(region)}/find`, {});
+}
+
+/** Tests one address and proposes it by hand. */
+export async function addAroundSource(region: string, body: { kind: string; name: string; url: string }): Promise<{
+  outcome: 'proposed' | 'noted' | 'known' | 'dropped';
+  result: { status: string; url: string | null; reason: string | null };
+}> {
+  return post(`/api/admin/around-sources/regions/${encodeURIComponent(region)}/sources`, body);
+}
+
+export async function approveAroundSource(
+  id: string,
+  body: { access: 'free' | 'subscription'; keep_hours: number | null; display_name?: string | null },
+): Promise<{ source: AroundSource }> {
+  return post(`/api/admin/around-sources/sources/${encodeURIComponent(id)}/approve`, body);
+}
+
+export async function rejectAroundSource(id: string): Promise<{ source: AroundSource }> {
+  return post(`/api/admin/around-sources/sources/${encodeURIComponent(id)}/reject`, {});
+}
