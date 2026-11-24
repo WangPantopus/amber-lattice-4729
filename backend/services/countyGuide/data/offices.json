@@ -1563,9 +1563,9 @@
           "title": "Deeds and recorded documents",
           "office": "Dane County Register of Deeds",
           "url": "https://rod.danecounty.gov/real-estate/online-record-search",
-          "line": "Its index of real estate documents begins in January 1975 and is searched online through Tapestry EON or Laredo; most records can be viewed at its office, which charges no fee for that.",
+          "line": "Its index of real estate documents begins in January 1975 and is searched online through Tapestry EON or Laredo.",
           "q": "Where are deeds recorded in Dane County?",
-          "a": "The Dane County Register of Deeds records deeds and keeps the county's land records. Its index begins in January 1975 and is searched online through Tapestry EON or Laredo; most records can also be viewed at its office."
+          "a": "The Dane County Register of Deeds records deeds and keeps the county's land records. Its index of real estate documents begins in January 1975 and is searched online through Tapestry EON or Laredo."
         },
         {
           "id": "treasurer",
@@ -1581,7 +1581,7 @@
           "title": "Property Fraud Alert",
           "office": "Dane County Register of Deeds",
           "url": "https://rod.danecounty.gov/real-estate/property-fraud-alert",
-          "line": "Alerts a subscriber by text, email or phone call when a document is recorded at the Register of Deeds; the office charges no fee for it."
+          "line": "Monitors a name a person submits and notifies them only when that name is found on a document recorded in the Register of Deeds office; the Register charges no fee for it."
         }
       ]
     },
