@@ -11,4 +11,6 @@ export const PILLAR_PAGES: SitePage[] = [
   { path: '/moments', label: 'Moments' },
   { path: '/mail', label: 'Mail' },
   { path: '/plans', label: 'Plans' },
+  { path: '/support-train', label: 'Support Train' },
+  { path: '/chat', label: 'Chat' },
 ];
