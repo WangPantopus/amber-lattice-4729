@@ -15,8 +15,6 @@ import { overline } from './blocks';
 export type PieceEditorStart = { kind: 'new' } | { kind: 'offer'; offer: ProfilePieceOffer } | { kind: 'edit'; piece: Piece };
 
 const LIMIT = 12;
-/** Pasting a link that becomes a card (board 11): on once the server takes links on a piece (CONTRACT P2.4). */
-const LINK_CARDS = false;
 const TITLE_MAX = 60;
 const WORDS_MAX = 280;
 const ROLE_MAX = 40;
@@ -201,7 +199,9 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
   const offer = start.kind === 'offer' ? start.offer : null;
   const initialMonth = monthOf(editing ? editing.to ?? editing.from : offer?.when) ?? '';
   const initial = useMemo(() => ({
-    title: editing?.title ?? offer?.title ?? '',
+    // A job's title is the words of whoever posted it (it can carry a street, a name or a price), so the piece starts
+    // untitled and the banner shows it to read. A plan the person hosted is their own words and may start the title.
+    title: editing?.title ?? (offer?.kind === 'plan' ? offer.title : '') ?? '',
     kind: (editing?.kind as 'did' | 'built' | 'owns' | null | undefined) ?? null,
     month: initialMonth,
     place: editing?.place ?? '',
@@ -456,7 +456,11 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
           <div className="rounded-2xl border border-[color:var(--color-info-light,rgba(59,130,246,0.35))] bg-app-info-bg px-4 py-3 flex flex-col gap-2.5">
             <p className="flex items-start gap-2.5 text-[0.9375rem] leading-[1.3125rem] text-app">
               <InkGlyph ink="seen" />
-              <span><strong>Pantopus has seen this {offer.kind === 'plan' ? 'plan' : 'job'}.</strong> {offer.text} A piece started from it shows as Seen.</span>
+              <span>
+                <strong>Pantopus has seen this {offer.kind === 'plan' ? 'plan' : 'job'}.</strong>
+                {offer.title ? <span className="block mt-1 font-semibold [overflow-wrap:anywhere]">“{offer.title}”</span> : null}
+                <span className="block mt-0.5">{offer.text} A piece started from it shows as Seen.</span>
+              </span>
             </p>
             <button
               type="button"
@@ -511,8 +515,8 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
             <span className={label}>Show it</span>
             <span className="text-xs text-app-muted" aria-live="polite">{used} of {LIMIT} added</span>
           </div>
-          <div className={`grid ${LINK_CARDS ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
-            {addButton('photo', 'Photos', ImageIcon)}{addButton('video', 'Video', Video)}{addButton('document', 'Document', FileText)}{LINK_CARDS ? addButton('link', 'Link', Link2) : null}
+          <div className="grid grid-cols-4 gap-2">
+            {addButton('photo', 'Photos', ImageIcon)}{addButton('video', 'Video', Video)}{addButton('document', 'Document', FileText)}{addButton('link', 'Link', Link2)}
           </div>
           {(['photo', 'video', 'document'] as const).map((k) => (
             <input key={k} ref={pickers[k]} type="file" accept={FILE_KINDS[k].accept} multiple={k !== 'video'} className="hidden" onChange={pick(k)} aria-hidden="true" tabIndex={-1} />
@@ -556,8 +560,8 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
           ) : null}
         </div>
 
-        {LINK_CARDS || links.length > 0 ? <div className="flex flex-col gap-2">
-          {LINK_CARDS ? <Labelled id={ids.link} title="A link" note={linkNote ? <span className="text-app-error">{linkNote}</span> : 'Pantopus reads the page’s words only, never its pictures.'}>
+        <div className="flex flex-col gap-2">
+          <Labelled id={ids.link} title="A link" note={linkNote ? <span className="text-app-error">{linkNote}</span> : 'Pantopus reads the page’s words only, never its pictures.'}>
             <div className="flex gap-2">
               <input
                 id={ids.link}
@@ -572,7 +576,7 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
               />
               <button type="button" onClick={addLink} disabled={full || !linkDraft.trim()} className="shrink-0 min-h-[3rem] px-4 rounded-xl bg-app-surface-sunken text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-50">Add</button>
             </div>
-          </Labelled> : <span className={label}>Links</span>}
+          </Labelled>
           {links.map((link) => {
             const card: ProfileLinkCard = link.card ?? {
               url: link.url,
@@ -589,7 +593,7 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
                   link={card}
                   footer={editing && link.card?.id ? (
                     <ProveLink pieceId={editing.id} card={link.card} onProven={(proven) => setLinks((list) => list.map((l) => (l.key === link.key ? { ...l, card: proven } : l)))} />
-                  ) : !link.card ? <p className="text-xs leading-4 text-app-muted">Said, until you prove the page is yours. You can prove it once the piece is saved.</p> : null}
+                  ) : !link.card ? <p className="text-xs leading-4 text-app-muted">You can prove the page is yours once the piece is saved.</p> : null}
                 />
                 <button type="button" onClick={() => setLinks((list) => list.filter((l) => l.key !== link.key))} aria-label={`Remove the link ${card.title || card.site || link.url}`} className="absolute right-1 top-1 w-9 h-9 rounded-full flex items-center justify-center text-app-secondary hover-bg-app">
                   <X aria-hidden="true" className="w-4 h-4" />
@@ -597,7 +601,7 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
               </div>
             );
           })}
-        </div> : null}
+        </div>
 
         <Labelled id={ids.words} title="In your words" count={`${words.length} of ${WORDS_MAX}`}>
           <textarea id={ids.words} className={`${field} min-h-[7rem] font-serif italic`} value={words} maxLength={WORDS_MAX} onChange={(e) => setWords(e.target.value)} placeholder="What you did, and anything worth knowing about it." />

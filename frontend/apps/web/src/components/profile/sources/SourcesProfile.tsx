@@ -218,6 +218,8 @@ export interface SourcesProfileProps {
   onJoin?: (() => void) | null;
   /** The owner (not previewing): their Work can be changed here; call after a change to read the page again. */
   onChanged?: (() => void) | null;
+  /** False while this is a stand-in page (a signed-in visit draws the visitor's page first): it opens no piece. */
+  ready?: boolean;
 }
 
 /**
@@ -227,7 +229,7 @@ export interface SourcesProfileProps {
  */
 export default function SourcesProfile({
   page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, viaLink = null, signedOut = false,
-  onDoor, onConnect, onReport, onJoin, onChanged = null,
+  onDoor, onConnect, onReport, onJoin, onChanged = null, ready = true,
 }: SourcesProfileProps) {
   const router = useRouter();
   const tabsId = useId();
@@ -280,6 +282,7 @@ export default function SourcesProfile({
 
   const load = useCallback((what: { kind: 'month'; month: string } | { kind: 'piece'; id: string }, quiet = false) => {
     const round = ++openRound.current;
+    pieceLoading.current = what.kind === 'piece' ? what.id : null;
     const options = previewAs ? { as: previewAs } : undefined;
     setOpened({ ...what, state: 'loading' } as Opened);
     const read: Promise<ProfileMonthRead | ProfilePieceRead> = viaLink
@@ -296,7 +299,8 @@ export default function SourcesProfile({
         // so it never takes the piece out of the address before the viewer's own page reads it.
         if (round !== openRound.current || !mountedRef.current) return;
         // A piece opened from its address that this viewer may not see: the plain profile, nothing said about it.
-        if (quiet && err?.statusCode === 404) { dropPieceAddress.current(); return; }
+        // Opened from its address: whatever stops it (404, a failed read), nothing opens and the address loses ?piece.
+        if (quiet) { dropPieceAddress.current(); return; }
         setOpened({ ...what, state: err?.statusCode === 404 ? 'gone' : 'failed' } as Opened);
       },
     );
@@ -306,6 +310,7 @@ export default function SourcesProfile({
   // browser's Back closes it, a reload opens it again, and the address can be sent. Kept in the browser's own history
   // (opening one asks the server for the piece and nothing else); Back and Forward are followed through `popstate`.
   const pushedPiece = useRef(false);
+  const pieceLoading = useRef<string | null>(null);
   const pieceInAddress = () => {
     const id = new URLSearchParams(window.location.search).get('piece');
     return id && /^[0-9a-f-]{8,64}$/i.test(id) ? id : null;
@@ -321,6 +326,7 @@ export default function SourcesProfile({
     openRound.current += 1;
     setOpened(null);
     pushedPiece.current = false;
+    pieceLoading.current = null;
     if (pieceInAddress()) window.history.replaceState(window.history.state, '', addressFor(null));
   };
   const openPiece = useCallback((id: string) => {
@@ -340,20 +346,26 @@ export default function SourcesProfile({
     const id = pieceInAddress();
     if (id) {
       // Opened from its address (a reload, a sent link, Forward): a piece this viewer may not see opens nothing.
-      if (!(opened?.kind === 'piece' && opened.id === id)) load({ kind: 'piece', id }, true);
-    } else if (opened?.kind === 'piece') {
+      // One read: not again while the same piece is being read or is open.
+      if (pieceLoading.current !== id) load({ kind: 'piece', id }, true);
+    } else if (pieceLoading.current) {
       pushedPiece.current = false;
+      pieceLoading.current = null;
       openRound.current += 1;
       setOpened(null);
     }
   };
   useEffect(() => {
     mountedRef.current = true;
-    followAddress.current();
     const onPop = () => followAddress.current();
     window.addEventListener('popstate', onPop);
     return () => { mountedRef.current = false; window.removeEventListener('popstate', onPop); };
   }, []);
+  // The address is followed once the page is this viewer's own (`ready`): a signed-in visit draws the visitor's page
+  // for a moment first, and that page reads nothing.
+  useEffect(() => {
+    if (ready) followAddress.current();
+  }, [ready]);
 
   const target = useCallback((link: ProfileLink | null | undefined): Target | null => {
     if (!link || typeof link !== 'object' || typeof link.kind !== 'string') return null;
