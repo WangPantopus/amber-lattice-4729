@@ -1444,6 +1444,267 @@
           "a": "The Walla Walla County Treasurer's payment center lists paying by phone, online, by mail or in person. Property taxes are due by April 30 and October 31."
         }
       ]
+    },
+    "06071": {
+      "read": "2026-11-23",
+      "property_search_office": "San Bernardino County Assessor, Parcel Search",
+      "property_search_url": "https://arcpropertyinfo.sbcounty.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "San Bernardino County Assessor-Recorder-County Clerk, Official Public Records",
+          "url": "https://arc.sbcounty.gov/official-records/",
+          "line": "Its online index lists documents recorded since 1925 by number, date, title and parties; the documents themselves are viewed at the Hall of Records in San Bernardino or the High Desert Government Center in Hesperia.",
+          "q": "Where are deeds recorded in San Bernardino County?",
+          "a": "The San Bernardino County Assessor-Recorder-County Clerk records deeds and keeps the official records. Its online index lists documents recorded since 1925 by document number, date, title and the parties; the documents themselves are viewed in person, in San Bernardino or Hesperia."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "San Bernardino County Auditor-Controller/Treasurer/Tax Collector",
+          "url": "https://www.sbcountyatc.gov/tax-services/property-tax",
+          "line": "Pays a property tax bill online and shows a property's payment history.",
+          "q": "Where do I pay property tax in San Bernardino County?",
+          "a": "The San Bernardino County Auditor-Controller/Treasurer/Tax Collector collects property tax. Its site pays a bill online and shows a property's payment history."
+        }
+      ]
+    },
+    "37119": {
+      "read": "2026-11-23",
+      "property_search_office": "Mecklenburg County Office of Tax Administration, View Your Property Value",
+      "property_search_url": "https://property.spatialest.com/nc/mecklenburg/#/",
+      "property_search_via": "https://tax.mecknc.gov/property-valuation",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Mecklenburg County Register of Deeds",
+          "url": "https://deeds.mecknc.gov/services/real-estate-records",
+          "line": "Its online database holds real estate documents recorded since March 1990; a historical index covers 1763 through February 1990.",
+          "q": "Where are deeds recorded in Mecklenburg County?",
+          "a": "The Mecklenburg County Register of Deeds records, indexes and keeps the county's real estate documents. Its online database holds documents from March 1990 on, and a historical index covers 1763 through February 1990."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Mecklenburg County Office of Tax Administration",
+          "url": "https://tax.mecknc.gov/tax-bills-and-payments/pay",
+          "line": "Finds a tax bill and pays real estate tax online, by phone, by mail or in person.",
+          "q": "Where do I pay property tax in Mecklenburg County?",
+          "a": "The Mecklenburg County Office of Tax Administration bills and collects property tax. Its site finds a tax bill and pays it online, by phone, by mail or in person."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Mecklenburg County Register of Deeds",
+          "url": "https://www.propertyfraudalert.com/NCMecklenburg",
+          "line": "Notifies a person whenever a document with their name is recorded in the county's official records; the Register charges no fee for it.",
+          "via": "https://deeds.mecknc.gov/"
+        }
+      ]
+    },
+    "42003": {
+      "read": "2026-11-23",
+      "property_search_office": "Allegheny County Office of Property Assessments, Real Estate Portal",
+      "property_search_url": "https://realestate.alleghenycounty.us/search",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Allegheny County Division of Real Estate",
+          "url": "https://www.alleghenycounty.us/Government/Records/Land-Records",
+          "line": "Keeps the county's land records: deeds, mortgages, subdivision plans, block and lot maps and property history cards; copies are ordered in person, by mail or online.",
+          "q": "Where are deeds recorded in Allegheny County?",
+          "a": "The Allegheny County Division of Real Estate records deeds and mortgages and keeps the county's land records, from subdivision plans to property history cards. Copies are ordered in person, by mail or online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Allegheny County Division of Real Estate",
+          "url": "https://pfa.uslandrecords.com/",
+          "line": "Emails a subscriber every time a land records document is recorded with a name they asked to watch.",
+          "via": "https://www.alleghenycounty.us/Services/Property-Assessments-and-Real-Estate"
+        }
+      ]
+    },
+    "08031": {
+      "read": "2026-11-23",
+      "property_search_office": "City and County of Denver, Property Search",
+      "property_search_url": "https://www.denvergov.org/Property",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Denver Clerk and Recorder, Recording Division",
+          "url": "https://www.denvergov.org/Government/Agencies-Departments-Offices/Agencies-Departments-Offices-Directory/Denver-Clerk-and-Recorder/Recording-Division/find-records",
+          "line": "Its online records search finds recorded documents and takes requests for certified copies; some of its databases ask for an account.",
+          "q": "Where are deeds recorded in Denver?",
+          "a": "The Denver Clerk and Recorder's Recording Division records deeds and keeps the city's recorded documents. Its online records search finds them and takes requests for certified copies."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Denver Department of Finance, Treasury Division",
+          "url": "https://www.denvergov.org/Government/Agencies-Departments-Offices/Agencies-Departments-Offices-Directory/Department-of-Finance/Our-Divisions/Treasury/Property-Taxes/Pay-Property-Taxes",
+          "line": "Takes real estate tax in full by April 30 or in halves due the last day of February and June 15, online, by mail or in person.",
+          "q": "Where do I pay property tax in Denver?",
+          "a": "The Treasury Division of Denver's Department of Finance collects property tax. It takes the tax in full by April 30, or in halves due the last day of February and June 15, online, by mail or in person."
+        }
+      ]
+    },
+    "55025": {
+      "read": "2026-11-23",
+      "property_search_office": "Dane County Land Information Council, Access Dane",
+      "property_search_url": "https://accessdane.danecounty.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Dane County Register of Deeds",
+          "url": "https://rod.danecounty.gov/real-estate/online-record-search",
+          "line": "Its index of real estate documents begins in January 1975 and is searched online through Tapestry EON or Laredo.",
+          "q": "Where are deeds recorded in Dane County?",
+          "a": "The Dane County Register of Deeds records deeds and keeps the county's land records. Its index of real estate documents begins in January 1975 and is searched online through Tapestry EON or Laredo."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Dane County Treasurer",
+          "url": "https://treasurer.danecounty.gov/property-tax",
+          "line": "Each city, town or village mails its tax bills in December; the first payment goes to the municipality by January 31 and the rest to the County by July 31, except in the City of Madison.",
+          "q": "Where do I pay property tax in Dane County?",
+          "a": "Each city, town or village in Dane County mails its tax bills in December. The first payment goes to the municipality by January 31, and the rest to the Dane County Treasurer by July 31, except in the City of Madison."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Dane County Register of Deeds",
+          "url": "https://rod.danecounty.gov/real-estate/property-fraud-alert",
+          "line": "Monitors a name a person submits and notifies them only when that name is found on a document recorded in the Register of Deeds office; the Register charges no fee for it."
+        }
+      ]
+    },
+    "40109": {
+      "read": "2026-11-23",
+      "property_search_office": "Oklahoma County Assessor, Public Access System",
+      "property_search_url": "https://docs.oklahomacounty.org/AssessorWP5/DefaultSearch.asp",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Oklahoma County Clerk, Registrar of Deeds",
+          "url": "https://www.oklahomacounty.org/elected-offices/county-clerk",
+          "line": "Gives online access to real estate filings through OKCC.ONLINE; the records themselves can be inspected at the Clerk's office.",
+          "q": "Where are deeds recorded in Oklahoma County?",
+          "a": "The Oklahoma County Clerk, as Registrar of Deeds, records deeds and keeps the county's real estate filings. They can be searched online through OKCC.ONLINE, and the records themselves can be inspected at the Clerk's office."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Oklahoma County Treasurer",
+          "url": "https://www.oklahomacounty.org/pay-or-apply/property-tax",
+          "line": "Searches property and takes tax payments online through its property search; a card payment online carries a convenience fee that the County does not receive.",
+          "q": "Where do I pay property tax in Oklahoma County?",
+          "a": "The Oklahoma County Treasurer collects property tax. Its property search finds a property and takes payment online, or a payment can be made at its office in the Oklahoma County Annex Building."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Filing Alerts",
+          "office": "Oklahoma County Clerk",
+          "url": "https://propertyalert.oklahomacounty.org/contacts/sign_up",
+          "line": "Signs a person up to receive the County Clerk's Property Filing Alerts."
+        }
+      ]
+    },
+    "29095": {
+      "read": "2026-11-23",
+      "property_search_office": "Jackson County Assessment Department, Property Records Search",
+      "property_search_url": "https://publicaccess.jacksongov.org/forms/htmlframe.aspx?mode=content/home.htm",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Jackson County Recorder of Deeds",
+          "url": "https://www.jacksongov.org/Government/Departments/Recorder-of-Deeds/Searching-Public-Records",
+          "line": "Its online search holds real estate recordings from 1962 on; older records are searched at its office in Independence.",
+          "q": "Where are deeds recorded in Jackson County, Missouri?",
+          "a": "The Jackson County Recorder of Deeds records deeds at the Historic Truman Courthouse in Independence. Its online search holds real estate recordings from 1962 on; older records are searched at the office."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Jackson County Collection Department",
+          "url": "https://www.jacksongov.org/Government/Departments/Collection",
+          "line": "Collects property tax for the cities, school districts and other taxing jurisdictions in the county; its site takes payment online and finds a tax account.",
+          "q": "Where do I pay property tax in Jackson County, Missouri?",
+          "a": "The Jackson County Collection Department collects property tax for the cities, school districts and other taxing jurisdictions in the county. Its site takes payment online and finds a tax account."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Jackson County Recorder of Deeds",
+          "url": "https://www.propertyfraudalert.com/MOJackson",
+          "line": "Alerts a person when a document is recorded at the Recorder of Deeds on a property they own.",
+          "via": "https://www.jacksongov.org/Government/Departments/Recorder-of-Deeds"
+        }
+      ]
+    },
+    "42091": {
+      "read": "2026-11-23",
+      "property_search_office": "Montgomery County Board of Assessment Appeals, Property Records Search",
+      "property_search_url": "https://propertyrecords.montcopa.org/pt/Main/Home.aspx",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Montgomery County Recorder of Deeds",
+          "url": "https://www.montgomerycountypa.gov/departments/recorder-deeds/public-access-system",
+          "line": "Its Public Access System, which asks for an account, searches deeds, mortgages and satisfactions in records that go back to 1784.",
+          "q": "Where are deeds recorded in Montgomery County, Pennsylvania?",
+          "a": "The Montgomery County Recorder of Deeds records deeds and mortgages. Its Public Access System, which asks for an account, searches records going back to 1784 and sells certified copies."
+        },
+        {
+          "id": "recording_alert",
+          "title": "FraudSleuth",
+          "office": "Montgomery County Recorder of Deeds",
+          "url": "https://www.montgomerycountypa.gov/departments/recorder-deeds/fraud-protection",
+          "line": "Alerts a property owner shortly after a document matching their profile, best set up by parcel number, is recorded; set up through the Public Access System."
+        }
+      ]
+    },
+    "48121": {
+      "read": "2026-11-23",
+      "property_search_office": "Denton Central Appraisal District, Property Search",
+      "property_search_url": "https://www.dentoncad.com/property-search",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Denton County Clerk, Recording Division",
+          "url": "https://www.dentoncounty.gov/262/Recording-Division",
+          "line": "Keeps the county's real property records; its page links to the online records search.",
+          "q": "Where are deeds recorded in Denton County?",
+          "a": "The Recording Division of the Denton County Clerk records deeds and keeps the county's real property records. Its page links to the online records search."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Denton County Tax Assessor-Collector",
+          "url": "https://www.dentoncounty.gov/778/Tax-Assessor-Collector",
+          "line": "Searches and pays property tax online and serves taxpayers at six office locations.",
+          "q": "Where do I pay property tax in Denton County?",
+          "a": "The Denton County Tax Assessor-Collector collects property tax. Its site searches and pays a tax bill online, and it has six office locations."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert",
+          "office": "Denton County Clerk",
+          "url": "https://denton.tx.publicsearch.us/property-alert",
+          "line": "Emails a person any time their name, or another keyword they choose, is used in a real property filing in the county; the County Clerk charges no fee for it.",
+          "via": "https://www.dentoncounty.gov/262/Recording-Division"
+        }
+      ]
     }
   }
 }
