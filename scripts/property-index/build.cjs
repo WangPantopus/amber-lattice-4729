@@ -10,6 +10,7 @@
 // it was and where in this code, never what row it was reading. No packages: Node, curl and unzip.
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
@@ -74,6 +75,22 @@ function assertHeldFrom(heldFrom) {
   }
 }
 
+const REPO = path.resolve(__dirname, '..', '..');
+
+/**
+ * Which reader made a release (`reader` in its county's state entry): a hash of this repository's code the build had loaded
+ * when its source gave a county, the connector, its libraries and the backend files they share. Two releases with the same
+ * reader read their county's files the same way, so what differs between them is the county's (homeRecord.js keeps such
+ * differences on a Home's copy for "Worth a look"). Any change to that code is a new reader, and a refresh across it says
+ * nothing. Files read as data rather than required aren't in it.
+ */
+function readerStamp() {
+  const files = Object.keys(require.cache).filter((file) => file.startsWith(REPO + path.sep) && !file.includes(`${path.sep}node_modules${path.sep}`)).sort();
+  const hash = crypto.createHash('sha256');
+  for (const file of files) hash.update(path.relative(REPO, file)).update('\0').update(fs.readFileSync(file)).update('\0');
+  return hash.digest('hex').slice(0, 16);
+}
+
 function releaseId(asOf, built) {
   return `${asOf.replace(/-/g, '')}-${built.toISOString().slice(0, 16).replace(/[-:T]/g, '').slice(4)}`;
 }
@@ -117,7 +134,10 @@ async function main() {
   const source = require(`./sources/${path.basename(opts.source)}.cjs`);
   const built = new Date();
 
+  // Taken as the source gives its first county, before a comparison loads another connector (agreementOf).
+  let reader = null;
   for await (const county of await source.build({ work, today: built })) {
+    reader = reader || readerStamp();
     const { records, stale_after_days: staleAfterDays, extra_zips: extraZips = [], ...about } = county;
     // parse() also says which form an address came in (addressKey.js). A record keeps only its parts.
     for (const { address } of records) delete address.form;
@@ -178,6 +198,7 @@ async function main() {
       zips: [...zips].sort(),
       cities: [...cities].sort(),
       records: report.records,
+      reader,
       ...(heldFrom ? { held_from: heldFrom } : {}),
       ...(valueModel ? { value_model: valueModel } : {}),
     }));
