@@ -90,13 +90,19 @@ function appealOf(state) {
   return appeal ? { note: appeal.note, source: appeal.source, read: APPEALS_READ } : null;
 }
 
+const openSide = (side) => (side === 'below' || side === 'above' ? side : null);
+
 /** The Census's medians for the county, from the survey named in data/counties.json. */
 function homesOf(county) {
   const { built, value } = county.facts;
   if (!built && !value) return null;
   return {
     median_year_built: built || null,
+    // 'below' or 'above' where the median falls in the survey's open-ended lowest or highest interval (build-data.cjs):
+    // the number is then that interval's edge, "1939 or earlier", not a year.
+    median_year_built_open: built ? openSide(county.facts.built_open) : null,
     median_value: value || null,
+    median_value_open: value ? openSide(county.facts.value_open) : null,
     survey: places.censusSources.homes_survey,
     source: 'U.S. Census Bureau, American Community Survey 5-year estimates',
     url: 'https://data.census.gov/',

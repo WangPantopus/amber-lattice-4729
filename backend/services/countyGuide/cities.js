@@ -47,6 +47,8 @@ function rowsOf(entry) {
 }
 
 const median = (n) => (Number.isFinite(n) && n > 0 ? n : null);
+// 'below' or 'above' where the median falls in the survey's open-ended lowest or highest interval (build-data.cjs).
+const openSide = (side) => (side === 'below' || side === 'above' ? side : null);
 
 // Every city in the file, by GEOID, under the county its page sits in.
 const byGeoid = new Map();
@@ -62,7 +64,9 @@ for (const [geoid, entry] of Object.entries(data.cities || {})) {
     otherCounties: entry.other_counties === true,
     rows: rowsOf(entry),
     built: median(entry.built),
+    builtOpen: openSide(entry.built_open),
     value: median(entry.value),
+    valueOpen: openSide(entry.value_open),
   };
   if (!byCounty.has(county.fips)) byCounty.set(county.fips, new Map());
   const inCounty = byCounty.get(county.fips);
@@ -93,7 +97,9 @@ function homesOf(city) {
   if (!city.built && !city.value) return null;
   return {
     median_year_built: city.built,
+    median_year_built_open: city.built ? city.builtOpen : null,
     median_value: city.value,
+    median_value_open: city.value ? city.valueOpen : null,
     survey: data.sources?.homes_survey || null,
     source: 'U.S. Census Bureau, American Community Survey 5-year estimates',
     url: 'https://data.census.gov/',

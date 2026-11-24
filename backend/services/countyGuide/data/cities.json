@@ -126,7 +126,7 @@
           "url": "https://www.fayettevillenc.gov/City-Departments/Development-Services/Permitting-Inspections",
           "line": "Issues permits, reviews plans and inspects buildings under the North Carolina building codes; its public portals hold permit records, plans and inspection reports by address.",
           "q": "Where do I find building permits in Fayetteville?",
-          "a": "The City of Fayetteville's Permitting & Inspections divisions issue building permits, review plans and inspect buildings in the city. Permit records, plans and inspection reports for an address are in its E-Development portal (from 2021) and Fayworx portal (2015 to 2021)."
+          "a": "The City of Fayetteville's Permitting & Inspections divisions issue building permits, review plans and inspect buildings in the city. Permit records, plans and inspection reports for an address are in its E-Development portal, for projects submitted after 2021, and its Fayworx portal, for records from 2015 to 2021."
         },
         {
           "id": "zoning",
@@ -247,8 +247,9 @@
           "a": "The City of Reading's Zoning and Planning office interprets and enforces the Zoning Ordinance and keeps the zoning map. A zoning permit is needed before building, moving or expanding a structure."
         }
       ],
-      "built": 1938,
-      "value": 121300
+      "built": 1939,
+      "value": 121300,
+      "built_open": "below"
     },
     "4819000": {
       "name": "Dallas",
@@ -477,9 +478,9 @@
           "title": "Building permits",
           "office": "City of Boulder, Building Permits and Inspections",
           "url": "https://bouldercolorado.gov/services/building-permits-and-inspections",
-          "line": "Building, altering, enlarging, moving, repairing, removing or replacing any building or structure takes a permit; applications go in through the city's Customer Self-Service Portal.",
+          "line": "Building, altering, enlarging, moving, repairing, removing or replacing any building or structure takes a permit; applications go in through the city's Customer Self-Service Portal, and the page links a search of previous permits.",
           "q": "Where do I find building permits in Boulder?",
-          "a": "The City of Boulder issues building permits; building, altering, enlarging, repairing or removing any building or structure takes one. Applications go in through the city's Customer Self-Service Portal, which also searches earlier permits."
+          "a": "The City of Boulder issues building permits; building, altering, enlarging, repairing or removing any building or structure takes one. Applications go in through the city's Customer Self-Service Portal, and the city's page links a search of previous permits and property information."
         },
         {
           "id": "zoning",

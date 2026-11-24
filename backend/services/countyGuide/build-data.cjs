@@ -50,14 +50,24 @@ const citiesFile = path.join(__dirname, 'data', 'cities.json');
 const cityData = fs.existsSync(citiesFile) ? JSON.parse(fs.readFileSync(citiesFile, 'utf8')) : null;
 const cities = cityData?.cities || {};
 
+// A median that falls in the open-ended lowest or highest interval of the table's distribution has no number of its
+// own: the summary file writes a code just past the interval's edge (1938 for "1939 or earlier", 2021 for "2020 or
+// later"; 9999 for "under $10,000", 2000001 for "$2,000,000 or more") and the margin of error -333333333, "the median
+// falls in the lowest interval or highest interval of an open-ended distribution" (census.gov, "Notes on ACS Estimate
+// and Annotation Values"). Such a median is kept as the interval's edge and the side it is on, never as a year or value.
+const OPEN_ENDED = -333333333;
+const EDGES = { B25035: [1939, 2020], B25077: [10000, 2000000] };
+
 // The summary file's estimate column; negative values are the Census's codes for "no estimate". Counties (summary
 // level 050) and the cities in data/cities.json (places, level 160).
 function readTable(file, key) {
   const rows = lines(file);
   const header = rows[0].split('|');
   const at = header.indexOf(`${key}_E001`);
-  if (at < 0) throw new Error(`${file} has no ${key}_E001 column`);
+  const moeAt = header.indexOf(`${key}_M001`);
+  if (at < 0 || moeAt < 0) throw new Error(`${file} has no ${key}_E001 or ${key}_M001 column`);
   const field = key === 'B25035' ? 'built' : 'value';
+  const [low, high] = EDGES[key];
   let read = 0;
   for (const row of rows.slice(1)) {
     const cols = row.split('|');
@@ -65,8 +75,15 @@ function readTable(file, key) {
     const target = match && (match[1] === '0500000' ? counties[match[2]] : cities[match[2]]);
     if (!target) continue;
     const value = Number(cols[at]);
+    delete target[`${field}_open`];
     if (Number.isFinite(value) && value > 0) {
-      target[field] = value;
+      if (Number(cols[moeAt]) === OPEN_ENDED) {
+        const below = value <= low;
+        target[field] = below ? low : high;
+        target[`${field}_open`] = below ? 'below' : 'above';
+      } else {
+        target[field] = value;
+      }
       if (match[1] === '0500000') read += 1;
     }
   }

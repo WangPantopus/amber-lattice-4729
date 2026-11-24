@@ -65,7 +65,17 @@ export type GuideCountyPage = {
   flood_cost?: { median: number; p25: number | null; p75: number | null; months: number; read: string | null; source: string; notice: string } | null;
   exemption?: { label: string; filing: string; note: string; source_name: string; source_url: string; read: string } | null;
   appeal?: { note: string; source: { name: string; url: string }; read: string } | null;
-  homes?: { median_year_built: number | null; median_value: number | null; survey: string; source: string; url: string } | null;
+  // `*_open`: the median falls in the survey's open-ended lowest ('below') or highest ('above') interval, and the
+  // number is that interval's edge ("1939 or earlier"), not a year or value of its own.
+  homes?: {
+    median_year_built: number | null;
+    median_year_built_open?: 'below' | 'above' | null;
+    median_value: number | null;
+    median_value_open?: 'below' | 'above' | null;
+    survey: string;
+    source: string;
+    url: string;
+  } | null;
   questions: GuideQuestion[];
   /** The county's cities that have a page. */
   cities?: { slug: string; name: string }[];
