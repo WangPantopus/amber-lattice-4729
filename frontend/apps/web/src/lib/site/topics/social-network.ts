@@ -5,7 +5,7 @@ export const socialNetwork: TopicPage = {
   route: 'topic:social-network',
   title: 'A social network of real people at real homes',
   description:
-    'Pantopus is a social network where every account starts at a real home: Pulse, stories on a map, plans, mail and chat with the people around you, no crime feed.',
+    'Pantopus is a social network of real people at real homes: Pulse, stories on a map, plans, mail and chat with the people around you, no crime feed.',
   label: 'Social network',
   h1: 'A home is hard *to fake.*',
   lede: 'Anyone can make an account. A bot can write a post. Nobody can make up the address they live at. Pantopus ties each person to a real home, so there is a real person behind every post, plan and letter.',
@@ -99,7 +99,7 @@ export const socialNetwork: TopicPage = {
     },
   ],
   questions: [
-    { q: 'Is Pantopus a social network?', a: 'Yes. Pantopus is a social network where every account starts at a real home, with Pulse, Moments, Plans, Mail and chat for the people around you and the people you know.' },
+    { q: 'Is Pantopus a social network?', a: 'Yes. Pantopus is a social network of real people at real homes, with Pulse, Moments, Plans, Mail and chat for the people around you and the people you know.' },
     { q: 'How is Pantopus different from other social media?', a: 'There is no main feed. What you see starts at a real place, people can verify the home they live in, and crime and suspicious-person posts aren’t allowed.' },
     { q: 'Do I have to verify my home to join?', a: 'No. You can make an account without an address. Verifying your home adds the Verified mark, messages to the homes on your block and mail for your home.' },
     { q: 'Who can see my address?', a: 'Only you see the address you type, others see your first name, never your address' },
