@@ -1201,6 +1201,33 @@
       "built": 1995,
       "value": 310400
     },
+    "3941720": {
+      "name": "Lancaster",
+      "county": "39045",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lancaster Certified Building Department",
+          "url": "https://www.lancasterohio.gov/155/Building",
+          "line": "A building permit is the City's authorization to begin construction: most new construction or remodeling needs one, while maintenance does not. The Department enforces the 2019 Residential Code of Ohio and the 2024 Ohio Building Code.",
+          "q": "Where do I find building permits in Lancaster?",
+          "a": "In Lancaster, a building permit is the City's authorization to begin construction: most work involving new construction or remodeling requires one, while work classified as maintenance does not. The City's Certified Building Department, in City Hall, enforces the 2019 Residential Code of Ohio and the 2024 Ohio Building Code, and accepts non-residential plans only electronically."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lancaster Planning & Zoning Department",
+          "url": "https://www.lancasterohio.gov/994/Planning-Zoning",
+          "line": "Reviews project plans for compliance with the City's zoning code; a zoning clearance review and permit are required before the construction, alteration or change of use of any building, structure or land. The page links the Zoning Map.",
+          "q": "Where is Lancaster's zoning?",
+          "a": "The City of Lancaster's Planning & Zoning Department reviews project plans for compliance with the City's zoning code and consistency with long range and area plans. A zoning clearance review and permit are required before the construction, alteration or change of use of any building, structure or land, such as new construction, additions and accessory structures, and the Board of Zoning Appeals hears requests for variances."
+        }
+      ],
+      "built": 1963,
+      "value": 193900
+    },
     "3979002": {
       "name": "Upper Arlington",
       "county": "39049",
@@ -1697,6 +1724,33 @@
       "built": 1994,
       "value": 430200
     },
+    "4872530": {
+      "name": "The Colony",
+      "county": "48121",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of The Colony Building Inspections Department",
+          "url": "https://www.thecolonytx.gov/283/Building-InspectionsPermits",
+          "line": "Permits are required before any new construction and for additions, alterations or repairs, and as of Oct. 1, 2025 also for roof replacement, siding replacement and foundation repair; applications go in by email as PDFs, with a $50 application fee.",
+          "q": "Where do I find building permits in The Colony?",
+          "a": "The City of The Colony's Building Inspections Department oversees the issuance and inspection of development-related permits. Permits are required before beginning any new construction and for additions, alterations or repairs to existing buildings, structures and their plumbing, electrical or mechanical systems, and as of Oct. 1, 2025 the City also requires a permit for roof replacement, siding replacement and foundation repair. The City adopted the 2024 ICC codes and the 2023 NEC effective July 17, 2025."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of The Colony Planning and Development Department",
+          "url": "https://www.thecolonytx.gov/276/Planning",
+          "line": "Takes development applications such as site plans, plats and Specific Use Permits through its Online Development Portal and links the Zoning Ordinance and the City's Zoning Map; it does not handle building permits.",
+          "q": "Where is The Colony's zoning?",
+          "a": "The City of The Colony's Planning and Development Department takes development applications, including site plans, plats, Board of Adjustment variances and Specific Use Permits, through its Online Development Portal, and its page links the Zoning Ordinance and the City of The Colony Zoning Map. The Planning Department does not handle permits; those go to the Building Department."
+        }
+      ],
+      "built": 2001,
+      "value": 383900
+    },
     "5303180": {
       "name": "Auburn",
       "county": "53033",
@@ -1751,6 +1805,33 @@
       ],
       "built": 1982,
       "value": 1340300
+    },
+    "5307695": {
+      "name": "Bremerton",
+      "county": "53035",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Bremerton Department of Community Development",
+          "url": "https://www.bremertonwa.gov/153/Community-Development",
+          "line": "All permit applications and payments can be made online, and plans are reviewed in the order they are received; the page links the building permit application, the online permit and inspection system and the Permit Guide.",
+          "q": "Where do I find building permits in Bremerton?",
+          "a": "In Bremerton, the Department of Community Development takes all permit applications and payments online, and plans are reviewed in the order they are received. Its page links the application for a building permit, the online permit and inspection system and the Permit Guide."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Bremerton Department of Community Development, Zoning Code & Map",
+          "url": "https://www.bremertonwa.gov/399/Zoning-Code-Map",
+          "line": "Updates to the Bremerton Zoning Code and Official Zoning Map took effect June 16, 2025, implementing the 2024 Comprehensive Plan update; the Zoning Code is Title 20 of the Municipal Code, and the official Zoning Map is on file with the Department of Community Development.",
+          "q": "Where is Bremerton's zoning?",
+          "a": "Bremerton's Zoning Code is Title 20, the Land Use section, of the Bremerton Municipal Code; updates to it and to the Official Zoning Map took effect on June 16, 2025, implementing the 2024 Comprehensive Plan update. The only Official Zoning Map is on file with the Department of Community Development, and the City's page has reproductions of the map for general guidance and reference."
+        }
+      ],
+      "built": 1969,
+      "value": 439400
     },
     "5308850": {
       "name": "Burien",
@@ -1859,6 +1940,33 @@
       ],
       "built": 1975,
       "value": 461200
+    },
+    "5356695": {
+      "name": "Puyallup",
+      "county": "53053",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Puyallup Development Services, Building Services",
+          "url": "https://www.puyallupwa.gov/325/Permit-Services",
+          "line": "Building Services administers the Washington State Building Codes, including building permit plan review and inspections; permits are submitted through the CityView online permit system, and the Department of Labor & Industries issues all electrical permits.",
+          "q": "Where do I find building permits in Puyallup?",
+          "a": "The City of Puyallup's Building Services administers the Washington State Building Codes, including building permit plan review and inspection services, and permits are submitted through the City's online permit system, CityView. A pre-application gives feedback from the building, fire, planning and engineering divisions before a permit application, and the Department of Labor & Industries issues all electrical permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Puyallup Development Services, Planning Services",
+          "url": "https://www.puyallupwa.gov/429/Planning-Services",
+          "line": "Administers the city's zoning, land use and critical area regulations and reviews development proposals for consistency with zoning and design standards; the page links the City zoning map.",
+          "q": "Where is Puyallup's zoning?",
+          "a": "The City of Puyallup's Planning Division administers the city's zoning, land use and critical area regulations, reviews development proposals for consistency with zoning and design standards and guides property owners on land use permitting and zoning requirements. Its page links the City zoning map, and its 2026-2027 work program includes zoning map and code updates."
+        }
+      ],
+      "built": 1987,
+      "value": 551800
     },
     "5357535": {
       "name": "Redmond",
@@ -3697,6 +3805,168 @@
       ],
       "built": 1980,
       "value": 902200
+    },
+    "0630014": {
+      "name": "Glendora",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Glendora Community Development, Building and Safety Division",
+          "url": "https://www.cityofglendora.gov/Services/Development-Services/Building-And-Safety",
+          "line": "Handles plan review, inspection and enforcement of the adopted building codes and is the contact point for the permit and inspection process; permits go through the City's Civic Access portal, and eTrakit holds legacy permit and property records.",
+          "q": "Where do I find building permits in Glendora?",
+          "a": "The City of Glendora's Building and Safety Division, part of the Community Development Department, handles plan review, inspection and enforcement of the adopted building codes, and is the contact point for the permit and inspection process, which may involve other departments and agencies. Permitting needs go through the City's Civic Access portal, and eTrakit holds legacy permit and property records."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Glendora Community Development, Planning Division",
+          "url": "https://www.cityofglendora.gov/Services/Development-Services/Planning",
+          "line": "Helps residents, homeowners, businesses and developers with zoning and land use matters, working with the Building and Engineering Divisions so new construction meets the City's land use and zoning regulations.",
+          "q": "Where is Glendora's zoning?",
+          "a": "The City of Glendora's Planning Division helps residents, homeowners, businesses and developers with zoning and land use matters. It works with the Building and Engineering Divisions to ensure new construction and projects meet the City's land use and zoning regulations, and maintains the General Plan."
+        }
+      ],
+      "built": 1964,
+      "value": 862700
+    },
+    "0603666": {
+      "name": "Baldwin Park",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Baldwin Park Building and Safety Division",
+          "url": "https://www.baldwinpark.com/157/Building-Safety",
+          "line": "Processes plan checks, issues building permits and inspects construction sites for compliance with the permits issued, enforcing the Uniform Model Codes, State laws and the Municipal Code.",
+          "q": "Where do I find building permits in Baldwin Park?",
+          "a": "The City of Baldwin Park's Building and Safety Division processes plan checks, issues building permits and inspects construction sites for compliance with the building permits issued, enforcing the Uniform Model Codes, State laws and other provisions of the Municipal Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Baldwin Park Planning Division",
+          "url": "https://www.baldwinpark.com/211/Planning-Division",
+          "line": "Updates and maintains the City's General Plan and development codes; the page posts the zoning code chapter by chapter, from the residential, commercial and industrial zones to the overlay and specific plan zones.",
+          "q": "Where is Baldwin Park's zoning?",
+          "a": "The City of Baldwin Park's Planning Division updates and maintains the City's General Plan and development codes, and the Planning Commission reviews all entitlement applications. The Division's page posts the City's zoning code chapter by chapter, including the residential zones, the commercial and industrial zones, mixed use and the overlay zones."
+        }
+      ],
+      "built": 1964,
+      "value": 606900
+    },
+    "0621230": {
+      "name": "Eastvale",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Eastvale Community Development, Building Safety",
+          "url": "https://www.eastvaleca.gov/government/community-development-department/building-safety",
+          "line": "Reviews and analyzes construction plans against the construction codes adopted by the State of California, issues permits and inspects residential, commercial and city-owned projects; the page links the Eastvale Permit Portal.",
+          "q": "Where do I find building permits in Eastvale?",
+          "a": "The City of Eastvale's Building Safety team, in the Community Development Department, reviews proposed building projects against the construction codes adopted by the State of California. It reviews and analyzes construction plans, issues permits and performs periodic inspections of residential, commercial and city-owned public projects, and its page links the Eastvale Permit Portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Eastvale Community Development, Planning Division",
+          "url": "https://www.eastvaleca.gov/government/community-development/planning",
+          "line": "Processes development applications for small and large projects and answers planning questions from the public; the page links the Eastvale Zoning Code, the Eastvale 2040 General Plan and the GIS Web App.",
+          "q": "Where is Eastvale's zoning?",
+          "a": "The City of Eastvale's Planning Division processes development applications for small and large projects, assists the public with planning questions and helps interpret the zoning code in code enforcement cases. Its page links the Eastvale Zoning Code, the Eastvale 2040 General Plan and the City's GIS Web App."
+        }
+      ],
+      "built": 2007,
+      "value": 831900
+    },
+    "0617568": {
+      "name": "Culver City",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Culver City Planning and Development, Building Safety Division",
+          "url": "https://www.culvercity.gov/City-Hall/City-Departments/Planning-Development-Department/Building-Safety",
+          "line": "Ensures safe buildings through permitting, plan check and inspection services; Building Safety applications are submitted and tracked on the Culver City Online Permit Portal.",
+          "q": "Where do I find building permits in Culver City?",
+          "a": "The City of Culver City's Building Safety Division protects the health, safety and welfare of the public by ensuring safe buildings, through permitting, plan check and inspection services. Building Safety applications are submitted and tracked on the Culver City Online Permit Portal, and the Division administers the City's mandatory soft-story Seismic Retrofit Program for older wood-frame multi-unit buildings."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Culver City Planning and Development, Current Planning Division",
+          "url": "https://www.culvercity.gov/City-Hall/City-Departments/Planning-Development-Department/Current-Planning-Division",
+          "line": "Maintains and implements the City's General Plan and Zoning Ordinance and reviews development requests for conformance; the General Plan and Zoning Code are in effect as of October 9, 2024, and the page links the Zoning Map.",
+          "q": "Where is Culver City's zoning?",
+          "a": "The City of Culver City's Current Planning Division maintains and implements the City's General Plan and Zoning Ordinance, reviews development requests for conformance with the City's planning policies and standards, and processes rezoning, subdivisions, use permits and variances. The General Plan and Zoning Code are in effect as of October 9, 2024, and the Division's page links the Zoning Map."
+        }
+      ],
+      "built": 1963,
+      "value": 1142900
+    },
+    "0662546": {
+      "name": "Rohnert Park",
+      "county": "06097",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Rohnert Park Building Division",
+          "url": "https://www.rpcity.ca.gov/217/Building",
+          "line": "Accepts building permit applications electronically from contractors and property owners, reviewed in the order received; inspections are scheduled through the City's Online Inspection Request Portal.",
+          "q": "Where do I find building permits in Rohnert Park?",
+          "a": "The City of Rohnert Park's Building Division accepts building permit applications electronically from contractors and property owners and reviews them in the order received. Building inspections are scheduled through the City's Online Inspection Request Portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Rohnert Park, Zoning Regulations",
+          "url": "https://www.rpcity.ca.gov/277/Zoning-Regulations",
+          "line": "The Zoning Ordinance, Title 17 of the Municipal Code, divides the City into districts by land use type and sets what each allows; Chapter 17.10's table gives heights, setbacks and lot coverage, and the page links the Zoning Map.",
+          "q": "Where is Rohnert Park's zoning?",
+          "a": "In Rohnert Park, the Zoning Ordinance, found in Title 17 of the Municipal Code, divides the City into districts by land use type, such as residential, commercial and industrial, and identifies the uses allowed in each. Chapter 17.10's development standards table gives the dimensional requirements for lots in each district, including maximum building heights, minimum setbacks and maximum lot coverages, and the City's page links the Zoning Map."
+        }
+      ],
+      "built": 1982,
+      "value": 666300
+    },
+    "0616742": {
+      "name": "Covina",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Covina Community Development, Building & Safety Division",
+          "url": "https://covinaca.gov/city-departments/community-development/building-safety/",
+          "line": "Provides plan review, inspection and investigative services; plans are reviewed for compliance with state and local codes, including life safety, structural integrity, disabled accessibility and energy efficiency.",
+          "q": "Where do I find building permits in Covina?",
+          "a": "The City of Covina's Building & Safety Division provides plan review, inspection and investigative services. Plans are submitted to its Building and Safety Section for review for compliance with state and local codes, including life safety, structural integrity, disabled accessibility and energy efficiency, and the Division reviews and inspects building, plumbing, mechanical and electrical construction."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Covina Community Development, Planning Division",
+          "url": "https://covinaca.gov/city-departments/community-development/planning/",
+          "line": "Maintains and implements the City's General Plan and Zoning Ordinance and reviews proposals to develop, remodel or alter buildings for compliance with zoning standards and design guidelines.",
+          "q": "Where is Covina's zoning?",
+          "a": "The City of Covina's Planning Division maintains and implements the City's General Plan and Zoning Ordinance, and reviews proposals to develop, remodel or alter buildings, parking lots or other structures for compliance with zoning standards and design guidelines. It processes rezoning, subdivisions, site plan reviews, use permits and variances for the Planning Commission and City Council."
+        }
+      ],
+      "built": 1965,
+      "value": 718900
     }
   }
 }
