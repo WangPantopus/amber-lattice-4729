@@ -192,7 +192,7 @@ const LOWEST_SALE_PRICE = 1000;
  * What the record holds for this home that opens for its owner, as `closed_group` items (SPEC rule 1: only where we hold
  * it; rule 2: a name and one line). `extras`: what was read beside the record ({ similar, estimate }).
  */
-function closedItems(copy, { similar = null, estimate = null } = {}) {
+function closedItems(copy, { similar = null, estimate = null, years = null } = {}) {
   const facts = copy?.facts || {};
   const exact = copy?.match === 'exact';
   const money = [];
@@ -220,6 +220,11 @@ function closedItems(copy, { similar = null, estimate = null } = {}) {
   }
   if (exact && Array.isArray(facts.exemptions)) {
     money.push({ icon: 'shield', title: 'Exemptions on file', line: 'Whether the county shows a property tax exemption on this home' });
+  }
+
+  // Survey years cover the point, record or not: a count and the span, nothing about the home.
+  if (years && years.count > 1) {
+    changes.push({ icon: 'image', title: 'Your lot through the years', line: `${years.count} photos from above, ${years.first} to ${years.last}` });
   }
 
   if (positive(facts.year_built)) {
