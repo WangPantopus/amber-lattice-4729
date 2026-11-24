@@ -84,7 +84,9 @@ export * as hub from './endpoints/hub';                     // Hub (Mission Cont
 export * as location from './endpoints/location';           // Viewing Location
 export * as listings from './endpoints/listings';           // Marketplace Listings
 export * as savedPlaces from './endpoints/savedPlaces';    // Saved Places
-export type { AreaToday, TodayArea, AroundYou, AroundYouSection, AroundYouItem } from './endpoints/savedPlaces';
+export type {
+  AreaToday, TodayArea, AroundYou, AroundYouSection, AroundYouItem, AroundYouList, AroundYouListPage, AroundYouListQuery,
+} from './endpoints/savedPlaces';
 export type { RelationshipAction, RelationshipCommand, RelationshipReceipt, RelationshipReview, RelationshipResponse } from './endpoints/homeOwnership';
 export type { ResidencyReviewAction, ResidencyReviewRole, ResidencyReviewCommand, ResidencyReviewReceipt, ResidencyReview, ResidencyReviewResponse } from './endpoints/homes';
 export * as homeOwnership from './endpoints/homeOwnership'; // Home Ownership (claims, owners, quorum, disputes)

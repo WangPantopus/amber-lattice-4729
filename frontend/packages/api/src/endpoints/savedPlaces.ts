@@ -89,12 +89,47 @@ export interface AroundYouSection {
   posts?: Post[];
 }
 
+/** A list Around you offers as a chip: 'all', 'talked' (what people replied or reacted to) or a topic. */
+export interface AroundYouList {
+  id: string;
+  title: string;
+}
+
 /** Today's second half. `available` false: show no switch (the feature is off, or the area has nothing to show). */
 export interface AroundYou {
   available: boolean;
   /** The content region's name ("Clark County, WA"); null when unavailable. */
   area: string | null;
   sections: AroundYouSection[];
+  /**
+   * The chips to offer over the page, 'all' first; a topic is listed only where the region has stories for it. Absent
+   * from servers before the lists (and when the posts could not be made): show no chips then.
+   */
+  lists?: AroundYouList[];
+}
+
+/**
+ * One page of a list behind the first page: 'all' is every earlier story that is not on the first page, a topic's
+ * list its stories (Events: what is coming, soonest first), newest first. `next` goes back as `before` for the page
+ * after; null at the list's end.
+ */
+export interface AroundYouListPage {
+  available: boolean;
+  area: string | null;
+  lists: AroundYouList[];
+  list: string;
+  posts: Post[];
+  next: string | null;
+}
+
+/** Which list to read, and where it continues. */
+export interface AroundYouListQuery {
+  list: string;
+  before?: string | null;
+}
+
+function listParams(query: AroundYouListQuery) {
+  return { list: query.list, ...(query.before ? { before: query.before } : {}) };
 }
 
 /** POST /api/saved-places/area/around: Around you for the city around a point (rounded here and again on the server; nothing is stored). */
@@ -102,7 +137,19 @@ export async function getAreaAround(point: { latitude: number; longitude: number
   return post<AroundYou>('/api/saved-places/area/around', { latitude: point.latitude, longitude: point.longitude });
 }
 
+/** POST /api/saved-places/area/around with `list`: a page of one of Around you's lists for the city around a point. */
+export async function getAreaAroundList(point: { latitude: number; longitude: number }, query: AroundYouListQuery) {
+  return post<AroundYouListPage>('/api/saved-places/area/around', {
+    latitude: point.latitude, longitude: point.longitude, ...listParams(query),
+  });
+}
+
 /** GET /api/saved-places/:id/around: Around you for a saved address. */
 export async function getSavedPlaceAround(id: string) {
   return get<AroundYou>(`/api/saved-places/${id}/around`);
+}
+
+/** GET /api/saved-places/:id/around?list=: a page of one of Around you's lists for a saved address. */
+export async function getSavedPlaceAroundList(id: string, query: AroundYouListQuery) {
+  return get<AroundYouListPage>(`/api/saved-places/${id}/around`, listParams(query));
 }
