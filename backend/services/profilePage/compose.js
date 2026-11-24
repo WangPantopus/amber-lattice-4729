@@ -160,7 +160,7 @@ function askedWords(at, now) {
  * signing in (the link view) names a signed person only if they allowed it, and a typed name never, each shown by
  * what they did instead. The owner reads an ask as "Asked today" and a "Not me" as `did_not_confirm`.
  */
-function creditOf(c, { view, first, now = new Date() }) {
+function creditOf(c, { view, first, now = new Date(), viewerId = null }) {
   const typed = !c.party_user_id;
   const named = view !== 'link' || (!typed && c.name_on_links === true);
   const shown = c.party_shown || {};
@@ -181,7 +181,13 @@ function creditOf(c, { view, first, now = new Date() }) {
     status = 'did_not_confirm';
     how = 'Did not confirm';
   }
-  return { id: c.id, party, role: String(c.role || '').trim() || null, relation: c.relation || null, ink, how, status };
+  const answer = { id: c.id, party, role: String(c.role || '').trim() || null, relation: c.relation || null, ink, how, status };
+  // The signer reading their own signed credit gets their two choices, to draw the switches beside "Take my name off"
+  // (PATCH /me/ties/:id). Nobody else's credit carries them.
+  if (c.status === 'signed' && view !== 'link' && viewerId && String(c.party_user_id) === String(viewerId)) {
+    answer.mine = { show_on_my_work: c.show_on_party_work !== false, show_name_on_links: c.name_on_links === true };
+  }
+  return answer;
 }
 
 /**
@@ -195,7 +201,7 @@ function creditsFor(credits, pieceId, { view, viewerId = null, first, now = new 
       || (c.status === 'asked' && (view === 'owner' || (viewerId && view !== 'link' && String(c.party_user_id) === String(viewerId))))
       || (c.status === 'declined' && view === 'owner'))
     .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || String(a.created_at).localeCompare(String(b.created_at)))
-    .map((c) => ({ raw: c, credit: creditOf(c, { view, first, now }) }));
+    .map((c) => ({ raw: c, credit: creditOf(c, { view, first, now, viewerId }) }));
 }
 
 /**
@@ -581,7 +587,8 @@ function buildRecord(ctx, sources, { now }) {
         ...base.piece, ink: 'signed', how: ownerName ? `With ${ownerName}` : 'Signed together', pinned: false,
         link: { kind: 'piece', id: t.piece.id, user_id: t.owner_id, username },
         with: { name: ownerName, user_id: t.owner_id, username },
-        ...(viewOf === 'owner' ? { tie_id: t.id } : {}),
+        // The signer's own view: the tie to change or take off, and their choices (shown here, so on their Work).
+        ...(viewOf === 'owner' ? { tie_id: t.id, mine: { show_on_my_work: true, show_name_on_links: t.name_on_links === true } } : {}),
       },
     });
   }
