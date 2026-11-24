@@ -9,6 +9,12 @@ import { extractApiError } from '@/lib/auth-utils';
 import { card, overline } from './blocks';
 import Picture from './Picture';
 
+/** Initials for a named face with no picture. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+}
+
 /** Where an ask's piece opens: its owner's page with the piece open. */
 function pieceHref(ask: ProfileAsk): string | null {
   if (!ask.piece?.id) return null;
@@ -48,10 +54,13 @@ function AskRow({ ask, onDone }: { ask: ProfileAsk; onDone: () => void }) {
   return (
     <li className="px-5 py-3 flex flex-col gap-2.5">
       <div className="flex items-start gap-3">
+        {/* The asker is named (a connection, or the other party of the job): their picture, else their initials. */}
         {ask.from?.portrait_url ? (
           <Picture src={ask.from.portrait_url} className="w-10 h-10 shrink-0 rounded-full object-cover bg-app-surface-sunken" />
         ) : (
-          <span aria-hidden="true" className="w-10 h-10 shrink-0 rounded-full bg-app-surface-sunken text-app-secondary flex items-center justify-center"><User className="w-5 h-5" /></span>
+          <span aria-hidden="true" className="w-10 h-10 shrink-0 rounded-full bg-app-surface-sunken text-app-secondary flex items-center justify-center text-[0.8125rem] font-bold">
+            {ask.from?.name?.trim() ? initials(ask.from.name) : <User className="w-5 h-5" />}
+          </span>
         )}
         <div className="min-w-0 flex-1">
           <p className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
@@ -80,6 +89,11 @@ function AskRow({ ask, onDone }: { ask: ProfileAsk; onDone: () => void }) {
               <span className="block text-xs leading-4 text-app-muted">Off: those pages say what you did, not who you are.</span>
             </span>
           </label>
+          <p className="pt-1 text-[0.8125rem] leading-[1.125rem] text-app-secondary">
+            {ask.kind === 'credit'
+              ? 'Signing says you were on this piece. You can take your name off at any time.'
+              : 'Signing says you were there. You can take your name off at any time.'}
+          </p>
           <div className="flex gap-2 pt-1">
             <button type="button" disabled={busy} onClick={sign} className="min-h-[2.75rem] px-4 rounded-xl bg-primary-600 text-white text-[0.9375rem] font-semibold hover:bg-primary-700 disabled:opacity-60">{busy ? 'Signing…' : 'Sign'}</button>
             <button type="button" disabled={busy} onClick={() => setSigning(false)} className="min-h-[2.75rem] px-4 rounded-xl text-[0.9375rem] font-semibold text-app-secondary hover-bg-app">Back</button>
