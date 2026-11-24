@@ -14,4 +14,34 @@ function isHomeSale(price, ...words) {
   return Number(price) > TOKEN_PRICE && !words.some((text) => NOT_A_SALE.test(String(text ?? '')));
 }
 
-module.exports = { isHomeSale, TOKEN_PRICE };
+// A home's recorded history keeps its newest lines, so one parcel a developer split into hundreds can't fill a page.
+const MOST_LINES = 30;
+
+/**
+ * One line of a county's sales table as recorded history (facts.js `recorded_history`), or null when it has no date or no word
+ * for what it is. `sale`: this home changing hands at that price, by the connector's own rule for its last sale, so the
+ * newest sale here is the Last sale row; any other line keeps no price, since a price on a quit claim or an easement isn't
+ * the home's. `word`: the county's own word for the line, in sentence case; a sale needs none ("Sale" on screens). `parcels`:
+ * how many accounts the line's deed covers, where more than one, so its price reads as theirs together. Never a name.
+ */
+function historyLine({ date, sale, word = null, price = null, document = null, parcels = null }) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : null;
+  if (!day || (!sale && !word)) return null;
+  const line = { date: day, sale: Boolean(sale), word: word || null };
+  if (sale && Number(price) > 0) line.price = Number(price);
+  const number = String(document ?? '').trim();
+  if (number && !/^(NULL|NONE|N\/A|0+)$/i.test(number)) line.document = number;
+  if (Number(parcels) > 1) line.parcels = Number(parcels);
+  return line;
+}
+
+/**
+ * A home's lines, newest first (a sale before the other lines of its day), as the fact a release holds; null with none.
+ * `since`: the first year the county's table holds, which screens say, since nothing older is in it.
+ */
+function recordedHistory(lines, { since }) {
+  const kept = lines.filter(Boolean).sort((a, b) => b.date.localeCompare(a.date) || Number(b.sale) - Number(a.sale) || String(a.document || '').localeCompare(String(b.document || '')));
+  return kept.length ? { since: String(since), lines: kept.slice(0, MOST_LINES) } : null;
+}
+
+module.exports = { isHomeSale, TOKEN_PRICE, NOT_A_SALE, historyLine, recordedHistory };
