@@ -35,7 +35,12 @@ export function safeRedirectPath(redirectTo: string | null | undefined, fallback
       /^\/b\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?$/.test(path) ||
       // A letter's claim page (/open/:mailId?token=…), opened from its email before signing in.
       /^\/open\/[a-fA-F0-9-]+$/.test(path) ||
-      /^\/@[a-zA-Z0-9_-]+$/.test(path);
+      /^\/@[a-zA-Z0-9_-]+$/.test(path) ||
+      // A person's profile (pantopus.com/<username>, /u/<username>, or its posts): sign in or join from it and come
+      // back to it. A username is 3 to 30 letters, numbers or underscores; a link for one purpose is never a target,
+      // and neither are the sign-in pages or the API that share the site's top level.
+      (/^\/(?:u\/)?[a-zA-Z0-9_]{3,30}(?:\/posts)?$/.test(path)
+        && !/^\/(?:login|register|logout|signout|auth|session|api)(?:\/|$)/i.test(path));
     return allowed ? path + suffix : fallback;
   } catch {
     return fallback;
