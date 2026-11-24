@@ -51,6 +51,9 @@ const CITIES = [
   // November 24, 2026, thirteenth: Inglewood and Downey (Los Angeles County), Victorville (San Bernardino County) and
   // Palm Desert (Riverside County), CA; Miami Gardens (Miami-Dade County), FL.
   '0636546', '0619766', '0682590', '0655184', '1245060',
+  // November 24, 2026, fourteenth: West Covina, Alhambra, Redondo Beach and El Monte (Los Angeles County), Hesperia (San
+  // Bernardino County), CA; Arlington Heights (Cook County), IL.
+  '0684200', '0600884', '0660018', '0622230', '0633434', '1702154',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
