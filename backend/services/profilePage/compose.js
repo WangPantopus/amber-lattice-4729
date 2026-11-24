@@ -243,8 +243,9 @@ function pieceOf(row, first, owner, credits = []) {
     media: {
       photos: media.filter((u) => IMAGE_EXT.test(u)).length,
       videos: media.filter((u) => VIDEO_EXT.test(u)).length,
-      // file_ids holds every attachment (photos and videos also sit in media_urls); the rest are documents.
-      documents: Math.max(0, files - media.length),
+      // Counted from File by the rows (CONTRACT p2.12: a piece may keep pictures that aren't files); else, as before,
+      // file_ids holds every attachment (photos and videos also sit in media_urls) and the rest are documents.
+      documents: row.document_count != null ? Number(row.document_count) : Math.max(0, files - media.length),
       links: cards,
     },
     ink: seen ? 'seen' : (by ? 'signed' : 'said'),

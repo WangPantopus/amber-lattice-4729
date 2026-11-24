@@ -1,9 +1,11 @@
 -- Backwards compatible: yes. Replaces the body of public.profile_page_rows (20261124210600) with the same signature
 -- and grants. Every key keeps its meaning; `roles` rows gain `viewer_owns` (the signed-in viewer is an active owner of
--- the role's business), read only by this backend. Run after 20261124220400_profile_tie_pause.sql.
+-- the role's business) and piece rows gain `document_count` (their attached documents, counted from File), read
+-- only by this backend. Run after 20261124220400_profile_tie_pause.sql.
 --
 -- A profile with sources, phase 2B: a business's owner reading a role their business signed can change or take off
--- its signature from the page (profile-web's ask; CONTRACT p2.11). Server only.
+-- its signature from the page (profile-web's ask; CONTRACT p2.11); a piece's documents counted exactly when it keeps
+-- pictures from before phase 2 (profile-android's ask; CONTRACT p2.12). Server only.
 SET LOCAL lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.profile_page_rows(
@@ -92,6 +94,8 @@ SELECT COALESCE(jsonb_object_agg(u.id::text, jsonb_build_object(
              pf.skills_used, pf.external_url, pf.github_url, pf.demo_url, pf.completed_at, pf.display_order,
              pf.is_featured, pf.is_visible, pf.created_at, pf.piece_kind, pf.started_on, pf.place_city, pf.place_state,
              pf.audience, pf.links, pf.is_draft, pf.owner_role,
+             (SELECT count(*) FROM "File" df WHERE df.id = ANY (pf.file_ids) AND df.file_type = 'portfolio_document'
+               AND df.is_deleted IS NOT TRUE) AS document_count,
              CASE WHEN sg.id IS NOT NULL THEN 'gig' WHEN sp.post_id IS NOT NULL THEN 'plan' END AS source_kind,
              COALESCE(sg.owner_confirmed_at, sg.worker_completed_at, sg.updated_at, sp.ended_at) AS source_at,
              sg.id AS source_gig_id
@@ -107,6 +111,8 @@ SELECT COALESCE(jsonb_object_agg(u.id::text, jsonb_build_object(
              pf.skills_used, pf.external_url, pf.github_url, pf.demo_url, pf.completed_at, pf.display_order,
              pf.is_featured, pf.is_visible, pf.created_at, pf.piece_kind, pf.started_on, pf.place_city, pf.place_state,
              pf.audience, pf.links, pf.is_draft, pf.owner_role,
+             (SELECT count(*) FROM "File" df WHERE df.id = ANY (pf.file_ids) AND df.file_type = 'portfolio_document'
+               AND df.is_deleted IS NOT TRUE) AS document_count,
              CASE WHEN sg.id IS NOT NULL THEN 'gig' WHEN sp.post_id IS NOT NULL THEN 'plan' END AS source_kind,
              COALESCE(sg.owner_confirmed_at, sg.worker_completed_at, sg.updated_at, sp.ended_at) AS source_at,
              sg.id AS source_gig_id
@@ -173,6 +179,8 @@ SELECT COALESCE(jsonb_object_agg(u.id::text, jsonb_build_object(
                                 'is_featured', pf.is_featured, 'is_visible', pf.is_visible, 'is_draft', pf.is_draft,
                                 'piece_kind', pf.piece_kind, 'started_on', pf.started_on, 'audience', pf.audience,
                                 'links', pf.links, 'owner_role', pf.owner_role,
+                                'document_count', (SELECT count(*) FROM "File" df WHERE df.id = ANY (pf.file_ids)
+                                   AND df.file_type = 'portfolio_document' AND df.is_deleted IS NOT TRUE),
                                 'source_kind', CASE WHEN sg.id IS NOT NULL THEN 'gig' WHEN sp.post_id IS NOT NULL THEN 'plan' END,
                                 'source_at', COALESCE(sg.owner_confirmed_at, sg.worker_completed_at, sg.updated_at, sp.ended_at)) AS piece,
              CASE WHEN p_viewer IS NULL OR p_viewer = u.id THEN NULL ELSE jsonb_build_object(
