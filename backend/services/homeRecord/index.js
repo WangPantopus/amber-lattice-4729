@@ -263,7 +263,7 @@ const pointOf = (row) => {
   return row.map_center_lat != null && row.map_center_lng != null && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 };
 
-const noReadings = { flood: null, seismic: null, wildfire: null, air: null, nri: null };
+const noReadings = { flood: null, seismic: null, wildfire: null, air: null, nri: null, water: null };
 
 /** The Home's copy of its county record, as its other screens get it (a lookup kept on the Home when it has none yet). */
 async function copyForHome(row) {

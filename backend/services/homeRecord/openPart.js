@@ -21,6 +21,7 @@ const placeIntelligenceService = require('../placeIntelligenceService');
 const { encodeGeohash } = require('../../utils/geohash');
 const logger = require('../../utils/logger');
 const riskIndex = require('./riskIndex');
+const pfas = require('./pfas');
 const recordingAlerts = require('./recordingAlerts');
 const { positive, grouped, countWord, dateLabel, plural, HOME_TYPES, AREA_NOTE, PRIVACY_NOTE, PROMISE, OWNER_PROMISE } = require('./words');
 
@@ -109,8 +110,12 @@ function airRow(aqi) {
   return row('Air today', AQI[category] || 1, String(aqi.category));
 }
 
+// "CAMAS MUNICIPAL WATER SEWER SYSTEM" reads "Camas Municipal Water Sewer System".
+const sentenceName = (name) => String(name).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
+  .replace(/(?!^)\b(Of|And|The|For)\b/g, (word) => word.toLowerCase());
+
 // Who each row's rating comes from, for the block's note.
-function sourcesNote({ flood, seismic, wildfire, nri, air }) {
+function sourcesNote({ flood, seismic, wildfire, nri, air, water }) {
   const offices = [];
   if (flood && nri) offices.push(`FEMA's flood map and National Risk Index${nri.version ? ` (${nri.version})` : ''}`);
   else if (flood) offices.push('FEMA\'s flood map');
@@ -118,8 +123,22 @@ function sourcesNote({ flood, seismic, wildfire, nri, air }) {
   if (seismic) offices.push('U.S. Geological Survey');
   if (wildfire) offices.push('U.S. Forest Service');
   if (air) offices.push(air.is_estimate ? 'NOAA\'s air quality model' : 'EPA\'s AirNow');
+  // The water system's own tests, not this home's tap.
+  if (water) offices.push(`EPA's 2023-2025 PFAS tests of ${water.system ? sentenceName(water.system) : 'the water system'}, not of this home's tap`);
   const list = offices.length > 1 ? `${offices.slice(0, -1).join(', ')} and ${offices[offices.length - 1]}` : offices[0];
   return `${AREA_NOTE} ${list}.`;
+}
+
+/**
+ * PFAS for the water system that serves the point: the system from the drinking-water section's own reading (EPA's
+ * service-area map, cached by point), only where the map places the point in it, never a county's guess.
+ */
+async function waterAt(home) {
+  const envelopes = await adapters.composeDrinkingWater(home);
+  const data = dataOf(envelopes, 'drinking_water');
+  if (!data?.pws_id || data.match === 'county' || data.match === 'none') return null;
+  const result = await pfas.forSystem(data.pws_id);
+  return result ? { ...result, system: data.utility_name || result.system } : null;
 }
 
 /**
@@ -135,19 +154,22 @@ async function readings(point, { flood }) {
   // The adapters take a "home": a point named by its ~1 km cell, never by an address.
   const home = { id: `record:${encodeGeohash(point.lat, point.lng, 6)}`, map_center_lat: point.lat, map_center_lng: point.lng };
   const { fetchAQI } = require('../context/aqiProvider');
-  const [floodReading, seismic, wildfire, air, nri] = await Promise.all([
+  const [floodReading, seismic, wildfire, air, nri, water] = await Promise.all([
     within(Promise.resolve().then(() => flood(point.lat, point.lng))),
     within(adapters.composeSeismic(home)),
     within(adapters.composeWildfire(home)),
     within(fetchAQI(point.lat, point.lng)),
     within(geocodeToTractCached(point.lat, point.lng).then((tract) => (tract ? riskIndex.forTract(tract.tractId) : null))),
+    within(waterAt(home)),
   ]);
-  return { flood: floodReading, seismic, wildfire, air, nri };
+  return { flood: floodReading, seismic, wildfire, air, nri, water };
 }
 
 /** The `meters` block from the area's readings. Null when no source answered in time. */
 function metersBlock(read) {
   const nri = Object.fromEntries(riskIndex.rows(read.nri).map((each) => [each.key, row(each.label, each.level, each.word)]));
+  const pfasRow = pfas.meterRow(read.water);
+  const water = pfasRow ? row(pfasRow.label, pfasRow.level, pfasRow.word) : null;
   const shown = {
     flood: floodRow(read.flood),
     seismic: seismicRow(read.seismic),
@@ -157,7 +179,7 @@ function metersBlock(read) {
   const groups = [
     { title: 'Weather', rows: [nri.hail, nri.strong_wind, nri.tornado, nri.winter_weather] },
     { title: 'Ground and fire', rows: [shown.flood, shown.wildfire, shown.seismic, nri.landslide] },
-    { title: 'Air', rows: [shown.air] },
+    { title: 'Air and water', rows: [shown.air, water] },
   ].map((group) => ({ ...group, rows: group.rows.filter(Boolean) })).filter((group) => group.rows.length);
   if (!groups.length) return null;
   return {
@@ -166,7 +188,7 @@ function metersBlock(read) {
     title: 'Around this address',
     groups,
     note: sourcesNote({
-      flood: shown.flood, seismic: shown.seismic, wildfire: shown.wildfire, air: shown.air ? read.air : null,
+      flood: shown.flood, seismic: shown.seismic, wildfire: shown.wildfire, air: shown.air ? read.air : null, water: water ? read.water : null,
       nri: Object.keys(nri).length ? read.nri : null,
     }),
   };
