@@ -40,6 +40,9 @@ const COUNTIES = [
   // November 23, 2026, fifth: Broomfield and Mesa, CO; Martin, FL; Woodbury, IA; Scott, MN; Carteret, Lincoln and
   // Sampson, NC; Fairfield and Greene, OH; Johnson, TX; Roanoke County, VA.
   '08014', '08077', '12085', '19193', '27139', '37031', '37109', '37163', '39045', '39057', '48251', '51161',
+  // November 23, 2026, sixth (live counties with a search-engine-listed link, now read in full): Los Angeles, CA;
+  // Cook, IL; Miami-Dade, FL; Clark, NV; Franklin, OH.
+  '06037', '17031', '12086', '32003', '39049',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
