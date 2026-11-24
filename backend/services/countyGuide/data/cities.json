@@ -938,6 +938,34 @@
       "built": 1983,
       "value": 245700
     },
+    "4848804": {
+      "name": "Missouri City",
+      "county": "48157",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Missouri City Development Services, Permits and Inspections",
+          "url": "https://www.missouricitytx.gov/237/Permits-Inspections",
+          "line": "Receives applications, reviews plans and issues permits for construction that needs one, such as building, plumbing, electrical and mechanical permits; certain applications and status updates are available 24-7 in MCTX Self Service.",
+          "q": "Where do I find building permits in Missouri City?",
+          "a": "The City of Missouri City's Permits and Inspections Division receives applications, reviews plans and issues building, plumbing, electrical, mechanical and other construction permits. Certain permit applications and status updates are available 24-7 through the City's online permit system, MCTX Self Service."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Missouri City Development Services, Zoning FAQs",
+          "url": "https://www.missouricitytx.gov/m/faq?cat=43",
+          "line": "A property's zoning district is found with the City's interactive Zoning Map by address or location, and a zoning quick reference guide summarizes each district's uses, maximum building heights, setbacks and lot and density information.",
+          "q": "Where is Missouri City's zoning?",
+          "a": "The City of Missouri City's interactive Zoning Map shows a property's zoning district by address or location. A zoning quick reference guide summarizes the uses, maximum building heights, setbacks and lot and density information for each zoning district."
+        }
+      ],
+      "other_counties": true,
+      "built": 1993,
+      "value": 311400
+    },
     "4870808": {
       "name": "Sugar Land",
       "county": "48157",
@@ -1964,6 +1992,62 @@
       ],
       "built": 1985,
       "value": 620900
+    },
+    "0877290": {
+      "name": "Thornton",
+      "county": "08001",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Thornton City Development, Building Inspection Division",
+          "url": "https://www.thorntonco.gov/business-development/city-development/building-permits-inspections",
+          "line": "Handles plan review, permit issuance and inspection of new construction and remodels of existing structures; payments can be made through the online portal at any time, and the 2024 International Codes took effect July 1, 2025.",
+          "q": "Where do I find building permits in Thornton?",
+          "a": "The City of Thornton's Building Inspection Division is responsible for plan review, permit issuance and inspection of new construction and remodels of existing structures. Payments can be made through its online portal at any time, and its page links a Permit and Property Search."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Thornton City Development, Zoning Districts, Uses and Regulations",
+          "url": "https://www.thorntonco.gov/business-development/city-development/current-planning-zoning/zoning-districts-uses-and-regulations",
+          "line": "Every property has a zoning district approved by City Council, which sets its allowed land uses, setback and height requirements and development and design standards; the page links the Interactive Zoning and Property Map.",
+          "q": "Where is Thornton's zoning?",
+          "a": "Each property in the City of Thornton is designated with a zoning district, approved by the City Council, that determines its allowed land uses, setback and height requirements and development and design standards. The City's page links its Interactive Zoning and Property Map, and hardcopy maps can be bought at the City Development Department."
+        }
+      ],
+      "other_counties": true,
+      "built": 1997,
+      "value": 517500
+    },
+    "0845970": {
+      "name": "Longmont",
+      "county": "08013",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Longmont, Building Services",
+          "url": "https://longmontcolorado.gov/building-inspection/",
+          "line": "Enforces building codes, conducts inspections and issues permits from the Development Services Center at 385 Kimbark St.; the City adopted the 2024 International Codes, effective July 1, 2026.",
+          "q": "Where do I find building permits in Longmont?",
+          "a": "The City of Longmont's Building Services Department enforces building codes, conducts inspections and issues permits from the Development Services Center at 385 Kimbark St. The City has adopted the 2024 International Codes, effective July 1, 2026."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Longmont, Planning and Development Services",
+          "url": "https://longmontcolorado.gov/planning-and-development-services/",
+          "line": "Responsible for land use, zoning, development review and growth management; its planning resources include the comprehensive plan, zoning maps and the land development code.",
+          "q": "Where is Longmont's zoning?",
+          "a": "The City of Longmont's Planning and Development Services department is responsible for land use, zoning and development review in the city. Its planning resources include the comprehensive plan, zoning maps and the land development code."
+        }
+      ],
+      "other_counties": true,
+      "built": 1991,
+      "value": 572800
     }
   }
 }
