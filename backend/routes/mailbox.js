@@ -46,6 +46,7 @@ const cardMedia = require('../services/holidayCardMedia');
 const cardVoice = require('../services/cardVoice');
 const mailStamps = require('../services/mailStamps');
 const mailClaimCode = require('../services/mailClaimCode');
+const { recordFunnelEvent } = require('../services/funnelEvents');
 const { clientIpKey } = require('../utils/clientIpKey');
 const { getPublicUrl } = require('../services/s3Service');
 const { personFindableBy } = require('./mailCompose');
@@ -2609,6 +2610,46 @@ router.get('/cards/waiting', verifyToken, async (req, res) => {
   }
 });
 
+// ---- The card loop, counted (December card push): server-recorded FunnelEvent rows (services/funnelEvents) ----
+// Counts only: never a name, an address, a note, a picture, or the id of a card or of the person it went to. Each is
+// recorded after the answer is decided and never awaited by it, so sending, opening and claiming are no slower.
+/** How a card went: to a person on Pantopus, by email, or by link. */
+const cardVia = (mail) => (holidayCards.isByLink(mail) ? 'link' : mail?.escrow_status ? 'email' : 'person');
+// card_page_seen is written on a public GET, so reloading a working link must not grow FunnelEvent without bound: at most
+// one row a minute for each card, per process, from its readers and (apart, so a web visit still counts once) from the
+// web page's own server. A small map of when each was last counted, pruned of anything older than the minute.
+const PAGE_SEEN_GAP_MS = 60 * 1000;
+const PAGE_SEEN_MAX_KEYS = 10000;
+const pageSeenAt = new Map();
+function pageSeenDue(key, now = Date.now()) {
+  const last = pageSeenAt.get(key);
+  if (last !== undefined && now - last < PAGE_SEEN_GAP_MS) return false;
+  if (pageSeenAt.size >= PAGE_SEEN_MAX_KEYS) {
+    for (const [k, at] of pageSeenAt) if (now - at >= PAGE_SEEN_GAP_MS) pageSeenAt.delete(k);
+    // Still full of fresh keys (a flood of different links): skip counting rather than grow.
+    if (pageSeenAt.size >= PAGE_SEEN_MAX_KEYS) return false;
+  }
+  pageSeenAt.set(key, now);
+  return true;
+}
+/** How long after it was sent a card was taken: under an hour, a day, a week, or later. */
+function cardTakenAfter(sentAt, now = Date.now()) {
+  const ms = now - Date.parse(sentAt);
+  if (!(ms < 7 * 86400000)) return 'later';
+  return ms < 3600000 ? 'lt_1h' : ms < 86400000 ? 'lt_1d' : 'lt_7d';
+}
+/** card_sent for a card storeCard stored, with the bucket its stamp came from (read after the answer). */
+function recordCardSent(mailId, { senderId, via, listSize, travels, postage }) {
+  (async () => {
+    let stamp = 'none';
+    if (postage) {
+      const { data } = await supabaseAdmin.from('MailStampLedger').select('bucket').eq('event_key', `send:${mailId}`).maybeSingle();
+      stamp = data?.bucket === 'paid' ? 'paid' : data?.bucket === 'free' ? 'free' : 'none';
+    }
+    await recordFunnelEvent('card_sent', { userId: senderId, meta: { via, list_size: listSize || 1, stamp, travels } });
+  })().catch((err) => logger.warn('Card sent not counted', { error: err.message }));
+}
+
 /**
  * Store a card that passed checkCard and answer as its send does ({ status, body }): 201 { card } (with { link } by
  * link), or why it didn't go. With digital stamps on, the database takes the card's stamp as it stores it, free ones
@@ -2774,6 +2815,11 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
   const travelling = card.travel ? { travelHop: card.travel.hop } : {};
   logMailEvent('holiday_card_sent', mail.id, senderId, { design: design.id, arrival, byEmail: Boolean(toEmail), ...(byLink ? { byLink } : {}), ...onList, ...withMedia, ...travelling });
   logger.info('Christmas card sent', { mailId: mail.id, senderId, arrival, byEmail: Boolean(toEmail), byLink, ...onList });
+  // A card passed on (`free`) is counted as card_passed_on by its own route.
+  if (!free) {
+    recordCardSent(mail.id, { senderId, via: byLink ? 'link' : toEmail ? 'email' : 'person', listSize,
+      travels: Boolean(card.travel), postage });
+  }
   return { status: 201, body: cardAnswer(mail, now) };
 }
 
@@ -3175,6 +3221,7 @@ router.post('/cards/:id/take-back', verifyToken, async (req, res) => {
     // Its own photo and voice go with it: nobody will open them (services/holidayCardMedia).
     await cardMedia.removeForMail(id);
     logger.info('Christmas card taken back', { mailId: id, senderId });
+    void recordFunnelEvent('card_taken_back', { userId: senderId, meta: { via: cardVia(mail) } });
     return res.json({ taken_back: true });
   } catch (err) {
     logger.error('Card take-back error', { error: err.message, mailId: id, userId: senderId });
@@ -3387,6 +3434,7 @@ router.post('/cards/:id/reply', verifyToken, validate(replySchema), async (req, 
     }
     logMailEvent('holiday_card_reply_sent', mail.id, userId, { cardId: original.id });
     logger.info('Christmas card reply sent', { mailId: mail.id, cardId: original.id, senderId: userId });
+    void recordFunnelEvent('card_reply_sent', { userId });
     return res.status(201).json({ reply: replySummary(mail, now) });
   } catch (err) {
     logger.error('Card reply error', { error: err.message, cardId, userId });
@@ -3699,6 +3747,9 @@ router.post('/cards/:id/pass-on', verifyToken, validate(passOnSchema), async (re
     if (answer.status === 201) {
       logger.info('Travelling card passed on', { mailId: answer.body.card?.id, cardId: req.params.id, senderId: userId });
       // A card by email or link is in nobody's mailbox until it's taken; a person's reaches them at 7 a.m.
+      const to = req.body.to || {};
+      void recordFunnelEvent('card_passed_on', { userId, meta: { place: Number(req.body.place),
+        via: to.link ? 'link' : to.email ? 'email' : 'person' } });
     }
     return reply(res, answer);
   } catch (err) {
@@ -5060,6 +5111,16 @@ router.get('/claim/:mailId', async (req, res) => {
     if (card) previewText = null;
     // A travelling card (card_travel): its envelope's postmarks and how far it came, towns and dates only (Part 7).
     const travel = card?.travel ? await cardTravel.linkView(mail.id).catch(() => null) : null;
+    // Counted signed out, so a ceiling, not people. The web's /open page reads this twice per visit: once from its server
+    // (no Origin, Node's own user agent) to pick its share picture, which is also all a link-preview robot causes, and
+    // once from the browser. That first read is marked `web_server`, so the report can leave it out.
+    if (card) {
+      const webServer = !req.get('origin') && /^(node|undici)\b/i.test(String(req.get('user-agent') || ''));
+      if (pageSeenDue(`${mail.id}:${webServer ? 'server' : 'reader'}`)) {
+        void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas',
+          ...(webServer ? { web_server: true } : {}) } });
+      }
+    }
 
     return res.json({
       mail: {
@@ -5146,6 +5207,7 @@ router.post('/claim/:mailId/code', mailCodeNetworkLimiter, validate(mailCodeSche
       });
     }
     logger.info('Mail code sent', { mailId });
+    if (card) void recordFunnelEvent('card_code_sent', { meta: { via: cardVia(mail) } });
     return res.json({ sent_to: maskContact(address), minutes: mailClaimCode.CODE_MINUTES });
   } catch (err) {
     logger.error('Mail code error', { error: err.message, mailId: req.params.mailId });
@@ -5296,6 +5358,15 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
 
     // Tell the sender it was opened (and, for a card that brought someone in, give them their free card)
     (async () => {
+      // Counted beside the notice, never before it. A new account: made after the card was sealed (rewardJoin's rule).
+      if (card) {
+        (async () => {
+          const { data: claimer } = await supabaseAdmin.from('User').select('created_at').eq('id', claimerId).maybeSingle();
+          await recordFunnelEvent('card_claimed', { userId: claimerId, meta: { via: cardVia(mail),
+            new_account: Boolean(claimer && Date.parse(claimer.created_at) > Date.parse(mail.created_at)),
+            after: cardTakenAfter(mail.created_at) } });
+        })().catch((countErr) => logger.warn('Card claim not counted', { mailId, error: countErr.message }));
+      }
       try {
         // The person who opened it, as neighbors see them (their Local Profile).
         // An account made with a letter's code has no name yet (the app asks for one): its stand-in isn't a name to print.
