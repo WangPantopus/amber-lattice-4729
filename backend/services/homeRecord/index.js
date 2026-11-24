@@ -93,7 +93,7 @@ function withinBudget(read, label) {
 async function pictureForViewer(point, copy, { earlierYears = 'owner' } = {}) {
   if (!point) return { above: null, years: null };
   const [above, years] = await Promise.all([
-    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), earlierYears }), 'picture'),
+    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), earlierYears, lot: open.lotOutline(copy) }), 'picture'),
     withinBudget(aerial.yearsAt(point), 'years'),
   ]);
   return { above, years };
@@ -102,8 +102,9 @@ async function pictureForViewer(point, copy, { earlierYears = 'owner' } = {}) {
 /** The owner's lot through the years, or the newest picture where fewer than two years cover the point. */
 async function pictureForOwner(point, copy) {
   if (!point) return null;
-  return (await withinBudget(aerial.photoYearsBlock(point), 'photo_years'))
-    || withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), 'picture');
+  const lot = open.lotOutline(copy);
+  return (await withinBudget(aerial.photoYearsBlock(point, { lot }), 'photo_years'))
+    || withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), lot }), 'picture');
 }
 
 function answer(state, header, blocks, actions = null) {
@@ -169,8 +170,8 @@ async function forAddress(place, { flood, signedIn = false, saved = false }) {
   // federal parts everywhere; the owner's own half closed, as names only.
   const [extras, above, years] = await Promise.all([
     extrasWithin(copy, home),
-    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), 'picture'),
-    withinBudget(aerial.photoYearsBlock(point, { title: 'The lot through the years' }), 'photo_years'),
+    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), lot: open.lotOutline(copy) }), 'picture'),
+    withinBudget(aerial.photoYearsBlock(point, { title: 'The lot through the years', lot: open.lotOutline(copy) }), 'photo_years'),
   ]);
   const subtitle = [place.line ? subtitleOf(place) : null, 'free with your account'].filter(Boolean).join(' · ');
   // The county's value first, then the lot through the years, then the rest of its record (the drawn order).

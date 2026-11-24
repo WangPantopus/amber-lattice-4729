@@ -411,12 +411,25 @@ function lotChip(copy) {
   return tile ? `Lot \u00b7 ${tile.value} ${tile.unit}` : null;
 }
 
+/** "Clark County", from the copy's county fact; null without one. */
+function countyName(copy) {
+  const county = copy?.facts?.county && typeof copy.facts.county === 'string' ? copy.facts.county : null;
+  return county && !/county|parish|borough/i.test(county) ? `${county} County` : county;
+}
+
 /** The header's chip: where the record was found. */
 function foundChip(copy) {
   if (!copy?.publisher) return null;
-  const county = copy.facts?.county && typeof copy.facts.county === 'string' ? copy.facts.county : null;
-  const name = county && !/county|parish|borough/i.test(county) ? `${county} County` : county;
-  return { tone: 'success', text: `Found in ${name || copy.publisher}'s records` };
+  return { tone: 'success', text: `Found in ${countyName(copy) || copy.publisher}'s records` };
 }
 
-module.exports = { lotChip, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };
+/**
+ * The lot's outline for the picture from above: `{ ring, from }`, where a served copy holds the lot's ring (router.js
+ * `lot_rings`, from the county's open parcel map). Null otherwise. Public map data: drawn in every state.
+ */
+function lotOutline(copy) {
+  if (!Array.isArray(copy?.lot_ring) || copy.lot_ring.length < 4) return null;
+  return { ring: copy.lot_ring, from: `${countyName(copy) || copy.publisher || 'the county'}'s parcel map` };
+}
+
+module.exports = { lotChip, lotOutline, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };

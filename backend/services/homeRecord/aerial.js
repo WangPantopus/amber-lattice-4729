@@ -11,8 +11,9 @@
  * records which points were looked at. Apps load the image from our own API (GET /api/public/home-record/aerial.jpg,
  * the cell in the query string, which the request log leaves out), so Microsoft sees this server, never the person.
  *
- * The lot is outlined only where its parcel's shape is held. The index doesn't hold parcel shapes yet, so `outline` is
- * null for now (~/pantopus-home-record/REQUESTS.md).
+ * The lot is outlined only where its parcel's shape is held: a served copy's `lot_ring` (the county's open parcel map,
+ * under the switch file's `lot_rings` list), drawn as fractions of the frame and only where the whole lot fits in it.
+ * Otherwise `outline` is null and the caption says the home is at the middle.
  */
 
 const { encodeGeohash, decodeGeohashBbox } = require('../../utils/geohash');
@@ -53,6 +54,22 @@ function frameOf(cell) {
   const dLat = FRAME_HEIGHT_M / 2 / METERS_PER_DEGREE;
   const dLng = FRAME_WIDTH_M / 2 / (METERS_PER_DEGREE * Math.cos((lat * Math.PI) / 180));
   return { lat, lng, bbox: [lng - dLng, lat - dLat, lng + dLng, lat + dLat].map((n) => Math.round(n * 1e6) / 1e6) };
+}
+
+/**
+ * A lot's ring ([[lng, lat], ...]) as the contract's `outline`: [x, y] fractions of a cell's frame, x from the west
+ * edge and y from the north. Null when there is no ring or any corner falls outside the frame (a lot too big to show
+ * whole); a lot cut off at the edge would say less than the caption alone.
+ */
+function outlineIn(cell, ring) {
+  if (!Array.isArray(ring) || ring.length < 4) return null;
+  const [w, s, e, n] = frameOf(cell).bbox;
+  const points = ring.map(([lng, lat]) => [(lng - w) / (e - w), (n - lat) / (n - s)]);
+  const [first] = points;
+  const last = points[points.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) points.pop();
+  if (points.length < 3 || points.some(([x, y]) => !(x >= 0 && x <= 1 && y >= 0 && y <= 1))) return null;
+  return points.map(([x, y]) => [Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
 }
 
 // Ray casting on a polygon's outer ring ([lng, lat] pairs).
@@ -178,8 +195,9 @@ async function image(cell, itemId) {
  * lot's size from the open facts when the record gives it. Cuts the image behind the answer, so it is usually ready
  * when the screen asks. Null when no survey covers the point.
  */
-async function pictureBlock(point, { lotChip = null, earlierYears = null } = {}) {
+async function pictureBlock(point, { lotChip = null, earlierYears = null, lot = null } = {}) {
   const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
+  const outline = lot ? outlineIn(cell, lot.ring) : null;
   const found = await surveys(cell);
   const [newest] = found;
   if (!newest) return null;
@@ -196,12 +214,12 @@ async function pictureBlock(point, { lotChip = null, earlierYears = null } = {})
     id: 'picture',
     above: {
       image_url: imagePath(cell, newest),
-      outline: null,
+      outline,
       chips: [lotChip ? { at: 'bl', text: lotChip } : null, { at: 'br', text: String(newest.year) }].filter(Boolean),
     },
     street: { lat: Math.round(point.lat * 1e6) / 1e6, lng: Math.round(point.lng * 1e6) / 1e6 },
     // With no lot outline, the caption says where the home is: the frame is centered on its ~5 m map cell.
-    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. This home is at the middle.${earlier > 0 ? ` ${countWord(earlier)} earlier ${where}.` : ''}`,
+    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. ${outline ? `Lot from ${lot.from}.` : 'This home is at the middle.'}${earlier > 0 ? ` ${countWord(earlier)} earlier ${where}.` : ''}`,
   };
 }
 
@@ -226,8 +244,9 @@ async function yearsAt(point) {
  * and the rest as buttons). Each image is cut when a screen first asks for it; the newest is cut behind the answer.
  * Null with fewer than two years (the USGS fallback serves one).
  */
-async function photoYearsBlock(point, { title = 'Your lot through the years' } = {}) {
+async function photoYearsBlock(point, { title = 'Your lot through the years', lot = null } = {}) {
   const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
+  const outline = lot ? outlineIn(cell, lot.ring) : null;
   const years = yearsOf(await surveys(cell));
   if (years.length < 2) return null;
   const newest = years[years.length - 1];
@@ -237,9 +256,12 @@ async function photoYearsBlock(point, { title = 'Your lot through the years' } =
     id: 'lot_years',
     title,
     count: `${years.length} photos`,
-    photos: years.map((survey) => ({ year: String(survey.year), label: monthYear(survey.date), image_url: imagePath(cell, survey), outline: null })),
-    note: 'Federal aerial surveys by the U.S. Department of Agriculture, Farm Service Agency. This home is at the middle of each.',
+    photos: years.map((survey) => ({ year: String(survey.year), label: monthYear(survey.date), image_url: imagePath(cell, survey), outline })),
+    // The parcel map is today's, so the earlier years carry today's lot lines, and the note says so.
+    note: outline
+      ? `Federal aerial surveys by the U.S. Department of Agriculture, Farm Service Agency. The lot is drawn from ${lot.from} as it is today.`
+      : 'Federal aerial surveys by the U.S. Department of Agriculture, Farm Service Agency. This home is at the middle of each.',
   };
 }
 
-module.exports = { pictureBlock, photoYearsBlock, yearsAt, image, surveys, frameOf, imagePath, CELL_PRECISION };
+module.exports = { pictureBlock, photoYearsBlock, yearsAt, image, surveys, frameOf, imagePath, outlineIn, CELL_PRECISION };
