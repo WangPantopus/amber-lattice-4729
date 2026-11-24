@@ -35,6 +35,8 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     @ViewBuilder let ownerBottom: () -> OwnerBottom
 
     @State private var headerGone = false
+    /// The tabs have scrolled up under the top bar: a copy stays drawn there.
+    @State private var tabsPinned = false
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private static var tabsAnchor: String {
@@ -83,69 +85,40 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
             }
             ScrollViewReader { scroller in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Spacing.s3, pinnedViews: [.sectionHeaders]) {
-                        Section {
-                            ProfileSourcesHeader(
-                                content: content,
-                                avatarColor: avatarColor,
-                                keyLines: keyLines,
-                                onOpenRecord: content.tab(.record) == nil ? nil : { select(.record, scroller) },
-                                onOpenLink: context.openLink,
-                                actions: actions
-                            )
-                            // The name moves into the top bar as the card's last lines go under it (a lazy stack
-                            // stops reporting once the card is far off, so this flips while it is still there).
-                            .onGeometryChange(for: Bool.self) { $0.frame(in: .scrollView).maxY < 56 } action: { headerGone = $0 }
+                    // A plain stack: every block is laid out, so picking a tab lands exactly on its top. The tabs stay
+                    // under the top bar by a copy drawn over the page once the real ones have scrolled up there.
+                    VStack(alignment: .leading, spacing: Spacing.s3) {
+                        ProfileSourcesHeader(
+                            content: content,
+                            avatarColor: avatarColor,
+                            keyLines: keyLines,
+                            onOpenRecord: content.tab(.record) == nil ? nil : { select(.record, scroller) },
+                            onOpenLink: context.openLink,
+                            actions: actions
+                        )
+                        // The name moves into the top bar as the card's last lines go under it.
+                        .onGeometryChange(for: Bool.self) { $0.frame(in: .scrollView).maxY < 56 } action: { headerGone = $0 }
+                        .padding(.horizontal, Spacing.s4)
+                        // The tips keep today's own inset (20 pt); the page's cards sit 16 pt in.
+                        ownerTop()
+                            .padding(.horizontal, Spacing.s4 - Spacing.s5)
+                        ProfileBlockList(blocks: leadBlocks, context: context)
                             .padding(.horizontal, Spacing.s4)
-                            // The tips keep today's own inset (20 pt); the page's cards sit 16 pt in.
-                            ownerTop()
-                                .padding(.horizontal, Spacing.s4 - Spacing.s5)
-                            ProfileBlockList(blocks: leadBlocks, context: context)
-                                .padding(.horizontal, Spacing.s4)
-                            // Where a picked tab starts: the tabs right under the top bar, the tab's top under them.
-                            Color.clear.frame(height: 0).id(Self.tabsAnchor)
+                        if content.tabs.count > 1 {
+                            tabBar(scroller)
+                                .id(Self.tabsAnchor)
+                                .onGeometryChange(for: Bool.self) { $0.frame(in: .scrollView).minY < 0 } action: { tabsPinned = $0 }
                         }
-
-                        Section {
-                            if let selected {
-                                ProfileBlockList(blocks: tabBlocks(selected), context: context)
-                                    .padding(.horizontal, Spacing.s4)
-                                if let onManagePieces,
-                                   selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
-                                    ProfileBlockCard(padded: false) {
-                                        ProfileTileRow(
-                                            tile: ProfileTile(icon: .plus, tint: .work),
-                                            title: "Add or remove pieces",
-                                            detail: "Your portfolio: pictures, videos, documents and links",
-                                            action: onManagePieces
-                                        )
-                                    }
-                                    .padding(.horizontal, Spacing.s4)
-                                    .accessibilityIdentifier("profileSourcesManagePieces")
-                                }
-                                if selected.key == .record {
-                                    ProfileReadingGuide(firstName: content.header.firstName, asOf: content.recordChart?.asOf)
-                                        .padding(.horizontal, Spacing.s4)
-                                }
-                            }
-                            ownerBottom()
-                                .padding(.horizontal, Spacing.s4)
-                                .padding(.top, Spacing.s3)
-                            if let footer = content.page.footer {
-                                Text(footer.text)
-                                    .scaledFont(13)
-                                    .foregroundStyle(Theme.Color.appTextSecondary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, Spacing.s4)
-                            }
-                        } header: {
-                            if content.tabs.count > 1 {
-                                tabBar(scroller)
-                            }
-                        }
+                        tabContent
                     }
                     .padding(.top, Spacing.s3)
                     .padding(.bottom, Spacing.s10)
+                }
+                .overlay(alignment: .top) {
+                    if tabsPinned, content.tabs.count > 1 {
+                        tabBar(scroller)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .refreshable {
                     if let onRefresh { await Task { await onRefresh() }.value }
@@ -154,6 +127,40 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
         }
         .background(Theme.Color.appBg)
         .accessibilityIdentifier("profileSourcesPage")
+    }
+
+    /// The picked tab's blocks, then your own page's parts and a link's footer.
+    @ViewBuilder private var tabContent: some View {
+        if let selected {
+            ProfileBlockList(blocks: tabBlocks(selected), context: context)
+                .padding(.horizontal, Spacing.s4)
+            if let onManagePieces, selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
+                ProfileBlockCard(padded: false) {
+                    ProfileTileRow(
+                        tile: ProfileTile(icon: .plus, tint: .work),
+                        title: "Add or remove pieces",
+                        detail: "Your portfolio: pictures, videos, documents and links",
+                        action: onManagePieces
+                    )
+                }
+                .padding(.horizontal, Spacing.s4)
+                .accessibilityIdentifier("profileSourcesManagePieces")
+            }
+            if selected.key == .record {
+                ProfileReadingGuide(firstName: content.header.firstName, asOf: content.recordChart?.asOf)
+                    .padding(.horizontal, Spacing.s4)
+            }
+        }
+        ownerBottom()
+            .padding(.horizontal, Spacing.s4)
+            .padding(.top, Spacing.s3)
+        if let footer = content.page.footer {
+            Text(footer.text)
+                .scaledFont(13)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, Spacing.s4)
+        }
     }
 
     // MARK: - Top bar
@@ -257,11 +264,10 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     private func select(_ key: ProfileSourcesTab.Key, _ scroller: ScrollViewProxy) {
         model.selectedTab = key
         guard content.tabs.count > 1 else { return }
+        // Once the new tab has laid out.
         Task { @MainActor in
             await Task.yield()
-            withAnimation(.easeOut(duration: 0.25)) {
-                scroller.scrollTo(Self.tabsAnchor, anchor: .top)
-            }
+            scroller.scrollTo(Self.tabsAnchor, anchor: .top)
         }
     }
 }
