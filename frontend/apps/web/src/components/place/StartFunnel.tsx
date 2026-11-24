@@ -189,7 +189,7 @@ function HeroStep({
                 to see your comparison.
               </span>
             ) : signedIn ? (
-              <>Your flood risk, today&apos;s air, your home&apos;s value, and the verified homes near you.</>
+              <>Your flood risk, today&apos;s air, home values and taxes where you live, and the verified homes near you.</>
             ) : (
               <>
                 Wildfire and flood risk, today&apos;s air, radon, water, who represents you, and the people who&apos;ve
@@ -1133,6 +1133,10 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
   const [signedIn, setSignedIn] = useState(false);
   useEffect(() => { setSignedIn(api.hasActiveSession()); }, []);
   const viewer = useMe({ enabled: signedIn });
+  // A kept token the server refuses (expired, signed out elsewhere) is not a session: the page reads as signed out.
+  const refusedStatus = (viewer.error as { statusCode?: number; status?: number } | null)?.statusCode
+    ?? (viewer.error as { status?: number } | null)?.status;
+  const liveSession = signedIn && !(refusedStatus === 401 || refusedStatus === 403);
   const userId = signedIn ? viewer.data?.id ?? null : null;
   const [keptArea] = useKeptArea(userId);
   // Only while nothing is saved, as on Today: once there's a Home, a saved address or a claim, the area is ignored.
@@ -1333,7 +1337,7 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
             onBrowse={goBrowse}
             fromCard={fromCard}
             invite={invite}
-            signedIn={signedIn}
+            signedIn={liveSession}
             areaCard={areaCard}
             topic={topic}
           />
@@ -1432,7 +1436,7 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
               )}
               <div className="h-4" />
             </div>
-            <WallBar onWall={goWall} shareAddress={selected?.label ?? submitted ?? ''} invite={invite} signedIn={signedIn} layout={side} />
+            <WallBar onWall={goWall} shareAddress={selected?.label ?? submitted ?? ''} invite={invite} signedIn={liveSession} layout={side} />
           </>
         ) : null}
       </div>
