@@ -139,6 +139,28 @@ class TodayTabViewModel
             )
         }
 
+        /**
+         * Around you's lists behind the first page (2026-11-24): the chosen chip and its list, read as it is scrolled.
+         * Its posts are cards of [aroundCards] too, after the first page's. Null without Hilt.
+         */
+        internal val aroundLists: AroundYouLists? by lazy {
+            if (!::aroundYou.isInitialized) return@lazy null
+            AroundYouLists(
+                scope = viewModelScope,
+                read = { place, list, before -> aroundYou.readList(place, list, before) },
+                revision = { aroundCards?.actionRevision ?: 0 },
+                onPosts = ::showAroundCards,
+            )
+        }
+
+        /** The first page's posts, then the open list's, as cards. */
+        private fun showAroundCards(readRevision: Int) {
+            aroundCards?.show(_around.value?.posts.orEmpty() + aroundLists?.state?.value?.posts.orEmpty(), readRevision)
+        }
+
+        /** The Around you post whose page was opened last: coming back, its card in a list takes what was done there. */
+        private var openedAroundPostId: String? = null
+
         private val _locating = MutableStateFlow(false)
 
         /** "Use my location" is reading a fix, or loading the city's day it found. */
@@ -186,25 +208,51 @@ class TodayTabViewModel
                 // switch it had last time instead of growing it a moment later.
                 val kept = keptAround(place)
                 _around.value = kept
+                // Another place starts at All, with no list read.
+                aroundLists?.show(place)
                 // A copy never undoes a tap (-1 is no read's revision).
-                kept?.let { aroundCards?.show(it.posts, readRevision = -1) }
+                kept?.let { showAroundCards(readRevision = -1) }
             }
             if (place == null || !::aroundYou.isInitialized) return
+            takeOpenedAroundPost()
             // A tap made while this read is out keeps its value over the read's (ProfilePostCards.show).
             val revision = aroundCards?.actionRevision ?: 0
             viewModelScope.launch {
                 val result = aroundYou.read(place)
                 if (result is NetworkResult.Success && aroundPlace == place) {
                     _around.value = result.data
-                    aroundCards?.show(result.data.posts, readRevision = revision)
+                    showAroundCards(readRevision = revision)
                 }
             }
+        }
+
+        /** A pull to refresh on Around you: the first page and the open list are read again. */
+        fun pullAround(place: AroundYouPlace?) {
+            readAround(place)
+            aroundLists?.refresh()
         }
 
         /** An Around you card was tapped: its post page opens at once from the card's copy (as from Pulse). */
         fun seedAroundPost(postId: String) {
             if (!::postsRepository.isInitialized) return
-            _around.value?.posts?.firstOrNull { it.id == postId }?.let(postsRepository::seedDetail)
+            openedAroundPostId = postId
+            (_around.value?.posts.orEmpty() + aroundLists?.state?.value?.posts.orEmpty())
+                .firstOrNull { it.id == postId }
+                ?.let(postsRepository::seedDetail)
+        }
+
+        /**
+         * Back from a post's page: the first page is read again as before; a post of the open list (which is not read
+         * again, so the place in it stays) takes its page's counts, reaction and latest reply from one read of the post.
+         */
+        private fun takeOpenedAroundPost() {
+            val postId = openedAroundPostId ?: return
+            openedAroundPostId = null
+            val lists = aroundLists ?: return
+            if (!lists.holds(postId) || !::postsRepository.isInitialized) return
+            viewModelScope.launch {
+                postsRepository.detailStored(postId, force = true).data?.post?.let(lists::take)
+            }
         }
 
         /** The home this tab shows, once resolved. */

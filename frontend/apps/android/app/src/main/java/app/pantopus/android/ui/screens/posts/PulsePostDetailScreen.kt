@@ -67,7 +67,9 @@ import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
 import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedPostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
+import app.pantopus.android.ui.screens.feed.pulse.aroundTopicTitle
 import app.pantopus.android.ui.screens.feed.pulse.pulseEventDetails
+import app.pantopus.android.ui.screens.feed.pulse.pulseStory
 import app.pantopus.android.ui.screens.feed.pulse.toastButton
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
@@ -170,6 +172,8 @@ fun PulsePostDetailScreen(
     onQuotePost: ((String) -> Unit)? = null,
     /** "View" on the "Saved." toast: My posts on its Saved tab. Null leaves the toast without it. */
     onOpenSavedPosts: (() -> Unit)? = null,
+    /** Opened to reply (a card's "Reply" on Today's Around you): the reply box is ready to type in. */
+    focusReply: Boolean = false,
     viewModel: PulsePostDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -310,6 +314,7 @@ fun PulsePostDetailScreen(
                         viewModel.seedQuotedPost(quotedId)
                         onOpenPost(quotedId)
                     },
+                    focusReply = focusReply,
                 )
             }
         }
@@ -578,7 +583,12 @@ fun PulsePostDetailLoadedContent(
     refreshNotice: RefreshNotice? = null,
     /** Opens the quoted post's page, with its id; null leaves the quoted card still. */
     onOpenQuoted: ((String) -> Unit)? = null,
+    /** Opened to reply: the reply box takes the keyboard when it first shows. */
+    focusReply: Boolean = false,
 ) {
+    // A story Today's Around you posted for an outlet: the page names the outlet and sets the headline apart from the
+    // outlet's summary, as its card does. Null for every other post.
+    val story = pulseStory(content.post.content, content.post.lifecycleMetadata?.sourceName, content.post.lifecycleMetadata?.aroundYou)
     ContentDetailShell(
         title = "Post",
         onBack = onBack,
@@ -593,23 +603,36 @@ fun PulsePostDetailLoadedContent(
                     RemovedPostNotice(modifier = Modifier.padding(horizontal = Spacing.s4))
                 }
                 val businessAuthor = content.post.creator?.takeIf { it.identityType == "business" }
+                val outlet = story?.outlet
                 PostAuthorHeader(
-                    displayName = content.authorDisplayName,
+                    displayName = outlet ?: content.authorDisplayName,
                     avatarUrl = content.authorAvatarUrl,
                     isVerified = content.authorVerified,
                     identity = content.authorIdentity,
-                    timeAndLocality = content.timeAndLocality,
+                    // The outlet published it; the curator account only brought it here.
+                    timeAndLocality =
+                        if (outlet != null) "via ${content.authorDisplayName} · ${content.timeAndLocality}" else content.timeAndLocality,
                     intent = content.intent,
                     intentLabel =
-                        PulseComposePurpose.entries.firstOrNull { it.postType == content.post.postType }?.label ?: content.intent.label,
+                        aroundTopicTitle(content.post.lifecycleMetadata?.aroundYou)
+                            ?: PulseComposePurpose.entries.firstOrNull { it.postType == content.post.postType }?.label
+                            ?: content.intent.label,
                     // A business author opens its page, and only while it has a published one (the web links none).
                     onAvatarTap =
-                        if (businessAuthor != null) {
+                        if (outlet != null) {
+                            null
+                        } else if (businessAuthor != null) {
                             businessAuthor.businessPageId?.let { businessId -> { onOpenBusiness(businessId) } }
                         } else {
                             { onOpenProfile(content.post.userId) }
                         },
-                    momentsUserId = if (businessAuthor != null) businessAuthor.businessPageId else content.post.userId,
+                    momentsUserId =
+                        when {
+                            outlet != null -> null
+                            businessAuthor != null -> businessAuthor.businessPageId
+                            else -> content.post.userId
+                        },
+                    placeIcon = PantopusIcon.FileText.takeIf { outlet != null },
                 )
                 content.status?.let { status ->
                     PostStatusPill(
@@ -641,7 +664,10 @@ fun PulsePostDetailLoadedContent(
         },
         body = {
             BodyReactionsBody(
-                body = content.post.content,
+                body = story?.summary ?: content.post.content,
+                headline = story?.headline,
+                composerPlaceholder = "What do you think? People around here can read your reply…".takeIf { story != null },
+                focusComposer = focusReply,
                 detailLine = dealDetailLine(content.post) ?: lostFoundDetailLine(content.post) ?: alertDetailLine(content.post),
                 eventDetails = eventDetails(content.post),
                 source = content.post.source,

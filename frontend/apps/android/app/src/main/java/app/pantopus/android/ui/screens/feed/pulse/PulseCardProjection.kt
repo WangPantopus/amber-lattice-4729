@@ -3,6 +3,8 @@
 package app.pantopus.android.ui.screens.feed.pulse
 
 import app.pantopus.android.core.LaunchFeatures
+import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
+import app.pantopus.android.data.api.models.feed.FeedConversation
 import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.feed.FeedRepostedBy
@@ -75,6 +77,7 @@ internal fun pulseCardContent(
     val isSolved = live.isSolved
     val openAsk = LaunchFeatures.pulseRedesign && isOwner && isOpenAsk(post, isSolved)
     val topic = PulseTopic.fromKey(post.topic)?.takeIf { LaunchFeatures.pulseRedesign }
+    val story = pulseStory(post.content, post.lifecycleMetadata?.sourceName, post.aroundYou)
     return PulsePostCardContent(
         id = post.id,
         likePending = live.likePending,
@@ -89,7 +92,10 @@ internal fun pulseCardContent(
         authorAvatarUrl = post.creator?.photoUrl,
         meta = metaString(post, topic),
         intent = intent,
-        chipLabel = intent.chipLabelFor(post.lostFoundType),
+        // A story's chip says its topic ("Sports"), where it has one.
+        chipLabel = aroundTopicTitle(post.aroundYou) ?: intent.chipLabelFor(post.lostFoundType),
+        story = story,
+        conversation = pulseConversation(post.conversation),
         isVisitor = showsVisitorBadge(post),
         origin = post.origin,
         title = post.title,
@@ -231,6 +237,57 @@ private fun statusFor(
             goingCount = live.likeCount,
         )
     }
+
+// Around you's topics, as the chips name them (`backend/services/aroundYou/topics.js`).
+private val AROUND_TOPIC_TITLES =
+    mapOf(
+        "events" to "Events",
+        "kids" to "Kids & schools",
+        "sports" to "Sports",
+        "government" to "Government",
+        "business" to "Business",
+        "safety" to "Roads & safety",
+    )
+
+/** The first of a story's topics this build knows, by the chip's name; null when it has none. */
+internal fun aroundTopicTitle(facts: AroundYouStoryFacts?): String? = facts?.topics?.firstNotNullOfOrNull { AROUND_TOPIC_TITLES[it] }
+
+private val SUBSCRIPTION_SUFFIX = Regex("\\s*\\(subscription\\)$", RegexOption.IGNORE_CASE)
+
+/**
+ * A post Today's Around you made for an outlet's story ([facts] present), as its card draws it: the outlet's name
+ * without "(subscription)" (that stays on the link that opens the story), the headline (the text's first line) and
+ * the outlet's summary (the rest). Null for every other post.
+ */
+internal fun pulseStory(
+    content: String?,
+    sourceName: String?,
+    facts: AroundYouStoryFacts?,
+): PulseStory? {
+    if (facts == null) return null
+    val text = content.orEmpty()
+    val cut = text.indexOf('\n')
+    return PulseStory(
+        outlet = sourceName?.trim()?.replace(SUBSCRIPTION_SUFFIX, "")?.takeIf { it.isNotEmpty() },
+        headline = (if (cut < 0) text else text.substring(0, cut)).trim(),
+        summary = if (cut < 0) "" else text.substring(cut + 1).trim(),
+    )
+}
+
+/** The reply preview a card draws; null without a latest reply to show. */
+internal fun pulseConversation(talk: FeedConversation?): PulseConversationPreview? {
+    val latest = talk?.latest ?: return null
+    val text = latest.text?.trim().orEmpty()
+    if (text.isEmpty()) return null
+    return PulseConversationPreview(
+        faces =
+            talk.people.take(3).map { person ->
+                PulseConversationFace(name = person.name?.trim().orEmpty().ifEmpty { "Someone" }, avatarUrl = person.avatarUrl)
+            },
+        latestName = latest.name?.trim().orEmpty().ifEmpty { "Someone" },
+        latestText = text,
+    )
+}
 
 private fun metaString(
     post: FeedPost,

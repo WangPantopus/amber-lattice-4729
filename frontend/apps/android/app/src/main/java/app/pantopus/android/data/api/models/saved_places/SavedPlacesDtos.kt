@@ -105,6 +105,11 @@ data class AroundYouDto(
     /** The content region's name ("Clark County, WA"). */
     val area: String? = null,
     val sections: List<AroundYouSectionDto> = emptyList(),
+    /**
+     * The chips to offer over the page, `all` first; a topic is listed only where the region has stories for it. Null
+     * from a server before the lists (and when the posts could not be made): no chips show then.
+     */
+    val lists: List<AroundYouListDto>? = null,
 ) {
     /** The server sent the items as posts (one from before the posts sends only the rows). */
     val hasPosts: Boolean get() = sections.any { it.posts != null }
@@ -112,6 +117,40 @@ data class AroundYouDto(
     /** Every section's posts, in page order. */
     val posts: List<FeedPost> get() = sections.flatMap { it.posts.orEmpty() }
 }
+
+/** A list Around you offers as a chip: `all`, `talked` (what people replied or reacted to) or a topic. */
+@JsonClass(generateAdapter = true)
+data class AroundYouListDto(
+    val id: String,
+    val title: String,
+)
+
+/**
+ * One page of a list behind the first page: under `all` every earlier story that is not on the first page, a topic's
+ * list its stories (Events: what is coming, soonest first), newest first. [next] goes back as `before` for the page
+ * after; null at the list's end. One post the app can't read leaves only that post out.
+ */
+@JsonClass(generateAdapter = true)
+data class AroundYouListPageDto(
+    val available: Boolean = false,
+    val area: String? = null,
+    val lists: List<AroundYouListDto> = emptyList(),
+    val list: String? = null,
+    val posts: List<FeedPost> = emptyList(),
+    val next: String? = null,
+)
+
+/**
+ * `POST /api/saved-places/area/around` for a list: the point (already rounded) with which list and where it continues,
+ * all in the body, never the URL.
+ */
+@JsonClass(generateAdapter = true)
+data class AreaAroundListBody(
+    val latitude: Double,
+    val longitude: Double,
+    val list: String,
+    val before: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class AroundYouSectionDto(

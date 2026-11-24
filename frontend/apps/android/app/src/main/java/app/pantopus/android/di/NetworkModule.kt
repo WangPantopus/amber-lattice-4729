@@ -3,6 +3,8 @@ package app.pantopus.android.di
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.data.api.ApiService
 import app.pantopus.android.data.api.models.common.TolerantJsonAdapterFactory
+import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
+import app.pantopus.android.data.api.models.feed.FeedConversation
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.feed.FeedQuotedPost
 import app.pantopus.android.data.api.models.feed.FeedRepostedBy
@@ -235,6 +237,7 @@ object NetworkModule {
                     ),
                     // A post's quoted post and its "reposted" line read as none when they can't be read (contract §9).
                     // The lookup's order and money parts likewise: the lookup still shows in the built-in order.
+                    // So do the reply preview and the story facts Today's Around you sends.
                     optionalTypes =
                         setOf(
                             FeedQuotedPost::class.java,
@@ -244,6 +247,8 @@ object NetworkModule {
                             PlaceMoneyFigure::class.java,
                             PlaceMoneyTrend::class.java,
                             PlaceMoneyLead::class.java,
+                            FeedConversation::class.java,
+                            AroundYouStoryFacts::class.java,
                         ),
                 ),
             )

@@ -34,22 +34,28 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -200,17 +206,36 @@ fun BodyReactionsBody(
     loadingCommentCount: Int = 0,
     /** Drawn under the text and media, above the reaction bar: a quote post's quoted card. Null for none. */
     belowMedia: (@Composable () -> Unit)? = null,
+    /**
+     * A story's headline, set apart over [body] (then the outlet's own summary, in the secondary colour): a post
+     * Today's Around you made for an outlet. Null for every other post, whose text is drawn as before.
+     */
+    headline: String? = null,
+    /** What the reply box says while it is empty and no reply is being answered; null keeps the usual words. */
+    composerPlaceholder: String? = null,
+    /** The page was opened to reply: the reply box takes the keyboard when it first shows. */
+    focusComposer: Boolean = false,
 ) {
     val placeholders = commentsLoading && comments.isEmpty() && loadingCommentCount > 0
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.s4),
     ) {
+        if (!headline.isNullOrEmpty()) {
+            Text(
+                text = headline,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.appText,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(horizontal = Spacing.s4).semantics { heading() }.testTag("pulsePostDetail-headline"),
+            )
+        }
         if (body.isNotEmpty()) {
             Text(
                 text = postLinkedText(body),
                 fontSize = 15.sp,
-                color = PantopusColors.appText,
+                color = if (headline.isNullOrEmpty()) PantopusColors.appText else PantopusColors.appTextSecondary,
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = Spacing.s4),
             )
@@ -315,9 +340,11 @@ fun BodyReactionsBody(
                 placeholder =
                     when {
                         replyingToName != null -> "Reply to $replyingToName..."
+                        composerPlaceholder != null -> composerPlaceholder
                         comments.isEmpty() && !placeholders -> "Be the first to reply..."
                         else -> "Add a comment"
                     },
+                requestFocus = focusComposer,
                 isFocusedPresentation = comments.isEmpty() && !placeholders,
                 isSending = isSending,
                 onSend = onSendTap,
@@ -565,7 +592,19 @@ private fun CommentComposer(
     isSending: Boolean,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Opened to reply: the box takes the keyboard once, when it first shows. */
+    requestFocus: Boolean = false,
 ) {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(requestFocus) {
+        if (requestFocus && !asked) {
+            asked = true
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     // Send is used while typing, as in chat: a tap on it never puts the keyboard away by itself.
     Row(
         modifier = modifier.fillMaxWidth().keepsKeyboard(),
@@ -603,6 +642,7 @@ private fun CommentComposer(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 44.dp)
+                    .focusRequester(focus)
                     .testTag("pulsePostDetail-composer")
                     .semantics { contentDescription = placeholder },
             decorationBox = { innerTextField ->
