@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { API_BASE_URL } from '@pantopus/utils';
+import { isLaunchCutPath } from '@/lib/featureFlags';
+import { fetchPublicCardDesigns, publicShelvesOn } from '@/lib/publicShare';
 import { GUIDE_PAGES } from '@/lib/site/guidePages';
 import { PILLAR_PAGES } from '@/lib/site/pillarPages';
 
@@ -41,13 +43,24 @@ async function countyPages(): Promise<string[]> {
   }
 }
 
+// Every Christmas card's page and, with the shelves on, each collection's page: from the one answer /cards itself
+// reads (cached a minute), never a call per card. The backend answers 404 while Christmas cards are off.
+async function cardPages(): Promise<string[]> {
+  const { data } = await fetchPublicCardDesigns();
+  if (!data?.designs?.length) return [];
+  const collections = publicShelvesOn(data) ? (data.collections ?? []).map((c) => `/cards/collection/${c.slug}`) : [];
+  return [...data.designs.filter((d) => d.slug).map((d) => `/cards/${d.slug}`), ...collections];
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const pages = [
     ...PUBLIC_PAGES,
     ...PILLAR_PAGES.map((page) => page.path),
     ...GUIDE_PAGES.map((page) => page.path),
+    ...(await cardPages()),
     ...(await countyPages()),
   ];
-  // A page listed twice (a pillar page also named in PUBLIC_PAGES) is listed once.
-  return [...new Set(pages)].map((path) => ({ url: `${SITE_URL}${path}` }));
+  // A page listed twice (a pillar page also named in PUBLIC_PAGES) is listed once; a switched-off feature's pages,
+  // which redirect home, not at all.
+  return [...new Set(pages)].filter((path) => !isLaunchCutPath(path)).map((path) => ({ url: `${SITE_URL}${path}` }));
 }
