@@ -11,31 +11,40 @@
  */
 
 const places = require('./places');
-const { officesOf } = require('./offices');
+const { officesOf, allReadByHand } = require('./offices');
 const { holdsFor, isLive } = require('./holds');
 const federal = require('./federal');
 const { questionsOf } = require('./questions');
 const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/homesteadPrograms');
 const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
-// Released states, by postal code, in the order they went out. Live counties have pages whatever this says.
-const BATCHES = [
-  // 1, November 23, 2026: Washington and Oregon, around the first live county (Clark County, WA).
-  ['WA', 'OR'],
+// Released states, by postal code, in the order they went out. Live counties have pages whatever this says. A state
+// release shows links from NETR Online's directory where no office was read by hand, so it waits on the founder's
+// decision about those links (FOUNDER-STEPS.md); until then, release county by county below.
+const BATCHES = [];
+
+// Released counties, by FIPS: each one's every office row was read by hand on the office's own site
+// (data/offices.json), so its page shows no directory link. A county listed here without that has no page.
+const COUNTIES = [
+  // November 23, 2026: Pierce and Kitsap counties, WA (Clark County, WA is live).
+  '53053', '53035',
 ];
+
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
-// BATCHES alone, so a release is a reviewed change here.
+// BATCHES and COUNTIES alone, so a release is a reviewed change here.
 const released = new Set([
   ...BATCHES.flat(),
   ...String(process.env.COUNTY_GUIDE_STATES || '').split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)),
 ]);
+const releasedCounties = new Set(COUNTIES);
 
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
 const INCOMPLETE_TTL_MS = 10 * 60 * 1000;
 const answers = new Map();
 
 /** Whether a county has a page now. */
-const published = (county) => Boolean(county) && (isLive(county.fips) || released.has(county.state.abbr));
+const published = (county) => Boolean(county) && (isLive(county.fips) || released.has(county.state.abbr)
+  || (releasedCounties.has(county.fips) && allReadByHand(county)));
 
 const statePart = (state) => ({ slug: state.slug, name: state.name, abbr: state.abbr, unit: state.unit, units: state.units });
 
@@ -168,4 +177,4 @@ function indexAnswer() {
 /** Whether a FIPS code is a county with a page now (the visit beacon counts only those). */
 const isPage = (fips) => /^\d{5}$/.test(String(fips || '')) && published(places.countyByFips(fips));
 
-module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES };
+module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES, COUNTIES };

@@ -81,24 +81,39 @@ function officeName(county, link) {
   return named && named !== county.census ? named : county.name;
 }
 
+/**
+ * Whether links taken from NETR Online's directory show on the pages. Its terms say nothing about reusing its
+ * listings (docs/research/provider-replacement/cost-and-rights.md), so showing them on public pages is the founder's
+ * call: off unless COUNTY_GUIDE_DIRECTORY_LINKS is '1' (a rig or staging may set it for checks).
+ */
+const directoryLinksOn = () => (process.env.COUNTY_GUIDE_DIRECTORY_LINKS || '').trim() === '1';
+
 /** The property search row, or null where the table's link can't be shown. */
 function propertySearch(county) {
   const link = county.link;
-  if (TOWN_ELSEWHERE.has(county.fips) || !httpsOnly(link.url) || NOT_AN_OFFICE.has(host(link.url))) return null;
-  // Where the office's own site was read, its name as the office gives it, and the day it was read.
+  // Where the office's own site was read: its name as the office gives it, the link it gives, and the day it was read.
   const entry = handRead.counties?.[county.fips];
   const named = typeof entry?.property_search_office === 'string' && entry.property_search_office ? entry.property_search_office : null;
+  const url = named && httpsOnly(entry.property_search_url) ? entry.property_search_url : link.url;
+  if (TOWN_ELSEWHERE.has(county.fips) || !httpsOnly(url) || NOT_AN_OFFICE.has(host(url))) return null;
+  if (!named && link.src === 'netr' && !directoryLinksOn()) return null;
   const read = named ? dateWords(entry.read) : null;
   const city = named ? null : cityOnly(county, link);
   return {
     id: 'property_search',
     title: city ? 'Property search, one city' : 'Property search',
     office: named || city || officeName(county, link),
-    url: link.url,
-    host: host(link.url),
+    url,
+    host: host(url),
     ...(city ? { line: 'Covers homes in that city or township only.', city_only: true } : {}),
     from: read ? `Read on the office's own site, ${read}.` : FROM[link.src] || null,
   };
+}
+
+/** Whether every office row on a county's page was read by hand on the office's own site (no directory row). */
+function allReadByHand(county) {
+  const entry = handRead.counties?.[county.fips];
+  return Boolean(entry?.property_search_office && Array.isArray(entry.rows) && entry.rows.length);
 }
 
 /**
@@ -150,4 +165,4 @@ function officesOf(county) {
 /** Whether the hand-read file has a row of this kind for the county. */
 const hasRow = (county, id) => Boolean(handRead.counties?.[county.fips]?.rows?.some((row) => row.id === id));
 
-module.exports = { officesOf, hasRow, dateWords, host };
+module.exports = { officesOf, hasRow, allReadByHand, directoryLinksOn, dateWords, host };

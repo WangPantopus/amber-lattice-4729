@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `q` and `a` are the question the row answers, in what the office's page says.",
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says.",
   "counties": {
     "41051": {
       "read": "2026-11-23",
@@ -112,7 +112,9 @@
           "url": "https://recordsearch.kingcounty.gov/LandmarkWeb/RecordingActivity",
           "line": "Emails a subscriber each time a land records document is recorded with a name they chose."
         }
-      ]
+      ],
+      "property_search_office": "King County, eReal Property",
+      "property_search_url": "https://blue.kingcounty.com/Assessor/eRealProperty/default.aspx"
     },
     "53035": {
       "read": "2026-11-23",
@@ -144,7 +146,9 @@
           "q": "Where do I find building permits in Kitsap County?",
           "a": "The Kitsap County Department of Community Development keeps building, land use and site permits for unincorporated Kitsap County. Its records page links to its permit searches."
         }
-      ]
+      ],
+      "property_search_office": "Kitsap County, Parcel Search",
+      "property_search_url": "https://psearch.kitsap.gov/psearch/index.html"
     },
     "53053": {
       "read": "2026-11-23",
@@ -214,7 +218,9 @@
           "q": "Where do I pay property tax in Skagit County?",
           "a": "The Skagit County Treasurer collects property tax. Its page lists paying online, by phone, by mail or in person, and the due dates of April 30 and October 31."
         }
-      ]
+      ],
+      "property_search_office": "Skagit County, Property Search",
+      "property_search_url": "https://classic.skagitcountywa.gov/Search/Property/"
     },
     "53061": {
       "read": "2026-11-23",

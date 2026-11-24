@@ -11,6 +11,8 @@ export const SITE_URL = 'https://pantopus.com';
 
 const API = API_BASE_URL.replace(/\/+$/, '');
 const DAY_S = 86400;
+// The lists (the index, a state's counties, the sitemap) follow a release within the hour; a county's own page is kept a day.
+export const LIST_S = 3600;
 
 export type GuideState = { slug: string; name: string; abbr: string; unit: string; units: string };
 
@@ -70,9 +72,9 @@ export type GuideCountyPage = {
 /** "$522,900". */
 export const dollars = (amount: number) => `$${Math.round(amount).toLocaleString('en-US')}`;
 
-async function get<T>(path: string): Promise<T | null> {
+async function get<T>(path: string, revalidate: number = DAY_S): Promise<T | null> {
   const res = await fetch(`${API}/api/public/county-guide${path}`, {
-    next: { revalidate: DAY_S },
+    next: { revalidate },
     headers: { Accept: 'application/json' },
   });
   if (res.status === 404) return null;
@@ -83,9 +85,9 @@ async function get<T>(path: string): Promise<T | null> {
 
 const SLUG = /^[a-z0-9-]{1,80}$/;
 
-export const guideIndex = cache(() => get<GuideIndex>(''));
+export const guideIndex = cache(() => get<GuideIndex>('', LIST_S));
 
-export const statePage = cache((state: string) => (SLUG.test(state) ? get<GuideStatePage>(`/${state}`) : Promise.resolve(null)));
+export const statePage = cache((state: string) => (SLUG.test(state) ? get<GuideStatePage>(`/${state}`, LIST_S) : Promise.resolve(null)));
 
 export const countyPage = cache((state: string, county: string) =>
   SLUG.test(state) && SLUG.test(county) ? get<GuideCountyPage>(`/${state}/${county}`) : Promise.resolve(null));
