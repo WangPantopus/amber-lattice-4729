@@ -25,6 +25,8 @@ const CITIES = [
   // November 24, 2026, third: Los Angeles, CA; Chicago, IL; Miami, FL; Las Vegas and Henderson, NV; Columbus, OH;
   // Pittsburgh, PA; Madison, WI; Oklahoma City, OK; Kansas City, MO.
   '0644000', '1714000', '1245000', '3240000', '3231900', '3918000', '4261000', '5548000', '4055000', '2938000',
+  // November 24, 2026, fourth: Long Beach and Moreno Valley, CA; Garland and Sugar Land, TX; Sarasota, FL.
+  '0643000', '0649270', '4829000', '4870808', '1264175',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
