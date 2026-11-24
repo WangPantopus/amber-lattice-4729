@@ -115,6 +115,7 @@ import app.pantopus.android.ui.components.VerifiedBadge
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.moments.components.momentsRingReach
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.theme.PantopusColors
@@ -1644,7 +1645,10 @@ private fun AvatarWithBadgeView(leading: RowLeading.AvatarWithBadge) {
             .take(2)
             .mapNotNull { it.firstOrNull()?.uppercase() }
             .joinToString("")
-    Box(modifier = Modifier.momentsRing(leading.momentsUserId).size(size)) {
+    // A person's picture keeps its rings' full reach clear on its leading side, so the rings sit inside the card by
+    // the card's own inset instead of against its edge (the card's height and text stay as they were).
+    val ringRoom = if (leading.momentsUserId != null) momentsRingReach(size) else 0.dp
+    Box(modifier = Modifier.padding(start = ringRoom).momentsRing(leading.momentsUserId).size(size)) {
         Box(
             modifier =
                 Modifier

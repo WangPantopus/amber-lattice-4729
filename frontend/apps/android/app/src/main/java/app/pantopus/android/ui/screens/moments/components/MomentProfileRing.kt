@@ -1,6 +1,7 @@
 package app.pantopus.android.ui.screens.moments.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -14,6 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.ui.screens.moments.MomentRingsHolder
 import app.pantopus.android.ui.screens.profile.sources.ProfileMarksHolder
+import app.pantopus.android.ui.screens.profile.sources.markRingMaxWidth
 import app.pantopus.android.ui.screens.profile.sources.markRingWidthPx
 import app.pantopus.android.ui.screens.profile.sources.profileMarkRing
 import kotlinx.coroutines.delay
@@ -83,6 +85,23 @@ fun Modifier.momentsRing(
             }
         }
     }
+
+/**
+ * How far [momentsRing] may draw beyond a picture [size] across while the profile with sources is on: the mark's
+ * widest ring and, while Moments is on, the Moments ring beyond it. A card whose picture sits at the card's inset keeps
+ * this much room beside the picture, so both rings clear the card's edge by that same inset. Zero while the profile with
+ * sources is off, so those screens stay as they were.
+ */
+@Composable
+fun momentsRingReach(
+    size: Dp,
+    stroke: Dp = 2.dp,
+    gap: Dp = 2.dp,
+): Dp {
+    if (ProfileMarksHolder.current == null) return 0.dp
+    val moments = if (MomentRingsHolder.current != null) MARK_TO_MOMENTS + stroke else 0.dp
+    return gap + markRingMaxWidth(size) + moments
+}
 
 /** The ring without the Moments that have ended since it was read; null when nothing is left. */
 private fun MomentRingDto.withoutEnded(): MomentRingDto? {
