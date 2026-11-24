@@ -83,8 +83,8 @@ function officeName(county, link) {
 
 /**
  * Whether links taken from NETR Online's directory show on the pages. Its terms say nothing about reusing its
- * listings (docs/research/provider-replacement/cost-and-rights.md), so showing them on public pages is the founder's
- * call: off unless COUNTY_GUIDE_DIRECTORY_LINKS is '1' (a rig or staging may set it for checks).
+ * listings (docs/research/provider-replacement/cost-and-rights.md), and the founder decided on November 23 to keep
+ * them off the public pages. Off unless COUNTY_GUIDE_DIRECTORY_LINKS is '1', for a rig's checks only.
  */
 const directoryLinksOn = () => (process.env.COUNTY_GUIDE_DIRECTORY_LINKS || '').trim() === '1';
 
