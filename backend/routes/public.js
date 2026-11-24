@@ -20,6 +20,7 @@ const { encodeGeohash, encodeGeohash6 } = require('../utils/geohash');
 const { GeoCache } = require('../utils/geoCache');
 const placePreviewService = require('../services/placePreviewService');
 const lookupMoney = require('../services/place/lookupMoney');
+const lookupReading = require('../services/ai/lookupReading');
 const homeRecordService = require('../services/homeRecord');
 const homeRecordAerial = require('../services/homeRecord/aerial');
 const { withinBudget } = require('../services/placeIntelligenceService');
@@ -862,7 +863,10 @@ async function buildPlacePreview(place) {
     sections: shaped.sections,
     glance: shaped.glance,
     not_checked: shaped.not_checked,
-    layout: shaped.layout,
+    // The Ask row only where the reading can be opened (its switch, the assistant's, a model key).
+    layout: lookupReading.enabled()
+      ? shaped.layout
+      : { ...shaped.layout, order: shaped.layout.order.filter((block) => block !== 'ask') },
     locked: LOCKED_SECTIONS,
     disclaimer: 'A free, one-time look at what\'s public. Claim this address to save it and get it every morning.',
   };
@@ -1214,6 +1218,116 @@ router.get('/residency-letters/:code', async (req, res) => {
   } catch (err) {
     console.error('[public/residency-letters] Error:', err.message);
     return res.status(500).json({ error: 'Verification failed. Try again.' });
+  }
+});
+
+// ── POST /api/public/place/reading ───────────────────────────
+// The lookup's reading (LOOKUPORDER SPEC 5.1): "Ask Pantopus: what does this
+// mean for me?" for someone signed out. One model call over the facts the page
+// already shows; no tools, no memory, no conversation.
+//
+//   - Only for an address this caller looked up in the last ten minutes: its
+//     geocode is still in the preview's cache, so the reading never asks the
+//     geocoder anything. Otherwise 409, and the client hides the row.
+//   - The model is given the page's facts and the city and state
+//     (services/ai/lookupReading.js), never the address, the street, the ZIP,
+//     the coordinates, the map cell or anything about the visitor.
+//   - Kept in the preview's in-memory cache for 24 hours under the map cell and
+//     a hash of the facts. The only thing written is one AIRequestLog row per
+//     model call: no user, endpoint lookup_reading, tokens, latency, status.
+//   - AI_LOOKUP_READING=off, AI_ASSISTANT=off or no model key: 404. Past
+//     AI_LOOKUP_DAILY_READINGS model calls since midnight UTC: 429. A refusal,
+//     a timeout or an answer that fails its checks: 502. The client hides the
+//     row on any of them; a half reading is never shown.
+const READING_TTL_MS = 24 * 60 * 60 * 1000;
+const READING_TIMEOUT_MS = 25_000;
+const READING_MAX_TOKENS = 4096;
+const readingsInFlight = new Map();
+
+async function makeReading(input, placing) {
+  // Required here, not at the top: the model layer is only loaded once someone asks for a reading.
+  const { getAnthropicClient, DRAFT_MODEL, resolveEffort } = require('../config/anthropic');
+  const { complete, AIRefusalError, isTimeoutError } = require('../services/ai/llm');
+  const prompts = require('../services/ai/prompts');
+  const { logRequest } = require('../services/ai/agentService');
+  const client = getAnthropicClient();
+  if (!client) return { status: 404 };
+  const started = Date.now();
+  const log = (fields) => logRequest({
+    userId: null, endpoint: lookupReading.ENDPOINT, model: DRAFT_MODEL, promptVersion: prompts.VERSIONS.lookupReading,
+    latencyMs: Date.now() - started, ...fields,
+  });
+  lookupReading.countCall();
+  try {
+    const response = await complete({
+      client,
+      model: DRAFT_MODEL,
+      system: prompts.LOOKUP_READING_SYSTEM,
+      messages: [{ role: 'user', content: lookupReading.userContent(input) }],
+      schema: lookupReading.readingClaudeSchema,
+      effort: resolveEffort(process.env.ANTHROPIC_DRAFT_EFFORT, 'low'),
+      maxTokens: READING_MAX_TOKENS,
+      timeoutMs: READING_TIMEOUT_MS,
+    });
+    let answer = null;
+    try {
+      answer = JSON.parse(response.text);
+    } catch {
+      answer = null;
+    }
+    const { reading, reason } = lookupReading.checkReading(answer, { input, placing });
+    await log({
+      status: reading ? 'ok' : 'schema_error', schemaValid: Boolean(reading),
+      inputTokens: response.inputTokens, outputTokens: response.outputTokens, errorMessage: reason,
+    });
+    return reading ? { status: 200, reading } : { status: 502 };
+  } catch (err) {
+    const refused = err instanceof AIRefusalError;
+    await log({ status: refused ? 'refusal' : isTimeoutError(err) ? 'timeout' : 'error', errorMessage: err.message });
+    if (!refused) console.warn('[public/place/reading] model call failed:', err.message);
+    return { status: 502 };
+  }
+}
+
+router.post('/place/reading', optionalAuth, express.json({ limit: '2kb' }), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!lookupReading.enabled()) return res.status(404).json({ error: 'NOT_AVAILABLE' });
+    const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
+    if (!address || address.length > 200) return res.status(400).json({ error: 'An address is required.' });
+
+    const place = previewCache.get(geoKey(address));
+    if (ownRecentLookups.get(ownLookupKey(req, address)) !== true || !place || !place.ok) {
+      return res.status(409).json({ error: 'LOOK_UP_FIRST' });
+    }
+
+    const preview = await buildPlacePreview(place);
+    const input = lookupReading.readingInput(preview);
+    const placing = lookupReading.placingWords({ typed: address, place });
+    // A record that happens to carry the street or the ZIP in its own words is not sent anywhere.
+    if (lookupReading.mentionsPlace(JSON.stringify(input), placing)) {
+      console.warn('[public/place/reading] facts name the place; not sent');
+      return res.status(502).json({ error: 'NO_READING' });
+    }
+
+    const digest = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const key = `reading:${encodeGeohash6(place.lat, place.lng)}:${digest}`;
+    const kept = previewCache.get(key);
+    if (kept) return res.json({ reading: kept });
+
+    let call = readingsInFlight.get(key);
+    if (!call) {
+      if (await lookupReading.overDailyCap()) return res.status(429).json({ error: 'AI_BUDGET' });
+      call = makeReading(input, placing).finally(() => readingsInFlight.delete(key));
+      readingsInFlight.set(key, call);
+    }
+    const result = await call;
+    if (result.status !== 200) return res.status(result.status).json({ error: result.status === 404 ? 'NOT_AVAILABLE' : 'NO_READING' });
+    previewCache.set(key, result.reading, READING_TTL_MS);
+    return res.json({ reading: result.reading });
+  } catch (err) {
+    console.error('[public/place/reading] Error:', err.message);
+    return res.status(502).json({ error: 'NO_READING' });
   }
 });
 
