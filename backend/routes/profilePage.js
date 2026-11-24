@@ -8,6 +8,8 @@
  *   GET /api/profile-page/:username              the page, by the name in the person's link
  *   GET …/piece/:pieceId, …/month/:month         one piece, one month, under the same viewer rules
  *   GET /api/profile-page/marks?ids=…            the ring an avatar wears, for up to 100 people
+ *   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   links for one purpose (PROFILE_LINKS)
+ *   GET /api/profile-page/:username/v/:key[/piece/:id | /month/:m]   a link for one purpose, opened by its key
  */
 
 const express = require('express');
@@ -15,7 +17,7 @@ const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
-const { profileSourcesEnabled } = require('../utils/featureFlags');
+const { profileSourcesEnabled, profileLinksEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
 
 const router = express.Router();
@@ -25,13 +27,13 @@ router.use((req, res, next) => {
   return res.status(404).json({ error: 'Not found', code: 'PROFILE_SOURCES_OFF' });
 });
 
-function handle(label, run) {
+function handle(label, run, status = 200) {
   return async (req, res) => {
     try {
       res.set('Cache-Control', 'private, no-store');
-      return res.json(await run(req));
+      return res.status(status).json(await run(req));
     } catch (err) {
-      if (err instanceof profilePage.PageRefusal) {
+      if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -47,6 +49,15 @@ const publicRead = [optionalAuth, (req, res, next) => (req.user ? next() : previ
 // The owner's own share settings (before /:username, so "me" is never read as a username).
 router.get('/me/share', verifyToken, handle('share', (req) => profilePage.shareBody(req)));
 router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.putShare(req)));
+
+// Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.
+function linksOn(req, res, next) {
+  if (profileLinksEnabled()) return next();
+  return res.status(404).json({ error: 'Not found', code: 'PROFILE_LINKS_OFF' });
+}
+router.post('/me/links', verifyToken, linksOn, handle('link-make', (req) => profilePage.makeLink(req), 201));
+router.patch('/me/links/:id', verifyToken, linksOn, handle('link-change', (req) => profilePage.changeLink(req)));
+router.delete('/me/links/:id', verifyToken, linksOn, handle('link-delete', (req) => profilePage.removeLink(req)));
 
 // By account id.
 router.get('/id/:id', publicRead, handle('page-id', (req) => profilePage.getPage(req, { id: req.params.id })));
@@ -73,6 +84,13 @@ function byUsername(req) {
 }
 
 router.get('/:username', publicRead, handle('page', (req) => profilePage.getPage(req, byUsername(req))));
+// A link for one purpose, opened by its key (never needs sign-in; app.js keeps the key out of the request log).
+router.get('/:username/v/:key', publicRead, linksOn,
+  handle('link-open', (req) => profilePage.openByKey(req, req.params.username, req.params.key)));
+router.get('/:username/v/:key/piece/:pieceId', publicRead, linksOn,
+  handle('link-piece', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'piece', req.params.pieceId)));
+router.get('/:username/v/:key/month/:month', publicRead, linksOn,
+  handle('link-month', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'month', req.params.month)));
 router.get('/:username/piece/:pieceId', publicRead,
   handle('piece', (req) => profilePage.getPiece(req, byUsername(req), req.params.pieceId)));
 router.get('/:username/month/:month', publicRead,

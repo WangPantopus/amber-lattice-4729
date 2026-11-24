@@ -94,7 +94,7 @@ function cityLimit(settings) {
  * Opens the page for this request: the view, whether they may open it, the name others see and what the view needs
  * for its actions. Throws PageRefusal (403 PROFILE_PRIVATE when they may not open it).
  */
-async function openFor(req, found, { viewOverride } = {}) {
+async function openFor(req, found, { viewOverride, keyed = false } = {}) {
   const { userData, localProfileRouteMatch } = found;
   const { PREVIEW_VIEWER_ID } = require('../../utils/profilePreview');
   const {
@@ -111,6 +111,8 @@ async function openFor(req, found, { viewOverride } = {}) {
   const [canOpen, privacy, household, connected, relationship, canMessage, shown] = await Promise.all([
     (async () => {
       if (isOwner) return true;
+      // A link for one purpose: its key is the invitation, so search settings don't stop it; a private profile does.
+      if (keyed) return (userData.profile_visibility || 'public') !== 'private';
       if (preview) return (await previewProfileAccess(PREVIEW_AUDIENCE[preview], userData, localProfileRouteMatch)).canOpen;
       if (localProfileRouteMatch) return canAccessLegacyLocalProfileRoute(localProfileRouteMatch, viewerId, userData);
       return canAccessPublicUserProfile(viewerId, userData.id, userData.profile_visibility || 'public');
@@ -139,7 +141,7 @@ async function openFor(req, found, { viewOverride } = {}) {
 
   return {
     view,
-    preview,
+    preview: keyed ? null : preview,
     viewerId: preview ? null : signedIn,
     userData,
     shown,
@@ -153,4 +155,11 @@ async function openFor(req, found, { viewOverride } = {}) {
   };
 }
 
-module.exports = { findPerson, openFor, PageRefusal, cityLimit, readPrivacy, PREVIEW_VIEWS };
+/** The name in the person's link: the handle others see (their Local Profile's), as openFor's `username`. */
+async function handleOthersSee(userData) {
+  const { PREVIEW_VIEWER_ID } = require('../../utils/profilePreview');
+  const shown = await reads().withLocalProfileNameForViewer(userData, userData, PREVIEW_VIEWER_ID);
+  return chosenUsernameOrNull(shown.username) || shown.username;
+}
+
+module.exports = { findPerson, openFor, PageRefusal, cityLimit, readPrivacy, handleOthersSee, PREVIEW_VIEWS };
