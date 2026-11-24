@@ -17,6 +17,7 @@ const { SALE_PRICES_NOT_PUBLIC } = require('../../data/valuePractice');
 const logger = require('../../utils/logger');
 const recordingAlerts = require('./recordingAlerts');
 const { groundBlock } = require('./ground');
+const zoningLinks = require('./zoningLinks');
 const { recordSource } = require('./openPart');
 const { positive, grouped, money, dateLabel } = require('./words');
 
@@ -195,14 +196,20 @@ function lotBlock(copy) {
   const { facts } = copy;
   const acres = positive(facts.lot_acres);
   const sqft = positive(facts.lot_sqft);
-  const zoning = typeof facts.zoning === 'string' && facts.zoning.trim() ? facts.zoning.trim() : null;
+  // The district without the record's government mark ("R-6 : VAN" reads "R-6").
+  const zoned = zoningLinks.zoningOf(copy);
+  const zoning = zoned ? zoned.district : null;
   const size = [acres ? `${grouped(acres, 2)} ${acres === 1 ? 'acre' : 'acres'}` : null, sqft ? `${grouped(Math.round(sqft))} sq ft` : null].filter(Boolean).join(' · ');
   const rows = [
     size ? { label: 'Lot size', value: size, mono: false, chip: null } : null,
     zoning ? { label: 'Zoning', value: zoning, mono: true, chip: null } : null,
   ].filter(Boolean);
   if (!rows.length) return null;
-  return { kind: 'rows', id: 'lot_zoning', title: 'Lot and zoning', lead: null, rows, note: `From ${recordSource(copy)}.`, action: null };
+  return {
+    kind: 'rows', id: 'lot_zoning', title: 'Lot and zoning', lead: null, rows,
+    note: `From ${recordSource(copy)}.${zoned?.name ? ` ${zoned.name} sets this zoning; what it allows is on its own page.` : ''}${zoned?.codeChanged ? ` ${zoned.name} replaced its zoning districts in 2026, so its page may name this one differently.` : ''}`,
+    action: zoningLinks.actionFor(copy),
+  };
 }
 
 /** The exemption check (exemptionCheckService.js) as a `card`; null when the county's record can't say. */
