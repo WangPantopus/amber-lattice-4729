@@ -19,6 +19,9 @@
 //                 link pages seen, codes, claimed, joined, replies,
 //                 pass-ons, joiners who sent their own, stamp books sold,
 //                 and the loop number; for the window and per UTC day
+//   around_you    Around you (Today's second half): people who opened it
+//                 in the last 7 and 30 days, and the reactions, replies,
+//                 saves and reposts its posts got in those days
 //
 // Rates are per DISTINCT visitor (anon_id) when the beacons carried one,
 // so a visitor who reloads five times is one preview. Event totals are
@@ -548,21 +551,78 @@ async function loadPlanVenues(since, now) {
   }
 }
 
+/**
+ * Pure: the Around you block. `opens` are around_you_opened rows; `actions` maps reactions | replies | saves | reposts
+ * to their rows' created_at on Around you posts. Counts for the last 7 and 30 days, whatever the report's window;
+ * distinct people for opens. Nobody is listed.
+ */
+function summarizeAroundYou(opens, actions, now = Date.now()) {
+  const within = (at, days) => Number.isFinite(at) && at <= now && now - at <= days * 86400000;
+  const block = {};
+  for (const days of [7, 30]) {
+    const rows = (opens || []).filter((row) => within(Date.parse(row.created_at), days));
+    block[`last_${days}_days`] = {
+      people: new Set(rows.map((row) => row.user_id).filter(Boolean).map(String)).size,
+      opens: rows.length,
+      ...Object.fromEntries(['reactions', 'replies', 'saves', 'reposts'].map((kind) => [kind,
+        (actions?.[kind] || []).filter((row) => within(Date.parse(row.created_at), days)).length])),
+    };
+  }
+  return block;
+}
+
+// Around you's opens and what its posts got, for the last 30 days. A failed read leaves the block out (null) and the
+// rest of the report standing.
+async function loadAroundYou(now) {
+  try {
+    const since = new Date(now - 30 * 86400000).toISOString();
+    const until = new Date(now).toISOString();
+    const [opens, posts] = await Promise.all([
+      readPages(() => supabaseAdmin.from('FunnelEvent').select('user_id, created_at').eq('event_type', 'around_you_opened')
+        .gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }).order('id')),
+      readPages(() => supabaseAdmin.from('Post').select('id').eq('origin', 'curator')
+        .not('post_metadata->around_you', 'is', null).order('id')),
+    ]);
+    const ids = posts.rows.map((post) => post.id);
+    const read = (table, extra = (q) => q, column = 'post_id') => (ids.length === 0 ? { rows: [] }
+      : readForIds(ids, (batch) => extra(supabaseAdmin.from(table).select('id, created_at').in(column, batch)
+        .gte('created_at', since).lte('created_at', until))));
+    const [reactions, replies, saves, reposts, quotes] = await Promise.all([
+      read('PostLike'),
+      read('PostComment', (q) => q.eq('is_deleted', false)),
+      read('PostSave'),
+      read('PostShare', (q) => q.eq('share_type', 'repost')),
+      read('Post', (q) => q, 'quoted_post_id'),
+    ]);
+    return summarizeAroundYou(opens.rows, {
+      reactions: reactions.rows, replies: replies.rows, saves: saves.rows, reposts: [...reposts.rows, ...quotes.rows],
+    }, now);
+  } catch (err) {
+    logger.warn('funnelReport: around you unavailable', { error: err.message });
+    return null;
+  }
+}
+
 async function loadFunnelSummary({ days = 30 } = {}) {
   const d = Math.min(365, Math.max(1, Number(days) || 30));
   const now = Date.now();
   const since = new Date(now - d * 86400000).toISOString();
-  const [events, activation, planVenues, books] = await Promise.all([
+  const [events, activation, planVenues, books, aroundYou] = await Promise.all([
     readPages(() => supabaseAdmin.from('FunnelEvent').select('event_type, anon_id, user_id, meta, created_at')
       .gte('created_at', since).lte('created_at', new Date(now).toISOString())
       .order('created_at', { ascending: false }).order('id')),
     loadActivation(since, now),
     loadPlanVenues(since, now),
     loadStampBooks(since, now),
+    loadAroundYou(now),
   ]);
   const cards = summarizeCards(events.rows, books?.rows || [], { since, now, prices: books?.prices || {} });
   if (!books) for (const block of [cards, ...cards.days]) Object.assign(block, { books: null, refunded: null, sales_cents: null });
-  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues, cards };
+  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues, cards,
+    around_you: aroundYou };
 }
 
-module.exports = { summarizeFunnel, summarizeActivation, summarizePlanVenues, summarizeCards, loadFunnelSummary, MAX_ROWS, NO_ROUTE };
+module.exports = {
+  summarizeFunnel, summarizeActivation, summarizePlanVenues, summarizeCards, summarizeAroundYou, loadFunnelSummary, MAX_ROWS,
+  NO_ROUTE,
+};

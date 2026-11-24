@@ -17,6 +17,22 @@ const REGISTRY = 'https://data.transportation.gov/resource/69qe-yiui.json';
 const WITHIN_KM = 40;
 const AHEAD_MS = 14 * 24 * 3_600_000;
 const FALLBACK_PAGE = 'https://www.fhwa.dot.gov/trafficinfo/';
+const FALLBACK_AGENCY = 'Federal Highway Administration';
+// Who runs each traveler map: a road row's link reads "Read at <agency>".
+const AGENCIES = {
+  AZ: 'Arizona DOT', DE: 'Delaware DOT', FL: 'Florida DOT', HI: 'Hawaii DOT', IA: 'Iowa DOT',
+  ID: 'Idaho Transportation Department', IN: 'Indiana DOT', KS: 'Kansas DOT', KY: 'Kentucky Transportation Cabinet',
+  LA: 'Louisiana DOTD', MD: 'Maryland DOT', ME: 'New England 511', MN: 'Minnesota DOT', MO: 'Missouri DOT',
+  MS: 'Mississippi DOT', ND: 'North Dakota DOT', NH: 'New England 511', NJ: 'New Jersey DOT', NY: 'New York State DOT',
+  OK: 'Oklahoma DOT', OR: 'Oregon DOT', TX: 'Texas DOT', VT: 'New England 511', WA: 'Washington State DOT',
+  WI: 'Wisconsin DOT',
+};
+
+// The agency a road row's link opens, from its source ("roadwork:fl").
+function roadAgency(source) {
+  const state = String(source || '').split(':')[1]?.toUpperCase();
+  return (TRAVEL_PAGES[state] && AGENCIES[state]) || FALLBACK_AGENCY;
+}
 // Each state's own traveler map, checked by hand on 2026-11-24.
 const TRAVEL_PAGES = {
   AZ: 'https://www.az511.gov/',
@@ -142,12 +158,14 @@ function roadworkRows(region, entry, features, now = Date.now()) {
       : `Started ${dayLabel(new Date(start), region.timezone, { year: now - start > 300 * 24 * 3_600_000 })}`;
     const ends = end ? `; ends ${dayLabel(new Date(end), region.timezone, { year: true })}` : '';
     const impact = IMPACT[String(props.vehicle_impact || '').toLowerCase()];
-    const body = `${when}${ends}.${impact ? ` ${impact}.` : ''}${entry.organization ? ` From ${entry.organization}.` : ''}`;
+    // The agency is the link's name ("Read at Florida DOT"), so the body is the dates and the lanes.
+    const body = `${when}${ends}.${impact ? ` ${impact}.` : ''}`;
     rows.push({
       source: `roadwork:${state.toLowerCase()}`,
       feedId: eventId(feature, details, props.start_date),
       category: 'community_resource',
       priority: 2,
+      rank: near,
       title,
       body,
       url: TRAVEL_PAGES[state] || FALLBACK_PAGE,
@@ -156,4 +174,4 @@ function roadworkRows(region, entry, features, now = Date.now()) {
   return rows;
 }
 
-module.exports = { readRegistry, readFeedEvents, roadworkRows, statesOf, TRAVEL_PAGES };
+module.exports = { readRegistry, readFeedEvents, roadworkRows, roadAgency, statesOf, TRAVEL_PAGES };

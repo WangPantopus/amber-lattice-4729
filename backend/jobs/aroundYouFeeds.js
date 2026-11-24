@@ -19,6 +19,7 @@ const wildfire = require('../services/aroundYou/feeds/wildfire');
 const fema = require('../services/aroundYou/feeds/fema');
 const roadwork = require('../services/aroundYou/feeds/roadwork');
 const ical = require('../services/aroundYou/feeds/ical');
+const { writeChecked } = require('../services/aroundYou/checked');
 
 let running = false;
 
@@ -72,6 +73,7 @@ async function run() {
   }
 
   // State road feeds: each feed once, for every region in its states.
+  const roadStatesRead = new Set();
   if (registry) {
     const states = new Set(regions.map((region) => String(region.state || '').toUpperCase()).filter(Boolean));
     for (const entry of registry.filter((feed) => feed.states.some((state) => states.has(state)))) {
@@ -82,6 +84,7 @@ async function run() {
         failed(`roadwork ${hostOf(entry.url)}`, err);
         continue;
       }
+      entry.states.forEach((state) => roadStatesRead.add(state));
       for (const region of regions.filter((r) => entry.states.includes(String(r.state || '').toUpperCase()))) {
         add(region, roadwork.roadworkRows(region, entry, features));
       }
@@ -101,6 +104,13 @@ async function run() {
       failed(`calendar ${hostOf(source.url)}`, err);
     }
   }
+
+  // What was really checked for each region, for the On watch card (services/aroundYou/checked.js).
+  await writeChecked(Object.fromEntries(regions.map((region) => [region.region, {
+    wildfire: Boolean(fires),
+    fema: Boolean(declarations) && /^\d{5}$/.test(String(region.county_fips || '')),
+    roads: roadStatesRead.has(String(region.state || '').toUpperCase()),
+  }]))).catch((err) => logger.warn('Around you feeds: checks not recorded', { error: err.message }));
 
   for (const region of regions) {
     try {
