@@ -655,8 +655,9 @@ function LegacyFreeTiles({ preview, onWall, stack }: { preview: PlacePreview; on
 // ── Ask Pantopus (LOOKUPORDER SPEC 5.2) ─────────────────────
 // The row opens a panel in the column with Pantopus AI's reading of this
 // page's public records. The reading is asked for on the first tap; any
-// error (switched off, the day's cap, a refused or broken answer) means there
-// is nothing to show, and the row goes away. Never half a reading.
+// error (the day's cap, a refused or broken answer) leaves the panel open with
+// one line, and it isn't asked again on this page (founder, 2026-11-24). Never
+// half a reading. Where the reading is off, the server's order leaves the row out.
 export type AskReadingProps = {
   /** The words this lookup was made with: the reading answers only for an address this browser just looked up. */
   address: string;
@@ -668,7 +669,7 @@ export type AskReadingProps = {
 
 function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'gone'>('idle');
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [reading, setReading] = useState<PlaceReading | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const opened = useRef(false);
@@ -689,11 +690,10 @@ function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
       setReading(res.reading);
       setState('ready');
     } catch {
-      setState('gone');
+      setState('failed');
     }
   };
 
-  if (state === 'gone') return null;
   return (
     <section className="rounded-2xl border border-app-border bg-app-surface shadow-sm" data-testid="start-ask">
       <button
@@ -717,6 +717,10 @@ function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
               <ShimmerBlock className="h-4 w-4/5" />
               <ShimmerBlock className="h-4 w-2/3" />
             </div>
+          ) : state === 'failed' ? (
+            <p className="text-[14px] leading-[21px] text-app-text-secondary" role="status" data-testid="start-ask-failed">
+              Pantopus AI couldn&apos;t read this page just now.
+            </p>
           ) : reading ? (
             <div className="flex flex-col gap-4 text-[14px] leading-[21px] text-app-text">
               <div>
@@ -760,7 +764,7 @@ function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
                 ))}
               </ul>
               {onAskOwn ? (
-                <button type="button" onClick={onAskOwn} className="self-start text-[14px] font-semibold text-primary-600 hover:text-primary-700">
+                <button type="button" onClick={onAskOwn} className="self-start text-left text-[14px] font-semibold text-primary-600 hover:text-primary-700">
                   Ask your own question. Free with an account.
                 </button>
               ) : null}
