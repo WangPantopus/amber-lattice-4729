@@ -359,6 +359,7 @@ export type {
 // Funnel — pre-account instrumentation beacons (wedge Phase 1)
 export * as funnel from './endpoints/funnel';
 export { recordFunnelEvent, rememberFunnelRoute, getFunnelRoute, getFunnelAnonId } from './endpoints/funnel';
+export type { FunnelLayout } from './endpoints/funnel';
 export type { ClientFunnelEventType } from './endpoints/funnel';
 
 // Place — server-attested residency letters (Phase 1, #11)
