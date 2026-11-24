@@ -66,6 +66,7 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: '/' },
+  robots: { index: true, follow: true },
   openGraph: {
     type: 'website',
     url: '/',
