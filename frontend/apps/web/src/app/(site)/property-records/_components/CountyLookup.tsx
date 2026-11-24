@@ -7,20 +7,43 @@
 //
 // Counting: the funnel's beacons carry the route this browser came in on (api.rememberFunnelRoute). A lookup started
 // here records `county-page:<FIPS>` unless an earlier visit (a mailed card's `?r=`, the homepage) already set one, as
-// the homepage does, so the preview, the wall and an account made after count toward the county page.
+// the homepage does, so the preview, the wall and an account made after count toward the county page. Visits are
+// counted per county and day by the page's own beacon (countVisit); backend/services/countyGuide/report.cjs adds it
+// all up.
 // ============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import * as api from '@pantopus/api';
 import AddressAutocomplete, { type SelectedAddress } from '@/components/place/AddressAutocomplete';
+
+// One visit per tab and county: the backend counts visits per county and day, nothing else (countyGuide/visits.js).
+function countVisit(fips: string) {
+  try {
+    const key = `pantopus_county_visit:${fips}`;
+    if (window.sessionStorage.getItem(key)) return;
+    window.sessionStorage.setItem(key, '1');
+  } catch {
+    // Without storage a reload counts again; the count is still a county's, never a person's.
+  }
+  void fetch('/api/public/county-guide/visits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fips }),
+    keepalive: true,
+  }).catch(() => {});
+}
 
 export default function CountyLookup({ fips, inName }: { fips: string; inName: string }) {
   const router = useRouter();
   const [selected, setSelected] = useState<SelectedAddress | null>(null);
   const [fallbackAddress, setFallbackAddress] = useState<string | null>(null);
   const [going, setGoing] = useState(false);
+
+  useEffect(() => {
+    countVisit(fips);
+  }, [fips]);
 
   const go = (address: string | null) => {
     if (!address) return;

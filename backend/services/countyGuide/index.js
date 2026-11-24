@@ -157,4 +157,7 @@ function indexAnswer() {
   return { v: 1, states, counties };
 }
 
-module.exports = { countyAnswer, stateAnswer, indexAnswer, published, BATCHES };
+/** Whether a FIPS code is a county with a page now (the visit beacon counts only those). */
+const isPage = (fips) => /^\d{5}$/.test(String(fips || '')) && published(places.countyByFips(fips));
+
+module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES };
