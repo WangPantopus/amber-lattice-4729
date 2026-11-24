@@ -13,7 +13,8 @@ const { year, isoDate, zipCode, realUnit, streetParts, onRecord } = require('./a
 const { positive, put, word } = require('./values.cjs');
 const { zipsByCounty } = require('./zcta.cjs');
 const { condoBuildings } = require('./condos.cjs');
-const { isHomeSale } = require('./sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('./sales.cjs');
+const { hold } = require('./held.cjs');
 const { log } = require('./log.cjs');
 
 const PARCEL_COLUMNS = ['Parcel_Number', 'Tax_Year', 'Acres', 'Retired', 'Subdivision', 'School_District'];
@@ -186,9 +187,20 @@ async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdent
   }
   // The latest sale of one parcel, with a building, that the Auditor marked valid, at a home's price.
   const sales = new Map();
+  // Every sale, for recorded history (facts.js): the transfer table names no kind of deed, so a transfer that isn't a sale has
+  // no word for what it is and is left out; a sale follows the rule below for the last sale.
+  const saleLines = new Map();
+  let first = null;
   for await (const row of xmlTable(zip, 'Parcel Transfer.xml', 'Parcel_Transfer', TRANSFER_COLUMNS)) {
     const [date, price] = [isoDate(row.Date_Conveyed), positive(row.Consideration)];
-    if (!/^YES$/i.test(row.Valid_Sale) || /^(1|Y|YES)$/i.test(row.Land_Only) || (positive(row.Number_Of_Parcels) || 1) > 1 || !date || !isHomeSale(price)) continue;
+    const sale = /^YES$/i.test(row.Valid_Sale) && !/^(1|Y|YES)$/i.test(row.Land_Only) && !((positive(row.Number_Of_Parcels) || 1) > 1) && Boolean(date) && isHomeSale(price);
+    if (date && (!first || date < first)) first = date;
+    const line = historyLine({ date, sale, price: price && Math.round(price) });
+    if (line) {
+      if (!saleLines.has(row.Parcel_Number)) saleLines.set(row.Parcel_Number, []);
+      saleLines.get(row.Parcel_Number).push(line);
+    }
+    if (!sale) continue;
     const held = sales.get(row.Parcel_Number);
     if (!held || held.date < date) sales.set(row.Parcel_Number, { date, price: Math.round(price) });
   }
@@ -204,7 +216,12 @@ async function* build({ FIPS, COUNTY, FILE, SOURCE, PUBLISHER, strictParcelIdent
     if (strictParcelIdentity && singleFamily(value?.code) && !confirmedHouses.has(row.Parcel_Number)) continue;
     const record = fromParcel({ FIPS, COUNTY, strictParcelIdentity }, row, places.get(row.Parcel_Number), dwellings.get(row.Parcel_Number), value, sales.get(row.Parcel_Number));
     if (!record) noAddress += 1;
-    else if (!records.has(record.id)) records.set(record.id, record);
+    else if (!records.has(record.id)) {
+      // Read since the county went live: held off its screens until its new_columns switch is on (held.cjs).
+      const history = recordedHistory(saleLines.get(row.Parcel_Number) || [], { since: (first || '').slice(0, 4) });
+      if (history) hold(record, 'recorded_history', history);
+      records.set(record.id, record);
+    }
   }
   const list = [...records.values()];
   log(`${COUNTY}: tax year ${taxYear}, ${list.length} parcels, ${noAddress} without a street number, ${retired} retired`);
