@@ -133,9 +133,10 @@ struct MomentsProfileRing: ViewModifier {
         .accessibilityHidden(!spoken)
     }
 
-    /// How far the mark's ring reaches out from this circle, plus a hair: the Moments ring sits beyond it.
+    /// How much further out the Moments ring sits when the mark's ring is there: just beyond it, 1 pt clear, in place
+    /// of its own gap (so the pair stays as tight as the Moments ring alone plus the mark).
     private func markReach(_ mark: ProfileMarkSummary, _ size: CGSize) -> CGFloat {
-        ProfileAvatarRing.reach(mark, diameter: min(size.width, size.height)) + 1
+        max(0, ProfileAvatarRing.reach(mark, diameter: min(size.width, size.height)) + 1 - gap)
     }
 
     /// Plays the person's Moments from the first one not watched yet. On the open iPhone Duo held sideways they play
