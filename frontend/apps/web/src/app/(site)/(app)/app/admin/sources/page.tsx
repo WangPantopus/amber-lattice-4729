@@ -51,6 +51,13 @@ function subscriptionLine(source: Source) {
   return `Subscription not checked: ${s.sign}`;
 }
 
+/** The model's own line about a source, marked as the model's so it is not read as one of the server's checks. */
+function whyLine(source: Source) {
+  const why = source.note?.why;
+  if (!why) return null;
+  return source.proposed_by === 'finder' && source.note?.kind !== 'state_outlet' ? `Claude's note: ${why}` : why;
+}
+
 function kindLabel(kinds: Kind[], id: string | null | undefined) {
   return kinds.find((k) => k.id === id)?.label || 'Source';
 }
@@ -101,7 +108,7 @@ function Proposal({ source, kinds, onDone }: { source: Source; kinds: Kind[]; on
         </span>
       </div>
       <SourceLink url={source.url} />
-      {source.note?.why && <p className="text-sm text-app-text-secondary">{source.note.why}</p>}
+      {whyLine(source) && <p className="text-sm text-app-text-secondary">{whyLine(source)}</p>}
       {numbers && <p className="text-sm text-app-text" data-testid="admin-sources-numbers">{numbers}</p>}
       {subscription && <p className="text-xs text-app-text-secondary">{subscription}</p>}
       {!!source.note?.samples?.length && (
@@ -210,6 +217,7 @@ function RunLine({ region }: { region: Region }) {
   return (
     <span>
       Last run {when(run.finished_at)}: {num(s?.proposed)} proposed, {num(s?.noted)} noted, {num(s?.known)} already here{claudeText}
+      {s?.retry ? ' · the feeds job will try this place again' : ''}
     </span>
   );
 }
@@ -303,7 +311,7 @@ function RegionCard({ region, kinds, onChanged }: { region: Region; kinds: Kind[
                   <span className="text-app-text">{s.display_name}</span>
                   <span className="text-xs text-app-text-muted"> · {s.note?.reason || s.note?.status}</span>
                   <div><SourceLink url={s.url} /></div>
-                  {s.note?.why && <p className="text-xs text-app-text-secondary">{s.note.why}</p>}
+                  {whyLine(s) && <p className="text-xs text-app-text-secondary">{whyLine(s)}</p>}
                 </li>
               ))}
             </ul>

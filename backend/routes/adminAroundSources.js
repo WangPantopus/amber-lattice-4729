@@ -70,6 +70,7 @@ function runView(run) {
       known: summary.known,
       dropped: summary.dropped,
       ms: summary.ms,
+      retry: Boolean(summary.retry),
     } : null,
   };
 }

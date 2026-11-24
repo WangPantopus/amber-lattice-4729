@@ -773,6 +773,14 @@ async function inBatches(items, size, work) {
 // summary }. A region runs once at a time.
 const runs = new Map();
 
+// A Claude step that gave no answer must not use up a place's one automatic run (review G2): its stamp is cleared and
+// the feeds job hands the place again next hour. A call that failed, or that never ran, costs nothing; one that ran out
+// of budget or turns did spend tokens, so those are tried again twice at most, then the place waits for "Find sources".
+const RETRY_OUTCOMES = new Set(['failed', 'no_client', 'over_budget', 'unfinished', 'off']);
+const SPENDING_OUTCOMES = new Set(['over_budget', 'unfinished']);
+const MAX_SPENDING_RETRIES = 2;
+const spendingRetries = new Map(); // region -> tries that spent tokens, in this process
+
 const REGION_SELECT = 'region, display_name, state, county_fips, county_name, provisioned_by, sources_checked_at, active';
 
 async function loadRegion(regionId) {
@@ -838,6 +846,25 @@ async function findSources(regionId, { trigger = 'button' } = {}) {
     for (const { candidate, result } of checked) await record(candidate, result);
   } else {
     summary.claude = { outcome: 'off' };
+  }
+
+  if (RETRY_OUTCOMES.has(summary.claude.outcome)) {
+    const spent = SPENDING_OUTCOMES.has(summary.claude.outcome) ? (spendingRetries.get(regionId) || 0) + 1 : 0;
+    if (spent > MAX_SPENDING_RETRIES) {
+      logger.warn('Around you source finder: no answer again; the job will not try this place again (Find sources on '
+        + '/app/admin/sources runs it)', { region: regionId, outcome: summary.claude.outcome, tries: spent });
+    } else {
+      if (spent) spendingRetries.set(regionId, spent);
+      // Only this run's own stamp: a newer run's is left alone.
+      const { error: clearError } = await supabaseAdmin.from('seeder_config').update({ sources_checked_at: null })
+        .eq('region', regionId).eq('sources_checked_at', now.toISOString());
+      if (clearError) throw clearError;
+      summary.retry = true;
+      logger.warn('Around you source finder: the Claude step gave no answer; the feeds job will try this place again',
+        { region: regionId, outcome: summary.claude.outcome });
+    }
+  } else {
+    spendingRetries.delete(regionId);
   }
 
   summary.ms = Date.now() - started;

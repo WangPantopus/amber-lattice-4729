@@ -407,6 +407,8 @@ export interface AroundSourceRun {
     known: number;
     dropped: { name: string; reason: string }[];
     ms: number;
+    /** The Claude step gave no answer, so the feeds job will hand this place to the finder again. */
+    retry?: boolean;
   } | null;
 }
 
