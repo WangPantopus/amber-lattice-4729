@@ -141,6 +141,38 @@ extension PlacePreviewContent {
     }
 }
 
+// MARK: - More with a free account
+
+extension PlacePreviewContent {
+    @ViewBuilder
+    func lockedSections(_ locked: [PlacePreviewLockedSection]) -> some View {
+        PlaceGroupLabel(text: "More with a free account").padding(.top, 18)
+        VStack(spacing: 8) {
+            ForEach(locked) { section in
+                PlaceLockedCard(
+                    icon: lockedIcon(section),
+                    title: section.title,
+                    reason: section.reason,
+                    cta: section.unlock == .claim ? "Claim home" : "Create account",
+                    onTap: onAction
+                )
+            }
+        }
+    }
+
+    func lockedIcon(_ section: PlacePreviewLockedSection) -> PantopusIcon {
+        switch section.group {
+        case .today: .cloudSun
+        case .yourHome: .home
+        case .healthEnvironment: .droplets
+        case .moneySignals: .zap
+        case .civic: .landmark
+        case .riskReadiness: .waves
+        default: .mapPin
+        }
+    }
+}
+
 // MARK: - At a glance
 
 struct PlacePreviewGlanceCard: View {

@@ -26,6 +26,11 @@ struct PlacePreviewBody: View {
     var retrying: Bool
     /// "See this home's full record": the record page for this address.
     var onOpenRecord: (() -> Void)?
+    /// The looked-up address, for "Ask Pantopus: what does this mean for me?" (the reading, SPEC 5.2).
+    var readingAddress: String?
+    @State private var reading: PlaceReadingRequest?
+    /// The server could not give a reading for this address: the row goes away.
+    @State private var noReadingFor: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +41,7 @@ struct PlacePreviewBody: View {
                     PlacePreviewContent(
                         preview: preview,
                         onOpenRecord: onOpenRecord,
+                        onAsk: askAction,
                         onScrollTo: { id in withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) } },
                         onAction: onCreateAccount,
                         onRetry: onRetry,
@@ -47,6 +53,30 @@ struct PlacePreviewBody: View {
             }
         }
         .overlay(alignment: .bottom) { wall }
+        .sheet(item: $reading) { request in
+            PlaceReadingSheet(
+                address: request.address,
+                // Signed out, "Ask your own question" goes where Continue goes, once the sheet is down.
+                onSignUp: signedInEntry ? nil : {
+                    reading = nil
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(400))
+                        onCreateAccount()
+                    }
+                },
+                onUnavailable: {
+                    noReadingFor = request.address
+                    reading = nil
+                },
+                onClose: { reading = nil }
+            )
+            .presentationDetents([.large])
+        }
+    }
+
+    private var askAction: (() -> Void)? {
+        guard let address = readingAddress, address != noReadingFor else { return nil }
+        return { reading = PlaceReadingRequest(address: address) }
     }
 
     private var header: some View {
@@ -116,6 +146,8 @@ struct PlacePreviewContent: View {
     var onOpenDetail: ((PlaceDetailGroup) -> Void)?
     /// "See this home's full record" and the money card's record line; neither is drawn without it.
     var onOpenRecord: (() -> Void)?
+    /// "Ask Pantopus: what does this mean for me?"; the row is drawn only with it.
+    var onAsk: (() -> Void)?
     /// Scrolls the page to a section's card (`PlacePreviewContent.anchor`): a glance row's tap.
     var onScrollTo: ((String) -> Void)?
     /// The aha follow-up and every locked, verify or claim call to action.
@@ -170,12 +202,43 @@ struct PlacePreviewContent: View {
             if showsLocked, let locked = preview.locked, !locked.isEmpty { lockedSections(locked) }
         } else if name == "not_checked" {
             if let missing = preview.notChecked, !missing.isEmpty { notCheckedLine(missing) }
+        } else if name == "record" || name == "ask" {
+            doorBlock(name)
         } else {
             firstScreenBlock(name)
         }
     }
 
-    /// The stand-out card, "At a glance", "Money here" and the record button.
+    /// "See this home's full record" and "Ask Pantopus: what does this mean for me?".
+    @ViewBuilder
+    private func doorBlock(_ name: String) -> some View {
+        switch name {
+        case "record":
+            if let onOpenRecord {
+                HomeRecordEntryButton(
+                    title: "See this home's full record",
+                    line: "What the county and federal records show"
+                ) { onOpenRecord() }
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("place.preview.record")
+            }
+        case "ask":
+            if let onAsk {
+                AskPantopusBox(
+                    title: "Ask Pantopus: what does this mean for me?",
+                    subtitle: nil,
+                    spokenLabel: "Ask Pantopus: what does this mean for me?",
+                    identifier: "place.preview.ask",
+                    action: onAsk
+                )
+                .padding(.top, 14)
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    /// The stand-out card, "At a glance" and "Money here".
     @ViewBuilder
     private func firstScreenBlock(_ name: String) -> some View {
         switch name {
@@ -194,15 +257,6 @@ struct PlacePreviewContent: View {
                     .padding(.top, 14)
             } else if let lead = preview.moneyLead, lead.isRenderable, lead.kind != .floodPremium {
                 moneyLeadCard(lead).padding(.top, 14)
-            }
-        case "record":
-            if let onOpenRecord {
-                HomeRecordEntryButton(
-                    title: "See this home's full record",
-                    line: "What the county and federal records show"
-                ) { onOpenRecord() }
-                    .padding(.top, 14)
-                    .accessibilityIdentifier("place.preview.record")
             }
         default:
             EmptyView()
@@ -362,34 +416,6 @@ struct PlacePreviewContent: View {
                     caption: free.area.note
                 )
             }
-        }
-    }
-
-    @ViewBuilder
-    private func lockedSections(_ locked: [PlacePreviewLockedSection]) -> some View {
-        PlaceGroupLabel(text: "More with a free account").padding(.top, 18)
-        VStack(spacing: 8) {
-            ForEach(locked) { section in
-                PlaceLockedCard(
-                    icon: lockedIcon(section),
-                    title: section.title,
-                    reason: section.reason,
-                    cta: section.unlock == .claim ? "Claim home" : "Create account",
-                    onTap: onAction
-                )
-            }
-        }
-    }
-
-    private func lockedIcon(_ section: PlacePreviewLockedSection) -> PantopusIcon {
-        switch section.group {
-        case .today: .cloudSun
-        case .yourHome: .home
-        case .healthEnvironment: .droplets
-        case .moneySignals: .zap
-        case .civic: .landmark
-        case .riskReadiness: .waves
-        default: .mapPin
         }
     }
 }

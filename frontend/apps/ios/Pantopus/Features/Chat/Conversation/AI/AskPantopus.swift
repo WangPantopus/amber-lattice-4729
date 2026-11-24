@@ -46,6 +46,15 @@ public struct AIAskTopic: Identifiable, Hashable, Sendable {
         )
     }
 
+    /// Place for an address saved without a Home: the server reads that saved place's public facts.
+    static func savedPlace(id: String) -> AIAskTopic {
+        AIAskTopic(
+            context: AIChatContext(surface: "place", savedPlaceId: id),
+            about: "Your Place",
+            starters: ["What does this mean for me?", "What should I do this season?", "Remind me\u{2026}"]
+        )
+    }
+
     static func nearby() -> AIAskTopic {
         AIAskTopic(
             context: AIChatContext(surface: "nearby"),
