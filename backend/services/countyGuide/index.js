@@ -45,6 +45,9 @@ const COUNTIES = [
   '06037', '17031', '12086', '32003', '39049',
   // Walla Walla, WA: its property search and recorder, beside the treasurer row read before.
   '53071',
+  // November 23, 2026, seventh (live counties with a search-engine-listed link, now read in full): San Bernardino, CA;
+  // Mecklenburg, NC; Allegheny and Montgomery, PA; Denver, CO; Dane, WI; Oklahoma, OK; Jackson, MO; Denton, TX.
+  '06071', '37119', '42003', '42091', '08031', '55025', '40109', '29095', '48121',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
