@@ -115,13 +115,13 @@ function contextFrom(opened, stored, found) {
  * Reads everything for one request. `view` forces a view (the share read's visitor). `keyed` opens a link for one
  * purpose: the link view, with that link's parts.
  */
-async function loadPage(req, lookup, { view, keyed = null } = {}) {
+async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommon = true } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
   const userId = found.userData.id;
   const signedIn = req.user?.id ? String(req.user.id) : null;
   const previewing = Boolean(keyed) || view !== undefined || req.query?.as !== undefined;
   const readsForSignedIn = Boolean(signedIn) && !keyed && !(previewing && (view || req.query?.as) === 'link');
-  const wantsInCommon = Boolean(signedIn) && signedIn !== String(userId) && !previewing;
+  const wantsInCommon = withInCommon && Boolean(signedIn) && signedIn !== String(userId) && !previewing;
 
   // One database call for the person's content, parts, privacy and Local Profile, and this viewer's side of things
   // (a keyed link reads the caller's side only to refuse a block).
@@ -166,7 +166,8 @@ async function getPage(req, lookup) {
 
 async function getMonth(req, lookup, month) {
   if (!MONTH_RE.test(String(month || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
-  const loaded = await loadPage(req, lookup);
+  // A month has no "You and <name>": don't read it.
+  const loaded = await loadPage(req, lookup, { inCommon: false });
   const answer = composeMonth(loaded.ctx, loaded.record, month);
   if (!answer) throw new PageRefusal(404, 'MONTH_NOT_FOUND', 'Nothing to show for that month.');
   return loaded.ctx.preview ? { ...answer, preview_as: loaded.ctx.preview } : answer;
