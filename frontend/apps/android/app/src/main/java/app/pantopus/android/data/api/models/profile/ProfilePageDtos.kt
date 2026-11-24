@@ -3,7 +3,7 @@ package app.pantopus.android.data.api.models.profile
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
-/* The profile with sources: `~/pantopus-profile-sources/CONTRACT.md`. */
+// The profile with sources: `~/pantopus-profile-sources/CONTRACT.md`.
 
 /** `GET /api/profile-page/marks?ids=…` (contract §7): the outer ring for avatars (board 6). */
 @JsonClass(generateAdapter = true)
