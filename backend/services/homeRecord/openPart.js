@@ -269,6 +269,10 @@ function groupsOf(items, { idPrefix, chip, owner = null }) {
 
 const privacyNote = (text) => ({ kind: 'note', id: 'privacy', icon: 'eye_off', text });
 
+// A home that isn't the viewer's: "the", not "your" (the lookup and the buyer; members and owners keep "your").
+const NOT_YOURS = { 'Your lot through the years': 'The lot through the years', 'Ground under your home': 'Ground under the home' };
+const forOthers = (item) => (NOT_YOURS[item.title] ? { ...item, title: NOT_YOURS[item.title] } : item);
+
 /**
  * The closed part for a person with this Home who isn't its confirmed owner (`member`): everything else is the owner's,
  * one promise with their own next step. Nothing at all when the record holds nothing to open.
@@ -305,7 +309,7 @@ function lookupClosed(items, { countyOpen, ownerButton, ownerAlt }) {
   const opens = (item) => item.part === 'federal' || (item.part === 'county' && countyOpen);
   const account = items.filter(opens);
   const owners = items.filter((item) => !opens(item));
-  if (!account.length) return memberClosed(items, { button: ownerButton, alt: ownerAlt });
+  if (!account.length) return memberClosed(items.map(forOthers), { button: ownerButton, alt: ownerAlt });
   const words = [...new Set(account.map((item) => ACCOUNT_WORDS[item.title]).filter(Boolean))];
   const body = [
     `${countWord(items.length)} more ${items.length === 1 ? 'part is' : 'parts are'} ready.`,
@@ -314,7 +318,7 @@ function lookupClosed(items, { countyOpen, ownerButton, ownerAlt }) {
   ].filter(Boolean).join(' ');
   return [
     { kind: 'intro', id: 'more', title: 'There is more in this home\'s record', body },
-    ...groupsOf(account, { idPrefix: 'closed', chip: 'Free with an account' }),
+    ...groupsOf(account.map(forOthers), { idPrefix: 'closed', chip: 'Free with an account' }),
     {
       kind: 'promise',
       id: 'account',
@@ -325,7 +329,7 @@ function lookupClosed(items, { countyOpen, ownerButton, ownerAlt }) {
       alt: { lead: 'Already have one?', label: 'Sign in', url: '/auth/sign-in' },
     },
     ...(owners.length ? [
-      ...groupsOf(owners, { idPrefix: 'owner', chip: 'For the owner', owner: { id: 'closed_protect', title: 'Only the owner sees' } }),
+      ...groupsOf(owners.map(forOthers), { idPrefix: 'owner', chip: 'For the owner', owner: { id: 'closed_protect', title: 'Only the owner sees' } }),
       { kind: 'promise', id: 'promise', ...OWNER_PROMISE, button: ownerButton, alt: ownerAlt || null },
     ] : []),
     privacyNote('No owner\'s name is shown to anyone. What an owner adds is seen only by that owner.'),
@@ -339,7 +343,7 @@ function lookupClosed(items, { countyOpen, ownerButton, ownerAlt }) {
 function buyerClosed(items, { countyOpen }) {
   const closed = items.filter((item) => item.part === 'owner' || (item.part === 'county' && !countyOpen))
     .filter((item) => item.part !== 'owner' || item.buyerLine)
-    .map((item) => (item.part === 'owner' ? { ...item, line: item.buyerLine } : item));
+    .map((item) => (item.part === 'owner' ? { ...item, line: item.buyerLine } : forOthers(item)));
   return [
     ...groupsOf(closed, { idPrefix: 'owner', chip: 'For the owner', owner: { id: 'closed_owner', title: 'Only the owner sees' } }),
     {

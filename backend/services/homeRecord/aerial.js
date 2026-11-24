@@ -178,12 +178,18 @@ async function image(cell, itemId) {
  * lot's size from the open facts when the record gives it. Cuts the image behind the answer, so it is usually ready
  * when the screen asks. Null when no survey covers the point.
  */
-async function pictureBlock(point, { lotChip = null, earlierYearsForOwner = false } = {}) {
+async function pictureBlock(point, { lotChip = null, earlierYears = null } = {}) {
   const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
   const found = await surveys(cell);
   const [newest] = found;
   if (!newest) return null;
-  const earlier = earlierYearsForOwner ? yearsOf(found).length - 1 : 0;
+  // Where the earlier years are: `owner` (a member's page: in the owner's record) or `account` (the signed-out lookup:
+  // a free account opens them). None said where they are already open.
+  const earlier = earlierYears ? yearsOf(found).length - 1 : 0;
+  const one = earlier === 1;
+  const where = earlierYears === 'account'
+    ? `${one ? 'year opens' : 'years open'} with a free account`
+    : `${one ? 'year is' : 'years are'} in the owner's record`;
   image(cell, newest.id).catch((err) => logger.info('homeRecord.aerial_cut_later', { error: err.message }));
   return {
     kind: 'picture',
@@ -195,7 +201,7 @@ async function pictureBlock(point, { lotChip = null, earlierYearsForOwner = fals
     },
     street: { lat: Math.round(point.lat * 1e6) / 1e6, lng: Math.round(point.lng * 1e6) / 1e6 },
     // With no lot outline, the caption says where the home is: the frame is centered on its ~5 m map cell.
-    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. This home is at the middle.${earlier > 0 ? ` ${countWord(earlier)} earlier ${earlier === 1 ? 'year is' : 'years are'} in the owner's record.` : ''}`,
+    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. This home is at the middle.${earlier > 0 ? ` ${countWord(earlier)} earlier ${where}.` : ''}`,
   };
 }
 
