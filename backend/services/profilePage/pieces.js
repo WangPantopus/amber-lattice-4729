@@ -454,27 +454,25 @@ async function saveWork(userId, body) {
  * Today's public portfolio grid (GET /api/files/portfolio/:userId, which the released apps draw, signed in or not)
  * never shows more than the person's pieces do: a file held by a piece that doesn't reach everyone (hidden, a draft,
  * members- or connections-only) is left out, and once the person saved a Work part that doesn't reach anyone, every
- * file a piece holds is. Files no piece holds are listed as before. A failed read leaves out every piece's files.
+ * file a piece holds is. Files no piece holds are listed as before. Cost: no read when the grid is empty, otherwise
+ * one read (the person's pieces with their saved parts beside them). A failed read throws, and the route answers 500
+ * with no files, as its own failed read does.
  */
 async function publicGridFilter(userId, files) {
   if (!Array.isArray(files) || !files.length) return files;
-  const [pieces, owner] = await Promise.all([
-    supabaseAdmin.from('UserPortfolio').select('file_ids, is_visible, is_draft, audience').eq('user_id', userId),
-    supabaseAdmin.from('User').select('profile_share').eq('id', userId).maybeSingle(),
-  ]);
+  const pieces = await supabaseAdmin.from('UserPortfolio')
+    .select('file_ids, is_visible, is_draft, audience, owner:user_id ( profile_share )')
+    .eq('user_id', userId).not('file_ids', 'is', null);
   if (pieces.error) throw pieces.error;
-  const rows = pieces.data || [];
-  if (!rows.some((r) => (r.file_ids || []).length)) return files;
-  const share = owner.error ? { saved: true, parts: { work: 'members' } } : readShare(owner.data?.profile_share);
+  const listed = new Set(files.map((f) => String(f.id)));
+  const rows = (pieces.data || []).filter((r) => (r.file_ids || []).some((id) => listed.has(String(id))));
+  if (!rows.length) return files;
+  const share = readShare(rows[0].owner?.profile_share);
   const workOpen = !share.saved || reaches(share.parts, 'work', 'link');
-  const held = new Set();
   const closed = new Set();
   for (const r of rows) {
     const open = workOpen && r.is_visible !== false && r.is_draft !== true && (r.audience || 'anyone') === 'anyone';
-    for (const id of r.file_ids || []) {
-      held.add(String(id));
-      if (!open) closed.add(String(id));
-    }
+    if (!open) for (const id of r.file_ids || []) closed.add(String(id));
   }
   return files.filter((f) => !closed.has(String(f.id)));
 }
