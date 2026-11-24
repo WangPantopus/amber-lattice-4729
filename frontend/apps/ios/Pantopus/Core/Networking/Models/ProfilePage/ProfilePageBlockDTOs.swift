@@ -249,9 +249,19 @@ public struct ProfilePieceDTO: Decodable, Sendable, Hashable, Identifiable {
     public let coverURL: URL?
     public let media: Media?
     public let line: ProfilePageLineDTO
+    /// Months, "2026-08" (phase 2, P2.1); nil from a phase 1 server.
+    public let from: String?
+    public let to: String?
+    /// City and state only, when the `city` part reaches this viewer.
+    public let place: String?
+    public let pinned: Bool
+    /// The owner's view only (P2.1): anyone | members | connections, and whether it is a draft or hidden.
+    public let audience: String?
+    public let draft: Bool
+    public let hidden: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, title, kind, when, media
+        case id, title, kind, when, media, from, to, place, pinned, audience, draft, hidden
         case coverURL = "cover_url"
     }
 
@@ -264,6 +274,21 @@ public struct ProfilePieceDTO: Decodable, Sendable, Hashable, Identifiable {
         when = try? c.decodeIfPresent(String.self, forKey: .when)
         coverURL = (try? c.decodeIfPresent(String.self, forKey: .coverURL)).flatMap { $0.flatMap(URL.init(string:)) }
         media = try? c.decodeIfPresent(Media.self, forKey: .media)
+        from = try? c.decodeIfPresent(String.self, forKey: .from)
+        to = try? c.decodeIfPresent(String.self, forKey: .to)
+        place = try? c.decodeIfPresent(String.self, forKey: .place)
+        pinned = (try? c.decodeIfPresent(Bool.self, forKey: .pinned)) ?? false
+        audience = try? c.decodeIfPresent(String.self, forKey: .audience)
+        draft = (try? c.decodeIfPresent(Bool.self, forKey: .draft)) ?? false
+        hidden = (try? c.decodeIfPresent(Bool.self, forKey: .hidden)) ?? false
+    }
+
+    /// The year the piece sits in on the work line: its last month, else its first, else the year in `when`.
+    public var year: Int? {
+        for month in [to, from] {
+            if let year = month.flatMap({ $0.split(separator: "-").first }).flatMap({ Int($0) }) { return year }
+        }
+        return when?.split(separator: " ").compactMap { Int($0) }.first { $0 > 1900 }
     }
 }
 

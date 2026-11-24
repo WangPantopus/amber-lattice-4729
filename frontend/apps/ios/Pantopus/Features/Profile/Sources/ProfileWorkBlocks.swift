@@ -207,7 +207,7 @@ struct ProfilePieceCover: View {
     }
 
     private var tag: String? {
-        let parts = [Self.kindWord(piece.kind), piece.when].compactMap(\.self)
+        let parts = [Self.kindWord(piece.kind), piece.year.map(String.init) ?? piece.when].compactMap(\.self)
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -223,7 +223,9 @@ struct ProfilePieceCover: View {
                     HStack {
                         if let tag { ProfileCoverTag(text: tag) }
                         Spacer(minLength: 0)
-                        if large, let media = ProfilePieceRow.mediaText(piece.media) { ProfileCoverTag(text: media) }
+                        if large, let media = ProfilePieceRow.mediaText(piece.media, kinds: [.photos, .videos]) {
+                            ProfileCoverTag(text: media)
+                        }
                     }
                     .padding(10)
                 }
@@ -263,6 +265,8 @@ struct ProfileCoverTag: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Theme.Color.appSurface.opacity(0.92), in: Capsule())
+            // Over a cover: the words grow up to what the cover can hold.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -297,19 +301,44 @@ struct ProfilePieceRow: View {
     let piece: ProfilePieceDTO
     let context: ProfileBlockContext
 
-    static func mediaText(_ media: ProfilePieceDTO.Media?) -> String? {
+    enum MediaPart {
+        case photos, videos, documents, links
+    }
+
+    /// "5 photos · 1 video": what a piece holds, of the parts asked for.
+    static func mediaText(
+        _ media: ProfilePieceDTO.Media?,
+        kinds: Set<MediaPart> = [.photos, .videos, .documents, .links]
+    ) -> String? {
         guard let media else { return nil }
         let parts = [
-            (media.photos, "photo"), (media.videos, "video"), (media.documents, "document"), (media.links, "link")
+            (media.photos, "photo", MediaPart.photos), (media.videos, "video", .videos),
+            (media.documents, "document", .documents), (media.links, "link", .links)
         ]
-        .filter { $0.0 > 0 }
+        .filter { $0.0 > 0 && kinds.contains($0.2) }
+        .map { ($0.0, $0.1) }
         .map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// "Seen · Built · August 2026 · a paid job": the ink word is always written (board 7 draws only the mark).
+    private var detail: String {
+        let source = piece.line.sourceLine(at: 0)
+        let how = source.how?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [source.ink.word, ProfilePieceCover.kindWord(piece.kind), piece.when, how.flatMap { $0.isEmpty ? nil : $0 }]
+            .compactMap(\.self)
+            .joined(separator: " · ")
+    }
+
+    /// The owner's own view only: a draft or hidden piece reaches nobody else (P2.1).
+    private var onlyYou: String? {
+        if piece.draft { return "Draft · only you see it" }
+        if piece.hidden { return "Hidden · only you see it" }
+        return nil
+    }
+
     var body: some View {
         let source = piece.line.sourceLine(at: 0)
-        let kind = [ProfilePieceCover.kindWord(piece.kind), piece.when].compactMap(\.self).joined(separator: " · ")
         Button { context.openLink(.piece(id: piece.id)) } label: {
             HStack(spacing: Spacing.s3) {
                 ProfilePiecePicture(url: piece.coverURL)
@@ -321,15 +350,18 @@ struct ProfilePieceRow: View {
                         .foregroundStyle(Theme.Color.appText)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !kind.isEmpty {
-                        Text(kind).scaledFont(12).foregroundStyle(Theme.Color.appTextSecondary)
-                    }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         ProfileInkGlyph(ink: source.ink, size: 9)
-                        Text(source.source)
+                        Text(detail)
                             .scaledFont(12)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let onlyYou {
+                        Text(onlyYou)
+                            .scaledFont(12, weight: .semibold)
+                            .foregroundStyle(Theme.Color.appTextStrong)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -340,7 +372,7 @@ struct ProfilePieceRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([piece.title, kind.isEmpty ? nil : kind, source.source].compactMap(\.self).joined(separator: ". "))
+        .accessibilityLabel([piece.title, detail, onlyYou].compactMap(\.self).joined(separator: ". "))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("profilePiece_\(piece.id)")
     }
@@ -365,13 +397,24 @@ struct ProfileOwnsBlock: View {
                 let row = HStack(spacing: Spacing.s3) {
                     badge(item.badge)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.line.text)
-                            .scaledFont(14, weight: .semibold)
-                            .foregroundStyle(Theme.Color.appText)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // A Said line ("Tools she brings") is the person's own words, in their serif (board 7).
+                        if source.ink == .said {
+                            Text(item.line.text)
+                                .profileSaidFont(15)
+                                .foregroundStyle(Theme.Color.appTextStrong)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text(item.line.text)
+                                .scaledFont(14, weight: .semibold)
+                                .foregroundStyle(Theme.Color.appText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             ProfileInkGlyph(ink: source.ink, size: 9)
-                            Text(source.source).scaledFont(12).foregroundStyle(Theme.Color.appTextSecondary)
+                            Text(source.source)
+                                .scaledFont(12)
+                                .foregroundStyle(Theme.Color.appTextSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
