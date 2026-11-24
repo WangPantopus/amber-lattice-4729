@@ -163,7 +163,7 @@ async function geocodeToTract(lat, lng) {
  * Fetch ACS 5-year demographic data for a tract.
  * Variables: B25035_001E (median year built), B25077_001E (median home value),
  *            B19013_001E (median household income), B01003_001E (population),
- *            B25001_001E (housing units)
+ *            B25001_001E (housing units), B25103_001E (median real estate taxes paid)
  *
  * @param {string} stateCode  2-digit FIPS state code
  * @param {string} countyCode 3-digit FIPS county code
@@ -172,7 +172,7 @@ async function geocodeToTract(lat, lng) {
  */
 async function fetchCensusACS(stateCode, countyCode, tractCode) {
   const apiKey = process.env.CENSUS_API_KEY;
-  const variables = 'B25035_001E,B25077_001E,B19013_001E,B01003_001E,B25001_001E';
+  const variables = 'B25035_001E,B25077_001E,B19013_001E,B01003_001E,B25001_001E,B25103_001E';
 
   let url = `https://api.census.gov/data/2023/acs/acs5?get=${variables}&for=tract:${tractCode}&in=state:${stateCode}+county:${countyCode}`;
   if (apiKey) url += `&key=${apiKey}`;
@@ -218,6 +218,8 @@ async function fetchCensusACS(stateCode, countyCode, tractCode) {
       median_household_income: parseNum(row['B19013_001E']),
       total_population: parseNum(row['B01003_001E']),
       total_housing_units: parseNum(row['B25001_001E']),
+      // The Census Bureau writes "no figure" as a large negative code: only a positive amount is a tax.
+      median_real_estate_taxes: parseNum(row['B25103_001E']) > 0 ? parseNum(row['B25103_001E']) : null,
     };
   } catch (err) {
     logger.error('Census ACS parse error', { error: err.message });
