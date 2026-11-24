@@ -1521,7 +1521,20 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       page={sourcesPage}
       viewerId={previewing ? '' : String(currentUser?.id ?? '')}
       actions={actions}
-      afterHeader={showOwnerOnly && ownerTips.length > 0 ? <OwnerTips accountId={profile.id} tips={ownerTips} /> : null}
+      afterHeader={showOwnerOnly && ownerTips.length > 0 ? <OwnerTips accountId={profile.id} tips={ownerTips} /> : !previewing && pendingReview && !isOwnProfile ? (
+        // Today's Work tab offered the review you owe this person; the profile with sources keeps that way in.
+        <button
+          type="button"
+          onClick={() => router.push(`/app/gigs/${encodeURIComponent(pendingReview.gig_id)}/review`)}
+          className="rounded-[1.25rem] border border-app bg-surface px-4 py-3 min-h-[3rem] flex items-center gap-3 text-left hover-bg-app"
+        >
+          <PenLine aria-hidden="true" className="w-5 h-5 shrink-0 text-app-link" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm leading-5 font-semibold text-app">Review {firstName}</span>
+            <span className="block text-xs leading-4 text-app-muted [overflow-wrap:anywhere]">For {pendingReview.gig_title}</span>
+          </span>
+        </button>
+      ) : null}
       afterPage={showOwnerOnly ? (
         <div className="mt-7 flex flex-col gap-7 pb-4">
           <MonthLine />
