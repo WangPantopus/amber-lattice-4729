@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { AppWindow, BookOpen, ChevronLeft, ChevronRight, Code2, FileText, Globe, Newspaper, Play, PlayCircle, User } from 'lucide-react';
+import { useId, useRef, useState, type ReactNode } from 'react';
+import { AppWindow, BookOpen, ChevronRight, Code2, FileText, Globe, Newspaper, Play, PlayCircle, User } from 'lucide-react';
 import type { ProfileAttachment, ProfileCredit, ProfileInk, ProfileLinkCard, ProfilePieceRead } from '@pantopus/api';
 import { HowLine, InkGlyph, InkLine, howText, inkOf, type Target, Opens } from './ink';
 import { card, overline } from './blocks';
 import Picture from './Picture';
+import Screen from './Screen';
 
 type PieceState = 'loading' | 'gone' | 'failed' | ProfilePieceRead;
-type Piece = ProfilePieceRead['piece'];
+export type Piece = ProfilePieceRead['piece'];
 
 const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'Owns' };
+/** Who sees a piece, in the owner's words, when it is narrower than anyone with the link. */
+export const AUDIENCE_WORD: Record<string, string> = { members: 'People on Pantopus', connections: 'Your connections' };
 
 /** The pictures and films a piece shows at its top: P2.2's attachments, else v1's `media` list, else its cover. */
 function galleryOf(piece: Piece): ProfileAttachment[] {
@@ -232,7 +234,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
     piece.kind && KIND_WORD[piece.kind] ? { text: KIND_WORD[piece.kind], tone: 'bg-app-business-bg text-app-business' } : null,
     piece.when ? { text: piece.when, tone: 'bg-app-surface-sunken text-app-secondary' } : null,
     piece.place ? { text: piece.place, tone: 'bg-app-surface-sunken text-app-secondary' } : null,
-    ...(view === 'owner' ? [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null].filter(Boolean).map((text) => ({ text: text!, tone: 'bg-app-surface-sunken text-app' })) : []),
+    ...(view === 'owner' ? [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null, AUDIENCE_WORD[piece.audience || ''] ?? null].filter(Boolean).map((text) => ({ text: text!, tone: 'bg-app-surface-sunken text-app' })) : []),
   ].filter(Boolean) as Array<{ text: string; tone: string }>;
   const ink = inkOf(piece.ink);
   const showVideo = (i: number) => {
@@ -348,39 +350,19 @@ function PieceBody({ piece, firstName, owner, target, view }: {
 }
 
 /**
- * One piece opened (board 8): full screen on a phone, a centred panel on a wider screen, with "Piece" and Back at the
- * top. Escape and Back close it; focus goes back where it was.
+ * One piece opened (board 8) as a screen of its own. The owner can change it from here (board 10).
  */
-export default function PieceView({ state, onClose, onRetry, firstName, owner, target }: {
+export default function PieceView({ state, onClose, onRetry, firstName, owner, target, onChange }: {
   state: PieceState | null;
   onClose: () => void;
   onRetry: () => void;
   firstName: string;
   owner: { name: string; portraitUrl: string | null };
   target: (who: { user_id: string | null; username: string | null }) => Target | null;
+  /** The owner's view: open this piece in the editor. */
+  onChange?: ((piece: Piece) => void) | null;
 }) {
-  const [mounted, setMounted] = useState(false);
-  const panel = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  const open = state !== null;
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
-    panel.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = overflow;
-      if (opener?.isConnected) opener.focus();
-    };
-  }, [open, onClose]);
-  if (!open || !mounted) return null;
-
-  let body: ReactNode;
+  let body: ReactNode = null;
   if (state === 'loading') {
     body = <div className="py-16 flex justify-center" role="status"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" aria-hidden="true" /><span className="sr-only">Loading</span></div>;
   } else if (state === 'gone') {
@@ -392,31 +374,22 @@ export default function PieceView({ state, onClose, onRetry, firstName, owner, t
         <button type="button" onClick={onRetry} className="mt-3 min-h-[2.75rem] px-4 rounded-xl border border-app-strong text-[0.9375rem] font-semibold text-app hover-bg-app">Try again</button>
       </div>
     );
-  } else {
-    body = state.piece ? <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} /> : null;
+  } else if (state && state.piece) {
+    body = <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} />;
   }
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] hidden sm:block" onClick={onClose} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-app sm:rounded-2xl sm:border sm:border-app shadow-2xl flex flex-col overflow-hidden outline-none"
-      >
-        <div className="shrink-0 h-12 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center px-1 bg-surface border-b border-app">
-          <button type="button" onClick={onClose} aria-label="Back" className="w-11 h-11 rounded-full flex items-center justify-center text-app hover-bg-app focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]">
-            <ChevronLeft aria-hidden="true" className="w-[1.625rem] h-[1.625rem]" strokeWidth={2.25} />
-          </button>
-          <h2 id={titleId} className="text-center text-[1.0625rem] font-semibold text-app">Piece</h2>
-          <span />
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
-      </div>
-    </div>,
-    document.body,
+  const editable = onChange && state && typeof state === 'object' && state.view === 'owner' && state.piece ? state.piece : null;
+  return (
+    <Screen
+      open={state !== null}
+      onClose={onClose}
+      title="Piece"
+      right={editable ? (
+        <button type="button" onClick={() => onChange!(editable)} className="min-h-[2.75rem] px-3 rounded-lg text-[0.9375rem] font-semibold text-app-link hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]">
+          Change
+        </button>
+      ) : null}
+    >
+      {body}
+    </Screen>
   );
 }

@@ -593,6 +593,15 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     );
     return () => { live = false; };
   }, [sourcesViewer, profileIdentifier, initialPage, captureAction]);
+  // After the owner changes their Work: read the page again in place (no spinner), keeping it if the read fails.
+  const refreshSources = useCallback(() => {
+    const viewer = sourcesViewer;
+    if (!viewer || viewer === 'anon') return;
+    Promise.resolve().then(() => api.profilePage.getPage(profileIdentifier)).then(
+      (page) => { if (isProfilePage(page)) setSources((prev) => (prev?.viewer === viewer ? { viewer, page } : prev)); },
+      () => {},
+    );
+  }, [sourcesViewer, profileIdentifier]);
   const sourcesPending = launchFeatures.profileSources && (sourcesViewer === null || sources?.viewer !== sourcesViewer);
   const shownSources = launchFeatures.profileSources && !sourcesPending ? sources?.page ?? null : null;
 
@@ -1572,6 +1581,7 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       signedOut={anyoneView}
       onJoin={() => router.push(authPageHref('/register', profilePath))}
       onReport={isOwnProfile && !previewing ? null : handleReport}
+      onChanged={isOwnProfile && !previewing ? refreshSources : null}
       onDoor={(door) => {
         // Doors (phase 3): a signed-out visitor signs in first; Send a card opens the card flow with them chosen.
         if (!getAuthToken()) { router.push(signInHref); return; }

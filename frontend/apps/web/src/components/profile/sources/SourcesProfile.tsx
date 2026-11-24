@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -15,6 +15,8 @@ import { Blocks, HeaderLines, card, drawable, pieceInks, type BlockContext } fro
 import { InkGlyph, InkLine, howText, type Target } from './ink';
 import { RingMark, yearsText } from './RingArt';
 import PieceView from './PieceView';
+import PieceEditor, { type PieceEditorStart } from './PieceEditor';
+import OwnerWork from './OwnerWork';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -214,6 +216,8 @@ export interface SourcesProfileProps {
   onConnect?: () => void;
   onReport?: (() => void) | null;
   onJoin?: (() => void) | null;
+  /** The owner (not previewing): their Work can be changed here; call after a change to read the page again. */
+  onChanged?: (() => void) | null;
 }
 
 /**
@@ -223,7 +227,7 @@ export interface SourcesProfileProps {
  */
 export default function SourcesProfile({
   page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, viaLink = null, signedOut = false,
-  onDoor, onConnect, onReport, onJoin,
+  onDoor, onConnect, onReport, onJoin, onChanged = null,
 }: SourcesProfileProps) {
   const router = useRouter();
   const tabsId = useId();
@@ -232,13 +236,24 @@ export default function SourcesProfile({
   const name = header.name?.trim() || 'Pantopus member';
   const firstName = header.first_name?.trim() || name.split(/\s+/)[0];
   const inert = Boolean(previewAs);
+  // The owner changes their Work here (phase 2): an empty Work still has its tab for them, with "Add a piece".
+  const owner = page.view === 'owner' && !previewAs && Boolean(onChanged);
   // The first tab's key lines sit in the header card; a first tab left with nothing else is not drawn as a tab.
   const { headerLines, tabs } = useMemo(() => {
     const all = drawnTabs(page);
     const split = splitHeaderLines(all[0]);
     const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: split.rest } : tab)).filter((tab) => tab.blocks.length > 0);
+    if (owner && !rest.some((tab) => tab.key === 'work')) rest.splice(Math.min(1, rest.length), 0, { key: 'work', title: 'Work', blocks: [] });
     return { headerLines: split.header, tabs: rest };
-  }, [page]);
+  }, [page, owner]);
+  const [editing, setEditing] = useState<PieceEditorStart | null>(null);
+  // Each new read of the page (after a change) reads the owner's offers again.
+  const [pageRound, setPageRound] = useState(0);
+  useEffect(() => { setPageRound((n) => n + 1); }, [page]);
+  const workBlocks = useMemo(() => tabs.find((tab) => tab.key === 'work')?.blocks ?? [], [tabs]);
+  const skillsSuggested = useMemo(() => workBlocks.flatMap((block) => (block.kind === 'can_do'
+    ? ((block as ProfileCanDoBlock).skills || []).map((skill) => skill.name || skill.text).filter(Boolean) : [])), [workBlocks]);
+  const pinnedCount = (workBlocks.find((block) => block.kind === 'pieces' && block.id === 'pinned') as ProfilePiecesBlock | undefined)?.pieces?.length ?? 0;
   const pieces = useMemo(() => pieceInks(tabs.flatMap((tab) => tab.blocks)), [tabs]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [explainerOpen, setExplainerOpen] = useState(false);
@@ -451,6 +466,9 @@ export default function SourcesProfile({
                 inert={inert || undefined}
               >
                 {tabs.length > 1 ? <h2 className="hidden print:block break-after-avoid text-lg font-bold text-app pt-2">{tab.title}</h2> : null}
+                {owner && tab.key === 'work' ? (
+                  <OwnerWork round={pageRound} onAdd={() => setEditing({ kind: 'new' })} onOffer={(offer) => setEditing({ kind: 'offer', offer })} />
+                ) : null}
                 <Blocks blocks={blocks} ctx={ctx} keyPrefix={tab.key} />
               </div>
             );
@@ -494,7 +512,26 @@ export default function SourcesProfile({
         firstName={firstName}
         owner={{ name, portraitUrl: header.portrait_url ?? null }}
         target={personTarget}
+        onChange={owner ? (piece) => setEditing({ kind: 'edit', piece }) : null}
       />
+      {owner ? (
+        <PieceEditor
+          start={editing}
+          onClose={() => setEditing(null)}
+          onSaved={({ id }) => {
+            setEditing(null);
+            onChanged?.();
+            if (opened?.kind === 'piece' && opened.id === id) load({ kind: 'piece', id });
+          }}
+          onRemoved={(id) => {
+            setEditing(null);
+            if (opened?.kind === 'piece' && opened.id === id) closeOpened();
+            onChanged?.();
+          }}
+          skillsSuggested={skillsSuggested}
+          pinnedCount={pinnedCount}
+        />
+      ) : null}
     </div>
   );
 }

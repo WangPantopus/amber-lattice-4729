@@ -69,6 +69,8 @@ export interface ShareSheetProps {
  */
 export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings, onSeeAsVisitor, onSaveAsPdf, onSaved }: ShareSheetProps) {
   const [share, setShare] = useState<ProfileShare | null>(null);
+  // The Work row's "<n> of your <m> pieces" (phase 2): the share's own count, else the owner's pieces read.
+  const [myCounts, setMyCounts] = useState<{ shown: number; total: number } | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [saving, setSaving] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -92,6 +94,12 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
       for (const part of next.parts || []) if (part.setting === 'connections') offSetting.current[part.key] = 'connections';
       setShare(next);
       setLoadState('ready');
+      if (!next.work_pieces) {
+        Promise.resolve().then(() => api.profilePage.getMyPieces()).then(
+          (pieces) => { if (pieces?.counts && round.current === mine) setMyCounts({ shown: pieces.counts.shown_on_link, total: pieces.counts.total }); },
+          () => {},
+        );
+      }
     } catch {
       if (mine === round.current) setLoadState('failed');
     }
@@ -153,6 +161,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
   };
 
   const byKey = new Map((share?.parts || []).map((p) => [p.key, p]));
+  const workCount = share?.work_pieces ?? myCounts;
   const cityLimit = share?.city_limit;
 
   let body: ReactNode;
@@ -213,7 +222,9 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
                     ? (cityHeld
                       ? <>Your privacy settings keep your city {cityLimit === 'none' ? 'to you' : 'to connections'}. <Link href="/app/profile/settings/privacy" className="font-semibold text-app-link hover:underline">Change it</Link></>
                       : on ? 'Your city and state, never more' : 'Off, the page names no place')
-                    : p.detail;
+                    : p.key === 'work' && workCount && workCount.total > 0
+                      ? `${workCount.shown} of your ${workCount.total} ${workCount.total === 1 ? 'piece' : 'pieces'}`
+                      : p.detail;
                   return (
                     <Row
                       key={p.key}

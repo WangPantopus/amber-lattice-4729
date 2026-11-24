@@ -523,7 +523,7 @@ export function WorkLineBlock({ rings, list, ctx }: { rings: ProfileWorkRingsBlo
   if (fanDrawn && rings) {
     const dots: FanDot[] = (rings.dots || []).map((dot) => ({
       month: dot.month,
-      ink: ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
+      ink: dot.ink ? inkOf(dot.ink) : ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
       pinned: ctx.pieces.get(dot.piece_id)?.pinned ?? false,
     }));
     const yearsWords = (rings.years || []).filter((y) => y.pieces > 0).map((y) => `${y.year}: ${y.pieces} ${y.pieces === 1 ? 'piece' : 'pieces'}`).join(', ');

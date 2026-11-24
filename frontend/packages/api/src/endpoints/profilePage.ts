@@ -272,7 +272,8 @@ export interface ProfileWorkRingsBlock extends BlockBase {
   from: number;
   now: string;
   months: string[];
-  dots?: Array<{ piece_id: string; month: string }> | null;
+  /** Each piece's month; phase 2 adds the piece's ink. */
+  dots?: Array<{ piece_id: string; month: string; ink?: ProfileInk | null }> | null;
   years?: Array<{ year: number; pieces: number }> | null;
 }
 
@@ -437,6 +438,8 @@ export interface ProfileShare {
   /** Links for one purpose (v1.3). Absent while the server's PROFILE_LINKS is off: no section is drawn. */
   links_enabled?: boolean;
   links?: ProfileShareLink[];
+  /** Phase 2 (P2.5): the Work row's "<shown> of your <total> pieces". */
+  work_pieces?: { shown: number; total: number } | null;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -527,4 +530,79 @@ export async function getShare(): Promise<ProfileShare> {
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
 export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
+}
+
+// ── Phase 2: the owner's pieces (CONTRACT P2.3, P2.4) ──
+
+/** A job or plan Pantopus saw that isn't a piece yet (board 10's top). `with` is for the owner's eyes only. */
+export interface ProfilePieceOffer {
+  kind: 'gig' | 'plan' | string;
+  id: string;
+  title: string;
+  when: string | null;
+  with: string | null;
+  text: string;
+}
+
+/** What the owner writes on a piece. Fields not sent keep theirs on a change. */
+export interface ProfilePieceFields {
+  title?: string;
+  kind?: 'did' | 'built' | 'owns' | null;
+  from?: string | null;
+  to?: string | null;
+  city?: string | null;
+  state?: string | null;
+  description?: string | null;
+  role?: string | null;
+  skills?: string[];
+  audience?: 'anyone' | 'members' | 'connections';
+  pinned?: boolean;
+  hidden?: boolean;
+  draft?: boolean;
+  started_from?: { kind: 'gig' | 'plan' | string; id: string };
+  /** Files from `POST /api/files/portfolio`, the owner's own, in order (cover first). */
+  attachments?: Array<{ file_id: string }>;
+  links?: Array<{ url: string }>;
+}
+
+export interface ProfileMyPieces {
+  pieces: ProfilePiece[];
+  offered: ProfilePieceOffer[];
+  counts: { shown_on_link: number; total: number } | null;
+}
+
+const ME_PIECES = '/api/profile-page/me/pieces';
+
+/** The owner's pieces (drafts and hidden ones too), the jobs and plans offered, and how many a link shows. */
+export async function getMyPieces(): Promise<ProfileMyPieces> {
+  return get<ProfileMyPieces>(ME_PIECES);
+}
+
+/** A new piece; the answer is the piece as saved, with `how_it_will_show`. */
+export async function createPiece(fields: ProfilePieceFields): Promise<ProfilePiece & { how_it_will_show?: string[] | null }> {
+  return post<ProfilePiece & { how_it_will_show?: string[] | null }>(ME_PIECES, fields);
+}
+
+/** "How this piece will show", worked out by the server for these fields; nothing is saved. */
+export async function previewPiece(fields: ProfilePieceFields): Promise<{ how_it_will_show: string[] }> {
+  return post<{ how_it_will_show: string[] }>(`${ME_PIECES}/preview`, fields);
+}
+
+export async function updatePiece(id: string, fields: ProfilePieceFields): Promise<ProfilePiece & { how_it_will_show?: string[] | null }> {
+  return patch<ProfilePiece & { how_it_will_show?: string[] | null }>(`${ME_PIECES}/${encodeURIComponent(id)}`, fields);
+}
+
+/** Removes the piece and ends its credits. */
+export async function deletePiece(id: string): Promise<{ id: string; deleted: boolean }> {
+  return del<{ id: string; deleted: boolean }>(`${ME_PIECES}/${encodeURIComponent(id)}`);
+}
+
+/** The line to put on a linked page to prove it's the owner's (P2.4). */
+export async function proveLink(pieceId: string, linkId: string): Promise<{ line: string; how: string }> {
+  return post<{ line: string; how: string }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/proof`, {});
+}
+
+/** Reads the page for the line; Seen when it is there, else 409 PROOF_NOT_FOUND. */
+export async function checkLink(pieceId: string, linkId: string): Promise<ProfileLinkCard> {
+  return post<ProfileLinkCard>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/check`, {});
 }
