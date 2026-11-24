@@ -335,6 +335,16 @@ export interface AIChatRequest {
    * 'moment', 'letter', 'christmas_card' (drafts its own composers open), 'identity'.
    */
   cards?: string[];
+  /** The screen the person tapped Ask on; the server reads it with that screen's own access checks. */
+  context?: AIChatContext | null;
+}
+
+/** "Ask about this": the Place screen of one of their homes, or of one of their saved addresses (LOOKUPORDER SPEC 5.3). */
+export interface AIChatContext {
+  surface: 'place' | 'today';
+  home_id?: string | null;
+  saved_place_id?: string | null;
+  section?: string | null;
 }
 
 export interface AIDraftGigRequest {

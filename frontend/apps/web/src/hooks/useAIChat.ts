@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import * as api from '@pantopus/api';
-import type { AIChatMessage, AIChatDraft } from '@pantopus/types';
+import type { AIChatMessage, AIChatDraft, AIChatContext } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 
 // What this app shows beyond the original draft cards (AIDraftCard, AIMessageBubble); the server offers the matching
@@ -32,7 +32,11 @@ const AI_CARDS = [
  *   - sendMessage()  — Sends a message and processes the stream
  *   - startNew()     — Starts a fresh conversation
  */
-export function useAIChat() {
+export function useAIChat({ context = null }: { context?: AIChatContext | null } = {}) {
+  // The screen the assistant was opened from ("Ask Pantopus about your home"): sent with each message of this
+  // visit, so "this" and "here" mean that place. The server reads it with that screen's own access checks.
+  const contextRef = useRef<AIChatContext | null>(context);
+  contextRef.current = context;
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -84,6 +88,7 @@ export function useAIChat() {
           conversationId: conversationId || undefined,
           coarseLocation,
           cards: AI_CARDS,
+          ...(contextRef.current ? { context: contextRef.current } : {}),
         },
         {
           onConversation: (data) => {

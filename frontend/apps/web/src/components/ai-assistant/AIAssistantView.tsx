@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAIChat } from '@/hooks/useAIChat';
+import type { AIChatContext } from '@pantopus/types';
 import { useConfirm } from '@/hooks/useConfirm';
 import { AIMessageBubble } from './AIMessageBubble';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -19,9 +20,11 @@ interface AIAssistantViewProps {
   initialMessage?: string;
   /** Navigate back to chat list */
   onBack?: () => void;
+  /** The screen the assistant was opened from (Place's "Ask Pantopus about your home"). */
+  context?: AIChatContext | null;
 }
 
-export function AIAssistantView({ initialMessage, onBack }: AIAssistantViewProps) {
+export function AIAssistantView({ initialMessage, onBack, context = null }: AIAssistantViewProps) {
   const {
     messages,
     isStreaming,
@@ -31,7 +34,7 @@ export function AIAssistantView({ initialMessage, onBack }: AIAssistantViewProps
     startNewConversation,
     deleteConversations,
     abort,
-  } = useAIChat();
+  } = useAIChat({ context });
   const { confirm } = useConfirm();
   const [deleting, setDeleting] = useState(false);
 

@@ -84,6 +84,7 @@ export type {
   AIConversation,
   AIStreamEvent,
   AIChatRequest,
+  AIChatContext,
   AIDraftGigRequest,
   AIDraftGigResponse,
   AIDraftListingRequest,
