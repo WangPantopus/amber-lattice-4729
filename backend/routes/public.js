@@ -1020,8 +1020,9 @@ router.get('/home-record', optionalAuth, classifyPlaceLookup, placeLookupLimiter
       });
     }
     if (!req.placeLookup.shareCard) ownRecentLookups.set(ownLookupKey(req, rawAddress), true, GEO_TTL_MS);
-    // Signed in, the public half opens (`buyer`, SPEC section 8); signed out, the `lookup` state.
-    return res.json(await homeRecordService.forLookup(place, { flood: fetchFloodCached, signedIn: Boolean(req.user?.id) }));
+    // Signed in, the public half opens (`buyer`, SPEC section 8), or the person's own Home's record at its own address;
+    // signed out, the `lookup` state.
+    return res.json(await homeRecordService.forLookup(place, { flood: fetchFloodCached, userId: req.user?.id || null }));
   } catch (err) {
     console.error('[public/home-record] Error:', err.message);
     return res.status(500).json({ error: 'Internal server error' });

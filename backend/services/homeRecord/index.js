@@ -22,6 +22,7 @@ const { lookup, StorageUnavailable } = require('../propertyRecords/index');
 const homeRecords = require('../propertyRecords/homeRecord');
 const router = require('../propertyRecords/router');
 const { stateCode } = require('../propertyRecords/addressKey');
+const { computeAddressHash } = require('../../utils/normalizeAddress');
 const placeIntelligenceService = require('../placeIntelligenceService');
 const authority = require('../homeDashboardService');
 const open = require('./openPart');
@@ -186,9 +187,41 @@ async function forAddress(place, { flood, signedIn = false, saved = false }) {
   ], buyerActions(place, { saved }));
 }
 
-/** The `lookup` (signed out) or `buyer` (signed in) answer for a looked-up address. */
-async function forLookup(place, { flood, signedIn = false }) {
-  return forAddress(place, { flood, signedIn });
+/**
+ * The viewer's own Home at a looked-up address, or null: a Home with the address's hash where the viewer has a standing
+ * (household, private setup or an open ownership claim, as GET /api/homes/:id/record reads it). One read, signed in only;
+ * nothing is written and the address is not kept.
+ */
+async function viewersHomeAt(place, userId) {
+  if (!userId || !place?.line) return null;
+  const hash = computeAddressHash(place.line, null, place.city, place.state, place.zipcode);
+  const { data, error } = await supabaseAdmin.from('Home').select('id').eq('address_hash', hash).eq('home_status', 'active').limit(5);
+  if (error || !data?.length) return null;
+  for (const { id } of data) {
+    if (await placeIntelligenceService.readAccess(id, userId)) return id;
+  }
+  return null;
+}
+
+/**
+ * The `lookup` (signed out) or `buyer` (signed in) answer for a looked-up address. A person who looks up their own Home
+ * gets its record as their Home's page draws it (`member` or `owner`), never a buyer's view of their own home.
+ */
+async function forLookup(place, { flood, userId = null }) {
+  if (userId) {
+    const homeId = await viewersHomeAt(place, userId).catch((err) => {
+      logger.info('homeRecord.own_home_check_failed', { error: err.message });
+      return null;
+    });
+    if (homeId) {
+      try {
+        return await forHome({ homeId, userId, flood });
+      } catch (err) {
+        if (!(err instanceof HomeRecordError)) throw err;
+      }
+    }
+  }
+  return forAddress(place, { flood, signedIn: Boolean(userId) });
 }
 
 /** A saved address's record: the `buyer` state at the saved point, with no save action. */

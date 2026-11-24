@@ -1,7 +1,8 @@
 'use client';
 
 // The lookup's record page: reads the looked-up address from the lookup's own device-local preview (by its opaque id)
-// and draws the server's answer: `lookup` signed out, `buyer` signed in (the public half opened, SPEC section 8). Its
+// and draws the server's answer: `lookup` signed out, `buyer` signed in (the public half opened, SPEC section 8), or the
+// person's own Home's record (`member` or `owner`) when the address is theirs. Its
 // claim buttons carry the same preview on: signed in, to Place, which adds the Home at that address; signed out, to
 // sign-up, which keeps it. "Create a free account" and "Sign in" come back to this page.
 
@@ -16,6 +17,13 @@ import { useBuyerActions } from '@/components/homeRecord/useBuyerActions';
 import { readPendingPlace } from '@/components/place/pendingPlace';
 import { isDailyLookupLimit, lookupLimitMessage } from '@/components/place/lookupLimit';
 import { authPageHref } from '@/lib/auth-utils';
+
+// The page's name by the answer's state: a person who looks up their own Home gets its record (`member` or `owner`).
+function pageName(state: string | undefined): string {
+  if (state === 'buyer') return 'This home\u2019s public record';
+  if (state === 'owner' || state === 'member') return 'Your home\u2019s record';
+  return 'This home\u2019s record';
+}
 
 // The id-less claim links in the lookup state (no Home exists yet).
 const LOOKUP_LINKS = new Set(['/homes/claim-owner', '/homes/verify-address']);
@@ -61,7 +69,7 @@ function Record() {
           <button type="button" onClick={() => router.back()} aria-label="Back" className="-ml-3 flex h-11 w-11 items-center justify-center text-app-text">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <span className="text-[15px] font-semibold text-app-text-strong">{record.data?.state === 'buyer' ? 'This home\u2019s public record' : 'This home\u2019s record'}</span>
+          <span className="text-[15px] font-semibold text-app-text-strong">{pageName(record.data?.state)}</span>
           <span className="w-8" />
         </div>
 
