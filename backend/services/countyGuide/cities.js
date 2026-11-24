@@ -69,6 +69,10 @@ const CITIES = [
   // South Gate (Los Angeles County), CA; Oak Park, Cicero and Oak Lawn (Cook County), IL; North Miami (Miami-Dade
   // County), FL.
   '0636448', '0640354', '0632548', '0685292', '0604982', '0673080', '1754885', '1714351', '1754820', '1249450',
+  // November 24, 2026, twentieth: Mount Prospect (Cook County), IL; Blue Springs (Jackson County), MO; Sammamish and
+  // Burien (King County), WA; Gardena and Monterey Park (Los Angeles County), CA; Lake Elsinore (Riverside County), CA;
+  // Coral Gables (Miami-Dade County), FL; DeSoto (Dallas County), TX; Mooresville (Iredell County), NC.
+  '1751089', '2906652', '5361115', '5308850', '0628168', '0648914', '0639486', '1214250', '4820092', '3744220',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
