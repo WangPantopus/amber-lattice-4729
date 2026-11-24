@@ -120,6 +120,9 @@ data class ProfileShareDto(
     @Json(name = "links_enabled") val linksEnabled: Boolean? = null,
     /** v1.3: links for one purpose, newest first. */
     val links: List<ProfileShareLinkDto>? = null,
+    /** v1.4: false while the profile is private (no link opens); then [linksNote] takes Copy and Send's place. */
+    @Json(name = "links_open") val linksOpen: Boolean? = null,
+    @Json(name = "links_note") val linksNote: String? = null,
 )
 
 /** A link for one purpose (contract v1.3). Its key is in [url]: shown only to the owner, never logged or pasted. */

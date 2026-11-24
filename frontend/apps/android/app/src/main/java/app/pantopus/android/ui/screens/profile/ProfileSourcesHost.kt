@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "MagicNumber")
+@file:Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "MagicNumber", "MatchingDeclarationName")
 
 package app.pantopus.android.ui.screens.profile
 
@@ -29,12 +29,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.profile.sources.ProfileBlock
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthSheet
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthState
 import app.pantopus.android.ui.screens.profile.sources.ProfilePage
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageAction
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageLink
-import app.pantopus.android.ui.screens.profile.sources.ProfileBlock
 import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
@@ -153,7 +153,10 @@ internal fun ProfileSourcesPage(
                         ReachButtons(
                             page = page,
                             onCall = { phone -> context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(phone)}"))) },
-                            onEmail = { email -> context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${Uri.encode(email)}"))) },
+                            onEmail = {
+                                    email ->
+                                context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${Uri.encode(email)}")))
+                            },
                         )
                     }
                 }
@@ -183,7 +186,15 @@ internal fun ProfileSourcesPage(
                     owner != null -> host.onOpenShareSheet
                     else -> shareUrl?.let { url -> { host.onShareLink(url) } }
                 },
-            onBack = { if (selectedTab != null && selectedTab != page.tabs.firstOrNull()?.key) host.onSelectTab(page.tabs.first().key) else host.onBack() },
+            onBack = {
+                if (selectedTab != null && selectedTab != page.tabs.firstOrNull()?.key) {
+                    host.onSelectTab(
+                        page.tabs.first().key,
+                    )
+                } else {
+                    host.onBack()
+                }
+            },
         )
     ProfileSourcesFrame(
         page = page,
@@ -265,7 +276,13 @@ internal fun ProfileSourcesPostsPage(
             modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProfileIconButton(icon = PantopusIcon.ChevronLeft, label = "Back", onClick = onBack, iconSize = 26.dp, testTag = "profileSources.posts.back")
+            ProfileIconButton(
+                icon = PantopusIcon.ChevronLeft,
+                label = "Back",
+                onClick = onBack,
+                iconSize = 26.dp,
+                testTag = "profileSources.posts.back",
+            )
             Text(
                 text = "$firstName's posts",
                 style = SourcesType.title,

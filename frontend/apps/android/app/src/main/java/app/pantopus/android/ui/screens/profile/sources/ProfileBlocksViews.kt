@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "LongParameterList", "MagicNumber", "TooManyFunctions")
+@file:Suppress("LongMethod", "LongParameterList", "MagicNumber", "TooManyFunctions", "MatchingDeclarationName", "CyclomaticComplexMethod")
 
 package app.pantopus.android.ui.screens.profile.sources
 
@@ -81,8 +81,8 @@ internal fun SourcesBlock(
     val open: (ProfilePageLink?) -> (() -> Unit)? = { link -> link?.takeIf { actions.interactive }?.let { { actions.onOpenLink(it) } } }
     when (block) {
         is ProfileBlock.Lines -> LinesCard(block, open)
-        is ProfileBlock.Says -> CardColumn(tag = "profileSources.says") { SaysContent(block) }
-        is ProfileBlock.KnownFor -> CardColumn(tag = "profileSources.knownFor") { KnownForContent(block, open) }
+        is ProfileBlock.Says -> CardColumn { SaysContent(block) }
+        is ProfileBlock.KnownFor -> CardColumn { KnownForContent(block, open) }
         is ProfileBlock.InCommon -> InCommonCard(block, page, actions)
         is ProfileBlock.Doors -> DoorsCard(block, actions, open)
         is ProfileBlock.Shelf -> ShelfCard(block)
@@ -98,15 +98,17 @@ internal fun SourcesBlock(
     }
 }
 
-/** A card with the boards' inner padding (16 20 18) and 12 between its parts. */
+/**
+ * A card with the boards' inner padding (16 20 18) and 12 between its parts. No test tag on a card: a tagged card would
+ * become one accessibility node, and TalkBack reads a scrolling page's top-level node as a single item.
+ */
 @Composable
 private fun CardColumn(
-    tag: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Column(
-        modifier = modifier.sourcesCard().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 18.dp).testTag(tag),
+        modifier = modifier.sourcesCard().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) { content() }
 }
@@ -153,7 +155,7 @@ private fun LinesCard(
     block: ProfileBlock.Lines,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    CardColumn(tag = "profileSources.lines.${block.id}") {
+    CardColumn {
         BlockTitle(title = block.title, color = laneTitleColor(block.id), more = block.more, onMore = open(block.more?.link))
         block.lines.forEach { line ->
             val who = line.who
@@ -175,7 +177,7 @@ private fun WrittenLine(
 ) {
     val onLine = open(line.link)
     val onWriter = open(who.userId?.let { ProfilePageLink.Profile(it, who.username) })
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("profileSources.writtenLine")) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier) {
         Row(
             modifier =
                 Modifier
@@ -194,7 +196,15 @@ private fun WrittenLine(
             modifier =
                 Modifier
                     .padding(start = 26.dp)
-                    .then(if (onWriter != null) Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onWriter) else Modifier)
+                    .then(
+                        if (onWriter != null) {
+                            Modifier.heightIn(
+                                min = 48.dp,
+                            ).clickable(role = Role.Button, onClick = onWriter)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .semantics(mergeDescendants = true) { },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -246,7 +256,7 @@ internal fun SaysAndKnownForCard(
     actions: SourcesBlockActions,
 ) {
     val open: (ProfilePageLink?) -> (() -> Unit)? = { link -> link?.takeIf { actions.interactive }?.let { { actions.onOpenLink(it) } } }
-    CardColumn(tag = "profileSources.says") {
+    CardColumn {
         SaysContent(says)
         SourcesDivider()
         KnownForContent(knownFor, open)
@@ -263,7 +273,7 @@ private fun InCommonCard(
     val viewer = actions.viewerId ?: return
     val lines = inCommonLines(ProfileInCommon(block.body, page.header.userId, viewer), page.header.firstName)
     if (lines.isEmpty()) return
-    Column(Modifier.sourcesCard().testTag("profileSources.inCommon")) {
+    Column(Modifier.sourcesCard()) {
         block.title?.let { SourcesOverline(it, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp)) }
         lines.forEachIndexed { index, line ->
             if (index > 0) SourcesDivider()
@@ -278,7 +288,10 @@ private fun InCommonCard(
                                 Modifier.clickable(role = Role.Button) {
                                     actions.onOpenLink(
                                         when (target) {
-                                            is app.pantopus.android.ui.screens.profile.InCommonTarget.Plan -> ProfilePageLink.Plan(target.id)
+                                            is app.pantopus.android.ui.screens.profile.InCommonTarget.Plan ->
+                                                ProfilePageLink.Plan(
+                                                    target.id,
+                                                )
                                             is app.pantopus.android.ui.screens.profile.InCommonTarget.SupportTrain ->
                                                 ProfilePageLink.SupportTrain(target.id)
                                         },
@@ -294,7 +307,12 @@ private fun InCommonCard(
                 when (line.kind) {
                     InCommonLine.Kind.Plans -> SourcesTile(PantopusIcon.Calendar, PantopusColors.personalBg, PantopusColors.personal)
                     InCommonLine.Kind.SupportTrains -> SourcesTile(PantopusIcon.Heart, PantopusColors.homeBg, PantopusColors.home)
-                    InCommonLine.Kind.Connections -> SourcesTile(PantopusIcon.Users, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong)
+                    InCommonLine.Kind.Connections ->
+                        SourcesTile(
+                            PantopusIcon.Users,
+                            PantopusColors.appSurfaceSunken,
+                            PantopusColors.appTextStrong,
+                        )
                     InCommonLine.Kind.Skills -> SourcesTile(PantopusIcon.Hand, PantopusColors.businessBg, PantopusColors.business)
                 }
                 Column(Modifier.weight(1f)) {
@@ -302,7 +320,12 @@ private fun InCommonCard(
                     line.detail?.let { Text(text = it, style = SourcesType.caption) }
                 }
                 if (target != null) {
-                    PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                    PantopusIconImage(
+                        icon = PantopusIcon.ChevronRight,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextMuted,
+                    )
                 }
             }
         }
@@ -325,7 +348,7 @@ private fun DoorsCard(
     actions: SourcesBlockActions,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    Column(Modifier.sourcesCard().testTag("profileSources.doors")) {
+    Column(Modifier.sourcesCard()) {
         block.title?.let { SourcesOverline(it, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp)) }
         block.doors.forEachIndexed { index, door ->
             if (index > 0) SourcesDivider()
@@ -347,7 +370,12 @@ private fun DoorsCard(
                     door.note?.let { Text(text = it, style = SourcesType.caption) }
                 }
                 if (onOpen != null) {
-                    PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                    PantopusIconImage(
+                        icon = PantopusIcon.ChevronRight,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextMuted,
+                    )
                 }
             }
         }
@@ -372,9 +400,23 @@ private fun DoorsCard(
                     ) {
                         Text(text = leave, style = SourcesType.title)
                     }
-                    block.leaveCardNote?.let { Text(it, style = SourcesType.caption, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+                    block.leaveCardNote?.let {
+                        Text(
+                            it,
+                            style = SourcesType.caption,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
-                block.signInNote?.let { Text(it, style = SourcesType.caption, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+                block.signInNote?.let {
+                    Text(
+                        it,
+                        style = SourcesType.caption,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
@@ -384,7 +426,7 @@ private fun DoorsCard(
 @Composable
 private fun ShelfCard(block: ProfileBlock.Shelf) {
     Column(
-        modifier = Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 14.dp).testTag("profileSources.shelf"),
+        modifier = Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 14.dp),
     ) {
         block.title?.let { SourcesOverline(it, modifier = Modifier.padding(horizontal = 8.dp)) }
         Row(
@@ -393,7 +435,10 @@ private fun ShelfCard(block: ProfileBlock.Shelf) {
             verticalAlignment = Alignment.Bottom,
         ) {
             block.objects.forEach { obj ->
-                Box(Modifier.weight(1f).height(96.dp).semantics { contentDescription = obj.caption }, contentAlignment = Alignment.BottomCenter) {
+                Box(
+                    Modifier.weight(1f).height(96.dp).semantics { contentDescription = obj.caption },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
                     obj.pictureUrl?.let { url ->
                         SubcomposeAsyncImage(
                             model = url,
@@ -438,7 +483,7 @@ private fun ShelfCard(block: ProfileBlock.Shelf) {
 private fun PromptsCard(block: ProfileBlock.Prompts) {
     val hows = block.prompts.map { inkHow(it.line.ink, it.line.how) }
     val oneHow = hows.distinct().singleOrNull()
-    CardColumn(tag = "profileSources.prompts") {
+    CardColumn {
         block.title?.let { SourcesOverline(it) }
         block.prompts.forEachIndexed { index, prompt ->
             val question = ProfilePrompt.of(prompt.key)?.text?.removeSuffix("…") ?: return@forEachIndexed
@@ -458,7 +503,7 @@ private fun RowsCard(
     block: ProfileBlock.Rows,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    Column(Modifier.sourcesCard().testTag("profileSources.rows")) {
+    Column(Modifier.sourcesCard()) {
         block.title?.let { SourcesOverline(it, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp)) }
         block.rows.forEachIndexed { index, row ->
             if (index > 0) SourcesDivider()
@@ -478,7 +523,12 @@ private fun RowsCard(
                     row.detail?.let { Text(text = it, style = SourcesType.caption) }
                 }
                 if (onOpen != null) {
-                    PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                    PantopusIconImage(
+                        icon = PantopusIcon.ChevronRight,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextMuted,
+                    )
                 }
             }
         }
@@ -492,7 +542,7 @@ private fun MoreCloserCard(
     actions: SourcesBlockActions,
 ) {
     Row(
-        modifier = Modifier.sourcesCard().padding(16.dp).testTag("profileSources.moreCloser"),
+        modifier = Modifier.sourcesCard().padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SourcesTile(PantopusIcon.Users, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong)
@@ -513,7 +563,10 @@ private fun MoreCloserCard(
                             .testTag("profileSources.askToConnect"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "Ask to connect", style = SourcesType.secondary.copy(fontWeight = FontWeight.SemiBold, color = PantopusColors.appText))
+                    Text(
+                        text = "Ask to connect",
+                        style = SourcesType.secondary.copy(fontWeight = FontWeight.SemiBold, color = PantopusColors.appText),
+                    )
                 }
             }
         }
@@ -536,7 +589,13 @@ private fun RecordChartCard(
             "January at the top. Lines for $laneWords. Thick lines are seen, thin lines are signed, dotted lines are said."
     val onOpenMonth = actions.onOpenMonth?.takeIf { actions.interactive }
     Column(
-        modifier = Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 16.dp).testTag("profileSources.recordChart.card"),
+        modifier =
+            Modifier.sourcesCard().padding(
+                start = 12.dp,
+                end = 12.dp,
+                top = 16.dp,
+                bottom = 16.dp,
+            ),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(block.title.orEmpty(), style = SourcesType.title, modifier = Modifier.weight(1f).semantics { heading() })
@@ -611,7 +670,7 @@ private fun InkKey(ink: ProfileInk) {
 @Composable
 private fun CanDoCard(block: ProfileBlock.CanDo) {
     val most = block.skills.maxOfOrNull { it.pieces }?.coerceAtLeast(1) ?: 1
-    Column(Modifier.sourcesCard().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp).testTag("profileSources.canDo")) {
+    Column(Modifier.sourcesCard().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp)) {
         BlockTitle(title = block.title, trailing = block.subtitle)
         Spacer(Modifier.height(6.dp))
         block.skills.forEachIndexed { index, skill ->
@@ -629,7 +688,11 @@ private fun CanDoCard(block: ProfileBlock.CanDo) {
                         InkMeter(ProfileSummary(years = 0, seenMonths = skill.seen, signedMonths = skill.signed, saidMonths = skill.said))
                     }
                 } else {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         Text(
                             skill.name,
                             style = if (skill.line.ink == ProfileInk.Said) SourcesType.said else SourcesType.title,
@@ -715,7 +778,10 @@ private fun PictureTag(
                 .background(PantopusColors.appText)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        Text(text, style = SourcesType.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextInverse))
+        Text(
+            text,
+            style = SourcesType.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextInverse),
+        )
     }
 }
 
@@ -734,7 +800,7 @@ private fun PinnedPieces(
     block: ProfileBlock.Pieces,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    Column(Modifier.fillMaxWidth().testTag("profileSources.pieces.${block.id}"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.padding(horizontal = 4.dp)) { BlockTitle(title = block.title, trailing = block.subtitle) }
         val first = block.pieces.first()
         PieceTile(first, 238.dp, large = true, open = open)
@@ -778,7 +844,9 @@ private fun PieceList(
     block: ProfileBlock.Pieces,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    Column(Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp).testTag("profileSources.pieces.${block.id}")) {
+    Column(
+        Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp),
+    ) {
         Box(Modifier.padding(horizontal = 4.dp)) { BlockTitle(title = block.title, trailing = block.subtitle) }
         block.pieces.forEachIndexed { index, piece ->
             if (index > 0) SourcesDivider()
@@ -805,7 +873,12 @@ private fun PieceList(
                     PieceInk(piece)
                 }
                 if (onOpen != null) {
-                    PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                    PantopusIconImage(
+                        icon = PantopusIcon.ChevronRight,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextMuted,
+                    )
                 }
             }
         }
@@ -836,7 +909,7 @@ private fun WorkRingsCard(
     val years = rings.years
     val grid = rings.lane(ProfileLane.Work)
     val total = block.years.sumOf { it.second }
-    Column(Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp).testTag("profileSources.workRings")) {
+    Column(Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp)) {
         Box(Modifier.padding(horizontal = 4.dp)) {
             BlockTitle(title = block.title, trailing = total.takeIf { it > 0 }?.let { if (it == 1) "1 piece" else "$it pieces" })
         }
@@ -886,7 +959,15 @@ private fun WorkRingsCard(
                                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.01f, 3.5f * unit)),
                                 )
                         }
-                    drawArc(color, 180f + run.start * 15f, (run.end - run.start) * 15f, false, Offset(cx - r, cy - r), Size(r * 2, r * 2), style = stroke)
+                    drawArc(
+                        color,
+                        180f + run.start * 15f,
+                        (run.end - run.start) * 15f,
+                        false,
+                        Offset(cx - r, cy - r),
+                        Size(r * 2, r * 2),
+                        style = stroke,
+                    )
                 }
             }
             block.dots.forEach { (_, year, month) ->
@@ -898,7 +979,12 @@ private fun WorkRingsCard(
                 drawCircle(PantopusColors.appSurface, radius = 4.7f * unit, center = p)
                 drawCircle(color, radius = 3.3f * unit, center = p)
             }
-            drawLine(PantopusColors.appBorderStrong, Offset(cx - (r1 + 4f) * unit, cy), Offset(cx + (r1 + 4f) * unit, cy), strokeWidth = unit)
+            drawLine(
+                PantopusColors.appBorderStrong,
+                Offset(cx - (r1 + 4f) * unit, cy),
+                Offset(cx + (r1 + 4f) * unit, cy),
+                strokeWidth = unit,
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp),
@@ -922,7 +1008,7 @@ private fun OwnsCard(
     block: ProfileBlock.Owns,
     open: (ProfilePageLink?) -> (() -> Unit)?,
 ) {
-    Column(Modifier.sourcesCard().testTag("profileSources.owns")) {
+    Column(Modifier.sourcesCard()) {
         block.title?.let { SourcesOverline(it, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp)) }
         block.lines.forEachIndexed { index, owned ->
             if (index > 0) SourcesDivider()
@@ -939,15 +1025,37 @@ private fun OwnsCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(
-                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { },
+                    modifier =
+                        Modifier.size(
+                            36.dp,
+                        ).clip(RoundedCornerShape(9.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { },
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
                         owned.pictureUrl != null ->
-                            SubcomposeAsyncImage(model = owned.pictureUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            SubcomposeAsyncImage(
+                                model = owned.pictureUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         owned.initials != null ->
-                            Text(owned.initials, style = SourcesType.caption.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = PantopusColors.magic))
-                        else -> PantopusIconImage(icon = PantopusIcon.BadgeCheck, contentDescription = null, size = 18.dp, tint = PantopusColors.magic)
+                            Text(
+                                owned.initials,
+                                style =
+                                    SourcesType.caption.copy(
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PantopusColors.magic,
+                                    ),
+                            )
+                        else ->
+                            PantopusIconImage(
+                                icon = PantopusIcon.BadgeCheck,
+                                contentDescription = null,
+                                size = 18.dp,
+                                tint = PantopusColors.magic,
+                            )
                     }
                 }
                 Column(Modifier.weight(1f)) {
@@ -958,7 +1066,12 @@ private fun OwnsCard(
                     }
                 }
                 if (onOpen != null) {
-                    PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                    PantopusIconImage(
+                        icon = PantopusIcon.ChevronRight,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextMuted,
+                    )
                 }
             }
         }

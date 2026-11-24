@@ -416,35 +416,35 @@ fun PublicProfileScreen(
                                             ),
                                     )
                                 else ->
-                                LocalProfileLoadedFrame(
-                                    content = content,
-                                    selectedTab = selectedLocalTab,
-                                    actions = frameActions,
-                                    callbacks = frameCallbacks,
-                                    onBack = onBack,
-                                    onSelectTab = { viewModel.selectLocalTab(it) },
-                                    onOverflow = { viewModel.setShowOverflow(true) },
-                                    onTrustClick = { showTrustExplainer = true },
-                                    hiddenByBlock = connection == ProfileConnection.Blocked,
-                                    onOpenGig = onOpenGig,
-                                    onOpenProfile = onOpenProfile,
-                                    onOpenLink = { url -> runCatching { uriHandler.openUri(url) } },
-                                    postsLoadFailed = postsLoadFailed,
-                                    postsLoading = postsLoading,
-                                    onRetryPosts = { viewModel.refresh() },
-                                    postCards = postCards,
-                                    postCardActions = postCardActions,
-                                    // Nothing shared shows on your own page or across a block.
-                                    inCommon = inCommon.takeIf { !content.isOwner && connection != ProfileConnection.Blocked },
-                                    pinned = pinnedCards.takeIf { connection != ProfileConnection.Blocked },
-                                    onOpenInCommon = { target ->
-                                        when (target) {
-                                            is InCommonTarget.Plan -> onOpenPlan(target.id)
-                                            is InCommonTarget.SupportTrain -> onOpenSupportTrain(target.id)
-                                        }
-                                    },
-                                    mode = frameMode,
-                                )
+                                    LocalProfileLoadedFrame(
+                                        content = content,
+                                        selectedTab = selectedLocalTab,
+                                        actions = frameActions,
+                                        callbacks = frameCallbacks,
+                                        onBack = onBack,
+                                        onSelectTab = { viewModel.selectLocalTab(it) },
+                                        onOverflow = { viewModel.setShowOverflow(true) },
+                                        onTrustClick = { showTrustExplainer = true },
+                                        hiddenByBlock = connection == ProfileConnection.Blocked,
+                                        onOpenGig = onOpenGig,
+                                        onOpenProfile = onOpenProfile,
+                                        onOpenLink = { url -> runCatching { uriHandler.openUri(url) } },
+                                        postsLoadFailed = postsLoadFailed,
+                                        postsLoading = postsLoading,
+                                        onRetryPosts = { viewModel.refresh() },
+                                        postCards = postCards,
+                                        postCardActions = postCardActions,
+                                        // Nothing shared shows on your own page or across a block.
+                                        inCommon = inCommon.takeIf { !content.isOwner && connection != ProfileConnection.Blocked },
+                                        pinned = pinnedCards.takeIf { connection != ProfileConnection.Blocked },
+                                        onOpenInCommon = { target ->
+                                            when (target) {
+                                                is InCommonTarget.Plan -> onOpenPlan(target.id)
+                                                is InCommonTarget.SupportTrain -> onOpenSupportTrain(target.id)
+                                            }
+                                        },
+                                        mode = frameMode,
+                                    )
                             }
                         } else {
                             PublicProfileLoadedFrame(

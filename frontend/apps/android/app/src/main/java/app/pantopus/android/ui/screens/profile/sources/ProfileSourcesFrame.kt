@@ -92,7 +92,10 @@ private fun ProfileBlock.leads(): Boolean =
     this is ProfileBlock.Says || this is ProfileBlock.KnownFor || this is ProfileBlock.InCommon || this is ProfileBlock.Doors
 
 /** The header card's lines: the first tab's untitled `lines` block that comes first (`key_lines`). */
-private fun ProfilePageTab.keyLines(): ProfileBlock.Lines? = (blocks.firstOrNull() as? ProfileBlock.Lines)?.takeIf { it.title == null || it.id == "key_lines" }
+private fun ProfilePageTab.keyLines(): ProfileBlock.Lines? =
+    (blocks.firstOrNull() as? ProfileBlock.Lines)?.takeIf {
+        it.title == null || it.id == "key_lines"
+    }
 
 /** What the page around the blocks needs from today's screen. */
 internal class SourcesFrameSlots(
@@ -143,38 +146,42 @@ internal fun ProfileSourcesFrame(
             SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab)
         }
         Box(Modifier.fillMaxSize()) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scroll),
-        ) {
-            if (first) {
-                FirstTab(
-                    page = page,
-                    tab = tab,
-                    tabs = tabs,
-                    onSelectTab = onSelectTab,
-                    slots = slots,
-                    actions = actions,
-                    onTabBarPlaced = { tabBarY = it },
-                )
-            } else if (tab != null) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
-                ) {
-                    tab.blocks.forEach { block -> SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month) }
-                    // Board 12 ends the record with how to read its lines.
-                    if (tab.blocks.any { it is ProfileBlock.RecordChart }) HowToReadLines(firstName = page.header.firstName)
-                    page.footer?.let { FooterLine(it) }
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scroll),
+            ) {
+                if (first) {
+                    FirstTab(
+                        page = page,
+                        tab = tab,
+                        tabs = tabs,
+                        onSelectTab = onSelectTab,
+                        slots = slots,
+                        actions = actions,
+                        onTabBarPlaced = { tabBarY = it },
+                    )
+                } else if (tab != null) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
+                    ) {
+                        tab.blocks.forEach {
+                                block ->
+                            SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month)
+                        }
+                        // Board 12 ends the record with how to read its lines.
+                        if (tab.blocks.any { it is ProfileBlock.RecordChart }) HowToReadLines(firstName = page.header.firstName)
+                        page.footer?.let { FooterLine(it) }
+                    }
                 }
+                Spacer(Modifier.height(40.dp))
             }
-            Spacer(Modifier.height(40.dp))
-        }
-        if (first && tabs.size > 1 && tabBarY >= 0 && scroll.value > tabBarY) {
-            SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab, modifier = Modifier.align(Alignment.TopCenter))
-        }
+            val tabBarPassed = tabBarY >= 0 && scroll.value > tabBarY
+            if (first && tabs.size > 1 && tabBarPassed) {
+                SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab, modifier = Modifier.align(Alignment.TopCenter))
+            }
         }
     }
 }
@@ -262,7 +269,7 @@ private fun HeaderCard(
     // At the largest text sizes the city and "Seen as" chips leave the band for a row under the name (PRF: nothing cut off).
     val large = profileLargeText()
     Column(
-        modifier = Modifier.sourcesCard().testTag("profileSources.header"),
+        modifier = Modifier.sourcesCard(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val place = header.place
@@ -389,7 +396,11 @@ private fun SkyBand(
             drawRect(Brush.verticalGradient(listOf(sky.top, sky.mid, sky.bottom)))
             if (phase == SkyPalette.Phase.NIGHT) {
                 listOf(0.08f to 0.2f, 0.22f to 0.12f, 0.37f to 0.3f, 0.61f to 0.16f, 0.78f to 0.26f, 0.9f to 0.1f).forEach { (x, y) ->
-                    drawCircle(PantopusColors.appTextInverse.copy(alpha = 0.8f), radius = 1.2.dp.toPx(), center = Offset(size.width * x, size.height * y))
+                    drawCircle(
+                        PantopusColors.appTextInverse.copy(alpha = 0.8f),
+                        radius = 1.2.dp.toPx(),
+                        center = Offset(size.width * x, size.height * y),
+                    )
                 }
             }
             // A line of firs along the bottom, darker than the horizon.
@@ -522,7 +533,7 @@ internal fun SourcesTabBar(
     modifier: Modifier = Modifier,
 ) {
     if (tabs.size < 2) return
-    Column(modifier.fillMaxWidth().background(PantopusColors.appSurface).testTag("profileSources.tabs")) {
+    Column(modifier.fillMaxWidth().background(PantopusColors.appSurface)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(PantopusColors.appBorder))
         Row(Modifier.fillMaxWidth()) {
             tabs.forEach { tab ->
@@ -572,10 +583,19 @@ private fun CompactBar(
     onShare: (() -> Unit)?,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp).testTag("profileSources.compactBar"),
+        modifier =
+            Modifier.fillMaxWidth().background(
+                PantopusColors.appSurface,
+            ).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProfileIconButton(icon = PantopusIcon.ChevronLeft, label = "Back", onClick = onBack, iconSize = 26.dp, testTag = "profileSources.back")
+        ProfileIconButton(
+            icon = PantopusIcon.ChevronLeft,
+            label = "Back",
+            onClick = onBack,
+            iconSize = 26.dp,
+            testTag = "profileSources.back",
+        )
         Row(
             modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { heading() },
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -618,13 +638,25 @@ internal fun SourcesVisitorBar(
     onMore: (() -> Unit)?,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp).testTag("profileSources.bar"),
+        modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProfileIconButton(icon = PantopusIcon.ChevronLeft, label = "Back", onClick = onBack, iconSize = 26.dp, testTag = "publicProfileBack")
+        ProfileIconButton(
+            icon = PantopusIcon.ChevronLeft,
+            label = "Back",
+            onClick = onBack,
+            iconSize = 26.dp,
+            testTag = "publicProfileBack",
+        )
         Spacer(Modifier.weight(1f))
         if (onShare != null) {
-            ProfileIconButton(icon = PantopusIcon.Share, label = "Share $firstName's page", onClick = onShare, iconSize = 20.dp, testTag = "profileSources.share")
+            ProfileIconButton(
+                icon = PantopusIcon.Share,
+                label = "Share $firstName's page",
+                onClick = onShare,
+                iconSize = 20.dp,
+                testTag = "profileSources.share",
+            )
         }
         if (onMore != null) {
             ProfileIconButton(

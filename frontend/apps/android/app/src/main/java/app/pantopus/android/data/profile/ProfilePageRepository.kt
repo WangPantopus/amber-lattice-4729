@@ -112,12 +112,13 @@ class ProfilePageRepository
             return safeApiCall { api.updateLink(id, body) }
         }
 
-        suspend fun deleteLink(id: String): NetworkResult<Unit> = safeApiCall { api.deleteLink(id) }.let { result ->
-            when (result) {
-                is NetworkResult.Success -> NetworkResult.Success(Unit)
-                is NetworkResult.Failure -> result
+        suspend fun deleteLink(id: String): NetworkResult<Unit> =
+            safeApiCall { api.deleteLink(id) }.let { result ->
+                when (result) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
             }
-        }
 
         private companion object {
             val JSON = "application/json; charset=utf-8".toMediaType()

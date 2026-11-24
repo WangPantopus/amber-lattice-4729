@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "MagicNumber", "LongParameterList")
+@file:Suppress("LongMethod", "MagicNumber", "LongParameterList", "MatchingDeclarationName", "CyclomaticComplexMethod")
 
 package app.pantopus.android.ui.screens.profile.sources
 
@@ -6,6 +6,7 @@ import android.content.Context
 import android.print.PrintManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,7 +37,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,9 +59,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.ui.components.InviteLinks
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
-import app.pantopus.android.ui.components.InviteLinks
 import app.pantopus.android.ui.components.shareText
 import app.pantopus.android.ui.screens.profile.PreviewAudience
 import app.pantopus.android.ui.screens.profile.PreviewBanner
@@ -250,7 +250,13 @@ internal fun ProfileShareSheet(
                                     leading = { FixedShareRow("Portrait, name and rings", "Always shown", divider = false) },
                                     onToggle = model::setPart,
                                 )
-                                PartsCard(title = "What you've done", words = WHAT_YOU_DID, share = share, saving = s.saving, onToggle = model::setPart)
+                                PartsCard(
+                                    title = "What you've done",
+                                    words = WHAT_YOU_DID,
+                                    share = share,
+                                    saving = s.saving,
+                                    onToggle = model::setPart,
+                                )
                                 PartsCard(
                                     title = "Reaching you",
                                     words = REACHING_YOU,
@@ -285,7 +291,9 @@ internal fun ProfileShareSheet(
                             linkSheet?.let { id ->
                                 val link = share.links.firstOrNull { it.id == id }
                                 if (id == NEW_LINK || link != null) {
-                                    val linkUrl: (ShareLink) -> String? = { it.key?.let { key -> InviteLinks.profileKeyUrl(share.username, key) } }
+                                    val linkUrl: (
+                                        ShareLink,
+                                    ) -> String? = { it.key?.let { key -> InviteLinks.profileKeyUrl(share.username, key) } }
                                     ShareLinkSheet(
                                         link = link,
                                         share = share,
@@ -344,7 +352,13 @@ private fun ShareBar(onClose: () -> Unit) {
         modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProfileIconButton(icon = PantopusIcon.X, label = "Close", onClick = onClose, iconSize = 22.dp, testTag = "profileSources.share.close")
+        ProfileIconButton(
+            icon = PantopusIcon.X,
+            label = "Close",
+            onClick = onClose,
+            iconSize = 22.dp,
+            testTag = "profileSources.share.close",
+        )
         Text(
             text = "Share your profile",
             style = SourcesType.title.copy(color = PantopusColors.appTextStrong),
@@ -373,7 +387,11 @@ private fun LinkCard(
                 ProfileAvatar(name = name, photoUrl = portraitUrl, seed = userId, size = 40.dp)
             }
             Column(Modifier.weight(1f)) {
-                Text(url.removePrefix("https://").removePrefix("http://"), style = SourcesType.title, modifier = Modifier.testTag("profileSources.share.url"))
+                Text(
+                    url.removePrefix("https://").removePrefix("http://"),
+                    style = SourcesType.title,
+                    modifier = Modifier.testTag("profileSources.share.url"),
+                )
                 Text("Anyone with this link can open it. No account needed.", style = SourcesType.caption)
             }
         }
@@ -385,7 +403,13 @@ private fun LinkCard(
         ) {
             ShareButton("Copy link", primary = true, onClick = onCopy, tag = "profileSources.share.copy", modifier = Modifier.weight(1f))
             ShareButton("Send", primary = false, onClick = onSend, tag = "profileSources.share.send", modifier = Modifier.weight(1f))
-            ShareButton("Show code", primary = false, onClick = onShowCode, tag = "profileSources.share.code", modifier = Modifier.weight(1f))
+            ShareButton(
+                "Show code",
+                primary = false,
+                onClick = onShowCode,
+                tag = "profileSources.share.code",
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -464,7 +488,9 @@ internal fun FixedShareRow(
     divider: Boolean = true,
 ) {
     if (divider) SourcesDivider()
-    Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) { }) {
+    Column(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) { },
+    ) {
         Text(title, style = SourcesType.rowTitle)
         Text(note, style = SourcesType.caption)
     }
@@ -524,7 +550,13 @@ private fun ShareFooter(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (onSeeVisitor != null) {
-            ShareButton("See it as a visitor", primary = false, onClick = onSeeVisitor, tag = "profileSources.share.visitor", modifier = Modifier.weight(1f))
+            ShareButton(
+                "See it as a visitor",
+                primary = false,
+                onClick = onSeeVisitor,
+                tag = "profileSources.share.visitor",
+                modifier = Modifier.weight(1f),
+            )
         }
         Box(
             modifier =

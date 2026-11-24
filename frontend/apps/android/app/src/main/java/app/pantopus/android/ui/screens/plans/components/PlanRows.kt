@@ -363,7 +363,13 @@ fun PlanHostRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        if (business) PlanBusinessShape(avatarUrl = avatarUrl) else PlanAvatar(name = name, seed = seed, avatarUrl = avatarUrl, userId = userId)
+        if (business) {
+            PlanBusinessShape(
+                avatarUrl = avatarUrl,
+            )
+        } else {
+            PlanAvatar(name = name, seed = seed, avatarUrl = avatarUrl, userId = userId)
+        }
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 Text(

@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "MagicNumber", "LongParameterList")
+@file:Suppress("LongMethod", "MagicNumber", "LongParameterList", "CyclomaticComplexMethod")
 
 package app.pantopus.android.ui.screens.profile.sources
 
@@ -109,8 +109,14 @@ internal fun ShareLinksSection(
     onMake: () -> Unit,
 ) {
     val enabled = share.linksEnabled ?: return
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp).testTag("profileSources.share.links"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         SourcesOverline("Links for one purpose", modifier = Modifier.padding(horizontal = 4.dp))
+        share.linksNote?.takeIf { !share.linksOpen }?.let { note ->
+            Text(note, style = SourcesType.secondary, modifier = Modifier.padding(horizontal = 4.dp))
+        }
         Column(Modifier.sourcesCard()) {
             ShareSwitchRow(
                 title = "Use links for one purpose",
@@ -134,10 +140,21 @@ internal fun ShareLinksSection(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(link.name, style = SourcesType.rowTitle.copy(color = if (link.live) PantopusColors.appText else PantopusColors.appTextMuted))
+                            Text(
+                                link.name,
+                                style =
+                                    SourcesType.rowTitle.copy(
+                                        color = if (link.live) PantopusColors.appText else PantopusColors.appTextMuted,
+                                    ),
+                            )
                             Text("${partsSummary(link.parts)} · ${linkStatus(link)}", style = SourcesType.caption)
                         }
-                        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+                        PantopusIconImage(
+                            icon = PantopusIcon.ChevronRight,
+                            contentDescription = null,
+                            size = 18.dp,
+                            tint = PantopusColors.appTextMuted,
+                        )
                     }
                 }
                 SourcesDivider()
@@ -234,9 +251,20 @@ internal fun ShareLinkSheet(
                 )
             } else {
                 Text(linkStatus(link).replaceFirstChar { it.uppercase() }, style = SourcesType.caption)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 3) {
-                    LinkButton("Copy link", primary = true, enabled = link.live, modifier = Modifier.weight(1f)) { onCopy(link) }
-                    LinkButton("Send", primary = false, enabled = link.live, modifier = Modifier.weight(1f)) { onSend(link) }
+                // A private profile opens no link (v1.4): the server's sentence stands where Copy and Send would.
+                val note = share.linksNote.takeIf { !share.linksOpen }
+                if (note != null) {
+                    Text(note, style = SourcesType.secondary, modifier = Modifier.testTag("profileSources.share.linksNote"))
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = 3,
+                ) {
+                    if (note == null) {
+                        LinkButton("Copy link", primary = true, enabled = link.live, modifier = Modifier.weight(1f)) { onCopy(link) }
+                        LinkButton("Send", primary = false, enabled = link.live, modifier = Modifier.weight(1f)) { onSend(link) }
+                    }
                     LinkButton("See it", primary = false, enabled = link.key != null, modifier = Modifier.weight(1f)) { onPreview(link) }
                 }
             }
@@ -318,7 +346,12 @@ internal fun ShareLinkSheet(
                     onDelete()
                 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete", color = PantopusColors.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Keep it") } },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmDelete = false },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Keep it") }
+            },
         )
     }
 }
@@ -337,7 +370,9 @@ private fun LinkButton(
                 .heightIn(min = 48.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(if (primary && enabled) PantopusColors.primary600 else PantopusColors.appSurface)
-                .then(if (primary && enabled) Modifier else Modifier.border(1.dp, PantopusColors.appBorderStrong, RoundedCornerShape(12.dp)))
+                .then(
+                    if (primary && enabled) Modifier else Modifier.border(1.dp, PantopusColors.appBorderStrong, RoundedCornerShape(12.dp)),
+                )
                 .clickable(role = Role.Button, enabled = enabled, onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,

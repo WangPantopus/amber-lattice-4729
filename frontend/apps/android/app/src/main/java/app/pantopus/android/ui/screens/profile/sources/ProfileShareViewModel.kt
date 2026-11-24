@@ -56,6 +56,9 @@ data class ProfileShareState(
     /** Null while the server's `PROFILE_LINKS` is off: no "Links for one purpose" section at all. */
     val linksEnabled: Boolean?,
     val links: List<ShareLink>,
+    /** v1.4: false while the profile is private: no link opens, and [linksNote] says why in Copy and Send's place. */
+    val linksOpen: Boolean = true,
+    val linksNote: String? = null,
 )
 
 /** A link's page as its visitor gets it, or why it isn't there. */
@@ -307,6 +310,8 @@ class ProfileShareViewModel
                 cityLimit = dto.cityLimit ?: "connections",
                 visitor = pages.visitorPage(dto),
                 linksEnabled = dto.linksEnabled,
+                linksOpen = dto.linksOpen != false,
+                linksNote = dto.linksNote?.takeIf { it.isNotBlank() },
                 links = dto.links.orEmpty().mapNotNull(::mapLink),
             )
 

@@ -21,18 +21,28 @@ fun mapProfilePage(
     moshi: Moshi,
 ): ProfilePage? {
     val header = dto.header ?: return null
-    val userId = header.userId?.takeIf { it.isNotBlank() } ?: return null
-    val name = header.name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val rings = mapRings(header.rings) ?: return null
+    val userId = header.userId?.takeIf { it.isNotBlank() }
+    val name = header.name?.trim()?.takeIf { it.isNotEmpty() }
+    val rings = mapRings(header.rings)
+    if (userId == null || name == null || rings == null) return null
     val firstName = header.firstName?.trim()?.takeIf { it.isNotEmpty() } ?: name.substringBefore(' ')
     val inCommonAdapter = moshi.adapter(ProfileInCommonResponse::class.java)
     val tabs =
         dto.tabs.orEmpty().mapNotNull { tab ->
             val key = tab.key?.trim()?.lowercase() ?: return@mapNotNull null
             if (key !in KNOWN_TABS) return@mapNotNull null
-            val blocks = tab.blocks.orEmpty().mapNotNull { mapBlock(it) { body -> runCatching { inCommonAdapter.fromJsonValue(body) }.getOrNull() } }
+            val blocks =
+                tab.blocks.orEmpty().mapNotNull {
+                    mapBlock(
+                        it,
+                    ) { body -> runCatching { inCommonAdapter.fromJsonValue(body) }.getOrNull() }
+                }
             if (blocks.isEmpty()) return@mapNotNull null
-            ProfilePageTab(key = key, title = tab.title?.trim()?.takeIf { it.isNotEmpty() } ?: defaultTabTitle(key, firstName), blocks = blocks)
+            ProfilePageTab(
+                key = key,
+                title = tab.title?.trim()?.takeIf { it.isNotEmpty() } ?: defaultTabTitle(key, firstName),
+                blocks = blocks,
+            )
         }
     val summary =
         dto.summary.let {
@@ -119,9 +129,13 @@ private fun Map<String, Any?>.int(key: String): Int? = (this[key] as? Number)?.t
 private fun Map<String, Any?>.obj(key: String): Map<String, Any?>? = this[key] as? Map<String, Any?>
 
 @Suppress("UNCHECKED_CAST")
-private fun Map<String, Any?>.objs(key: String): List<Map<String, Any?>> = (this[key] as? List<*>).orEmpty().mapNotNull { it as? Map<String, Any?> }
+private fun Map<String, Any?>.objs(key: String): List<Map<String, Any?>> =
+    (this[key] as? List<*>).orEmpty().mapNotNull { it as? Map<String, Any?> }
 
-private fun Map<String, Any?>.strs(key: String): List<String> = (this[key] as? List<*>).orEmpty().mapNotNull { (it as? String)?.takeIf(String::isNotBlank) }
+private fun Map<String, Any?>.strs(key: String): List<String> =
+    (this[key] as? List<*>).orEmpty().mapNotNull {
+        (it as? String)?.takeIf(String::isNotBlank)
+    }
 
 internal fun mapLink(map: Map<String, Any?>?): ProfilePageLink? {
     map ?: return null
@@ -140,7 +154,10 @@ internal fun mapLink(map: Map<String, Any?>?): ProfilePageLink? {
         "support_train" -> map.str("id")?.let { ProfilePageLink.SupportTrain(it) }
         "posts" -> map.str("user_id")?.let { ProfilePageLink.Posts(it) }
         "moments" -> map.str("user_id")?.let { ProfilePageLink.Moments(it) }
-        "url" -> map.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { ProfilePageLink.Url(it, map.str("site")) }
+        "url" ->
+            map.str(
+                "url",
+            )?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { ProfilePageLink.Url(it, map.str("site")) }
         else -> null
     }
 }

@@ -112,7 +112,12 @@ internal fun PlanPrivateInviteBanner(plan: PlanDto) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        PlanAvatar(name = plan.host?.displayName ?: host, seed = plan.host?.userId, avatarUrl = plan.host?.avatarUrl, userId = plan.host?.userId)
+        PlanAvatar(
+            name = plan.host?.displayName ?: host,
+            seed = plan.host?.userId,
+            avatarUrl = plan.host?.avatarUrl,
+            userId = plan.host?.userId,
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "$host invited you",
