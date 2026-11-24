@@ -113,7 +113,7 @@ internal fun ShareLinksSection(
         SourcesOverline("Links for one purpose", modifier = Modifier.padding(horizontal = 4.dp))
         Column(Modifier.sourcesCard()) {
             ShareSwitchRow(
-                title = "Links for one purpose",
+                title = "Use links for one purpose",
                 note = if (enabled) null else "Off, none of your links open.",
                 on = enabled,
                 enabled = "links_enabled" !in saving,
@@ -242,7 +242,7 @@ internal fun ShareLinkSheet(
             }
             Column(Modifier.sourcesCard()) {
                 SourcesOverline("What it shows", modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp))
-                FixedShareRow("Portrait, name and rings", "Always shown")
+                FixedShareRow("Portrait, name and rings", "Always shown", divider = false)
                 shown.forEach { key ->
                     SourcesDivider()
                     val words = PART_WORDS.getValue(key)

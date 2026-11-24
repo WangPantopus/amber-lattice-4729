@@ -667,15 +667,38 @@ private fun PieceCover(
     withMedia: Boolean,
 ) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)).background(PantopusColors.appBorder),
+        modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)).background(PantopusColors.businessBg),
     ) {
-        piece.coverUrl?.let { url ->
-            SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        }
+        PieceImage(piece.coverUrl, iconSize = 32.dp)
         listOfNotNull(pieceKindWord(piece.kind), piece.whenText).joinToString(" · ").takeIf { it.isNotEmpty() }?.let { tag ->
             PictureTag(tag, Modifier.align(Alignment.BottomStart))
         }
         if (withMedia) pieceMedia(piece)?.let { PictureTag(it, Modifier.align(Alignment.BottomEnd)) }
+    }
+}
+
+/** A piece's picture; with none (or one that doesn't load), the work tile's hammer on its violet tint. */
+@Composable
+private fun PieceImage(
+    url: String?,
+    iconSize: androidx.compose.ui.unit.Dp,
+) {
+    val placeholder: @Composable () -> Unit = {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            PantopusIconImage(icon = PantopusIcon.Hammer, contentDescription = null, size = iconSize, tint = PantopusColors.business)
+        }
+    }
+    if (url == null) {
+        placeholder()
+    } else {
+        SubcomposeAsyncImage(
+            model = url,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+            loading = { placeholder() },
+            error = { placeholder() },
+        )
     }
 }
 
@@ -771,8 +794,8 @@ private fun PieceList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.appBorder).clearAndSetSemantics { }) {
-                    piece.coverUrl?.let { SubcomposeAsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { }) {
+                    PieceImage(piece.coverUrl, iconSize = 20.dp)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(piece.title, style = SourcesType.rowTitle)

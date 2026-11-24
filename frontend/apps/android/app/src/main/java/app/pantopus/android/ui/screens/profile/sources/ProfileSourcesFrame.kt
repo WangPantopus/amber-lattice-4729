@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +39,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -124,6 +127,8 @@ internal fun ProfileSourcesFrame(
     val first = tab == null || tab == tabs.firstOrNull()
     val scroll = rememberScrollState()
     LaunchedEffect(tab?.key) { if (!first) scroll.scrollTo(0) }
+    // Where the first tab's tab bar sits in the page: once it scrolls under the top bar, a copy stays there (as on iPhone).
+    var tabBarY by remember { mutableIntStateOf(-1) }
     Column(
         modifier =
             Modifier
@@ -137,6 +142,7 @@ internal fun ProfileSourcesFrame(
             CompactBar(header = page.header, onBack = slots.onBack, onShare = slots.onShare)
             SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab)
         }
+        Box(Modifier.fillMaxSize()) {
         Column(
             modifier =
                 Modifier
@@ -144,7 +150,15 @@ internal fun ProfileSourcesFrame(
                     .verticalScroll(scroll),
         ) {
             if (first) {
-                FirstTab(page = page, tab = tab, tabs = tabs, onSelectTab = onSelectTab, slots = slots, actions = actions)
+                FirstTab(
+                    page = page,
+                    tab = tab,
+                    tabs = tabs,
+                    onSelectTab = onSelectTab,
+                    slots = slots,
+                    actions = actions,
+                    onTabBarPlaced = { tabBarY = it },
+                )
             } else if (tab != null) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
@@ -158,6 +172,10 @@ internal fun ProfileSourcesFrame(
             }
             Spacer(Modifier.height(40.dp))
         }
+        if (first && tabs.size > 1 && tabBarY >= 0 && scroll.value > tabBarY) {
+            SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab, modifier = Modifier.align(Alignment.TopCenter))
+        }
+        }
     }
 }
 
@@ -169,6 +187,7 @@ private fun FirstTab(
     onSelectTab: (String) -> Unit,
     slots: SourcesFrameSlots,
     actions: SourcesBlockActions,
+    onTabBarPlaced: (Int) -> Unit,
 ) {
     val keyLines = tab?.keyLines()
     val rest = tab?.blocks.orEmpty().let { if (keyLines != null) it.drop(1) else it }
@@ -190,7 +209,12 @@ private fun FirstTab(
     }
     if (tabs.size > 1) {
         Spacer(Modifier.height(16.dp))
-        SourcesTabBar(tabs = tabs, selected = tab?.key, onSelect = onSelectTab)
+        SourcesTabBar(
+            tabs = tabs,
+            selected = tab?.key,
+            onSelect = onSelectTab,
+            modifier = Modifier.onGloballyPositioned { onTabBarPlaced(it.positionInParent().y.toInt()) },
+        )
     }
     Column(
         modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP),
@@ -495,9 +519,10 @@ internal fun SourcesTabBar(
     tabs: List<ProfilePageTab>,
     selected: String?,
     onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (tabs.size < 2) return
-    Column(Modifier.fillMaxWidth().background(PantopusColors.appSurface).testTag("profileSources.tabs")) {
+    Column(modifier.fillMaxWidth().background(PantopusColors.appSurface).testTag("profileSources.tabs")) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(PantopusColors.appBorder))
         Row(Modifier.fillMaxWidth()) {
             tabs.forEach { tab ->

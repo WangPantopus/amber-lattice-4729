@@ -36,7 +36,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -138,6 +140,8 @@ internal fun ProfileShareSheet(
     val linkPreview by model.linkPreview.collectAsStateWithLifecycle()
     val linkSaving by model.linkSaving.collectAsStateWithLifecycle()
     LaunchedEffect(reloadKey) { model.load() }
+    // A link's page shown last time doesn't come back when the sheet opens again.
+    DisposableEffect(Unit) { onDispose { model.endLinkPreview() } }
     LaunchedEffect(notice) {
         if (notice != null) {
             delay(2_000)
@@ -155,6 +159,9 @@ internal fun ProfileShareSheet(
             val loaded = state as? ProfileShareUiState.Loaded
             val visitor = loaded?.share?.visitor
             val linkPage = (linkPreview as? LinkPreviewState.Ready)?.page
+            // Back ends a visitor's view first; only then does it close the sheet.
+            BackHandler(enabled = linkPage != null) { model.endLinkPreview() }
+            BackHandler(enabled = linkPage == null && showVisitor) { showVisitor = false }
             if (linkPage != null) {
                 ProfileSourcesFrame(
                     page = linkPage,
@@ -240,7 +247,7 @@ internal fun ProfileShareSheet(
                                     words = ABOUT_YOU,
                                     share = share,
                                     saving = s.saving,
-                                    leading = { FixedShareRow("Portrait, name and rings", "Always shown") },
+                                    leading = { FixedShareRow("Portrait, name and rings", "Always shown", divider = false) },
                                     onToggle = model::setPart,
                                 )
                                 PartsCard(title = "What you've done", words = WHAT_YOU_DID, share = share, saving = s.saving, onToggle = model::setPart)
@@ -454,8 +461,9 @@ private fun PartsCard(
 internal fun FixedShareRow(
     title: String,
     note: String,
+    divider: Boolean = true,
 ) {
-    SourcesDivider()
+    if (divider) SourcesDivider()
     Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) { }) {
         Text(title, style = SourcesType.rowTitle)
         Text(note, style = SourcesType.caption)
