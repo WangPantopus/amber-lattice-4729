@@ -267,7 +267,9 @@ async function removeLink(req) {
 
 /**
  * A link for one purpose, opened by its key: `what` is 'page', 'piece' or 'month'. Every key that doesn't open gives
- * the same 404, whatever the reason. Counts one open unless the owner opened it.
+ * the same 404, whatever the reason. Counts one open unless the owner opened it, or the web's server read it to draw
+ * the link's picture for a chat app or a social site (the share-card marker, trusted only with the edge secret, as
+ * routes/public.js trusts it for the Place card): nobody opened the page then.
  */
 async function openByKey(req, username, key, what = 'page', arg = null) {
   const row = await links.rowForKey(key);
@@ -308,7 +310,8 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
     if (err instanceof PageRefusal && err.code === 'PROFILE_PRIVATE') throw links.NOT_FOUND();
     throw err;
   }
-  if (!isOwner && what === 'page') links.countOpen(row.id);
+  const shareCard = req.viaWebEdge === true && req.get('x-pantopus-share-card') === '1';
+  if (!isOwner && what === 'page' && !shareCard) links.countOpen(row.id);
   return answer;
 }
 
