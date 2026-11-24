@@ -19,7 +19,10 @@ const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/hom
 const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
 // Released states, by postal code, in the order they went out. Live counties have pages whatever this says.
-const BATCHES = [];
+const BATCHES = [
+  // 1, November 23, 2026: Washington and Oregon, around the first live county (Clark County, WA).
+  ['WA', 'OR'],
+];
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
 // BATCHES alone, so a release is a reviewed change here.
 const released = new Set([
@@ -28,6 +31,7 @@ const released = new Set([
 ]);
 
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
+const INCOMPLETE_TTL_MS = 10 * 60 * 1000;
 const answers = new Map();
 
 /** Whether a county has a page now. */
@@ -80,17 +84,21 @@ function homesOf(county) {
 
 async function compose(county) {
   const offices = officesOf(county);
-  const [holds, hazards, disasters, radon, floodCost] = await Promise.all([
-    holdsFor(county),
+  const read = await Promise.all([
     federal.hazards(county.fips),
     federal.disasters(county.fips),
     federal.radon(county.fips),
     federal.floodCost(county.fips),
   ]);
+  const holds = await holdsFor(county);
+  // A part that couldn't be read just now is left out of this answer, which is then kept only briefly.
+  const incomplete = read.some(federal.isUnread);
+  const [hazards, disasters, radon, floodCost] = read.map((part) => (federal.isUnread(part) ? null : part));
   const exemption = exemptionOf(county.state);
   const appeal = appealOf(county.state);
   return {
     v: 1,
+    ...(incomplete ? { incomplete: true } : {}),
     // The day the answer was made, Pacific time.
     built: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }),
     state: statePart(county.state),
@@ -117,13 +125,13 @@ async function countyAnswer(stateSlug, countySlug) {
   const county = places.county(stateSlug, countySlug);
   if (!published(county)) return null;
   const kept = answers.get(county.fips);
-  if (kept && Date.now() - kept.at < ANSWER_TTL_MS) return kept.answer;
+  if (kept && Date.now() - kept.at < kept.ttl) return kept.answer;
   const pending = compose(county);
   // Concurrent asks share one composition.
-  answers.set(county.fips, { at: Date.now(), answer: pending });
+  answers.set(county.fips, { at: Date.now(), ttl: ANSWER_TTL_MS, answer: pending });
   try {
     const answer = await pending;
-    answers.set(county.fips, { at: Date.now(), answer });
+    answers.set(county.fips, { at: Date.now(), ttl: answer.incomplete ? INCOMPLETE_TTL_MS : ANSWER_TTL_MS, answer });
     return answer;
   } catch (err) {
     answers.delete(county.fips);

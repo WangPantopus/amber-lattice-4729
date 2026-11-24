@@ -19,6 +19,15 @@ function withThe(office) {
 
 function recordsQuestion(county, offices) {
   const search = offices.rows.find((row) => row.id === 'property_search');
+  if (search?.city_only) {
+    return {
+      id: 'records',
+      q: `How do I look up property records in ${county.inName}?`,
+      a: `The property search linked here is that of ${withThe(search.office)}${search.host ? ` (${search.host})` : ''}, which covers homes in that city or township only. Pantopus's lookup on this page shows what public records say about any address in ${county.inName}.`,
+      office: search.office,
+      url: search.url,
+    };
+  }
   if (search) {
     const runBy = search.office ? ` run by ${withThe(search.office)}` : '';
     return {

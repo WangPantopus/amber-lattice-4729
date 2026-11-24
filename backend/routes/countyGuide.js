@@ -18,10 +18,11 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// The web's servers rebuild pages from here; a crawl of every page reaches here once a day at most per page.
+// The web's servers rebuild pages from here, at most once a day per page; a search engine crawling every page can
+// bring a few hundred rebuilds a minute from the same servers, and a refused rebuild fails a page with no copy yet.
 router.use(rateLimit({
   windowMs: 60 * 1000,
-  limit: 300,
+  limit: 600,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) => `county-guide:${clientIpKey(req)}`,
@@ -62,7 +63,9 @@ router.get('/:state/:county', async (req, res) => {
   try {
     const answer = await countyGuide.countyAnswer(state, county);
     if (!answer) return res.status(404).json({ error: 'No page for this county' });
-    cached(res);
+    // An answer missing a part that couldn't be read just now is kept only minutes.
+    if (answer.incomplete) res.set('Cache-Control', 'public, max-age=300');
+    else cached(res);
     return res.json(answer);
   } catch (err) {
     logger.warn('countyGuide: answer failed', { state, county, error: err.message });

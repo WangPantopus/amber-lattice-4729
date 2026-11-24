@@ -48,17 +48,32 @@ const pacificDay = (iso) => (iso ? new Date(iso).toLocaleDateString('en-CA', { t
 /** FEMA's incident types are title case ("Severe Storm"); the page writes sentence case. */
 const sentenceCase = (text) => (typeof text === 'string' && text ? text.charAt(0).toUpperCase() + text.slice(1).toLowerCase() : null);
 
-async function getJson(url) {
+async function getJsonOnce(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     return await res.json();
   } finally {
     clearTimeout(timer);
   }
 }
+
+// One more try after a dropped connection or a busy answer: OpenFEMA drops a few requests in a thousand.
+async function getJson(url) {
+  try {
+    return await getJsonOnce(url);
+  } catch (err) {
+    if (err.status && err.status < 500 && err.status !== 429) throw err;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return getJsonOnce(url);
+  }
+}
+
+/** Marks a part that couldn't be read just now (not one with nothing to show), so the answer is kept briefly. */
+const UNREAD = Object.freeze({ unread: true });
+const isUnread = (part) => part === UNREAD;
 
 // The table, as { version, ratings: { fips: "0..5 per hazard" } }: a digit per hazard keeps the cached row small.
 async function fetchRiskTable() {
@@ -103,7 +118,7 @@ async function riskTableNow() {
   return riskTable.value;
 }
 
-/** FEMA's ratings for a county: { version, read, rows: [{ label, level, word }] } in FEMA's order, or null. */
+/** FEMA's ratings for a county: { version, read, rows: [{ label, level, word }] } in FEMA's order, null, or UNREAD. */
 async function hazards(fips) {
   try {
     const table = await riskTableNow();
@@ -116,7 +131,7 @@ async function hazards(fips) {
     return rows.length ? { version: table.version, read: table.read, rows } : null;
   } catch (err) {
     logger.warn('countyGuide: risk index unavailable', { error: err.message });
-    return null;
+    return UNREAD;
   }
 }
 
@@ -167,7 +182,7 @@ async function disasters(fips) {
     };
   } catch (err) {
     logger.warn('countyGuide: declarations unavailable', { fips, error: err.message });
-    return null;
+    return UNREAD;
   }
 }
 
@@ -181,7 +196,7 @@ async function radon(fips) {
     return zone >= 1 && zone <= 3 ? { zone } : null;
   } catch (err) {
     logger.warn('countyGuide: radon zone unavailable', { fips, error: err.message });
-    return null;
+    return UNREAD;
   }
 }
 
@@ -200,8 +215,8 @@ async function floodCost(fips) {
     };
   } catch (err) {
     logger.warn('countyGuide: flood policy costs unavailable', { fips, error: err.message });
-    return null;
+    return UNREAD;
   }
 }
 
-module.exports = { hazards, disasters, radon, floodCost, HAZARDS, OPENFEMA_NOTICE: nfip.OPENFEMA_NOTICE };
+module.exports = { hazards, disasters, radon, floodCost, isUnread, HAZARDS, OPENFEMA_NOTICE: nfip.OPENFEMA_NOTICE };
