@@ -70,6 +70,10 @@ PRs, screenshots and chat. Preserve unrelated local work.
   existing data. New tables need the founder's approval.
 - Launch-cut features stay off behind their flags
   ([launch-scope flags](docs/launch-scope-flags-2026-10-01.md)).
+- On November 23 the founder asked that people reach Pantopus wherever they
+  search, for every part of the app. Switching a feature on (Gigs, the
+  Marketplace, any later one) includes its search work: follow the checklist in
+  the [search guide](docs/seo/README.md).
 
 ## Verify in the real apps
 
