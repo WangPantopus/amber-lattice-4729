@@ -380,6 +380,28 @@ function NameStep({ letter, look, busy, onOpen }: {
 }
 
 /**
+ * After the name, for someone with no home yet: the card is already theirs, and adding their home address (the app's
+ * own Add home page) is offered, never needed. Pantopus mail is digital only, so the words say so.
+ */
+function HomeStep({ letter, look, letterHref }: {
+  letter: LinkPageLetter;
+  look: Pick<CodeLook, 'primary' | 'secondary' | 'line'>;
+  letterHref: string;
+}) {
+  const card = Boolean(letter.card);
+  return (
+    <div className="flex w-full flex-col gap-2.5" data-testid="cardLinkHomeStep">
+      <p className={look.line}>
+        Your {card ? 'card' : 'letter'} is in your Pantopus mailbox. If you like, add your home address too, so people
+        can send you digital cards and mail more easily later. It’s digital only: nothing comes by post.
+      </p>
+      <Link href={letterHref} className={look.primary} data-testid="cardLinkHomeSkip">{card ? 'Open your card' : 'Read the letter'}</Link>
+      <Link href="/app/homes/new" className={look.secondary} data-testid="cardLinkHomeAdd">Add my home address</Link>
+    </div>
+  );
+}
+
+/**
  * Signed out: sign in or create an account with the address it was sent to. Without links (Look it over) it's drawn
  * as the page shows it, and does nothing.
  */
@@ -487,6 +509,9 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
   // An account with no name gives one before it opens (NameStep). Known once read: null until then.
   const [hasName, setHasName] = useState<boolean | null>(null);
   const [askName, setAskName] = useState(false);
+  // Someone who just gave their name and has no home yet is offered one once the card is theirs (HomeStep).
+  const justNamed = useRef(false);
+  const [askHome, setAskHome] = useState(false);
 
   const here = `/open/${mailId}?token=${encodeURIComponent(token)}`;
   const loginHref = `/login?redirectTo=${encodeURIComponent(here)}`;
@@ -547,6 +572,10 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
     if (hasName === null && !(await readName())) { setClaiming(false); return; }
     try {
       await api.mailCompose.claimEscrowedMail(mailId, token);
+      if (justNamed.current) {
+        const mine = await api.homes.getMyHomes().catch(() => null);
+        if (mine && mine.homes.length === 0) { setAskHome(true); setClaiming(false); return; }
+      }
       router.push(letterHref);
     } catch (err: unknown) {
       const code = (err as { code?: unknown } | null)?.code;
@@ -698,9 +727,15 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
           </div>
         )}
 
-        {signedIn === true && !wrongAccount && askName && (
+        {signedIn === true && !wrongAccount && askHome && (
           <div className={table.actions}>
-            <NameStep letter={letter} look={TABLE_LOOK} busy={claiming} onOpen={() => { setHasName(true); void claim(); }} />
+            <HomeStep letter={letter} look={TABLE_LOOK} letterHref={letterHref} />
+          </div>
+        )}
+
+        {signedIn === true && !wrongAccount && askName && !askHome && (
+          <div className={table.actions}>
+            <NameStep letter={letter} look={TABLE_LOOK} busy={claiming} onOpen={() => { justNamed.current = true; setHasName(true); void claim(); }} />
             {problem === 'MAIL_OWN_LETTER' && <div role="alert" className={table.alert}>{ownWords}</div>}
             {problem === 'FAILED' && <div role="alert" className={table.alert}>Couldn’t add the card to your mailbox. Check your connection and try again.</div>}
           </div>
@@ -755,9 +790,15 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
         </div>
       )}
 
-      {signedIn === true && !wrongAccount && askName && (
+      {signedIn === true && !wrongAccount && askHome && (
         <div className="mt-5 flex flex-col gap-2.5">
-          <NameStep letter={letter} look={PANEL_LOOK} busy={claiming} onOpen={() => { setHasName(true); void claim(); }} />
+          <HomeStep letter={letter} look={PANEL_LOOK} letterHref={letterHref} />
+        </div>
+      )}
+
+      {signedIn === true && !wrongAccount && askName && !askHome && (
+        <div className="mt-5 flex flex-col gap-2.5">
+          <NameStep letter={letter} look={PANEL_LOOK} busy={claiming} onOpen={() => { justNamed.current = true; setHasName(true); void claim(); }} />
           {problem === 'MAIL_OWN_LETTER' && <div role="alert" className={PANEL_LOOK.alert}>{ownWords}</div>}
           {problem === 'FAILED' && (
             <p role="alert" className="text-[13px] text-app-error leading-[19px] text-center">
