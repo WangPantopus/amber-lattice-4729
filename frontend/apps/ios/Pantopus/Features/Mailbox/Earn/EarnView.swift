@@ -15,6 +15,8 @@
 //  deep-link to the existing Payments surface.
 //
 
+// swiftlint:disable file_length type_body_length
+
 import SwiftUI
 
 public struct EarnView: View {
@@ -274,13 +276,17 @@ public struct EarnView: View {
     }
 
     /// On an iPad: the ways to earn in one column, the earnings, payout and taxes in the other, where the window holds
-    /// two.
+    /// two. With no way to earn shown (launch cuts), the earnings take the first column and payout and taxes the
+    /// other, so neither is left empty.
     private func emptyColumns(_ waysToEarn: [EarnWayToEarn]) -> some View {
-        ScrollView {
+        let hasWays = !Self.shownWays(waysToEarn).isEmpty
+        return ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s0) {
                 WideColumns {
-                    waysToEarnSection(waysToEarn)
-                        .placeColumn(.leading, order: 0, trimsTop: Spacing.s4)
+                    if hasWays {
+                        waysToEarnSection(waysToEarn)
+                            .placeColumn(.leading, order: 0, trimsTop: Spacing.s4)
+                    }
                     VStack(alignment: .leading, spacing: Spacing.s0) {
                         section(overline: "Recent earnings") {
                             EarnLockedRow(
@@ -289,18 +295,15 @@ public struct EarnView: View {
                                 identifier: "earnEarningsLockedRow"
                             )
                         }
-                        section(overline: "Payout settings") {
-                            EarnPayoutNudge(onAddBank: onAddBank)
-                        }
-                        section(overline: "Taxes") {
-                            EarnLockedRow(
-                                title: "Tax documents",
-                                subcopy: "Tax documents aren't available in the app yet.",
-                                identifier: "earnTaxDocsLockedRow"
-                            )
+                        if hasWays {
+                            emptyPayoutAndTaxes
                         }
                     }
-                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                    .placeColumn(hasWays ? .trailing : .leading, order: hasWays ? 1 : 0, trimsTop: Spacing.s4)
+                    if !hasWays {
+                        emptyPayoutAndTaxes
+                            .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                    }
                 }
                 Spacer().frame(height: 116)
             }
@@ -309,6 +312,22 @@ public struct EarnView: View {
             .padding(.bottom, Spacing.s2)
         }
         .background(Theme.Color.appBg)
+    }
+
+    /// The empty dashboard's payout nudge and taxes row.
+    private var emptyPayoutAndTaxes: some View {
+        VStack(alignment: .leading, spacing: Spacing.s0) {
+            section(overline: "Payout settings") {
+                EarnPayoutNudge(onAddBank: onAddBank)
+            }
+            section(overline: "Taxes") {
+                EarnLockedRow(
+                    title: "Tax documents",
+                    subcopy: "Tax documents aren't available in the app yet.",
+                    identifier: "earnTaxDocsLockedRow"
+                )
+            }
+        }
     }
 
     private func emptyList(_ waysToEarn: [EarnWayToEarn]) -> some View {
@@ -346,16 +365,21 @@ public struct EarnView: View {
     /// the section with them when nothing is left.
     @ViewBuilder
     private func waysToEarnSection(_ ways: [EarnWayToEarn]) -> some View {
-        let shown = ways.filter { way in
+        let shown = Self.shownWays(ways)
+        if !shown.isEmpty {
+            section(overline: "Ways to earn", action: LaunchFeatures.openGigs ? "Find work" : nil, onAction: onBrowseTasks) {
+                EarnWaysToEarnCard(items: shown, onSelect: dispatchWay)
+            }
+        }
+    }
+
+    /// The ways to earn the launch cuts leave.
+    private static func shownWays(_ ways: [EarnWayToEarn]) -> [EarnWayToEarn] {
+        ways.filter { way in
             switch way.kind {
             case .browse: LaunchFeatures.openGigs
             case .offer: LaunchFeatures.personas && LaunchFeatures.openGigs
             case .refer: true
-            }
-        }
-        if !shown.isEmpty {
-            section(overline: "Ways to earn", action: LaunchFeatures.openGigs ? "Find work" : nil, onAction: onBrowseTasks) {
-                EarnWaysToEarnCard(items: shown, onSelect: dispatchWay)
             }
         }
     }

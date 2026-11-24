@@ -271,6 +271,7 @@ struct HomeDashboardView: View {
         .accessibilityIdentifier("homeDashboard_limited")
     }
 
+    // swiftlint:disable:next function_body_length
     private func dashboardBody(
         for content: HomeDashboardContent,
         brandNew: HomeDashboardBrandNewContent?

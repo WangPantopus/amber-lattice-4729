@@ -19,7 +19,7 @@
 //  bottom sheet over a dimmed body.
 //
 
-// swiftlint:disable file_length function_body_length type_body_length
+// swiftlint:disable file_length type_body_length
 
 import SwiftUI
 
@@ -422,7 +422,7 @@ public struct ManageTrainView: View {
 
     /// One section of the columns: its parts `Spacing.s4` apart and `Spacing.s4` below what is above it (the top bar,
     /// or the section above), as in the phone's stack.
-    private func wideSection<Parts: View>(@ViewBuilder _ parts: () -> Parts) -> some View {
+    private func wideSection(@ViewBuilder _ parts: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             parts()
         }

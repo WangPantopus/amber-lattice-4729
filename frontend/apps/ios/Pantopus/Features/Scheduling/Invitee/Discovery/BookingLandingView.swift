@@ -10,6 +10,8 @@
 //  error, wrapped in the offline banner. Tapping an event type hands off to C6.
 //
 
+// swiftlint:disable type_body_length
+
 import SwiftUI
 
 struct BookingLandingView: View {

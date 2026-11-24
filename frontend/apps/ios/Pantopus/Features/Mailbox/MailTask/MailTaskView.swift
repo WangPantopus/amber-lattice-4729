@@ -18,6 +18,8 @@
 //  Mirrors `ui/screens/mailbox/mail_task/MailTaskScreen.kt` on Android.
 //
 
+// swiftlint:disable type_body_length
+
 import SwiftUI
 
 public struct MailTaskView: View {

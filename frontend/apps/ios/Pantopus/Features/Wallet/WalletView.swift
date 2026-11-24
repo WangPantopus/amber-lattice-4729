@@ -286,12 +286,12 @@ public struct WalletView: View {
             )
             .frame(height: 28)
             payoutAction(content)
-            // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
-            .besideFold()
-            .padding(.horizontal, Spacing.s4)
-            .padding(.bottom, Spacing.s5)
-            .padding(.top, Spacing.s2)
-            .background(Theme.Color.appBg)
+                // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
+                .besideFold()
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s5)
+                .padding(.top, Spacing.s2)
+                .background(Theme.Color.appBg)
         }
     }
 

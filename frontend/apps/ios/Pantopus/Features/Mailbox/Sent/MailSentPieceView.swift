@@ -10,6 +10,8 @@
 //  a card never tells its sender when it was opened.
 //
 
+// swiftlint:disable file_length type_body_length
+
 import SwiftUI
 
 struct MailSentPieceView: View {
@@ -87,6 +89,8 @@ struct MailSentPieceView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     pieceAside(piece)
                 }
+                // Its own height: the trail's line would otherwise stretch to the card's beside it.
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Spacing.s1)
                 .frame(width: panelWidth)
             }

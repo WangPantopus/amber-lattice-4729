@@ -25,7 +25,7 @@
 //  gig — all three are real writes.
 //
 
-// swiftlint:disable file_length
+// swiftlint:disable file_length type_body_length
 
 import PhotosUI
 import SwiftUI
@@ -216,7 +216,6 @@ public struct UnboxingView: View {
     }
 
     /// Under the photos on a phone; beside them on an iPad.
-    @ViewBuilder
     private func captureDetails(_ content: UnboxingContent) -> some View {
         Group {
             AIElfStripView(content: content.classifyElf)
@@ -314,7 +313,6 @@ public struct UnboxingView: View {
     }
 
     /// Under the filed summary on a phone; beside it on an iPad.
-    @ViewBuilder
     private func filedDetails(_ content: UnboxingContent) -> some View {
         Group {
             AIElfStripView(content: content.filedElf)

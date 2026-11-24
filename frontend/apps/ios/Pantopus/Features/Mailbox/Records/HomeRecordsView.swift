@@ -12,7 +12,7 @@
 //  Mirrors `ui/screens/mailbox/home_records/HomeRecordsScreen.kt`.
 //
 
-// swiftlint:disable type_body_length
+// swiftlint:disable type_body_length file_length
 
 import SwiftUI
 

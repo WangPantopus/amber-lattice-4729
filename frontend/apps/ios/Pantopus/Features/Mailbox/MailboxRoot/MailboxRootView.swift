@@ -94,6 +94,9 @@ public struct MailboxRootView: View {
             if let fab = viewModel.fab {
                 FABButton(action: fab)
                     .padding(Spacing.s4)
+                    // On an iPad the keyboard is usually the piece's beside the Mailbox (a card being written): the
+                    // button stays in the Mailbox's corner instead of riding up over the mail.
+                    .ignoresSafeArea(.keyboard, edges: WideLayout.isPad ? .bottom : [])
             }
         }
         .background(Theme.Color.appBg)

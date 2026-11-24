@@ -10,7 +10,7 @@
 //  `Send a card` / `Join as backup` pair (fully covered).
 //
 
-// swiftlint:disable file_length type_body_length function_body_length
+// swiftlint:disable file_length type_body_length
 
 import SwiftUI
 
@@ -957,8 +957,9 @@ public struct SupportTrainDetailView: View {
 
 /// The widths of the detail's two panes on an iPad window (`SupportTrainDetailView.twoPanes`).
 private struct DetailPanes {
-    /// The updates and dates keep a comfortable width in a big window, centered in their pane.
-    static let trailingContentWidth: CGFloat = 760
+    /// The updates and dates keep a comfortable width in a big window, centered in their pane: on the 13-inch iPad
+    /// held sideways they fill it.
+    static let trailingContentWidth: CGFloat = 880
     /// The side pane: about a third of the window, from a phone's width (it holds the 7-day calendar) to 440.
     private static let leadingRange: ClosedRange<CGFloat> = 360...440
     /// The narrowest pane that holds the dates two across, each about a phone row's width.

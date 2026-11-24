@@ -49,12 +49,15 @@ public struct RecipientCard: View {
                     .foregroundStyle(Theme.Color.appText)
                     .lineLimit(1)
 
-                HStack(spacing: Spacing.s1) {
-                    Icon(.mapPin, size: 11, color: Theme.Color.appTextSecondary)
-                    Text(addressLine)
-                        .pantopusTextStyle(.caption)
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .lineLimit(1)
+                // No pin on its own: the wizard's preview has no place until one is picked.
+                if !addressLine.isEmpty {
+                    HStack(spacing: Spacing.s1) {
+                        Icon(.mapPin, size: 11, color: Theme.Color.appTextSecondary)
+                        Text(addressLine)
+                            .pantopusTextStyle(.caption)
+                            .foregroundStyle(Theme.Color.appTextSecondary)
+                            .lineLimit(1)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

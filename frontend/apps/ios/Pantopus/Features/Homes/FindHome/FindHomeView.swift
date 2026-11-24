@@ -6,7 +6,7 @@
 //  `homes/find`. Search public-preview homes, tap one to start an
 //  ownership claim, add the missing address, or paste an invite code.
 //
-// swiftlint:disable type_body_length
+// swiftlint:disable type_body_length file_length
 
 import SwiftUI
 

@@ -19,7 +19,7 @@
 //  archetype. Mirrors `MailTaskListScreen.kt` on Android.
 //
 
-// swiftlint:disable function_body_length type_body_length
+// swiftlint:disable function_body_length type_body_length file_length
 
 import SwiftUI
 
