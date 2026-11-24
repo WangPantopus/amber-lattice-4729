@@ -260,6 +260,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
         <section className={`${card} overflow-hidden`}>
           <Row
             label="Let search engines list this page"
+            detail="On unless you switch it off. Links for one purpose are never listed."
             control={<Switch on={share.search_engines} label="Let search engines list this page" disabled={saving !== null} onChange={setListed} />}
           />
         </section>
