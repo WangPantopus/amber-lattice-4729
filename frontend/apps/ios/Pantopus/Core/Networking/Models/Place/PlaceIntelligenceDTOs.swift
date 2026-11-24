@@ -2193,7 +2193,8 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
         disclaimer = try container.decodeIfPresent(String.self, forKey: .disclaimer)
         // The new blocks never fail the page: a malformed one is left out.
         layout = try? container.decodeIfPresent(PlacePreviewLayout.self, forKey: .layout)
-        glance = try? container.decodeIfPresent([PlacePreviewGlanceRow].self, forKey: .glance)
+        // A malformed glance row is skipped; the rest of the card stays.
+        glance = container.lenient(LossyList<PlacePreviewGlanceRow>.self, forKey: .glance)?.items
         notChecked = try? container.decodeIfPresent([PlacePreviewNotChecked].self, forKey: .notChecked)
         money = try? container.decodeIfPresent(PlacePreviewMoney.self, forKey: .money)
     }

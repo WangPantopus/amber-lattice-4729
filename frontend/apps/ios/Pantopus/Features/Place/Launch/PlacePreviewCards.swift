@@ -217,12 +217,17 @@ struct PlacePreviewMoneyCard: View {
                 curve(trend)
                     .padding(.top, 14)
             }
-            Text(foot)
+            Text(sources)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(Theme.Color.appTextMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)
                 .accessibilityIdentifier("place.preview.money.sources")
+            Text("Area figures, not this home.")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .padding(.top, 2)
+                .accessibilityIdentifier("place.preview.money.scope")
             if let line = money.recordLine, !line.isEmpty, let onOpenRecord {
                 Button(action: onOpenRecord) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -279,7 +284,8 @@ struct PlacePreviewMoneyCard: View {
         return VStack(alignment: .leading, spacing: 4) {
             PriceCurve(points: trend.changeSinceFirstPct)
                 .frame(height: 64)
-                .accessibilityHidden(true)
+                .accessibilityLabel([Self.curveCaption(trend), since, last].compactMap(\.self).joined(separator: ", "))
+                .accessibilityIdentifier("place.preview.money.curve")
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let first = trend.sinceYear ?? trend.years.first {
                     Text(String(first))
@@ -293,21 +299,19 @@ struct PlacePreviewMoneyCard: View {
                     .multilineTextAlignment(.trailing)
             }
             .font(.system(size: 12))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("place.preview.money.change")
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel([Self.curveCaption(trend), since, last].compactMap(\.self).joined(separator: ", "))
-        .accessibilityIdentifier("place.preview.money.curve")
     }
 
-    /// "Home prices across Clark County, FHFA price index · U.S. Census · American Community Survey · Area figures, not this home."
-    private var foot: String {
+    /// "Home prices across Clark County, FHFA price index · U.S. Census · American Community Survey".
+    private var sources: String {
         var parts: [String] = []
         if let trend = money.trend, trend.hasCurve { parts.append(Self.curveCaption(trend)) }
         let sources = [money.value?.source, money.tax?.source].compactMap(\.self)
         for source in sources where !source.isEmpty && !parts.contains(source) {
             parts.append(source)
         }
-        parts.append("Area figures, not this home.")
         return parts.joined(separator: " · ")
     }
 

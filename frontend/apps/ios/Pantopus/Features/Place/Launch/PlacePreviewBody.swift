@@ -236,11 +236,11 @@ struct PlacePreviewContent: View {
             }
             // A flood premium lead heads Risk & readiness (SPEC 1.5).
             let lead = group == "risk_readiness" ? floodPremiumLead : nil
-            if group == "civic", let ballot, !order.contains("ballot") {
-                ballotBlock(ballot)
-            }
-            if let label = Self.groupLabels[group], !items.isEmpty || lead != nil {
+            // Ballot, when the order does not name it, leads Civic (right under its label).
+            let civicBallot = group == "civic" && !order.contains("ballot") ? ballot : nil
+            if let label = Self.groupLabels[group], !items.isEmpty || lead != nil || civicBallot != nil {
                 PlaceGroupLabel(text: label).padding(.top, 18)
+                if let civicBallot { ballotBlock(civicBallot, top: 8) }
                 VStack(spacing: 8) {
                     if let lead { moneyLeadCard(lead) }
                     ForEach(items, id: \.id) { sectionCard($0) }
@@ -278,7 +278,7 @@ struct PlacePreviewContent: View {
         .id(Self.anchor(env.id.rawValue))
     }
 
-    private func ballotBlock(_ ballot: (card: BallotSummary, asOf: String?)) -> some View {
+    private func ballotBlock(_ ballot: (card: BallotSummary, asOf: String?), top: CGFloat = 18) -> some View {
         BallotSeasonBlock(
             card: ballot.card,
             asOf: ballot.asOf,
@@ -286,7 +286,8 @@ struct PlacePreviewContent: View {
                 { ballotGovernments = BallotGovernmentsSheet(governments: governments) }
             }
         )
-        .padding(.top, 18)
+        .padding(.top, top)
+        .padding(.bottom, 8)
         .id(Self.anchor(PlaceSectionID.civicElection.rawValue))
     }
 
