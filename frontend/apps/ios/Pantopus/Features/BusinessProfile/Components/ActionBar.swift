@@ -41,6 +41,8 @@ struct ActionBar: View {
                 primaryButton
             }
         }
+        // On an iPad, buttons rather than a banner across the window; the dock's background still runs its width.
+        .padBottomActionWidth()
         .padding(.horizontal, 14)
         .padding(.top, dock.note == nil ? 10 : 8)
         .padding(.bottom, Spacing.s2)

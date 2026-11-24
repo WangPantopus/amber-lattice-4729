@@ -138,73 +138,169 @@ private struct LoadedBody: View {
             onBack: onBack,
             header: {
                 PropertyHero(address: content.address)
-                    .padding(.horizontal, Spacing.s4)
+                    .modifier(PropertySideMargins())
             },
             body: {
-                VStack(alignment: .leading, spacing: Spacing.s5) {
-                    if let staleNotice { RefreshNotice(text: staleNotice, onRetry: onRetry) }
-                    if isMismatch, let banner = content.banner {
-                        MismatchBanner(data: banner)
-                    }
-                    PropertySection(title: "Property", rows: content.propertyFacts)
-                    if let household = content.household, !household.questions.isEmpty {
-                        HouseholdQuestionsCard(household: household, actions: householdActions)
-                    }
-                    if let household = content.household, let check = household.countyCheck, let page = household.countyPage {
-                        HouseholdCountyCheckCard(page: page, check: check, actions: householdActions)
-                    }
-                    // The county record comes for verified owners
-                    // only, so everyone else sees just the Property card.
-                    ForEach(content.recordSections) { section in
-                        PropertySection(title: section.title, rows: section.rows, note: section.note) {
-                            if let layout = content.household?.layout(forSection: section.id) {
-                                FloorPlanLayoutFooter(layout: layout, actions: householdActions)
-                            }
-                            if let group = content.household?.group(forSection: section.id) {
-                                HouseholdGroupFooter(group: group, section: section, actions: householdActions)
-                            }
-                        }
-                    }
-                    if let footer = content.recordFooter {
-                        Text(footer)
-                            .pantopusTextStyle(.caption)
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("propertyDetails_recordFooter")
-                    }
-                    if let household = content.household {
-                        ForEach(household.sections) { section in
-                            PropertySection(title: section.title, rows: section.rows, note: section.note)
-                        }
-                        if household.questions.isEmpty, household.countyCheck == nil, let page = household.countyPage {
-                            HouseholdCountyPageLink(page: page)
-                        }
-                        ForEach(household.addDetails) { group in
-                            HouseholdAddDetailsCard(group: group, actions: householdActions)
-                        }
-                        if let offer = household.documents {
-                            HouseholdDocumentsCard(
-                                offer: offer,
-                                state: householdActions.documents,
-                                saving: householdActions.saving,
-                                onPick: householdActions.addDocument
-                            )
-                        }
-                    }
-                    // Verification sources have no clean backend mapping
-                    // today, so they're hidden when the projection leaves
-                    // them empty.
-                    if !content.verification.isEmpty {
-                        VerificationSectionView(sources: content.verification)
-                    }
+                if WideLayout.isPad {
+                    padColumns
+                        .modifier(PropertySideMargins())
+                } else {
+                    oneColumn
+                        .modifier(PropertySideMargins())
                 }
-                .padding(.horizontal, Spacing.s4)
             }
         )
+        // On an iPad window that holds two columns the details take the window's whole width.
+        .wideColumnsScreen()
         .safeAreaInset(edge: .bottom, spacing: Spacing.s0) {
             if isMismatch {
                 StickyCorrectionBar(onRequestCorrection: onRequestCorrection)
             }
+        }
+    }
+
+    /// The details as the phone has them, one after another.
+    private var oneColumn: some View {
+        VStack(alignment: .leading, spacing: Spacing.s5) {
+            if let staleNotice { RefreshNotice(text: staleNotice, onRetry: onRetry) }
+            if isMismatch, let banner = content.banner {
+                MismatchBanner(data: banner)
+            }
+            PropertySection(title: "Property", rows: content.propertyFacts)
+            if let household = content.household, !household.questions.isEmpty {
+                HouseholdQuestionsCard(household: household, actions: householdActions)
+            }
+            if let household = content.household, let check = household.countyCheck, let page = household.countyPage {
+                HouseholdCountyCheckCard(page: page, check: check, actions: householdActions)
+            }
+            // The county record comes for verified owners
+            // only, so everyone else sees just the Property card.
+            ForEach(content.recordSections) { section in
+                PropertySection(title: section.title, rows: section.rows, note: section.note) {
+                    if let layout = content.household?.layout(forSection: section.id) {
+                        FloorPlanLayoutFooter(layout: layout, actions: householdActions)
+                    }
+                    if let group = content.household?.group(forSection: section.id) {
+                        HouseholdGroupFooter(group: group, section: section, actions: householdActions)
+                    }
+                }
+            }
+            if let footer = content.recordFooter {
+                Text(footer)
+                    .pantopusTextStyle(.caption)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("propertyDetails_recordFooter")
+            }
+            if let household = content.household {
+                ForEach(household.sections) { section in
+                    PropertySection(title: section.title, rows: section.rows, note: section.note)
+                }
+                if household.questions.isEmpty, household.countyCheck == nil, let page = household.countyPage {
+                    HouseholdCountyPageLink(page: page)
+                }
+                ForEach(household.addDetails) { group in
+                    HouseholdAddDetailsCard(group: group, actions: householdActions)
+                }
+                if let offer = household.documents {
+                    HouseholdDocumentsCard(
+                        offer: offer,
+                        state: householdActions.documents,
+                        saving: householdActions.saving,
+                        onPick: householdActions.addDocument
+                    )
+                }
+            }
+            // Verification sources have no clean backend mapping
+            // today, so they're hidden when the projection leaves
+            // them empty.
+            if !content.verification.isEmpty {
+                VerificationSectionView(sources: content.verification)
+            }
+        }
+    }
+
+    /// On an iPad window wide enough: what the property record says in one column (any notice, the Property facts,
+    /// the county record), and the household's own facts, questions and documents beside it. A narrower window keeps
+    /// one column, in the phone's order.
+    private var padColumns: some View {
+        WideColumns {
+            VStack(alignment: .leading, spacing: Spacing.s5) {
+                if let staleNotice { RefreshNotice(text: staleNotice, onRetry: onRetry) }
+                if isMismatch, let banner = content.banner {
+                    MismatchBanner(data: banner)
+                }
+                PropertySection(title: "Property", rows: content.propertyFacts)
+            }
+            .placeColumn(.leading, order: 0)
+            Group {
+                if let household = content.household, !household.questions.isEmpty {
+                    HouseholdQuestionsCard(household: household, actions: householdActions)
+                }
+                if let household = content.household, let check = household.countyCheck, let page = household.countyPage {
+                    HouseholdCountyCheckCard(page: page, check: check, actions: householdActions)
+                }
+            }
+            .padding(.top, Spacing.s5)
+            .placeColumn(.trailing, order: 1, trimsTop: Spacing.s5)
+            Group {
+                ForEach(content.recordSections) { section in
+                    PropertySection(title: section.title, rows: section.rows, note: section.note) {
+                        if let layout = content.household?.layout(forSection: section.id) {
+                            FloorPlanLayoutFooter(layout: layout, actions: householdActions)
+                        }
+                        if let group = content.household?.group(forSection: section.id) {
+                            HouseholdGroupFooter(group: group, section: section, actions: householdActions)
+                        }
+                    }
+                }
+                if let footer = content.recordFooter {
+                    Text(footer)
+                        .pantopusTextStyle(.caption)
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("propertyDetails_recordFooter")
+                }
+            }
+            .padding(.top, Spacing.s5)
+            .placeColumn(.leading, order: 2)
+            Group {
+                if let household = content.household {
+                    ForEach(household.sections) { section in
+                        PropertySection(title: section.title, rows: section.rows, note: section.note)
+                    }
+                    if household.questions.isEmpty, household.countyCheck == nil, let page = household.countyPage {
+                        HouseholdCountyPageLink(page: page)
+                    }
+                    ForEach(household.addDetails) { group in
+                        HouseholdAddDetailsCard(group: group, actions: householdActions)
+                    }
+                    if let offer = household.documents {
+                        HouseholdDocumentsCard(
+                            offer: offer,
+                            state: householdActions.documents,
+                            saving: householdActions.saving,
+                            onPick: householdActions.addDocument
+                        )
+                    }
+                }
+                if !content.verification.isEmpty {
+                    VerificationSectionView(sources: content.verification)
+                }
+            }
+            .padding(.top, Spacing.s5)
+            .placeColumn(.trailing, order: 3, trimsTop: Spacing.s5)
+        }
+    }
+}
+
+/// The page's side margins: a phone's 16 pt, and on an iPad the two columns' margins where they show.
+private struct PropertySideMargins: ViewModifier {
+    func body(content: Content) -> some View {
+        if WideLayout.isPad {
+            content.wideColumnsMargins(Spacing.s4)
+        } else {
+            content.padding(.horizontal, Spacing.s4)
         }
     }
 }

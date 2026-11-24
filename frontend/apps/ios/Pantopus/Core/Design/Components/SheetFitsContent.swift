@@ -28,6 +28,25 @@ public extension View {
     }
 }
 
+public extension View {
+    /// A long editor in a sheet (Edit profile) on an iPad: Apple's page-sized sheet, taller and wider than the default
+    /// form, so more of the form shows and a wide one lays out its columns. Phones and the iPhone Duo keep their
+    /// sheet.
+    func presentationSizingPageOnIPad() -> some View {
+        modifier(PageSheetOnIPad())
+    }
+}
+
+private struct PageSheetOnIPad: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+            content.presentationSizing(.page)
+        } else {
+            content
+        }
+    }
+}
+
 public extension EnvironmentValues {
     /// The sheet this view is in is a card in the middle of an iPad window (`presentationDetentsFittingContentOnIPad`):
     /// a drag handle the sheet draws itself hides, as the system's does.

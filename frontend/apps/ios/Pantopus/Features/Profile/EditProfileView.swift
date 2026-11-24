@@ -171,20 +171,24 @@ public struct EditProfileView: View {
             onClose: { dismiss() },
             onCommit: { Task { await viewModel.save() } },
             content: {
-                previewSection
-                neighborsHeader
-                neighborsSection
-                promptsSection
-                skillsSection
-                pinnedSection
-                socialSection
-                onlyYouHeader
-                accountSection
-                accountPhotoSection
-                contactSection
-                addressSection
-                placeSection
-                visibilitySection
+                if WideLayout.isPad {
+                    padColumns
+                } else {
+                    previewSection
+                    neighborsHeader
+                    neighborsSection
+                    promptsSection
+                    skillsSection
+                    pinnedSection
+                    socialSection
+                    onlyYouHeader
+                    accountSection
+                    accountPhotoSection
+                    contactSection
+                    addressSection
+                    placeSection
+                    visibilitySection
+                }
             },
             stickyBottom: {
                 AnyView(
@@ -198,8 +202,44 @@ public struct EditProfileView: View {
                 )
             }
         )
+        // On an iPad window that holds both columns the form takes the window's whole width.
+        .wideColumnsScreen()
         .formShakeOnChange(of: viewModel.shakeTrigger)
         .accessibilityIdentifier("editProfileShell")
+    }
+
+    /// On an iPad window wide enough: the live preview and what others see in one column, what only you see beside
+    /// it, so the preview stays in view while the fields beside it change. A narrower window keeps one column, in the
+    /// phone's order.
+    private var padColumns: some View {
+        WideColumns {
+            previewSection
+                .placeColumn(.leading, order: 0)
+            Group {
+                neighborsHeader
+                neighborsSection
+                promptsSection
+                skillsSection
+                pinnedSection
+                socialSection
+            }
+            .padding(.top, Spacing.s5)
+            .placeColumn(.leading, order: 1)
+            // The header's own room above it too, so the column starts level with the preview.
+            onlyYouHeader
+                .padding(.top, Spacing.s5)
+                .placeColumn(.trailing, order: 2, trimsTop: Spacing.s5 + Spacing.s4 + Spacing.s3)
+            Group {
+                accountSection
+                accountPhotoSection
+                contactSection
+                addressSection
+                placeSection
+                visibilitySection
+            }
+            .padding(.top, Spacing.s5)
+            .placeColumn(.trailing, order: 3)
+        }
     }
 }
 

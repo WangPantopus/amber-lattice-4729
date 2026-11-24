@@ -329,6 +329,8 @@ struct BusinessProfileLoadedView: View {
             )
         }
         .background(Theme.Color.appBg)
+        // On an iPad window that holds two columns the banner and the sections take the window's whole width.
+        .wideColumnsScreen()
         .overlay(alignment: .bottom) {
             ActionBar(
                 dock: content.dock,
@@ -370,13 +372,37 @@ private struct BusinessProfileSections: View {
             // Plans with businesses (board B6): its upcoming plans, only when the server sends any.
             BusinessUpcomingPlansSection(businessId: content.businessId)
 
-            aboutSection
-            hoursSection
-            serviceAreaSection
-            servicesSection
-            recentWorkSection
-            reviewsSection
+            if WideLayout.isPad {
+                padColumns
+            } else {
+                aboutSection
+                hoursSection
+                serviceAreaSection
+                servicesSection
+                recentWorkSection
+                reviewsSection
+            }
             footer
+        }
+    }
+
+    /// On an iPad window wide enough: who they are and where they work (About, Hours, Service area) in one column,
+    /// what they do and what people say (Services, Recent work, Reviews) beside it. A narrower window keeps one
+    /// column, in the phone's order.
+    private var padColumns: some View {
+        WideColumns {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                aboutSection
+                hoursSection
+                serviceAreaSection
+            }
+            .placeColumn(.leading, order: 0)
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                servicesSection
+                recentWorkSection
+                reviewsSection
+            }
+            .placeColumn(.trailing, order: 1)
         }
     }
 
