@@ -49,7 +49,7 @@ function monthDate(value) {
 }
 
 /** Checks a body and turns it into UserPortfolio columns. `create`: a new piece (a title is needed). */
-async function columnsFrom(userId, body, { create }) {
+async function columnsFrom(userId, body, { create, before = null }) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw invalid('Send the piece\'s fields.');
   const unknown = Object.keys(body).filter((key) => !FIELDS.includes(key));
   if (unknown.length) throw invalid(`A piece doesn't take ${unknown[0]}.`);
@@ -104,7 +104,7 @@ async function columnsFrom(userId, body, { create }) {
     if (!create) throw invalid('A piece is started from a job or plan when it is made.');
     Object.assign(out, await sourceColumns(userId, body.started_from));
   }
-  if (body.attachments !== undefined) Object.assign(out, await attachmentColumns(userId, body.attachments));
+  if (body.attachments !== undefined) Object.assign(out, await attachmentColumns(userId, body.attachments, before));
   return out;
 }
 
@@ -166,8 +166,8 @@ async function linkCards(userId, links, existing) {
 }
 
 /** The twelve in all: files and link cards together. */
-function checkTwelve(fileIds, links) {
-  if ((fileIds || []).length + (links || []).length > ATTACH_MAX) {
+function checkTwelve(attachments, links) {
+  if (attachments + (links || []).length > ATTACH_MAX) {
     throw new PieceRefusal(409, 'PIECE_ATTACHMENT_LIMIT', `A piece holds ${ATTACH_MAX} attachments at most, files and links together.`);
   }
 }
@@ -196,26 +196,61 @@ async function sourceColumns(userId, from) {
 
 // Files the person uploaded through POST /api/files/portfolio (their own, not deleted). Photos and videos also go in
 // media_urls (the cover and the counts); every attachment's id is kept in file_ids, in order.
-async function attachmentColumns(userId, attachments) {
+// A piece made before phase 2 may hold pictures with no file (media_urls only; read as ids "<pieceId>:<n>"): such a
+// picture is kept by sending { "url" } with its address, in its place among the rest (profile-android's ask,
+// CONTRACT p2.12). Only a picture already on this piece, never one that is an attached file (send its file_id).
+const isVideoUrl = (url) => /\.(mp4|mov|m4v|webm)(\?|$)/i.test(url);
+
+// The urls of the piece's own pictures that aren't files: media_urls minus the urls of its attached files.
+async function olderPictures(row) {
+  const media = (row?.media_urls || []).filter(Boolean);
+  const fileIds = (row?.file_ids || []).filter(Boolean);
+  if (!media.length) return [];
+  if (!fileIds.length) return media;
+  const { data, error } = await supabaseAdmin.from('File').select('file_url').in('id', fileIds);
+  if (error) throw error;
+  const fileUrls = new Set((data || []).map((f) => f.file_url));
+  return media.filter((url) => !fileUrls.has(url));
+}
+
+async function attachmentColumns(userId, attachments, before = null) {
   if (!Array.isArray(attachments)) throw invalid('Attachments are a list of uploaded files.');
   if (attachments.length > ATTACH_MAX) throw new PieceRefusal(409, 'PIECE_ATTACHMENT_LIMIT', `A piece holds ${ATTACH_MAX} attachments at most.`);
-  const ids = attachments.map((a) => a && typeof a === 'object' ? a.file_id : null);
-  if (ids.some((id) => typeof id !== 'string')) throw invalid('Each attachment is { "file_id" } from an upload.');
-  if (!ids.length) return { file_ids: [], media_urls: [] };
-  const { data, error } = await supabaseAdmin.from('File').select('id, user_id, file_url, file_type, is_deleted').in('id', ids);
-  if (error) {
-    if (error.code === '22P02') throw invalid('That isn\'t an uploaded file.');
-    throw error;
+  const items = attachments.map((a) => (a && typeof a === 'object' && !Array.isArray(a) ? a : {}));
+  if (items.some((a) => (typeof a.file_id === 'string') === (typeof a.url === 'string'))) {
+    throw invalid('Each attachment is { "file_id" } from an upload, or { "url" } of a picture already on this piece.');
   }
-  const byId = new Map((data || []).map((f) => [String(f.id), f]));
-  const files = ids.map((id) => byId.get(String(id)));
-  if (files.some((f) => !f || String(f.user_id) !== String(userId) || f.is_deleted || !FILE_TYPES.includes(f.file_type))) {
-    throw invalid('Attach only your own uploaded photos, videos and documents.');
+  if (!items.length) return { file_ids: [], media_urls: [], _count: 0 };
+  const older = items.some((a) => a.url) ? new Set(await olderPictures(before)) : new Set();
+  if (items.some((a) => a.url && !older.has(a.url))) {
+    throw invalid('Keep only pictures already on this piece by { "url" }; send uploaded files as { "file_id" }.');
   }
+  const ids = items.filter((a) => a.file_id).map((a) => a.file_id);
+  let byId = new Map();
+  if (ids.length) {
+    const { data, error } = await supabaseAdmin.from('File').select('id, user_id, file_url, file_type, is_deleted').in('id', ids);
+    if (error) {
+      if (error.code === '22P02') throw invalid('That isn\'t an uploaded file.');
+      throw error;
+    }
+    byId = new Map((data || []).map((f) => [String(f.id), f]));
+    const files = ids.map((id) => byId.get(String(id)));
+    if (files.some((f) => !f || String(f.user_id) !== String(userId) || f.is_deleted || !FILE_TYPES.includes(f.file_type))) {
+      throw invalid('Attach only your own uploaded photos, videos and documents.');
+    }
+  }
+  const file = (a) => byId.get(String(a.file_id));
   return {
-    file_ids: files.map((f) => f.id),
-    media_urls: files.filter((f) => f.file_type !== 'portfolio_document').map((f) => f.file_url),
+    file_ids: items.filter((a) => a.file_id).map((a) => file(a).id),
+    // Photos and videos, files and older pictures together, in the order sent.
+    media_urls: items.map((a) => (a.url ? a.url : (file(a).file_type !== 'portfolio_document' ? file(a).file_url : null))).filter(Boolean),
+    _count: items.length,
   };
+}
+
+// How many attachments a piece holds now: its files and its older pictures.
+async function attachmentCount(row) {
+  return (row?.file_ids || []).filter(Boolean).length + (await olderPictures(row)).length;
 }
 
 // ---------- reading the owner's pieces ----------
@@ -363,9 +398,9 @@ async function pinRoom(userId, exceptId) {
 
 async function createPiece(userId, body) {
   const { links, ...rest } = body || {};
-  const columns = await columnsFrom(userId, rest, { create: true });
+  const { _count: attached = 0, ...columns } = await columnsFrom(userId, rest, { create: true });
   if (links !== undefined) columns.links = await linkCards(userId, links, []);
-  checkTwelve(columns.file_ids, columns.links);
+  checkTwelve(attached, columns.links);
   if (columns.is_featured) await pinRoom(userId, null);
   const { data, error } = await supabaseAdmin.from('UserPortfolio')
     .insert({ user_id: userId, portfolio_type: 'project', is_visible: true, ...columns }).select('id').single();
@@ -394,7 +429,7 @@ async function dropUnheldFiles(userId, fileIds) {
 }
 
 async function ownPiece(userId, id) {
-  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids, links').eq('id', id).eq('user_id', userId).maybeSingle();
+  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids, media_urls, links').eq('id', id).eq('user_id', userId).maybeSingle();
   if (error) {
     if (error.code === '22P02') throw notFound();
     throw error;
@@ -406,9 +441,9 @@ async function ownPiece(userId, id) {
 async function updatePiece(userId, id, body) {
   const before = await ownPiece(userId, id);
   const { links, ...rest } = body || {};
-  const columns = await columnsFrom(userId, rest, { create: false });
+  const { _count: attached, ...columns } = await columnsFrom(userId, rest, { create: false, before });
   if (links !== undefined) columns.links = await linkCards(userId, links, before.links || []);
-  checkTwelve(columns.file_ids ?? before.file_ids, columns.links ?? before.links);
+  checkTwelve(attached ?? await attachmentCount(before), columns.links ?? before.links);
   if (columns.is_featured === true) await pinRoom(userId, id);
   if (Object.keys(columns).length) {
     const { error } = await supabaseAdmin.from('UserPortfolio').update({ ...columns, updated_at: new Date().toISOString() })
@@ -535,13 +570,25 @@ async function attachmentsOf(row) {
     .in('id', ids);
   if (error) throw error;
   const byId = new Map((data || []).filter((f) => !f.is_deleted).map((f) => [String(f.id), f]));
-  return ids.map((id) => byId.get(String(id))).filter(Boolean).map((f) => {
+  const shape = (f) => {
     const kind = f.file_type === 'portfolio_video' ? 'video' : (f.file_type === 'portfolio_document' ? 'document' : 'photo');
     const thumbs = f.metadata?.thumbnails || {};
     const ext = String(f.original_filename || '').split('.').pop()?.toUpperCase();
     return { id: f.id, kind, url: f.file_url, thumbnail_url: thumbs.medium || thumbs.small || null, title: null,
       detail: kind === 'document' ? `Document${ext && ext.length <= 5 ? ` · ${ext}` : ''}` : (kind === 'video' ? 'Video' : null) };
-  });
+  };
+  // A piece that also keeps pictures from before phase 2 (CONTRACT p2.12): its photos and videos in their saved order
+  // (files and older pictures together, an older one as "<pieceId>:<n>"), then its documents.
+  const media = (row.media_urls || []).filter(Boolean);
+  const byUrl = new Map([...byId.values()].map((f) => [f.file_url, f]));
+  if (media.some((url) => !byUrl.has(url))) {
+    return [
+      ...media.map((url, i) => (byUrl.has(url) ? shape(byUrl.get(url)) : { id: `${row.id}:${i}`, kind: isVideoUrl(url) ? 'video' : 'photo',
+        url, thumbnail_url: null, title: null, detail: null })),
+      ...ids.map((id) => byId.get(String(id))).filter((f) => f && f.file_type === 'portfolio_document').map(shape),
+    ];
+  }
+  return ids.map((id) => byId.get(String(id))).filter(Boolean).map(shape);
 }
 
 module.exports = {

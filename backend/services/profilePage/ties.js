@@ -270,14 +270,17 @@ async function signedBy(userId, tieId) {
 }
 
 /**
- * DELETE /me/ties/:id: the one who signed takes their name off (or a business's owner its signature); it leaves the
- * piece, their Work and the circle at once.
+ * DELETE /me/ties/:id: the one who signed takes their name off; it leaves the piece, their Work and the circle at once.
+ * A business's owner taking its signature off a role leaves the role itself: it is the person's own history, so it
+ * stays in their words (Said), the business named to nobody but them, as before it was signed (CONTRACT p2.13).
  */
 async function removeTie(userId, tieId) {
-  await signedBy(userId, tieId);
+  const tie = await signedBy(userId, tieId);
   const now = new Date().toISOString();
-  const { data, error } = await supabaseAdmin.from('ProfileTie')
-    .update({ status: 'removed', removed_by: userId, removed_at: now, updated_at: now })
+  const fields = tie.kind === 'role'
+    ? { status: 'said', signed_by: null, signed_at: null, name_on_links: false, removed_by: userId, removed_at: now, updated_at: now }
+    : { status: 'removed', removed_by: userId, removed_at: now, updated_at: now };
+  const { data, error } = await supabaseAdmin.from('ProfileTie').update(fields)
     .eq('id', tieId).eq('status', 'signed').select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw notFound();
