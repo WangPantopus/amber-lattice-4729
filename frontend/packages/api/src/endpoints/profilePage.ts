@@ -249,6 +249,8 @@ export interface ProfileCredit {
   how: string | null;
   /** The owner's view only: `asked`, `signed`, `did_not_confirm`. */
   status?: string | null;
+  /** The signer's own signed credit only (p2.7): what they chose, to change with `updateTie`. */
+  mine?: { show_on_my_work: boolean; show_name_on_links: boolean } | null;
 }
 
 /** An attachment on a piece (P2.2). */
@@ -662,6 +664,11 @@ export async function signAsk(id: string, body: { show_on_my_work: boolean; show
 /** "Not me". */
 export async function declineAsk(id: string): Promise<{ id: string; status: string }> {
   return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/decline`, {});
+}
+
+/** The signer changes their two choices later (p2.6). */
+export async function updateTie(id: string, body: { show_on_my_work?: boolean; show_name_on_links?: boolean }): Promise<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }> {
+  return patch<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`, body);
 }
 
 /** The signer takes their name off a piece (or a role). */
