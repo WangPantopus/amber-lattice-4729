@@ -23,6 +23,15 @@ public enum ProfileAudience: String, CaseIterable, Sendable, Hashable, Identifia
         rawValue
     }
 
+    /// The same audience in the page with sources' words (`?as=` on `GET /api/profile-page/…`).
+    var sourcesView: String {
+        switch self {
+        case .anyone: "link"
+        case .neighbors: "member"
+        case .connections: "connection"
+        }
+    }
+
     var title: String {
         switch self {
         case .anyone: "Anyone with the link"
