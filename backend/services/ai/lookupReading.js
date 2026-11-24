@@ -98,8 +98,9 @@ function scrub(value, depth = 0) {
 function sectionFacts(env) {
   const data = { ...(env.data || {}) };
   if (env.id === 'environmental_hazards' && Array.isArray(data.facilities)) {
+    // Names, programs and standing only: a site's distance, with its name, would help place the home.
     data.facilities = data.facilities.slice(0, MAX_EPA_SITES).map((f) => ({
-      name: f.name, program: f.program, distance_mi: f.distance_mi, compliance: f.compliance, construction: f.construction,
+      name: f.name, program: f.program, compliance: f.compliance, construction: f.construction,
     }));
   }
   if (env.id === 'civic_districts' && Array.isArray(data.representatives)) {
@@ -162,17 +163,19 @@ function readingInput(preview) {
 }
 
 /**
- * The words in the input that place the home, for the check that none of them reaches the model or comes back:
- * the typed address, the geocoded street line, its house number and the ZIP.
+ * The words that place the home, for the check that none of them reaches the model or comes back: the typed
+ * address, the geocoded street line, the street name alone (5 characters or more) and the ZIP. Not the bare house
+ * number: the model is never given it, and a number like 28 or 2025 turns up in the facts on its own.
  */
 function placingWords({ typed, place }) {
   const words = new Set();
-  const add = (text) => { const t = String(text || '').trim().toLowerCase(); if (t.length >= 3) words.add(t); };
+  const add = (text, min = 3) => { const t = String(text || '').trim().toLowerCase(); if (t.length >= min) words.add(t); };
   add(typed);
   add(place?.address);
-  add(place?.zipcode);
-  const house = /^\s*(\d+[a-z]?)\b/i.exec(String(place?.address || typed || ''));
-  if (house && house[1].length >= 2) words.add(house[1].toLowerCase());
+  add(place?.zipcode, 5);
+  for (const line of [place?.address, String(typed || '').split(',')[0]]) {
+    add(String(line || '').replace(/^\s*\d+[a-z]?(-\d+)?\s+/i, ''), 5);
+  }
   return [...words];
 }
 
