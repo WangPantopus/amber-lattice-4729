@@ -191,7 +191,7 @@ const W = {
 };
 
 /** The end card: the line, then the address. */
-const END = { lines: ['Send a Christmas card.', 'Your first 3 are free.'], address: 'pantopus.com/cards' };
+const END = { lines: ['Send a Christmas card.', 'Your first 7 are free.'], address: 'pantopus.com/cards' };
 
 // A cut: takes end to end ([take, from, to] in the take's seconds), then words, dips and the end card in the cut's seconds.
 const cuts = {

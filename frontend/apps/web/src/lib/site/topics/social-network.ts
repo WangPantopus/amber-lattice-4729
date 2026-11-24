@@ -104,7 +104,7 @@ export const socialNetwork: TopicPage = {
     { q: 'Do I have to verify my home to join?', a: 'No. You can make an account without an address. Verifying your home adds the Verified mark, messages to the homes on your block and mail for your home.' },
     { q: 'Who can see my address?', a: 'Only you see the address you type, others see your first name, never your address' },
     { q: 'Can businesses post in Pulse?', a: 'No. Pulse is for people. A deal in Pulse is a person sharing a local offer.' },
-    { q: 'Is Pantopus free?', a: 'Yes, Pantopus is free on iPhone and Android, and on the web. Christmas cards beyond your first three take stamps, sold in books.' },
+    { q: 'Is Pantopus free?', a: 'Yes, Pantopus is free on iPhone and Android, and on the web. Christmas cards beyond your first seven take stamps, sold in books.' },
     { q: 'Do Moments disappear?', a: 'Yes. A moment lasts 1, 6, 24 or 48 hours, whichever you choose when you post it.' },
   ],
   pillars: ['pulse', 'moments', 'plans', 'chat', 'mail', 'support-train'],

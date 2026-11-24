@@ -319,7 +319,7 @@ export default function LevelOne() {
               </ul>
               <div>
                 <Link className={styles.btnLight} href="/cards">
-                  Send a card · your first 3 are free
+                  Send a card · your first 7 are free
                 </Link>
               </div>
             </div>
