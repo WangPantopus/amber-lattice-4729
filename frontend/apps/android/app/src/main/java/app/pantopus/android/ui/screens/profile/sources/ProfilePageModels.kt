@@ -54,6 +54,10 @@ sealed interface ProfilePageLink {
         val id: String,
     ) : ProfilePageLink
 
+    data class Gig(
+        val id: String,
+    ) : ProfilePageLink
+
     data class SupportTrain(
         val id: String,
     ) : ProfilePageLink

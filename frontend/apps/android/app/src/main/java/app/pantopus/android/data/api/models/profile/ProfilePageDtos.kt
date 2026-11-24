@@ -114,8 +114,36 @@ data class ProfileShareDto(
     @Json(name = "search_engines") val searchEngines: Boolean? = null,
     /** The widest "Who sees your city" lets the city go: anyone | connections | none. */
     @Json(name = "city_limit") val cityLimit: String? = null,
-    /** The page exactly as a signed-out read composes it. */
+    /** The page exactly as a signed-out read composes it; null when a signed-out visitor couldn't open it at all. */
     val visitor: ProfilePageDto? = null,
+    /** v1.3: absent while `PROFILE_LINKS` is off (no "Links for one purpose" section); false when the person turned them off. */
+    @Json(name = "links_enabled") val linksEnabled: Boolean? = null,
+    /** v1.3: links for one purpose, newest first. */
+    val links: List<ProfileShareLinkDto>? = null,
+)
+
+/** A link for one purpose (contract v1.3). Its key is in [url]: shown only to the owner, never logged or pasted. */
+@JsonClass(generateAdapter = true)
+data class ProfileShareLinkDto(
+    val id: String? = null,
+    val name: String? = null,
+    val url: String? = null,
+    val parts: Map<String, Boolean>? = null,
+    /** `YYYY-MM-DD`; the link works through that Pacific day. Null: no end. */
+    @Json(name = "ends_on") val endsOn: String? = null,
+    @Json(name = "switched_off") val switchedOff: Boolean? = null,
+    val live: Boolean? = null,
+    val opens: Int? = null,
+    @Json(name = "last_opened_on") val lastOpenedOn: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+)
+
+/** `POST /api/profile-page/me/links`. */
+@JsonClass(generateAdapter = true)
+data class ProfileShareLinkCreateBody(
+    val name: String,
+    val parts: Map<String, Boolean>,
+    @Json(name = "ends_on") val endsOn: String?,
 )
 
 @JsonClass(generateAdapter = true)
@@ -131,6 +159,7 @@ data class ProfileSharePartDto(
 data class ProfileShareUpdateBody(
     val parts: Map<String, String>? = null,
     @Json(name = "search_engines") val searchEngines: Boolean? = null,
+    @Json(name = "links_enabled") val linksEnabled: Boolean? = null,
 )
 
 /** `GET /api/profile-page/marks?ids=…` (contract §7): the outer ring for avatars (board 6). */

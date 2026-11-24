@@ -4,9 +4,15 @@ import app.pantopus.android.data.api.models.profile.ProfileMarksResponse
 import app.pantopus.android.data.api.models.profile.ProfilePageDto
 import app.pantopus.android.data.api.models.profile.ProfilePageMonthDto
 import app.pantopus.android.data.api.models.profile.ProfileShareDto
+import app.pantopus.android.data.api.models.profile.ProfileShareLinkCreateBody
+import app.pantopus.android.data.api.models.profile.ProfileShareLinkDto
 import app.pantopus.android.data.api.models.profile.ProfileShareUpdateBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -48,6 +54,35 @@ interface ProfilePageApi {
     suspend fun saveShare(
         @Body body: ProfileShareUpdateBody,
     ): ProfileShareDto
+
+    /** `GET /api/profile-page/:username/v/:key` (v1.3): the page a link for one purpose opens, as a visitor gets it. */
+    @GET("api/profile-page/{username}/v/{key}")
+    suspend fun pageByKey(
+        @Path("username") username: String,
+        @Path("key") key: String,
+    ): ProfilePageDto
+
+    /** `POST /api/profile-page/me/links` (v1.3): make a link for one purpose. */
+    @POST("api/profile-page/me/links")
+    suspend fun createLink(
+        @Body body: ProfileShareLinkCreateBody,
+    ): ProfileShareLinkDto
+
+    /**
+     * `PATCH /api/profile-page/me/links/:id` (v1.3): any of name, parts (merged), ends_on (null clears), switched_off.
+     * The body is raw JSON so an explicit `"ends_on": null` reaches the server.
+     */
+    @PATCH("api/profile-page/me/links/{id}")
+    suspend fun updateLink(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): ProfileShareLinkDto
+
+    /** `DELETE /api/profile-page/me/links/:id` (v1.3). */
+    @DELETE("api/profile-page/me/links/{id}")
+    suspend fun deleteLink(
+        @Path("id") id: String,
+    ): Map<String, Any?>
 
     /** `GET /api/profile-page/marks?ids=…`: the outer ring for up to 100 avatars at once (board 6). */
     @GET("api/profile-page/marks")

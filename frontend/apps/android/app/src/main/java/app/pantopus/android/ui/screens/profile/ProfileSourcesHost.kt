@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
+@file:Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "MagicNumber")
 
 package app.pantopus.android.ui.screens.profile
 
@@ -58,6 +58,7 @@ internal class SourcesHostCallbacks(
     val onOpenPost: (String) -> Unit,
     val onOpenProfile: (String) -> Unit,
     val onOpenPlan: (String) -> Unit,
+    val onOpenGig: (String) -> Unit,
     val onOpenSupportTrain: (String) -> Unit,
     val onOpenUrl: (String) -> Unit,
     /** Opens a `pantopus://` link through the app's router (a business by its username, a person by theirs). */
@@ -108,6 +109,7 @@ internal fun ProfileSourcesPage(
                 link.userId?.let(host.onOpenProfile)
                     ?: link.username?.let { host.onOpenAppLink(Uri.parse("pantopus://u/${Uri.encode(it)}")) }
             is ProfilePageLink.Plan -> host.onOpenPlan(link.id)
+            is ProfilePageLink.Gig -> host.onOpenGig(link.id)
             is ProfilePageLink.SupportTrain -> host.onOpenSupportTrain(link.id)
             is ProfilePageLink.Posts -> host.onOpenPosts()
             is ProfilePageLink.Moments -> host.onOpenMoments(link.userId)
@@ -189,7 +191,7 @@ internal fun ProfileSourcesPage(
         onSelectTab = host.onSelectTab,
         slots = slots,
         actions = blockActions,
-        month = month?.at,
+        month = month?.takeIf { it !is ProfileMonthState.Empty }?.at,
     )
     val chart = page.tabs.flatMap { it.blocks }.filterIsInstance<ProfileBlock.RecordChart>().firstOrNull()
     if (month != null && month !is ProfileMonthState.Empty && chart != null) {

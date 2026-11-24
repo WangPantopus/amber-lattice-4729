@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "CyclomaticComplexMethod")
+@file:Suppress("TooManyFunctions", "CyclomaticComplexMethod", "LongMethod")
 
 package app.pantopus.android.ui.screens.profile.sources
 
@@ -57,13 +57,15 @@ fun mapProfilePage(
                 portraitUrl = header.portraitUrl?.takeIf { it.isNotBlank() },
                 seenAs = header.seenAs?.trim()?.takeIf { it.isNotEmpty() },
                 place =
-                    header.place?.label?.trim()?.takeIf { it.isNotEmpty() }?.let { label ->
-                        ProfilePlace(
-                            label = label,
-                            time = header.place.time?.takeIf { it.isNotBlank() },
-                            zone = header.place.tz?.takeIf { it.isNotBlank() },
-                            sky = header.place.sky?.substringBefore('_')?.lowercase()?.takeIf { it.isNotBlank() },
-                        )
+                    header.place?.let { place ->
+                        place.label?.trim()?.takeIf { it.isNotEmpty() }?.let { label ->
+                            ProfilePlace(
+                                label = label,
+                                time = place.time?.takeIf { it.isNotBlank() },
+                                zone = place.tz?.takeIf { it.isNotBlank() },
+                                sky = place.sky?.substringBefore('_')?.lowercase()?.takeIf { it.isNotBlank() },
+                            )
+                        }
                     },
                 rings = rings,
             ),
@@ -134,6 +136,7 @@ internal fun mapLink(map: Map<String, Any?>?): ProfilePageLink? {
                 .Profile(map.str("user_id"), map.str("username"))
                 .takeIf { it.userId != null || it.username != null }
         "plan" -> map.str("id")?.let { ProfilePageLink.Plan(it) }
+        "gig" -> map.str("id")?.let { ProfilePageLink.Gig(it) }
         "support_train" -> map.str("id")?.let { ProfilePageLink.SupportTrain(it) }
         "posts" -> map.str("user_id")?.let { ProfilePageLink.Posts(it) }
         "moments" -> map.str("user_id")?.let { ProfilePageLink.Moments(it) }
@@ -151,6 +154,12 @@ internal fun mapLine(map: Map<String, Any?>?): ProfileLine? {
         how = map.str("how"),
         lane = ProfileLane.fromApi(map.str("lane")),
         link = mapLink(map.obj("link")),
+        who =
+            map.obj("who")?.let { who ->
+                ProfileWho(who.str("name"), who.str("portrait_url"), who.str("did"), who.str("user_id"), who.str("username"))
+                    .takeIf { it.name != null || it.did != null }
+            },
+        whenText = map.str("when"),
     )
 }
 
@@ -205,10 +214,7 @@ private fun mapBlock(
                     )
                 }.takeIf { it.isNotEmpty() }
                 ?.let { ProfileBlock.KnownFor(id, title, it, mapMore(map.obj("more"))) }
-        "in_common" ->
-            inCommon(map)
-                ?.takeIf { it.plans.isNotEmpty() || it.supportTrains.isNotEmpty() || it.skills.isNotEmpty() || (it.connections?.count ?: 0) > 0 }
-                ?.let { ProfileBlock.InCommon(id, title, it) }
+        "in_common" -> inCommon(map)?.takeIf { it.hasAnything() }?.let { ProfileBlock.InCommon(id, title, it) }
         "doors" -> {
             val doors =
                 map.objs("doors").mapNotNull { door ->
@@ -292,6 +298,11 @@ private fun mapBlock(
 }
 
 private const val SHELF_MOST = 5
+
+private fun ProfileInCommonResponse.hasAnything(): Boolean {
+    val shared = (connections?.count ?: 0) > 0
+    return shared || plans.isNotEmpty() || supportTrains.isNotEmpty() || skills.isNotEmpty()
+}
 
 private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
     val id = map.str("id") ?: return null

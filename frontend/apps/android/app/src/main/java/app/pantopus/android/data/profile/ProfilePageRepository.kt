@@ -1,6 +1,8 @@
 package app.pantopus.android.data.profile
 
 import app.pantopus.android.data.api.models.profile.ProfileShareDto
+import app.pantopus.android.data.api.models.profile.ProfileShareLinkCreateBody
+import app.pantopus.android.data.api.models.profile.ProfileShareLinkDto
 import app.pantopus.android.data.api.models.profile.ProfileShareUpdateBody
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -13,6 +15,9 @@ import app.pantopus.android.ui.screens.profile.sources.ProfilePage
 import app.pantopus.android.ui.screens.profile.sources.mapProfileMonth
 import app.pantopus.android.ui.screens.profile.sources.mapProfilePage
 import com.squareup.moshi.Moshi
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,7 +75,53 @@ class ProfilePageRepository
 
         fun visitorPage(share: ProfileShareDto): ProfilePage? = share.visitor?.let { mapProfilePage(it, moshi) }
 
+        /** The page a link for one purpose opens (v1.3), exactly as a visitor gets it. */
+        suspend fun pageByKey(
+            username: String,
+            key: String,
+        ): NetworkResult<ProfilePage> =
+            when (val result = safeApiCall { api.pageByKey(username, key) }) {
+                is NetworkResult.Success ->
+                    mapProfilePage(result.data, moshi)?.let { NetworkResult.Success(it) } ?: NetworkResult.Failure(NetworkError.NotFound)
+                is NetworkResult.Failure -> result
+            }
+
+        /** Makes a link for one purpose (v1.3). */
+        suspend fun createLink(body: ProfileShareLinkCreateBody): NetworkResult<ProfileShareLinkDto> = safeApiCall { api.createLink(body) }
+
+        /**
+         * Changes a link for one purpose (v1.3): only the keys given are sent; [clearEnd] sends `"ends_on": null`.
+         */
+        suspend fun updateLink(
+            id: String,
+            name: String? = null,
+            parts: Map<String, Boolean>? = null,
+            endsOn: String? = null,
+            clearEnd: Boolean = false,
+            switchedOff: Boolean? = null,
+        ): NetworkResult<ProfileShareLinkDto> {
+            val json = JSONObject()
+            name?.let { json.put("name", it) }
+            parts?.let { json.put("parts", JSONObject(it)) }
+            when {
+                clearEnd -> json.put("ends_on", JSONObject.NULL)
+                endsOn != null -> json.put("ends_on", endsOn)
+            }
+            switchedOff?.let { json.put("switched_off", it) }
+            val body = json.toString().toRequestBody(JSON)
+            return safeApiCall { api.updateLink(id, body) }
+        }
+
+        suspend fun deleteLink(id: String): NetworkResult<Unit> = safeApiCall { api.deleteLink(id) }.let { result ->
+            when (result) {
+                is NetworkResult.Success -> NetworkResult.Success(Unit)
+                is NetworkResult.Failure -> result
+            }
+        }
+
         private companion object {
+            val JSON = "application/json; charset=utf-8".toMediaType()
+
             val UUID =
                 Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
 

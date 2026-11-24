@@ -226,7 +226,7 @@ private fun WaitingCard(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
             // A person from the link with an account shows their own name and picture (contract 6.9, picture 23).
-            PlanAvatar(name = row.title, seed = row.person?.userId ?: row.id, avatarUrl = row.person?.avatarUrl)
+            PlanAvatar(name = row.title, seed = row.person?.userId ?: row.id, avatarUrl = row.person?.avatarUrl, userId = row.person?.userId)
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = row.title, style = semibold, color = PantopusColors.appText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(text = ui.waitingLine(row), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
@@ -330,7 +330,7 @@ private fun GuestRow(
         when (row.channel) {
             "email" -> ChannelTile(PantopusIcon.Mail)
             "link" -> ChannelTile(PantopusIcon.MessageCircle)
-            else -> PlanAvatar(name = row.name, seed = row.userId ?: row.key, avatarUrl = row.avatarUrl)
+            else -> PlanAvatar(name = row.name, seed = row.userId ?: row.key, avatarUrl = row.avatarUrl, userId = row.userId)
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(text = row.name, style = semibold, color = PantopusColors.appText, maxLines = 1, overflow = TextOverflow.Ellipsis)

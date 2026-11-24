@@ -155,7 +155,55 @@ private fun LinesCard(
 ) {
     CardColumn(tag = "profileSources.lines.${block.id}") {
         BlockTitle(title = block.title, color = laneTitleColor(block.id), more = block.more, onMore = open(block.more?.link))
-        block.lines.forEach { line -> InkLineRow(line = line, onOpen = open(line.link)) }
+        block.lines.forEach { line ->
+            val who = line.who
+            if (who != null) WrittenLine(line, who, open) else InkLineRow(line = line, onOpen = open(line.link))
+        }
+    }
+}
+
+/**
+ * A line someone wrote about the person (a review, contract v1.2): the words, then the writer by name and portrait
+ * where they allow it (a tap opens their page), else by what they did, and when. The line itself opens what it is tied
+ * to (a review's gig).
+ */
+@Composable
+private fun WrittenLine(
+    line: ProfileLine,
+    who: ProfileWho,
+    open: (ProfilePageLink?) -> (() -> Unit)?,
+) {
+    val onLine = open(line.link)
+    val onWriter = open(who.userId?.let { ProfilePageLink.Profile(it, who.username) })
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("profileSources.writtenLine")) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (onLine != null) Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onLine) else Modifier)
+                    .semantics(mergeDescendants = true) { },
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(Modifier.width(16.dp).padding(top = 5.5.dp, start = 3.dp)) { InkGlyph(line.ink) }
+            Column(Modifier.weight(1f)) {
+                Text(text = line.text, style = if (line.ink == ProfileInk.Said) SourcesType.said else SourcesType.body)
+                Text(text = inkHow(line.ink, line.how), style = SourcesType.caption, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        Row(
+            modifier =
+                Modifier
+                    .padding(start = 26.dp)
+                    .then(if (onWriter != null) Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onWriter) else Modifier)
+                    .semantics(mergeDescendants = true) { },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (who.name != null || who.portraitUrl != null) {
+                ProfileAvatar(name = who.name.orEmpty(), photoUrl = who.portraitUrl, seed = who.userId, size = 22.dp)
+            }
+            Text(text = listOfNotNull(who.name, who.did, line.whenText).joinToString(" · "), style = SourcesType.caption)
+        }
     }
 }
 
@@ -303,7 +351,8 @@ private fun DoorsCard(
                 }
             }
         }
-        val leave = block.leaveCardText
+        // Leave your card does something only from phase 3: until then neither the button nor its note shows.
+        val leave = block.leaveCardText?.takeIf { actions.onLeaveCard != null }
         if (leave != null || block.signInNote != null) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
@@ -372,9 +421,10 @@ private fun ShelfCard(block: ProfileBlock.Shelf) {
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             block.objects.forEach { obj ->
+                // Plain words: a caption carries no ink, and ink is never told by style alone (rules 4.1, 16).
                 Text(
                     text = obj.caption,
-                    style = SourcesType.said.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    style = SourcesType.caption.copy(color = PantopusColors.appTextStrong, lineHeight = 15.sp),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                 )
@@ -502,6 +552,10 @@ private fun RecordChartCard(
                 onOpenMonth?.let { openMonth ->
                     { picked: RecordMonth -> if (block.rings.hasShownMonth(picked, block.lanes)) openMonth(picked) }
                 },
+            latestMonth =
+                RecordMonth(block.rings.now.year, block.rings.now.monthValue - 1).let { now ->
+                    now.takeIf { block.rings.hasShownMonth(it, block.lanes) } ?: block.rings.adjacentShownMonth(now, block.lanes, -1)
+                },
         )
         Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -518,7 +572,6 @@ private fun RecordChartCard(
             block.note?.let { Text(it, style = SourcesType.caption) }
         }
     }
-    HowToReadLines(firstName = firstName)
 }
 
 /** Whether [month] has anything in a lane this viewer may see (only then does a tap open it; contract §3.7). */

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.ui.screens.profile.sources.profileMarkRing
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevations
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -247,7 +248,10 @@ private val avatarTints: List<Pair<Color, Color>>
             PantopusColors.primary100 to PantopusColors.primary700,
         )
 
-/** An initial in a soft circle, or the person's photo when there is one. Decorative: the name is read. */
+/**
+ * An initial in a soft circle, or the person's photo when there is one. Decorative: the name is read. With the
+ * person's [userId], the picture wears the outer ring of their mark while the profile with sources is on (board 6).
+ */
 @Composable
 fun PlanAvatar(
     name: String?,
@@ -256,12 +260,14 @@ fun PlanAvatar(
     avatarUrl: String? = null,
     size: Dp = 40.dp,
     ring: Boolean = false,
+    userId: String? = null,
 ) {
     val initial = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     val (bg, fg) = avatarTints[Math.floorMod((seed ?: initial).hashCode(), avatarTints.size)]
     Box(
         modifier =
             modifier
+                .profileMarkRing(userId)
                 .size(size)
                 .then(if (ring) Modifier.border(2.dp, PantopusColors.appSurface, CircleShape) else Modifier)
                 .clip(CircleShape)
@@ -349,13 +355,15 @@ fun PlanHostRow(
     trailing: @Composable (() -> Unit)? = null,
     /** A business hosts (board P1): the business shape and "Verified business" in place of a person's. */
     business: Boolean = false,
+    /** The host's account, for the outer ring of their mark (board 6). */
+    userId: String? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        if (business) PlanBusinessShape(avatarUrl = avatarUrl) else PlanAvatar(name = name, seed = seed, avatarUrl = avatarUrl)
+        if (business) PlanBusinessShape(avatarUrl = avatarUrl) else PlanAvatar(name = name, seed = seed, avatarUrl = avatarUrl, userId = userId)
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 Text(

@@ -75,12 +75,24 @@ internal fun markRingWidth(
     }
 }
 
+/** The ring's drawn width in pixels for [mark] on a picture [sizePx] across (it narrows on pictures under 40 dp). */
+internal fun markRingWidthPx(
+    mark: ProfileMark,
+    sizePx: Float,
+    density: Float,
+): Float {
+    val scale = (sizePx / (MARK_AVATAR_DP * density)).coerceIn(0.5f, 1.2f)
+    return (if (mark.seen) markRingWidth(mark.since) else 1.5f) * scale * density
+}
+
+private const val MARK_AVATAR_DP = 40f
+
 /**
  * The outer ring of a person's mark around their picture (board 6): thicker with years on record, dotted until
  * something is seen. Drawn outside the picture ([gap] away, as the board's 2 pt padding), so the picture keeps its size
- * and place; on a picture smaller than the board's 40 dp the ring narrows with it. With the Moments ring, it is drawn
- * just outside that one (`momentsRing` passes the larger [gap]). Nothing is drawn for someone the server didn't answer
- * for, or while the switch is off. Decorative: the person's name beside the picture says who it is.
+ * and place; on a picture smaller than the board's 40 dp the ring narrows with it. It hugs the picture, and the
+ * Moments ring, when there is one, moves out just beyond it (as on iPhone). Nothing is drawn for someone the server
+ * didn't answer for, or while the switch is off. Decorative: the person's name beside the picture says who it is.
  */
 fun Modifier.profileMarkRing(
     userId: String?,
@@ -99,8 +111,7 @@ fun Modifier.profileMarkRing(
             } else {
                 drawWithContent {
                     drawContent()
-                    val scale = (size.minDimension / 40.dp.toPx()).coerceIn(0.5f, 1.2f)
-                    val width = (if (mark.seen) markRingWidth(mark.since) else 1.5f) * scale * density
+                    val width = markRingWidthPx(mark, size.minDimension, density)
                     val radius = size.minDimension / 2 + gap.toPx() + width / 2
                     if (mark.seen) {
                         drawCircle(PantopusColors.appText, radius = radius, center = center, style = Stroke(width = width))

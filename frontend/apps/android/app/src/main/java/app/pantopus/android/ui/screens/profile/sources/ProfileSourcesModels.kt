@@ -63,13 +63,25 @@ enum class ProfileLane(
     }
 }
 
-/** One line anywhere on the page (contract §3.1): `{ ink, text, how, lane, link }`. */
+/** One line anywhere on the page (contract §3.1): `{ ink, text, how, lane, link }`, and who wrote it when it says. */
 data class ProfileLine(
     val ink: ProfileInk,
     val text: String,
     val how: String? = null,
     val lane: ProfileLane? = null,
     val link: ProfilePageLink? = null,
+    /** A review's or a Known-for line's writer (contract 3.4, v1.2); null on lines nobody wrote about the person. */
+    val who: ProfileWho? = null,
+    val whenText: String? = null,
+)
+
+/** Who wrote a line: by name and portrait where they allow it, else by what they did ("Someone who hired Maria"). */
+data class ProfileWho(
+    val name: String?,
+    val portraitUrl: String?,
+    val did: String?,
+    val userId: String?,
+    val username: String?,
 )
 
 /**

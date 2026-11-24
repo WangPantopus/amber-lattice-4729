@@ -1,4 +1,5 @@
 @file:Suppress("LongMethod", "LongParameterList", "MagicNumber", "CyclomaticComplexMethod")
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package app.pantopus.android.ui.screens.profile.sources
 
@@ -9,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.ui.screens.moments.components.momentsRing
 import app.pantopus.android.ui.screens.profile.ProfileAvatar
 import app.pantopus.android.ui.screens.profile.ProfileIconButton
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -148,6 +151,8 @@ internal fun ProfileSourcesFrame(
                     verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
                 ) {
                     tab.blocks.forEach { block -> SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month) }
+                    // Board 12 ends the record with how to read its lines.
+                    if (tab.blocks.any { it is ProfileBlock.RecordChart }) HowToReadLines(firstName = page.header.firstName)
                     page.footer?.let { FooterLine(it) }
                 }
             }
@@ -230,6 +235,8 @@ private fun HeaderCard(
     actions: SourcesBlockActions,
 ) {
     val header = page.header
+    // At the largest text sizes the city and "Seen as" chips leave the band for a row under the name (PRF: nothing cut off).
+    val large = profileLargeText()
     Column(
         modifier = Modifier.sourcesCard().testTag("profileSources.header"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -259,11 +266,11 @@ private fun HeaderCard(
         if (place != null) {
             // The mark sits half over the band (board 1: a 132 band, a 176 mark 88 into it).
             Box(Modifier.fillMaxWidth().height(132.dp + 88.dp)) {
-                Box(Modifier.align(Alignment.TopCenter)) { SkyBand(place = place, seenAs = header.seenAs) }
+                Box(Modifier.align(Alignment.TopCenter)) { SkyBand(place = place, seenAs = header.seenAs, chips = !large) }
                 Box(Modifier.align(Alignment.BottomCenter)) { mark() }
             }
         } else {
-            header.seenAs?.let { seen ->
+            header.seenAs?.takeIf { !large }?.let { seen ->
                 Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 10.dp), horizontalArrangement = Arrangement.End) {
                     SeenAsChip(seen, onSky = false)
                 }
@@ -286,6 +293,16 @@ private fun HeaderCard(
             )
             header.headline?.let {
                 Text(text = it, style = SourcesType.secondary.copy(fontSize = 15.sp, lineHeight = 21.sp), textAlign = TextAlign.Center)
+            }
+            if (large && (place != null || header.seenAs != null)) {
+                FlowRow(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    place?.let { PlaceChip(it) }
+                    header.seenAs?.let { SeenAsChip(it, onSky = false) }
+                }
             }
             if (page.isOwner) {
                 header.accountName?.takeIf { it != header.name }?.let { account ->
@@ -326,6 +343,7 @@ private fun HeaderCard(
 private fun SkyBand(
     place: ProfilePlace,
     seenAs: String?,
+    chips: Boolean,
 ) {
     val phase =
         when (place.sky) {
@@ -335,8 +353,6 @@ private fun SkyBand(
             else -> SkyPalette.Phase.DAY
         }
     val sky = SkyPalette.sky(phase, SkyPalette.Weather.CLEAR)
-    val clock = rememberCityClock(place)
-    val label = listOfNotNull(place.label, clock).joinToString(" · ")
     Box(
         modifier =
             Modifier
@@ -370,26 +386,36 @@ private fun SkyBand(
             }
             drawPath(trees, ground)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .weight(1f, fill = false)
-                        .clip(RoundedCornerShape(50))
-                        .background(PantopusColors.appText)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+        if (chips) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
             ) {
-                Text(text = label, style = SourcesType.caption.copy(fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextInverse))
-            }
-            seenAs?.let {
-                Spacer(Modifier.size(8.dp))
-                SeenAsChip(it, onSky = true)
+                Box(Modifier.weight(1f, fill = false)) { PlaceChip(place) }
+                seenAs?.let {
+                    Spacer(Modifier.size(8.dp))
+                    SeenAsChip(it, onSky = true)
+                }
             }
         }
+    }
+}
+
+/** "Camas, WA · 7:12 PM": the city and its clock, light on dark. */
+@Composable
+private fun PlaceChip(place: ProfilePlace) {
+    val clock = rememberCityClock(place)
+    val label = listOfNotNull(place.label, clock).joinToString(" · ")
+    Box(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(PantopusColors.appText)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .testTag("profileSources.place"),
+    ) {
+        Text(text = label, style = SourcesType.caption.copy(fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextInverse))
     }
 }
 

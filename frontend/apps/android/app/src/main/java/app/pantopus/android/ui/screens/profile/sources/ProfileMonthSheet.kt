@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +39,9 @@ import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
 
+/** Whether this month comes after [other]. */
+internal fun RecordMonth.isAfter(other: RecordMonth): Boolean = year > other.year || (year == other.year && month > other.month)
+
 /** "August 2026" for a chart month. */
 internal fun RecordMonth.words(): String = "${Month.of(month + 1).getDisplayName(TextStyle.FULL, Locale.US)} $year"
 
@@ -61,8 +63,8 @@ internal fun ProfileRings.adjacentShownMonth(
             month = 0
             year += 1
         }
-        if (year < years.first() || year > last.year || (year == last.year && month > last.month)) return null
         val candidate = RecordMonth(year, month)
+        if (year < years.first() || candidate.isAfter(last)) return null
         if (hasShownMonth(candidate, lanes)) return candidate
     }
     return null

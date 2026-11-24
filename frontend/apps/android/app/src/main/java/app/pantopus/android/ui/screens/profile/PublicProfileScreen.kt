@@ -403,6 +403,7 @@ fun PublicProfileScreen(
                                                 onOpenPost = onOpenPost,
                                                 onOpenProfile = onOpenProfile,
                                                 onOpenPlan = onOpenPlan,
+                                                onOpenGig = onOpenGig,
                                                 onOpenSupportTrain = onOpenSupportTrain,
                                                 onOpenUrl = { url -> runCatching { uriHandler.openUri(url) } },
                                                 onOpenAppLink = { uri -> DeepLinkRouter.handle(uri) },
@@ -410,8 +411,7 @@ fun PublicProfileScreen(
                                                     if (content.isOwner) ownerNavigation.onSeeAllPosts() else showPersonPosts = true
                                                 },
                                                 onOpenMoments = { userId ->
-                                                    val rings = MomentRingsHolder.current
-                                                    rings?.rings?.value?.get(userId)?.let(rings.play)
+                                                    MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
                                                 },
                                             ),
                                     )

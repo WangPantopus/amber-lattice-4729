@@ -186,7 +186,7 @@ private const val CHART_UNITS = 384f
  * year in the middle; a sky dot at today. [lanes] are the lanes this viewer may see (the server drops a line whose
  * part is off; SPEC §4.3), so a hidden lane is simply not drawn. With [selected], that year is lit, the others dim,
  * and the month is marked (board 13). A tap opens the month under the finger ([onOpenMonth]); TalkBack reads
- * [contentDescription] and offers "Open this month" for today's month.
+ * [contentDescription] and offers "Open the latest month" ([latestMonth]); the month sheet steps back from there.
  */
 @Composable
 fun ProfileRecordChart(
@@ -196,6 +196,8 @@ fun ProfileRecordChart(
     modifier: Modifier = Modifier,
     selected: RecordMonth? = null,
     onOpenMonth: ((RecordMonth) -> Unit)? = null,
+    /** The month TalkBack's "Open the latest month" opens; null offers no action. */
+    latestMonth: RecordMonth? = null,
 ) {
     val years = rings.years
     val grids = remember(rings) { ProfileLane.entries.associateWith { rings.lane(it) } }
@@ -220,11 +222,11 @@ fun ProfileRecordChart(
                 .then(tap)
                 .semantics {
                     this.contentDescription = contentDescription
-                    if (onOpenMonth != null) {
+                    if (onOpenMonth != null && latestMonth != null) {
                         customActions =
                             listOf(
-                                CustomAccessibilityAction("Open this month") {
-                                    onOpenMonth(RecordMonth(rings.now.year, rings.now.monthValue - 1))
+                                CustomAccessibilityAction("Open the latest month") {
+                                    onOpenMonth(latestMonth)
                                     true
                                 },
                             )

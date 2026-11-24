@@ -59,7 +59,10 @@ class ProfileSourcesLoader(
     private val scope: CoroutineScope,
     private val pages: ProfilePageRepository,
 ) {
-    private val _state = MutableStateFlow<ProfileSourcesState>(if (LaunchFeatures.profileSources) ProfileSourcesState.Loading else ProfileSourcesState.Off)
+    private val _state =
+        MutableStateFlow<ProfileSourcesState>(
+            if (LaunchFeatures.profileSources) ProfileSourcesState.Loading else ProfileSourcesState.Off,
+        )
     val state: StateFlow<ProfileSourcesState> = _state.asStateFlow()
 
     private val _month = MutableStateFlow<ProfileMonthState?>(null)
@@ -82,7 +85,11 @@ class ProfileSourcesLoader(
         identifier: String,
         dropOnFailure: Boolean = false,
     ) {
-        if (!LaunchFeatures.profileSources || identifier.isBlank()) return
+        if (!LaunchFeatures.profileSources) return
+        if (identifier.isBlank()) {
+            _state.value = ProfileSourcesState.Unavailable
+            return
+        }
         this.identifier = identifier
         job?.cancel()
         if (_state.value !is ProfileSourcesState.Ready) _state.value = ProfileSourcesState.Loading

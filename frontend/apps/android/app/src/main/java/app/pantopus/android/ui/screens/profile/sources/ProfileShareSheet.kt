@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
+import app.pantopus.android.ui.components.InviteLinks
 import app.pantopus.android.ui.components.shareText
 import app.pantopus.android.ui.screens.profile.PreviewAudience
 import app.pantopus.android.ui.screens.profile.PreviewBanner
@@ -71,10 +72,15 @@ import app.pantopus.android.ui.theme.PantopusTextStyle
 import kotlinx.coroutines.delay
 
 /** The words for each part's switch (board 21); a key the app doesn't know is left out. */
-private data class PartWords(
+internal data class PartWords(
     val title: String,
     val note: String?,
 )
+
+private const val NEW_LINK = "new"
+
+private const val SWITCHED_OFF_NOTE =
+    "A part you switch off simply isn't there. Nothing on the page says it exists, and the page closes up around it."
 
 private val ABOUT_YOU =
     linkedMapOf(
@@ -100,6 +106,9 @@ private val REACHING_YOU =
         "doors" to PartWords("Doors", "Hire, ask, send a card, leave a card. A visitor signs in to use one."),
     )
 
+/** Every part's words, in board 21's order (a link for one purpose lists them the same way). */
+internal val PART_WORDS: Map<String, PartWords> = ABOUT_YOU + WHAT_YOU_DID + REACHING_YOU
+
 /**
  * Share your profile (board 21): the link with Copy link, Send and Show code; a switch for each part the link shows
  * (on: anyone with the link; off: only people signed in to Pantopus); search engines; then See it as a visitor and
@@ -123,7 +132,11 @@ internal fun ProfileShareSheet(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var showVisitor by rememberSaveable { mutableStateOf(false) }
-    var showCode by rememberSaveable { mutableStateOf(false) }
+    var showCode by rememberSaveable { mutableStateOf<String?>(null) }
+    // A link for one purpose: "new" to make one, else the open link's id.
+    var linkSheet by rememberSaveable { mutableStateOf<String?>(null) }
+    val linkPreview by model.linkPreview.collectAsStateWithLifecycle()
+    val linkSaving by model.linkSaving.collectAsStateWithLifecycle()
     LaunchedEffect(reloadKey) { model.load() }
     LaunchedEffect(notice) {
         if (notice != null) {
@@ -141,7 +154,23 @@ internal fun ProfileShareSheet(
         Box(Modifier.fillMaxWidth().fillMaxHeight(0.96f)) {
             val loaded = state as? ProfileShareUiState.Loaded
             val visitor = loaded?.share?.visitor
-            if (showVisitor && visitor != null) {
+            val linkPage = (linkPreview as? LinkPreviewState.Ready)?.page
+            if (linkPage != null) {
+                ProfileSourcesFrame(
+                    page = linkPage,
+                    selectedTab = null,
+                    onSelectTab = {},
+                    slots =
+                        SourcesFrameSlots(
+                            topBar = { PreviewBanner(audience = PreviewAudience.Anyone, onDone = model::endLinkPreview) },
+                            headerActions = {},
+                            pinnedPosts = {},
+                            onShare = null,
+                            onBack = model::endLinkPreview,
+                        ),
+                    actions = SourcesBlockActions(interactive = false),
+                )
+            } else if (showVisitor && visitor != null) {
                 ProfileSourcesFrame(
                     page = visitor,
                     selectedTab = null,
@@ -171,6 +200,8 @@ internal fun ProfileShareSheet(
                             val guard: (() -> Unit) -> Unit = { act ->
                                 if (share.usernameIsMadeUp) onPickUsername(share.username) else act()
                             }
+                            // The app's own link (this build's web origin), as `InviteLinks` builds every shared page.
+                            val mainUrl = InviteLinks.profilePageUrl(share.username)
                             Column(
                                 modifier =
                                     Modifier
@@ -183,18 +214,18 @@ internal fun ProfileShareSheet(
                                     name = name,
                                     portraitUrl = portraitUrl,
                                     userId = userId,
-                                    url = share.url,
+                                    url = mainUrl,
                                     onCopy = {
                                         guard {
-                                            clipboard.setText(AnnotatedString(share.url))
+                                            clipboard.setText(AnnotatedString(mainUrl))
                                             model.say("Copied.")
                                         }
                                     },
-                                    onSend = { guard { context.shareText(share.url) } },
-                                    onShowCode = { guard { showCode = true } },
+                                    onSend = { guard { context.shareText(mainUrl) } },
+                                    onShowCode = { guard { showCode = mainUrl } },
                                 )
                                 Text(
-                                    text = "A part you switch off simply isn't there. Nothing on the page says it exists, and the page closes up around it.",
+                                    text = SWITCHED_OFF_NOTE,
                                     style = SourcesType.secondary.copy(color = PantopusColors.primary900),
                                     modifier =
                                         Modifier
@@ -209,7 +240,7 @@ internal fun ProfileShareSheet(
                                     words = ABOUT_YOU,
                                     share = share,
                                     saving = s.saving,
-                                    leading = { FixedRow("Portrait, name and rings", "Always shown") },
+                                    leading = { FixedShareRow("Portrait, name and rings", "Always shown") },
                                     onToggle = model::setPart,
                                 )
                                 PartsCard(title = "What you've done", words = WHAT_YOU_DID, share = share, saving = s.saving, onToggle = model::setPart)
@@ -218,11 +249,11 @@ internal fun ProfileShareSheet(
                                     words = REACHING_YOU,
                                     share = share,
                                     saving = s.saving,
-                                    trailing = { FixedRow("Phone and email", "Never on a link. Connections only.") },
+                                    trailing = { FixedShareRow("Phone and email", "Never on a link. Connections only.") },
                                     onToggle = model::setPart,
                                 )
                                 Column(Modifier.sourcesCard()) {
-                                    SwitchRow(
+                                    ShareSwitchRow(
                                         title = "Let search engines list this page",
                                         note = null,
                                         on = share.searchEngines,
@@ -231,13 +262,54 @@ internal fun ProfileShareSheet(
                                         onToggle = model::setSearchEngines,
                                     )
                                 }
+                                ShareLinksSection(
+                                    share = share,
+                                    saving = s.saving,
+                                    onSetEnabled = model::setLinksEnabled,
+                                    onOpen = { link -> linkSheet = link.id },
+                                    onMake = { guard { linkSheet = NEW_LINK } },
+                                )
                             }
                             ShareFooter(
                                 onSeeVisitor = share.visitor?.let { { showVisitor = true } },
-                                onSavePdf = { guard { printProfileLink(context, share.url, "$name on Pantopus") } },
+                                onSavePdf = { guard { printProfileLink(context, mainUrl, "$name on Pantopus") } },
                             )
-                            if (showCode) {
-                                CodeDialog(url = share.url, onDismiss = { showCode = false })
+                            showCode?.let { url -> CodeDialog(url = url, onDismiss = { showCode = null }) }
+                            linkSheet?.let { id ->
+                                val link = share.links.firstOrNull { it.id == id }
+                                if (id == NEW_LINK || link != null) {
+                                    val linkUrl: (ShareLink) -> String? = { it.key?.let { key -> InviteLinks.profileKeyUrl(share.username, key) } }
+                                    ShareLinkSheet(
+                                        link = link,
+                                        share = share,
+                                        saving = linkSaving,
+                                        onCreate = { linkName, parts, endsOn ->
+                                            model.createLink(linkName, parts, endsOn) { made -> linkSheet = made.id }
+                                        },
+                                        onUpdate = { parts, endsOn, clearEnd, switchedOff ->
+                                            link?.let { model.updateLink(it.id, null, parts, endsOn, clearEnd, switchedOff) }
+                                        },
+                                        onDelete = { link?.let { model.deleteLink(it.id) { linkSheet = null } } },
+                                        onCopy = { l ->
+                                            linkUrl(l)?.let {
+                                                clipboard.setText(AnnotatedString(it))
+                                                model.say("Copied.")
+                                            }
+                                        },
+                                        onSend = { l -> linkUrl(l)?.let { context.shareText(it) } },
+                                        onPreview = { l ->
+                                            linkSheet = null
+                                            model.previewLink(l)
+                                        },
+                                        onDismiss = { linkSheet = null },
+                                    )
+                                }
+                            }
+                            if (linkPreview == LinkPreviewState.Failed) {
+                                LaunchedEffect(Unit) {
+                                    model.say("That link doesn't open right now.")
+                                    model.endLinkPreview()
+                                }
                             }
                         }
                     }
@@ -365,7 +437,7 @@ private fun PartsCard(
                     part.key == "city" && !part.on -> "Off, the page names no place"
                     else -> word.note
                 }
-            SwitchRow(
+            ShareSwitchRow(
                 title = word.title,
                 note = note,
                 on = part.on && !(part.key == "city" && share.cityLimit != "anyone"),
@@ -379,7 +451,7 @@ private fun PartsCard(
 }
 
 @Composable
-private fun FixedRow(
+internal fun FixedShareRow(
     title: String,
     note: String,
 ) {
@@ -392,7 +464,7 @@ private fun FixedRow(
 
 /** A part's row: the whole row toggles (a 48 dp target), and TalkBack reads it as a switch with its words. */
 @Composable
-private fun SwitchRow(
+internal fun ShareSwitchRow(
     title: String,
     note: String?,
     on: Boolean,

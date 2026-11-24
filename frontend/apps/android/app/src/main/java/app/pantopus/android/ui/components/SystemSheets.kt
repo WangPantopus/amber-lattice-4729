@@ -70,6 +70,15 @@ object InviteLinks {
     /** A person's public profile (web `/u/:username`, the link web's own profile Share uses). */
     fun profileUrl(username: String): String = publicPageUrl("/u/${Uri.encode(username)}")
 
+    /** The profile with sources' main link, `pantopus.com/<username>` (web `(site)/[username]`). */
+    fun profilePageUrl(username: String): String = publicPageUrl("/${Uri.encode(username)}")
+
+    /** A link for one purpose, `pantopus.com/<username>/v/<key>`; the key is the owner's to share, never to log. */
+    fun profileKeyUrl(
+        username: String,
+        key: String,
+    ): String = publicPageUrl("/${Uri.encode(username)}/v/${Uri.encode(key)}")
+
     /** The invite's words; the person's own link follows them when it is shared. */
     const val INVITE_MESSAGE =
         "Join me on Pantopus — everything about your home, trusted home help and your whole household in one place."
