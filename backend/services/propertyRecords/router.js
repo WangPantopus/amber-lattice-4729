@@ -10,7 +10,7 @@
  *   switches/<name>.json   { v: 1, counties: { "<fips>": { mode: 'off'|'shadow'|'live', withheld: [fact, ...], estimates: true } },
  *                            shared_facts: ["<fips>", ...], similar_homes: ["<fips>", ...],
  *                            appeal_packet: ["<fips>", ...], new_columns: ["<fips>", ...], derived_rows: ["<fips>", ...],
- *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], mapped_lots: ["<fips>", ...],
+ *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], mapped_lots: ["<fips>", ...], lot_rings: ["<fips>", ...],
  *                            listed_units: ["<fips>", ...], past_date: ["<fips>", ...], buyer_report: ["<fips>", ...] }
  *
  * `estimates: true` shows a live county's owners a Pantopus estimate (propertyRecords/valueEstimate.js). Without it, none.
@@ -80,7 +80,7 @@ let listedUnits = new Set();
 let pastDates = new Set();
 let buyerReports = new Set();
 // The held facts' lists, in the order they apply (format.js `held`).
-const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals', 'mapped_lots'];
+const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals', 'mapped_lots', 'lot_rings'];
 let held = {};
 let modes = config.listedModes();
 let liveStates = new Set();
@@ -322,6 +322,8 @@ function heldFor(fips) {
  * baths split from a bare total, which its facts (and its building's) hold as before until the county is on the list.
  * mapped_lots adds words only: `copy.mapped` ({ from }) names each lot fact the copy (or its building) still states with the
  * value marked, in the county's words. A county that requires a label serves newly filled house lots only as measured rows.
+ * lot_rings serves a house's lot outline from the county's parcel map as `copy.lot_ring` ([[lng, lat], ...]), for the home
+ * record's photo from above (scripts/property-index/lib/lot-rings.cjs); nothing else reads it.
  * @param {object} copy     a stored copy
  * @param {string[]} names  the lists that show, in order
  */
@@ -381,6 +383,8 @@ function joinHeld(copy, names) {
     }
     if (Object.keys(from).length) out.mapped = { from };
   }
+  const ring = kept.lot_rings?.facts?.lot_ring;
+  if (names.includes('lot_rings') && Array.isArray(ring) && ring.length >= 4) out.lot_ring = ring;
   return out;
 }
 
@@ -395,6 +399,7 @@ function served(stored) {
     ...(copy.building ? { building: without(copy.building, withheld) } : {}),
     ...(copy.derived ? { derived: { ...copy.derived, facts: without(copy.derived.facts, withheld), ...(copy.derived.building ? { building: without(copy.derived.building, withheld) } : {}) } } : {}),
     ...(copy.measured ? { measured: { ...copy.measured, facts: without(copy.measured.facts, withheld) } } : {}),
+    ...(copy.lot_ring && withheld.has('lot_ring') ? { lot_ring: undefined } : {}),
   };
 }
 

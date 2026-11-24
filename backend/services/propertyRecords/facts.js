@@ -77,6 +77,9 @@ const FACTS = {
   lot_number: { section: 'lot', label: 'Lot number', format: 'code', scope: 'parcel' },
   zoning: { section: 'lot', label: 'Zoning', format: 'code', scope: 'parcel' },
   pool: { section: 'lot', label: 'Pool', format: 'text', scope: 'unit' },
+  // The lot's outline from the county's open parcel map, [[lng, lat], ...] (scripts/property-index/lib/lot-rings.cjs), for
+  // the home record's photo from above. Never a row of its own; only ever held under lot_rings, served as copy.lot_ring.
+  lot_ring: { section: 'lot', format: 'none', scope: 'parcel' },
 
   // Parcel and records
   property_type: { section: 'records', label: 'Property type', format: 'text', scope: 'parcel' },
