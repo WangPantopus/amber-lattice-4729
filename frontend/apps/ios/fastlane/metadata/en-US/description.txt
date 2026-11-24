@@ -1,32 +1,44 @@
 Real life, connected.
 
-Pantopus is one app for the place where your life happens: your home, the people you live with, the plans you make, the mail you get and what’s going on around you. Pan means all. The octopus is one mind with many arms.
+Pantopus starts with your home.
 
-There’s more to your address than a pin
-Type any U.S. address to see air and weather right now; flood, wildfire, earthquake and radon; who supplies your water, and its record; and the governments you live inside. Every fact names its source and its scale. Free to look, no account needed.
+Pantopus is a social network of real people at real homes, and one app for the place where your life happens: your address and its public record, the people you live with, your mail, your plans and what’s going on around you.
 
-A little less to keep in your head
-Today draws the sky over your home and puts what’s due inside right beside it. Confirm your pickup day once and get a reminder the evening before. Turn a radon zone into a test-kit task. Briefings come only when there’s something useful.
+Place: see what’s true about your address
+Type any U.S. address and get its property details in plain words: the county record, the flood zone and what flood insurance costs nearby, wildfire, earthquake, radon, lead paint, drinking water, your districts and who represents you. Every fact names its source. Free to look, no account needed. A confirmed owner also sees value, last sale and a property-tax exemption check.
 
-You don’t have to be the household’s memory
-Invite the people you live with. Give a task an owner and a due date, keep documents where the right people can find them, and see when something’s done. For the place you own, rent or share.
+Today: everyone at home sees what’s due
+The sky over your own house and the day under it: hourly weather, official alerts, air quality and a good day for a run or the grill. Coming up at home lists pickups, tasks, plans and tax dates. Set bin night from a photo of the flyer. Switch to Around you for local headlines.
 
-Good company can start with a small plan
-Walk and coffee. A pickup game. A watch party. A study group. Find one nearby, ask to join, and get the exact spot once the host says yes. Invited by a friend? Say you’re in, get directions, add it to your calendar and talk in the plan’s group chat. Playdates have extra rules: a public place and the host’s approval.
+Run your home together
+Invite the people you live with. Share tasks with an owner and a due date, keep documents where the right people find them, and keep guest passes, access codes and a maintenance log in one place.
 
-Feel the pulse around you
-Pulse is what’s happening around you, as a list or a live map: questions, useful updates and nearby news. Calm by design, with no crime or suspicious-person alerts.
+Pulse: know what’s going on, no crime alerts
+Questions, recommendations, events, deals, lost and found and good news from people who live there or are there, and updates from your connections. See it as a list or on a map. Posts end on their own when they stop being useful, and crime and suspicious-person posts aren’t allowed.
 
-Mail, reinvented
-Mail arrives each morning at 7, stamped and sealed, and opens like a real envelope. This season, send a Christmas card that stays sealed until Christmas morning.
+Moments: stories on a map
+Share photos, videos and short text cards, pinned where they happened, for 1, 6, 24 or 48 hours. See what’s happening around you right now on a map of faces. Every photo and video is checked before it goes live.
 
-Ask Pantopus
-AI that knows your place. It answers with sources, says so when it doesn’t know, and turns an answer into a task or a plan that waits for your tap.
+Mail and Christmas cards
+A mailbox for your home, on your phone. Mail comes each morning at 7 a.m., stamped and sealed, and Pantopus reads each letter for you. Hold your mail while you’re away, or write a letter with stationery, ink and a wax seal. At Christmas, send a card they open by hand: it stays sealed until 7 a.m. on Christmas morning, and it can go to anyone by email or a link.
 
-Support Trains
-Organize meals or practical help for someone you care about, share a schedule, and coordinate volunteers.
+Plans: make plans with the people in your life
+Watch parties, game nights, dinners, pickup games, hikes, walks and coffee, playdates and study groups. Private, repeating and online plans. Find a date, share a bring list, and invite by text, email or link; guests can answer in a browser. The exact spot shows once the host says yes.
 
-Clear boundaries
-Other people on Pantopus see a first name and a street, never your house number or unit. Looking up an address shows public information; it never opens a household’s tasks or documents. Verification unlocks the features that need it, like messaging verified residents near you. Your address is never sold and never used for ads.
+Support Train: organize meals for someone
+A new baby, a surgery, a loss. Set up a calendar of meals, takeout or groceries, one helper a day, with allergies and the drop-off window. Helpers can sign up with an email, no app needed. The address goes only to the people helping.
+
+Messages
+Direct and group chats, the chat a plan opens, a Support Train’s group chat, and messages to the homes on your block once you’re verified. Send photos, videos, voice messages and your location.
+
+The Verified home
+Prove where you live once, with a code on a postcard, a bill or your lease, your landlord’s yes or a fast check. The Verified mark tells people you’re real, and it opens messages to the homes on your block, real rent from verified renters near you, residency letters and mail for your home.
+
+Pantopus AI
+One assistant that knows your place, your day, your mail and your plans. It drafts tasks, plans and replies for you to approve. Nothing happens without your yes.
+
+Your privacy
+Only you see the address you type, others see your first name, never your address
+Your address is never sold and never used for ads. Looking up an address shows public information only; it never opens a household’s tasks or documents.
 
 Home features are U.S.-only for now, and what’s available varies by location.
