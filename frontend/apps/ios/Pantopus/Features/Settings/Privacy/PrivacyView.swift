@@ -41,7 +41,7 @@ public struct PrivacyView: View {
         .sheet(
             isPresented: $showsEditor,
             onDismiss: { Task { await neighbors.load() } },
-            content: { EditProfileView() }
+            content: { EditProfileView().presentationSizingPageOnIPad() }
         )
         .sheet(isPresented: $viewModel.isDeleteSheetPresented) {
             AccountDeleteSheet(

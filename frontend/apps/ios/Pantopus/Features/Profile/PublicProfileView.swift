@@ -281,6 +281,7 @@ public struct PublicProfileView: View {
                     showEditProfile = false
                     open(.myHomes)
                 }
+                .presentationSizingPageOnIPad()
             }
         )
         // A stray tap on Following never unfollows: it asks first, as Connected

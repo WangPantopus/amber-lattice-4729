@@ -32,8 +32,11 @@ public struct HelpCenterView: View {
                     onBack: onBack,
                     header: { headerView },
                     body: { contentBody },
-                    cta: { ctaBar }
+                    // On an iPad "Still stuck?" is a card among the answers instead of a bar over them.
+                    cta: { if !WideLayout.isPad { ctaBar } }
                 )
+                // On an iPad window that holds two columns the answers take the window's whole width.
+                .wideColumnsScreen()
                 .background(Theme.Color.appBg)
                 .accessibilityIdentifier("helpCenter")
                 .transition(.move(edge: .leading))
@@ -62,40 +65,94 @@ public struct HelpCenterView: View {
             .pantopusTextStyle(.small)
             .foregroundStyle(Theme.Color.appTextSecondary)
         }
-        .padding(.horizontal, Spacing.s4)
         .padding(.top, Spacing.s2)
+        // On an iPad level with the answers' columns below.
+        .modifier(HelpSideMargins())
     }
 
-    private var contentBody: some View {
-        VStack(alignment: .leading, spacing: Spacing.s5) {
-            ForEach(Self.sections, id: \.heading) { section in
-                VStack(alignment: .leading, spacing: Spacing.s3) {
-                    Text(section.heading)
-                        .pantopusTextStyle(.h3)
-                        .foregroundStyle(Theme.Color.appText)
-                    if section.heading == Self.gettingStarted, GuidanceCenter.shared.tipsAvailable {
-                        tipsRow
-                    }
-                    ForEach(section.items, id: \.question) { item in
-                        VStack(alignment: .leading, spacing: Spacing.s1) {
-                            Text(item.question)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Theme.Color.appText)
-                            Text(item.answer)
-                                .pantopusTextStyle(.small)
-                                .foregroundStyle(Theme.Color.appTextSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(Spacing.s4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-                    }
+    @ViewBuilder private var contentBody: some View {
+        if WideLayout.isPad {
+            padColumns
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s5) {
+                ForEach(Self.sections, id: \.heading) { section in
+                    sectionView(section)
+                        .padding(.horizontal, Spacing.s4)
                 }
-                .padding(.horizontal, Spacing.s4)
+            }
+            .padding(.vertical, Spacing.s4)
+        }
+    }
+
+    /// On an iPad window wide enough: "Getting started" and "Account & safety" in one column, "Mail & messages" and
+    /// "Still stuck?" in the other; a narrower window keeps them in one column, in that order.
+    private var padColumns: some View {
+        WideColumns {
+            ForEach(Array(Self.sections.enumerated()), id: \.element.heading) { index, section in
+                sectionView(section)
+                    .padding(.top, index == 0 ? Spacing.s0 : Spacing.s5)
+                    .placeColumn(
+                        index.isMultiple(of: 2) ? .leading : .trailing,
+                        order: index,
+                        // The first section has no room above it to leave out.
+                        trimsTop: index == 0 ? Spacing.s0 : Spacing.s5
+                    )
+            }
+            contactCard
+                .padding(.top, Spacing.s5)
+                .placeColumn(Self.sections.count.isMultiple(of: 2) ? .leading : .trailing, order: Self.sections.count, trimsTop: Spacing.s5)
+        }
+        .modifier(HelpSideMargins())
+        .padding(.vertical, Spacing.s4)
+    }
+
+    private func sectionView(_ section: Section) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s3) {
+            Text(section.heading)
+                .pantopusTextStyle(.h3)
+                .foregroundStyle(Theme.Color.appText)
+            if section.heading == Self.gettingStarted, GuidanceCenter.shared.tipsAvailable {
+                tipsRow
+            }
+            ForEach(section.items, id: \.question) { item in
+                VStack(alignment: .leading, spacing: Spacing.s1) {
+                    Text(item.question)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appText)
+                    Text(item.answer)
+                        .pantopusTextStyle(.small)
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(Spacing.s4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
             }
         }
-        .padding(.vertical, Spacing.s4)
+    }
+
+    /// "Still stuck?" on an iPad: a card after the answers, where the phone has a bar along the bottom.
+    private var contactCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.s3) {
+            Text("Still stuck?")
+                .pantopusTextStyle(.h3)
+                .foregroundStyle(Theme.Color.appText)
+            Text("Email us. We read every message.")
+                .pantopusTextStyle(.small)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            PrimaryButton(title: "Email support") {
+                if let url = URL(string: "mailto:support@pantopus.com?subject=Help") {
+                    await openURL(url)
+                }
+            }
+            .accessibilityIdentifier("helpCenterContactCTA")
+        }
+        .padding(Spacing.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
     }
 
     private var ctaBar: some View {
@@ -179,6 +236,17 @@ public struct HelpCenterView: View {
             )
         ])
     ]
+}
+
+/// The page's side margins: a phone's 16 pt, and on an iPad the two columns' margins where they show.
+private struct HelpSideMargins: ViewModifier {
+    func body(content: Content) -> some View {
+        if WideLayout.isPad {
+            content.wideColumnsMargins(Spacing.s4)
+        } else {
+            content.padding(.horizontal, Spacing.s4)
+        }
+    }
 }
 
 #Preview {

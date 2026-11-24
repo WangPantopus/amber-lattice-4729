@@ -376,8 +376,9 @@ public struct ManageTrainView: View {
     }
 
     /// The sections on an iPad (founder, 2026-11-23: "take advantage of the iPad screen"): where the window holds two
-    /// phone-wide columns, the train at a glance and what goes out to helpers on the left (status, counts, slot fill,
-    /// Send an update, Organize, reminders), and its setup, dates, people and wind-down on the right. A narrow window
+    /// phone-wide columns, the train at a glance, what goes out to helpers and its people on the left (status, counts,
+    /// slot fill, Send an update, Organize, helpers, co-organizers, reminders), and its setup, dates and wind-down on
+    /// the right. A narrow window
     /// or an accessibility text size keeps the one column, in the phone's order.
     private func twoColumnSections(_ content: ManageTrainContent) -> some View {
         WideColumns {
@@ -395,10 +396,12 @@ public struct ManageTrainView: View {
                 .placeColumn(.trailing, order: 5)
             wideSection { datesSection(content) }
                 .placeColumn(.trailing, order: 6)
+            // The people on the train under Organize: who signed up (its signups review) and who helps run it, so the
+            // columns come out about even beside the dates.
             wideSection { helpersSection(content) }
-                .placeColumn(.trailing, order: 7)
+                .placeColumn(.leading, order: 7)
             wideSection { organizersSection(content) }
-                .placeColumn(.trailing, order: 8)
+                .placeColumn(.leading, order: 8)
             if !viewModel.isRecipientDelegate {
                 wideSection { nudgeSection(content) }
                     .placeColumn(.leading, order: 9)
