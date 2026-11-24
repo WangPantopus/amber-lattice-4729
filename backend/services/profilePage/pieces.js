@@ -307,6 +307,18 @@ async function previewPiece(userId, body) {
   return { how_it_will_show: howItWillShow(row, readShare(rows.share).parts.work) };
 }
 
+/** PUT /me/work: "Tools she brings", one Said line on Owns (at most 140 characters; null removes it). */
+async function saveWork(userId, body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((k) => k !== 'tools')) {
+    throw invalid('Send { "tools": "…" } or { "tools": null }.');
+  }
+  const tools = plainText(body.tools, 140);
+  if (tools === undefined) throw invalid('Tools are one line of at most 140 characters.');
+  const { error } = await supabaseAdmin.from('User').update({ profile_tools: tools }).eq('id', userId);
+  if (error) throw error;
+  return { tools };
+}
+
 // ---------- the piece read's extra parts ----------
 
 /** Attachments of a piece: its files, in order, as the piece read sends them (CONTRACT P2.2). */
@@ -330,6 +342,6 @@ async function attachmentsOf(row) {
 }
 
 module.exports = {
-  PieceRefusal, listMine, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
+  PieceRefusal, listMine, saveWork, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
   localDate,
 };

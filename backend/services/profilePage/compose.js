@@ -151,7 +151,8 @@ function pieceOf(row, first, owner) {
     media: {
       photos: media.filter((u) => IMAGE_EXT.test(u)).length,
       videos: media.filter((u) => VIDEO_EXT.test(u)).length,
-      documents: files,
+      // file_ids holds every attachment (photos and videos also sit in media_urls); the rest are documents.
+      documents: Math.max(0, files - media.length),
       links: cards,
     },
     ink: seen ? 'seen' : 'said',

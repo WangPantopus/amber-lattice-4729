@@ -52,6 +52,7 @@ router.get('/me/share', verifyToken, handle('share', (req) => profilePage.shareB
 router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.putShare(req)));
 
 // The owner's pieces (CONTRACT "Phase 2: Work", P2.3).
+router.put('/me/work', verifyToken, handle('work-save', (req) => pieces.saveWork(String(req.user.id), req.body)));
 router.get('/me/pieces', verifyToken, handle('pieces', (req) => pieces.listMine(String(req.user.id))));
 router.post('/me/pieces/preview', verifyToken, handle('piece-preview', (req) => pieces.previewPiece(String(req.user.id), req.body)));
 router.post('/me/pieces', verifyToken, handle('piece-make', (req) => pieces.createPiece(String(req.user.id), req.body), 201));
