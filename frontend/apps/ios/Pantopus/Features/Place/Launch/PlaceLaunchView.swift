@@ -471,13 +471,13 @@ private extension PlaceLaunchView {
         )
     }
 
-    /// Under the headline. The Place tab's first-run root (signed in) says
-    /// what an address shows, as the front door does (TABCARD 4b).
+    /// Under the headline. The Place tab's first-run root (signed in) says what an address shows (TABCARD 4b).
     var heroSentence: String {
-        if embedded != nil { return "Your flood risk, today's air, your home's value, and the verified homes near you." }
+        let shows = "Your flood risk, today's air, home values and taxes where you live, and the verified homes near you."
+        if embedded != nil { return shows }
         return signedInEntry
             ? "Look up an address, preview its public information, and choose whether to save it privately."
-            : "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
+            : shows + " Free, no account."
     }
 
     /// The Place tab's first-run root with a city kept on this phone (TABCARD

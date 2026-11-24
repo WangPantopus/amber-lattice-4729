@@ -30,21 +30,20 @@ struct PlacePreviewBody: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    previewHero
-                    if let onOpenRecord {
-                        HomeRecordEntryButton(
-                            title: "See this home's full record",
-                            line: "What the county and federal records show"
-                        ) { onOpenRecord() }
-                            .padding(.top, 10)
-                            .accessibilityIdentifier("place.preview.record")
-                    }
-                    PlacePreviewContent(preview: preview, onAction: onCreateAccount, onRetry: onRetry, retrying: retrying)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // LOOKUPORDER: the facts lead; the record button sits in the server's order, under the money card.
+                    PlacePreviewContent(
+                        preview: preview,
+                        onOpenRecord: onOpenRecord,
+                        onScrollTo: { id in withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) } },
+                        onAction: onCreateAccount,
+                        onRetry: onRetry,
+                        retrying: retrying
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 120)
             }
         }
         .overlay(alignment: .bottom) { wall }
@@ -83,33 +82,13 @@ struct PlacePreviewBody: View {
         .topBarSpansWindow()
     }
 
-    private var previewHero: some View {
-        HStack(spacing: 11) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.Color.homeBg)
-                Icon(.check, size: 22, strokeWidth: 2.5, color: Theme.Color.home)
-            }
-            .frame(width: 44, height: 44)
-            Text("Here's what's public about your address — a free, one-time look.")
-                .font(.system(size: 14.5, weight: .semibold))
-                .foregroundStyle(Theme.Color.appText)
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .placeCard()
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-    }
-
     private var wall: some View {
         VStack(spacing: 10) {
-            Text(signedInEntry
-                ? "Keep this address handy. Choose whether to save it privately."
-                : "Keep this address handy. Choose whether to save it privately after sign-in.")
+            Text("Save this address. It opens fresh every day.")
                 .font(.system(size: 14.5, weight: .semibold))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.Color.appText)
-            PrimaryButton(title: "Continue") { onCreateAccount() }
+            PrimaryButton(title: signedInEntry ? "Continue" : "Save it, free") { onCreateAccount() }
                 .accessibilityIdentifier("place.preview.continue")
             Text(signedInEntry
                 ? "Saving a place does not create or verify a Home."
@@ -125,52 +104,46 @@ struct PlacePreviewBody: View {
     }
 }
 
-/// The facts of a preview: the aha card, the money lead, the section groups
-/// and (signed out) the locked descriptors. The funnel's preview and the
-/// Place tab's saved address both show them.
+/// The facts of a preview, drawn in the server's order (`layout.order`, LOOKUPORDER
+/// SPEC 1.1; an older server's answer keeps the built-in order): the stand-out card,
+/// "At a glance", "Money here", the record button, the section groups, the locked
+/// descriptors and the could-not-check line. The funnel's preview and the Place
+/// tab's saved address both show them.
 struct PlacePreviewContent: View {
     let preview: PlacePreview
     /// "More with a free account": only for someone without an account.
     var showsLocked = true
     var onOpenDetail: ((PlaceDetailGroup) -> Void)?
+    /// "See this home's full record" and the money card's record line; neither is drawn without it.
+    var onOpenRecord: (() -> Void)?
+    /// Scrolls the page to a section's card (`PlacePreviewContent.anchor`): a glance row's tap.
+    var onScrollTo: ((String) -> Void)?
     /// The aha follow-up and every locked, verify or claim call to action.
     var onAction: () -> Void
     var onRetry: () -> Void
     var retrying: Bool
     @State private var ballotGovernments: BallotGovernmentsSheet?
 
+    /// The scroll target of a section's card.
+    static func anchor(_ sectionId: String) -> String {
+        "place.preview.section.\(sectionId)"
+    }
+
+    private var order: [String] {
+        let sent = preview.layout?.order ?? []
+        return sent.isEmpty ? PlacePreviewLayout.builtInOrder : sent
+    }
+
     var body: some View {
         // Ballot P0 (ballot_p0): the "Your ballot" card under "This season",
-        // in place of the election row, as on the Place dashboard.
+        // in place of the election row. The server places it: where the order
+        // names "ballot", there; otherwise at the top of Civic.
         let ballot = PlaceDashboardView.ballot(in: preview.sections ?? [])
+        let order = order
+        let firstGroup = order.firstIndex { $0.hasPrefix("group:") }
         VStack(alignment: .leading, spacing: 0) {
-            // The aha card leads (D1): the most surprising ready fact, in the
-            // server's words. A real dollar band follows when the backend had
-            // one for this address, and nothing at all when it did not. Never
-            // synthesized client-side.
-            if let aha = preview.aha, aha.isRenderable {
-                ahaCard(aha)
-            }
-            if let lead = preview.moneyLead, lead.isRenderable {
-                moneyLeadCard(lead)
-            }
-            if let ballot {
-                BallotSeasonBlock(
-                    card: ballot.card,
-                    asOf: ballot.asOf,
-                    onOpenGovernments: ballot.card.governments.map { governments in
-                        { ballotGovernments = BallotGovernmentsSheet(governments: governments) }
-                    }
-                )
-                .padding(.top, 18)
-            }
-            if let sections = preview.sections, !sections.isEmpty {
-                previewSections(ballot == nil ? sections : sections.filter { $0.id != .civicElection })
-            } else if let free = preview.free {
-                freeSections(free)
-            }
-            if showsLocked, let locked = preview.locked, !locked.isEmpty {
-                lockedSections(locked)
+            ForEach(Array(order.enumerated()), id: \.offset) { index, block in
+                self.block(block, ballot: ballot, drawsFree: index == firstGroup)
             }
         }
         .sheet(item: $ballotGovernments) { sheet in
@@ -184,166 +157,150 @@ struct PlacePreviewContent: View {
         }
     }
 
-    /// "FEMA · OpenFEMA NFIP policies · census tract-level, not this home"
-    ///
-    /// Mirrors the web footer. Either half may be absent, so the parts are
-    /// joined rather than formatted into a fixed template — an empty
-    /// source must not leave a leading separator.
-    private func scopeFooter(_ lead: PlaceMoneyLead) -> String {
-        var parts: [String] = []
-        if !lead.source.isEmpty { parts.append(lead.source) }
-        if !lead.scope.isEmpty { parts.append("\(lead.scope)-level, not this home") }
-        return parts.joined(separator: " · ")
+    /// One block of the order; a block this build does not know, or one with nothing to draw, draws nothing.
+    @ViewBuilder
+    private func block(_ name: String, ballot: (card: BallotSummary, asOf: String?)?, drawsFree: Bool) -> some View {
+        if name.hasPrefix("group:") {
+            groupBlock(String(name.dropFirst("group:".count)), ballot: ballot, drawsFree: drawsFree)
+        } else if name.hasPrefix("section:") {
+            soloSection(String(name.dropFirst("section:".count)))
+        } else if name == "ballot" {
+            if let ballot { ballotBlock(ballot) }
+        } else if name == "locked" {
+            if showsLocked, let locked = preview.locked, !locked.isEmpty { lockedSections(locked) }
+        } else if name == "not_checked" {
+            if let missing = preview.notChecked, !missing.isEmpty { notCheckedLine(missing) }
+        } else {
+            firstScreenBlock(name)
+        }
     }
 
-    /// The lead figure. `detail` and `source` are the server's own words
-    /// and are rendered whole: between them they say what the number is
-    /// measured over and that it is a benchmark, not a quote. Dropping
-    /// either turns an honest band into a claim about this home.
-    private func moneyLeadCard(_ lead: PlaceMoneyLead) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.Color.homeBg)
-                    Icon(.dollarSign, size: 19, strokeWidth: 2, color: Theme.Color.home)
+    /// The stand-out card, "At a glance", "Money here" and the record button.
+    @ViewBuilder
+    private func firstScreenBlock(_ name: String) -> some View {
+        switch name {
+        case "aha":
+            if let aha = preview.aha, aha.isRenderable { ahaCard(aha) }
+        case "glance":
+            if let rows = preview.glance, !rows.isEmpty {
+                PlacePreviewGlanceCard(rows: rows) { row in
+                    if let id = row.sectionId { onScrollTo?(Self.anchor(id)) }
                 }
-                .frame(width: 34, height: 34)
-                Text(lead.headline)
-                    .font(.system(size: 15, weight: .bold))
-                    .lineSpacing(3)
-                    .foregroundStyle(Theme.Color.appText)
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 14)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if !lead.detail.isEmpty {
-                Text(lead.detail)
-                    .font(.system(size: 13))
-                    .lineSpacing(2)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        case "money":
+            if let money = preview.money, money.isRenderable {
+                PlacePreviewMoneyCard(money: money, onOpenRecord: onOpenRecord)
+                    .padding(.top, 14)
+            } else if let lead = preview.moneyLead, lead.isRenderable, lead.kind != .floodPremium {
+                moneyLeadCard(lead).padding(.top, 14)
             }
-            // The scope disclosure, rendered STRUCTURALLY rather than
-            // trusted to prose. Today every `kind` the server emits puts
-            // the scope in `detail` too, so this is belt-and-braces — but
-            // the whole point of the money lead is that a dollar figure
-            // is the most believable thing on the page and the easiest to
-            // read as being about THIS home. The day a lead ships whose
-            // `detail` omits it, the figure would stand alone. Web has
-            // shown this since Wave 4; both native clients decoded
-            // `scope` and rendered neither.
-            if !lead.source.isEmpty || !lead.scope.isEmpty {
-                Text(scopeFooter(lead))
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(Theme.Color.appTextMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("place.preview.moneyLead.scope")
+        case "record":
+            if let onOpenRecord {
+                HomeRecordEntryButton(
+                    title: "See this home's full record",
+                    line: "What the county and federal records show"
+                ) { onOpenRecord() }
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("place.preview.record")
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Spacing.s4)
-        .placeCard()
-        .padding(.top, 14)
-        .accessibilityIdentifier("place.preview.moneyLead")
-    }
-
-    // MARK: - The aha card (Wedge v2 D1)
-
-    private func ahaChipTone(_ tone: PlacePreviewAhaTone) -> PlaceChipModel.Tone {
-        switch tone {
-        case .alert: .error
-        case .watch: .warning
-        case .info: .sky
-        case .calm: .success
+        default:
+            EmptyView()
         }
     }
 
-    private func ahaIcon(_ tone: PlacePreviewAhaTone) -> PantopusIcon {
-        switch tone {
-        case .alert, .watch: .flame
-        case .info: .mapPin
-        case .calm: .sparkles
-        }
-    }
+    // MARK: - Groups and sections
 
-    /// Headline, grade, detail and follow-up are the server's own words,
-    /// rendered whole — the card says what the rule picked, nothing more.
-    private func ahaCard(_ aha: PlacePreviewAha) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.Color.homeBg)
-                    Icon(ahaIcon(aha.tone), size: 19, strokeWidth: 2, color: Theme.Color.home)
-                }
-                .frame(width: 34, height: 34)
-                PlaceChip(model: PlaceChipModel(tone: ahaChipTone(aha.tone), text: aha.grade.isEmpty ? "What stands out" : aha.grade))
-                Spacer(minLength: 0)
-            }
-            Text(aha.headline)
-                .font(.system(size: 17, weight: .bold))
-                .lineSpacing(3)
-                .foregroundStyle(Theme.Color.appText)
-                .fixedSize(horizontal: false, vertical: true)
-            if !aha.detail.isEmpty {
-                Text(aha.detail)
-                    .font(.system(size: 13.5))
-                    .lineSpacing(2)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if !aha.followUp.isEmpty {
-                Button(action: onAction) {
-                    HStack(spacing: 4) {
-                        Text(aha.followUp)
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .multilineTextAlignment(.leading)
-                        Icon(.chevronRight, size: 14, strokeWidth: 2.25, color: Theme.Color.primaryInk)
-                    }
-                    .foregroundStyle(Theme.Color.primaryInk)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("place.preview.aha.followUp")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Spacing.s4)
-        .placeCard()
-        .padding(.top, 14)
-        .accessibilityIdentifier("place.preview.aha")
-    }
-
-    // MARK: - Band A as section cards (Wedge v2 D1)
-
-    /// The launch-set group order for the preview; a section in a group
-    /// the client does not know is simply not shown here.
-    private static let previewGroupOrder: [(group: PlaceGroup, label: String)] = [
-        (.today, "Today"),
-        (.riskReadiness, "Risk & readiness"),
-        (.healthEnvironment, "Health & environment"),
-        (.yourBlock, "Your block"),
-        (.moneySignals, "Money signals"),
-        (.civic, "Civic"),
-        (.yourHome, "Your home")
+    /// The launch-set groups' labels; a group the client does not know is not shown here.
+    private static let groupLabels: [String: String] = [
+        "today": "Today",
+        "risk_readiness": "Risk & readiness",
+        "health_environment": "Health & environment",
+        "your_block": "Your block",
+        "money_signals": "Money signals",
+        "civic": "Civic",
+        "your_home": "Your home"
     ]
 
-    private func previewSections(_ sections: [PlaceSectionEnvelope]) -> some View {
-        ForEach(Array(Self.previewGroupOrder.enumerated()), id: \.offset) { _, entry in
-            let items = sections.filter { $0.group == entry.group }
-            if !items.isEmpty {
-                PlaceGroupLabel(text: entry.label).padding(.top, 18)
+    /// The sections the order names on their own, left out of their groups.
+    private var soloSectionIds: Set<String> {
+        Set(order.filter { $0.hasPrefix("section:") }.map { String($0.dropFirst("section:".count)) })
+    }
+
+    @ViewBuilder
+    private func groupBlock(_ group: String, ballot: (card: BallotSummary, asOf: String?)?, drawsFree: Bool) -> some View {
+        if let sections = preview.sections, !sections.isEmpty {
+            let solo = soloSectionIds
+            let items = sections.filter {
+                $0.group.rawValue == group && !solo.contains($0.id.rawValue) && !(ballot != nil && $0.id == .civicElection)
+            }
+            // A flood premium lead heads Risk & readiness (SPEC 1.5).
+            let lead = group == "risk_readiness" ? floodPremiumLead : nil
+            if group == "civic", let ballot, !order.contains("ballot") {
+                ballotBlock(ballot)
+            }
+            if let label = Self.groupLabels[group], !items.isEmpty || lead != nil {
+                PlaceGroupLabel(text: label).padding(.top, 18)
                 VStack(spacing: 8) {
-                    ForEach(items, id: \.id) { env in
-                        PlaceSectionView(
-                            env: env,
-                            onOpen: detailAction(for: env),
-                            onVerify: onAction,
-                            onClaim: onAction,
-                            onRetry: onRetry,
-                            retrying: retrying
-                        )
-                    }
+                    if let lead { moneyLeadCard(lead) }
+                    ForEach(items, id: \.id) { sectionCard($0) }
                 }
             }
+        } else if drawsFree, let free = preview.free {
+            // An older server sends only the three tiles.
+            freeSections(free)
         }
+    }
+
+    private var floodPremiumLead: PlaceMoneyLead? {
+        guard let lead = preview.moneyLead, lead.kind == .floodPremium, lead.isRenderable else { return nil }
+        return lead
+    }
+
+    /// A section the order places on its own ("Homes here", "Verified homes nearby"), under its group's label.
+    @ViewBuilder
+    private func soloSection(_ id: String) -> some View {
+        if let env = preview.sections?.first(where: { $0.id.rawValue == id }) {
+            PlaceGroupLabel(text: Self.groupLabels[env.group.rawValue] ?? "").padding(.top, 18)
+            sectionCard(env)
+        }
+    }
+
+    private func sectionCard(_ env: PlaceSectionEnvelope) -> some View {
+        PlaceSectionView(
+            env: env,
+            onOpen: detailAction(for: env),
+            onVerify: onAction,
+            onClaim: onAction,
+            onRetry: onRetry,
+            retrying: retrying
+        )
+        .id(Self.anchor(env.id.rawValue))
+    }
+
+    private func ballotBlock(_ ballot: (card: BallotSummary, asOf: String?)) -> some View {
+        BallotSeasonBlock(
+            card: ballot.card,
+            asOf: ballot.asOf,
+            onOpenGovernments: ballot.card.governments.map { governments in
+                { ballotGovernments = BallotGovernmentsSheet(governments: governments) }
+            }
+        )
+        .padding(.top, 18)
+        .id(Self.anchor(PlaceSectionID.civicElection.rawValue))
+    }
+
+    /// "Could not check today: Homes here, Next election."
+    private func notCheckedLine(_ missing: [PlacePreviewNotChecked]) -> some View {
+        Text("Could not check today: \(missing.map(\.label).joined(separator: ", ")).")
+            .font(.system(size: 13))
+            .lineSpacing(2)
+            .foregroundStyle(Theme.Color.appTextMuted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 2)
+            .padding(.top, 18)
+            .accessibilityIdentifier("place.preview.notChecked")
     }
 
     private func detailAction(for env: PlaceSectionEnvelope) -> (() -> Void)? {
