@@ -135,7 +135,8 @@ internal fun BlockTitle(
 ) {
     if (title == null && trailing == null && more == null) return
     // At the largest text the note goes under the title, so neither is squeezed to a sliver.
-    if (profileLargeText() && title != null && trailing != null && more == null) {
+    val stacked = profileLargeText() && more == null
+    if (stacked && title != null && trailing != null) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             SourcesOverline(title, color = color)
             Text(trailing, style = SourcesType.caption)
