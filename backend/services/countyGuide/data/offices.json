@@ -2,6 +2,127 @@
   "v": 1,
   "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says.",
   "counties": {
+    "06065": {
+      "read": "2026-11-23",
+      "property_search_office": "Riverside County Assessor-County Clerk-Recorder, Property Information & Maps",
+      "property_search_url": "https://rivcoview.rivcoacr.org/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Riverside County Assessor-County Clerk-Recorder, Recording Services",
+          "url": "https://www.rivcoacr.org/recordingservices",
+          "line": "Records deeds and other documents; its records index search lists them, and copies are ordered from the office.",
+          "q": "Where are deeds recorded in Riverside County?",
+          "a": "The Riverside County Assessor-County Clerk-Recorder records deeds. Its Recording Services page links to a records index search and to ordering copies of deeds and liens."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Riverside County Treasurer-Tax Collector",
+          "url": "https://www.countytreasurer.org/",
+          "line": "Its site reviews and pays property tax bills and keeps the property tax calendar.",
+          "q": "Where do I pay property tax in Riverside County?",
+          "a": "The Riverside County Treasurer-Tax Collector collects property tax. Its site reviews and pays a bill and keeps the property tax calendar."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording courtesy notice",
+          "office": "Riverside County Assessor-County Clerk-Recorder",
+          "url": "https://www.rivcoacr.org/real-estate-fraud",
+          "line": "Mails homeowners a courtesy notice when a deed, deed of trust or similar document is recorded on their property."
+        }
+      ]
+    },
+    "06077": {
+      "read": "2026-11-23",
+      "property_search_office": "San Joaquin County Assessor, Assessed Value Tool",
+      "property_search_url": "https://www.sjgov.org/department/assessor/property-information/homeowners/assessed-value---homeowner",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "San Joaquin County Assessor-Recorder-County Clerk, Recorder",
+          "url": "https://www.sjgov.org/department/assessor/recorder-county-clerk-information/recorder/recorded-documents-maps",
+          "line": "The Recorder's page for recorded documents and maps.",
+          "q": "Where are deeds recorded in San Joaquin County?",
+          "a": "The Recorder in the San Joaquin County Assessor-Recorder-County Clerk's office records deeds; its Recorded Documents & Maps page says how to find and copy them."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "San Joaquin County Treasurer-Tax Collector",
+          "url": "https://www.sjgov.org/department/ttc/tax/secured-taxes",
+          "line": "Secured property tax is paid in two installments, delinquent after 5:00 p.m. on December 10 and April 10.",
+          "q": "Where do I pay property tax in San Joaquin County?",
+          "a": "The San Joaquin County Treasurer-Tax Collector collects property tax. The first installment is delinquent after 5:00 p.m. on December 10 and the second after 5:00 p.m. on April 10."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Real estate fraud notice",
+          "office": "San Joaquin County Recorder",
+          "url": "https://www.sjgov.org/department/assessor/recorder-county-clerk-information/recorder/REFA",
+          "line": "Mails a courtesy notice to the owner on file when a deed, deed of trust or similar document is recorded. No sign-up is needed."
+        }
+      ]
+    },
+    "12057": {
+      "read": "2026-11-23",
+      "property_search_office": "Hillsborough County Property Appraiser, Property Search",
+      "property_search_url": "https://gis.hcpafl.org/PropertySearch/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Hillsborough County Clerk of Court & Comptroller, Recording",
+          "url": "https://hillsclerk.com/propertyrecords-and-recording",
+          "line": "The Official Records index from 1965 on can be searched online; certified copies are ordered from the Clerk.",
+          "q": "Where are deeds recorded in Hillsborough County?",
+          "a": "The Hillsborough County Clerk of Court & Comptroller records deeds. Its Official Records index from 1965 on can be searched online; certified copies are ordered from the Clerk."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Hillsborough County Tax Collector",
+          "url": "https://www.hillstaxfl.gov/property-tax/",
+          "line": "Its property tax page links to the payment center and the real estate tax search.",
+          "q": "Where do I pay property tax in Hillsborough County?",
+          "a": "The Hillsborough County Tax Collector collects property tax. Its property tax page links to its payment center and to the real estate tax search."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Hillsborough County Clerk of Court & Comptroller",
+          "url": "https://hillsclerk.com/property-fraud-alert",
+          "line": "Alerts a subscriber when a document is recorded in the county under a person's or business's name they chose. The Clerk charges no fee for it."
+        }
+      ]
+    },
+    "27123": {
+      "read": "2026-11-23",
+      "property_search_office": "Ramsey County Property Tax, Records & Election Services, property lookup",
+      "property_search_url": "https://www.ramseycountymn.gov/residents/property-home/property-tax-and-value-lookup",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Ramsey County Recorder's Office",
+          "url": "https://www.ramseycountymn.gov/residents/property-home/records/recorders-office/access-recorded-documents",
+          "line": "Recorded documents are online through RecordEASE and at its Property Records Resource Center.",
+          "q": "Where are deeds recorded in Ramsey County?",
+          "a": "The Ramsey County Recorder's Office keeps the county's official real estate documents. They can be reached online through RecordEASE or at its Property Records Resource Center."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Ramsey County Property Tax, Records & Election Services",
+          "url": "https://www.ramseycountymn.gov/residents/property-home/property-tax-and-value-lookup",
+          "line": "Its property lookup shows a parcel's values and tax, and pays the tax.",
+          "q": "Where do I pay property tax in Ramsey County?",
+          "a": "Ramsey County's Property Tax, Records & Election Services: its property lookup finds a parcel and pays its property tax."
+        }
+      ]
+    },
     "41051": {
       "read": "2026-11-23",
       "rows": [
@@ -23,7 +144,9 @@
           "q": "Where do I pay property tax in Multnomah County?",
           "a": "Multnomah County's Assessment, Recording & Taxation office takes property tax payments online, by phone, by mail or in person."
         }
-      ]
+      ],
+      "property_search_office": "Multnomah County Assessment, Recording & Taxation, property records websites",
+      "property_search_url": "https://www.multco.us/services/property-records-websites"
     },
     "48113": {
       "read": "2026-11-23",
@@ -53,6 +176,33 @@
           "url": "https://www.dallascounty.org/government/county-clerk/recording/property-fraud.php",
           "line": "An alert about documents recorded in the county, offered with a partner company. The county charges no fee for it."
         }
+      ],
+      "property_search_office": "Dallas Central Appraisal District, Search Appraisals",
+      "property_search_url": "https://www.dallascad.org/"
+    },
+    "48157": {
+      "read": "2026-11-23",
+      "property_search_office": "Fort Bend Central Appraisal District, Property Search",
+      "property_search_url": "https://esearch.fbcad.org/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Fort Bend County Clerk, Recording",
+          "url": "https://fortbendcountytx.gov/government/departments/county-clerk/recording/real-and-personal-property",
+          "line": "Deeds, maps, plats and other property records, open to the public; most are online in its Official Public Records search.",
+          "q": "Where are deeds recorded in Fort Bend County?",
+          "a": "The Fort Bend County Clerk keeps the county's deeds, maps, plats and other property records. They are open to the public, and most can be searched online in its Official Public Records."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Fort Bend County Tax Assessor-Collector",
+          "url": "https://www.fortbendcountytx.gov/government/departments/tax-assessor-collector/property-taxes",
+          "line": "Collects property tax online, by mail or in person.",
+          "q": "Where do I pay property tax in Fort Bend County?",
+          "a": "The Fort Bend County Tax Assessor-Collector collects property tax online by card or e-check, by mail or in person at its offices."
+        }
       ]
     },
     "48201": {
@@ -76,7 +226,9 @@
           "q": "Where do I pay property tax in Harris County?",
           "a": "The Harris County Tax Office, the county's tax assessor-collector, collects property tax online, by phone, by mail or at its branches. Mailed payments must be postmarked by the last business day in January."
         }
-      ]
+      ],
+      "property_search_office": "Harris Central Appraisal District, Property Search",
+      "property_search_url": "https://search.hcad.org/"
     },
     "53007": {
       "read": "2026-11-23",
