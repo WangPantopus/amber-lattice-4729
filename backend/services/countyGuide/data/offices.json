@@ -66,6 +66,63 @@
         }
       ]
     },
+    "06095": {
+      "read": "2026-11-23",
+      "property_search_office": "Solano County Assessor/Recorder, Property and Assessment Search",
+      "property_search_url": "https://ca-solano.publicaccessnow.com/Assessor.aspx",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Solano County Assessor/Recorder, Recorder Division",
+          "url": "https://www.solanocounty.gov/government/assessorrecorder/recorder-division",
+          "line": "Its Official Records Search indexes recorded documents by name, date or document number.",
+          "q": "Where are deeds recorded in Solano County?",
+          "a": "The Recorder Division of the Solano County Assessor/Recorder records deeds. Its Official Records Search indexes them by name, date or document number."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Solano County Treasurer-Tax Collector-County Clerk, Tax Collector",
+          "url": "https://www.solanocounty.gov/government/treasurer-tax-collector-county-clerk/tax-collector",
+          "line": "Search and pay property taxes through its online payment system.",
+          "q": "Where do I pay property tax in Solano County?",
+          "a": "The Solano County Tax Collector collects property tax; its page links to its online system to search and pay."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording notification",
+          "office": "Solano County Assessor/Recorder",
+          "url": "https://www.solanocounty.gov/government/assessorrecorder/recorder-division/recording-notification-program",
+          "line": "Mails the owner on record a notice when a deed, quitclaim deed or deed of trust is recorded against the property. No sign-up is needed."
+        }
+      ]
+    },
+    "06097": {
+      "read": "2026-11-23",
+      "property_search_office": "Sonoma County Assessor, Search Assessor's Parcel Information",
+      "property_search_url": "https://sonomacounty.gov/administrative-support-and-fiscal-services/clerk-recorder-assessor/assessor/real-property/search-parcel-info",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Sonoma County Clerk-Recorder",
+          "url": "https://sonomacounty.gov/administrative-support-and-fiscal-services/clerk-recorder-assessor/clerk-recorder/search-our-records",
+          "line": "Its online index covers records from 1964 on; documents are reviewed and bought at its Santa Rosa office.",
+          "q": "Where are deeds recorded in Sonoma County?",
+          "a": "The Sonoma County Clerk-Recorder keeps the county's land and finance documents. Its online index covers 1964 on; the documents themselves are reviewed and bought at its Santa Rosa office."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Sonoma County Auditor-Controller-Treasurer-Tax Collector",
+          "url": "https://sonomacounty.gov/administrative-support-and-fiscal-services/auditor-controller-treasurer-tax-collector/divisions/revenue-accounting/how-to-pay-your-property-taxes",
+          "line": "Pay online, by mail, by phone or in person in Santa Rosa.",
+          "q": "Where do I pay property tax in Sonoma County?",
+          "a": "The Sonoma County Auditor-Controller-Treasurer-Tax Collector collects property tax online, by mail, by phone or in person at its Santa Rosa office."
+        }
+      ]
+    },
     "12057": {
       "read": "2026-11-23",
       "property_search_office": "Hillsborough County Property Appraiser, Property Search",
@@ -98,6 +155,38 @@
         }
       ]
     },
+    "12097": {
+      "read": "2026-11-23",
+      "property_search_office": "Osceola County Property Appraiser, property search",
+      "property_search_url": "https://search.property-appraiser.org/Search/MainSearch",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Osceola County Clerk of the Circuit Court & County Comptroller, Recording",
+          "url": "https://osceolaclerk.com/recording-info/recording-faqs/",
+          "line": "Deeds are recorded in the county's Official Records, searchable online at any hour; copies are $1.00 a page.",
+          "q": "Where are deeds recorded in Osceola County?",
+          "a": "The Osceola County Clerk's Recording Department records deeds in the county's Official Records, which can be searched online at any hour. Copies are $1.00 a page."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Osceola County Tax Collector",
+          "url": "https://osceolataxcollector.org/real-estate-taxes/",
+          "line": "Its real estate taxes page, tax record search and online payments.",
+          "q": "Where do I pay property tax in Osceola County?",
+          "a": "The Osceola County Tax Collector collects real estate taxes; its site has a tax record search and online payments."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert Service",
+          "office": "Osceola County Clerk of the Circuit Court & County Comptroller",
+          "url": "https://officialrecords.osceolaclerk.org/PropertyAlert/Home/Questions",
+          "line": "Emails a subscriber when a recorded document names a parcel ID or party name they registered. The Clerk charges no fee for it."
+        }
+      ]
+    },
     "27123": {
       "read": "2026-11-23",
       "property_search_office": "Ramsey County Property Tax, Records & Election Services, property lookup",
@@ -120,6 +209,45 @@
           "line": "Its property lookup shows a parcel's values and tax, and pays the tax.",
           "q": "Where do I pay property tax in Ramsey County?",
           "a": "Ramsey County's Property Tax, Records & Election Services: its property lookup finds a parcel and pays its property tax."
+        }
+      ]
+    },
+    "39153": {
+      "read": "2026-11-23",
+      "property_search_office": "Summit County Fiscal Office, Property Sales Search",
+      "property_search_url": "https://propertyaccess.summitoh.net/search/commonsearch.aspx?mode=realprop",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Summit County Fiscal Office, Recording & Property Transfer",
+          "url": "https://fiscaloffice.summitoh.net/index.php/document-search",
+          "line": "Its document search finds recorded documents; a mailed copy costs $4, $1 more certified, as Ohio law sets.",
+          "q": "Where are deeds recorded in Summit County?",
+          "a": "In Summit County, recorded documents are kept by the Fiscal Office's Recording & Property Transfer section. Its document search finds them; a copy costs $4, as Ohio law sets."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Summit County Fiscal Office, online tax payments",
+          "url": "https://fiscaloffice.summitoh.net/index.php/online-tax-payments",
+          "line": "Pay a parcel's current installment or all current taxes online from its property search.",
+          "q": "Where do I pay property tax in Summit County?",
+          "a": "The Summit County Fiscal Office's online tax payments page explains paying a parcel's current installment or all current taxes from its property search."
+        },
+        {
+          "id": "parcel_map",
+          "title": "Parcel map",
+          "office": "Summit County Fiscal Office, Parcel Viewer",
+          "url": "https://summitmaps.summitoh.net/ParcelViewer/",
+          "line": "The county's map of parcels."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Record Alert",
+          "office": "Summit County Fiscal Office",
+          "url": "https://fiscaloffice.summitoh.net/index.php/property-record-alert",
+          "line": "Emails a subscriber about documents recorded under the individual or business names they enter."
         }
       ]
     },
@@ -147,6 +275,29 @@
       ],
       "property_search_office": "Multnomah County Assessment, Recording & Taxation, property records websites",
       "property_search_url": "https://www.multco.us/services/property-records-websites"
+    },
+    "42011": {
+      "read": "2026-11-23",
+      "property_search_office": "Berks County Assessment Office, Property Records Search",
+      "property_search_url": "https://propertyrecords.berkspa.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Berks County Recorder of Deeds",
+          "url": "https://www.berkspa.gov/departments/recorder-of-deeds",
+          "line": "Every document recorded since 1752 is online as an image and index, after registering; copies cost 50 cents a page.",
+          "q": "Where are deeds recorded in Berks County?",
+          "a": "The Berks County Recorder of Deeds records the county's deeds and mortgages. Every document it has recorded since 1752 can be searched online after registering; copies cost 50 cents a page."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert fraud protection",
+          "office": "Berks County Recorder of Deeds",
+          "url": "https://www.berkspa.gov/departments/recorder-of-deeds/fraudsleuth-fraud-protection",
+          "line": "The Recorder's alert service for property owners about documents recorded in the county."
+        }
+      ]
     },
     "48113": {
       "read": "2026-11-23",
