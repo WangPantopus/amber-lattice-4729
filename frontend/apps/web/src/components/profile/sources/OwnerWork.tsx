@@ -63,10 +63,18 @@ function AskRow({ ask, onDone }: { ask: ProfileAsk; onDone: () => void }) {
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
-            <strong className="font-semibold">{from}</strong> named you on {ask.kind === 'credit' ? 'a piece' : 'a role'}
-            {ask.role ? <> as <strong className="font-semibold">{ask.role}</strong></> : null}.
-          </p>
+          {ask.kind === 'role' && ask.business?.name ? (
+            // A role at a business the person owns: they confirm it for the business.
+            <p className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
+              <strong className="font-semibold">{from}</strong> asked <strong className="font-semibold">{ask.business.name}</strong> to confirm a role:
+              {' '}{[ask.role, ask.when].filter(Boolean).join(', ')}.
+            </p>
+          ) : (
+            <p className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
+              <strong className="font-semibold">{from}</strong> named you on {ask.kind === 'credit' ? 'a piece' : 'a role'}
+              {ask.role ? <> as <strong className="font-semibold">{ask.role}</strong></> : null}.
+            </p>
+          )}
           {ask.piece ? (
             href ? (
               <Link href={href} className="mt-0.5 inline-flex min-h-[2rem] items-center text-[0.875rem] font-semibold text-app-link hover:underline [overflow-wrap:anywhere]">{ask.piece.title}{ask.piece.when ? ` · ${ask.piece.when}` : ''}</Link>
@@ -85,14 +93,18 @@ function AskRow({ ask, onDone }: { ask: ProfileAsk; onDone: () => void }) {
           <label className={check}>
             <input type="checkbox" checked={nameOnLinks} onChange={(e) => setNameOnLinks(e.target.checked)} className="mt-0.5 w-5 h-5 accent-[color:var(--color-link)]" />
             <span className="text-[0.9375rem] leading-5 text-app">
-              Show my name on pages opened by a link
-              <span className="block text-xs leading-4 text-app-muted">Off: those pages say what you did, not who you are.</span>
+              {ask.kind === 'role' && ask.business?.name ? `Show the name ${ask.business.name} on pages opened by a link` : 'Show my name on pages opened by a link'}
+              <span className="block text-xs leading-4 text-app-muted">
+                {ask.kind === 'role' && ask.business?.name ? 'Off: those pages say “a business on Pantopus”.' : 'Off: those pages say what you did, not who you are.'}
+              </span>
             </span>
           </label>
           <p className="pt-1 text-[0.8125rem] leading-[1.125rem] text-app-secondary">
             {ask.kind === 'credit'
               ? 'Signing says you were on this piece. You can take your name off at any time.'
-              : 'Signing says you were there. You can take your name off at any time.'}
+              : ask.business?.name
+                ? `Signing says ${from.split(/\s+/)[0]} was there, for ${ask.business.name}. You can take its name off at any time.`
+                : 'Signing says you were there. You can take your name off at any time.'}
           </p>
           <div className="flex gap-2 pt-1">
             <button type="button" disabled={busy} onClick={sign} className="min-h-[2.75rem] px-4 rounded-xl bg-primary-600 text-white text-[0.9375rem] font-semibold hover:bg-primary-700 disabled:opacity-60">{busy ? 'Signing…' : 'Sign'}</button>
@@ -115,9 +127,11 @@ function AskRow({ ask, onDone }: { ask: ProfileAsk; onDone: () => void }) {
  * the jobs and plans Pantopus saw that aren't a piece yet ("Make it a piece"), and "Add a piece". Read again whenever
  * the page is. Whether asks can be read at all says whether credits are on (`onTies`).
  */
-export default function OwnerWork({ round, onAdd, onOffer, onCounts, onTies, onAnswered }: {
+export default function OwnerWork({ round, onAdd, onAddRole, onOffer, onCounts, onTies, onAnswered }: {
   round: number;
   onAdd: () => void;
+  /** Add a role or school (only while credits are on). */
+  onAddRole?: () => void;
   onOffer: (offer: ProfilePieceOffer) => void;
   onCounts?: (mine: ProfileMyPieces) => void;
   onTies?: (on: boolean) => void;
@@ -126,6 +140,7 @@ export default function OwnerWork({ round, onAdd, onOffer, onCounts, onTies, onA
 }) {
   const [offered, setOffered] = useState<ProfilePieceOffer[]>([]);
   const [asks, setAsks] = useState<ProfileAsk[]>([]);
+  const [tiesOn, setTiesOn] = useState(false);
   const [asksRound, setAsksRound] = useState(0);
   useEffect(() => {
     let live = true;
@@ -148,9 +163,10 @@ export default function OwnerWork({ round, onAdd, onOffer, onCounts, onTies, onA
       (res) => {
         if (!live) return;
         setAsks(Array.isArray(res?.asks) ? res.asks.filter((a) => a && a.id) : []);
+        setTiesOn(true);
         onTies?.(true);
       },
-      () => { if (live) { setAsks([]); onTies?.(false); } },
+      () => { if (live) { setAsks([]); setTiesOn(false); onTies?.(false); } },
     );
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read again when the page is, or after an answer
@@ -197,6 +213,15 @@ export default function OwnerWork({ round, onAdd, onOffer, onCounts, onTies, onA
           >
             <Plus aria-hidden="true" className="w-5 h-5" />Add a piece
           </button>
+          {tiesOn && onAddRole ? (
+            <button
+              type="button"
+              onClick={onAddRole}
+              className="mt-2 w-full min-h-[3rem] rounded-xl bg-app-surface-sunken inline-flex items-center justify-center gap-2 text-[1rem] font-semibold text-app hover-bg-app focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]"
+            >
+              <Plus aria-hidden="true" className="w-5 h-5" />Add a role or school
+            </button>
+          ) : null}
         </div>
       </section>
     </>
