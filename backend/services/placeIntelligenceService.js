@@ -1875,6 +1875,8 @@ module.exports = {
   composeSavedPlaceToday,
   composeHomeIntelligence,
   readAccess,
+  // The home record page's promise names the viewer's own next step (services/homeRecord).
+  hasPendingOwnership,
   readHome,
   composeTodayForPoint,
   // The per-section time budget, shared with the anonymous preview.
