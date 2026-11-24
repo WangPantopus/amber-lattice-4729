@@ -60,6 +60,33 @@
       "built": 1989,
       "value": 451100
     },
+    "1217935": {
+      "name": "Doral",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Doral, Building Department",
+          "url": "https://www.cityofdoral.com/Departments/Building-Department",
+          "line": "Its page links applying for a permit, inspections, fees and forms; the Florida Building Code Ninth (2026) Edition takes effect December 31, 2026, and permit applications submitted on or after that date must comply with it.",
+          "q": "Where do I find building permits in Doral?",
+          "a": "The City of Doral's Building Department takes permit applications and lists its inspections, fees and forms. All permit applications and plans submitted on or after December 31, 2026 must comply with the Florida Building Code Ninth (2026) Edition."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Doral, Planning and Zoning Department",
+          "url": "https://www.cityofdoral.com/Departments/Planning-and-Zoning-Department",
+          "line": "Gives guidance on zoning regulations, land use and development standards; its services include zoning code interpretation, development review and site plan approval, and variances and zoning applications.",
+          "q": "Where is Doral's zoning?",
+          "a": "The City of Doral's Planning and Zoning Department guides growth and development in the city and gives guidance on zoning regulations, land use and development standards. Its services include zoning regulations and code interpretation, development review and site plan approval, and variances and zoning applications."
+        }
+      ],
+      "built": 2006,
+      "value": 562800
+    },
     "1225175": {
       "name": "Gainesville",
       "county": "12001",
@@ -113,6 +140,33 @@
       ],
       "built": 1975,
       "value": 392000
+    },
+    "1232275": {
+      "name": "Homestead",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Homestead, Building Department",
+          "url": "https://www.homesteadfl.gov/95/Building-Safety",
+          "line": "Enforces State of Florida, Miami-Dade County and City codes for building construction, alteration and maintenance; it reviews plans, issues permits and certificates of occupancy and completion, and conducts inspections.",
+          "q": "Where do I find building permits in Homestead?",
+          "a": "The City of Homestead's Building Department enforces the codes of the State of Florida, Miami-Dade County and the City for the construction, alteration and maintenance of buildings. It reviews plans, issues permits and certificates of occupancy and completion, and conducts inspections; plan review status and inspection results can be checked online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Homestead, Planning and Zoning Division",
+          "url": "https://www.homesteadfl.gov/97/Planning-Zoning",
+          "line": "Maintains the Comprehensive Plan and Zoning Code and reviews plans for new development and redevelopment; these documents regulate variances, development approvals, certificates of use, site plans, special exceptions and zoning standards.",
+          "q": "Where is Homestead's zoning?",
+          "a": "The City of Homestead's Planning and Zoning Division maintains the Comprehensive Plan and Zoning Code and reviews plans for new development and redevelopment for compliance. Those documents regulate variances, development approval procedures, certificates of use, land use criteria, site plan requirements, special exceptions and zoning standards."
+        }
+      ],
+      "built": 2001,
+      "value": 380000
     },
     "1236950": {
       "name": "Kissimmee",
@@ -384,6 +438,33 @@
       ],
       "built": 1953,
       "value": 481200
+    },
+    "1757225": {
+      "name": "Palatine",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Palatine, Building Permits and Inspections",
+          "url": "https://www.palatine.il.us/191/Building-Permit-Inspections",
+          "line": "The Village's Citizen Self-Service portal searches property information, takes permit and license applications and inspection requests, and tracks an application's status with real-time updates.",
+          "q": "Where do I find building permits in Palatine?",
+          "a": "The Village of Palatine takes building permit applications through its online Citizen Self-Service portal, where residents, contractors and business owners can also search property information, request inspections and track an application's status."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Palatine, Planning and Zoning Division",
+          "url": "https://www.palatine.il.us/149/Planning-Zoning",
+          "line": "Handles all planning and zoning items related to building permits, zoning relief requests and Planning and Zoning Commission meetings; the page links the Village's Online Zoning Map and its Official Zoning Map.",
+          "q": "Where is Palatine's zoning?",
+          "a": "The Village of Palatine's Planning and Zoning Division handles all planning and zoning items related to building permits, zoning relief requests and Planning and Zoning Commission meetings. Its page links the Village's Online Zoning Map and its most recently adopted Official Zoning Map."
+        }
+      ],
+      "built": 1977,
+      "value": 355600
     },
     "1770122": {
       "name": "Skokie",
@@ -2723,6 +2804,33 @@
       ],
       "built": 1976,
       "value": 618900
+    },
+    "0613214": {
+      "name": "Chino Hills",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Chino Hills, Building and Safety Division",
+          "url": "https://www.chinohills.org/122/Building-Safety",
+          "line": "Makes sure construction meets codes adopted by the State and the City; it provides digital plan review, issues grading and building permits and inspects projects with active permits, with applications and inspection requests through the online portal.",
+          "q": "Where do I find building permits in Chino Hills?",
+          "a": "The City of Chino Hills' Building and Safety Division makes sure residential, commercial and other construction meets codes adopted by the State of California and the City. It provides digital plan review, issues grading and building permits and inspects projects with active permits, and its online portal takes building permit applications and inspection requests."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Chino Hills, Zoning",
+          "url": "https://www.chinohills.org/125/Zoning",
+          "line": "Zoning is Title 16 of the Municipal Code, the Development Code, and the Zoning Map; the GIS Interactive Maps show a property's zoning by address or Assessor's Parcel Number.",
+          "q": "Where is Chino Hills' zoning?",
+          "a": "Chino Hills' zoning consists of Title 16 of the City's Municipal Code, the Development Code, and the Zoning Map, which set the uses, locations and development standards for each zoning district. The City's GIS Interactive Maps show a property's zoning by address or Assessor's Parcel Number."
+        }
+      ],
+      "built": 1990,
+      "value": 874900
     }
   }
 }

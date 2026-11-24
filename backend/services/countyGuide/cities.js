@@ -60,6 +60,9 @@ const CITIES = [
   // November 24, 2026, sixteenth: Midwest City (Oklahoma County), OK; Aventura (Miami-Dade County), FL; Redlands (San
   // Bernardino County), CA.
   '4048350', '1202681', '0659962',
+  // November 24, 2026, seventeenth: Homestead and Doral (Miami-Dade County), FL; Chino Hills (San Bernardino County),
+  // CA; Palatine (Cook County), IL.
+  '1232275', '1217935', '0613214', '1757225',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
