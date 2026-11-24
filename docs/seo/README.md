@@ -9,17 +9,17 @@ Change it in the same pull request that changes what search engines can read.
 
 ## What is set up
 
-Read from `dev` and from the live site on November 23, 2026.
+Read from `dev` and from the live site on November 23, 2026; kept up to date by the search build since.
 
 | Piece | Where | What it does |
 |---|---|---|
-| robots.txt | `frontend/apps/web/src/app/robots.ts` | Only production's primary deployment may be read; staging, previews and local builds answer `Disallow: /`. Production keeps signed-in pages and link-token pages out (`PRIVATE_PATHS`) and names the sitemap. |
-| Sitemap | `frontend/apps/web/src/app/sitemap.ts` | The pages in `PUBLIC_PAGES`, plus every state and county page from the backend's list (`GET /api/public/county-guide`, `backend/services/countyGuide`). |
-| Page tags | Each page's `metadata` or `generateMetadata` | Title, description, canonical link at `https://pantopus.com`, share card. A page reached by a private link says `robots: { index: false }`. |
+| robots.txt | `frontend/apps/web/src/app/robots.ts` | Only production's primary deployment may be read; staging, previews and local builds answer `Disallow: /`. Production keeps signed-in pages and link-token pages out (`PRIVATE_PATHS`), allows the share pictures under `/api/og/` (the longer rule wins over `Disallow: /api/`) and names the sitemap. |
+| Sitemap | `frontend/apps/web/src/app/sitemap.ts` | The pages in `PUBLIC_PAGES`, the pillar pages (`src/lib/site/pillarPages.ts`) and guide pages (`src/lib/site/guidePages.ts`), every card and collection page (from the one cached answer `/cards` reads), and every state and county page from the backend's list (`GET /api/public/county-guide`, `backend/services/countyGuide`). A switched-off feature's paths (`isLaunchCutPath`) are left out. |
+| Page tags | Each page's `metadata` or `generateMetadata`; `publicPageMetadata` in `src/lib/site/pageMetadata.ts` for the public pages | Title, description, canonical link at `https://pantopus.com`, share card. `publicPageMetadata({ path, title, description })` writes "<title> \| Pantopus", `index, follow`, Open Graph and a large Twitter card. A page reached by a private link says `robots: { index: false }`. |
 | Shared links | `buildShareMetadata` in `frontend/apps/web/src/lib/publicShare.ts` | The tags for a shared post, profile, plan, booking page, task or listing, with Safari's app banner. |
-| The default | `src/app/layout.tsx`, `src/lib/siteTitle.ts` | The title and description a page inherits when it names none. |
-| Share pictures | `/api/og/home`, `/api/og/place` | The drawn share cards for the homepage and an address preview. |
-| Structured data | `(site)/property-records/**` (`jsonLd`, `breadcrumbLd`, the questions) | Breadcrumb and questions on the county pages. No other page carries any. |
+| The default | `src/app/layout.tsx`, `src/lib/siteTitle.ts` | The title and description a page inherits when it names none. There is no title template: signed-in pages already end their titles "· Pantopus". |
+| Share pictures | `/api/og/home`, `/api/og/place`, `/api/og/page?path=<path>` | The drawn share cards for the homepage, an address preview, and a public page (its heading and line from `src/lib/site/shareCards.ts` or a `share` on a pillar or guide entry; any other path is a 404). A query, not a path segment: `next.config.js` rewrites `/api/:path*` to the backend before any dynamic route under `/api`. |
+| Structured data | `src/lib/site/jsonLd.ts`; `(site)/property-records/**` (`jsonLd`, `breadcrumbLd`, the questions) | The homepage: `Organization`, `WebSite` and the iOS and Android `MobileApplication`s (no `sameAs`, no ratings). Breadcrumb and questions on the county pages. |
 | App links | `public/.well-known/apple-app-site-association`, `assetlinks.json` | A shared link opens the app when it is installed. |
 | Launch cuts | `src/middleware.ts`, `isLaunchCutPath` in `src/lib/featureFlags.ts` | A switched-off feature's public addresses redirect to `/`, so search engines hold nothing for it. |
 
@@ -27,7 +27,7 @@ Read from `dev` and from the live site on November 23, 2026.
 
 | Part | Pages a search engine can read |
 |---|---|
-| Place | `/start` (the address lookup), `/tax-check`, `/property-records` with its state and county pages |
+| Place | `/place`, `/start` (the address lookup), `/tax-check`, `/property-records` with its state and county pages |
 | Mail and Christmas cards | `/cards`, `/cards/<card>`, `/cards/collection/<name>` (with `card_table` on) |
 | Today, Pulse, Moments, Plans, Support Train, chat | A section of the homepage. None has a page of its own. |
 | People's own content | A shared post (`/posts/<id>`) or profile (`/<username>`) can be read when a link leads to it; none is listed in the sitemap. Plans, cards in the mail, Support Trains and every link-token page are closed. |
@@ -99,15 +99,11 @@ Facts from the review, for whoever builds next. Remove a line when it is fixed.
 
 - Production has no sitemap: it is in `dev` and waits for a promotion.
 - `www.pantopus.com` and `pantopus.com` both answer.
-- `/about`, `/about/data-sources`, `/contact`, `/privacy`, `/terms` and `/child-safety` inherit the default title and
-  description and have no canonical link or share card.
-- The sitemap leaves out the card pages (`/cards/<card>`, `/cards/collection/<name>`).
-- No page says what Pantopus is in structured data (the organization, the site, the apps).
 - Today, Pulse, Moments, Mail, Plans, Support Train and chat have no page of their own.
-- The homepage links to neither `/property-records` nor `/tax-check`.
 - `/start` and `/tax-check` hold about 120 words each before the lookup starts.
 - `/about` still tells the spring's story (tasks, a marketplace, earning).
 - The Play listing describes posting tasks and paid services. The App Store text names neither Mail, Christmas
   cards, Moments nor property records.
+- No company social account is known, so the homepage's `Organization` has no `sameAs` (a founder question).
 - Not known from here: whether the site is in Search Console, how many pages are indexed, how fast the pages load
   on a phone (Google's public speed test was over its daily limit).
