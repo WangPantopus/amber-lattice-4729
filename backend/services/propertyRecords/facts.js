@@ -125,7 +125,8 @@ const FACTS = {
   // words, with its date, its price where it is a sale, and its document number. Never a name. { since: 'YYYY', lines:
   // [{ date, sale, word, price?, document?, parcels? }] } (scripts/property-index/lib/sales.cjs recordedHistory). Only ever
   // held under new_columns, so a live county's pages show it once the founder names the county (router.js).
-  recorded_history: { section: 'history', format: 'none', scope: 'unit', value: true, owner: true },
+  // Value-type: never in a lookup's open facts; a buyer's public record shows it only where the county is on buyer_report.
+  recorded_history: { section: 'history', format: 'none', scope: 'unit', value: true },
 };
 
 const SECTIONS = [
