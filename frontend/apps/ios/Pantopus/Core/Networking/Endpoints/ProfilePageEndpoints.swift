@@ -18,7 +18,9 @@ public enum ProfilePageEndpoints {
             method: .get,
             path: base(identifier),
             query: previewAs.map { ["as": $0] } ?? [:],
-            cachePolicy: .reloadIgnoringLocalCacheData
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            // Never wait on a slow page (SPEC 4.13): past this, the profile draws today's screen instead.
+            timeout: 6
         )
     }
 
