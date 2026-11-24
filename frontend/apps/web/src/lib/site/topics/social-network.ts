@@ -107,6 +107,7 @@ export const socialNetwork: TopicPage = {
     { q: 'Is Pantopus free?', a: 'Yes, Pantopus is free on iPhone and Android, and on the web. Christmas cards beyond your first three take stamps, sold in books.' },
     { q: 'Do Moments disappear?', a: 'Yes. A moment lasts 1, 6, 24 or 48 hours, whichever you choose when you post it.' },
   ],
+  pillars: ['pulse', 'moments', 'plans', 'chat', 'mail', 'support-train'],
   related: [
     { href: '/pulse', label: 'Pulse' },
     { href: '/moments', label: 'Moments' },

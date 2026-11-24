@@ -34,6 +34,8 @@ export type TopicPage = {
   lookupText?: { title: string; line: string };
   sections: TopicSection[];
   questions: GuideQuestion[];
+  /** The pillars closest to the topic, listed first under "More of Pantopus" (the rest follow). */
+  pillars: ('place' | 'today' | 'mail' | 'pulse' | 'support-train' | 'plans' | 'moments' | 'chat')[];
   /** Guides and pages to read next. */
   related: { href: string; label: string }[];
   /** The closing heading and line above the lookup and the app buttons. */

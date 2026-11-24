@@ -4,6 +4,10 @@ import type { SitePage } from './sitePage';
 // and the homepage footer links each one, so add a page here only once it opens signed out. Owned by the guides'
 // build (SEOGUIDE).
 export const GUIDE_PAGES: SitePage[] = [
+  { path: '/social-network', label: 'Social network', group: 'Topics' },
+  { path: '/home-buying', label: 'Buying a home', group: 'Topics' },
+  { path: '/home-management', label: 'Home management', group: 'Topics' },
+  { path: '/home-safety', label: 'Home safety', group: 'Topics' },
   { path: '/guides', label: 'All guides', group: 'Guides' },
   { path: '/guides/how-to-organize-meals-for-a-family', label: 'Organize meals for a family', group: 'Guides' },
   { path: '/guides/what-to-check-before-buying-a-house', label: 'Before buying a house', group: 'Guides' },

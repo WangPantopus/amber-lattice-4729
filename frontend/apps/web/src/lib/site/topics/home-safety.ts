@@ -72,6 +72,7 @@ export const homeSafety: TopicPage = {
     { q: 'Does a home safety check replace an inspection?', a: 'No. It is the public record about the place. An inspector and a radon test tell you about the house itself.' },
     { q: 'Is the home safety check free?', a: 'Yes. Looking up an address is free and needs no account.' },
   ],
+  pillars: ['place', 'today'],
   related: [
     { href: '/guides/how-to-find-your-flood-zone', label: 'How to find your flood zone' },
     { href: '/guides/what-a-radon-zone-means', label: 'What a radon zone means' },
