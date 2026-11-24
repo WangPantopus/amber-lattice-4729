@@ -145,7 +145,11 @@ public struct ContentDetailTopBar: View {
     }
 
     public var body: some View {
-        if scalesType { scalableBar } else { standardBar }
+        Group {
+            if scalesType { scalableBar } else { standardBar }
+        }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
     }
 
     private var standardBar: some View {

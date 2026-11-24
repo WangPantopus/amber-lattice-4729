@@ -85,6 +85,8 @@ public struct MarketplaceView: View {
         .padding(.horizontal, Spacing.s4)
         .padding(.top, Spacing.s3)
         .padding(.bottom, Spacing.s1)
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     // MARK: - Search

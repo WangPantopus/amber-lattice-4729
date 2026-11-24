@@ -14,7 +14,7 @@
 //  the card will really carry (`POST /api/mailbox/cards/preview`).
 //
 
-// swiftlint:disable file_length
+// swiftlint:disable file_length type_body_length
 
 import SwiftUI
 
@@ -25,6 +25,9 @@ struct HolidayCardLookStep: View {
     let design: HolidayCardDesign
     let recipient: HolidayCardRecipient
     let preview: HolidayCardPreview
+    /// On an iPad, what ends the page (until when it can be taken back, the postage, a list's lines), at the foot of its
+    /// second column when it has two; nil where the page's own stack puts it under the step (phones).
+    var end: AnyView?
     /// The envelope as their Mailbox draws it, and torn open on the morning
     /// they open it (a sealed card's seal lifted).
     private let envelope: MailPieceModel
@@ -46,13 +49,15 @@ struct HolidayCardLookStep: View {
         cards: HolidayCardsResponse,
         design: HolidayCardDesign,
         recipient: HolidayCardRecipient,
-        preview: HolidayCardPreview
+        preview: HolidayCardPreview,
+        end: AnyView? = nil
     ) {
         self.viewModel = viewModel
         self.cards = cards
         self.design = design
         self.recipient = recipient
         self.preview = preview
+        self.end = end
         // Their name, or the address typed: never their own address.
         let shut = MailPieceModel(
             mail: preview.piece,
@@ -71,12 +76,42 @@ struct HolidayCardLookStep: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.s0) {
-            heading
-            if recipient.isEmail {
-                emailSections
+        Group {
+            if WideLayout.isPad {
+                // On an iPad window wide enough, two columns: their Mailbox and the card coming out of it on the left,
+                // the back and the end of the page on the right (an email: the email and its page, then their Mailbox
+                // once they join). One column, in this order, in a narrower window and at the accessibility sizes.
+                WideColumns {
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        heading
+                        if recipient.isEmail {
+                            emailLeading
+                        } else {
+                            personLeading
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        if recipient.isEmail {
+                            emailTrailing
+                        } else {
+                            personTrailing
+                        }
+                        end
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .placeColumn(.trailing, order: 1, trimsTop: recipient.isEmail ? 26 : Spacing.s6)
+                }
             } else {
-                personSections
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    heading
+                    if recipient.isEmail {
+                        emailSections
+                    } else {
+                        personSections
+                    }
+                }
             }
         }
         .modifier(CardTablePreviewCover(content: $tableContent, owner: viewModel, closeLabel: "Back to Look it over"))
@@ -153,44 +188,56 @@ struct HolidayCardLookStep: View {
 
     private var personSections: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
-            let day = HolidayCardWords.longDay(preview.arrivesOn)
-            sectionLabel("In \(HolidayCardWords.possessive(first)) Mailbox" + (day.isEmpty ? "" : " · \(day)"))
-                .padding(.top, 18)
-            mailboxFrame(label: "Today", showsLine: true) { EmptyView() }
-                .padding(.top, Spacing.s2)
-            if sealed {
-                sectionLabel("If \(first) taps it before Christmas")
-                    .padding(.top, 28)
-                HolidayCardSealedNotice(
-                    from: from,
-                    opensOn: preview.opensOn ?? card?.sealedUntil,
-                    inDays: preview.sealedDays.map { HolidayCardWords.inDays(count: $0) }
-                )
-                .padding(.top, 10)
-            }
-            sectionLabel(sealed ? "On Christmas morning" : "When \(first) opens it")
-                .padding(.top, 28)
-            Text(
-                verbatim: sealed
-                    ? "The seal lifts at 7 a.m. where \(first) lives. The card slides out of the envelope picture side up."
-                    : "A Christmas card from \(HolidayCardWords.withoutPeriod(from)). It slides out of the envelope picture side up."
-            )
-            .font(.system(size: 15))
-            .foregroundStyle(HolidayCardDesk.soft(scheme))
-            .lineSpacing(3)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 6)
-            .padding(.horizontal, Spacing.s1)
-            risingCard
-            cardButtons
-            sectionLabel("On the back")
-                .padding(.top, Spacing.s6)
-            backOnly
-                .rotationEffect(.degrees(1))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 14)
-            ownMedia
+            personLeading
+            personTrailing
         }
+    }
+
+    /// Their Mailbox on the day, the sealed notice, and the card coming out of its envelope.
+    @ViewBuilder
+    private var personLeading: some View {
+        let day = HolidayCardWords.longDay(preview.arrivesOn)
+        sectionLabel("In \(HolidayCardWords.possessive(first)) Mailbox" + (day.isEmpty ? "" : " · \(day)"))
+            .padding(.top, 18)
+        mailboxFrame(label: "Today", showsLine: true) { EmptyView() }
+            .padding(.top, Spacing.s2)
+        if sealed {
+            sectionLabel("If \(first) taps it before Christmas")
+                .padding(.top, 28)
+            HolidayCardSealedNotice(
+                from: from,
+                opensOn: preview.opensOn ?? card?.sealedUntil,
+                inDays: preview.sealedDays.map { HolidayCardWords.inDays(count: $0) }
+            )
+            .padding(.top, 10)
+        }
+        sectionLabel(sealed ? "On Christmas morning" : "When \(first) opens it")
+            .padding(.top, 28)
+        Text(
+            verbatim: sealed
+                ? "The seal lifts at 7 a.m. where \(first) lives. The card slides out of the envelope picture side up."
+                : "A Christmas card from \(HolidayCardWords.withoutPeriod(from)). It slides out of the envelope picture side up."
+        )
+        .font(.system(size: 15))
+        .foregroundStyle(HolidayCardDesk.soft(scheme))
+        .lineSpacing(3)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 6)
+        .padding(.horizontal, Spacing.s1)
+        risingCard
+        cardButtons
+    }
+
+    /// The back with its note, and the sender's own photo and greeting.
+    @ViewBuilder
+    private var personTrailing: some View {
+        sectionLabel("On the back")
+            .padding(.top, Spacing.s6)
+        backOnly
+            .rotationEffect(.degrees(1))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 14)
+        ownMedia
     }
 
     /// The card as it first comes out of its envelope, picture side up; it
@@ -251,44 +298,56 @@ struct HolidayCardLookStep: View {
 
     private var emailSections: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
-            if !recipient.isLink {
-                sectionLabel(emailHeading)
-                    .padding(.top, 18)
-            }
-            if let email = preview.email {
-                HolidayCardEmailPicture(email: email, to: recipient.name, senderName: preview.linkPage?.senderName ?? from)
-                    .padding(.top, Spacing.s2)
-            }
-            if let page = preview.linkPage {
-                sectionLabel(recipient.isLink ? "The page your link opens" : "The page its link opens")
-                    .padding(.top, 26)
-                Group {
-                    if LaunchFeatures.cardTable {
-                        CardTableLinkPagePicture(page: page)
-                    } else {
-                        HolidayCardLinkPagePicture(page: page)
-                    }
-                }
+            emailLeading
+            emailTrailing
+        }
+    }
+
+    /// The email they get and the page its link opens.
+    @ViewBuilder
+    private var emailLeading: some View {
+        if !recipient.isLink {
+            sectionLabel(emailHeading)
+                .padding(.top, 18)
+        }
+        if let email = preview.email {
+            HolidayCardEmailPicture(email: email, to: recipient.name, senderName: preview.linkPage?.senderName ?? from)
                 .padding(.top, Spacing.s2)
-            }
-            sectionLabel(recipient.isLink ? "After they join" : "After they join with that address")
+        }
+        if let page = preview.linkPage {
+            sectionLabel(recipient.isLink ? "The page your link opens" : "The page its link opens")
                 .padding(.top, 26)
-            mailboxFrame(label: "In their Mailbox", showsLine: false) {
-                HStack(alignment: .top, spacing: Spacing.s3) {
-                    front
-                        .accessibilityHidden(true)
-                    backOnly
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("On the back: \(note)")
-                }
-                .padding(.top, 6)
-                ownMedia
+            Group {
                 if LaunchFeatures.cardTable {
-                    openOnTable
+                    CardTableLinkPagePicture(page: page)
+                } else {
+                    HolidayCardLinkPagePicture(page: page)
                 }
             }
             .padding(.top, Spacing.s2)
         }
+    }
+
+    /// The card in their Mailbox once they join.
+    @ViewBuilder
+    private var emailTrailing: some View {
+        sectionLabel(recipient.isLink ? "After they join" : "After they join with that address")
+            .padding(.top, 26)
+        mailboxFrame(label: "In their Mailbox", showsLine: false) {
+            HStack(alignment: .top, spacing: Spacing.s3) {
+                front
+                    .accessibilityHidden(true)
+                backOnly
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("On the back: \(note)")
+            }
+            .padding(.top, 6)
+            ownMedia
+            if LaunchFeatures.cardTable {
+                openOnTable
+            }
+        }
+        .padding(.top, Spacing.s2)
     }
 
     // MARK: Parts

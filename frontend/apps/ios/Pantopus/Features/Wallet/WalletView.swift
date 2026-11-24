@@ -25,6 +25,9 @@ public struct WalletView: View {
     /// "the whole available balance", which is what the screen did before.
     @State private var withdrawAmount = ""
     @State private var toast: ToastMessage?
+    /// The screen's width, for the iPad's two columns (`WideColumns`).
+    @State private var screenWidth: CGFloat = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let onBack: () -> Void
     private let onOpenHistory: () -> Void
     private let onOpenTaxDocs: () -> Void
@@ -77,32 +80,49 @@ public struct WalletView: View {
         case .loading:
             loadingShell
         case let .populated(walletContent):
-            ZStack(alignment: .bottom) {
-                scroll(walletContent)
-                bottomBar(walletContent)
-            }
+            loadedFrame(walletContent)
         case let .hold(walletContent):
-            ZStack(alignment: .bottom) {
-                scroll(walletContent)
-                bottomBar(walletContent)
-            }
+            loadedFrame(walletContent)
         case let .error(message):
             errorShell(message)
         }
     }
 
-    private func scroll(_ content: WalletContent) -> some View {
+    /// Whether the sections are in two columns now: an iPad window wide enough (`WideColumns`). There the payout
+    /// action sits in the leading column under the balance and the payout account, instead of floating across the
+    /// bottom of the window.
+    private var columnsSplit: Bool {
+        WideLayout.splits(width: screenWidth, dynamicTypeSize: dynamicTypeSize)
+    }
+
+    private func loadedFrame(_ content: WalletContent) -> some View {
+        let split = columnsSplit
+        return ZStack(alignment: .bottom) {
+            scroll(content, split: split)
+            if !split {
+                bottomBar(content)
+            }
+        }
+        // On an iPad the reading column leaves the screen the window's width where two columns fit.
+        .wideColumnsScreen()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
+    }
+
+    private func scroll(_ content: WalletContent, split: Bool) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: Spacing.s0) {
+            sectionsStack {
                 if let hold = content.holdState {
                     HoldBanner(headline: hold.bannerHeadline, bodyText: hold.bannerBody)
                         .padding(.bottom, Spacing.s3)
+                        .walletColumn(.leading, order: 0)
                 }
                 heroSection(content)
+                    .walletColumn(.leading, order: 1)
                 // Invoices businesses sent you: the way back to one once its notification is gone.
                 section(overline: "Invoices") {
                     InvoicesRow(onTap: onOpenInvoices)
                 }
+                .walletColumn(.trailing, order: 2, trimsTop: Spacing.s4)
                 if let breakdown = content.pendingBreakdown {
                     // RN splits the escrow total into "In review" /
                     // "Releasing soon" (`WalletTab.tsx:161-173`); the hero's
@@ -110,6 +130,7 @@ public struct WalletView: View {
                     section(overline: "Pending release") {
                         PendingReleaseCard(breakdown: breakdown)
                     }
+                    .walletColumn(.trailing, order: 3)
                 }
                 if content.hasLifetimeTotals {
                     // `GET /api/wallet` returns lifetime_received /
@@ -121,50 +142,78 @@ public struct WalletView: View {
                             withdrawn: content.lifetimeWithdrawn
                         )
                     }
+                    .walletColumn(.trailing, order: 4)
                 }
                 section(overline: "Recent activity", action: "See all", onAction: onSeeAllActivity) {
                     ActivityList(items: content.activity)
                 }
-                if let payoutMethod = content.payoutMethod {
-                    section(overline: "Payout method") {
-                        PayoutMethodCard(
-                            method: payoutMethod,
-                            onManage: { Task { await viewModel.openDashboard() } },
-                            onReverify: { Task { await viewModel.setupPayouts() } }
-                        )
-                    }
-                } else if let payoutAccount = content.payoutAccount {
-                    // Live path: Stripe gives us no bank detail for an Express
-                    // account, so the connected *account* is what we render —
-                    // and it carries the only reachable "Open Stripe Dashboard".
-                    section(overline: "Payout account") {
-                        PayoutAccountCard(account: payoutAccount) {
-                            Task {
-                                if payoutAccount.warn {
-                                    await viewModel.setupPayouts()
-                                } else {
-                                    await viewModel.openDashboard()
-                                }
-                            }
-                        }
-                    }
+                .walletColumn(.trailing, order: 5)
+                payoutSection(content)
+                    .walletColumn(.leading, order: 6)
+                if split {
+                    // Two columns on an iPad: the payout action stays with the balance and the account it pays to.
+                    payoutAction(content)
+                        .padding(.top, Spacing.s5)
+                        .walletColumn(.leading, order: 7)
                 }
                 if let taxDocs = content.taxDocs {
                     section(overline: "Taxes") {
                         TaxDocsRow(docs: taxDocs, onTap: onOpenTaxDocs)
                     }
+                    .walletColumn(.trailing, order: 8)
                 }
-                Spacer().frame(height: bottomBarReservedHeight(for: content))
+                if !split {
+                    Spacer().frame(height: bottomBarReservedHeight(for: content))
+                }
             }
-            .padding(.horizontal, Spacing.s4)
+            .walletMargins()
             .padding(.top, Spacing.s3)
-            .padding(.bottom, Spacing.s2)
+            .padding(.bottom, split ? Spacing.s8 : Spacing.s2)
         }
         // RN keeps a `RefreshControl` on the wallet route (`app/wallet.tsx:50`)
         // — without it the balance can only be re-read by leaving and
         // re-entering the screen.
         .refreshable { await viewModel.refresh() }
         .background(Theme.Color.appBg)
+    }
+
+    /// The sections in one lazy column on a phone, as before; on an iPad in `WideColumns`, two columns where the
+    /// window holds them.
+    @ViewBuilder
+    private func sectionsStack(@ViewBuilder _ sections: @escaping () -> some View) -> some View {
+        if WideLayout.isPad {
+            WideColumns(content: sections)
+        } else {
+            LazyVStack(alignment: .leading, spacing: Spacing.s0, content: sections)
+        }
+    }
+
+    @ViewBuilder
+    private func payoutSection(_ content: WalletContent) -> some View {
+        if let payoutMethod = content.payoutMethod {
+            section(overline: "Payout method") {
+                PayoutMethodCard(
+                    method: payoutMethod,
+                    onManage: { Task { await viewModel.openDashboard() } },
+                    onReverify: { Task { await viewModel.setupPayouts() } }
+                )
+            }
+        } else if let payoutAccount = content.payoutAccount {
+            // Live path: Stripe gives us no bank detail for an Express
+            // account, so the connected *account* is what we render —
+            // and it carries the only reachable "Open Stripe Dashboard".
+            section(overline: "Payout account") {
+                PayoutAccountCard(account: payoutAccount) {
+                    Task {
+                        if payoutAccount.warn {
+                            await viewModel.setupPayouts()
+                        } else {
+                            await viewModel.openDashboard()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func heroSection(_ content: WalletContent) -> some View {
@@ -236,64 +285,70 @@ public struct WalletView: View {
                 endPoint: .bottom
             )
             .frame(height: 28)
-            VStack(spacing: 6) {
-                if content.isOnHold {
-                    WithdrawLockedCTA(amount: content.available)
-                    if let footnote = content.holdState?.withdrawFootnote {
-                        Text(footnote)
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityIdentifier("walletWithdrawFootnote")
+            payoutAction(content)
+                // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
+                .besideFold()
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s5)
+                .padding(.top, Spacing.s2)
+                .background(Theme.Color.appBg)
+        }
+    }
+
+    /// Withdraw, its locked states, or Set up payouts, with the line under it: the bottom bar's content, and on a wide
+    /// iPad the end of the leading column.
+    private func payoutAction(_ content: WalletContent) -> some View {
+        VStack(spacing: 6) {
+            if content.isOnHold {
+                WithdrawLockedCTA(amount: content.available)
+                if let footnote = content.holdState?.withdrawFootnote {
+                    Text(footnote)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("walletWithdrawFootnote")
+                }
+            } else if !content.payoutsEnabled {
+                // Block 3C — withdraw is gated behind Stripe Connect payouts.
+                SetupPayoutsCTA { Task { await viewModel.setupPayouts() } }
+                Text("Set up payouts to withdraw your earnings.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("wallet.connectStatus")
+            } else if content.frozen {
+                // `Wallet.frozen` — the server answers this withdraw with
+                // 403 "Wallet is frozen", so the CTA must not look live.
+                WithdrawLockedCTA(amount: content.available)
+                Text("Your wallet is frozen. Contact support to release your funds.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("wallet.frozenNote")
+            } else if !content.hasBalance && content.withdrawalRecovery == nil {
+                WithdrawLockedCTA(amount: content.available)
+                Text("No funds to withdraw yet.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("wallet.noFundsNote")
+            } else {
+                WithdrawCTA(
+                    amount: content.withdrawalRecovery.map { WalletViewModel.centsToPlain($0.amountCents) } ?? content.available,
+                    label: content.withdrawalRecovery == nil ? "Withdraw"
+                        : content.withdrawalRecovery?.canRetry == true ? "Retry withdrawal" : "Review withdrawal"
+                ) {
+                    if let recovery = content.withdrawalRecovery {
+                        withdrawAmount = WalletViewModel.centsToPlain(recovery.amountCents)
                     }
-                } else if !content.payoutsEnabled {
-                    // Block 3C — withdraw is gated behind Stripe Connect payouts.
-                    SetupPayoutsCTA { Task { await viewModel.setupPayouts() } }
-                    Text("Set up payouts to withdraw your earnings.")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("wallet.connectStatus")
-                } else if content.frozen {
-                    // `Wallet.frozen` — the server answers this withdraw with
-                    // 403 "Wallet is frozen", so the CTA must not look live.
-                    WithdrawLockedCTA(amount: content.available)
-                    Text("Your wallet is frozen. Contact support to release your funds.")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("wallet.frozenNote")
-                } else if !content.hasBalance && content.withdrawalRecovery == nil {
-                    WithdrawLockedCTA(amount: content.available)
-                    Text("No funds to withdraw yet.")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("wallet.noFundsNote")
-                } else {
-                    WithdrawCTA(
-                        amount: content.withdrawalRecovery.map { WalletViewModel.centsToPlain($0.amountCents) } ?? content.available,
-                        label: content.withdrawalRecovery == nil ? "Withdraw"
-                            : content.withdrawalRecovery?.canRetry == true ? "Retry withdrawal" : "Review withdrawal"
-                    ) {
-                        if let recovery = content.withdrawalRecovery {
-                            withdrawAmount = WalletViewModel.centsToPlain(recovery.amountCents)
-                        }
-                        viewModel.clearWithdrawError()
-                        showWithdrawSheet = true
-                    }
+                    viewModel.clearWithdrawError()
+                    showWithdrawSheet = true
                 }
             }
-            // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
-            .besideFold()
-            .padding(.horizontal, Spacing.s4)
-            .padding(.bottom, Spacing.s5)
-            .padding(.top, Spacing.s2)
-            .background(Theme.Color.appBg)
         }
     }
 
@@ -573,6 +628,33 @@ private struct WalletTopBar: View {
         .background(Theme.Color.appSurface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
+        }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, History in its top-right.
+        .topBarSpansWindow()
+    }
+}
+
+// MARK: - iPad columns
+
+private extension View {
+    /// The column this section goes in on an iPad window wide enough for two (`WideColumns`); a phone keeps its one
+    /// column untouched.
+    @MainActor @ViewBuilder
+    func walletColumn(_ column: PlaceColumn, order: Int, trimsTop: CGFloat = 0) -> some View {
+        if WideLayout.isPad {
+            placeColumn(column, order: order, trimsTop: trimsTop)
+        } else {
+            self
+        }
+    }
+
+    /// The screen's side margins: the phone's 16 pt, and the iPad's two-column margins where it has two columns.
+    @MainActor @ViewBuilder
+    func walletMargins() -> some View {
+        if WideLayout.isPad {
+            wideColumnsMargins(Spacing.s4)
+        } else {
+            padding(.horizontal, Spacing.s4)
         }
     }
 }

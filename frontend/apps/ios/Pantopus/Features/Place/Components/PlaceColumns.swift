@@ -94,15 +94,21 @@ struct PlaceColumnsSplit: Equatable {
     let trailingWidth: CGFloat
 
     /// Two columns, each on its own side of the hinge where one runs down the sections and leaves both room;
-    /// else halves. Nil when two don't fit.
-    init?(width: CGFloat, hinge: PlaceHinge?) {
-        guard width >= Self.minimumWidth else { return nil }
-        if let hinge, hinge.minX >= Self.minimumColumn, width - hinge.maxX >= Self.minimumColumn {
+    /// else halves. Nil when two don't fit. `gap` and `minimumColumn` are Place's unless a screen gives its own (the
+    /// iPad's `WideColumns`).
+    init?(
+        width: CGFloat,
+        hinge: PlaceHinge?,
+        gap: CGFloat = PlaceColumnsSplit.gap,
+        minimumColumn: CGFloat = PlaceColumnsSplit.minimumColumn
+    ) {
+        guard width >= 2 * minimumColumn + gap else { return nil }
+        if let hinge, hinge.minX >= minimumColumn, width - hinge.maxX >= minimumColumn {
             leadingWidth = hinge.minX
             trailingX = hinge.maxX
             trailingWidth = width - hinge.maxX
         } else {
-            let column = ((width - Self.gap) / 2).rounded(.down)
+            let column = ((width - gap) / 2).rounded(.down)
             leadingWidth = column
             trailingX = width - column
             trailingWidth = column
@@ -116,10 +122,18 @@ struct PlaceColumnsLayout: Layout {
     /// False keeps one column at any width.
     var splits = true
     var hinge: PlaceHinge?
+    /// Between the columns where no hinge runs down the screen.
+    var gap = PlaceColumnsSplit.gap
+    /// The narrowest a column gets.
+    var minimumColumn = PlaceColumnsSplit.minimumColumn
+
+    private func split(width: CGFloat) -> PlaceColumnsSplit? {
+        PlaceColumnsSplit(width: width, hinge: hinge, gap: gap, minimumColumn: minimumColumn)
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         let width = proposal.width ?? PlaceColumnsSplit.minimumColumn
-        guard splits, let split = PlaceColumnsSplit(width: width, hinge: hinge) else {
+        guard splits, let split = split(width: width) else {
             return CGSize(width: width, height: Self.frames(subviews[...], width: width, trims: false).height)
         }
         let leading = Self.frames(subviews.filter { $0[PlaceColumnKey.self].column == .leading }, width: split.leadingWidth, trims: true)
@@ -128,7 +142,7 @@ struct PlaceColumnsLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        guard splits, let split = PlaceColumnsSplit(width: bounds.width, hinge: hinge) else {
+        guard splits, let split = split(width: bounds.width) else {
             Self.place(subviews[...], at: bounds.origin, width: bounds.width, trims: false)
             return
         }

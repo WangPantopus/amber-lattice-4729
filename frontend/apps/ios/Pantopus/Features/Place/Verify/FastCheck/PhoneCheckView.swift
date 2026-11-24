@@ -330,5 +330,7 @@ struct FastCheckTopBar: View {
         }
         .frame(minHeight: 52)
         .background(Theme.Color.appBg)
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 }

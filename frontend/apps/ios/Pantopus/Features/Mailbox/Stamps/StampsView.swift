@@ -37,6 +37,8 @@ public struct StampsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.Color.appBg)
+        // On an iPad window wide enough the wallet's cards sit in two columns and the stamps in a grid across it.
+        .wideColumnsScreen()
         .accessibilityIdentifier("stamps")
         .overlay(alignment: .bottom) { toastOverlay }
         .task {
@@ -126,20 +128,26 @@ private struct StampsRealWalletBody: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if let balance = store.balance {
-                    let book = book(balance)
-                    StampBookHero(book: book)
-                    // The sheet draws every stamp; past two dozen the hero's count says it better.
-                    if book.total > 0, book.total <= 24 {
-                        StampSheet(book: book)
+            Group {
+                if WideLayout.isPad {
+                    padColumns
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let balance = store.balance {
+                            let book = book(balance)
+                            StampBookHero(book: book)
+                            // The sheet draws every stamp; past two dozen the hero's count says it better.
+                            if book.total > 0, book.total <= 24 {
+                                StampSheet(book: book)
+                            }
+                            if let moves = balance.history, !moves.isEmpty {
+                                UsageHistoryCard(usage: moves.enumerated().map { usage($1, index: $0) }, window: "Latest", onSeeAll: nil)
+                            }
+                        }
+                        if let collection {
+                            StampCollectionSection(state: collection)
+                        }
                     }
-                    if let moves = balance.history, !moves.isEmpty {
-                        UsageHistoryCard(usage: moves.enumerated().map { usage($1, index: $0) }, window: "Latest", onSeeAll: nil)
-                    }
-                }
-                if let collection {
-                    StampCollectionSection(state: collection)
                 }
             }
             .padding(.horizontal, Spacing.s4)
@@ -158,10 +166,41 @@ private struct StampsRealWalletBody: View {
                     .background(MailPaper.wax, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
             }
             .buttonStyle(.plain)
+            // Not stretched across an iPad window.
+            .mailPadBarWidth()
             .padding(.horizontal, Spacing.s4)
             .padding(.vertical, Spacing.s3)
             .background(Theme.Color.appBg)
             .accessibilityIdentifier("stampsBuyBook")
+        }
+    }
+
+    /// On an iPad: the book and its sheet in one column, the latest moves and the collection in the other, where the
+    /// window holds two (one column, in this order, where it doesn't).
+    private var padColumns: some View {
+        WideColumns {
+            VStack(alignment: .leading, spacing: 14) {
+                if let balance = store.balance {
+                    let book = book(balance)
+                    StampBookHero(book: book)
+                    // The sheet draws every stamp; past two dozen the hero's count says it better.
+                    if book.total > 0, book.total <= 24 {
+                        StampSheet(book: book)
+                    }
+                }
+            }
+            .placeColumn(.leading, order: 0)
+            VStack(alignment: .leading, spacing: 14) {
+                if let moves = store.balance?.history, !moves.isEmpty {
+                    UsageHistoryCard(usage: moves.enumerated().map { usage($1, index: $0) }, window: "Latest", onSeeAll: nil)
+                }
+                if let collection {
+                    StampCollectionSection(state: collection)
+                }
+            }
+            // One column: the same 14 pt gap below the book as the wallet's stack keeps.
+            .padding(.top, store.balance == nil ? 0 : 14)
+            .placeColumn(.trailing, order: 1, trimsTop: store.balance == nil ? 0 : 14)
         }
     }
 
@@ -306,6 +345,7 @@ private struct StampsNav: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     private func navIcon(_ icon: PantopusIcon, label: String, id: String) -> some View {
@@ -812,25 +852,39 @@ private struct StampCollectionSection: View {
                     .pantopusTextStyle(.caption)
                     .foregroundStyle(Theme.Color.appTextSecondary)
             } else {
-                VStack(spacing: Spacing.s2) {
-                    ForEach(content.earned) { stamp in
-                        CollectedStampRow(stamp: stamp)
-                    }
-                }
+                stampRows(content.earned)
             }
             if !content.locked.isEmpty {
                 Text("LOCKED")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(Theme.Color.appTextSecondary)
-                VStack(spacing: Spacing.s2) {
-                    ForEach(content.locked) { stamp in
-                        CollectedStampRow(stamp: stamp)
-                    }
-                }
+                stampRows(content.locked)
             }
         }
         .accessibilityIdentifier("stamps_collection_loaded")
+    }
+
+    /// The stamps in a column; on an iPad, in a grid of as many across as fit at a phone row's width.
+    @ViewBuilder
+    private func stampRows(_ stamps: [CollectedStamp]) -> some View {
+        if WideLayout.isPad {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 260), spacing: Spacing.s4, alignment: .topLeading)],
+                alignment: .leading,
+                spacing: Spacing.s3
+            ) {
+                ForEach(stamps) { stamp in
+                    CollectedStampRow(stamp: stamp)
+                }
+            }
+        } else {
+            VStack(spacing: Spacing.s2) {
+                ForEach(stamps) { stamp in
+                    CollectedStampRow(stamp: stamp)
+                }
+            }
+        }
     }
 
     private var emptyBody: some View {
@@ -974,14 +1028,17 @@ private struct StampsThemesBody: View {
                     .font(.system(size: 11, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(Theme.Color.appTextSecondary)
-                VStack(spacing: Spacing.s2) {
-                    ForEach(content.themes) { theme in
-                        ThemeRow(
-                            theme: theme,
-                            isActive: theme.id == content.activeThemeId,
-                            isApplying: applyingThemeId == theme.id,
-                            isBusy: applyingThemeId != nil
-                        ) { onApply(theme.id) }
+                if WideLayout.isPad {
+                    // On an iPad, as many themes across as fit at a phone row's width.
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 300), spacing: Spacing.s2, alignment: .top)],
+                        spacing: Spacing.s2
+                    ) {
+                        themeRows(content)
+                    }
+                } else {
+                    VStack(spacing: Spacing.s2) {
+                        themeRows(content)
                     }
                 }
             }
@@ -991,6 +1048,17 @@ private struct StampsThemesBody: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("stamps_themes_loaded")
+    }
+
+    private func themeRows(_ content: StampThemesContent) -> some View {
+        ForEach(content.themes) { theme in
+            ThemeRow(
+                theme: theme,
+                isActive: theme.id == content.activeThemeId,
+                isApplying: applyingThemeId == theme.id,
+                isBusy: applyingThemeId != nil
+            ) { onApply(theme.id) }
+        }
     }
 }
 

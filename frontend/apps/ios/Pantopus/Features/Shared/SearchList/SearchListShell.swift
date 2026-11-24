@@ -96,7 +96,7 @@ public struct SearchListShell<Result: Hashable & Sendable, Row: View>: View {
     public var body: some View {
         VStack(spacing: Spacing.s0) {
             header
-            Divider().background(Theme.Color.appBorderSubtle)
+            Divider().background(Theme.Color.appBorderSubtle).topBarSpansWindow()
             if let filters {
                 filters
             }
@@ -162,10 +162,14 @@ public struct SearchListShell<Result: Hashable & Sendable, Row: View>: View {
             .typesInFieldOnTap($fieldFocused)
             .background(Theme.Color.appSurfaceSunken)
             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+            // On an iPad the field keeps its place over the results while the bar spans the window.
+            .keepsColumnWidthInSpanningBar(besides: 3 * Spacing.s2 + 44)
         }
         .padding(.horizontal, Spacing.s2)
         .padding(.vertical, Spacing.s2)
         .background(Theme.Color.appSurface)
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     // MARK: - Body phase
@@ -315,6 +319,37 @@ private struct SearchListTopResult<Result: Hashable>: ViewModifier {
     func body(content: Content) -> some View {
         if let topResult {
             content.scrollPosition(id: topResult, anchor: .top)
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - iPad: a field in a bar that spans the window
+
+extension View {
+    /// For a field (or switch) in a screen's top bar that runs the window's width on an iPad (`topBarSpansWindow()`):
+    /// it keeps the width it had in the reading column, so it stays over the content while the bar's buttons go to the
+    /// window's corners. `besides`: what the bar's other items, gaps and margins take beside it in the column. Centered
+    /// in the room the bar leaves it, which puts it where it was. Elsewhere (a phone, a sheet, a screen that has the
+    /// window's width) nothing changes.
+    func keepsColumnWidthInSpanningBar(besides: CGFloat, alignment: Alignment = .center) -> some View {
+        modifier(ColumnWidthInSpanningBar(besides: besides, alignment: alignment))
+    }
+}
+
+private struct ColumnWidthInSpanningBar: ViewModifier {
+    let besides: CGFloat
+    let alignment: Alignment
+    @Environment(\.readableColumnInsets) private var insets
+
+    func body(content: Content) -> some View {
+        let width = insets.column.width - besides
+        if insets.leading > 0 || insets.trailing > 0, width > 0 {
+            content
+                .frame(maxWidth: .infinity, alignment: alignment)
+                .frame(maxWidth: width)
+                .frame(maxWidth: .infinity)
         } else {
             content
         }

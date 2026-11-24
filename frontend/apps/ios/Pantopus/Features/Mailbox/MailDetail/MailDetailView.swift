@@ -159,8 +159,8 @@ public struct MailDetailView: View {
         )) {
             if case let .loaded(content) = viewModel.state, let letter = content.letter {
                 MailSenderSheet(letter: letter, senderLink: senderLink(content))
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    // On an iPad, a card fitted to the envelope instead of a half-empty sheet.
+                    .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .visible)
             }
         }
         .modifier(MailVaultFolderPickers(viewModel: viewModel, isShown: !coversPage))

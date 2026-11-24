@@ -113,6 +113,8 @@ public struct FollowingView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Cancel in its top-left corner, Unfollow in its top-right.
+        .topBarSpansWindow()
         .accessibilityIdentifier("followingSelectBar")
     }
 
@@ -145,6 +147,8 @@ public struct FollowingView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     private var countLine: String? {

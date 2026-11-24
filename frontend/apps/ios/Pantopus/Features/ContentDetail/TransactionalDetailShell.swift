@@ -313,6 +313,8 @@ public struct TransactionalDetailShell: View {
         .padding(.horizontal, Spacing.s3)
         .padding(.vertical, Spacing.s2)
         .background(transparent ? Color.clear : Theme.Color.appSurface)
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
     }
 
     // MARK: - Cover
@@ -1314,6 +1316,8 @@ public struct TransactionalDetailShell: View {
             .disabled(!dock.primary.enabled)
             .accessibilityIdentifier("contentDetailDockPrimary")
         }
+        // On an iPad the buttons keep a button row's width, centered under the page.
+        .padBottomActionWidth()
         .padding(.horizontal, Spacing.s4)
         .padding(.top, Spacing.s3)
         .padding(.bottom, Spacing.s6)

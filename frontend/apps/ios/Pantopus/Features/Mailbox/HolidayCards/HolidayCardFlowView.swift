@@ -12,6 +12,8 @@
 //  the pickup.
 //
 
+// swiftlint:disable file_length type_body_length
+
 import SwiftUI
 
 struct HolidayCardFlowView: View {
@@ -25,6 +27,10 @@ struct HolidayCardFlowView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The flow's own width: on an iPad window at least `WideLayout.minimumScreenWidth` wide, the window's (or the Mail
+    /// pane's) whole width (`wideColumnsScreen()`).
+    @State private var width: CGFloat = 0
     private static let top = "sendCardTop"
 
     /// Cards cost digital stamps for this person.
@@ -89,8 +95,8 @@ struct HolidayCardFlowView: View {
                             }
                         }
                     }
-                    .frame(maxWidth: 560)
-                    .padding(.horizontal, Spacing.s4)
+                    .frame(maxWidth: column.width)
+                    .padding(.horizontal, column.margin)
                     .padding(.top, Spacing.s3)
                     .padding(.bottom, Spacing.s8)
                     .frame(maxWidth: .infinity)
@@ -117,6 +123,9 @@ struct HolidayCardFlowView: View {
         }
         // At the table its words are light ink on the cloth; the cream fields, rows and cards keep their dark ink.
         .environment(\.colorScheme, desk)
+        // An iPad window wide enough: Pick a card is a page across it (its shelves, grid and collection pages).
+        .environment(\.holidayCardWidePage, padRoom == .page)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background {
             if atTable {
                 HolidayCardTableCloth(table: viewModel.design?.table)
@@ -166,6 +175,9 @@ struct HolidayCardFlowView: View {
         }
         // Seal it by hand: the table over the flow, from Look it over until Done.
         .modifier(CardTableSendCover(viewModel: viewModel, onDone: done))
+        // On an iPad window wide enough, the reading column leaves the flow the whole width: the header runs it, and each
+        // step lays out its own column in it (`column`). Phones and the iPhone Duo keep the column.
+        .wideColumnsScreen()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sendCard")
     }
@@ -208,10 +220,52 @@ struct HolidayCardFlowView: View {
             }
             .padding(.horizontal, Spacing.s1)
             .padding(.top, Spacing.s2)
+            // On an iPad, Back in the window's top-left corner and the dots in its top-right.
+            .topBarSpansWindow()
             if postageOn, !shelves {
-                StampChip(store: viewModel.stamps) { viewModel.showsStampBooks = true }
-                    .padding(.horizontal, Spacing.s4)
+                if WideLayout.isPad {
+                    // Over the step's column: the first of two columns, else no wider than a phone's page.
+                    let room = column
+                    StampChip(store: viewModel.stamps) { viewModel.showsStampBooks = true }
+                        .frame(maxWidth: padRoom == .twoColumns
+                            ? max(0, (min(room.width, width - 2 * room.margin) - HolidayCardPad.gap) / 2)
+                            : 560)
+                        .frame(maxWidth: room.width, alignment: .leading)
+                        .padding(.horizontal, room.margin)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    StampChip(store: viewModel.stamps) { viewModel.showsStampBooks = true }
+                        .padding(.horizontal, Spacing.s4)
+                }
             }
+        }
+    }
+
+    // MARK: The room on an iPad
+
+    /// How this step uses an iPad window (founder, 2026-11-23: "take advantage of the iPad screen"): Pick a card as a
+    /// page across a window at least `HolidayCardPad.pageFrom` wide, and Write on the back, Seal it for the day
+    /// and Look it over as two columns (the card beside its words) from `HolidayCardPad.twoColumnsFrom`, below the
+    /// accessibility text sizes. Everything else, phones and the iPhone Duo and narrower windows keep the phone's page.
+    private var padRoom: HolidayCardPadRoom {
+        guard viewModel.cards?.open == true, viewModel.today == nil else { return .phone }
+        switch viewModel.step {
+        case .pick:
+            return HolidayCardPad.isPage(width: width) ? .page : .phone
+        case .write, .seal, .look:
+            return HolidayCardPad.hasTwoColumns(width: width, typeSize: dynamicTypeSize) ? .twoColumns : .phone
+        case .to, .sent:
+            return .phone
+        }
+    }
+
+    /// The step's column, as wide as it gets and its margin at each side: 560 and 16, as on a phone, unless the iPad's
+    /// room says more.
+    private var column: (width: CGFloat, margin: CGFloat) {
+        switch padRoom {
+        case .phone: (width: 560, margin: Spacing.s4)
+        case .page: (width: HolidayCardPad.pageWidth, margin: HolidayCardPad.margin)
+        case .twoColumns: (width: HolidayCardPad.twoColumnsWidth, margin: HolidayCardPad.twoColumnsMargin)
         }
     }
 
@@ -345,8 +399,20 @@ struct HolidayCardFlowView: View {
             if let design = viewModel.design, viewModel.recipient?.entries != nil, let look = viewModel.listPreview {
                 HolidayCardListLookStep(viewModel: viewModel, cards: cards, design: design, look: look)
             } else if let design = viewModel.design, let recipient = viewModel.recipient, let preview = viewModel.preview {
-                HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: recipient, preview: preview)
-                HolidayCardLookEnd(viewModel: viewModel, byEmail: recipient.isEmail)
+                if WideLayout.isPad {
+                    // The end goes at the foot of the step's second column when it has two (the stack's gap above it).
+                    HolidayCardLookStep(
+                        viewModel: viewModel,
+                        cards: cards,
+                        design: design,
+                        recipient: recipient,
+                        preview: preview,
+                        end: AnyView(HolidayCardLookEnd(viewModel: viewModel, byEmail: recipient.isEmail).padding(.top, Spacing.s3))
+                    )
+                } else {
+                    HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: recipient, preview: preview)
+                    HolidayCardLookEnd(viewModel: viewModel, byEmail: recipient.isEmail)
+                }
             }
         case .sent:
             EmptyView()
@@ -439,6 +505,67 @@ private struct ShelfBarMotion: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - The card flow on an iPad
+
+/// How a step of the card flow uses the room it has (`HolidayCardFlowView.padRoom`).
+enum HolidayCardPadRoom {
+    /// The phone's page: one column, 560 wide at most.
+    case phone
+    /// Pick a card across an iPad window, with even margins.
+    case page
+    /// The card in one column and its words and buttons in the other.
+    case twoColumns
+}
+
+/// The card flow's measures on an iPad (founder, 2026-11-23: "take advantage of the iPad screen", and of Pick a card,
+/// "the cards are messy in the screen"). Phones and the iPhone Duo never use them.
+enum HolidayCardPad {
+    /// Pick a card is a page from this width: an upright iPad mini, an iPad beside another app, the Mail tab's pane.
+    static let pageFrom: CGFloat = 640
+    /// The widest the page gets (wider windows add margin).
+    static let pageWidth: CGFloat = 1280
+    /// Between the cards of a row or grid on the page.
+    static let gap = Spacing.s5
+    /// A shelf's card on the page is about this wide or wider: as many as fit fill the page's width exactly.
+    static let shelfCard: CGFloat = 200
+    /// The frame every card on the page sits in, width over height: the pictures' usual shape (960 by 1022), so most
+    /// fill it and the rest show a sliver of their own paper.
+    static let frameAspect: CGFloat = 960.0 / 1022.0
+    /// Two columns from this width: each about 440 or wider, so the card stays large beside its words; the Mail tab's
+    /// pane beside the Mailbox on a 13-inch iPad held sideways (956) has them.
+    static let twoColumnsFrom: CGFloat = 900
+    static let twoColumnsWidth: CGFloat = 1040
+    static let twoColumnsMargin = Spacing.s6
+
+    /// The page's margin at each side: twice the gap between cards, so the next card in a row peeks past the margin
+    /// by a gap's width.
+    static let margin = Spacing.s10
+
+    /// Pick a card is a page across the window: an iPad window from `pageFrom` wide, at every text size (its rows stay
+    /// rows; the phone's page there would leave the rows running off from a narrow column in the middle of the window).
+    @MainActor static func isPage(width: CGFloat) -> Bool {
+        WideLayout.isPad && width >= pageFrom
+    }
+
+    /// Write on the back, Seal it for the day and Look it over take two columns.
+    @MainActor static func hasTwoColumns(width: CGFloat, typeSize: DynamicTypeSize) -> Bool {
+        WideLayout.isPad && !typeSize.isAccessibilitySize && width >= twoColumnsFrom
+    }
+}
+
+private struct HolidayCardWidePageKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Pick a card is a page across an iPad window (`HolidayCardPadRoom.page`): its rows and grids draw every card in
+    /// the same frame, as many across as fit, from the page's margins.
+    var holidayCardWidePage: Bool {
+        get { self[HolidayCardWidePageKey.self] }
+        set { self[HolidayCardWidePageKey.self] = newValue }
     }
 }
 

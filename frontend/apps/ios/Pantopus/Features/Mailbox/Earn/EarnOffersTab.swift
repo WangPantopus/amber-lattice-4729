@@ -70,15 +70,18 @@ struct EarnOffersTab: View {
                 hero(balance)
                 capBanner
                 sectionOverline("Offers for you")
-                VStack(spacing: Spacing.s3) {
-                    ForEach(offers) { offer in
-                        EarnOfferCard(
-                            offer: offer,
-                            isBusy: viewModel.busyOfferIDs.contains(offer.id),
-                            onOpen: { Task { await viewModel.open(offer.id) } },
-                            onSave: { Task { await viewModel.save(offer.id) } },
-                            onReveal: { Task { await viewModel.reveal(offer.id) } }
-                        )
+                if WideLayout.isPad {
+                    // On an iPad, as many offers across as fit at a phone card's width.
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 340), spacing: Spacing.s3, alignment: .top)],
+                        alignment: .leading,
+                        spacing: Spacing.s3
+                    ) {
+                        offerCards(offers)
+                    }
+                } else {
+                    VStack(spacing: Spacing.s3) {
+                        offerCards(offers)
                     }
                 }
                 disclaimer
@@ -89,6 +92,18 @@ struct EarnOffersTab: View {
         }
         .refreshable { await viewModel.refresh() }
         .accessibilityIdentifier("earnOffersWall")
+    }
+
+    private func offerCards(_ offers: [EarnOfferItem]) -> some View {
+        ForEach(offers) { offer in
+            EarnOfferCard(
+                offer: offer,
+                isBusy: viewModel.busyOfferIDs.contains(offer.id),
+                onOpen: { Task { await viewModel.open(offer.id) } },
+                onSave: { Task { await viewModel.save(offer.id) } },
+                onReveal: { Task { await viewModel.reveal(offer.id) } }
+            )
+        }
     }
 
     // MARK: - Empty

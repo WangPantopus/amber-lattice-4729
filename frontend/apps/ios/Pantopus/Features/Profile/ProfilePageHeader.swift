@@ -481,5 +481,7 @@ struct ProfileTopBar: View {
         }
         .padding(.horizontal, 6)
         .background(Theme.Color.appBg)
+        // On an iPad the bar runs the window's width: Back in its top-left corner, More in its top-right.
+        .topBarSpansWindow()
     }
 }

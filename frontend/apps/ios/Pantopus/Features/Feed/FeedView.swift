@@ -704,6 +704,8 @@ public struct FeedView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the tools in its top-right.
+        .topBarSpansWindow()
     }
 
     /// The Pulse tab's top row (founder decision 2026-11-07): List | Map as
@@ -747,11 +749,16 @@ public struct FeedView: View {
             .clipShape(Capsule())
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pulseViewModeToggle")
+            // On an iPad the switch keeps the column's width while the row spans the window (the menu and Messages
+            // buttons are 44 pt).
+            .keepsColumnWidthInSpanningBar(besides: 2 * Spacing.s2 + 2 * Spacing.s1 + 2 * 44)
             MessagesButton(accessibilityIdentifier: "nearby.chat")
         }
         .padding(.horizontal, Spacing.s2)
         .padding(.vertical, Spacing.s1)
         .background(Theme.Color.appBg)
+        // On an iPad the row runs the window's width: the menu in its top-left corner, Messages in its top-right.
+        .topBarSpansWindow()
     }
 
     /// Ask, search and the preferences: the end of the Nearby | Connections

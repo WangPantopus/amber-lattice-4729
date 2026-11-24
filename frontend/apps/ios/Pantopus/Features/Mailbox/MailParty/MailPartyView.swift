@@ -52,6 +52,10 @@ struct MailPartyView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.Color.appBg)
         .navigationBarBackButtonHidden(true)
+        // On an iPad window wide enough the piece being opened sits beside the reactions and who to hand it to.
+        .readableColumnWidens(
+            from: WideLayout.isPad && viewModel.live != nil ? WideLayout.minimumScreenWidth : .infinity
+        )
         .accessibilityIdentifier("mailParty")
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .overlay(alignment: .bottom) { toastOverlay }
@@ -81,6 +85,7 @@ struct MailPartyView: View {
         }
         .padding(.horizontal, Spacing.s4)
         .padding(.bottom, Spacing.s2)
+        .topBarSpansWindow()
     }
 
     /// The live frame owns Back while it is up, so leaving a party lands
@@ -269,28 +274,53 @@ struct MailPartyView: View {
         }
     }
 
+    @ViewBuilder
     private func liveBody(_ session: MailPartyLiveSession, rosterIsEmpty: Bool) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.s4) {
-                openingCard(session)
-                sectionHeader("REACT")
-                reactionRow
-                sectionHeader("HAND IT TO")
-                if rosterIsEmpty {
-                    rosterEmptyCard(restricted: session.rosterRestricted)
-                } else {
-                    VStack(spacing: Spacing.s2) {
-                        ForEach(session.members) { member in
-                            memberRow(member)
-                        }
+        if WideLayout.isPad {
+            // The piece in one column, reacting and handing it on in the other, where the window holds two.
+            ScrollView {
+                WideColumns {
+                    openingCard(session)
+                        .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        liveActions(session, rosterIsEmpty: rosterIsEmpty)
                     }
+                    .padding(.top, Spacing.s4)
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+                .wideColumnsMargins(Spacing.s4)
+                .padding(.bottom, Spacing.s10)
+            }
+            .accessibilityIdentifier("mailParty_session")
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    openingCard(session)
+                    liveActions(session, rosterIsEmpty: rosterIsEmpty)
+                }
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityIdentifier("mailParty_session")
+        }
+    }
+
+    /// React and Hand it to: under the piece on a phone, beside it on an iPad.
+    @ViewBuilder
+    private func liveActions(_ session: MailPartyLiveSession, rosterIsEmpty: Bool) -> some View {
+        sectionHeader("REACT")
+        reactionRow
+        sectionHeader("HAND IT TO")
+        if rosterIsEmpty {
+            rosterEmptyCard(restricted: session.rosterRestricted)
+        } else {
+            VStack(spacing: Spacing.s2) {
+                ForEach(session.members) { member in
+                    memberRow(member)
                 }
             }
-            .padding(.horizontal, Spacing.s4)
-            .padding(.bottom, Spacing.s10)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityIdentifier("mailParty_session")
     }
 
     private func openingCard(_ session: MailPartyLiveSession) -> some View {

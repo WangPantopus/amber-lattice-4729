@@ -25,7 +25,7 @@
 //  gig — all three are real writes.
 //
 
-// swiftlint:disable file_length
+// swiftlint:disable file_length type_body_length
 
 import PhotosUI
 import SwiftUI
@@ -88,6 +88,8 @@ public struct UnboxingView: View {
         // The screen paints its own nav + status header; hide the system bar
         // so there's no double chrome (matches GigSearchView).
         .toolbar(.hidden, for: .navigationBar)
+        // On an iPad window wide enough the photos sit beside what Pantopus read from them, across the window.
+        .wideColumnsScreen()
         .accessibilityIdentifier("unboxing")
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .task { await viewModel.load() }
@@ -178,16 +180,44 @@ public struct UnboxingView: View {
         .accessibilityIdentifier("unboxing_loading")
     }
 
+    @ViewBuilder
     private func captureBody(_ content: UnboxingContent) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s4) {
-            headerRow(content: content, filed: false)
-            CaptureFilmstrip(
-                accent: accent,
-                shots: viewModel.shots,
-                reduceMotionOverride: reduceMotionOverride,
-                onCapture: { requestPhoto() },
-                onAddShot: { requestPhoto() }
-            )
+        if WideLayout.isPad {
+            // The photos in one column, what Pantopus read from them in the other, where the window holds two.
+            VStack(alignment: .leading, spacing: Spacing.s4) {
+                headerRow(content: content, filed: false)
+                WideColumns {
+                    captureFilmstrip
+                        .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        captureDetails(content)
+                    }
+                    .padding(.top, Spacing.s4)
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s4) {
+                headerRow(content: content, filed: false)
+                captureFilmstrip
+                captureDetails(content)
+            }
+        }
+    }
+
+    private var captureFilmstrip: some View {
+        CaptureFilmstrip(
+            accent: accent,
+            shots: viewModel.shots,
+            reduceMotionOverride: reduceMotionOverride,
+            onCapture: { requestPhoto() },
+            onAddShot: { requestPhoto() }
+        )
+    }
+
+    /// Under the photos on a phone; beside them on an iPad.
+    private func captureDetails(_ content: UnboxingContent) -> some View {
+        Group {
             AIElfStripView(content: content.classifyElf)
                 .accessibilityIdentifier("unboxing_elf")
             DrawerSuggestionCard(
@@ -246,17 +276,45 @@ public struct UnboxingView: View {
         .accessibilityIdentifier("unboxing_assemblyCard")
     }
 
+    @ViewBuilder
     private func filedBody(_ content: UnboxingContent) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s4) {
-            headerRow(content: content, filed: true)
-            FiledSummary(
-                filedTo: content.filedTo,
-                filedSubtitle: content.filedSubtitle,
-                shots: viewModel.shots,
-                photosSavedLabel: content.photosSavedLabel,
-                onUndo: { viewModel.undo() },
-                onViewPhotos: {}
-            )
+        if WideLayout.isPad {
+            // Where it was filed in one column, what was saved and what's next in the other, where the window holds two.
+            VStack(alignment: .leading, spacing: Spacing.s4) {
+                headerRow(content: content, filed: true)
+                WideColumns {
+                    filedSummary(content)
+                        .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        filedDetails(content)
+                    }
+                    .padding(.top, Spacing.s4)
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s4) {
+                headerRow(content: content, filed: true)
+                filedSummary(content)
+                filedDetails(content)
+            }
+        }
+    }
+
+    private func filedSummary(_ content: UnboxingContent) -> some View {
+        FiledSummary(
+            filedTo: content.filedTo,
+            filedSubtitle: content.filedSubtitle,
+            shots: viewModel.shots,
+            photosSavedLabel: content.photosSavedLabel,
+            onUndo: { viewModel.undo() },
+            onViewPhotos: {}
+        )
+    }
+
+    /// Under the filed summary on a phone; beside it on an iPad.
+    private func filedDetails(_ content: UnboxingContent) -> some View {
+        Group {
             AIElfStripView(content: content.filedElf)
                 .accessibilityIdentifier("unboxing_elf")
             if !content.facts.isEmpty {
@@ -333,6 +391,8 @@ public struct UnboxingView: View {
 
     private func shelfChrome(@ViewBuilder _ body: () -> some View) -> some View {
         body()
+            // Not stretched across an iPad window.
+            .mailPadBarWidth()
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s3)
             .padding(.bottom, Spacing.s4)
@@ -419,6 +479,7 @@ private struct UnboxNav: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 }
 

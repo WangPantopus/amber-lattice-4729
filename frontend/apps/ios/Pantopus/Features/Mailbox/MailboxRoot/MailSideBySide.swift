@@ -14,6 +14,12 @@
 //  switch (`MailScreenModels`). Closed, upright, half folded upright, at the
 //  largest text sizes and on phones, Mail is one column, as before.
 //
+//  On an iPad (founder, 2026-11-23: "take advantage of the iPad screen") Mail
+//  is laid out as Apple's Mail is: where the window holds the Mailbox beside
+//  a piece, the Mailbox is the leading column and what it opens is the pane
+//  beside it, with no hinge to keep clear. A narrower window (beside another
+//  app) and the largest text sizes keep one column.
+//
 
 import SwiftUI
 
@@ -22,18 +28,39 @@ import SwiftUI
 struct MailSideBySideLayout: Equatable {
     /// The narrowest column each side of the hinge holds: about a small phone's.
     static let minimumSide: CGFloat = 360
+    /// On an iPad, the narrowest Mail tab that holds the Mailbox's column with a piece beside it about a large
+    /// phone's width (440 pt). A narrower window keeps one column.
+    static let padMinimumWidth: CGFloat = 800
 
-    /// The left half's width, from the tab's leading edge to the middle of the hinge.
+    /// The left half's width, from the tab's leading edge to the middle of the hinge (on an iPad, the Mailbox's
+    /// column).
     let leadingWidth: CGFloat
-    /// Half the hinge's width: each half keeps this clear beside it, so nothing sits on the fold.
+    /// Half the hinge's width: each half keeps this clear beside it, so nothing sits on the fold. None on an iPad.
     let hingeMargin: CGFloat
 
+    @MainActor
     init?(proxy: GeometryProxy, isRegular: Bool, isAccessibilitySize: Bool) {
         // Like Messages: the largest text sizes keep the one roomy column.
-        guard isRegular, !isAccessibilitySize, let hinge = Self.verticalHinge(proxy) else { return nil }
+        guard isRegular, !isAccessibilitySize else { return nil }
+        if WideLayout.isPad {
+            // An iPad window has no hinge: the Mailbox is Mail's list column wherever a piece fits beside it.
+            guard proxy.size.width >= Self.padMinimumWidth else { return nil }
+            leadingWidth = Self.padLeadingWidth(in: proxy.size.width)
+            hingeMargin = 0
+            return
+        }
+        guard let hinge = Self.verticalHinge(proxy) else { return nil }
         guard hinge.minX >= Self.minimumSide, proxy.size.width - hinge.maxX >= Self.minimumSide else { return nil }
         leadingWidth = hinge.midX
         hingeMargin = hinge.width / 2
+    }
+
+    /// The Mailbox's column on an iPad, as wide as Mail's list: a phone's width, a little more in the widest
+    /// windows, so the piece beside it gets the rest. In steps, so resizing a window doesn't move it on every point.
+    static func padLeadingWidth(in width: CGFloat) -> CGFloat {
+        if width >= 1300 { return 420 }
+        if width >= 1100 { return 390 }
+        return minimumSide
     }
 
     /// The left half's column, fixed: the split view would otherwise narrow a column it laid out before a turn.

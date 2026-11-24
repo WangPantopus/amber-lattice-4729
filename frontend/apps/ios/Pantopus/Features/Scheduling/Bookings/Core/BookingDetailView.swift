@@ -77,6 +77,8 @@ struct BookingDetailView: View {
         .frame(height: 46)
         .background(Theme.Color.appSurface)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.Color.appBorder).frame(height: 1) }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
     }
 
     // MARK: - Content

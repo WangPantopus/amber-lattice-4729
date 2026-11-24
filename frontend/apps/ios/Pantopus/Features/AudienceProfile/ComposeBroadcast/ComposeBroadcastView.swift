@@ -122,6 +122,8 @@ public struct ComposeBroadcastView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Close in its top-left corner, Save in its top-right.
+        .topBarSpansWindow()
     }
 
     private var unsavedDraftChip: some View {

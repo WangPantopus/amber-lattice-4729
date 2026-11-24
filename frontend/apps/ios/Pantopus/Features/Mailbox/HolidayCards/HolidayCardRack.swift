@@ -9,6 +9,8 @@
 //  other; upright and flat it's one large card, as on a phone (the fold reader says so).
 //
 
+// swiftlint:disable file_length
+
 import SwiftUI
 import UIKit
 
@@ -86,7 +88,11 @@ struct HolidayCardRack: View {
                 case let .upright(hingeY, _):
                     tabletop(screen: screen, insets: insets, hingeY: hingeY)
                 case .single:
-                    column(screen: screen, insets: insets, cap: CardTableLayout.cardCap(width: screen.width))
+                    if Self.liesBeside(screen) {
+                        beside(screen: screen, insets: insets)
+                    } else {
+                        column(screen: screen, insets: insets, cap: Self.columnCap(width: screen.width))
+                    }
                 }
             }
             .frame(width: screen.width, height: screen.height, alignment: .topLeading)
@@ -173,6 +179,55 @@ struct HolidayCardRack: View {
             .padding(.horizontal, 24)
             .frame(width: screen.width - hingeX - insets.trailing, height: screen.height)
         }
+        .offset(x: insets.leading)
+    }
+
+    /// An iPad window held sideways (founder, 2026-11-23: "take advantage of the iPad screen"): the card as tall as the
+    /// window lets it be on the left, its words and the button beside it on the right, under ✕ and the collection's
+    /// name across the top. Upright, and in a narrow window, it's the phone's column.
+    @MainActor
+    static func liesBeside(_ screen: CGSize) -> Bool {
+        WideLayout.isPad && screen.width >= 900 && screen.width >= screen.height * 1.15
+    }
+
+    /// The widest the card gets in the column: the table's (`CardTableLayout.cardCap`), and on a big upright iPad up to
+    /// about three quarters of the window, 760 at most, so the card fills more of it.
+    @MainActor
+    static func columnCap(width: CGFloat) -> CGFloat {
+        let table = CardTableLayout.cardCap(width: width)
+        guard WideLayout.isPad else { return table }
+        return max(table, min(760, (width * 0.74).rounded(.down)))
+    }
+
+    /// The card on the left 58% of an iPad window held sideways, the words and Write on this card on the rest.
+    private func beside(screen: CGSize, insets: EdgeInsets) -> some View {
+        let width = screen.width - insets.leading - insets.trailing
+        let left = (width * 0.58).rounded(.down)
+        let top = insets.top + 10 + 40 + 14
+        let bottom = max(insets.bottom, 12) + 12
+        let card = cardWidth(room: CGSize(width: left, height: screen.height - top - shadowRoom - bottom), cap: 760)
+        return VStack(spacing: 0) {
+            topRow
+                .padding(.horizontal, 16)
+                .padding(.top, insets.top + 10)
+            HStack(spacing: 0) {
+                // The card's page runs the whole left side, so the card can (card shelves E3).
+                pager(cardWidth: card)
+                    .frame(width: left)
+                VStack(spacing: 20) {
+                    Spacer(minLength: 0)
+                    words
+                    writeButton
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 32)
+                .frame(width: width - left)
+            }
+            .padding(.top, 14)
+            .frame(maxHeight: .infinity)
+            .padding(.bottom, bottom)
+        }
+        .frame(width: width, height: screen.height)
         .offset(x: insets.leading)
     }
 

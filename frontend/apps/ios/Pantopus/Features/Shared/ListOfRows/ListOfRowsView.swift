@@ -61,13 +61,15 @@ public struct ListOfRowsView<DataSource: ListOfRowsDataSource, Header: View>: Vi
     public var body: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: Spacing.s0) {
+                // On an iPad the strips' lines run the window's width under the system bar, as their bands do; the
+                // field, chips and tabs stay over the rows in the reading column.
                 if let searchBar = dataSource.searchBar {
                     SearchBarRow(config: searchBar, focus: $searchFocused)
-                    Divider().background(Theme.Color.appBorderSubtle)
+                    Divider().background(Theme.Color.appBorderSubtle).topBarSpansWindow()
                 }
                 if let chipStrip = dataSource.chipStrip {
                     ChipStripRow(config: chipStrip)
-                    Divider().background(Theme.Color.appBorderSubtle)
+                    Divider().background(Theme.Color.appBorderSubtle).topBarSpansWindow()
                 } else if !dataSource.tabs.isEmpty {
                     TabStrip(
                         tabs: dataSource.tabs,
@@ -77,7 +79,7 @@ public struct ListOfRowsView<DataSource: ListOfRowsDataSource, Header: View>: Vi
                     // on a phone, instead of putting a tab on the crease (Members' Audit Log).
                     .besideFold()
                     .background(Theme.Color.appSurface)
-                    Divider().background(Theme.Color.appBorderSubtle)
+                    Divider().background(Theme.Color.appBorderSubtle).topBarSpansWindow()
                 }
                 customHeader
                 stateBody

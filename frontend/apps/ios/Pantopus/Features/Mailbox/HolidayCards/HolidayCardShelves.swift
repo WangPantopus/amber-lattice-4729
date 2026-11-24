@@ -10,6 +10,8 @@
 //  but a shelf loads its pictures only as it comes near, and a row only those of the cards scrolled near.
 //
 
+// swiftlint:disable file_length
+
 import SwiftUI
 
 /// How large the shelves draw their cards (card shelves B2, B3 and the "Big cards" rule): the opening row's large card
@@ -27,6 +29,29 @@ struct HolidayCardShelfSizes: Equatable {
         shelf = max(grid, min(max(screen * 0.56, 190), 240))
         let large = max(grid, min(screen * 0.76, 340))
         opening = max(large, min(shelf * 1.3, screen * 0.6))
+    }
+
+    /// Pick a card as a page across an iPad window (`HolidayCardPadRoom.page`; founder, 2026-11-23: the cards were
+    /// "messy in the screen"): every card the same frame, the shelves' cards as many as fit at `HolidayCardPad.shelfCard`
+    /// or wider, filling the page's width exactly, and one fewer, larger, in "One from each collection". So each row
+    /// starts and ends at the page's margins, its captions and links level, and the next card peeks past the margin.
+    init(padColumn column: CGFloat) {
+        let across = Self.padAcross(column: column)
+        shelf = Self.padCard(across: across, column: column)
+        opening = Self.padCard(across: across - 1, column: column)
+        grid = shelf
+    }
+
+    /// How many shelf cards fill a page this wide (three at least); a collection's page shows its grid as many across.
+    static func padAcross(column: CGFloat) -> Int {
+        let gap = HolidayCardPad.gap
+        return max(3, Int(((column + gap) / (HolidayCardPad.shelfCard + gap)).rounded(.down)))
+    }
+
+    /// The width of each of `across` cards with the page's gap between them, filling a page this wide.
+    static func padCard(across: Int, column: CGFloat) -> CGFloat {
+        let count = CGFloat(max(1, across))
+        return max(0, ((column - HolidayCardPad.gap * (count - 1)) / count).rounded(.down))
     }
 }
 
@@ -103,6 +128,8 @@ struct HolidayCardShelves: View {
     @State private var near: Set<String> = []
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A page across an iPad window: uniform frames from the page's margins (`HolidayCardShelfSizes(padColumn:)`).
+    @Environment(\.holidayCardWidePage) private var widePage
 
     /// A shelf's place in the page, for the line under a large card and coming back from step 3.
     static func shelfId(_ collection: String) -> String {
@@ -114,7 +141,9 @@ struct HolidayCardShelves: View {
 
     var body: some View {
         let collections = cards.pickableCollections
-        let sizes = HolidayCardShelfSizes(screen: bleed.screen, column: bleed.column)
+        let sizes = widePage
+            ? HolidayCardShelfSizes(padColumn: bleed.column)
+            : HolidayCardShelfSizes(screen: bleed.screen, column: bleed.column)
         // In the server's opening order; the shelves keep the collections' order.
         let picks = cards.openingCollections.compactMap { collection in
             collection.pick.flatMap { id in cards.designs(in: collection).first { $0.id == id } }
@@ -205,7 +234,13 @@ struct HolidayCardShelves: View {
         sizes: HolidayCardShelfSizes,
         toShelf: @escaping (HolidayCardCollection) -> Void
     ) -> some View {
-        HolidayCardShelfRow(viewModel: viewModel, rowId: "picks", bleed: bleed, spacing: 14, ids: picks.map(\.id)) {
+        HolidayCardShelfRow(
+            viewModel: viewModel,
+            rowId: "picks",
+            bleed: bleed,
+            spacing: widePage ? HolidayCardPad.gap : 14,
+            ids: picks.map(\.id)
+        ) {
             ForEach(picks) { pick in
                 let collection = pick.collection
                 let design = pick.design
@@ -241,11 +276,12 @@ struct HolidayCardShelves: View {
         let chosenLater = viewModel.designId.flatMap { id in all.dropFirst(Self.rowLength).first { $0.id == id } }
         let shown = Array(all.prefix(Self.rowLength)) + (chosenLater.map { [$0] } ?? [])
         return VStack(alignment: .leading, spacing: Spacing.s0) {
+            // On an iPad page the line keeps to the page's margins, as the shelf under it does.
             Rectangle()
                 .fill(MailPaper.cardRowLine)
                 .frame(height: 1)
-                .padding(.leading, -bleed.leading)
-                .padding(.trailing, -bleed.trailing)
+                .padding(.leading, widePage ? 0 : -bleed.leading)
+                .padding(.trailing, widePage ? 0 : -bleed.trailing)
                 .accessibilityHidden(true)
                 // Where the page scrolls to for this shelf (on a view inside it: the scroll reader finds those).
                 .id(Self.shelfId(collection.id))
@@ -280,7 +316,13 @@ struct HolidayCardShelves: View {
             }
             .padding(.top, 14)
             .padding(.bottom, 10)
-            HolidayCardShelfRow(viewModel: viewModel, rowId: collection.id, bleed: bleed, spacing: Spacing.s3, ids: shown.map(\.id)) {
+            HolidayCardShelfRow(
+                viewModel: viewModel,
+                rowId: collection.id,
+                bleed: bleed,
+                spacing: widePage ? HolidayCardPad.gap : Spacing.s3,
+                ids: shown.map(\.id)
+            ) {
                 ForEach(shown) { design in
                     cardButton(design, in: collection, all: all, width: sizes.shelf, loads: near.contains(collection.id))
                 }
@@ -310,7 +352,8 @@ struct HolidayCardShelves: View {
                         .strokeBorder(MailPaper.cardFieldEdge, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 )
                 .frame(width: width)
-                .aspectRatio(15 / 16, contentMode: .fit)
+                // On an iPad page, the cards' own frame.
+                .aspectRatio(widePage ? HolidayCardPad.frameAspect : 15 / 16, contentMode: .fit)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -352,9 +395,11 @@ struct HolidayCardShelves: View {
                 selected: selected,
                 sharp: sharp,
                 strongCaption: sharp,
-                reservesTwoLines: !sharp,
+                // On an iPad page the large cards keep two lines too, so their links line up.
+                reservesTwoLines: !sharp || widePage,
                 loads: loads,
-                zoomID: zoomID
+                zoomID: zoomID,
+                frameAspect: widePage ? HolidayCardPad.frameAspect : nil
             )
             .frame(width: width)
             .contentShape(Rectangle())

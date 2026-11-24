@@ -137,6 +137,8 @@ struct VerifyEmailView: View {
         }
         .frame(height: 52)
         .background(Theme.Color.appSurface)
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     /// The A18.1 frame. `resent` flips the pill to the green "New link sent"

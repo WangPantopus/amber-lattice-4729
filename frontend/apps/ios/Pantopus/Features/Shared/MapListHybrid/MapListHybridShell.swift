@@ -178,6 +178,7 @@ public struct MapListHybridShell<
             let fabInset = min(sheetHeight + fabLiftAboveSheet, maxFabBottom)
             ZStack(alignment: .top) {
                 mapLayer
+                    .mapFillsPadWindow()
                 topPill()
                     .accessibilityIdentifier("mapListHybridTopPill")
                 categoryChips()
@@ -521,5 +522,18 @@ extension MapListHybridRegion {
             center: CLLocationCoordinate2D(latitude: centerLatitude, longitude: centerLongitude),
             span: MKCoordinateSpan(latitudeDelta: latitudeSpan, longitudeDelta: longitudeSpan)
         )
+    }
+}
+
+extension View {
+    /// On an iPad a map runs under the reading column's sides to the window's edges, while the controls and sheet
+    /// over it stay in the column. A phone and the iPhone Duo keep the map as it was.
+    @MainActor @ViewBuilder
+    func mapFillsPadWindow() -> some View {
+        if WideLayout.isPad {
+            ignoresSafeArea(.container, edges: .horizontal)
+        } else {
+            self
+        }
     }
 }

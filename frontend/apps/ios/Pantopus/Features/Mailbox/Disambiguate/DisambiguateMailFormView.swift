@@ -47,15 +47,33 @@ struct DisambiguateMailFormView: View {
                 onClose: onClose,
                 onCommit: {}
             ) {
-                scannedEnvelopeSection
-                candidatesSection
-                if viewModel.isUnclear {
-                    fallbackSection
+                if WideLayout.isPad {
+                    // The envelope beside who it could be for, where an iPad window holds two columns.
+                    WideColumns {
+                        scannedEnvelopeSection
+                            .placeColumn(.leading, order: 0)
+                        VStack(alignment: .leading, spacing: Spacing.s5) {
+                            candidatesSection
+                            if viewModel.isUnclear {
+                                fallbackSection
+                            }
+                        }
+                        .padding(.top, Spacing.s5)
+                        .placeColumn(.trailing, order: 1, trimsTop: Spacing.s5)
+                    }
+                    .wideColumnsMargins(Spacing.s0)
+                } else {
+                    scannedEnvelopeSection
+                    candidatesSection
+                    if viewModel.isUnclear {
+                        fallbackSection
+                    }
                 }
             }
             stickyConfirm
         }
         .background(Theme.Color.appBg)
+        .wideColumnsScreen()
         .overlay(alignment: .bottom) { toastOverlay }
         .onChange(of: viewModel.shouldDismiss) { _, dismiss in
             if dismiss {
@@ -194,6 +212,8 @@ struct DisambiguateMailFormView: View {
                 isLoading: viewModel.isSubmitting,
                 isEnabled: viewModel.canConfirm
             ) { await viewModel.submit() }
+                // Not stretched across an iPad window.
+                .mailPadBarWidth()
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s4)
                 .accessibilityIdentifier("disambiguateConfirm")

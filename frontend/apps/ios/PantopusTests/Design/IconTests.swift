@@ -132,7 +132,9 @@ final class IconTests: XCTestCase {
         // Guidance cards: Today's "Around you".
         "newspaper",
         // Settings → Devices & sessions: an iPad's row.
-        "tablet"
+        "tablet",
+        // Plans on an iPad: "Show list", bringing the list column back beside the map.
+        "panel-left"
     ]
 
     func testInventoryMatches() {

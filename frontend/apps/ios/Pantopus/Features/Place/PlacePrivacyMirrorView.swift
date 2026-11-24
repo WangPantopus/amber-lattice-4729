@@ -132,6 +132,8 @@ struct PlacePrivacyMirrorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        // On an iPad the header runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     private var placeholders: some View {
