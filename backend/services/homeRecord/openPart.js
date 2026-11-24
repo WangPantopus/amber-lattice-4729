@@ -221,6 +221,12 @@ function yearsOnRecord(current, history) {
 
 const LOWEST_SALE_PRICE = 1000;
 
+/** The permits lines the record can show: each with an issue date and a word (facts.js `permits`), newest first. */
+function permitLines(facts) {
+  const lines = Array.isArray(facts?.permits?.lines) ? facts.permits.lines : [];
+  return lines.filter((line) => line && /^\d{4}-\d{2}/.test(String(line.issued || '')) && typeof line.word === 'string' && line.word.trim());
+}
+
 /**
  * What the record holds for this home beyond the open part, as `closed_group` items (SPEC rule 1: only where we hold
  * it; rule 2: a name and one line, never a value). Each item says which half it belongs to (SPEC section 8):
@@ -258,6 +264,10 @@ function closedItems(copy, { similar = null, estimate = null, years = null, grou
   if (years && years.count > 1) {
     add('changes', 'federal', 'image', 'Your lot through the years', `${years.count} photos from above, ${years.first} to ${years.last}`);
   }
+
+  // The county's permits on the home's account (held under new_columns): how many, with dates, as drawn.
+  const permitCount = permitLines(facts).length;
+  if (permitCount) add('changes', 'county', 'wrench', 'Permits', `${permitCount} on record, with dates`);
 
   // Only the parts that answered for this point are named.
   const groundParts = ground ? [
@@ -330,7 +340,7 @@ function memberClosed(items, { button, alt }) {
 // What an account opens, in a buyer's words, for the account promise's body: only what is held.
 const ACCOUNT_WORDS = {
   'Recorded history': 'history', 'County value, year by year': 'values', 'Property tax, year by year': 'property tax',
-  'Your lot through the years': 'photos through the years', 'Ground under your home': 'the ground under it',
+  'Your lot through the years': 'photos through the years', 'Ground under your home': 'the ground under it', Permits: 'permits',
 };
 
 /**
@@ -432,4 +442,4 @@ function lotOutline(copy) {
   return { ring: copy.lot_ring, from: `${countyName(copy) || copy.publisher || 'the county'}'s parcel map` };
 }
 
-module.exports = { lotChip, lotOutline, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };
+module.exports = { lotChip, lotOutline, permitLines, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };

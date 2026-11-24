@@ -20,8 +20,8 @@ const { groundBlock } = require('./ground');
 const zoningLinks = require('./zoningLinks');
 const protect = require('./protect');
 const placeIntelligenceService = require('../placeIntelligenceService');
-const { recordSource } = require('./openPart');
-const { positive, grouped, money, dateLabel } = require('./words');
+const { recordSource, permitLines } = require('./openPart');
+const { positive, grouped, money, dateLabel, monthLabel } = require('./words');
 
 const LOWEST_SALE_PRICE = 1000;
 
@@ -176,6 +176,50 @@ const SYSTEM_TITLES = { hvac: 'Heating' };
 const SYSTEM_TONES = { ok: 'low', aging: 'mid', past_expected: 'high' };
 
 /** The `bars` block from the systems ledger: each system's age against its typical service life. */
+// The permits a home's record lists, at most: all the release keeps (scripts/property-index/sources/wa-clark.cjs), so the
+// closed item's count and the rows agree.
+const MOST_PERMIT_ROWS = 30;
+// The systems a finished permit dates (propertyRecords/homeRecord.js permitSystems, which writes them for a Home).
+const PERMIT_SYSTEMS = new Set(['roof', 'hvac', 'water_heater', 'electrical_panel']);
+
+// The county's own word, sentence-cased, with a space after each comma ("Mechanical, plumbing, electrical").
+const sentence = (text) => {
+  const t = String(text).trim().replace(/\s*,\s*/g, ', ');
+  return t ? t[0].toUpperCase() + t.slice(1).toLowerCase() : t;
+};
+
+/** "Permits": the county's permits on the home's account, newest first, the month each was issued. Never a name. */
+function permitsBlock(copy) {
+  const lines = permitLines(copy?.facts).slice(0, MOST_PERMIT_ROWS);
+  if (!lines.length) return null;
+  const from = typeof copy.facts.permits.from === 'string' && copy.facts.permits.from.trim() ? copy.facts.permits.from.trim() : null;
+  return {
+    kind: 'rows',
+    id: 'permits',
+    title: 'Permits',
+    lead: null,
+    rows: lines.map((line) => ({
+      label: sentence(line.word),
+      value: monthLabel(line.issued),
+      mono: false,
+      // `done` is only ever true (a status the county counts as finished); its absence says nothing, so no chip.
+      chip: null,
+    })),
+    note: `${from ? `From ${from}.` : 'From the county\'s permit records.'} Other cities in the county list only their new buildings here.`,
+    action: null,
+  };
+}
+
+/** The year each system's newest finished permit dates it, from the record alone: Map(system key => year). */
+function permitYears(copy) {
+  const years = new Map();
+  for (const line of permitLines(copy?.facts)) {
+    const year = Number(String(line.issued).slice(0, 4));
+    if (line.done && PERMIT_SYSTEMS.has(line.system) && year && !(years.get(line.system) >= year)) years.set(line.system, year);
+  }
+  return years;
+}
+
 async function systemsBlock(row, copy) {
   const yearBuilt = positive(copy?.facts?.year_built) || positive(row.year_built);
   const ledger = await homeSystemsService.getSystemsLedger({ id: row.id, year_built: yearBuilt });
@@ -294,6 +338,7 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
       historyBlock(copy) || lastSaleBlock(copy, state),
       taxBlock(copy),
       similarBlock(copy, extras.similar),
+      permitsBlock(copy),
       systems,
       groundBlock(extras.ground),
       recalls,
@@ -316,12 +361,14 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
 function buyerSystemsBlock(copy) {
   const yearBuilt = positive(copy?.facts?.year_built);
   if (!yearBuilt) return null;
+  // Year built, and the county's finished permits (SPEC section 8): never what a household said.
+  const permitted = permitYears(copy);
   const items = homeSystemsService.SYSTEM_DEFS.filter((def) => SYSTEMS_SHOWN.includes(def.key))
-    .map((def) => homeSystemsService.projectSystem(def, null, yearBuilt))
+    .map((def) => homeSystemsService.projectSystem(def, permitted.has(def.key) ? { installed_year: permitted.get(def.key), source: 'permit' } : null, yearBuilt))
     .filter((system) => system.age_years != null)
     .map((system) => ({
       title: SYSTEM_TITLES[system.key] || system.label,
-      right: `About ${system.age_years} ${system.age_years === 1 ? 'year' : 'years'} old`,
+      right: `${system.source === 'estimated' ? 'About ' : ''}${system.age_years} ${system.age_years === 1 ? 'year' : 'years'} old`,
       tone: SYSTEM_TONES[system.status] || 'low',
       fill: Math.round(Math.max(0, Math.min(1, system.age_years / system.typical_life_high)) * 100) / 100,
       line: `${system.source_label} \u00b7 typical life ${system.typical_life_low} to ${system.typical_life_high} years`,
@@ -329,7 +376,7 @@ function buyerSystemsBlock(copy) {
   if (!items.length) return null;
   return {
     kind: 'bars', id: 'systems', title: 'What that says about the house', items,
-    note: 'From year built only. An owner may know more. Service life is the typical range, not a prediction.',
+    note: `${permitted.size ? 'From year built and the county\'s permits' : 'From year built only'}. An owner may know more. Service life is the typical range, not a prediction.`,
   };
 }
 
@@ -345,6 +392,7 @@ function buyerCountyBlocks({ copy, extras, state }) {
     historyBlock(copy) || lastSaleBlock(copy, state),
     taxBlock(copy),
     similarBlock(copy, extras.similar),
+    permitsBlock(copy),
     buyerSystemsBlock(copy),
   ];
 }
