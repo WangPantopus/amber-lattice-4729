@@ -23,7 +23,9 @@ export default function robots(): MetadataRoute.Robots {
     return { rules: { userAgent: '*', disallow: '/' } };
   }
   return {
-    rules: { userAgent: '*', allow: '/', disallow: PRIVATE_PATHS },
+    // The share pictures (/api/og/home, /api/og/place, /api/og/page) live under /api/: the longer Allow wins over
+    // Disallow: /api/, so link previews and image search may fetch them.
+    rules: { userAgent: '*', allow: ['/', '/api/og/'], disallow: PRIVATE_PATHS },
     // The public pages, county pages included (sitemap.ts), at the address their canonical links use.
     sitemap: 'https://pantopus.com/sitemap.xml',
   };
