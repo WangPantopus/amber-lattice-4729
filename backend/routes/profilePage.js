@@ -7,11 +7,13 @@
  *   GET /api/profile-page/id/:id                 the page, by account id
  *   GET /api/profile-page/:username              the page, by the name in the person's link
  *   GET …/piece/:pieceId, …/month/:month         one piece, one month, under the same viewer rules
+ *   GET /api/profile-page/marks?ids=…            the ring an avatar wears, for up to 100 people
  */
 
 const express = require('express');
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
+const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 const { profileSourcesEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
@@ -38,19 +40,28 @@ function handle(label, run) {
   };
 }
 
+// Signed-out reads (the page is listed by search engines) share the public previews' budget: 60 a minute per visitor
+// (middleware/rateLimiter.js previewLimiter; the web's server forwards the visitor's address with EDGE_PROXY_SECRET).
+const publicRead = [optionalAuth, (req, res, next) => (req.user ? next() : previewLimiter(req, res, next))];
+
 // The owner's own share settings (before /:username, so "me" is never read as a username).
 router.get('/me/share', verifyToken, handle('share', (req) => profilePage.shareBody(req)));
 router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.putShare(req)));
 
 // By account id.
-router.get('/id/:id', optionalAuth, handle('page-id', (req) => profilePage.getPage(req, { id: req.params.id })));
-router.get('/id/:id/piece/:pieceId', optionalAuth,
+router.get('/id/:id', publicRead, handle('page-id', (req) => profilePage.getPage(req, { id: req.params.id })));
+router.get('/id/:id/piece/:pieceId', publicRead,
   handle('piece-id', (req) => profilePage.getPiece(req, { id: req.params.id }, req.params.pieceId)));
-router.get('/id/:id/month/:month', optionalAuth,
+router.get('/id/:id/month/:month', publicRead,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
 
-// The avatar marks read (CONTRACT section 7) needs sign-in; it arrives in its own change and answers 404 until then.
-router.get('/marks', verifyToken, (req, res) => res.status(404).json({ error: 'Not found', code: 'MARKS_UNAVAILABLE' }));
+// The ring an avatar wears, for up to 100 people (CONTRACT section 7).
+router.get('/marks', verifyToken, handle('marks', (req) => {
+  const { marksFor, parseIds, MAX_IDS } = require('../services/profilePage/marks');
+  const ids = parseIds(req.query.ids);
+  if (!ids) throw new profilePage.PageRefusal(400, 'MARKS_INVALID', `Send ids as a list of at most ${MAX_IDS} account ids.`);
+  return marksFor(String(req.user.id), ids);
+}));
 
 // "me", "id" and "marks" are never usernames here.
 const RESERVED = new Set(['me', 'id', 'marks']);
@@ -61,10 +72,10 @@ function byUsername(req) {
   return { username: req.params.username };
 }
 
-router.get('/:username', optionalAuth, handle('page', (req) => profilePage.getPage(req, byUsername(req))));
-router.get('/:username/piece/:pieceId', optionalAuth,
+router.get('/:username', publicRead, handle('page', (req) => profilePage.getPage(req, byUsername(req))));
+router.get('/:username/piece/:pieceId', publicRead,
   handle('piece', (req) => profilePage.getPiece(req, byUsername(req), req.params.pieceId)));
-router.get('/:username/month/:month', optionalAuth,
+router.get('/:username/month/:month', publicRead,
   handle('month', (req) => profilePage.getMonth(req, byUsername(req), req.params.month)));
 
 module.exports = router;

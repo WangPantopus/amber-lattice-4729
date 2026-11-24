@@ -21,12 +21,13 @@ function webBase() {
 
 /**
  * The saved parts (`User.profile_share`), or null when never saved. A database without the column yet (the migration
- * not applied) reads as never saved; any other failure throws, so a privacy decision never guesses.
+ * not applied: PostgreSQL's undefined-column code, 42703) reads as never saved; any other failure throws, so a privacy
+ * decision never guesses.
  */
 async function readShareColumn(userId) {
   const { data, error } = await supabaseAdmin.from('User').select('profile_share').eq('id', userId).maybeSingle();
   if (error) {
-    if (error.code === '42703' || /profile_share/.test(error.message || '')) return null;
+    if (error.code === '42703') return null;
     throw error;
   }
   return data?.profile_share || null;
