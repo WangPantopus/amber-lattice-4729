@@ -379,6 +379,7 @@
       "read": "2026-11-23",
       "property_search_office": "Woodbury County and Sioux City Assessors, Property Search",
       "property_search_url": "https://beacon.schneidercorp.com/Application.aspx?AppID=10&LayerID=108&PageTypeID=2&PageID=204",
+      "property_search_via": "https://www.woodburycountyiowa.gov/assessor_county/",
       "rows": [
         {
           "id": "recorder",
@@ -461,6 +462,7 @@
       "read": "2026-11-23",
       "property_search_office": "Carteret County Tax Administration, online tax records",
       "property_search_url": "https://carteretcountytax.com/taxes",
+      "property_search_via": "https://www.carteretcountync.gov/154/Tax-Office",
       "rows": [
         {
           "id": "recorder",
@@ -582,7 +584,8 @@
           "title": "Fraud Detection Notification Service",
           "office": "Lincoln County Register of Deeds",
           "url": "https://fraudalertme.com/lincolnncnw/frauddetection.asp",
-          "line": "Emails a subscriber when a document recorded with the Register of Deeds matches a name they monitor; a vendor runs it for the office."
+          "line": "Emails a subscriber when a document recorded with the Register of Deeds matches a name they monitor; a vendor runs it for the office.",
+          "via": "https://lincolnrod.com/"
         }
       ]
     },
@@ -950,7 +953,7 @@
           "id": "treasurer",
           "title": "Property tax",
           "office": "Johnson County Tax Office",
-          "url": "https://johnsoncounty.propertytaxpayments.net/",
+          "url": "https://www.johnsoncountytaxoffice.org/",
           "line": "Searches and takes payment of property tax bills online.",
           "q": "Where do I pay property tax in Johnson County?",
           "a": "The Johnson County Tax Office collects property tax. Its site searches a property's tax bill and takes payment online."
