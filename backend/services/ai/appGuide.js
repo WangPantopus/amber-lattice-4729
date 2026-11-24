@@ -10,7 +10,8 @@
  * routers open (iOS Core/Routing/DeepLinkRouter.swift, Android MainActivity and
  * PantopusNavHost). The model names a screen; this file writes the URL.
  */
-const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
+const { isLaunchFeatureEnabled, areLaunchFeaturesEnabled, aroundYouEnabled } = require('../../utils/featureFlags');
+const holidayCards = require('../holidayCards');
 const { isUuid } = require('./assistantKit');
 
 const SECTION_SLUGS = ['today', 'your-home', 'risk', 'block', 'money', 'civic'];
@@ -41,6 +42,10 @@ const SCREENS = {
   mail: ['pantopus://mailbox', 'mailbox', 'Open Mail'],
   mail_item: ['pantopus://mailbox/{id}', 'mailbox+id', 'Open this mail'],
   mail_sent_item: ['pantopus://mailbox/sent/{id}', 'mailbox+id', 'Open what you sent'],
+  // "Send a Christmas card" (launch keys mailbox and holiday_cards): the card screen, or the card screen with one
+  // picture already picked (a design id from find_cards). Both phones open both links.
+  christmas_cards: ['pantopus://mailbox/cards', 'cards', 'Send a Christmas card'],
+  christmas_card: ['pantopus://mailbox/cards?design={design}', 'cards+design', 'Send this card'],
   // One Moment, for people who have Moments (both phones open it; only the iPhone opens the bare map link).
   moment: ['pantopus://moments/{id}', 'moments+id', 'Open the Moment'],
   // The Wallet, and Settings → Payments & payouts (cards and the payout account).
@@ -70,7 +75,9 @@ function linkFor(screen, id = null, extra = {}) {
   if (template.includes('{id}') && !okId(id)) return null;
   if (template.includes('{home}') && !isUuid(extra.home)) return null;
   if (template.includes('{section}') && !SECTION_SLUGS.includes(extra.section)) return null;
+  if (template.includes('{design}') && !holidayCards.designById(extra.design)) return null;
   return template
+    .replace('{design}', extra.design || '')
     .replace('{id}', id || '')
     .replace('{home}', extra.home || '')
     .replace('{section}', extra.section || '');
@@ -79,13 +86,14 @@ function linkFor(screen, id = null, extra = {}) {
 // What each screen's id is, where the catalog's "home" or "id" doesn't already say.
 const ID_WORDS = {
   post: 'post id', plan: 'plan id', plan_requests: 'plan id', chat: 'room id', mail_item: 'mail id', mail_sent_item: 'mail id',
-  moment: 'moment id', support_train: 'Support Train id',
+  moment: 'moment id', support_train: 'Support Train id', christmas_card: 'the card\'s design_id',
 };
 
 /** Why this person or app can't have a screen's button, in words for the model, or null when they can. */
 function screenClosed(entry, ctx) {
   if (entry[1] && entry[1].includes('plans') && ctx.plansEnabled === false) return "Plans aren't available for this person.";
   if (entry[1] && entry[1].includes('mailbox') && !isLaunchFeatureEnabled('mailbox')) return "Mail isn't available in the app yet.";
+  if (entry[1] && entry[1].startsWith('cards') && !areLaunchFeaturesEnabled(['mailbox', 'holiday_cards'])) return "Christmas cards aren't available in the app yet.";
   if (entry[1] && entry[1].includes('moments') && !ctx.momentsEnabled) return "Moments aren't available for this person.";
   if (entry[1] === 'memory' && !ctx.memory) return 'This version of the app has no memory list. Say they can see it in Settings once they update the app.';
   if (entry[1] === 'rules' && !ctx.rules) return 'This version of the app has no rules list. Say they can see it in Settings once they update the app.';
@@ -126,6 +134,7 @@ function screenWithIds(name) {
   const [template] = SCREENS[name];
   if (template.includes('{home}')) return `${name} (${name === 'home_task' ? 'task id' : 'id'}, then home id)`;
   if (template.includes('{section}')) return `${name} (home id, then the section: ${SECTION_SLUGS.join(', ')})`;
+  if (template.includes('{design}')) return `${name} (${ID_WORDS[name]})`;
   if (template.includes('{id}')) return `${name} (${ID_WORDS[name] || (homeSlot(name) ? 'home id' : 'id')})`;
   return name;
 }
@@ -147,13 +156,14 @@ function parseButtonLine(line) {
     .map((match) => ({ quoted: match[1] !== undefined, text: (match[1] ?? match[2]).trim().replace(/^["'“”]+|["'“”]+$/g, '').trim() }))
     .filter((part) => part.text);
   if (!parts.length || parts[0].quoted) return null;
-  const asked = { screen: parts[0].text.toLowerCase(), id: null, home_id: null, section: null, label: null };
+  const asked = { screen: parts[0].text.toLowerCase(), id: null, home_id: null, section: null, design: null, label: null };
   for (const part of parts.slice(1)) {
     if (part.quoted) asked.label = asked.label || part.text;
     else if (isUuid(part.text)) {
       if (!asked.id) asked.id = part.text;
       else asked.home_id = asked.home_id || part.text;
     } else if (SECTION_SLUGS.includes(part.text.toLowerCase())) asked.section = part.text.toLowerCase();
+    else if (holidayCards.designById(part.text.toLowerCase())) asked.design = part.text.toLowerCase();
     else asked.label = asked.label || part.text;
   }
   return asked;
@@ -254,7 +264,7 @@ function buttonLink(line, ctx) {
   if (slot && !isUuid(asked[slot]) && isUuid(ctx.defaultHomeId)) asked[slot] = ctx.defaultHomeId;
   const made = runShowLink(asked, ctx);
   if (!made.link) return made;
-  const parts = [asked.screen, asked.id, asked.home_id, asked.section, asked.label ? `"${asked.label.replace(/["\]]/g, '')}"` : null].filter(Boolean);
+  const parts = [asked.screen, asked.id, asked.home_id, asked.section, asked.design, asked.label ? `"${asked.label.replace(/["\]]/g, '')}"` : null].filter(Boolean);
   return { ...made, line: `[[button: ${parts.join(', ')}]]` };
 }
 
@@ -283,7 +293,7 @@ function runShowLink(args, ctx) {
   if (!entry) return { error: `Unknown screen. Screens: ${SCREEN_NAMES.join(', ')}.` };
   const closed = screenClosed(entry, ctx);
   if (closed) return { error: closed };
-  const url = linkFor(args.screen, args.id, { home: args.home_id, section: args.section });
+  const url = linkFor(args.screen, args.id, { home: args.home_id, section: args.section, design: args.design });
   if (!url) return { error: 'That screen needs a valid id from your tools or the screen context.' };
   const label = typeof args.label === 'string' && args.label.trim() ? args.label.trim().slice(0, 40) : entry[2];
   // The chat adds what to do next, from what the person has seen of the reply so far.
@@ -299,8 +309,9 @@ function runShowLink(args, ctx) {
 // builds have neither, and hear where in the app the person does it instead.
 function appGuide({
   plans = true, playdates = false, sports = false, suggestions = false, actionCards = true, links = true, pickupSchedule = true, remembers = false, standingRules = false,
-  identity = true, chats = true, moments = false,
+  identity = true, chats = true, moments = false, momentDrafts = false, letterDrafts = false, cardDrafts = false,
 } = {}) {
+  const around = aroundYouEnabled();
   const marketplace = isLaunchFeatureEnabled('marketplace');
   const openGigs = isLaunchFeatureEnabled('open_gigs');
   const mailbox = isLaunchFeatureEnabled('mailbox');
@@ -325,7 +336,8 @@ PLACE
 TODAY
 - Today shows the day at the default home (or a saved address): the weather, "good day to" picks (open the windows, run, wash the car, water the lawn, grill), the address calendar (pickup days and other dates for the next two weeks), radon, air quality, alerts and sunrise and sunset. People with Plans also see their plans for the day.
 - Pickup days: city schedules are marked unconfirmed until the household sets its own days in the pickup editor on Today (or by photographing the hauler's flyer there with "Read a flyer"). Only days the household set trigger the night-before reminder.${pickupSchedule ? ' You can draft pickup days with draft_pickup_schedule when the app supports it.' : ''}
-- Radon: Today asks "Was radon tested?"; a lab report photo or PDF can fill in the result. The EPA suggests fixing a home at or above 4.0 pCi/L. Never give medical advice.
+${around ? `- Around you: where there is local news to show, Today has an At home | Around you switch at the top. Around you lists what local outlets and public sources report near them: alerts, road work, headlines, events, around town, across the state, this season and on this day. Each row is a post they can react to, reply to and repost, and tapping it opens the story at its outlet. You can read it with find_around_you${links ? ' and open a row with the post button' : ''}; a reply to one is drafted like any reply.
+` : ''}- Radon: Today asks "Was radon tested?"; a lab report photo or PDF can fill in the result. The EPA suggests fixing a home at or above 4.0 pCi/L. Never give medical advice.
 - Briefings: a morning briefing and an evening briefing (pickup reminders come in the evening). Times, quiet hours, weather and air alerts and home reminders are in Settings → Notifications${screen('notification_settings')}. ${actionCards ? 'You can draft changes with draft_notification_settings.' : 'They change them there.'}${suggestions ? `
 - Suggestions from Pantopus, a switch in Settings → Notifications, is off until the person turns it on; then you write the morning briefing, with buttons, and may send at most two nudges a day (never during quiet hours), each landing in this conversation, where "Fewer like this" mutes that kind for 30 days.` : ''}
 
@@ -344,6 +356,7 @@ MESSAGES
 
 SUPPORT TRAINS
 - A Support Train organizes meals, takeout or groceries for someone going through something hard: the organizer sets dates, helpers sign up for a slot, and everyone gets reminders. You can start one with draft_support_train_from_story.
+- You can look up the ones they organize, receive, help with or were invited to (list_user_support_trains), ones listed near them that need help (find_support_trains_nearby) and one train's open dates (get_support_train_summary${links ? '; support_train opens it' : ''}). Signing up for a date, and answering an invitation, they do on the train's own page.
 
 ACCOUNT AND PRIVACY
 - Neighbors never see exact addresses. You see only what the person can see, and you never act without their tap${standingRules ? ', except the standing rules they turned on (below)' : ''}.${remembers ? `
@@ -373,10 +386,10 @@ ${sports ? '- Your teams: Settings → Notifications → Games and teams opens t
 - A home's mail opens only to residents whose address is proven (a postcard code, a document, a landlord's confirmation, an ID check, or the household's invitation or approval), never to guests. A letter addressed to one member stays that member's. Until the address is proven, the home's mail waits in a closed Home box.
 - "Pantopus read this for you" is a short note at the top of a piece with its key facts. Businesses and Pantopus write their own; otherwise AI writes it when the piece is first opened.
 - The ⋯ menu in Mail has Mail tasks, Home records, Stamps and Hold my mail, which keeps their own mail while they're away and brings it as one bundle the morning they're back.${letters ? `
-- Writing a letter: the pencil button in Mail (who it's to, the address, the letter, then seal and send).` : ''}${cards ? `
-- Christmas cards: "Send a Christmas card" at the top of Me and in the side menu. They pick who it's for and a card, write on the back, choose when it arrives (the next morning, sealed until Christmas, or Christmas morning), look it over, then seal and send. A card can be taken back until the 7 AM pickup, and the season closes December 31.` : ''}
+- Writing a letter: the pencil button in Mail (who it's to, the address, the letter, then seal and send).${letterDrafts ? ' You can write one for them with draft_letter: the wizard opens with who it is to and the letter filled in.' : ''}` : ''}${cards ? `
+- Christmas cards: "Send a Christmas card" at the top of Me and in the side menu. They pick who it's for and a card, write on the back, choose when it arrives (the next morning, sealed until Christmas, or Christmas morning), look it over, then seal and send. A card can be taken back until the 7 AM pickup, and the season closes December 31.${cardDrafts ? ' You can put one together with draft_christmas_card (find_cards for the pictures, find_recipients for who it is to): the card screen opens with it filled in.' : (links ? ' You can look through the cards with find_cards and open the card screen on one (christmas_card with its design_id, or christmas_cards).' : ' You can look through the cards with find_cards.')}` : ''}
 - On the phones, Mail opens after the phone's face or fingerprint unlock, or its passcode; so does the Wallet.
-- ${identity ? `You can look through their Mail and read a piece (find_mail, get_mail_item${links ? '; mail_item opens one' : ''}). ` : ''}You can't send, pay, file or delete mail: they do that on the piece.`);
+- ${identity ? `You can look through their Mail and read a piece (find_mail, get_mail_item${links ? '; mail_item opens one' : ''}). ` : ''}${letterDrafts || cardDrafts ? 'What you draft, they send themselves from Mail. ' : ''}You can't pay, file or delete mail${letterDrafts || cardDrafts ? '' : ', or send any'}: they do that on the piece.`);
   }
 
   // Moments are described only to people who have the tab (the `moments` flag), like their tools.
@@ -385,7 +398,7 @@ ${sports ? '- Your teams: Settings → Notifications → Games and teams opens t
 - A Moment is a photo, a video of up to 30 seconds or a short text card, posted from the Moments tab with "+". It is pinned where they are and lasts 1, 6, 24 or 48 hours; then it is gone for everyone, its author included. Posting needs a one-time confirmation that they are 18 or older.
 - Who sees it: "Everyone nearby" or "My connections". Its place shows as a venue, a street name or a town, never an address. "Show the area instead" shows only the town, and so does a Moment posted at home. "Post with no location" keeps it off the map, for connections only.
 - It shows on the Moments map as the poster's face in a ring, and as a ring around their profile picture elsewhere in the app. People can react with one emoji or reply; a reply arrives as a direct message. Only the poster sees "Seen by".
-- You can look up their own Moments, who saw them, and Moments they can see (find_moments, get_moment${links ? '; moment opens one' : ''}). You never see the photo or video, and you can't post, react or reply for them.`);
+- You can look up their own Moments, who saw them, and Moments they can see (find_moments, get_moment${links ? '; moment opens one' : ''}). You never see the photo or video, and you can't react or reply for them. ${momentDrafts ? 'You can draft a Moment with draft_moment (a text card, or the caption for a photo or video they take in the composer): the Moments composer opens with it filled in, and they post it there.' : "You can't post one for them: they post from the Moments tab."}`);
   }
 
   parts.push(`WALLET AND PAYMENTS

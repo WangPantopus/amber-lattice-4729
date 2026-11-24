@@ -37,7 +37,7 @@ const holidayCards = require('../holidayCards');
 const { getAuthorizedMail } = require('./mailAccess');
 const { nameMailSender } = require('../../utils/mailSenderView');
 const noaa = require('../external/noaa');
-const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
+const { isLaunchFeatureEnabled, aroundYouEnabled } = require('../../utils/featureFlags');
 const { isFeatureEnabled } = require('../featureFlagService');
 const { readToolDefinitions, playdateReadToolDefinitions, PLAN_TOOLS } = require('./readTools');
 const { actionCardDefinitions, playdateCardDefinitions, PLAN_CARD_TOOLS, draftPlanDefinition } = require('./actionCards');
@@ -57,6 +57,8 @@ const scope = require('./scope');
 const { MAIL_TOOL_NAMES } = require('./readToolsMail');
 const { CHAT_TOOL_NAMES } = require('./readToolsChats');
 const { MOMENT_TOOL_NAMES } = require('./readToolsMoments');
+const { AROUND_TOOL_NAMES } = require('./readToolsAround');
+const { COMPOSE_TOOL_NAMES, COMPOSE_DRAFT_TYPES, composeToolOffered, cardsOn } = require('./composeDrafts');
 const { WALLET_TOOL_NAMES } = require('./readToolsWallet');
 
 // Reading chats (find_chats, read_chat) happens only in a person's own chat turn, when they ask about
@@ -88,7 +90,8 @@ const PLAYDATE_TOOLS = new Map([...playdateReadToolDefinitions, ...playdateCardD
 // "Verify it's me" button, so the person is asked only when a question really needs their Mail or their Wallet.
 function launchScopedChatTools({
   pickupSchedule = false, actionCards = false, links = false, plans = false, playdates = false, remembers = false, checksBack = false,
-  standingRules = false, sports = false, identity = false, moments = false,
+  standingRules = false, sports = false, identity = false, moments = false, momentDrafts = false, letterDrafts = false,
+  cardDrafts = false,
 } = {}) {
   const giftFunds = isLaunchFeatureEnabled('gift_funds');
   return toolDefinitions
@@ -117,6 +120,11 @@ function launchScopedChatTools({
       if (CHAT_TOOL_NAMES.has(tool.name)) return chatReading();
       // Moments follow the person's `moments` flag, as the Moments tab does.
       if (MOMENT_TOOL_NAMES.has(tool.name)) return moments;
+      // Around you follows the backend's AROUND_YOU switch, as Today's second half does.
+      if (AROUND_TOOL_NAMES.has(tool.name)) return aroundYouEnabled();
+      // A Moment, a letter and a Christmas card go to apps whose composers open them (`cards` lists "moment",
+      // "letter", "christmas_card"), with the lookups they need (composeDrafts.js).
+      if (COMPOSE_TOOL_NAMES.has(tool.name)) return composeToolOffered(tool.name, { momentDrafts, letterDrafts, cardDrafts, moments });
       // The Wallet is behind the same identity check as Mail.
       if (WALLET_TOOL_NAMES.has(tool.name)) return identity;
       // The summary card also serves a paper letter they photograph, so it needs no identity check.
@@ -149,8 +157,14 @@ function withoutGiftFunds(tool) {
 
 function launchScopedChatInstructions({
   pickupSchedule = false, actionCards = false, links = false, plans = false, playdates = false, remembers = false, checksBack = false,
-  standingRules = false, sports = false, identity = false, identityAsk = false, moments = false,
+  standingRules = false, sports = false, identity = false, identityAsk = false, moments = false, momentDrafts = false,
+  letterDrafts = false, cardDrafts = false,
 } = {}) {
+  const draftsFor = {
+    momentDrafts: composeToolOffered('draft_moment', { momentDrafts, moments }),
+    letterDrafts: composeToolOffered('draft_letter', { letterDrafts }),
+    cardDrafts: composeToolOffered('draft_christmas_card', { cardDrafts }),
+  };
   return prompts.chatAgentSystem({
     openGigs: isLaunchFeatureEnabled('open_gigs'),
     marketplace: isLaunchFeatureEnabled('marketplace'),
@@ -168,9 +182,12 @@ function launchScopedChatInstructions({
     identityAsk,
     chats: chatReading(),
     moments,
+    around: aroundYouEnabled(),
+    cards: cardsOn(),
+    ...draftsFor,
     buttons: links ? buttonRule({ plansEnabled: plans, momentsEnabled: moments, memory: remembers, rules: standingRules }) : '',
     guide: appGuide({
-      identity, chats: chatReading(), moments,
+      identity, chats: chatReading(), moments, ...draftsFor,
       plans, playdates, sports: plans && sports, suggestions: actionCards, actionCards, links, pickupSchedule, remembers: remembers && actionCards, standingRules: standingRules && actionCards,
     }),
   });
@@ -212,6 +229,12 @@ const TOOL_STATUS = {
   get_user_context: 'Looking at your places…',
   list_user_support_trains: 'Looking up your Support Trains…',
   get_support_train_summary: 'Looking up that Support Train…',
+  find_support_trains_nearby: 'Looking at Support Trains near you…',
+  draft_moment: 'Drafting your Moment…',
+  find_recipients: 'Looking for who it’s to…',
+  find_cards: 'Looking through the cards…',
+  draft_letter: 'Writing your letter…',
+  draft_christmas_card: 'Putting your card together…',
   find_mail: 'Looking through your mail…',
   find_moments: 'Looking at Moments…',
   get_moment: 'Looking at the Moment…',
@@ -227,6 +250,7 @@ const TOOL_STATUS = {
   get_post: 'Reading the post…',
   catch_up_nearby: 'Catching up on Pulse…',
   find_recommendations: 'Looking at what people near you recommend…',
+  find_around_you: 'Looking at what’s around you…',
   get_place_facts: 'Checking your home…',
   get_today: 'Checking today…',
   get_schedule: 'Looking at the days ahead…',
@@ -643,6 +667,10 @@ async function streamChat({
     identity: shown.has('identity') || toolContext.identityAsk,
     identityAsk: toolContext.identityAsk,
     moments: momentsEnabled,
+    // The composers this app opens with a draft filled in (composeDrafts.js).
+    momentDrafts: shown.has('moment'),
+    letterDrafts: shown.has('letter'),
+    cardDrafts: shown.has('christmas_card'),
   };
   const tools = launchScopedChatTools(capabilities);
   const toolNames = tools.map((tool) => tool.name);
@@ -1731,6 +1759,8 @@ const DRAFT_TYPES = {
   create_listing_draft: 'listing',
   draft_support_train_from_story: 'support_train',
   draft_pickup_schedule: 'pickup_schedule',
+  // What the app's composer opens with: the draft the tool returned, checked (composeDrafts.js).
+  ...COMPOSE_DRAFT_TYPES,
 };
 // Lines the app adds to a person's message, which aren't theirs to see again.
 const APP_LINES = [
@@ -1885,6 +1915,11 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
         // The card is what the tool returned (it knows the home), with the next pickup brought up to date.
         draft = refreshPickupDraft(results.get(block.id)?.draft);
         if (!draft) continue;
+      } else if (COMPOSE_DRAFT_TYPES[block.name]) {
+        // Only to an app that opens it, and only a draft that came out whole.
+        const made = results.get(block.id);
+        if (!shown.has(COMPOSE_DRAFT_TYPES[block.name]) || !made?.valid || !made.draft) continue;
+        draft = made.draft;
       }
       items.push({ role: 'assistant', draft: { type: DRAFT_TYPES[block.name], draft }, at });
     }
