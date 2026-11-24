@@ -1,10 +1,19 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /about
 // frontend/apps/web/src/app/(site)/about/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/about',
+  title: 'About Pantopus: real life, connected',
+  description:
+    'Pantopus is one app for the place where your life actually happens. Every account starts at a real home. Who we are, what we build and how to reach us.',
+});
 
 export default function AboutPage() {
   return (

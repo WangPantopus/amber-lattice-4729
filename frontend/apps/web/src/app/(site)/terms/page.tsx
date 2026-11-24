@@ -1,10 +1,19 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /terms
 // frontend/apps/web/src/app/(site)/terms/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/terms',
+  title: 'Terms of service in plain language',
+  description:
+    'The terms you agree to when you use Pantopus, in plain language: your account, what you post, payments, home claims and verification, and safety and moderation.',
+});
 
 export default function TermsPage() {
   return (

@@ -1,10 +1,19 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /privacy
 // frontend/apps/web/src/app/(site)/privacy/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/privacy',
+  title: 'Privacy policy: what we collect and why',
+  description:
+    'How Pantopus collects, uses and shares your information, what others see, how long we keep it, and your rights and choices. We do not sell your personal data.',
+});
 
 export default function PrivacyPage() {
   return (
