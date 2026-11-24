@@ -116,20 +116,23 @@ function Labelled({ id, title, count, note, children }: { id: string; title: str
 }
 
 /** "Prove it's yours" (board 11): a line to put on the page, then "Check now". Only for a link the piece has saved. */
-/** One line to copy (the proof line, or the meta tag for a person's own site). */
-function CopyLine({ text, label }: { text: string; label: string }) {
+/** One line to copy (the proof line, or the meta tag for a person's own site), under what it is for. */
+function CopyLine({ text, label, title }: { text: string; label: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
-      <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{text}</code>
-      <button
-        type="button"
-        aria-label={copied ? `${label} copied` : `Copy ${label}`}
-        onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
-        className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
-      >
-        {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
-      </button>
+    <div className="flex flex-col gap-1">
+      <p className="text-xs leading-4 font-semibold text-app-secondary">{title}</p>
+      <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
+        <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{text}</code>
+        <button
+          type="button"
+          aria-label={copied ? `${label} copied` : `Copy ${label}`}
+          onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
+          className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
+        >
+          {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -164,9 +167,10 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
     <div className="flex flex-col gap-2">
       {proof ? (
         <>
-          <CopyLine text={proof.line} label="the line" />
-          {proof.meta ? <CopyLine text={proof.meta} label="the meta tag" /> : null}
-          {proof.how ? <p className="text-xs leading-4 text-app-muted">{proof.how}</p> : null}
+          {/* The server's sentence first, then each box under what it is for. */}
+          {proof.how ? <p className="text-[0.8125rem] leading-[1.125rem] text-app-secondary">{proof.how}</p> : null}
+          <CopyLine text={proof.line} label="the line" title="For the page's title or description" />
+          {proof.meta ? <CopyLine text={proof.meta} label="the meta tag" title="For your own site" /> : null}
           <button type="button" disabled={busy} onClick={check} className="self-start min-h-[2.75rem] px-4 rounded-xl bg-app-surface-sunken text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60">
             {busy ? 'Checking…' : 'Check now'}
           </button>
