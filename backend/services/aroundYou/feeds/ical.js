@@ -1,6 +1,7 @@
 /**
  * Local events from calendar files: each active seeder_sources row of type 'ical' in a region (a library's, a city's,
- * a chamber's). Kept: events starting in the next 7 days, at most 5 per calendar, soonest first. Title: "<event> ·
+ * a chamber's). Kept: events starting in the next 7 days, at most 10 per calendar, soonest first (the page's Events
+ * section shows five between all calendars; the Events list shows them all). Title: "<event> ·
  * <weekday, month day, time>" in the region's time zone. Link: the event's own page, else the calendar's site.
  */
 
@@ -9,7 +10,7 @@ const { rrulestr } = require('rrule');
 const { guardedFetch } = require('../guardedFetch');
 
 const AHEAD_MS = 7 * 24 * 3_600_000;
-const MAX_PER_CALENDAR = 5;
+const MAX_PER_CALENDAR = 10;
 const MAX_TITLE = 140;
 
 // Lines folded with a leading space or tab are one line (RFC 5545 3.1).
