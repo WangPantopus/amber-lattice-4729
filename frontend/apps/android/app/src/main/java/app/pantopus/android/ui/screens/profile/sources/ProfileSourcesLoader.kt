@@ -1,6 +1,7 @@
 package app.pantopus.android.ui.screens.profile.sources
 
 import app.pantopus.android.core.LaunchFeatures
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.profile.ProfilePageRepository
 import app.pantopus.android.ui.screens.profile.PreviewAudience
@@ -25,6 +26,28 @@ sealed interface ProfileSourcesState {
 
     /** Any answer but a page (the switch off, a business, private, a block, no connection): today's screen. */
     data object Unavailable : ProfileSourcesState
+}
+
+/** One piece opened (board 8): loading, read, not there for this viewer (404), or not read (try again). */
+sealed interface ProfilePieceState {
+    val id: String
+
+    data class Loading(
+        override val id: String,
+    ) : ProfilePieceState
+
+    data class Ready(
+        override val id: String,
+        val detail: ProfilePieceDetail,
+    ) : ProfilePieceState
+
+    data class Missing(
+        override val id: String,
+    ) : ProfilePieceState
+
+    data class Failed(
+        override val id: String,
+    ) : ProfilePieceState
 }
 
 /** One month opened on the Record chart (board 13): loading, its lines, or nothing there for this viewer. */
@@ -73,8 +96,14 @@ class ProfileSourcesLoader(
     /** The owner's page as one audience gets it; null when not previewing or before it is read. */
     val preview: StateFlow<ProfilePage?> = _preview.asStateFlow()
 
+    private val _piece = MutableStateFlow<ProfilePieceState?>(null)
+
+    /** The piece opened over the page (board 8); null when none is open. */
+    val piece: StateFlow<ProfilePieceState?> = _piece.asStateFlow()
+
     private var job: Job? = null
     private var monthJob: Job? = null
+    private var pieceJob: Job? = null
     private var identifier: String? = null
 
     /**
@@ -108,6 +137,7 @@ class ProfileSourcesLoader(
         job?.cancel()
         if (_state.value != ProfileSourcesState.Off) _state.value = ProfileSourcesState.Unavailable
         _month.value = null
+        closePiece()
     }
 
     /** Opens [at] on the Record chart; a month with nothing for this viewer shows that plainly. */
@@ -131,6 +161,32 @@ class ProfileSourcesLoader(
     fun closeMonth() {
         monthJob?.cancel()
         _month.value = null
+    }
+
+    /** Opens one piece (board 8) as the page's viewer gets it, or as the owner's Preview as audience. */
+    fun openPiece(pieceId: String) {
+        val page = (_state.value as? ProfileSourcesState.Ready)?.page ?: return
+        val shown = _preview.value ?: page
+        pieceJob?.cancel()
+        if ((_piece.value as? ProfilePieceState.Ready)?.id != pieceId) _piece.value = ProfilePieceState.Loading(pieceId)
+        pieceJob =
+            scope.launch {
+                _piece.value =
+                    when (val result = pages.piece(page.header.userId, pieceId, shown.previewAs?.key)) {
+                        is NetworkResult.Success -> ProfilePieceState.Ready(pieceId, result.data)
+                        is NetworkResult.Failure ->
+                            if (result.error == NetworkError.NotFound) {
+                                ProfilePieceState.Missing(pieceId)
+                            } else {
+                                ProfilePieceState.Failed(pieceId)
+                            }
+                    }
+            }
+    }
+
+    fun closePiece() {
+        pieceJob?.cancel()
+        _piece.value = null
     }
 
     /** Preview as on the new page: the server's `?as=` answer, exactly what that viewer gets. */

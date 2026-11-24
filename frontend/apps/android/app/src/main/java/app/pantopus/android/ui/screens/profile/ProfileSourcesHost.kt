@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +46,8 @@ import app.pantopus.android.ui.screens.profile.sources.ProfileMonthState
 import app.pantopus.android.ui.screens.profile.sources.ProfilePage
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageAction
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageLink
+import app.pantopus.android.ui.screens.profile.sources.ProfilePieceScreen
+import app.pantopus.android.ui.screens.profile.sources.ProfilePieceState
 import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
@@ -83,6 +86,10 @@ internal class SourcesHostCallbacks(
     val onOpenMoments: (String) -> Unit,
     /** The owner added or removed pieces: the page is read again. */
     val onPiecesChanged: () -> Unit = {},
+    /** One piece opened over the page (board 8), and closed again; [onRetryPiece] reads it again. */
+    val onOpenPiece: (String) -> Unit = {},
+    val onClosePiece: () -> Unit = {},
+    val onRetryPiece: () -> Unit = {},
 )
 
 /**
@@ -102,6 +109,7 @@ internal fun ProfileSourcesPage(
     month: ProfileMonthState?,
     viewerId: String?,
     host: SourcesHostCallbacks,
+    piece: ProfilePieceState? = null,
 ) {
     val owner = mode as? ProfileFrameMode.Owner
     val preview = mode as? ProfileFrameMode.Preview
@@ -119,8 +127,7 @@ internal fun ProfileSourcesPage(
                     val index = m.toIntOrNull()?.minus(1)
                     if (year != null && index != null && index in 0..11) host.onOpenMonth(RecordMonth(year, index))
                 }
-            // A piece opens with phase 2's piece page; until then its line says what it is and goes nowhere.
-            is ProfilePageLink.Piece -> Unit
+            is ProfilePageLink.Piece -> host.onOpenPiece(link.id)
             is ProfilePageLink.Business -> host.onOpenAppLink(Uri.parse("pantopus://b/${Uri.encode(link.username)}"))
             is ProfilePageLink.Profile ->
                 link.userId?.let(host.onOpenProfile)
@@ -217,14 +224,28 @@ internal fun ProfileSourcesPage(
                 }
             },
         )
-    ProfileSourcesFrame(
-        page = page,
-        selectedTab = selectedTab,
-        onSelectTab = host.onSelectTab,
-        slots = slots,
-        actions = blockActions,
-        month = month?.takeIf { it !is ProfileMonthState.Empty }?.at,
-    )
+    // An opened piece covers the page, which stays where it was underneath (its scroll, its tab) for Back.
+    Box(Modifier.fillMaxSize()) {
+        Box(if (piece != null) Modifier.clearAndSetSemantics { } else Modifier) {
+            ProfileSourcesFrame(
+                page = page,
+                selectedTab = selectedTab,
+                onSelectTab = host.onSelectTab,
+                slots = slots,
+                actions = blockActions,
+                month = month?.takeIf { it !is ProfileMonthState.Empty }?.at,
+            )
+        }
+        if (piece != null) {
+            ProfilePieceScreen(
+                state = piece,
+                firstName = if (owner != null && preview == null) "you" else header.firstName,
+                onBack = host.onClosePiece,
+                onRetry = host.onRetryPiece,
+                onOpenLink = onOpenLink,
+            )
+        }
+    }
     if (showPieces && owner != null) {
         OwnerPiecesSheet(
             userId = header.userId,

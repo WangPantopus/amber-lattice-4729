@@ -12,8 +12,10 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonth
 import app.pantopus.android.ui.screens.profile.sources.ProfilePage
+import app.pantopus.android.ui.screens.profile.sources.ProfilePieceDetail
 import app.pantopus.android.ui.screens.profile.sources.mapProfileMonth
 import app.pantopus.android.ui.screens.profile.sources.mapProfilePage
+import app.pantopus.android.ui.screens.profile.sources.mapProfilePiece
 import com.squareup.moshi.Moshi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -63,6 +65,18 @@ class ProfilePageRepository
             when (val result = safeApiCall { api.month(userId, month, audience) }) {
                 is NetworkResult.Success ->
                     mapProfileMonth(result.data)?.let { NetworkResult.Success(it) } ?: NetworkResult.Failure(NetworkError.NotFound)
+                is NetworkResult.Failure -> result
+            }
+
+        /** One piece opened (board 8); not there for this viewer (404 `PIECE_NOT_FOUND`) is a [NetworkError.NotFound]. */
+        suspend fun piece(
+            userId: String,
+            pieceId: String,
+            audience: String? = null,
+        ): NetworkResult<ProfilePieceDetail> =
+            when (val result = safeApiCall { api.piece(userId, pieceId, audience) }) {
+                is NetworkResult.Success ->
+                    mapProfilePiece(result.data)?.let { NetworkResult.Success(it) } ?: NetworkResult.Failure(NetworkError.NotFound)
                 is NetworkResult.Failure -> result
             }
 

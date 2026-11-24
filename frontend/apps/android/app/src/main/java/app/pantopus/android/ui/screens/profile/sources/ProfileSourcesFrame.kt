@@ -172,10 +172,7 @@ internal fun ProfileSourcesFrame(
                         modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
                     ) {
-                        tab.blocks.forEach {
-                                block ->
-                            SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month)
-                        }
+                        SourcesBlocks(blocks = tab.blocks, page = page, actions = actions, slots = slots, month = month)
                         if (tab.key == WORK_TAB) slots.workEnd?.invoke()
                         // Board 12 ends the record with how to read its lines.
                         if (tab.blocks.any { it is ProfileBlock.RecordChart }) HowToReadLines(firstName = page.header.firstName)
@@ -258,6 +255,7 @@ private fun SourcesBlocks(
     page: ProfilePage,
     actions: SourcesBlockActions,
     slots: SourcesFrameSlots,
+    month: RecordMonth? = null,
 ) {
     var i = 0
     while (i < blocks.size) {
@@ -266,8 +264,18 @@ private fun SourcesBlocks(
         if (block is ProfileBlock.Says && next is ProfileBlock.KnownFor) {
             SaysAndKnownForCard(says = block, knownFor = next, actions = actions)
             i += 2
+        } else if (block is ProfileBlock.WorkRings && next is ProfileBlock.Pieces && !next.pinned) {
+            // Board 7: the work line and the list of pieces are one card, with the year chips and All / Did / Built.
+            WorkLineCard(
+                rings = block,
+                list = next,
+                known = page.workPieces(),
+                firstName = page.header.firstName,
+                open = { link -> link?.takeIf { actions.interactive }?.let { { actions.onOpenLink(it) } } },
+            )
+            i += 2
         } else {
-            SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = null)
+            SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month)
             i += 1
         }
     }
