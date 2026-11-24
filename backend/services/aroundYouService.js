@@ -161,27 +161,38 @@ async function addMissingPictures(rows) {
   if (failed) throw failed.error;
 }
 
-// A status row's post follows its row: when a fire's acres or a project's dates changed, the post's text does too, as
-// the pictures are given to older posts. A story's post made before posts carried the outlet's summary (its text is
-// the bare headline) gets the summary once. Reactions and replies stay; no other post changes.
-async function followText(status, summarized) {
-  const rows = [...status, ...summarized];
+// A made post follows its item where the item says something the post doesn't yet: a status row's text (a fire's
+// acres, a project's dates), the outlet's summary for a story post made before posts carried one (its text is still
+// the bare headline), and the outlet's name when the outlet was marked a subscription since. Reactions and replies
+// stay; nothing else about a post changes.
+async function followItems(rows) {
   if (!rows.length) return;
-  const { data: made, error } = await supabaseAdmin.from('Post').select('id, content').in('id', rows.map((row) => row.id));
+  const { data: made, error } = await supabaseAdmin.from('Post').select('id, content, post_metadata')
+    .in('id', rows.map((row) => row.post.id));
   if (error) throw error;
-  const current = new Map((made || []).map((post) => [post.id, post.content]));
-  const changed = [
-    ...status.filter((row) => current.has(row.id) && current.get(row.id) !== row.content),
-    ...summarized.filter((row) => current.get(row.id) === row.headline),
-  ];
-  const results = await Promise.all(changed.map((row) => supabaseAdmin.from('Post')
-    .update({ content: row.content }).eq('id', row.id).eq('origin', 'curator')));
+  const current = new Map((made || []).map((post) => [post.id, post]));
+  const updates = [];
+  for (const { post, status, headline } of rows) {
+    const now = current.get(post.id);
+    if (!now) continue;
+    const change = {};
+    if (status ? now.content !== post.content : (post.content !== headline && now.content === headline)) {
+      change.content = post.content;
+    }
+    const name = post.post_metadata.source_name;
+    if (name && now.post_metadata?.source_name && now.post_metadata.source_name !== name) {
+      change.post_metadata = { ...now.post_metadata, source_name: name };
+    }
+    if (Object.keys(change).length) updates.push({ id: post.id, change });
+  }
+  const results = await Promise.all(updates.map(({ id, change }) => supabaseAdmin.from('Post')
+    .update(change).eq('id', id).eq('origin', 'curator')));
   const failed = results.find((result) => result.error);
   if (failed) throw failed.error;
 }
 
 // Makes the posts a page's items don't have yet; one that exists (or was removed by moderation) is left as it is,
-// but for its pictures (addMissingPictures) and its text where followText says so.
+// but for its pictures (addMissingPictures) and what followItems lets follow its item.
 async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
   const curatorOf = new Map(regions.map((region) => [region.region, region.curator_user_id]));
   const curatorIds = [...new Set([...curatorOf.values()].filter(Boolean))];
@@ -189,14 +200,12 @@ async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
     ? await supabaseAdmin.from('LocalProfile').select('id, user_id').in('user_id', curatorIds)
     : { data: [] };
   const profileOf = new Map((profiles || []).map((row) => [String(row.user_id), row.id]));
-  const status = [];
-  const summarized = [];
+  const follow = [];
   const rows = sections.flatMap((section) => section.items.flatMap((item) => {
     const curator = curatorOf.get(regionOfItem.get(item.id));
     if (!curator) return [];
     const row = postRow(item, section.id, curator, profileOf.get(String(curator)), picturesOfItem.get(item.id));
-    if (STATUS_KINDS.has(item._kind)) status.push(row);
-    else if (item.summary) summarized.push({ id: row.id, content: row.content, headline: item.title });
+    follow.push({ post: row, status: STATUS_KINDS.has(item._kind), headline: item.title });
     return [row];
   }));
   if (!rows.length) return;
@@ -205,7 +214,7 @@ async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
   await addMissingPictures(rows).catch((err) => {
     logger.warn('Around you pictures could not be added', { error: err.message });
   });
-  await followText(status, summarized).catch((err) => {
+  await followItems(follow).catch((err) => {
     logger.warn('Around you post text could not be updated', { error: err.message });
   });
 }
