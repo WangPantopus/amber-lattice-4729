@@ -216,7 +216,7 @@ async function readPage(regions) {
   const [queue, sources, checked] = await Promise.all([
     supabaseAdmin
       .from('seeder_content_queue')
-      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at, created_at, media_urls, media_types')
+      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at, created_at, scheduled_for, media_urls, media_types')
       .in('region', regionIds)
       .in('category', CATEGORIES)
       .eq('scope', 'local')

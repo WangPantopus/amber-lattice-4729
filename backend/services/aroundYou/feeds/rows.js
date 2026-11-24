@@ -59,7 +59,7 @@ async function liveRows(hashes) {
   for (let start = 0; start < hashes.length; start += HASH_CHUNK) {
     const { data, error } = await supabaseAdmin
       .from('seeder_content_queue')
-      .select('id, dedup_hash, raw_title, raw_body, source_url')
+      .select('id, dedup_hash, raw_title, raw_body, source_url, scheduled_for')
       .in('dedup_hash', hashes.slice(start, start + HASH_CHUNK))
       .not('status', 'in', '(filtered_out,skipped)');
     if (error) throw error;
@@ -81,6 +81,8 @@ function newRow(region, row, now) {
     dedup_hash: row.hash,
     source_priority: row.priority || 2,
     scope: 'local',
+    // A calendar event's start, so the page can list events soonest first (the Lambda's poster reads only queued rows).
+    ...(row.startsAt ? { scheduled_for: new Date(row.startsAt).toISOString() } : {}),
   };
 }
 
@@ -96,7 +98,8 @@ async function writeRows(region, rows) {
   for (const [hash, row] of unique) {
     const kept = live.get(hash);
     if (!kept) fresh.push(row);
-    else if (kept.raw_title === row.title && (kept.raw_body || null) === row.body && kept.source_url === row.url) {
+    else if (kept.raw_title === row.title && (kept.raw_body || null) === row.body && kept.source_url === row.url
+      && (!row.startsAt || Date.parse(kept.scheduled_for) === row.startsAt)) {
       unchanged.push(kept.id);
     } else changed.push({ id: kept.id, row });
   }
@@ -108,6 +111,7 @@ async function writeRows(region, rows) {
   for (const { id, row } of changed) {
     const { error } = await supabaseAdmin.from('seeder_content_queue').update({
       fetched_at: now, updated_at: now, raw_title: row.title, raw_body: row.body, source_url: row.url,
+      ...(row.startsAt ? { scheduled_for: new Date(row.startsAt).toISOString() } : {}),
     }).eq('id', id);
     if (error) throw error;
   }

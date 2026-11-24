@@ -181,8 +181,8 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
   const regionById = new Map(regions.map((region) => [region.region, region]));
   const words = new Map(regions.map((region) => [region.region, placeWords(region)]));
   const nearest = regions[0];
-  const stateOutletIds = new Set(regions.map((region) => region.state && `rss:state_${region.state.toLowerCase()}`)
-    .filter(Boolean));
+  // Across <State> reads the nearest region's own state outlet; no state outlet's story is a local headline.
+  const nearestOutlet = nearest?.state ? `rss:state_${nearest.state.toLowerCase()}` : null;
   const seen = new Set();
   const sections = [];
   for (const spec of SECTIONS) {
@@ -191,7 +191,8 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     for (const row of rows) {
       const kind = kindOf(row);
       const source = sources.get(row.source);
-      const facts = { category: row.category, kind, stateOutlet: stateOutletIds.has(row.source) };
+      const facts = { category: row.category, kind, stateOutlet: String(row.source || '').startsWith('rss:state_') };
+      if (spec.id === 'across_state' && row.source !== nearestOutlet) continue;
       if (!spec.takes(facts)) continue;
       const seenAt = Date.parse(row.fetched_at);
       const keepHours = Number(source?.keep_hours) > 0 ? Number(source.keep_hours)
@@ -229,6 +230,7 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
         _own: ownTown,
         _day: dayIn(Date.parse(row.created_at) || seenAt, region?.timezone),
         _free: !subscription,
+        _starts: Date.parse(row.scheduled_for) || Infinity,
         _order: candidates.length,
       });
     }
@@ -239,13 +241,23 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
         || (a._day === b._day ? 0 : (a._day < b._day ? 1 : -1)) || (Number(b._free) - Number(a._free))
         || (a._order - b._order));
     }
-    // First what fits with each outlet held to its share, then the rest in order if there is room.
+    // Events: soonest first (a calendar row carries its start in scheduled_for); others keep the order they came in.
+    if (spec.id === 'events') candidates.sort((a, b) => (a._starts - b._starts) || (a._order - b._order));
+    // First what fits with each outlet held to its share, then the rest in order if there is room. In Headlines each
+    // of the nearest region's outlets gets an equal share first, so a weekly paper's story is not pushed off by a
+    // daily's newer ones while it is still within its keep window.
+    let share = MAX_PER_OUTLET;
+    if (spec.id === 'headlines') {
+      const nearOutlets = new Set(candidates.filter((item) => item._region === 0).map((item) => item._outlet));
+      if (nearOutlets.size) share = Math.min(MAX_PER_OUTLET, Math.max(1, Math.ceil(spec.max / nearOutlets.size)));
+    }
     const perOutlet = new Map();
     const items = [];
     const held = [];
     for (const item of candidates) {
       const count = perOutlet.get(item._outlet) || 0;
-      if (count < MAX_PER_OUTLET && items.length < spec.max) {
+      const firstPass = spec.id !== 'headlines' || item._region === 0;
+      if (firstPass && count < share && items.length < spec.max) {
         perOutlet.set(item._outlet, count + 1);
         items.push(item);
       } else {

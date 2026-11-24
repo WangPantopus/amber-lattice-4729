@@ -130,9 +130,10 @@ function occurrences(event, calendarZone, now, replaced = new Set()) {
   }
 }
 
+// "Tuesday, Nov 24, 7:00 PM"; a whole-day event, or one set at exactly midnight (an exhibit's opening day), by date.
 function whenLabel(at, allDay, zone) {
   const time = DateTime.fromMillis(at, { zone });
-  return allDay ? time.toFormat('cccc, LLL d') : time.toFormat('cccc, LLL d, h:mm a');
+  return allDay || (time.hour === 0 && time.minute === 0) ? time.toFormat('cccc, LLL d') : time.toFormat('cccc, LLL d, h:mm a');
 }
 
 function secureLink(value) {
@@ -184,6 +185,7 @@ function calendarRows(region, source, text, now = Date.now()) {
         category: 'event',
         priority: 2,
         rank: at,
+        startsAt: at,
         title: `${name} · ${whenLabel(at, allDay, allDay ? eventZone : zone)}`,
         body: source.display_name ? `From ${source.display_name}.` : null,
         url: secureLink(event.url) || site,
