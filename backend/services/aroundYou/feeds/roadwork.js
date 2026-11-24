@@ -10,6 +10,7 @@
 
 const { createHash } = require('crypto');
 const { readJson } = require('./http');
+const { guardedFetch } = require('../guardedFetch');
 const { km, dayLabel } = require('./place');
 const { STATE_CODES, stateName } = require('../../../utils/usState');
 
@@ -96,8 +97,12 @@ async function readRegistry() {
     .filter((entry) => entry.states.length && /^https:\/\//i.test(String(entry.url || '')));
 }
 
+// A state's feed address comes from the federal registry, not from us, so it is read through the fetch guard: public
+// addresses only, checked on every connection and redirect, redirects only within the same site.
 async function readFeedEvents(entry) {
-  const data = await readJson(entry.url);
+  const answer = await guardedFetch(entry.url, { accept: 'application/json, application/geo+json' });
+  if (answer.status !== 200) throw new Error(`HTTP ${answer.status} from ${new URL(answer.url).host}`);
+  const data = JSON.parse(answer.body.toString('utf8'));
   return Array.isArray(data?.features) ? data.features : [];
 }
 
