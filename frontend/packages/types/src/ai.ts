@@ -201,7 +201,9 @@ export interface NeighborhoodPulse {
 
 // ─── AI Chat ─────────────────────────────────────────────────
 
-export type AIDraftType = 'gig' | 'listing' | 'post' | 'mail_summary' | 'support_train' | 'pickup_schedule';
+export type AIDraftType =
+  | 'gig' | 'listing' | 'post' | 'mail_summary' | 'support_train' | 'pickup_schedule'
+  | 'moment' | 'letter' | 'christmas_card';
 
 /** A Support Train the assistant has the story for; the start flow drafts the rest. */
 export interface SupportTrainChatDraft {
@@ -223,10 +225,71 @@ export interface PickupScheduleChatDraft {
   recycling_next_date: string | null;
 }
 
+/**
+ * A Moment the assistant wrote; the Moments composer opens with it filled in and the person posts it there
+ * (AI everywhere contract, section 4.1).
+ */
+export interface MomentChatDraft {
+  /** A text card, or a photo or video the person takes or picks in the composer. */
+  kind: 'text' | 'photo';
+  /** kind text: the card's words. */
+  text?: string;
+  /** kind text: the card's colour. */
+  background?: 'teal' | 'sky' | 'green' | 'amber' | 'rose' | 'slate';
+  /** kind photo: the caption, when there is one. */
+  caption?: string | null;
+  hours: 1 | 6 | 24 | 48;
+  audience: 'nearby' | 'connections';
+}
+
+/**
+ * A letter the assistant wrote; Mail's letter compose opens with it filled in and the person sends it there
+ * (section 4.2). `recipient` is one row of GET /api/mailbox/compose/recipients.
+ */
+export interface LetterChatDraft {
+  recipient: {
+    userId: string;
+    name: string;
+    username?: string | null;
+    homeId: string | null;
+    homeAddress?: string | null;
+    isVerified?: boolean;
+    homeMediaUrl?: string | null;
+    isOnPantopus?: boolean;
+  };
+  intent: 'say_hello' | 'congratulations' | 'condolences' | 'business_note' | 'just_because';
+  body: string;
+}
+
+/**
+ * A Christmas card the assistant put together; the card screen opens with it filled in and the person seals and
+ * sends it there (section 4.3).
+ */
+export interface ChristmasCardChatDraft {
+  design: { id: string; caption?: string | null; collection?: string | null };
+  to: { user_id: string; name: string } | { email: string };
+  message: string;
+  arrival: 'next_morning' | 'sealed_christmas' | 'christmas_morning' | 'now';
+  arrival_label?: string;
+  /** The arrival asked for has closed and the card is set to the next morning: a sentence saying so. */
+  arrival_changed?: string;
+}
+
 export interface AIChatDraft {
   type: AIDraftType;
-  draft: GigDraft | ListingDraft | PostDraft | MailSummary | SupportTrainChatDraft | PickupScheduleChatDraft;
+  draft:
+    | GigDraft | ListingDraft | PostDraft | MailSummary | SupportTrainChatDraft | PickupScheduleChatDraft
+    | MomentChatDraft | LetterChatDraft | ChristmasCardChatDraft;
   valid: boolean;
+}
+
+/**
+ * A button under a reply that opens a screen in the app (phase 1 contract, section 5). `url` is a `pantopus://…`
+ * address from the server's fixed catalog; each app opens it with its own router.
+ */
+export interface AIChatLink {
+  label: string;
+  url: string;
 }
 
 export interface AIChatMessage {
@@ -235,6 +298,8 @@ export interface AIChatMessage {
   content: string;
   imageUrls?: string[];
   drafts?: AIChatDraft[];
+  /** Buttons under this reply, for apps that list "link" in `cards`. */
+  links?: AIChatLink[];
   timestamp: string;
 }
 
@@ -253,6 +318,7 @@ export type AIStreamEvent =
   | { type: 'conversation'; conversationId: string; isNew: boolean }
   | { type: 'text_delta'; delta: string }
   | { type: 'draft'; draftType: AIDraftType; draft: unknown; valid: boolean }
+  | { type: 'link'; label: string; url: string }
   | { type: 'error'; error: string; message: string }
   | { type: 'done'; conversationId: string; usage: { inputTokens: number; outputTokens: number }; toolCalls: number }
   | { type: 'close' };
@@ -264,7 +330,10 @@ export interface AIChatRequest {
   conversationId?: string;
   coarseLocation?: { city?: string; state?: string };
   images?: string[];
-  /** Draft cards this app can show beyond the original ones, e.g. 'pickup_schedule'. */
+  /**
+   * What this app can show beyond the original draft cards: 'pickup_schedule', 'link' (buttons under a reply),
+   * 'moment', 'letter', 'christmas_card' (drafts its own composers open), 'identity'.
+   */
   cards?: string[];
 }
 

@@ -3,13 +3,24 @@
 import { useState, useCallback, useRef } from 'react';
 import * as api from '@pantopus/api';
 import type { AIChatMessage, AIChatDraft } from '@pantopus/types';
+import { launchFeatures } from '@/lib/featureFlags';
 
-// The draft cards this app shows beyond the original ones (AIDraftCard); the
-// server offers the matching tools only to apps that list them.
+// What this app shows beyond the original draft cards (AIDraftCard, AIMessageBubble); the server offers the matching
+// tools only to apps that list them.
+// "link": buttons under a reply that open a screen (lib/appLinks.ts).
+// "moment", "letter", "christmas_card": drafts this app's own composers open filled in: the Moments composer, Mail's
+// letter compose and the Christmas card screen. The last two only while this build has those screens.
 // "identity": the phones show Mail and the Wallet only after Face ID or the
 // passcode, and tell the assistant when that check has passed. On the web those
 // pages open with the sign-in alone, so the sign-in is the check.
-const AI_CARDS = ['pickup_schedule', 'identity'];
+const AI_CARDS = [
+  'pickup_schedule',
+  'link',
+  'moment',
+  ...(launchFeatures.mailbox && launchFeatures.mailExtras ? ['letter'] : []),
+  ...(launchFeatures.mailbox && launchFeatures.holidayCards ? ['christmas_card'] : []),
+  'identity',
+];
 
 /**
  * Hook for the AI Chat Agent with SSE streaming.
@@ -106,6 +117,17 @@ export function useAIChat() {
                 m.id === assistantId
                   ? { ...m, drafts: [...(m.drafts || []), draft] }
                   : m
+              )
+            );
+          },
+
+          // A button under this reply. It arrives after the words it belongs to.
+          onLink: (data) => {
+            if (!data || typeof data.label !== 'string' || typeof data.url !== 'string') return;
+            const link = { label: data.label, url: data.url };
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, links: [...(m.links || []), link] } : m
               )
             );
           },

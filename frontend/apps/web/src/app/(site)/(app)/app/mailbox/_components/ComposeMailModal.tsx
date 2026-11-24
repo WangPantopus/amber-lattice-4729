@@ -15,6 +15,8 @@ import {
   STRUCTURED_COMPOSE_DEFAULTS,
 } from './mailbox-constants';
 import { useMyHomeCenter } from '@/lib/myHomes';
+import type { LetterChatDraft } from '@pantopus/types';
+import { LETTER_KIND_SUBJECTS } from '@/lib/aiDraftHandoff';
 
 type RecipientUser = { id: string; name?: string; username?: string; city?: string | null; state?: string | null };
 
@@ -53,10 +55,20 @@ interface ComposeMailModalProps {
   onSent: () => void;
   setActionError: (msg: string) => void;
   setActionSuccess: (msg: string) => void;
+  /**
+   * A letter Pantopus AI wrote in the assistant's chat ("Open in Mail"): the form opens with who it is to, the kind
+   * of letter (its subject) and the letter filled in. Nothing is sent until the person presses Send here.
+   */
+  letter?: LetterChatDraft | null;
+}
+
+/** The name a draft letter's recipient shows in "Attn Person". */
+function letterRecipientName(letter: LetterChatDraft): string {
+  return letter.recipient.name || (letter.recipient.username ? `@${letter.recipient.username}` : letter.recipient.userId);
 }
 
 export default function ComposeMailModal({
-  currentUserId, availableHomes, scopeHomeId, onClose, onSent, setActionError, setActionSuccess,
+  currentUserId, availableHomes, scopeHomeId, onClose, onSent, setActionError, setActionSuccess, letter = null,
 }: ComposeMailModalProps) {
   // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
   const homeCenter = useMyHomeCenter();
@@ -72,10 +84,33 @@ export default function ComposeMailModal({
   const askingToDiscard = useRef(false);
 
   // Quick compose state
-  const [quickComposeData, setQuickComposeData] = useState<QuickComposeForm>(() => ({
+  const [quickComposeData, setQuickComposeData] = useState<QuickComposeForm>(() => (letter ? {
+    // The assistant's letter: to that person, with the letter written. Someone you live with gets it at the home
+    // you share; anyone else has no address of yours to pick, and the letter goes to them (see buildQuickPayload).
+    ...QUICK_COMPOSE_DEFAULTS,
+    destinationType: 'person',
+    destinationHomeId: availableHomes.some((home) => home.id === letter.recipient.homeId) ? letter.recipient.homeId || '' : '',
+    recipientUserId: letter.recipient.userId,
+    recipientQuery: letterRecipientName(letter),
+    visibility: 'attn_only',
+    subject: LETTER_KIND_SUBJECTS[letter.intent],
+    content: letter.body,
+  } : {
     ...QUICK_COMPOSE_DEFAULTS,
     destinationHomeId: scopeHomeId || availableHomes[0]?.id || '',
   }));
+  // True while the form still holds the person the assistant's letter came with.
+  const letterRecipientKept = Boolean(letter) && quickComposeData.destinationType === 'person'
+    && quickComposeData.recipientUserId === letter?.recipient.userId;
+  // Your homes can load after the form opens: a housemate's letter then gets the home you share, once.
+  const letterHomeSet = useRef(false);
+  useEffect(() => {
+    const homeId = letter?.recipient.homeId;
+    if (!homeId || letterHomeSet.current || !availableHomes.some((home) => home.id === homeId)) return;
+    letterHomeSet.current = true;
+    setQuickComposeData((prev) => (prev.destinationHomeId || prev.recipientUserId !== letter?.recipient.userId
+      ? prev : { ...prev, destinationHomeId: homeId }));
+  }, [letter, availableHomes]);
   const [quickAddressInput, setQuickAddressInput] = useState('');
   const [quickRecipientResults, setQuickRecipientResults] = useState<RecipientUser[]>([]);
   const [quickRecipientLoading, setQuickRecipientLoading] = useState(false);
@@ -126,7 +161,11 @@ export default function ComposeMailModal({
       return;
     }
     const query = quickComposeData.recipientQuery.trim();
-    if (query.length < 2) {
+    // The person the assistant's letter came with is already chosen: no search, and no list opening over the letter,
+    // until the name is changed.
+    const letterNameKept = Boolean(letter) && quickComposeData.recipientUserId === letter?.recipient.userId
+      && query === letterRecipientName(letter as LetterChatDraft).trim();
+    if (query.length < 2 || letterNameKept) {
       setQuickRecipientResults([]); setQuickRecipientDropdownOpen(false); setQuickRecipientLoading(false); setQuickRecipientActiveIndex(-1);
       return;
     }
@@ -142,7 +181,7 @@ export default function ComposeMailModal({
       } finally { if (!cancelled) setQuickRecipientLoading(false); }
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [composeMode, quickComposeData.recipientQuery, quickComposeData.destinationType]);
+  }, [composeMode, quickComposeData.recipientQuery, quickComposeData.destinationType, quickComposeData.recipientUserId, letter]);
 
   // Structured recipient search
   useEffect(() => {
@@ -266,10 +305,21 @@ export default function ComposeMailModal({
     const isSelfDestination = quickComposeData.destinationType === 'self';
     const isPersonDestination = quickComposeData.destinationType === 'person' || isSelfDestination;
     const effectiveRecipientUserId = isSelfDestination ? currentUserId : explicitRecipientUserId;
-    if (!destinationHomeId) throw new Error('Choose a home address before sending.');
+    // The assistant's letter to someone who doesn't live at one of your homes has no address to choose here: it goes
+    // to that person, the way the phones' letters do. Any other letter keeps the address step.
+    const toPersonOnly = letterRecipientKept && !destinationHomeId;
+    if (!destinationHomeId && !toPersonOnly) throw new Error('Choose a home address before sending.');
     if (isSelfDestination && !currentUserId) throw new Error('Current user profile is not loaded yet. Try again.');
     if (isPersonDestination && !effectiveRecipientUserId) throw new Error('Recipient person is required.');
     if (!content) throw new Error('Content is required.');
+    if (toPersonOnly) {
+      return {
+        recipient: { mode: 'user' as const, userId: effectiveRecipientUserId },
+        envelope: { type: quickComposeData.type, subject: quickComposeData.subject.trim() || undefined },
+        object: { format: 'mailjson_v1' as const, mimeType: 'application/json', title: quickComposeData.subject.trim() || undefined, content, payload: { bodyFormat: 'plain_text', intent: letter?.intent } },
+        tracking: { source: 'mailbox_compose_assistant_letter_web' }
+      };
+    }
     return {
       destination: {
         deliveryTargetType: isPersonDestination ? 'user' as const : 'home' as const,
@@ -280,7 +330,7 @@ export default function ComposeMailModal({
         visibility: isPersonDestination ? quickComposeData.visibility : 'home_members'
       },
       envelope: { type: quickComposeData.type, subject: quickComposeData.subject.trim() || undefined },
-      object: { format: 'mailjson_v1' as const, mimeType: 'application/json', title: quickComposeData.subject.trim() || undefined, content, payload: { bodyFormat: 'plain_text' } },
+      object: { format: 'mailjson_v1' as const, mimeType: 'application/json', title: quickComposeData.subject.trim() || undefined, content, payload: { bodyFormat: 'plain_text', ...(letterRecipientKept && letter ? { intent: letter.intent } : {}) } },
       tracking: { source: 'mailbox_compose_quick_destination_web_v2' }
     };
   };
@@ -468,6 +518,9 @@ export default function ComposeMailModal({
                   }}
                   placeholder="Search an address"
                 />
+                {letterRecipientKept && !quickComposeData.destinationHomeId && (
+                  <p className="text-xs text-app-text-secondary">No address needed. This letter goes to {quickComposeData.recipientQuery.trim() || 'them'} in Mail.</p>
+                )}
                 {availableHomes.length === 0 && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">No home address found yet. Attach to a home to use address-routed delivery.</p>
                 )}

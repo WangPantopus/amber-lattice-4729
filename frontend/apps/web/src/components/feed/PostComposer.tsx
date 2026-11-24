@@ -73,6 +73,22 @@ function storedWallClockToInput(value: string | null | undefined, kind: 'datetim
   return kind === 'date' ? iso.slice(0, 10) : iso.slice(0, 16);
 }
 
+/**
+ * An event time from the assistant's post draft as the date and time input shows it. The draft carries the moment
+ * itself (the person's local time turned to UTC), so it is shown on this browser's clock, where the person reads it.
+ */
+function draftTimeToInput(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.trim())) return value.trim();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}T${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+// What a heads-up can be about (SafetyAlertFields), as the assistant's draft names them.
+const DRAFT_SAFETY_KINDS = ['road_hazard', 'power_outage', 'weather_damage', 'missing_pet', 'hazard', 'other'];
+
 function parseTags(value: string): string[] {
   return [...new Set(value.split(',').map((t) => t.trim()).filter(Boolean))];
 }
@@ -247,6 +263,11 @@ interface PostComposerProps {
   quotedPost?: Post | null;
   /** Cancel closes the composer (instead of clearing it back to the post types). */
   onCancel?: () => void;
+  /**
+   * False for a composer that stays on the page behind the one "Create Post" opens (the feed's own box): it leaves
+   * the assistant's post draft for that one, which would otherwise open empty on top of it.
+   */
+  takesAssistantDraft?: boolean;
 }
 
 function visibilityForAudience(audience: Audience): PostVisibility {
@@ -297,6 +318,7 @@ export default function PostComposer({
   quotedPost = null,
   onCancel,
   textBoxTestId,
+  takesAssistantDraft = true,
 }: PostComposerProps) {
   const isEdit = editPost != null;
   // An edit never quotes: the edit screen keeps working as it did and sends no quotedPostId.
@@ -591,7 +613,7 @@ export default function PostComposer({
 
   useEffect(() => {
     // A pending AI draft belongs to the next new post, not to one being edited.
-    if (isEdit) return;
+    if (isEdit || !takesAssistantDraft) return;
     try {
       const raw = sessionStorage.getItem('ai_post_draft');
       if (!raw) return;
@@ -600,11 +622,23 @@ export default function PostComposer({
       if (draft.content) setField('content', draft.content);
       if (draft.title) setField('title', draft.title);
       if (draft.postType) selectIntent(draft.postType);
+      // What belongs to the kind of post: an event's time and place, a deal's last day, lost or found, and what a
+      // heads-up is about. Each shows only for its kind, so one the draft doesn't use changes nothing.
+      const startsAt = draftTimeToInput(draft.eventDate);
+      if (startsAt) setField('eventDate', startsAt);
+      const endsAt = draftTimeToInput(draft.eventEndDate);
+      if (startsAt && endsAt) setField('eventEndDate', endsAt);
+      if (typeof draft.eventVenue === 'string' && draft.eventVenue.trim()) setField('eventVenue', draft.eventVenue.trim());
+      if (typeof draft.dealExpiresAt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(draft.dealExpiresAt)) {
+        setField('dealExpires', draft.dealExpiresAt.slice(0, 10));
+      }
+      if (draft.lostFoundType === 'lost' || draft.lostFoundType === 'found') setField('lostFoundType', draft.lostFoundType);
+      if (DRAFT_SAFETY_KINDS.includes(draft.safetyAlertKind)) setField('safetyKind', draft.safetyAlertKind);
       setField('expanded', true);
     } catch {
       // ignore parse errors
     }
-  }, [isEdit, setField, selectIntent]);
+  }, [isEdit, takesAssistantDraft, setField, selectIntent]);
 
   useEffect(() => {
     if (f.selectedIntent && textareaRef.current) textareaRef.current.focus();
