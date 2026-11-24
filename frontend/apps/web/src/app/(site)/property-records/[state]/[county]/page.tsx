@@ -24,12 +24,17 @@ export function generateStaticParams() {
 
 type Params = { params: Promise<{ state: string; county: string }> };
 
+// Where the county and the state are one place (the District of Columbia), its name is said once.
+const oneplace = (page: GuideCountyPage) => page.county.name === page.state.name;
+
 function words(page: GuideCountyPage) {
   const { county, state } = page;
-  const title = `${county.name}, ${state.abbr} property records`;
+  const title = oneplace(page) ? `${county.name} property records` : `${county.name}, ${state.abbr} property records`;
   const description = page.town_records
     ? `Where the towns of ${county.in_name}, ${state.name}, keep their property records, and what public records say about homes there, with every source named.`
-    : `${county.name}, ${state.name}: the ${state.unit}'s own property offices and what public records say about homes there, with every source named.`;
+    : oneplace(page)
+      ? `${county.name}: its own property offices and what public records say about homes there, with every source named.`
+      : `${county.name}, ${state.name}: the ${state.unit}'s own property offices and what public records say about homes there, with every source named.`;
   return { title, description };
 }
 
@@ -142,7 +147,7 @@ export default async function CountyPage({ params }: Params) {
         <p className="mt-3 text-base sm:text-lg text-app-text-secondary dark:text-app-text-muted leading-relaxed">
           {page.town_records
             ? `Where the towns of ${page.county.in_name}, ${page.state.name}, keep their property records, and what public records say about homes there.`
-            : `${page.county.name}'s own offices, and what public records say about homes in ${page.county.in_name}, ${page.state.name}.`}
+            : `${page.county.name}'s own offices, and what public records say about homes in ${oneplace(page) ? page.county.in_name : `${page.county.in_name}, ${page.state.name}`}.`}
         </p>
         <CountyLookup fips={page.county.fips} inName={page.county.in_name} />
         <Offices page={page} />
