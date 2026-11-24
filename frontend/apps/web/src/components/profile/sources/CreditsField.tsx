@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Plus, User, X } from 'lucide-react';
 import * as api from '@pantopus/api';
-import type { ProfileCredit } from '@pantopus/api';
+import type { ProfileCredit, ProfileSuggestedCredit } from '@pantopus/api';
 import { extractApiError } from '@/lib/auth-utils';
 import { InkGlyph, howText, inkOf } from './ink';
 import Picture from './Picture';
@@ -63,9 +63,11 @@ function Status({ credit }: { credit: ProfileCredit }) {
  * Said. On a saved piece each change goes to the server at once; on a new piece the names wait and are asked once the
  * piece is on the Work.
  */
-export default function CreditsField({ pieceId, initial, queued, onQueued, onChanged, waiting }: {
+export default function CreditsField({ pieceId, initial, suggested = [], queued, onQueued, onChanged, waiting }: {
   pieceId: string | null;
   initial: ProfileCredit[];
+  /** The person who hired the owner (p2.6): the first row, asked in one tap. The owner's eyes only. */
+  suggested?: ProfileSuggestedCredit[];
   queued: QueuedCredit[];
   onQueued: (list: QueuedCredit[]) => void;
   /** A saved piece's credits changed on the server. */
@@ -102,6 +104,27 @@ export default function CreditsField({ pieceId, initial, queued, onQueued, onCha
     );
     return () => { live = false; };
   }, [adding, connections]);
+
+  // A suggestion leaves once that person is named (asked, or waiting to be asked on a new piece).
+  const named = new Set([...credits.map((c) => c.party?.user_id), ...queued.map((q) => q.user_id)].filter(Boolean));
+  const suggestions = waiting ? [] : suggested.filter((s) => s?.user_id && !named.has(s.user_id));
+  const askSuggested = async (s: ProfileSuggestedCredit) => {
+    const body = { user_id: s.user_id, role: s.role ?? null, relation: (s.relation === 'for' ? 'for' : 'with') as CreditRelation };
+    if (!pieceId) {
+      onQueued([...queued, { key: `q${(counter += 1)}`, ...body, shown: s.name || 'Someone', portrait_url: s.portrait_url }]);
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    try {
+      const credit = await api.profilePage.addCredit(pieceId, body);
+      setCredits((list) => [...list.filter((c) => c.id !== credit.id), credit]);
+      onChanged();
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t ask them. Try again.'));
+    }
+    setBusy(false);
+  };
 
   const reset = () => { setAdding(false); setWho(''); setChosen(null); setRole(''); setRelation('with'); setNote(null); };
   const text = who.trim();
@@ -150,8 +173,19 @@ export default function CreditsField({ pieceId, initial, queued, onQueued, onCha
     <section aria-label="Who was on it?" className="flex flex-col gap-2">
       <span className="text-[0.9375rem] font-semibold text-app">Who was on it?</span>
       <div className="rounded-2xl border border-app bg-surface overflow-hidden">
-        {credits.length > 0 || queued.length > 0 ? (
+        {suggestions.length > 0 || credits.length > 0 || queued.length > 0 ? (
           <ul className="divide-y divide-app-subtle">
+            {suggestions.map((s) => (
+              <li key={`s-${s.user_id}`} className={row}>
+                <Face name={s.name} url={s.portrait_url} />
+                <span className="min-w-0 flex-1 text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
+                  <strong className="font-semibold">{s.name || 'Someone'}</strong>, {s.why}
+                </span>
+                <button type="button" disabled={busy} onClick={() => askSuggested(s)} className="shrink-0 min-h-[2.5rem] px-3 rounded-xl bg-app-surface-sunken text-[0.8125rem] font-semibold text-app hover-bg-app disabled:opacity-60">
+                  Ask to sign
+                </button>
+              </li>
+            ))}
             {credits.map((credit) => (
               <li key={credit.id} className={row}>
                 <Face name={credit.party?.name ?? null} url={credit.party?.portrait_url} />
@@ -182,9 +216,9 @@ export default function CreditsField({ pieceId, initial, queued, onQueued, onCha
           </ul>
         ) : null}
         {waiting ? (
-          <p className={`px-4 py-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary ${credits.length || queued.length ? 'border-t border-app-subtle' : ''}`}>{waiting}</p>
+          <p className={`px-4 py-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>{waiting}</p>
         ) : adding ? (
-          <div className={`px-4 py-3 flex flex-col gap-3 ${credits.length || queued.length ? 'border-t border-app-subtle' : ''}`}>
+          <div className={`px-4 py-3 flex flex-col gap-3 ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>
             <div className="flex flex-col gap-1.5">
               <label htmlFor={ids.who} className="text-[0.875rem] font-semibold text-app">Who</label>
               {chosen ? (
@@ -238,7 +272,7 @@ export default function CreditsField({ pieceId, initial, queued, onQueued, onCha
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => setAdding(true)} className={`w-full flex items-center gap-2 px-4 min-h-[3rem] text-[0.9375rem] font-semibold text-app-link hover-bg-app ${credits.length || queued.length ? 'border-t border-app-subtle' : ''}`}>
+          <button type="button" onClick={() => setAdding(true)} className={`w-full flex items-center gap-2 px-4 min-h-[3rem] text-[0.9375rem] font-semibold text-app-link hover-bg-app ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>
             <Plus aria-hidden="true" className="w-5 h-5" />Add a person and ask them to sign
           </button>
         )}

@@ -650,6 +650,7 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
           <CreditsField
             pieceId={editing ? editing.id : null}
             initial={(editing?.credits || []).filter((c) => c && c.id)}
+            suggested={(editing ? editing.suggested_credits : fromOffer ? offer?.suggested_credits : null) || []}
             queued={queued}
             onQueued={setQueued}
             onChanged={() => { creditsTouched.current = true; }}
