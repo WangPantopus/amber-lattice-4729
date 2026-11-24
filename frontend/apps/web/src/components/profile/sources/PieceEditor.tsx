@@ -116,11 +116,33 @@ function Labelled({ id, title, count, note, children }: { id: string; title: str
 }
 
 /** "Prove it's yours" (board 11): a line to put on the page, then "Check now". Only for a link the piece has saved. */
+/** One line to copy (the proof line, or the meta tag for a person's own site). */
+function CopyLine({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
+      <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{text}</code>
+      <button
+        type="button"
+        aria-label={copied ? `${label} copied` : `Copy ${label}`}
+        onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
+        className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
+      >
+        {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * "Prove it's yours" (board 11): a line to put in the page's title or description (or, on the person's own site, a
+ * meta tag), then "Check now". Only for a link the piece has saved. Every sentence about the rule and the outcome is
+ * the server's (CONTRACT p2.4): the line counts only in the page's head.
+ */
 function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: ProfileLinkCard; onProven: (card: ProfileLinkCard) => void }) {
-  const [proof, setProof] = useState<{ line: string; how: string } | null>(null);
+  const [proof, setProof] = useState<{ line: string; how: string; meta?: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   if (!card.id || card.ink === 'seen') return null;
   const ask = async () => {
     setBusy(true); setNote(null);
@@ -133,8 +155,8 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
       onProven(await api.profilePage.checkLink(pieceId, card.id!));
       setProof(null);
     } catch (err) {
-      const code = (err as { code?: string; data?: { code?: string } } | null)?.data?.code ?? (err as { code?: string } | null)?.code;
-      setNote(code === 'PROOF_NOT_FOUND' ? 'The line isn’t on the page yet. Put it there, save the page, then check again.' : extractApiError(err, 'Couldn’t read the page. Try again.'));
+      // The server's own sentence, whether the line isn't in the page's head yet or the page can't be read.
+      setNote(extractApiError(err, 'Couldn’t check the page. Try again.'));
     }
     setBusy(false);
   };
@@ -142,17 +164,9 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
     <div className="flex flex-col gap-2">
       {proof ? (
         <>
-          <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
-            <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{proof.line}</code>
-            <button
-              type="button"
-              onClick={() => { navigator.clipboard?.writeText(proof.line).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
-              className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
-            >
-              {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-          <p className="text-xs leading-4 text-app-muted">{proof.how}</p>
+          <CopyLine text={proof.line} label="the line" />
+          {proof.meta ? <CopyLine text={proof.meta} label="the meta tag" /> : null}
+          {proof.how ? <p className="text-xs leading-4 text-app-muted">{proof.how}</p> : null}
           <button type="button" disabled={busy} onClick={check} className="self-start min-h-[2.75rem] px-4 rounded-xl bg-app-surface-sunken text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60">
             {busy ? 'Checking…' : 'Check now'}
           </button>
