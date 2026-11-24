@@ -73,6 +73,8 @@ struct HomeRecordBlockView: View {
             case .unknown: EmptyView()
             }
         }
+        // A container, so the block's buttons keep their own test ids.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("homeRecord.block.\(block.id)")
     }
 }
