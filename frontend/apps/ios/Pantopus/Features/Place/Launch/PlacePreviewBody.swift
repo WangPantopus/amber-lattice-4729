@@ -29,8 +29,6 @@ struct PlacePreviewBody: View {
     /// The looked-up address, for "Ask Pantopus: what does this mean for me?" (the reading, SPEC 5.2).
     var readingAddress: String?
     @State private var reading: PlaceReadingRequest?
-    /// The server could not give a reading for this address: the row goes away.
-    @State private var noReadingFor: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,19 +61,14 @@ struct PlacePreviewBody: View {
                         try? await Task.sleep(for: .milliseconds(400))
                         onCreateAccount()
                     }
-                },
-                onUnavailable: {
-                    noReadingFor = request.address
-                    reading = nil
-                },
-                onClose: { reading = nil }
-            )
-            .presentationDetents([.large])
+                }
+            ) { reading = nil }
+                .presentationDetents([.large])
         }
     }
 
     private var askAction: (() -> Void)? {
-        guard let address = readingAddress, address != noReadingFor else { return nil }
+        guard let address = readingAddress else { return nil }
         return { reading = PlaceReadingRequest(address: address) }
     }
 

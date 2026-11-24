@@ -9,7 +9,7 @@
 //  three questions already answered. No typing before an account.
 //  `POST /api/public/place/reading` answers 404 (off), 409 (not looked up
 //  here lately), 429 (the day's readings are used) or 502 (no good answer):
-//  each closes the sheet and the row goes away for this address.
+//  the sheet stays open and says so, with no retry loop; the row stays.
 //
 
 import SwiftUI
@@ -60,15 +60,12 @@ struct PlaceReadingSheet: View {
     @State private var model: PlaceReadingModel
     /// Signed out: "Ask your own question. Free with an account." goes where Continue goes.
     var onSignUp: (() -> Void)?
-    /// The reading could not be given: the sheet closes and the row goes away.
-    var onUnavailable: () -> Void
     var onClose: () -> Void
     @State private var openQuestion: Int?
 
-    init(address: String, onSignUp: (() -> Void)?, onUnavailable: @escaping () -> Void, onClose: @escaping () -> Void) {
+    init(address: String, onSignUp: (() -> Void)?, onClose: @escaping () -> Void) {
         _model = State(initialValue: PlaceReadingModel(address: address))
         self.onSignUp = onSignUp
-        self.onUnavailable = onUnavailable
         self.onClose = onClose
     }
 
@@ -101,9 +98,6 @@ struct PlaceReadingSheet: View {
         }
         .background(Theme.Color.appBg)
         .task { await model.load() }
-        .onChange(of: model.isFailed) { _, failed in
-            if failed { onUnavailable() }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("place.preview.reading")
     }
@@ -111,7 +105,19 @@ struct PlaceReadingSheet: View {
     @ViewBuilder
     private var content: some View {
         switch model.state {
-        case .loading, .failed:
+        case .failed:
+            // Founder-approved 2026-11-24: the sheet stays open and says so, once.
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Pantopus AI couldn't read this page just now.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Spacing.s4)
+                    .accessibilityIdentifier("place.preview.reading.failed")
+                signUpLink
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .loading:
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(0..<4, id: \.self) { index in
                     PlaceSkeleton(widthFraction: index == 0 ? 0.5 : 1, height: index == 0 ? 14 : 56, radius: 10)
@@ -151,22 +157,7 @@ struct PlaceReadingSheet: View {
                 }
                 .padding(.top, 20)
             }
-            if let onSignUp {
-                Button(action: onSignUp) {
-                    HStack(spacing: 4) {
-                        Text("Ask your own question. Free with an account.")
-                            .font(.system(size: 14.5, weight: .semibold))
-                            .multilineTextAlignment(.leading)
-                        Icon(.chevronRight, size: 14, strokeWidth: 2.25, color: Theme.Color.primaryInk)
-                    }
-                    .foregroundStyle(Theme.Color.primaryInk)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, Spacing.s4)
-                .accessibilityIdentifier("place.preview.reading.signUp")
-            }
+            signUpLink
             Text("Written by Pantopus AI from the public records on this page. It is not given your street address.")
                 .font(.system(size: 12))
                 .lineSpacing(2)
@@ -175,6 +166,27 @@ struct PlaceReadingSheet: View {
                 .padding(.top, Spacing.s4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Signed out: "Ask your own question. Free with an account." goes where Continue goes.
+    @ViewBuilder
+    private var signUpLink: some View {
+        if let onSignUp {
+            Button(action: onSignUp) {
+                HStack(spacing: 4) {
+                    Text("Ask your own question. Free with an account.")
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .multilineTextAlignment(.leading)
+                    Icon(.chevronRight, size: 14, strokeWidth: 2.25, color: Theme.Color.primaryInk)
+                }
+                .foregroundStyle(Theme.Color.primaryInk)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, Spacing.s4)
+            .accessibilityIdentifier("place.preview.reading.signUp")
+        }
     }
 
     private func heading(_ text: String) -> some View {
@@ -249,12 +261,5 @@ struct PlaceReadingSheet: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .placeCard()
-    }
-}
-
-private extension PlaceReadingModel {
-    var isFailed: Bool {
-        if case .failed = state { return true }
-        return false
     }
 }
