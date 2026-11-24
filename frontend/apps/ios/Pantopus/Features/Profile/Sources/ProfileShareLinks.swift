@@ -68,6 +68,14 @@ extension ProfileShareLinkDTO {
         return bits.joined(separator: " · ")
     }
 
+    /// "Opened 3 times, last on November 20": a count and the last day, never who (9.6).
+    var opensLine: String {
+        guard opens > 0 else { return "Not opened yet. You'll see how often, never by whom." }
+        let times = opens == 1 ? "Opened once" : "Opened \(opens) times"
+        guard let last = Self.day(lastOpenedOn) else { return "\(times). Never by whom." }
+        return "\(times), last on \(last.formatted(.dateTime.month(.wide).day())). Never by whom."
+    }
+
     static func day(_ iso: String?) -> Date? {
         guard let iso else { return nil }
         let bits = iso.prefix(10).split(separator: "-").compactMap { Int($0) }
@@ -178,6 +186,7 @@ struct ProfileShareLinkEditor: View {
                 if let link = current, let url = link.appURL {
                     Section {
                         Text(link.detail).scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
+                        Text(link.opensLine).scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
                         Button("Copy link") { UIPasteboard.general.url = url }
                         Button("Send") { sendItems = [url] }
                         Button("Show code") { showCode = true }
@@ -222,7 +231,7 @@ struct ProfileShareLinkEditor: View {
                     Section { Text(error).foregroundStyle(Theme.Color.error) }
                 }
             }
-            .navigationTitle(link == nil ? "A link for one purpose" : link?.name ?? "")
+            .navigationTitle(link == nil ? "New link" : link?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onClose) }

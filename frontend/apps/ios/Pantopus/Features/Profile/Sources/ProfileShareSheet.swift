@@ -345,7 +345,12 @@ struct ProfileShareSheet: View {
                     get: { share.searchEngines },
                     set: { on in Task { await model.setSearchEngines(on) } }
                 )) {
-                    rowText("Let search engines list this page", detail: "On unless you switch it off.")
+                    rowText(
+                        "Let search engines list this page",
+                        detail: share.linksEnabled == nil
+                            ? "On unless you switch it off."
+                            : "On unless you switch it off. Links for one purpose are never listed."
+                    )
                 }
                 .tint(Theme.Color.primarySolid)
                 .disabled(model.saving.contains("search_engines"))
