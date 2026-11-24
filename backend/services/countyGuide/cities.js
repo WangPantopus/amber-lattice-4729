@@ -65,6 +65,10 @@ const CITIES = [
   '1232275', '1217935', '0613214', '1757225',
   // November 24, 2026, eighteenth: Des Plaines (Cook County), IL; Sanford (Seminole County), FL.
   '1719642', '1263650',
+  // November 24, 2026, nineteenth: Indio and La Quinta (Riverside County), CA; Hawthorne, Whittier, Bellflower and
+  // South Gate (Los Angeles County), CA; Oak Park, Cicero and Oak Lawn (Cook County), IL; North Miami (Miami-Dade
+  // County), FL.
+  '0636448', '0640354', '0632548', '0685292', '0604982', '0673080', '1754885', '1714351', '1754820', '1249450',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
