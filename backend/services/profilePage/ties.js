@@ -120,8 +120,9 @@ async function addCredit(userId, pieceId, body) {
     throw invalid('Show this piece before you ask anyone to sign it.');
   }
   const party = facts.party;
+  // `paused`: they said "Not me" to anything from this owner in the last 30 days (CONTRACT p2.10).
   const allowed = party && partyId !== String(userId) && !NOT_ASKABLE.includes(party.account_type)
-    && party.ties_enabled === true && facts.blocked !== true
+    && party.ties_enabled === true && facts.blocked !== true && facts.paused !== true
     && (facts.connected === true || facts.job_party === true || facts.plan_party === true);
   if (!allowed) throw cannotAsk();
   const partyShown = namesOf([facts.party_person]).get(partyId) || {};
@@ -131,9 +132,11 @@ async function addCredit(userId, pieceId, body) {
     if (error) throw error;
     return ownerCredit(data, partyShown, first);
   }
-  // Asked again only after the owner took the credit off themself; never after "Not me" or the person taking their
-  // name off.
-  if (existing && !(existing.status === 'removed' && String(existing.removed_by) === String(userId))) throw cannotAsk();
+  // Asked again only after the owner took the credit off themself; never after "Not me" (kept in declined_at even
+  // when the owner removed the "did not confirm" since) or the person taking their name off.
+  if (existing && (existing.declined_at || !(existing.status === 'removed' && String(existing.removed_by) === String(userId)))) {
+    throw cannotAsk();
+  }
   if (Number(facts.asks_today) >= ASKS_A_DAY) throw askLimit();
   const fields = {
     role, relation: body.relation, status: 'asked', asked_by: userId, asked_at: now, signed_by: null, signed_at: null,
@@ -248,9 +251,12 @@ async function signAsk(userId, askId, body = {}) {
   return { id: row.id, status: 'signed' };
 }
 
-/** POST /me/asks/:id/decline ("Not me"): the credit is gone for everyone but the owner. */
+/**
+ * POST /me/asks/:id/decline ("Not me"): the credit is gone for everyone but the owner, and the owner can't ask this
+ * party again for 30 days (declined_at; CONTRACT p2.10).
+ */
 async function declineAsk(userId, askId) {
-  const row = await answerAsk(userId, askId, { status: 'declined' });
+  const row = await answerAsk(userId, askId, { status: 'declined', declined_at: new Date().toISOString() });
   return { id: row.id, status: 'declined' };
 }
 
@@ -302,8 +308,8 @@ async function changeTie(userId, tieId, body) {
 
 /**
  * For these completed paid jobs of the owner's: the person who hired them, when they could be asked now (the same test
- * as addCredit: a person, not a business; their switch on; no block either way; not asked, signed, "Not me" or taken
- * off before). Owner's reads only. Map gig id → [suggestion]. A plan suggests nobody (too many joined).
+ * as addCredit: a person, not a business; their switch on; no block either way; no "Not me" to this owner in 30 days;
+ * not asked, signed, "Not me" or taken off before on this job's piece). Owner's reads only. Map gig id → [suggestion]. A plan suggests nobody (too many joined).
  */
 async function suggestionsFor(userId, gigIds) {
   const ids = [...new Set((gigIds || []).filter(Boolean).map(String))];
@@ -315,8 +321,8 @@ async function suggestionsFor(userId, gigIds) {
   const out = new Map();
   for (const x of list) {
     const askable = String(x.poster_id) !== String(userId) && !NOT_ASKABLE.includes(x.account_type)
-      && x.ties_enabled === true && x.blocked !== true
-      && (!x.existing || (x.existing.status === 'removed' && String(x.existing.removed_by) === String(userId)));
+      && x.ties_enabled === true && x.blocked !== true && x.paused !== true
+      && (!x.existing || (!x.existing.declined_at && x.existing.status === 'removed' && String(x.existing.removed_by) === String(userId)));
     if (!askable) continue;
     const shown = names.get(String(x.poster_id)) || {};
     out.set(String(x.gig_id), [{ user_id: x.poster_id, name: shown.name || null, username: shown.username || null,
@@ -372,7 +378,7 @@ async function roleFacts(userId, businessId) {
 
 function businessAskable(facts) {
   return Boolean(facts.business) && facts.business.ties_enabled === true && (facts.owners || []).length > 0
-    && facts.blocked !== true && facts.owns_it !== true && facts.refused_before !== true;
+    && facts.blocked !== true && facts.owns_it !== true && facts.paused !== true;
 }
 
 async function notifyRoleAsk(row, facts) {

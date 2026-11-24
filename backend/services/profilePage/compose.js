@@ -160,7 +160,7 @@ function askedWords(at, now) {
  * signing in (the link view) names a signed person only if they allowed it, and a typed name never, each shown by
  * what they did instead. The owner reads an ask as "Asked today" and a "Not me" as `did_not_confirm`.
  */
-function creditOf(c, { view, first, now = new Date() }) {
+function creditOf(c, { view, first, now = new Date(), viewerId = null }) {
   const typed = !c.party_user_id;
   const named = view !== 'link' || (!typed && c.name_on_links === true);
   const shown = c.party_shown || {};
@@ -181,7 +181,13 @@ function creditOf(c, { view, first, now = new Date() }) {
     status = 'did_not_confirm';
     how = 'Did not confirm';
   }
-  return { id: c.id, party, role: String(c.role || '').trim() || null, relation: c.relation || null, ink, how, status };
+  const answer = { id: c.id, party, role: String(c.role || '').trim() || null, relation: c.relation || null, ink, how, status };
+  // The signer reading their own signed credit gets their two choices, to draw the switches beside "Take my name off"
+  // (PATCH /me/ties/:id). Nobody else's credit carries them.
+  if (c.status === 'signed' && view !== 'link' && viewerId && String(c.party_user_id) === String(viewerId)) {
+    answer.mine = { show_on_my_work: c.show_on_party_work !== false, show_name_on_links: c.name_on_links === true };
+  }
+  return answer;
 }
 
 /**
@@ -195,7 +201,7 @@ function creditsFor(credits, pieceId, { view, viewerId = null, first, now = new 
       || (c.status === 'asked' && (view === 'owner' || (viewerId && view !== 'link' && String(c.party_user_id) === String(viewerId))))
       || (c.status === 'declined' && view === 'owner'))
     .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || String(a.created_at).localeCompare(String(b.created_at)))
-    .map((c) => ({ raw: c, credit: creditOf(c, { view, first, now }) }));
+    .map((c) => ({ raw: c, credit: creditOf(c, { view, first, now, viewerId }) }));
 }
 
 /**
@@ -286,14 +292,16 @@ function yearsWords(from, to) {
 /**
  * A role or school as this view sees it. The owner sees everything, the business named. Others see an asked role as
  * the person's own words with the business unnamed, a signed one with it named (on a link only if the business
- * allowed it), and a typed place named only to signed-in viewers; a "Not me" never reaches them.
+ * allowed it), and a typed place named on every view, a link included, as Said: a school or a company isn't a person,
+ * and a work history with its places cut out is no use on a link sent for a job (design session, 2026-11-24). A
+ * "Not me" never reaches them.
  */
 function roleOf(r, { view, first, now = new Date() }) {
   const owner = view === 'owner';
   const typed = !r.party_user_id;
   const biz = r.party || {};
   const signed = r.status === 'signed';
-  const named = owner || (typed ? view !== 'link' : signed && (view !== 'link' || r.name_on_links === true));
+  const named = owner || typed || (signed && (view !== 'link' || r.name_on_links === true));
   const place = typed ? r.party_name : (biz.name || null);
   const title = String(r.role || '').trim();
   let status = r.status;
@@ -336,7 +344,8 @@ function circleOf(ctx, record) {
     const k = `${group}|${key}`;
     const had = people.get(k);
     if (!had) people.set(k, { group, key, person: { ...person, ink }, order: people.size });
-    else if (ink === 'signed') had.person.ink = 'signed';
+    // The same party twice in a group (two roles at one business): the signed one's words stand.
+    else if (ink === 'signed' && had.person.ink !== 'signed') had.person = { ...person, ink };
     if (pieceId) {
       if (!shared.has(key)) shared.set(key, new Set());
       shared.get(key).add(String(pieceId));
@@ -350,7 +359,7 @@ function circleOf(ctx, record) {
       const group = SIGNED_GROUP[t.relation];
       if (!group) continue;
       const o = t.owner_shown || {};
-      add(group, `u:${t.owner_id}`, { name: o.name || null, user_id: t.owner_id, username: o.username || null,
+      add(group, `u:${t.owner_id}`, { kind: 'person', name: o.name || null, user_id: t.owner_id, username: o.username || null,
         portrait_url: o.avatar || null, did: String(t.piece.owner_role || '').trim() || `Worked with ${first}` }, 'signed', p.row.id);
       continue;
     }
@@ -359,14 +368,18 @@ function circleOf(ctx, record) {
       const group = OWN_GROUP[raw.relation];
       if (!group) continue;
       const key = raw.party_user_id ? `u:${raw.party_user_id}` : `t:${String(raw.party_name).toLowerCase()}`;
-      add(group, key, { name: credit.party.name, user_id: credit.party.user_id, username: credit.party.username,
+      // Credits name people only (a business is never credited on a piece), typed or on Pantopus.
+      add(group, key, { kind: 'person', name: credit.party.name, user_id: credit.party.user_id, username: credit.party.username,
         portrait_url: credit.party.portrait_url, did: credit.role || credit.party.did }, credit.ink, p.row.id);
     }
   }
   for (const r of record.roles || []) {
     if (r.relation !== 'learned' || r.status === 'did_not_confirm') continue;
     const key = r.where.user_id ? `u:${r.where.user_id}` : `r:${r.id}`;
-    add('learned_from', key, { name: r.where.name, user_id: r.where.user_id, username: r.where.username,
+    // A business on Pantopus is one only where this view may know it (named, or signed: "Signed by a business on
+    // Pantopus"); a typed place, or a business still asked and unnamed here, is a place.
+    const kind = !r.where.typed && (r.where.name || r.ink === 'signed') ? 'business' : 'place';
+    add('learned_from', key, { kind, name: r.where.name, user_id: r.where.user_id, username: r.where.username,
       portrait_url: r.where.picture_url, did: [r.title, yearsWords(r.from, r.to)].filter(Boolean).join(', '), place: true }, r.ink, null);
   }
   return CIRCLE_GROUPS.map(([key, title]) => {
@@ -581,7 +594,8 @@ function buildRecord(ctx, sources, { now }) {
         ...base.piece, ink: 'signed', how: ownerName ? `With ${ownerName}` : 'Signed together', pinned: false,
         link: { kind: 'piece', id: t.piece.id, user_id: t.owner_id, username },
         with: { name: ownerName, user_id: t.owner_id, username },
-        ...(viewOf === 'owner' ? { tie_id: t.id } : {}),
+        // The signer's own view: the tie to change or take off, and their choices (shown here, so on their Work).
+        ...(viewOf === 'owner' ? { tie_id: t.id, mine: { show_on_my_work: true, show_name_on_links: t.name_on_links === true } } : {}),
       },
     });
   }
