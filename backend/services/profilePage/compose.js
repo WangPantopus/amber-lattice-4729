@@ -292,14 +292,16 @@ function yearsWords(from, to) {
 /**
  * A role or school as this view sees it. The owner sees everything, the business named. Others see an asked role as
  * the person's own words with the business unnamed, a signed one with it named (on a link only if the business
- * allowed it), and a typed place named only to signed-in viewers; a "Not me" never reaches them.
+ * allowed it), and a typed place named on every view, a link included, as Said: a school or a company isn't a person,
+ * and a work history with its places cut out is no use on a link sent for a job (design session, 2026-11-24). A
+ * "Not me" never reaches them.
  */
 function roleOf(r, { view, first, now = new Date() }) {
   const owner = view === 'owner';
   const typed = !r.party_user_id;
   const biz = r.party || {};
   const signed = r.status === 'signed';
-  const named = owner || (typed ? view !== 'link' : signed && (view !== 'link' || r.name_on_links === true));
+  const named = owner || typed || (signed && (view !== 'link' || r.name_on_links === true));
   const place = typed ? r.party_name : (biz.name || null);
   const title = String(r.role || '').trim();
   let status = r.status;
