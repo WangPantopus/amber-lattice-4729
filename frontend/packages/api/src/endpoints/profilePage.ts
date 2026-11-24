@@ -440,6 +440,19 @@ export async function deleteLink(id: string): Promise<{ id: string; deleted: boo
   return del<{ id: string; deleted: boolean }>(`/api/profile-page/me/links/${encodeURIComponent(id)}`);
 }
 
+/** The ring an avatar wears (board 6): since when anything is on record for this viewer, and whether any of it is Seen. */
+export interface ProfileMark {
+  user_id: string;
+  /** YYYY-MM: the first month with anything in a lane that reaches this viewer. */
+  since: string;
+  seen: boolean;
+}
+
+/** Signed in, at most 100 account ids. A person with no ring for this viewer is simply not in `marks`. */
+export async function getMarks(ids: string[]): Promise<{ marks: ProfileMark[] }> {
+  return get<{ marks: ProfileMark[] }>('/api/profile-page/marks', { ids: ids.join(',') });
+}
+
 /** The owner's parts and what a visitor would see. */
 export async function getShare(): Promise<ProfileShare> {
   return get<ProfileShare>('/api/profile-page/me/share');

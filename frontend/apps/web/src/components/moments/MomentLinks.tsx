@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { MarkOverlay, markRing, useAvatarWidth, useProfileMark } from '@/components/profile/sources/ProfileMarkRing';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { moments } from '@pantopus/api';
 import type { ChatMomentQuote } from '@pantopus/types';
@@ -66,11 +67,14 @@ export function MomentAvatar({
   name,
   children,
   fallback,
+  mark = true,
 }: {
   id?: string | null;
   name?: string;
   children: ReactNode;
   fallback?: ReactNode;
+  /** The profile with sources' ring (board 6) around the picture; off where the whole mark is already drawn. */
+  mark?: boolean;
 }) {
   const client = useQueryClient(),
     on = useMomentsAccess().data?.enabled;
@@ -87,9 +91,23 @@ export function MomentAvatar({
   const ring = q.isError ? null : q.data;
   const until = Math.max(0, ...(ring?.moments.map((m) => Date.parse(m.expires_at)) || [])),
     before = useBefore(until);
-  if (!on || !before || !ring || typeof window === 'undefined') return <>{fallback ?? children}</>;
+  // The person's mark ring (profile with sources) hugs the picture; the Moments ring moves out just beyond it.
+  const profileMark = useProfileMark(id, mark);
+  const [measure, avatarPx] = useAvatarWidth();
+  const markOverlay = profileMark ? <MarkOverlay mark={profileMark} avatarPx={avatarPx} /> : null;
+  if (!on || !before || !ring || typeof window === 'undefined') {
+    if (!markOverlay) return <>{fallback ?? children}</>;
+    return (
+      <span ref={measure} className="relative inline-flex shrink-0 rounded-full">
+        {fallback ?? children}
+        {markOverlay}
+      </span>
+    );
+  }
+  const reach = profileMark ? markRing(profileMark, avatarPx) : null;
   return (
     <Link
+      ref={measure}
       href={
         '/app/moments?person=' +
         encodeURIComponent(id!) +
@@ -97,13 +115,15 @@ export function MomentAvatar({
         encodeURIComponent(window.location.pathname)
       }
       className={
-        'inline-flex shrink-0 rounded-full ring-[3px] ring-offset-2 ring-offset-app-surface ' +
+        'relative inline-flex shrink-0 rounded-full ring-[3px] ring-offset-2 ring-offset-app-surface ' +
         (ring.unseen_count ? 'ring-teal-500' : 'ring-slate-400')
       }
+      style={reach ? ({ '--tw-ring-offset-width': `${reach.gap + reach.width + 1.5}px` } as CSSProperties) : undefined}
       aria-label={'Watch ' + (name || ring.author.name) + '’s Moments'}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
+      {markOverlay}
     </Link>
   );
 }

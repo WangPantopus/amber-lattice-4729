@@ -416,7 +416,7 @@ export type {
   ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileInCommonBlock, ProfileDoorsBlock,
   ProfileDoor, ProfileShelfBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
   ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
-  ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink,
+  ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
 } from './endpoints/profilePage';
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 
