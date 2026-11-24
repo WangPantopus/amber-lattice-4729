@@ -18,6 +18,8 @@ const logger = require('../../utils/logger');
 const recordingAlerts = require('./recordingAlerts');
 const { groundBlock } = require('./ground');
 const zoningLinks = require('./zoningLinks');
+const protect = require('./protect');
+const placeIntelligenceService = require('../placeIntelligenceService');
 const { recordSource } = require('./openPart');
 const { positive, grouped, money, dateLabel } = require('./words');
 
@@ -277,9 +279,11 @@ const settle = (label, read) => read.catch((err) => {
  */
 async function ownerBlocks({ row, copy, extras, above = null, open }) {
   const state = stateCode(row.state);
-  const [systems, exemptions] = await Promise.all([
+  const [systems, exemptions, recalls] = await Promise.all([
     settle('systems', systemsBlock(row, copy)),
     copy ? settle('exemptions', exemptionsBlock(row)) : null,
+    // The CPSC on the section budget, as every outside source here: past it the card waits for the next look.
+    settle('recalls', placeIntelligenceService.withinBudget(protect.recallsCard(), placeIntelligenceService.sectionBudgetMs())),
   ]);
   const blocks = copy
     ? [
@@ -292,14 +296,16 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
       similarBlock(copy, extras.similar),
       systems,
       groundBlock(extras.ground),
+      recalls,
       lotBlock(copy),
     ]
-    : [above, systems, groundBlock(extras.ground)];
-  const protect = [copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions, mortgageInsuranceBlock(copy)].filter(Boolean);
+    : [above, systems, groundBlock(extras.ground), recalls];
+  const protecting = [protect.claimsCard(), copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions, mortgageInsuranceBlock(copy)].filter(Boolean);
   return [
     ...blocks,
     ...open,
-    ...(protect.length ? [{ kind: 'section_label', id: 'protect_label', text: 'Protect your home' }, ...protect] : []),
+    { kind: 'section_label', id: 'protect_label', text: 'Protect your home' },
+    ...protecting,
   ].filter(Boolean);
 }
 
