@@ -278,7 +278,7 @@ export default function SourcesProfile({
     });
   }, [tabsId]);
 
-  const load = useCallback((what: { kind: 'month'; month: string } | { kind: 'piece'; id: string }) => {
+  const load = useCallback((what: { kind: 'month'; month: string } | { kind: 'piece'; id: string }, quiet = false) => {
     const round = ++openRound.current;
     const options = previewAs ? { as: previewAs } : undefined;
     setOpened({ ...what, state: 'loading' } as Opened);
@@ -290,13 +290,70 @@ export default function SourcesProfile({
         ? api.profilePage.getMonth(personId, what.month, options)
         : api.profilePage.getPiece(personId, what.id, options);
     read.then(
-      (value) => { if (round === openRound.current) setOpened({ ...what, state: value } as Opened); },
+      (value) => { if (round === openRound.current && mountedRef.current) setOpened({ ...what, state: value } as Opened); },
       (err: { statusCode?: number } | null) => {
-        if (round !== openRound.current) return;
+        // A page that is already gone (a signed-in visit draws the visitor's page for a moment first) does nothing,
+        // so it never takes the piece out of the address before the viewer's own page reads it.
+        if (round !== openRound.current || !mountedRef.current) return;
+        // A piece opened from its address that this viewer may not see: the plain profile, nothing said about it.
+        if (quiet && err?.statusCode === 404) { dropPieceAddress.current(); return; }
         setOpened({ ...what, state: err?.statusCode === 404 ? 'gone' : 'failed' } as Opened);
       },
     );
   }, [personId, previewAs, viaLink]);
+
+  // An opened piece has its own address, `?piece=<id>` on this page (board 8 is a screen of its own on a phone): the
+  // browser's Back closes it, a reload opens it again, and the address can be sent. Kept in the browser's own history
+  // (opening one asks the server for the piece and nothing else); Back and Forward are followed through `popstate`.
+  const pushedPiece = useRef(false);
+  const pieceInAddress = () => {
+    const id = new URLSearchParams(window.location.search).get('piece');
+    return id && /^[0-9a-f-]{8,64}$/i.test(id) ? id : null;
+  };
+  const addressFor = (id: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    if (id) params.set('piece', id); else params.delete('piece');
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  };
+  const dropPieceAddress = useRef(() => {});
+  dropPieceAddress.current = () => {
+    openRound.current += 1;
+    setOpened(null);
+    pushedPiece.current = false;
+    if (pieceInAddress()) window.history.replaceState(window.history.state, '', addressFor(null));
+  };
+  const openPiece = useCallback((id: string) => {
+    if (pieceInAddress() !== id) {
+      window.history.pushState(window.history.state, '', addressFor(id));
+      pushedPiece.current = true;
+    }
+    load({ kind: 'piece', id });
+  }, [load]);
+  const closePiece = useCallback(() => {
+    if (pushedPiece.current) { pushedPiece.current = false; window.history.back(); return; }
+    dropPieceAddress.current();
+  }, []);
+  const followAddress = useRef(() => {});
+  const mountedRef = useRef(false);
+  followAddress.current = () => {
+    const id = pieceInAddress();
+    if (id) {
+      // Opened from its address (a reload, a sent link, Forward): a piece this viewer may not see opens nothing.
+      if (!(opened?.kind === 'piece' && opened.id === id)) load({ kind: 'piece', id }, true);
+    } else if (opened?.kind === 'piece') {
+      pushedPiece.current = false;
+      openRound.current += 1;
+      setOpened(null);
+    }
+  };
+  useEffect(() => {
+    mountedRef.current = true;
+    followAddress.current();
+    const onPop = () => followAddress.current();
+    window.addEventListener('popstate', onPop);
+    return () => { mountedRef.current = false; window.removeEventListener('popstate', onPop); };
+  }, []);
 
   const target = useCallback((link: ProfileLink | null | undefined): Target | null => {
     if (!link || typeof link !== 'object' || typeof link.kind !== 'string') return null;
@@ -308,7 +365,7 @@ export default function SourcesProfile({
       case 'tab': { const tab = value('tab'); return tab && tabs.some((t) => t.key === tab) ? { onClick: () => openTab(tab) } : null; }
       case 'record': return tabs.some((t) => t.key === 'record') ? { onClick: () => openTab('record') } : null;
       case 'month': { const month = value('month'); return month && /^\d{4}-\d{2}$/.test(month) ? { onClick: () => load({ kind: 'month', month }) } : null; }
-      case 'piece': { const id = value('id'); return id ? { onClick: () => load({ kind: 'piece', id }) } : null; }
+      case 'piece': { const id = value('id'); return id ? { onClick: () => openPiece(id) } : null; }
       case 'business': { const username = value('username'); return username ? { href: `/b/${encodeURIComponent(username)}` } : null; }
       case 'profile': { const who = value('username') ?? value('user_id'); return who ? { href: buildUserProfilePath(who) } : null; }
       case 'plan': { const id = value('id'); return id ? { href: buildPlanPath(id) } : null; }
@@ -328,7 +385,7 @@ export default function SourcesProfile({
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
       default: return null;
     }
-  }, [tabs, openTab, load, header.username, router, viaLink]);
+  }, [tabs, openTab, load, openPiece, header.username, router, viaLink]);
 
   const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
   const personTarget = useCallback(
@@ -507,7 +564,7 @@ export default function SourcesProfile({
       />
       <PieceView
         state={opened?.kind === 'piece' ? opened.state : null}
-        onClose={closeOpened}
+        onClose={closePiece}
         onRetry={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); }}
         firstName={firstName}
         owner={{ name, portraitUrl: header.portrait_url ?? null }}
@@ -525,7 +582,7 @@ export default function SourcesProfile({
           }}
           onRemoved={(id) => {
             setEditing(null);
-            if (opened?.kind === 'piece' && opened.id === id) closeOpened();
+            if (opened?.kind === 'piece' && opened.id === id) closePiece();
             onChanged?.();
           }}
           skillsSuggested={skillsSuggested}

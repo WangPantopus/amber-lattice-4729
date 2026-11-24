@@ -15,7 +15,7 @@ const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'O
 /** Who sees a piece, in the owner's words, when it is narrower than anyone with the link. */
 export const AUDIENCE_WORD: Record<string, string> = { members: 'People on Pantopus', connections: 'Your connections' };
 
-/** The pictures and films a piece shows at its top: P2.2's attachments, else v1's `media` list, else its cover. */
+/** The photos and videos a piece shows at its top: P2.2's attachments, else v1's `media` list, else its cover. */
 function galleryOf(piece: Piece): ProfileAttachment[] {
   const listed = Array.isArray(piece.attachments) && piece.attachments.length > 0
     ? piece.attachments
@@ -71,12 +71,16 @@ function Card({ title, children, flush = false }: { title: string; children: Rea
   );
 }
 
-/** The gallery (board 8): one big picture or film with "1 of 6" and the counts, and a strip to choose from. */
-function Gallery({ items, counts, chosen, onChoose, title }: {
-  items: ProfileAttachment[]; counts: string | null; chosen: number; onChoose: (i: number) => void; title: string;
+/** The gallery (board 8): one big photo or video with "1 of 6" and the counts, and a strip to choose from. */
+function Gallery({ items: all, counts, chosen: chosenUrl, onChoose, title }: {
+  items: ProfileAttachment[]; counts: string | null; chosen: string | null; onChoose: (url: string) => void; title: string;
 }) {
+  // A photo that doesn't load leaves the gallery, so there is never an empty frame.
+  const [failed, setFailed] = useState<string[]>([]);
+  const items = all.filter((a) => !(a.kind === 'photo' && failed.includes(a.url)));
   if (items.length === 0) return null;
-  const item = items[Math.min(chosen, items.length - 1)];
+  const chosen = Math.max(0, items.findIndex((a) => a.url === chosenUrl));
+  const item = items[chosen];
   const pill = 'absolute bottom-2.5 inline-flex items-center min-h-6 px-2.5 rounded-full bg-gray-900/85 text-white text-xs leading-4 font-semibold';
   return (
     <div className="flex flex-col">
@@ -90,12 +94,12 @@ function Gallery({ items, counts, chosen, onChoose, title }: {
             playsInline
             preload="metadata"
             className="absolute inset-0 w-full h-full object-contain bg-black"
-            aria-label={item.title || `A film of ${title}`}
+            aria-label={item.title || `A video of ${title}`}
           />
         ) : (
-          <Picture src={item.url} alt={item.title || ''} className="absolute inset-0 w-full h-full object-cover" />
+          <Picture src={item.url} alt={item.title || ''} onFail={() => setFailed((list) => [...list, item.url])} className="absolute inset-0 w-full h-full object-cover" />
         )}
-        {items.length > 1 ? <span className={`${pill} left-2.5`}>{Math.min(chosen, items.length - 1) + 1} of {items.length}</span> : null}
+        {items.length > 1 ? <span className={`${pill} left-2.5`}>{chosen + 1} of {items.length}</span> : null}
         {counts && item.kind !== 'video' ? <span className={`${pill} right-2.5`}>{counts}</span> : null}
       </div>
       {items.length > 1 ? (
@@ -109,7 +113,7 @@ function Gallery({ items, counts, chosen, onChoose, title }: {
                 type="button"
                 aria-pressed={on}
                 aria-label={`${a.kind === 'video' ? 'Video' : 'Photo'} ${i + 1} of ${items.length}`}
-                onClick={() => onChoose(i)}
+                onClick={() => onChoose(a.url)}
                 className={`relative shrink-0 w-[3.75rem] h-[2.875rem] rounded-lg overflow-hidden bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'ring-2 ring-[rgb(var(--app-text))] ring-offset-2 ring-offset-[rgb(var(--app-surface))]' : ''}`}
               >
                 {thumb ? <Picture src={thumb} className="absolute inset-0 w-full h-full object-cover" /> : null}
@@ -221,7 +225,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
   target: (who: { user_id: string | null; username: string | null }) => Target | null; view: string;
 }) {
   const gallery = galleryOf(piece);
-  const [chosen, setChosen] = useState(0);
+  const [chosen, setChosen] = useState<string | null>(null);
   const galleryRef = useRef<HTMLDivElement>(null);
   const documents = documentsOf(piece);
   const videos = gallery.map((a, i) => ({ a, i })).filter(({ a }) => a.kind === 'video');
@@ -237,8 +241,8 @@ function PieceBody({ piece, firstName, owner, target, view }: {
     ...(view === 'owner' ? [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null, AUDIENCE_WORD[piece.audience || ''] ?? null].filter(Boolean).map((text) => ({ text: text!, tone: 'bg-app-surface-sunken text-app' })) : []),
   ].filter(Boolean) as Array<{ text: string; tone: string }>;
   const ink = inkOf(piece.ink);
-  const showVideo = (i: number) => {
-    setChosen(i);
+  const showVideo = (url: string) => {
+    setChosen(url);
     galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -288,7 +292,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
             <ul className="flex flex-col">
               {videos.map(({ a, i }) => (
                 <li key={`v-${i}`}>
-                  <button type="button" onClick={() => showVideo(i)} className="w-full flex items-center gap-3 px-5 py-2.5 text-left hover-bg-app">
+                  <button type="button" onClick={() => showVideo(a.url)} className="w-full flex items-center gap-3 px-5 py-2.5 text-left hover-bg-app">
                     <span className="relative shrink-0 w-[4.5rem] h-12 rounded-lg overflow-hidden bg-gray-800">
                       {a.thumbnail_url ? <Picture src={a.thumbnail_url} className="absolute inset-0 w-full h-full object-cover" /> : null}
                       <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center">

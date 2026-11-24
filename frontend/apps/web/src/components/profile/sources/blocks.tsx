@@ -382,6 +382,9 @@ const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'O
 
 function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext; big: boolean }) {
   const ink = inkOf(piece.ink);
+  // No picture, or one that doesn't load: the card without a picture box, never an empty frame.
+  const [coverFailed, setCoverFailed] = useState(false);
+  const cover = piece.cover_url && !coverFailed ? piece.cover_url : null;
   // Board 7's cards say the year ("Built · 2026"); the list under the work line says the month.
   const year = [piece.to, piece.from].find((v) => typeof v === 'string' && /^\d{4}/.test(v))?.slice(0, 4) ?? piece.when;
   const tag = [...ownerFlags(piece), piece.kind ? KIND_WORD[piece.kind] : null, year].filter(Boolean).join(' · ');
@@ -389,18 +392,20 @@ function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext
   return (
     <Opens target={ctx.target(piece.link)} className="rounded-2xl" label={undefined}>
       <span className="flex flex-col gap-2">
-        {piece.cover_url ? (
+        {cover ? (
           <span className={`relative block w-full overflow-hidden rounded-2xl bg-app-surface-sunken ${big ? 'aspect-[3/2] lg:aspect-[16/9]' : 'aspect-[4/3]'}`}>
-            <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
+            <Picture src={cover} onFail={() => setCoverFailed(true)} className="absolute inset-0 w-full h-full object-cover" />
             {tag ? <span className="absolute left-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{tag}</span> : null}
             {big && media ? <span className="absolute right-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{media}</span> : null}
           </span>
         ) : null}
-        <span className="block px-1">
+        <span className={`block px-1 ${cover ? '' : 'pt-0.5'}`}>
+          {/* With no picture the card reads kind and year, title, ink line. */}
+          {!cover && tag ? <span className="block mb-0.5 text-xs leading-4 font-semibold text-app-secondary">{tag}</span> : null}
           <span className={`block font-semibold text-app [overflow-wrap:anywhere] ${big ? 'text-[1.0625rem] leading-[1.4375rem]' : 'text-sm leading-5'}`}>{piece.title}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
             <InkGlyph ink={ink} inline />
-            <span className="[overflow-wrap:anywhere]">{[piece.with?.name ? `With ${piece.with.name}` : null, howText(ink, piece.how), piece.cover_url ? null : tag].filter(Boolean).join(' · ')}</span>
+            <span className="[overflow-wrap:anywhere]">{[piece.with?.name ? `With ${piece.with.name}` : null, howText(ink, piece.how)].filter(Boolean).join(' · ')}</span>
           </span>
         </span>
       </span>
@@ -427,6 +432,8 @@ function ownerFlags(piece: ProfilePiece): string[] {
  */
 function PieceRow({ piece, ctx, month }: { piece: ProfilePiece; ctx: BlockContext; month?: string | null }) {
   const ink = inkOf(piece.ink);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const cover = piece.cover_url && !coverFailed ? piece.cover_url : null;
   const target = ctx.target(piece.link);
   const flags = ownerFlags(piece);
   const meta = [
@@ -439,9 +446,9 @@ function PieceRow({ piece, ctx, month }: { piece: ProfilePiece; ctx: BlockContex
   return (
     <Opens target={target} className={`${rowClass} !px-3`}>
       <span className="flex w-full items-center gap-3">
-        {piece.cover_url ? (
+        {cover ? (
           <span className="relative block w-[3.25rem] h-[3.25rem] shrink-0 overflow-hidden rounded-[10px] bg-app-surface-sunken">
-            <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
+            <Picture src={cover} onFail={() => setCoverFailed(true)} className="absolute inset-0 w-full h-full object-cover" />
           </span>
         ) : null}
         <span className="min-w-0 flex-1">
@@ -493,20 +500,35 @@ function Segmented({ options, value, onChange, label }: { options: Array<{ key: 
  * All / Did / Built switch and the pieces of the chosen year. Either half may come alone: the fan without a list, or
  * the list (with its switch) without a fan.
  */
-export function WorkLineBlock({ rings, list, ctx }: { rings: ProfileWorkRingsBlock | null; list: ProfilePiecesBlock | null; ctx: BlockContext }) {
-  const pieces = useMemo(() => (list?.pieces || []).filter((piece) => piece?.id && piece.title?.trim()), [list]);
+export function WorkLineBlock({ rings, list, ctx, pinned = null }: {
+  rings: ProfileWorkRingsBlock | null; list: ProfilePiecesBlock | null; ctx: BlockContext;
+  /** The tab's pinned pieces: a year's list holds them too (board 7's 2026 has the pinned porch), each once. */
+  pinned?: ProfilePiece[] | null;
+}) {
+  const pieces = useMemo(() => {
+    const listed = (list?.pieces || []).filter((piece) => piece?.id && piece.title?.trim());
+    const seen = new Set(listed.map((piece) => piece.id));
+    const more = rings ? (pinned || []).filter((piece) => piece?.id && piece.title?.trim() && !seen.has(piece.id)) : [];
+    return [...listed, ...more];
+  }, [list, pinned, rings]);
   const dated = useMemo(() => {
     const dots = new Map((rings?.dots || []).filter((d) => d?.piece_id && d.month).map((d) => [d.piece_id, d.month]));
     return pieces.map((piece) => ({ piece, month: pieceMonth(piece, dots) }));
   }, [pieces, rings]);
-  // The years with a listed piece, newest first; pieces with no month at all get a chip of their own, last.
+  // Board 7: one chip for each year the work rings send, with that year's count as sent (its dots), newest first;
+  // the list under it is that year's pieces. Without the rings, the years of the listed pieces. Pieces with no month
+  // get a chip of their own, last.
   const years = useMemo(() => {
-    const counts = new Map<string, number>();
-    dated.forEach(({ month }) => { const y = month ? month.slice(0, 4) : 'none'; counts.set(y, (counts.get(y) ?? 0) + 1); });
-    // Each chip counts the pieces it lists, so the number under the tap is the number shown.
-    return [...counts.keys()].sort((a, b) => (a === 'none' ? 1 : b === 'none' ? -1 : Number(b) - Number(a)))
-      .map((year) => ({ year, pieces: counts.get(year)! }));
-  }, [dated]);
+    const listed = new Map<string, number>();
+    dated.forEach(({ month }) => { const y = month ? month.slice(0, 4) : 'none'; listed.set(y, (listed.get(y) ?? 0) + 1); });
+    const sent = (rings?.years || []).filter((y) => y && y.pieces > 0).map((y) => ({ year: String(y.year), pieces: y.pieces }));
+    const out = sent.length > 0
+      ? sent
+      : [...listed.keys()].filter((y) => y !== 'none').map((year) => ({ year, pieces: listed.get(year)! }));
+    out.sort((a, b) => Number(b.year) - Number(a.year));
+    if (listed.has('none')) out.push({ year: 'none', pieces: listed.get('none')! });
+    return out;
+  }, [dated, rings]);
   const chips = years.length > 1 || (years.length === 1 && years[0].year !== 'none');
   const [year, setYear] = useState<string | null>(null);
   const [kind, setKind] = useState('all');
@@ -686,13 +708,18 @@ function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: B
  * A tab's blocks in order. Board 7 draws the work rings and the list of every piece as one card, so a `work_rings`
  * block followed by a list of pieces is drawn together.
  */
+function pinnedOf(blocks: ProfileBlock[]): ProfilePiece[] {
+  const block = blocks.find((b) => b.kind === 'pieces' && (b as ProfilePiecesBlock).style === 'pinned') as ProfilePiecesBlock | undefined;
+  return block?.pieces || [];
+}
+
 export function Blocks({ blocks, ctx, keyPrefix }: { blocks: ProfileBlock[]; ctx: BlockContext; keyPrefix: string }) {
   const out: ReactNode[] = [];
   for (let i = 0; i < blocks.length; i += 1) {
     const block = blocks[i];
     const next = blocks[i + 1] as ProfilePiecesBlock | undefined;
     if (block.kind === 'work_rings' && next?.kind === 'pieces' && next.style !== 'pinned') {
-      out.push(<WorkLineBlock key={`${keyPrefix}-${block.id ?? i}`} rings={block as ProfileWorkRingsBlock} list={next} ctx={ctx} />);
+      out.push(<WorkLineBlock key={`${keyPrefix}-${block.id ?? i}`} rings={block as ProfileWorkRingsBlock} list={next} ctx={ctx} pinned={pinnedOf(blocks)} />);
       i += 1;
     } else {
       out.push(<Block key={`${keyPrefix}-${block.id ?? i}`} block={block} ctx={ctx} />);
