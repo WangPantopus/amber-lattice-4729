@@ -28,7 +28,7 @@ const VENDOR_HOSTS = [
   'schneidercorp.com', 'publicaccessnow.com', 'actdatascout.com', 'ncpropertynotification.org', 'fraudalertme.com',
   'propertytaxpayments.net', 'county-taxes.net', 'county-taxes.com', 'kofiletech.us', 'fidlar.com', 'publicsearch.us',
   'propertyfraudalert.com', 'accela.com', 'myrelayview.com', 'cotthosting.com', 'landex.com', 'paymentus.com',
-  'tylerhost.net', 'spatialest.com', 'uslandrecords.com',
+  'tylerhost.net', 'spatialest.com', 'uslandrecords.com', 'arcgis.com',
 ];
 const SHORTHAND = { 'Property Valuation': 'Property Valuation Administrator' };
 

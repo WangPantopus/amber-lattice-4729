@@ -50,6 +50,8 @@ const COUNTIES = [
   '06071', '37119', '42003', '42091', '08031', '55025', '40109', '29095', '48121',
   // November 23, 2026, eighth: Sarasota and Seminole, FL; Adams, CO; the District of Columbia; Charlottesville, VA.
   '12115', '12117', '08001', '11001', '51540',
+  // Milwaukee, WI: the County's own county-wide Property Information Search, beside the City's assessor in the table.
+  '55079',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
