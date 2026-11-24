@@ -27,21 +27,31 @@ function firstNameOf(body) {
   return String(body.name || body.user?.name || '').trim().split(/\s+/)[0] || 'them';
 }
 
-/** What each review's writer did, from its job (as the page says it), for reviews whose writer is withheld. */
-async function reviewRoles(userId, reviews) {
+/**
+ * What each review's writer did, from its job (as the page says it), for reviews whose writer is withheld. Read only
+ * when the link shows reviews; a failed read leaves the plainer wording ("worked with").
+ */
+async function reviewRoles(userId, reviews, parts) {
+  if (!reaches(parts, 'reviews', 'link') || !Array.isArray(reviews) || !reviews.length) return new Map();
   const gigIds = [...new Set(reviews.map((r) => r.gig_id).filter(Boolean))];
   if (!gigIds.length) return new Map();
-  const { data, error } = await supabaseAdmin.from('Gig').select('id, user_id, accepted_by').in('id', gigIds);
-  if (error) return new Map();
+  let data;
+  try {
+    const read = await supabaseAdmin.from('Gig').select('id, user_id, accepted_by').in('id', gigIds);
+    if (read.error) return new Map();
+    data = read.data;
+  } catch (_) {
+    return new Map();
+  }
   return new Map((data || []).map((gig) => [gig.id,
     String(gig.accepted_by) === String(userId) ? 'hired' : (String(gig.user_id) === String(userId) ? 'worked_for' : null)]));
 }
 
 /**
  * GET /id/:id and /username/:username: the body sendPublicProfile built, as the main link allows it. `parts` from
- * savedLinkParts (non-null).
+ * savedLinkParts (non-null), `roles` from reviewRoles.
  */
-async function limitPublicProfile(body, parts, userId) {
+function limitPublicProfile(body, parts, roles = new Map()) {
   const on = (part) => reaches(parts, part, 'link');
   const out = { ...body };
   if (!on('says')) out.bio = null;
@@ -64,7 +74,6 @@ async function limitPublicProfile(body, parts, userId) {
   } else if (Array.isArray(out.reviews) && out.reviews.length) {
     // Other people on a link appear by what they did (rule 4.5, founder item 9.4 "for now").
     const first = firstNameOf(body);
-    const roles = await reviewRoles(userId, out.reviews);
     out.reviews = out.reviews.map((review) => {
       const role = roles.get(review.gig_id);
       const did = role === 'hired' ? `hired ${first}` : (role === 'worked_for' ? `did a job for ${first}` : `worked with ${first}`);
@@ -103,4 +112,4 @@ function limitLegacyUser(user, parts) {
   return out;
 }
 
-module.exports = { appliesTo, savedLinkParts, limitPublicProfile, limitLegacyUser };
+module.exports = { appliesTo, savedLinkParts, reviewRoles, limitPublicProfile, limitLegacyUser };

@@ -4049,6 +4049,10 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
     logger.warn('Could not fetch reviews', { error: reviewErr.message });
   }
 
+  // Rule 4.7's reviewer wording needs each review's job; read it beside the last batch, not after it.
+  const linkLimit = linkParts && linkParts.then(async (saved) => (saved.parts
+    ? { parts: saved.parts, roles: await linkRule.reviewRoles(userData.id, reviews, saved.parts) }
+    : saved)).catch((error) => ({ error }));
   const { profileContributions } = require('../services/profileContributions');
   const [residency, showArea, contributions] = await Promise.all([
     getPublicResidencySummary(userData.id, viewerId),
@@ -4101,10 +4105,10 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
     contributions,
     ...previewed,
   };
-  if (linkParts) {
-    const saved = await linkParts;
+  if (linkLimit) {
+    const saved = await linkLimit;
     if (saved.error) throw saved.error;
-    if (saved.parts) return res.json(await linkRule.limitPublicProfile(body, saved.parts, userData.id));
+    if (saved.parts) return res.json(linkRule.limitPublicProfile(body, saved.parts, saved.roles));
   }
   return res.json(body);
 }
