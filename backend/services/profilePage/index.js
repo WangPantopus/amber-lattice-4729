@@ -12,7 +12,7 @@ const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./source
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
 const { profileLinksEnabled, profileTiesEnabled } = require('../../utils/featureFlags');
-const { buildRecord, composePage, composeMonth, composePiece, partContent, firstWord } = require('./compose');
+const { buildRecord, composePage, composeMonth, composePiece, composeCircle, composeCirclePieces, partContent, firstWord } = require('./compose');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -200,12 +200,34 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   const party = !owner && Boolean(ctx.viewerId) && sources.credits.some((c) => String(c.piece_id) === String(row.id)
     && String(c.party_user_id) === ctx.viewerId && (c.status === 'asked' || c.status === 'signed'));
   const { attachmentsOf } = require('./pieces');
-  const attachments = await attachmentsOf(row);
+  const tiesOn = profileTiesEnabled();
+  // The owner's piece from a paid job: who hired them, when they could be asked now (a plan suggests nobody).
+  const suggest = owner && tiesOn
+    ? (row.source_kind === 'gig' && row.source_gig_id
+      ? require('./ties').suggestionsFor(String(found.userData.id), [row.source_gig_id]).then((m) => m.get(String(row.source_gig_id)) || [])
+      : Promise.resolve([]))
+    : Promise.resolve(null);
+  const [attachments, suggested] = await Promise.all([attachmentsOf(row), suggest]);
   const answer = composePiece(ctx, row, {
-    attachments, reviews: sources.reviews?.rows || [], credits: profileTiesEnabled() ? sources.credits : null, party,
+    attachments, reviews: sources.reviews?.rows || [], credits: tiesOn ? sources.credits : null, party, suggested,
   });
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
+}
+
+// ---------- the work circle (PROFILE_TIES; CONTRACT P2.6) ----------
+
+const circleMissing = () => new PageRefusal(404, 'CIRCLE_NOT_FOUND', 'Nothing to show here.');
+const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** GET …/circle (and …/circle/:userId): read like the page, under the same viewer rules; no "You and <name>". */
+async function getCircle(req, lookup, userId = null, { keyed = null } = {}) {
+  if (userId !== null && !ID_RE.test(String(userId))) throw circleMissing();
+  const loaded = await loadPage(req, lookup, { inCommon: false, keyed });
+  const answer = userId === null ? composeCircle(loaded.ctx, loaded.record, loaded.sources)
+    : composeCirclePieces(loaded.ctx, loaded.record, userId);
+  if (!answer) throw circleMissing();
+  return loaded.ctx.preview ? { ...answer, preview_as: loaded.ctx.preview } : answer;
 }
 
 // ---------- share ----------
@@ -362,6 +384,11 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
         if (!MONTH_RE.test(String(arg || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
         answer = composeMonth(loaded.ctx, loaded.record, arg);
         if (!answer) throw new PageRefusal(404, 'MONTH_NOT_FOUND', 'Nothing to show for that month.');
+      } else if (what === 'circle') {
+        if (arg !== null && !ID_RE.test(String(arg))) throw circleMissing();
+        answer = arg === null ? composeCircle(loaded.ctx, loaded.record, loaded.sources)
+          : composeCirclePieces(loaded.ctx, loaded.record, arg);
+        if (!answer) throw circleMissing();
       } else {
         answer = composePage(loaded.ctx, loaded.sources, loaded.extras);
       }
@@ -378,6 +405,6 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
 }
 
 module.exports = {
-  getPage, getMonth, getPiece, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
+  getPage, getMonth, getPiece, getCircle, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
   makeLink, changeLink, removeLink, openByKey, LinkRefusal: links.LinkRefusal,
 };

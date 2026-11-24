@@ -294,6 +294,11 @@ async function offeredFor(userId, rows) {
     if (postError) throw postError;
     for (const post of data || []) titles.set(String(post.id), String(post.title || post.content || 'A plan').trim().slice(0, 60));
   }
+  // Who hired them, when they could be asked now, for "Who was on it" (PROFILE_TIES; a plan suggests nobody); read
+  // beside the names.
+  const { profileTiesEnabled } = require('../../utils/featureFlags');
+  const tiesOn = profileTiesEnabled();
+  const suggestionsRead = tiesOn ? require('./ties').suggestionsFor(userId, openGigs.map((g) => g.id)) : Promise.resolve(null);
   // The people who hired them, by the name others see (shown to the owner only, never on the piece).
   const posterIds = [...new Set(openGigs.map((g) => g.user_id).filter(Boolean))];
   const names = new Map();
@@ -304,16 +309,19 @@ async function offeredFor(userId, rows) {
   }
   const day = (at) => (at ? new Date(at).toLocaleDateString('en-US', { timeZone: PACIFIC, month: 'long', day: 'numeric', year: 'numeric' }) : null);
   const short = (at) => (at ? new Date(at).toLocaleDateString('en-US', { timeZone: PACIFIC, month: 'long', day: 'numeric' }) : null);
+  const suggestions = await suggestionsRead;
   return [
     ...openGigs.map((g) => {
       const at = g.owner_confirmed_at || g.worker_completed_at || g.updated_at;
       const who = names.get(String(g.user_id));
       return { kind: 'gig', id: g.id, title: g.title || 'A paid job', when: day(at), with: who || null,
-        text: who ? `You completed a paid job for ${who} on ${short(at)}.` : `You completed a paid job on ${short(at)}.` };
+        text: who ? `You completed a paid job for ${who} on ${short(at)}.` : `You completed a paid job on ${short(at)}.`,
+        ...(tiesOn ? { suggested_credits: suggestions.get(String(g.id)) || [] } : {}) };
     }),
     ...openPlans.map((p) => {
       const title = titles.get(String(p.post_id)) || 'A plan';
-      return { kind: 'plan', id: p.post_id, title, when: day(p.ended_at), with: null, text: `You hosted ${title} on ${short(p.ended_at)}.` };
+      return { kind: 'plan', id: p.post_id, title, when: day(p.ended_at), with: null, text: `You hosted ${title} on ${short(p.ended_at)}.`,
+        ...(tiesOn ? { suggested_credits: [] } : {}) };
     }),
   ];
 }
