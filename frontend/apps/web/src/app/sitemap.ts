@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { API_BASE_URL } from '@pantopus/utils';
+import { GUIDE_PAGES } from '@/lib/site/guidePages';
+import { PILLAR_PAGES } from '@/lib/site/pillarPages';
 
 // The pages search engines may read, at the address every page's canonical link uses. robots.ts points to this file
 // in production only; staging and local builds tell search engines to stay out, whatever is listed here.
@@ -35,6 +37,12 @@ async function countyPages(): Promise<string[]> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const pages = [...PUBLIC_PAGES, ...(await countyPages())];
-  return pages.map((path) => ({ url: `${SITE_URL}${path}` }));
+  const pages = [
+    ...PUBLIC_PAGES,
+    ...PILLAR_PAGES.map((page) => page.path),
+    ...GUIDE_PAGES.map((page) => page.path),
+    ...(await countyPages()),
+  ];
+  // A page listed twice (a pillar page also named in PUBLIC_PAGES) is listed once.
+  return [...new Set(pages)].map((path) => ({ url: `${SITE_URL}${path}` }));
 }
