@@ -313,6 +313,12 @@ extension View {
     }
 }
 
+#Preview("Buyer") {
+    if let record = HomeRecordFixtures.record(.buyer) {
+        HomeRecordView(previewing: record, source: .lookup(address: "1 Pantopus Way"))
+    }
+}
+
 #Preview("Owner") {
     if let record = HomeRecordFixtures.record(.owner) {
         HomeRecordView(previewing: record, source: .home(homeId: "sample"))
