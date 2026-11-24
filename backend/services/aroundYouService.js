@@ -547,18 +547,22 @@ async function archivePass({ sinceHours = 3 } = {}) {
     if ((data || []).length < 1000) break;
   }
   if (!rows.length) return { regions: regions.length, stories: 0 };
-  const { data: sources, error: sourcesError } = await supabaseAdmin.from('seeder_sources').select(SOURCE_COLUMNS);
-  if (sourcesError) throw sourcesError;
   const byRegion = new Map();
   for (const row of rows) {
     if (!byRegion.has(row.region)) byRegion.set(row.region, []);
     byRegion.get(row.region).push(row);
   }
+  // The sources of the regions that have stories, a hundred regions a read (a place made for one home has a handful).
+  const sourceAnswers = await Promise.all(chunks([...byRegion.keys()])
+    .map((batch) => supabaseAdmin.from('seeder_sources').select(SOURCE_COLUMNS).in('region', batch).limit(5000)));
+  const sourcesFailed = sourceAnswers.find((answer) => answer.error);
+  if (sourcesFailed) throw sourcesFailed.error;
+  const sources = sourceAnswers.flatMap((answer) => answer.data || []);
   let stories = 0;
   for (const region of regions) {
     const regionRows = byRegion.get(region.region);
     if (!regionRows) continue;
-    const sourceRows = sourcesById((sources || []).filter((row) => row.region === region.region), [region.region]);
+    const sourceRows = sourcesById(sources.filter((row) => row.region === region.region), [region.region]);
     const sections = withPostIds(buildSections(regionRows, sourceRows, [region], Date.now(), { everything: true, anyAge: true }));
     stories += sections.reduce((count, section) => count + section.items.length, 0);
     try {

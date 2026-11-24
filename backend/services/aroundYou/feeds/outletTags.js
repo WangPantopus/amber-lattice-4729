@@ -59,32 +59,47 @@ function parseLabels(xml) {
   return out;
 }
 
+// Every active news feed of these regions. Read without naming the regions (there can be thousands, most with no
+// outlet of their own), a thousand rows a read.
 async function newsSources(regionIds) {
-  const { data, error } = await supabaseAdmin
-    .from('seeder_sources')
-    .select('source_id, url, region')
-    .eq('source_type', 'rss')
-    .eq('active', true)
-    .in('category', ['local_news', 'community_resource'])
-    .in('region', regionIds);
-  if (error) throw error;
+  const wanted = new Set(regionIds);
+  const out = [];
+  for (let from = 0; from < 5000; from += 1000) {
+    const { data, error } = await supabaseAdmin
+      .from('seeder_sources')
+      .select('source_id, url, region')
+      .eq('source_type', 'rss')
+      .eq('active', true)
+      .in('category', ['local_news', 'community_resource'])
+      .order('region')
+      .order('source_id')
+      .range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if ((data || []).length < 1000) break;
+  }
   // A state outlet's stories show by a word list of their own (Across <State>); its labels are not read.
-  return (data || []).filter((row) => row.url && !String(row.source_id).startsWith('rss:state_'));
+  return out.filter((row) => row.url && wanted.has(row.region) && !String(row.source_id).startsWith('rss:state_'));
 }
 
+// The fetcher's stories from these feeds that nobody has looked up yet, fifty feeds a read.
 async function unlabelled(regionIds, sourceIds) {
+  const wanted = new Set(regionIds);
   const since = new Date(Date.now() - LOOK_BACK_HOURS * HOUR_MS).toISOString();
-  const { data, error } = await supabaseAdmin
-    .from('seeder_content_queue')
-    .select('id, source, source_url, region, fetched_at')
-    .in('region', regionIds)
-    .in('source', sourceIds)
-    .is('outlet_tags', null)
-    .gte('fetched_at', since)
-    .order('fetched_at', { ascending: false })
-    .limit(1000);
-  if (error) throw error;
-  return data || [];
+  const out = [];
+  for (let start = 0; start < sourceIds.length; start += 50) {
+    const { data, error } = await supabaseAdmin
+      .from('seeder_content_queue')
+      .select('id, source, source_url, region, fetched_at')
+      .in('source', sourceIds.slice(start, start + 50))
+      .is('outlet_tags', null)
+      .gte('fetched_at', since)
+      .order('fetched_at', { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    out.push(...(data || []).filter((row) => wanted.has(row.region)));
+  }
+  return out;
 }
 
 /**
