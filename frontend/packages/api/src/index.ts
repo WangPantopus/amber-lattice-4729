@@ -338,6 +338,10 @@ export type {
   PlacePreviewAhaTone,
   PlacePreviewLockedSection,
   PlacePreviewMoneyLead,
+  PlacePreviewTone,
+  PlacePreviewGlanceRow,
+  PlacePreviewLayout,
+  PlacePreviewMoney,
 } from './endpoints/place';
 
 // Address calendar — what recurs at this address (wedge Phase 2, D6)
