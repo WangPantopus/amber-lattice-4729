@@ -22,8 +22,10 @@ function columnsFrom(pages: SitePage[], head: string): FooterColumn[] {
   return columns;
 }
 
-// Only pages that are live: nothing here links into a switched-off feature. The pillar and guide pages come from
-// their lists in src/lib/site, so a page added there is linked here and listed in the sitemap at once.
+// Only pages that are live: nothing here links into a switched-off feature. Other public pages draw this footer too,
+// so the homepage's sections are linked as /#<section>: it scrolls on the homepage and opens it elsewhere.
+// The pillar and guide pages come from their lists in src/lib/site, so a page added there is linked here and listed
+// in the sitemap at once.
 const COLUMNS: FooterColumn[] = [
   ...columnsFrom(PILLAR_PAGES, 'Pantopus'),
   ...columnsFrom(GUIDE_PAGES, 'Guides'),
@@ -31,8 +33,10 @@ const COLUMNS: FooterColumn[] = [
     head: 'Explore',
     links: [
       { href: '/start', label: 'See your place' },
-      { href: '#how-it-works', label: 'How it works' },
-      { href: '#plans', label: 'Plans' },
+      { href: '/property-records', label: 'Property records' },
+      { href: '/tax-check', label: 'Property tax check' },
+      { href: '/#how-it-works', label: 'How it works' },
+      { href: '/#plans', label: 'Plans' },
       { href: '/login', label: 'Sign in' },
     ],
   },
@@ -59,10 +63,10 @@ export default function HomeFooter() {
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
         <div className={styles.footerBrand}>
-          <a className={styles.brand} href="#top">
+          <Link className={styles.brand} href="/#top">
             <PantopusMark size={22} variant="reverse" />
             Pantopus
-          </a>
+          </Link>
           <span>Real life, connected.</span>
           <span>© 2026 Pantopus, Inc.</span>
         </div>
@@ -70,13 +74,9 @@ export default function HomeFooter() {
           {COLUMNS.map((col) => (
             <div key={col.head} className={styles.footerCol}>
               <span className={styles.footerHead}>{col.head}</span>
-              {col.links.map((l) =>
-                l.href.startsWith('#') ? (
-                  <a key={l.href} href={l.href}>{l.label}</a>
-                ) : (
-                  <Link key={l.href} href={l.href}>{l.label}</Link>
-                ),
-              )}
+              {col.links.map((l) => (
+                <Link key={l.href} href={l.href}>{l.label}</Link>
+              ))}
             </div>
           ))}
         </nav>
