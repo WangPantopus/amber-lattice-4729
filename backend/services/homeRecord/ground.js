@@ -116,7 +116,7 @@ function slopeWord(percent) {
 const sentence = (text) => (text ? text.charAt(0).toUpperCase() + text.slice(1).toLowerCase() : text);
 
 /** The owner's `tiles` block from the readings. Null when no source answered. */
-function groundBlock(read) {
+function groundBlock(read, { title = 'Ground under your home' } = {}) {
   if (!answered(read)) return null;
   const { soil: s } = read;
   const tiles = [
@@ -138,7 +138,7 @@ function groundBlock(read) {
   return {
     kind: 'tiles',
     id: 'ground',
-    title: 'Ground under your home',
+    title,
     tiles,
     rows,
     note: `${list}.${s ? ' The soil is mapped for the area, not tested at this home.' : ''}${read.dams ? ' Dams are counted by distance; a hazard rating is about what a failure would harm, not how likely one is.' : ''}`,

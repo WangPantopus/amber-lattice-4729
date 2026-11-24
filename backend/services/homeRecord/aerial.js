@@ -220,7 +220,7 @@ async function yearsAt(point) {
  * and the rest as buttons). Each image is cut when a screen first asks for it; the newest is cut behind the answer.
  * Null with fewer than two years (the USGS fallback serves one).
  */
-async function photoYearsBlock(point) {
+async function photoYearsBlock(point, { title = 'Your lot through the years' } = {}) {
   const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
   const years = yearsOf(await surveys(cell));
   if (years.length < 2) return null;
@@ -229,7 +229,7 @@ async function photoYearsBlock(point) {
   return {
     kind: 'photo_years',
     id: 'lot_years',
-    title: 'Your lot through the years',
+    title,
     count: `${years.length} photos`,
     photos: years.map((survey) => ({ year: String(survey.year), label: monthYear(survey.date), image_url: imagePath(cell, survey), outline: null })),
     note: 'Federal aerial surveys by the U.S. Department of Agriculture, Farm Service Agency. This home is at the middle of each.',

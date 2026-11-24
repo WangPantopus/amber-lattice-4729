@@ -27,7 +27,7 @@ const authority = require('../homeDashboardService');
 const open = require('./openPart');
 const aerial = require('./aerial');
 const ground = require('./ground');
-const { ownerBlocks } = require('./ownerPart');
+const { ownerBlocks, buyerCountyBlocks, lotBlock } = require('./ownerPart');
 const { check } = require('./contract');
 const { FOOTERS } = require('./words');
 
@@ -105,50 +105,114 @@ async function pictureForOwner(point, copy) {
     || withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), 'picture');
 }
 
-function answer(state, header, blocks) {
-  return check({ v: CONTRACT_VERSION, state, header, blocks: blocks.filter(Boolean), footer: FOOTERS[state] });
+function answer(state, header, blocks, actions = null) {
+  return check({ v: CONTRACT_VERSION, state, header, ...(actions ? { actions } : {}), blocks: blocks.filter(Boolean), footer: FOOTERS[state] });
 }
 
 /**
- * The `lookup` answer for a geocoded address (routes/public.js geocodeUsAddress). `flood(lat, lng)` is the lookup's own
- * cached flood reader.
+ * Whether a county's record opens for a signed-in buyer (SPEC rule 11): only counties named on the switch file's
+ * `buyer_report` list (homerec-index's router.js). Until the router has the list, every county is off.
  */
-async function forLookup(place, { flood }) {
+function buyerReportFor(fips) {
+  return typeof router.buyerReportFor === 'function' && Boolean(fips) && router.buyerReportFor(String(fips)) === true;
+}
+
+/** The web's own page for a looked-up address, for sharing: https where the web is, else its path (a local rig). */
+function sharePath(place) {
+  const words = [place.line, subtitleOf(place)].filter(Boolean).join(', ');
+  const path = `/start?address=${encodeURIComponent(words)}`;
+  const web = String(process.env.PUBLIC_WEB_URL || process.env.APP_URL || 'https://pantopus.com').trim().replace(/\/+$/, '');
+  return web.startsWith('https://') ? `${web}${path}` : path;
+}
+
+/** A buyer's actions, drawn as a row under the header: save, share, and the buying claim. Unknown ids are skipped. */
+function buyerActions(place, { saved }) {
+  return [
+    saved ? null : { id: 'save', label: 'Save this home', url: '/saved-places/add' },
+    { id: 'share', label: 'Share', url: sharePath(place) },
+    { id: 'claim', label: 'Buying this home?', url: '/homes/claim-owner' },
+  ].filter(Boolean);
+}
+
+/**
+ * The record for an address with no Home of the viewer's: `lookup` when signed out, `buyer` when signed in (SPEC
+ * section 8). `place` is a geocoded address (routes/public.js geocodeUsAddress) or a saved place's point and label.
+ * `flood(lat, lng)` is the lookup's own cached flood reader. `saved`: the viewer has already saved this address.
+ */
+async function forAddress(place, { flood, signedIn = false, saved = false }) {
+  const point = { lat: place.lat, lng: place.lng };
   const address = { line1: place.line, unit: null, city: place.city, state: place.state, zip: place.zipcode };
-  const [copy, read, under] = await Promise.all([
-    place.line ? recordForAddress(address) : null,
-    open.readings({ lat: place.lat, lng: place.lng }, { flood }),
-    groundAt({ lat: place.lat, lng: place.lng }),
+  const home = { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode };
+  const [copy, read, under] = await Promise.all([place.line ? recordForAddress(address) : null, open.readings(point, { flood }), groundAt(point)]);
+  const countyOpen = Boolean(copy) && buyerReportFor(copy.jurisdiction);
+  const title = place.line || subtitleOf(place) || 'This address';
+
+  if (!signedIn) {
+    const [extras, { above, years }] = await Promise.all([extrasWithin(copy, home), pictureForViewer(point, copy)]);
+    return answer('lookup', { chip: open.foundChip(copy), title, subtitle: place.line ? subtitleOf(place) : null }, [
+      above,
+      open.factsBlock(copy),
+      open.metersBlock(read),
+      ...open.lookupClosed(open.closedItems(copy, { ...extras, years, ground: under }), {
+        countyOpen,
+        // No Home yet, so no id: each app opens Add Home at the looked-up address when signed in, and the lookup's own
+        // sign-up (which keeps the address) when signed out (~/pantopus-home-record/DECISIONS.md, 11-22).
+        ownerButton: { label: 'Verify you own this home', url: '/homes/claim-owner' },
+        ownerAlt: { lead: 'Renting, or living here with family?', label: 'Verify your address', url: '/homes/verify-address' },
+      }),
+    ]);
+  }
+
+  // A signed-in buyer: the public half opened. The county record only where its county is on `buyer_report`; the
+  // federal parts everywhere; the owner's own half closed, as names only.
+  const [extras, above, years] = await Promise.all([
+    extrasWithin(copy, home),
+    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), 'picture'),
+    withinBudget(aerial.photoYearsBlock(point, { title: 'The lot through the years' }), 'photo_years'),
   ]);
-  const [extras, { above, years }] = await Promise.all([
-    extrasWithin(copy, { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode }),
-    pictureForViewer({ lat: place.lat, lng: place.lng }, copy),
-  ]);
-  return answer('lookup', { chip: open.foundChip(copy), title: place.line || subtitleOf(place) || 'This address', subtitle: place.line ? subtitleOf(place) : null }, [
+  const subtitle = [place.line ? subtitleOf(place) : null, 'free with your account'].filter(Boolean).join(' · ');
+  // The county's value first, then the lot through the years, then the rest of its record (the drawn order).
+  const [value, ...county] = countyOpen ? buyerCountyBlocks({ copy, extras, state: stateCode(place.state) }) : [null];
+  return answer('buyer', { chip: { tone: 'neutral', text: 'Public record' }, title, subtitle }, [
     above,
     open.factsBlock(copy),
+    value,
+    years,
+    ...county,
+    ground.groundBlock(under, { title: 'Ground under the home' }),
+    countyOpen ? lotBlock(copy) : null,
     open.metersBlock(read),
-    ...open.closedPart(open.closedItems(copy, { ...extras, years, ground: under }), {
-      // No Home yet, so no id: each app opens Add Home at the looked-up address when signed in, and the lookup's own
-      // sign-up (which keeps the address) when signed out (~/pantopus-home-record/DECISIONS.md, 11-22).
-      button: { label: 'Verify you own this home', url: '/homes/claim-owner' },
-      alt: { lead: 'Renting, or living here with family?', label: 'Verify your address', url: '/homes/verify-address' },
-    }),
-  ]);
+    ...open.buyerClosed(open.closedItems(copy, { ...extras, ground: under }), { countyOpen }),
+  ], buyerActions(place, { saved }));
+}
+
+/** The `lookup` (signed out) or `buyer` (signed in) answer for a looked-up address. */
+async function forLookup(place, { flood, signedIn = false }) {
+  return forAddress(place, { flood, signedIn });
+}
+
+/** A saved address's record: the `buyer` state at the saved point, with no save action. */
+async function forSavedPlace(saved, { flood }) {
+  const label = String(saved.label || '');
+  const zip = (label.match(/\b\d{5}(?:-\d{4})?\b(?![\s\S]*\b\d{5}\b)/) || [])[0] || null;
+  return forAddress({
+    lat: Number(saved.latitude), lng: Number(saved.longitude), line: label.split(',')[0].trim() || null,
+    city: saved.city || null, state: saved.state || null, zipcode: zip ? zip.slice(0, 5) : null,
+  }, { flood, signedIn: true, saved: true });
 }
 
 // The member's next step, for the promise's button: what this person can do now on this Home.
 async function memberSteps(homeId, userId, standing) {
   const pending = await placeIntelligenceService.hasPendingOwnership(homeId, userId);
   if (pending || standing.claimant) {
-    return { button: { label: 'See where your claim stands', url: `/app/homes/${homeId}/waiting-room` }, alt: null };
+    return { button: { label: 'See where your claim stands', url: `/homes/${homeId}/waiting-room` }, alt: null };
   }
-  const claim = { label: 'Verify you own this home', url: `/app/homes/${homeId}/claim-owner/evidence` };
+  const claim = { label: 'Verify you own this home', url: `/homes/${homeId}/claim-owner` };
   // In the household already: only ownership is left to prove.
   if (standing.access?.hasAccess) return { button: claim, alt: null };
   return {
     button: claim,
-    alt: { lead: 'Renting, or living here with family?', label: 'Finish verifying your address', url: `/app/homes/${homeId}/verify-residency` },
+    alt: { lead: 'Renting, or living here with family?', label: 'Finish verifying your address', url: `/homes/${homeId}/verify-residency` },
   };
 }
 
@@ -219,8 +283,8 @@ async function forHome({ homeId, userId, flood }) {
     above,
     open.factsBlock(copy),
     open.metersBlock(read),
-    ...open.closedPart(open.closedItems(copy, extras), steps),
+    ...open.memberClosed(open.closedItems(copy, extras), steps),
   ]);
 }
 
-module.exports = { forLookup, forHome, HomeRecordError, CONTRACT_VERSION };
+module.exports = { forLookup, forSavedPlace, forHome, HomeRecordError, CONTRACT_VERSION };

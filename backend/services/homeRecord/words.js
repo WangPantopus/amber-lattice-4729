@@ -53,6 +53,8 @@ const FOOTERS = {
   lookup: 'A free look at what is public about this address. Nothing here is advice, and nothing is for sale.',
   member: 'A free look at what is public about this address. Nothing here is advice, and nothing is for sale.',
   owner: 'Every line names the office it came from. This is your home\'s public record, not advice.',
+  // SPEC rule 15.
+  buyer: 'Public records for this address, free with your account. What an owner adds stays theirs.',
 };
 
 // The founder's words for the promise (SPEC rule 10): free; verify your identity and your address; usually within hours.
@@ -66,6 +68,18 @@ const PROMISE = {
   ],
 };
 
+// The lookup's second promise (SPEC section 8): the owner's half, for someone who owns the home.
+const OWNER_PROMISE = {
+  title: 'Own this home? All of it is yours',
+  body: 'Show that you own this home and the owner\'s half opens too. No payment, no card, no subscription.',
+  steps: [
+    PROMISE.steps[0],
+    PROMISE.steps[1],
+    { title: 'We check it, usually within hours', line: 'Then every part opens, and stays open.' },
+  ],
+};
+
 module.exports = {
+  OWNER_PROMISE,
   positive, grouped, money, countWord, dateLabel, monthLabel, plural, HOME_TYPES, PRIVACY_NOTE, AREA_NOTE, FOOTERS, PROMISE,
 };

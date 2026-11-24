@@ -22,7 +22,7 @@ const { encodeGeohash } = require('../../utils/geohash');
 const logger = require('../../utils/logger');
 const riskIndex = require('./riskIndex');
 const recordingAlerts = require('./recordingAlerts');
-const { positive, grouped, countWord, dateLabel, plural, HOME_TYPES, AREA_NOTE, PRIVACY_NOTE, PROMISE } = require('./words');
+const { positive, grouped, countWord, dateLabel, plural, HOME_TYPES, AREA_NOTE, PRIVACY_NOTE, PROMISE, OWNER_PROMISE } = require('./words');
 
 // The open facts (rule 4). Anything else on the record stays on the server.
 const OPEN_FACTS = ['year_built', 'living_sqft', 'lot_acres', 'lot_sqft', 'bedrooms', 'bathrooms', 'stories'];
@@ -189,42 +189,41 @@ function yearsOnRecord(current, history) {
 const LOWEST_SALE_PRICE = 1000;
 
 /**
- * What the record holds for this home that opens for its owner, as `closed_group` items (SPEC rule 1: only where we hold
- * it; rule 2: a name and one line). `extras`: what was read beside the record ({ similar, estimate }).
+ * What the record holds for this home beyond the open part, as `closed_group` items (SPEC rule 1: only where we hold
+ * it; rule 2: a name and one line, never a value). Each item says which half it belongs to (SPEC section 8):
+ *   county   the county record's public half: opens for a signed-in buyer where the county is on `buyer_report`
+ *   federal  federal data about the point (photos, ground): opens for a signed-in buyer everywhere
+ *   owner    the owner's own half: only ever the confirmed owner's
+ * `extras`: what was read beside the record ({ similar, estimate, years, ground }).
  */
 function closedItems(copy, { similar = null, estimate = null, years = null, ground = null } = {}) {
   const facts = copy?.facts || {};
   const exact = copy?.match === 'exact';
-  const money = [];
-  const changes = [];
-  const house = [];
-  const protect = [];
+  const items = [];
+  const add = (group, part, icon, title, line, buyerLine = line) => items.push({ group, part, icon, title, line, buyerLine });
 
   // Never how many lines or what kinds (rule 2): `since` is when the county's table begins, not this home's first line.
   const history = facts.recorded_history;
   if (history && Array.isArray(history.lines) && history.lines.length) {
     const since = /^\d{4}$/.test(String(history.since || '')) ? ` since ${history.since}` : '';
-    money.push({ icon: 'history', title: 'Recorded history', line: `The county's recorded lines for this home${since}` });
+    add('money', 'county', 'history', 'Recorded history', `The county's recorded lines for this home${since}`);
   }
   const valueYears = yearsOnRecord({ year: facts.value_year, amount: facts.market_value || facts.assessed_value }, facts.value_history);
-  if (valueYears) money.push({ icon: 'trend', title: 'County value, year by year', line: `${valueYears} ${valueYears === 1 ? 'year' : 'years'} on record` });
+  if (valueYears) add('money', 'county', 'trend', 'County value, year by year', `${valueYears} ${valueYears === 1 ? 'year' : 'years'} on record`);
   const price = positive(facts.sale_price) >= LOWEST_SALE_PRICE && !(positive(facts.sale_parcels) > 1);
   const saleLine = listWords([price ? 'price' : null, facts.sale_date || facts.sale_month ? 'date' : null, facts.sale_document ? 'document number' : null]);
-  if (saleLine && (price || facts.sale_date || facts.sale_month)) money.push({ icon: 'tag', title: 'Last sale', line: saleLine });
+  if (saleLine && (price || facts.sale_date || facts.sale_month)) add('money', 'county', 'tag', 'Last sale', saleLine);
   const taxYears = yearsOnRecord({ year: facts.tax_year, amount: facts.tax_amount }, facts.tax_history);
-  if (taxYears) money.push({ icon: 'bank', title: 'Property tax, year by year', line: `${taxYears} ${taxYears === 1 ? 'year' : 'years'} on record` });
+  if (taxYears) add('money', 'county', 'bank', 'Property tax, year by year', `${taxYears} ${taxYears === 1 ? 'year' : 'years'} on record`);
   if (similar) {
-    money.push({ icon: 'bars', title: estimate ? 'Estimate and similar homes' : 'Similar homes', line: `Beside ${similar.homes} similar homes on this street` });
+    add('money', 'county', 'bars', estimate ? 'Estimate and similar homes' : 'Similar homes', `Beside ${similar.homes} similar homes on this street`);
   } else if (estimate) {
-    money.push({ icon: 'bars', title: 'Pantopus estimate', line: 'A range from county values and public sales' });
-  }
-  if (exact && Array.isArray(facts.exemptions)) {
-    money.push({ icon: 'shield', title: 'Exemptions on file', line: 'Whether the county shows a property tax exemption on this home' });
+    add('money', 'county', 'bars', 'Pantopus estimate', 'A range from county values and public sales');
   }
 
   // Survey years cover the point, record or not: a count and the span, nothing about the home.
   if (years && years.count > 1) {
-    changes.push({ icon: 'image', title: 'Your lot through the years', line: `${years.count} photos from above, ${years.first} to ${years.last}` });
+    add('changes', 'federal', 'image', 'Your lot through the years', `${years.count} photos from above, ${years.first} to ${years.last}`);
   }
 
   // Only the parts that answered for this point are named.
@@ -232,35 +231,51 @@ function closedItems(copy, { similar = null, estimate = null, years = null, grou
     ground.soil ? 'soil' : null, ground.soil && ground.soil.slope !== null ? 'slope' : null, ground.elevation ? 'elevation' : null,
     ground.levee ? 'levees' : null, ground.dams ? 'dams' : null,
   ].filter(Boolean) : [];
-  if (groundParts.length) house.push({ icon: 'layers', title: 'Ground under your home', line: listWords(groundParts) });
+  if (groundParts.length) add('house', 'federal', 'layers', 'Ground under your home', listWords(groundParts));
 
-  if (positive(facts.year_built)) {
-    house.push({ icon: 'home', title: 'Roof, heating, water heater, panel', line: 'Ages against their typical service life' });
-  }
-  if (typeof facts.zoning === 'string' && facts.zoning.trim()) {
-    house.push({ icon: 'layers', title: 'Lot and zoning', line: 'The zoning code on the county\'s record' });
-  }
+  if (positive(facts.year_built)) add('house', 'county', 'home', 'Roof, heating, water heater, panel', 'Ages against their typical service life');
+  if (typeof facts.zoning === 'string' && facts.zoning.trim()) add('house', 'county', 'layers', 'Lot and zoning', 'The zoning code on the county\'s record');
 
+  // The owner's own half (SPEC section 8): never opened for anyone else.
+  if (exact && Array.isArray(facts.exemptions)) {
+    add('owner', 'owner', 'shield', 'Exemptions on file', 'Whether a property tax exemption is on this home', 'Tax exemptions on this home');
+  }
   if (recordingAlerts.forCounty(copy?.jurisdiction)) {
-    protect.push({ icon: 'mail', title: 'Recording alerts', line: 'The county emails you when a document is recorded' });
+    add('owner', 'owner', 'mail', 'Recording alerts', 'The county emails you when a document is recorded', null);
   }
   // The owner's card figures from the county's last sale price, so it shows where one is held.
-  if (price) protect.push({ icon: 'percent', title: 'Mortgage insurance', line: 'When the law lets you ask to drop it' });
-
-  return [
-    { id: 'closed_money', title: 'Ownership and money', items: money },
-    { id: 'closed_changes', title: 'Changes over time', items: changes },
-    { id: 'closed_house', title: 'The house and the ground', items: house },
-    { id: 'closed_protect', title: 'Protect it', items: protect },
-  ].filter((group) => group.items.length).map((group) => ({ kind: 'closed_group', ...group, chip: 'For the owner' }));
+  if (price) add('owner', 'owner', 'percent', 'Mortgage insurance', 'When the law lets you ask to drop it', 'When the law lets the owner ask to drop it');
+  return items;
 }
 
+const GROUPS = [
+  ['money', 'Ownership and money'],
+  ['changes', 'Changes over time'],
+  ['house', 'The house and the ground'],
+];
+
+// Items as `closed_group` blocks, in the drawn order of groups.
+function groupsOf(items, { idPrefix, chip, owner = null }) {
+  const blocks = GROUPS.map(([group, title]) => ({ id: `${idPrefix}_${group}`, title, items: items.filter((item) => item.group === group) }));
+  if (owner) blocks.push({ id: owner.id, title: owner.title, items: items.filter((item) => item.group === 'owner') });
+  return blocks.filter((group) => group.items.length).map((group) => ({
+    kind: 'closed_group',
+    id: group.id,
+    title: group.title,
+    chip,
+    items: group.items.map(({ icon, title, line }) => ({ icon, title, line })),
+  }));
+}
+
+const privacyNote = (text) => ({ kind: 'note', id: 'privacy', icon: 'eye_off', text });
+
 /**
- * The closed part for someone who isn't the confirmed owner: the intro, the groups, the promise with the viewer's own
- * next step, and the privacy note. Nothing at all when the record holds nothing to open.
+ * The closed part for a person with this Home who isn't its confirmed owner (`member`): everything else is the owner's,
+ * one promise with their own next step. Nothing at all when the record holds nothing to open.
  */
-function closedPart(groups, { button, alt }) {
-  const count = groups.reduce((sum, group) => sum + group.items.length, 0);
+function memberClosed(items, { button, alt }) {
+  const groups = groupsOf(items, { idPrefix: 'closed', chip: 'For the owner', owner: { id: 'closed_protect', title: 'Protect it' } });
+  const count = items.length;
   if (!count) return [];
   return [
     {
@@ -271,7 +286,76 @@ function closedPart(groups, { button, alt }) {
     },
     ...groups,
     { kind: 'promise', id: 'promise', ...PROMISE, button, alt: alt || null },
-    { kind: 'note', id: 'privacy', icon: 'eye_off', text: PRIVACY_NOTE },
+    privacyNote(PRIVACY_NOTE),
+  ];
+}
+
+// What an account opens, in a buyer's words, for the account promise's body: only what is held.
+const ACCOUNT_WORDS = {
+  'Recorded history': 'history', 'County value, year by year': 'values', 'Property tax, year by year': 'property tax',
+  'Your lot through the years': 'photos through the years', 'Ground under your home': 'the ground under it',
+};
+
+/**
+ * The signed-out lookup's closed part (SPEC section 8): what a free account opens (the federal parts everywhere, the
+ * county record's public half where its county is on `buyer_report`), then what only the owner sees, each with its
+ * own way in. With nothing for an account to open, the member's layout.
+ */
+function lookupClosed(items, { countyOpen, ownerButton, ownerAlt }) {
+  const opens = (item) => item.part === 'federal' || (item.part === 'county' && countyOpen);
+  const account = items.filter(opens);
+  const owners = items.filter((item) => !opens(item));
+  if (!account.length) return memberClosed(items, { button: ownerButton, alt: ownerAlt });
+  const words = [...new Set(account.map((item) => ACCOUNT_WORDS[item.title]).filter(Boolean))];
+  const body = [
+    `${countWord(items.length)} more ${items.length === 1 ? 'part is' : 'parts are'} ready.`,
+    `${countWord(account.length)} ${account.length === 1 ? 'opens' : 'open'} with a free account.`,
+    owners.length ? `${countWord(owners.length)} ${owners.length === 1 ? 'belongs' : 'belong'} to the owner.` : null,
+  ].filter(Boolean).join(' ');
+  return [
+    { kind: 'intro', id: 'more', title: 'There is more in this home\'s record', body },
+    ...groupsOf(account, { idPrefix: 'closed', chip: 'Free with an account' }),
+    {
+      kind: 'promise',
+      id: 'account',
+      title: 'Open the public record, free',
+      body: `Create a free account to see ${words.length ? `this home's ${listWords(words).toLowerCase()}` : 'more of this home\'s record'}. No payment, no card.`,
+      steps: [],
+      button: { label: 'Create a free account', url: '/auth/sign-up' },
+      alt: { lead: 'Already have one?', label: 'Sign in', url: '/auth/sign-in' },
+    },
+    ...(owners.length ? [
+      ...groupsOf(owners, { idPrefix: 'owner', chip: 'For the owner', owner: { id: 'closed_protect', title: 'Only the owner sees' } }),
+      { kind: 'promise', id: 'promise', ...OWNER_PROMISE, button: ownerButton, alt: ownerAlt || null },
+    ] : []),
+    privacyNote('No owner\'s name is shown to anyone. What an owner adds is seen only by that owner.'),
+  ];
+}
+
+/**
+ * A signed-in buyer's closed part (SPEC section 8): what stays closed (the owner's own half, and the county record where
+ * its county isn't on `buyer_report`), the buying promise and the note. The owner's half rides as names and lines only.
+ */
+function buyerClosed(items, { countyOpen }) {
+  const closed = items.filter((item) => item.part === 'owner' || (item.part === 'county' && !countyOpen))
+    .filter((item) => item.part !== 'owner' || item.buyerLine)
+    .map((item) => (item.part === 'owner' ? { ...item, line: item.buyerLine } : item));
+  return [
+    ...groupsOf(closed, { idPrefix: 'owner', chip: 'For the owner', owner: { id: 'closed_owner', title: 'Only the owner sees' } }),
+    {
+      kind: 'promise',
+      id: 'buying',
+      title: 'Buying this home?',
+      body: 'When you close, claim it here. The public record becomes yours, and the owner\'s half opens for you.',
+      steps: [
+        { title: 'Show your closing statement', line: 'The document you are handed at closing.' },
+        { title: 'Confirm it\'s you', line: 'A photo of your ID and a selfie.' },
+        { title: 'We check it, usually within hours', line: 'Then this home\'s whole record is yours.' },
+      ],
+      button: { label: 'Claim this home', url: '/homes/claim-owner' },
+      alt: null,
+    },
+    privacyNote('These are public records. No owner\'s name is shown, and nothing an owner added is here.'),
   ];
 }
 
@@ -298,4 +382,4 @@ function foundChip(copy) {
   return { tone: 'success', text: `Found in ${name || copy.publisher}'s records` };
 }
 
-module.exports = { lotChip, factsBlock, readings, metersBlock, closedItems, closedPart, extrasFor, foundChip, recordSource, OPEN_FACTS };
+module.exports = { lotChip, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };
