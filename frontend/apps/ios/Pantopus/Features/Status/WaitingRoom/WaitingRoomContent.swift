@@ -273,13 +273,14 @@ public extension WaitingRoomContent {
         reviewCaption: String? = "Started 9h ago",
         needsDocuments: Bool = false,
         addressVerified: Bool = false,
+        mailAvailable: Bool = true,
         residency: Bool = false,
         approval: ClaimApprovalProgressDTO? = nil,
         canOpenHome: Bool = true
     ) -> WaitingRoomContent {
         // A person reviews the documents (no county-records check), and no
         // review time is promised.
-        let needsIdentity = approval.map { $0.identity != "verified" } ?? false
+        let needsIdentity = approval.map { $0.identityCheckAvailable && !["verified", "processing"].contains($0.identity) } ?? false
         let requested = residency
             ? "Upload a lease or utility bill with your name and this address so a Pantopus reviewer can check that you live here."
             : "Upload a deed, closing disclosure or property tax bill so a Pantopus reviewer can check ownership."
@@ -289,9 +290,13 @@ public extension WaitingRoomContent {
         case (false, true): requested
         case (false, false): "Your documents are waiting for a Pantopus reviewer."
         }
-        let meanwhile = addressVerified
-            ? "Your address is verified, so you can use your Home meanwhile."
-            : "Meanwhile, you can verify your address by mail."
+        let meanwhile = if addressVerified {
+            " Your address is verified, so you can use your Home meanwhile."
+        } else if mailAvailable {
+            " Meanwhile, you can verify your address by mail."
+        } else {
+            ""
+        }
         return WaitingRoomContent(
             title: roomTitle,
             halo: needsDocuments || needsIdentity
@@ -299,7 +304,7 @@ public extension WaitingRoomContent {
                 : StatusHalo(tone: .info, icon: .hourglass, isPulsing: true),
             headline: needsIdentity ? (needsDocuments ? "Two steps left" : "Confirm your identity")
                 : needsDocuments ? "Add your documents" : "Under review",
-            subcopy: "\(wait) \(meanwhile)",
+            subcopy: wait + meanwhile,
             address: address,
             claimRef: claimRef,
             reviewerNote: nil,
@@ -328,7 +333,7 @@ public extension WaitingRoomContent {
                     tone: needsDocuments ? .primary : .standard,
                     actionKey: "update_evidence"
                 )
-            ] + (addressVerified ? [] : [verifyByMailAction()]) + [cancelClaimAction()],
+            ] + (mailAvailable && !addressVerified ? [verifyByMailAction()] : []) + [cancelClaimAction()],
             primaryCta: viewClaim,
             secondaryCta: canOpenHome ? backToHome : backToMyHomes,
             approvalSteps: WaitingRoomApproval.steps(approval, residency: residency)

@@ -79,6 +79,8 @@ public struct SavedPlacesView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     private var countLine: String? {
@@ -294,6 +296,8 @@ public struct SavedPlacesView: View {
             .padding(.horizontal, Spacing.s4)
             .padding(.vertical, Spacing.s3)
             .background(Capsule().fill(Theme.Color.appText.opacity(0.95)))
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .padding(.horizontal, Spacing.s4)
             .padding(.bottom, Spacing.s8)
             .transition(.move(edge: .bottom).combined(with: .opacity))

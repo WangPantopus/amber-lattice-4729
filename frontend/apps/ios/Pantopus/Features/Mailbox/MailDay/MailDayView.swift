@@ -57,6 +57,10 @@ public struct MailDayView: View {
             }
         }
         .background(Theme.Color.appBg)
+        // The day's sections lie in two columns across an iPad window wide enough; its settings keep a form's width.
+        .readableColumnWidens(
+            from: WideLayout.isPad && !viewModel.isShowingSettings ? WideLayout.minimumScreenWidth : .infinity
+        )
         .overlay(alignment: .bottom) { settingsToastOverlay }
         .task { await viewModel.load() }
         .task {
@@ -145,7 +149,45 @@ public struct MailDayView: View {
 
     // MARK: - Populated body
 
+    @ViewBuilder
     private func populatedBody(content: MailDayContent) -> some View {
+        if WideLayout.isPad {
+            // The day and the pieces that need a call in one column, what's been reviewed in the other, where the
+            // window holds two.
+            WideColumns {
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    DayHeader(
+                        dateLabel: content.dateLabel,
+                        streakDays: content.streakDays,
+                        done: viewModel.done,
+                        total: viewModel.total
+                    ) { Task { await viewModel.openSettings() } }
+                    if viewModel.canScan {
+                        ScanMoreCard(lastScanLabel: content.lastScanLabel) {
+                            viewModel.requestScan()
+                        }
+                    }
+                    if !content.unreviewed.isEmpty {
+                        needsACallSection(items: content.unreviewed)
+                    }
+                }
+                .placeColumn(.leading, order: 0)
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    if !content.reviewed.isEmpty {
+                        reviewedSection(items: content.reviewed)
+                    }
+                }
+                .padding(.top, content.reviewed.isEmpty ? 0 : Spacing.s4)
+                .placeColumn(.trailing, order: 1, trimsTop: content.reviewed.isEmpty ? 0 : Spacing.s4)
+            }
+            .wideColumnsMargins(Spacing.s4)
+            .padding(.bottom, 120)
+        } else {
+            phonePopulatedBody(content: content)
+        }
+    }
+
+    private func phonePopulatedBody(content: MailDayContent) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             DayHeader(
                 dateLabel: content.dateLabel,
@@ -256,7 +298,39 @@ public struct MailDayView: View {
 
     // MARK: - Empty body
 
+    @ViewBuilder
     private func emptyBody(content: MailDayContent) -> some View {
+        if WideLayout.isPad {
+            // The empty mailbox in one column, yesterday and the setup nudges in the other, where the window holds two.
+            WideColumns {
+                MailboxEmptyHero(
+                    streakDays: content.streakDays,
+                    lastScanLabel: content.lastScanLabel,
+                    onScan: nil
+                )
+                .placeColumn(.leading, order: 0)
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    if let recap = content.yesterdayRecap {
+                        VStack(alignment: .leading, spacing: Spacing.s2) {
+                            sectionOverline(title: "Yesterday's recap", count: recap.segments.count)
+                            YesterdayRecapCard(recap: recap, onSeeHistory: onSeeHistory)
+                        }
+                    }
+                    if let onOpenNudge, !content.setupNudges.isEmpty {
+                        SetupNudgeStack(nudges: content.setupNudges, onTap: onOpenNudge)
+                    }
+                }
+                .padding(.top, Spacing.s4)
+                .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+            }
+            .wideColumnsMargins(Spacing.s4)
+            .padding(.bottom, Spacing.s5)
+        } else {
+            phoneEmptyBody(content: content)
+        }
+    }
+
+    private func phoneEmptyBody(content: MailDayContent) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             MailboxEmptyHero(
                 streakDays: content.streakDays,
@@ -318,6 +392,8 @@ public struct MailDayView: View {
                     cardSoundsCard
                 }
             }
+            // A form's width on an iPad, centered.
+            .mailPadFormWidth()
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s3)
             .padding(.bottom, Spacing.s10)
@@ -462,6 +538,8 @@ public struct MailDayView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s10)
                 .accessibilityIdentifier("mailDaySettingsToast")
                 .task {
@@ -563,6 +641,8 @@ struct FinishDayBar: View {
             summaryLine
             primaryCTA
         }
+        // Not stretched across an iPad window.
+        .mailPadBarWidth()
         .padding(.horizontal, Spacing.s4)
         .padding(.top, 10)
         .padding(.bottom, Spacing.s6)

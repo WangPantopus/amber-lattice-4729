@@ -239,6 +239,7 @@ internal fun PlanHostCard(
         caption = ruleCaption ?: hostCaption(plan),
         seed = host.userId,
         avatarUrl = host.avatarUrl,
+        userId = host.userId,
         modifier = Modifier.planCard().opensPlanProfile(host.userId, LocalPlanOpenProfile.current).padding(14.dp),
     )
 }

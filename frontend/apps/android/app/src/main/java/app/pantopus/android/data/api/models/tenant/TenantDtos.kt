@@ -18,6 +18,7 @@ data class TenantHomeStatusResponse(
     @Json(name = "request_context") val requestContext: TenantRequestContextDto,
     val lease: LeaseStatus? = null,
     val landlord: Landlord? = null,
+    @Json(name = "mail_available") val mailAvailable: Boolean = false,
 ) {
     /** Whether the Home has a verified landlord who can answer a request. */
     @JsonClass(generateAdapter = true)

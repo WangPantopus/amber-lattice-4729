@@ -27,6 +27,7 @@ public struct TenantRequestContext: Codable, Sendable {
 public struct TenantHomeStatusResponse: Decodable, Sendable {
     public let homeId: String
     public let requestContext: TenantRequestContext
+    public let mailAvailable: Bool?
     public let landlord: Landlord?
     public let lease: LeaseStatus?
 
@@ -61,6 +62,7 @@ public struct TenantHomeStatusResponse: Decodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case homeId = "home_id"
         case requestContext = "request_context"
+        case mailAvailable = "mail_available"
         case landlord
         case lease
     }

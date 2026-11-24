@@ -10,8 +10,8 @@
  *   switches/<name>.json   { v: 1, counties: { "<fips>": { mode: 'off'|'shadow'|'live', withheld: [fact, ...], estimates: true } },
  *                            shared_facts: ["<fips>", ...], similar_homes: ["<fips>", ...],
  *                            appeal_packet: ["<fips>", ...], new_columns: ["<fips>", ...], derived_rows: ["<fips>", ...],
- *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], mapped_lots: ["<fips>", ...],
- *                            listed_units: ["<fips>", ...], past_date: ["<fips>", ...] }
+ *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], mapped_lots: ["<fips>", ...], lot_rings: ["<fips>", ...],
+ *                            listed_units: ["<fips>", ...], past_date: ["<fips>", ...], buyer_report: ["<fips>", ...] }
  *
  * `estimates: true` shows a live county's owners a Pantopus estimate (propertyRecords/valueEstimate.js). Without it, none.
  * `shared_facts` names the live counties where an address with several homes on record shows what all of them agree
@@ -45,6 +45,12 @@
  * (`stale_after`, set by its source's refresh window), with words saying how old it is (homeRecord.js), instead of
  * answering `stale`, which finds nothing for a Home with no copy yet and for Add Home. A file without the list has it off
  * everywhere: past its date a county answers `stale`, as before.
+ * `buyer_report` names the live counties whose county records a signed-in person sees in a home's public record when the
+ * home isn't theirs (the home record's `buyer` state, SPEC section 8, rule 11): recorded history, value and tax by year,
+ * permits and the rest of a record's public half; never a fact marked `owner: true` (facts.js). Before the founder names a
+ * county here, its row in docs/research/provider-replacement/cost-and-rights.md is read for showing its records to the
+ * public, not only to a home's household. A file without the list has it off everywhere: a county off it answers a buyer
+ * as it answers a lookup.
  *
  * A county the file names follows the file; any other follows the environment's lists.
  * The file is written by scripts/property-index/switch-county.cjs, by hand. If it can't
@@ -72,8 +78,9 @@ let similarHomes = new Set();
 let appealPackets = new Set();
 let listedUnits = new Set();
 let pastDates = new Set();
+let buyerReports = new Set();
 // The held facts' lists, in the order they apply (format.js `held`).
-const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals', 'mapped_lots'];
+const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals', 'mapped_lots', 'lot_rings'];
 let held = {};
 let modes = config.listedModes();
 let liveStates = new Set();
@@ -89,6 +96,7 @@ function apply(file) {
   appealPackets = file?.appealPackets || new Set();
   listedUnits = file?.listedUnits || new Set();
   pastDates = file?.pastDates || new Set();
+  buyerReports = file?.buyerReports || new Set();
   held = file?.held || {};
   modes = config.listedModes();
   for (const [fips, entry] of Object.entries(counties)) modes.set(fips, entry.mode);
@@ -111,6 +119,8 @@ function apply(file) {
   if (past.length) now = [named, shared, similar, packets, heldLists, units, past];
   const municipal = municipalScopes();
   if (municipal.length) now = [...now, municipal];
+  const buyer = [...buyerReports].sort();
+  if (buyer.length) now = [...now, ['buyer_report', buyer]];
   now = JSON.stringify(now);
   if (now !== loggedAs && config.enabled()) {
     loggedAs = now;
@@ -125,6 +135,7 @@ function apply(file) {
       ...Object.fromEntries(heldLists),
       ...(units.length ? { listed_units: units } : {}),
       ...(past.length ? { past_date: past } : {}),
+      ...(buyer.length ? { buyer_report: buyer } : {}),
     });
   }
 }
@@ -158,8 +169,9 @@ function parseFile(bytes) {
   const packets = Array.isArray(data.appeal_packet) ? data.appeal_packet.filter((fips) => /^\d{5}$/.test(fips)) : [];
   const units = Array.isArray(data.listed_units) ? data.listed_units.filter((fips) => /^\d{5}$/.test(fips)) : [];
   const past = Array.isArray(data.past_date) ? data.past_date.filter((fips) => /^\d{5}$/.test(fips)) : [];
+  const buyer = Array.isArray(data.buyer_report) ? data.buyer_report.filter((fips) => /^\d{5}$/.test(fips)) : [];
   const heldLists = Object.fromEntries(HELD.map((name) => [name, new Set(Array.isArray(data[name]) ? data[name].filter((fips) => /^\d{5}$/.test(fips)) : [])]));
-  return { counties: found, sharedFacts: new Set(shared), similarHomes: new Set(similar), appealPackets: new Set(packets), held: heldLists, listedUnits: new Set(units), pastDates: new Set(past) };
+  return { counties: found, sharedFacts: new Set(shared), similarHomes: new Set(similar), appealPackets: new Set(packets), held: heldLists, listedUnits: new Set(units), pastDates: new Set(past), buyerReports: new Set(buyer) };
 }
 
 const readFile = reader.switchesFile(config.switchesName, parseFile, READ_EVERY_MS);
@@ -237,6 +249,9 @@ const listedUnitsFor = (fips) => modeFor(fips) === 'live' && listedUnits.has(fip
 /** Whether this county answers from its serving release once it is past its date: only a live county the file's list names. */
 const pastDateFor = (fips) => modeFor(fips) === 'live' && pastDates.has(fips);
 
+/** Whether a signed-in person sees this county's records in a public record of a home not theirs: only a live county the file's list names. */
+const buyerReportFor = (fips) => modeFor(fips) === 'live' && buyerReports.has(fips);
+
 /** The live counties with similar homes on, for the yearly watch (services/propertyTaxWatch.js). */
 const similarHomesCounties = () => [...similarHomes].filter(similarHomesFor).sort();
 
@@ -271,6 +286,8 @@ function summary() {
   const past = [...pastDates].sort();
   if (past.length) lists = [named, withheld, estimates, shared, similar, packets, heldLists, units, past];
   if (municipal.length) lists = [...lists, municipal];
+  const buyer = [...buyerReports].sort();
+  if (buyer.length) lists = [...lists, ['buyer_report', buyer]];
   return {
     live: named.filter(([, mode]) => mode === 'live').length,
     ...(municipal.length ? { municipal: municipal.length } : {}),
@@ -282,6 +299,7 @@ function summary() {
     ...Object.fromEntries(heldLists.map(([name, named]) => [name, named.length])),
     ...(units.length ? { listed_units: units.length } : {}),
     ...(past.length ? { past_date: past.length } : {}),
+    ...(buyer.length ? { buyer_report: buyer.length } : {}),
     // Estimates, shared facts and similar homes join the hash only when a county has them, so servers before and after them agree on a file without any.
     hash: crypto.createHash('sha256').update(JSON.stringify(lists)).digest('hex').slice(0, 12),
   };
@@ -304,6 +322,8 @@ function heldFor(fips) {
  * baths split from a bare total, which its facts (and its building's) hold as before until the county is on the list.
  * mapped_lots adds words only: `copy.mapped` ({ from }) names each lot fact the copy (or its building) still states with the
  * value marked, in the county's words. A county that requires a label serves newly filled house lots only as measured rows.
+ * lot_rings serves a house's lot outline from the county's parcel map as `copy.lot_ring` ([[lng, lat], ...]), for the home
+ * record's photo from above (scripts/property-index/lib/lot-rings.cjs); nothing else reads it.
  * @param {object} copy     a stored copy
  * @param {string[]} names  the lists that show, in order
  */
@@ -363,6 +383,8 @@ function joinHeld(copy, names) {
     }
     if (Object.keys(from).length) out.mapped = { from };
   }
+  const ring = kept.lot_rings?.facts?.lot_ring;
+  if (names.includes('lot_rings') && Array.isArray(ring) && ring.length >= 4) out.lot_ring = ring;
   return out;
 }
 
@@ -377,7 +399,8 @@ function served(stored) {
     ...(copy.building ? { building: without(copy.building, withheld) } : {}),
     ...(copy.derived ? { derived: { ...copy.derived, facts: without(copy.derived.facts, withheld), ...(copy.derived.building ? { building: without(copy.derived.building, withheld) } : {}) } } : {}),
     ...(copy.measured ? { measured: { ...copy.measured, facts: without(copy.measured.facts, withheld) } } : {}),
+    ...(copy.lot_ring && withheld.has('lot_ring') ? { lot_ring: undefined } : {}),
   };
 }
 
-module.exports = { municipalityFor, serves, switchesKnown, modeFor, liveState, anyShadow, showsCopies, served, joinHeld, heldFor, withholding, estimatesFor, sharedFactsFor, similarHomesFor, similarHomesCounties, appealPacketFor, listedUnitsFor, pastDateFor, listed, summary, health };
+module.exports = { municipalityFor, serves, switchesKnown, modeFor, liveState, anyShadow, showsCopies, served, joinHeld, heldFor, withholding, estimatesFor, sharedFactsFor, similarHomesFor, similarHomesCounties, appealPacketFor, listedUnitsFor, pastDateFor, buyerReportFor, listed, summary, health };

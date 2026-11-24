@@ -143,6 +143,7 @@ public struct CeremonialMailOpenView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     // MARK: - Frame dispatch
@@ -302,6 +303,8 @@ private struct PorchFrame: View {
             .accessibilityIdentifier("ceremonialMail_close")
         }
         .padding(.top, Spacing.s4)
+        // On an iPad, Close in the window's top-right corner.
+        .topBarSpansWindow()
     }
 
     private var eyebrow: some View {
@@ -587,6 +590,8 @@ private struct ReadingFrame: View {
                     .padding(.horizontal, 22)
                     .padding(.top, Spacing.s4)
                     .padding(.bottom, 110)
+                    // A letter's reading width on an iPad, centered on its paper.
+                    .mailPadFormWidth()
                     .opacity(opacity)
                     .offset(y: slideOffset)
                     .accessibilityIdentifier("ceremonialMailOpenContent")
@@ -645,6 +650,7 @@ private struct ReadingFrame: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(letter.ink.color.opacity(0.10)).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     private var senderRow: some View {
@@ -874,6 +880,8 @@ private struct ReadingFrame: View {
             .accessibilityIdentifier("ceremonialMailOutcome_archive")
             .accessibilityLabel("Archive letter")
         }
+        // Not stretched across an iPad window.
+        .mailPadBarWidth()
         .padding(.horizontal, Spacing.s4)
         .padding(.vertical, Spacing.s3)
         .padding(.bottom, 14)
@@ -911,6 +919,8 @@ private struct ReplyHandoffFrame: View {
                         letterPreview
                         composeSurface
                     }
+                    // A form's width on an iPad, centered.
+                    .mailPadFormWidth()
                     .padding(.horizontal, Spacing.s4)
                     .padding(.top, Spacing.s4)
                     .padding(.bottom, 60)
@@ -966,6 +976,7 @@ private struct ReplyHandoffFrame: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(letter.ink.color.opacity(0.10)).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     private var letterPreview: some View {

@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -26,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.BuildConfig
 import app.pantopus.android.core.perf.ReportContentShown
 import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
@@ -138,10 +140,14 @@ fun MyHomesListScreen(
         }
     }
 
+    val uriHandler = LocalUriHandler.current
     HomeOfflineContent(modifier = Modifier.fillMaxSize().testTag(MY_HOMES_LIST_TAG).semantics { testTagsAsResourceId = true }) {
         ListOfRowsScreen(
             title = "My homes",
             customHeader = {
+                TextButton(onClick = { uriHandler.openUri(BuildConfig.PANTOPUS_WEB_BASE_URL.trimEnd('/') + "/app/landlord/properties") }) {
+                    Text("Rental properties on the web")
+                }
                 SavedRemovalLink(dialogOpen = removalRecovery, testTag = "myHomes_removalRecovery") { removalRecovery = true }
             },
             state = state,

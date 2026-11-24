@@ -19,6 +19,10 @@
  * is served with `past_date: true`, so screens say how old it is (provenanceOf,
  * countyRecordSerializer.js). That mark is never stored on the Home.
  *
+ * A refresh keeps on the copy what its county's newer file changed (`changes`,
+ * withChanges), for the owner's "Worth a look" (services/place/homeChanges.js).
+ * A release read by changed code keeps nothing: its `reader` stamp differs.
+ *
  * A lookup holds a screen for a moment at most. Past that the screen says "looking
  * up", the lookup finishes behind it, and a Home that was told so is tried again
  * until storage answers: writing to the Home tells its open screens to read again.
@@ -122,6 +126,9 @@ function copyFromAnswer(answer, address) {
     ...(county.held_from ? { held_from: county.held_from } : {}),
     ...(county.require_mapped_lot_label && held?.mapped_lots ? { require_mapped_lot_label: true } : {}),
     stored_at: new Date().toISOString(),
+    // Which reader made the release (scripts/property-index/build.cjs readerStamp), so a refresh can tell the county's
+    // changes from a change to how its files are read (withChanges).
+    ...(county.reader ? { reader: county.reader } : {}),
     address_stamp: addressStamp(address),
     facts,
     ...(answer.building ? { building: factsWhere(answer.building.facts, BUILDING_FIGURES) } : {}),
@@ -227,6 +234,37 @@ function storedCopy(home) {
   return copy.address_stamp === addressStamp(homeAddress(home)) ? copy : null;
 }
 
+// The systems a finished permit dates on Place (services/homeSystemsService.js, `permit` source).
+const PERMIT_SYSTEMS = new Set(['roof', 'hvac', 'water_heater', 'electrical_panel']);
+
+/**
+ * A copy's newest finished roof, heating, water heater or panel permit, where its county shows permits now (router.served),
+ * as that system's year on Place. recordSystem never lets a permit outrank the household's word or a completed job, and an
+ * older permit never replaces a newer one's year.
+ */
+async function permitSystems(homeId, copy) {
+  const lines = router.served(copy)?.facts?.permits?.lines;
+  if (!homeId || !Array.isArray(lines)) return;
+  const newest = new Map();
+  for (const line of lines) {
+    const year = Number(String(line?.issued || '').slice(0, 4));
+    if (!line?.done || !PERMIT_SYSTEMS.has(line.system) || !year || newest.get(line.system)?.year >= year) continue;
+    newest.set(line.system, { year, number: line.number || null });
+  }
+  if (!newest.size) return;
+  // eslint-disable-next-line global-require
+  const homeSystems = require('../homeSystemsService');
+  // eslint-disable-next-line global-require
+  const supabaseAdmin = require('../../config/supabaseAdmin');
+  const { data, error } = await supabaseAdmin.from('HomeSystem').select('system_key, installed_year, source').eq('home_id', homeId);
+  if (error) throw new Error(error.message);
+  for (const [systemKey, { year, number }] of newest) {
+    const held = (data || []).find((row) => row.system_key === systemKey);
+    if (held && (homeSystems.SOURCE_RANK[held.source] > homeSystems.SOURCE_RANK.permit || (held.source === 'permit' && held.installed_year >= year))) continue;
+    await homeSystems.recordSystem({ homeId, systemKey, installedYear: year, source: 'permit', sourceRef: number ? `permit:${number}` : 'permit' });
+  }
+}
+
 // True when the copy was written: the Home row's change tells its household's open screens to read again.
 // Only this key changes, on the row as it stands now: an entry the household made during the lookup stays.
 async function storeCopy(home, copy, superseded) {
@@ -240,6 +278,7 @@ async function storeCopy(home, copy, superseded) {
     });
     if (!nicheData) return false;
     home.niche_data = nicheData;
+    if (copy) permitSystems(home.id, copy).catch((err) => logger.info('property_records.permit_systems_later', { error: err.name }));
     return true;
   } catch (err) {
     logger.warn('property_records.store_failed', { error: err.message });
@@ -256,6 +295,62 @@ function countyNow(home, copy) {
 function setAside(home, copy) {
   const county = countyNow(home, copy);
   return Boolean(county && (county.status === 'withdrawn' || county.rolled_back_from === copy.release));
+}
+
+// A Home's copy keeps what its last few refreshes changed, newest first.
+const CHANGES_KEPT = 6;
+const said = (name) => Boolean(FACTS[name]?.label) && !['none', 'history'].includes(FACTS[name].format);
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The facts a screen shows now (router.served, under today's switches) that a refresh gave a new value or newly states,
+ * as { name: [was, now] } (was null when the record didn't state it). A fact the new copy no longer states isn't one:
+ * a county file leaving a column empty is more often a gap than news.
+ */
+function changedFacts(old, next) {
+  const before = router.served(old)?.facts || {};
+  const after = router.served(next)?.facts || {};
+  const changed = {};
+  for (const [name, value] of Object.entries(after)) {
+    if (!said(name) || value === null || value === undefined || value === '' || sameValue(before[name], value)) continue;
+    changed[name] = [before[name] ?? null, value];
+  }
+  return changed;
+}
+
+/**
+ * Whether what differs between two copies of one home's record is the county's: the same record from the same source,
+ * a newer county file, read by the same reader. A release built by a changed reader (a fix to a connector or its
+ * libraries) has another `reader` stamp, and a copy made before releases had one has none: either way it says nothing.
+ */
+function countyMoved(old, next) {
+  return Boolean(old.reader && old.reader === next.reader && old.subject?.id && old.subject.id === next.subject?.id
+    && old.match === next.match && old.publisher === next.publisher && old.dataset === next.dataset
+    && String(next.as_of || '') > String(old.as_of || ''));
+}
+
+/**
+ * The next copy with `changes`, what its record's refreshes changed (services/place/homeChanges.js "Worth a look"):
+ * [{ at, release, as_of, was_as_of, facts: { name: [was, now] } }], newest first, the earlier ones carried over while it
+ * is the same record and only for facts it still shows at that value, so each says what the record shows now. A release
+ * taken back takes its changes with it.
+ */
+function withChanges(old, next, county) {
+  if (!next) return next;
+  const same = old?.subject?.id && old.subject.id === next.subject?.id;
+  const shown = router.served(next)?.facts || {};
+  const still = (entry) => {
+    const facts = Object.fromEntries(Object.entries(entry?.facts || {}).filter(([name, pair]) => Array.isArray(pair) && sameValue(shown[name], pair[1])));
+    return Object.keys(facts).length ? { ...entry, facts } : null;
+  };
+  const kept = same ? (old.changes || []).filter((entry) => entry?.release !== county?.rolled_back_from).map(still).filter(Boolean) : [];
+  let entry = null;
+  if (same && county?.rolled_back_from !== old.release && countyMoved(old, next)) {
+    const facts = changedFacts(old, next);
+    if (Object.keys(facts).length) entry = { at: next.stored_at, release: next.release, as_of: next.as_of, was_as_of: old.as_of, facts };
+  }
+  const changes = (entry ? [entry, ...kept] : kept).slice(0, CHANGES_KEPT);
+  return changes.length ? { ...next, changes } : next;
 }
 
 const refreshedAt = new Map();
@@ -286,7 +381,7 @@ function refreshSoon(home, copy) {
     }
     const address = homeAddress(home);
     const answer = await lookup(address);
-    const next = copyFromAnswer(answer, address);
+    const next = withChanges(copy, copyFromAnswer(answer, address), county);
     if (next || county.rolled_back_from === copy.release || !saysNothing(answer)) await storeCopy(home, next);
   })().catch((err) => logger.info('property_records.refresh_later', { error: err.name }));
 }
@@ -512,4 +607,4 @@ async function readForAddress(address, { patient = false } = {}) {
   }
 }
 
-module.exports = { copyFromAnswer, provenanceOf, storedCopy, liveCopy, storeCopy, refreshSoon, forHome, forAddress, finishLater, unitQuestion, noteLookup, homeAddress, dateLabel };
+module.exports = { copyFromAnswer, provenanceOf, storedCopy, liveCopy, storeCopy, refreshSoon, withChanges, forHome, forAddress, finishLater, unitQuestion, noteLookup, homeAddress, dateLabel };

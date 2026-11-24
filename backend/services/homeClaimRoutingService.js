@@ -60,6 +60,15 @@ function isClaimActiveRecord(claim) {
   return isLegacyStateActive(claim.state);
 }
 
+// The claim record and its documents leave normal app access when the claim ends.
+function isOpenForReview(claim, now = Date.now()) {
+  if (!claim || claim.merged_into_claim_id) return false;
+  const reviewing = isClaimActiveRecord(claim) || (!claim.claim_phase_v2 && claim.state === 'disputed');
+  return reviewing && !['approved', 'rejected', 'revoked'].includes(claim.state)
+    && (!claim.terminal_reason || claim.terminal_reason === 'none')
+    && (!claim.expires_at || Date.parse(claim.expires_at) > now);
+}
+
 function hasQualifyingActiveChallenge(claim) {
   if (!claim || claim.merged_into_claim_id) {
     return false;
@@ -394,6 +403,7 @@ module.exports = {
   isLegacyStateActive,
   isClaimPhaseActive,
   isClaimActiveRecord,
+  isOpenForReview,
   hasQualifyingActiveChallenge,
   deriveHomeResolutionState,
   deriveInitialRoutingClassification,

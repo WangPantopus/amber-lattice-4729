@@ -2,7 +2,8 @@
 // Denver, Colorado: the City and County's residential characteristics on its open data service, updated daily. The catalog is CC BY
 // 3.0, crediting "City of Denver Open Data Catalog" (web's data sources page); each item's use constraints are disclaimers. The table
 // carries owner columns; they're never asked for, and neither are exemption amounts. TOTAL_VALUE is the
-// Assessor's actual value, Colorado's market value on its reappraisal date. Sale prices come from the city's own sales table.
+// Assessor's actual value, Colorado's market value on its reappraisal date. Sale prices come from the city's own sales table, whose
+// sales are each home's recorded history.
 
 const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
@@ -10,7 +11,8 @@ const { year, isoDate, realUnit, streetParts, onRecord, zipCode } = require('../
 const { positive, put, word } = require('../lib/values.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { hold, holdFacts } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '08031';
@@ -86,18 +88,43 @@ function fromRow(row, sale, parcelRow) {
   return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: 'DENVER', zip: zipCode(parcelRow?.SITUS_ZIP) }, facts };
 }
 
+// The sales table gives a parcel number as a number (3110010000); the homes and parcels tables as thirteen digits with leading
+// zeros ("0003110010000"). Both are read without the zeros.
+const parcelKey = (id) => String(id ?? '').trim().replace(/^0+/, '');
+
 async function* build({ work }) {
   const dir = path.join(work, 'co-denver');
   const info = await getJson(`${HOMES}?f=json`, 'The table\'s description');
   const asOf = isoDate(info.editingInfo?.dataLastEditDate || info.editingInfo?.lastEditDate);
   if (!asOf) throw new Error('The table no longer says when it changed');
   const sales = new Map();
+  // Every sale line, for recorded history (facts.js): the city publishes no names for its instrument codes (INSTRUMENT; the
+  // table's metadata names none), so only sales show, each with its reception number; a line that isn't a sale has no word
+  // for what it is and is left out.
+  const saleLines = new Map();
+  let first = null;
+  let notSale = 0;
+  const dayOf = (sale) => {
+    const monthDay = String(sale.SALE_MONTHDAY ?? '').padStart(4, '0');
+    return isoDate(`${sale.SALE_YEAR}-${monthDay.slice(0, 2)}-${monthDay.slice(2)}`);
+  };
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => layerRows(SALES, SALE_COLUMNS))) {
+    const date = dayOf(row);
+    if (date && (!first || date < first)) first = date;
     // A quit claim moves no home at a price.
-    if (!isHomeSale(positive(row.SALE_PRICE)) || String(row.INSTRUMENT ?? '').trim() === 'QC') continue;
-    const was = sales.get(row.PARID);
+    if (!isHomeSale(positive(row.SALE_PRICE)) || String(row.INSTRUMENT ?? '').trim() === 'QC') {
+      // Not this home's sale by the connector's rule (a token price, a quit claim): it has no word for what it is, so it is left out.
+      if (date) notSale += 1;
+      continue;
+    }
+    const line = historyLine({ date, sale: true, price: positive(row.SALE_PRICE), document: word(row.RECEPTION_NUM) });
+    if (line) {
+      if (!saleLines.has(parcelKey(row.PARID))) saleLines.set(parcelKey(row.PARID), []);
+      saleLines.get(parcelKey(row.PARID)).push(line);
+    }
+    const was = sales.get(parcelKey(row.PARID));
     const when = (sale) => `${sale.SALE_YEAR}${String(sale.SALE_MONTHDAY ?? '').padStart(4, '0')}`;
-    if (!was || when(row) > when(was)) sales.set(row.PARID, row);
+    if (!was || when(row) > when(was)) sales.set(parcelKey(row.PARID), row);
   }
   const parcels = new Map();
   for await (const row of cached(path.join(dir, 'parcels.jsonl.gz'), () => layerRows(PARCELS, PARCEL_COLUMNS))) parcels.set(row.SCHEDNUM, row);
@@ -105,14 +132,22 @@ async function* build({ work }) {
   const seen = new Set();
   let noAddress = 0;
   for await (const row of cached(path.join(dir, 'homes.jsonl.gz'), () => layerRows(HOMES, COLUMNS))) {
-    const record = fromRow(row, sales.get(row.PARID), parcels.get(row.PARID));
+    const record = fromRow(row, sales.get(parcelKey(row.PARID)), parcels.get(row.PARID));
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = recordedHistory(saleLines.get(parcelKey(row.PARID)) || [], { since: (first || '').slice(0, 4) });
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
   log(`${COUNTY}: ${records.length} homes, ${noAddress} without a street number, ${sales.size} sales`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} homes since ${(first || '').slice(0, 4)}; lines that aren't a sale, left out: ${notSale}`);
+  // Until November 2026 no home found its sale (the parcel numbers above), so Denver's pages never showed a last sale: it waits
+  // with recorded history for the county's new_columns switch (lib/held.cjs).
+  holdFacts(records, ['sale_price', 'sale_date', 'sale_document']);
+  log(`${COUNTY}: last sale held for ${records.filter((record) => record.held?.new_columns?.sale_date).length} homes`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'CO', name: COUNTY, publisher: 'City and County of Denver, Assessor', dataset: 'residential characteristics, open data', method: 'county', source: 'co-denver', as_of: asOf, stale_after_days: 60, extra_zips: zipsByCounty(work, ['08']).get(FIPS) || [], records,

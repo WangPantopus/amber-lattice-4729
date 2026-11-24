@@ -143,12 +143,12 @@ async function* mapLayer(url, fields, { points = false, where = '1=1' } = {}) {
   log(`map layer: ${offset} rows`);
 }
 
-/** A map layer kept on disk while a build runs, so a re-run doesn't read it again. */
-async function* cachedLayer(file, url, fields) {
+/** A map layer kept on disk while a build runs, so a re-run doesn't read it again. `options` go to mapLayer (`where`). */
+async function* cachedLayer(file, url, fields, options = {}) {
   if (!fs.existsSync(file)) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const out = fs.createWriteStream(`${file}.part`);
-    for await (const row of mapLayer(url, fields)) out.write(`${JSON.stringify(row)}\n`);
+    for await (const row of mapLayer(url, fields, options)) out.write(`${JSON.stringify(row)}\n`);
     await new Promise((resolve) => { out.end(resolve); });
     fs.renameSync(`${file}.part`, file);
   }

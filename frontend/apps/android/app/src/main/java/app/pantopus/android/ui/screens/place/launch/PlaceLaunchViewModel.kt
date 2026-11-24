@@ -133,7 +133,7 @@ class PlaceLaunchViewModel
                                 if (preview.status == PlacePreviewStatus.UNSUPPORTED_REGION) {
                                     LaunchStep.Region(preview.message ?: "Home features are coming to your region.")
                                 } else {
-                                    LaunchStep.Preview(preview)
+                                    LaunchStep.Preview(preview, address)
                                 }
                         }
                         // A 429 carries the server's own sentence: today's lookups are used,
@@ -210,7 +210,8 @@ class PlaceLaunchViewModel
 sealed interface LaunchStep {
     data object Hero : LaunchStep
 
-    data class Preview(val preview: PlacePreview) : LaunchStep
+    /** [address] is the address as it was looked up; the home record page asks for the same one. */
+    data class Preview(val preview: PlacePreview, val address: String) : LaunchStep
 
     data class Region(val message: String) : LaunchStep
 }

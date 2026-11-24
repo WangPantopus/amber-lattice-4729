@@ -951,7 +951,7 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
         ) : verified ? (
           <>
             <VerifiedStatus name={residentName} address={place.line1 || place.label} roleBase={roleBase} nonResident={nonResident}
-              fast={fast} onMailCode={homeId ? () => router.push(`/app/homes/${homeId}/verify-postcard?return=place`) : undefined} />
+              fast={fast} onMailCode={homeId && verifyOptions?.options.some(o => o.id === 'mail' && o.available) ? () => router.push(`/app/homes/${homeId}/verify-postcard?return=place`) : undefined} />
             <SourceNote name="Address verification · Pantopus" asOf="active" />
 
             {!nonResident && !fast && (

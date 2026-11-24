@@ -274,6 +274,9 @@ struct LoginView: View {
                     .accessibilityLabel("Back to address preview")
                     .accessibilityIdentifier("place.launch.dismissLogin")
                     .padding(.trailing, Spacing.s4)
+                    // On an iPad the X sits in the window's top-right corner rather than at the column's edge.
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .topBarSpansWindow()
                 }
             }
             // Half folded like a book, the form keeps to one page instead of running its buttons across the crease.

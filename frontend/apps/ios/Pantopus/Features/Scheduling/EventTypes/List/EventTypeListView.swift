@@ -161,6 +161,8 @@ struct EventTypeListView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
     }
 
     // MARK: Filter header — pillar pill + segmented Active/Hidden
@@ -359,6 +361,8 @@ struct EventTypeListView: View {
             .padding(.vertical, Spacing.s2)
             .background(Theme.Color.appText)
             .clipShape(Capsule())
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .padding(.bottom, Spacing.s6)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .accessibilityIdentifier("scheduling.eventTypes.copiedToast")

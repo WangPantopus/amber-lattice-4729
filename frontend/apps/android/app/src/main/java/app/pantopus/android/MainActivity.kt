@@ -29,6 +29,7 @@ import app.pantopus.android.data.auth.TokenStorage
 import app.pantopus.android.data.chats.ActiveChatThread
 import app.pantopus.android.data.chats.ChatOutbox
 import app.pantopus.android.data.guidance.GuidanceRepository
+import app.pantopus.android.data.homerecord.HomeRecordFixtures
 import app.pantopus.android.data.moments.MomentsDot
 import app.pantopus.android.data.moments.MomentsFeature
 import app.pantopus.android.data.network.NetworkMonitor
@@ -135,6 +136,9 @@ class MainActivity : FragmentActivity() {
         // Debug builds only: `PANTOPUS_DEBUG_GUIDANCE=<card id>` shows that guidance card at once (spec §8). A release
         // build never reads it.
         if (BuildConfig.DEBUG) GuidanceDebug.take(intent?.getStringExtra(GuidanceDebug.EXTRA))
+        // Debug builds only: `PANTOPUS_DEBUG_HOME_RECORD=lookup|member|owner` answers the home record page from the
+        // design's sample answers. A release build never reads it.
+        if (BuildConfig.DEBUG) HomeRecordFixtures.take(intent?.getStringExtra(HomeRecordFixtures.EXTRA))
         enableEdgeToEdge()
         secureWindowController.bind(this)
         storeSync.start()
@@ -244,6 +248,9 @@ class MainActivity : FragmentActivity() {
             ChristmasToday.takeDebugDay(intent.getStringExtra(ChristmasToday.DEBUG_EXTRA))
         }
         if (BuildConfig.DEBUG && intent.hasExtra(GuidanceDebug.EXTRA)) GuidanceDebug.take(intent.getStringExtra(GuidanceDebug.EXTRA))
+        if (BuildConfig.DEBUG && intent.hasExtra(HomeRecordFixtures.EXTRA)) {
+            HomeRecordFixtures.take(intent.getStringExtra(HomeRecordFixtures.EXTRA))
+        }
         if (BuildConfig.DEBUG && intent.hasExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA)) {
             TodayAreaStore.takeDebugMaxAge(intent.getStringExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA))
         }

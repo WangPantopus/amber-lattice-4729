@@ -60,6 +60,8 @@ struct OwnerTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
         .accessibilityIdentifier("businessOwner.topBar")
     }
 
@@ -342,6 +344,8 @@ private struct EditFab: View {
             Icon(icon, size: diameter * 0.5, color: Theme.Color.appTextInverse)
                 .frame(width: diameter, height: diameter)
                 .background(Theme.Color.appText.opacity(0.55), in: Circle())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .overlay(
                     Circle().stroke(Theme.Color.appTextInverse.opacity(0.9), lineWidth: 1.5)
                 )

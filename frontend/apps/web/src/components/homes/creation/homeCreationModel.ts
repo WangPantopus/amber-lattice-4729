@@ -43,7 +43,7 @@ export function validHomeCreationInput(value: unknown): value is HomeCreationInp
   if (!object(value) || !uuid(value.address_id) || !text(value.address, 5, 255)
     || !text(value.city, 2, 100) || !text(value.state, 2, 50) || !text(value.zip_code, 3, 20)
     // 'household' (lives there with family or friends) comes only from Add Home in two steps (home_short_add).
-    || !['owner', 'renter', 'household'].includes(String(value.role)) || value.is_owner !== (value.role === 'owner')
+    || !['owner', 'renter', 'household', 'property_manager'].includes(String(value.role)) || value.is_owner !== (value.role === 'owner')
     || typeof value.latitude !== 'number' || !Number.isFinite(value.latitude) || Math.abs(value.latitude) > 90
     || typeof value.longitude !== 'number' || !Number.isFinite(value.longitude) || Math.abs(value.longitude) > 180) return false;
   for (const [key, max] of Object.entries({ unit_number: 50, name: 120, description: 2000,

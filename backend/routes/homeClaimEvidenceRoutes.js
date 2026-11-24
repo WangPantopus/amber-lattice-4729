@@ -29,8 +29,7 @@ module.exports = function registerHomeClaimEvidenceRoutes(router, { verifyToken,
         // A bill read at once (FASTVERIFY, home_fast_verify_document): for a residency document of someone who holds a
         // claim here. The document stays in the review queue either way; without the switch the answer is today's.
         const fastCheck = await require('../services/fastCheck/billCheck').afterUpload({ homeId: req.params.homeId,
-          claimId: req.params.claimId, user: req.user, file: req.file,
-          accountHolderName: typeof req.body?.account_holder_name === 'string' ? req.body.account_holder_name.slice(0, 128) : null });
+          claimId: req.params.claimId, user: req.user, file: req.file });
         res.json({ message: 'Private evidence saved for review.', evidence: record, ...(fastCheck ? { fast_check: fastCheck } : {}) });
         // A document answering Pantopus's request for more tells the review team (best effort, after the reply).
         require('../services/homeClaimReviewService').tellReviewersAboutReply(req.params.claimId).catch(() => {});

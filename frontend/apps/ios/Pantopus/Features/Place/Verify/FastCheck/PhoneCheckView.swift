@@ -60,7 +60,7 @@ struct PhoneCheckView: View {
                     kind: .phone,
                     address: viewModel.address,
                     isRenter: isRenter,
-                    onMailCode: onMailCode,
+                    onMailCode: HomeVerifyOptionsStore.shared.cached(homeId: viewModel.homeId)?.offers(.mail) == true ? onMailCode : nil,
                     onGoToPlace: onGoToPlace
                 )
             case .noMatch:
@@ -330,5 +330,7 @@ struct FastCheckTopBar: View {
         }
         .frame(minHeight: 52)
         .background(Theme.Color.appBg)
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 }

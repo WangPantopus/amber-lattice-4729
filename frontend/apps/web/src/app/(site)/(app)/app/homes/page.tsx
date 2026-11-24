@@ -18,6 +18,7 @@ import { confirmStore } from '@/components/ui/confirm-store';
 import { validateResidencyPage, residencyRequestLabel, residencyReviewLabel } from '@/components/homes/residencyProgressModel';
 import { unitText } from '@/components/homes/creation/homeCreationModel';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useMailAvailable } from '@/components/place/fastVerify/useVerifyOptions';
 import ClaimApprovalChecklist, { claimStatusLabel, openInfoRequest } from '@/components/homes/ClaimApprovalChecklist';
 import ClaimInfoRequestNote from '@/components/homes/ClaimInfoRequestNote';
 import { EVERYTHING, RECONNECTED, onSyncTopic } from '@/lib/syncSignals';
@@ -37,6 +38,16 @@ function claimInProgress(status: string) {
 // Returning to the page (switching tabs, clicking back into the window) refreshes the list in
 // the background at most this often. An account change always clears and reloads at once.
 const FOCUS_REFRESH_MS = 30_000;
+
+function HeldHomeMailLink({ homeId }: { homeId: string }) {
+  const mailAvailable = useMailAvailable(homeId);
+  if (!mailAvailable) return null;
+  return (
+    <Link href={`/app/homes/${homeId}/verify-postcard`} className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">
+      Verify by mail
+    </Link>
+  );
+}
 
 export default function HomesPage() {
   const router = useRouter();
@@ -123,12 +134,15 @@ export default function HomesPage() {
       // A private task workspace is not a verification receipt. Keep its
       // document claim visible even though the Home already appears below.
       const homeIds = new Set(list.filter((h) => h.access_kind !== 'private_setup').map((h) => h.id));
+      const sharedIds = new Set(list.filter(h => h.access_kind === 'shared').map(h => h.id));
       const claims = claimsRes?.claims;
       if (!Array.isArray(claims)) throw new Error('Your verification progress could not be loaded. Please retry.');
       // Each claim is named by the address you claimed (your own entry), as on iOS and Android.
-      const enriched = claims.filter((c) => claimInProgress(c.status) && c.home_id && !homeIds.has(c.home_id))
+      const enriched = claims.filter((c) => claimInProgress(c.status) && c.home_id
+        && (!homeIds.has(c.home_id) || (c.claim_type === 'owner' && sharedIds.has(c.home_id))))
         .map((claim) => { const { line, city } = claimAddress(claim); return { claim, addressLine: line, cityLine: city }; });
-      const asked = claims.filter((c) => claimInProgress(c.status) && c.home_id && homeIds.has(c.home_id) && openInfoRequest(c));
+      const asked = claims.filter((c) => claimInProgress(c.status) && c.home_id && homeIds.has(c.home_id)
+        && !(c.claim_type === 'owner' && sharedIds.has(c.home_id)) && openInfoRequest(c));
       // A page that opened on the kept list becomes ready with its first confirmed answer.
       if (!background || ready.current === null) ready.current = current;
       setHomes(list); setPendingClaims(enriched); setAskedClaims(asked);
@@ -321,9 +335,12 @@ export default function HomesPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-app-text">My Homes</h1>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          <Link href="/app/landlord/properties" className="text-sm font-semibold underline">Rental properties</Link>
           <Link href="/app/homes/new" className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">
             Add home
           </Link>
+          </div>
         </div>
         {savedRemoval && <div className="mb-5"><Link href="/app/homes/member-removals" className="text-sm text-blue-700 dark:text-blue-400 underline">Check an unfinished removal</Link></div>}
         {!loading && !error && refreshError && (
@@ -388,7 +405,7 @@ export default function HomesPage() {
                             This claim does not grant household access.
                             {hasPrivateSetup ? ' Your private tasks remain available while verification is pending.' : ''}
                           </p>
-                          <p className="mt-2 text-sm text-app-text-secondary">{asked ? 'Upload documents →' : 'Continue →'}</p>
+                          <p className="mt-2 text-sm text-app-text-secondary">{asked ? 'Upload documents →' : residency ? 'Continue →' : 'Continue ownership verification →'}</p>
                         </div>
                         <button
                           type="button"
@@ -449,9 +466,9 @@ export default function HomesPage() {
                           <div className="text-sm text-app-text-secondary">{cityLine}</div>
                           <div className="mt-2 inline-flex items-center rounded-full border border-app-border px-2.5 py-1 text-xs font-semibold text-app-text-strong">{occ}</div>
                           {privateSetup && <p className="mt-2 text-sm text-app-text-secondary">{claimHeld
-                            ? 'We need to check this address first. Verify it by mail to open your household tools.'
+                            ? 'We need to check this address before you can open your household tools.'
                             : instantClaim
-                              ? 'Claim it now to use your household tools and invite your household. Verifying by mail later gets you messages between homes and your verified badge.'
+                              ? 'Claim it now to use your household tools and invite your household.'
                               : 'Start with your own tasks while verification is pending.'}</p>}
                           {verification && <p className="mt-2 text-sm text-app-text-secondary">Household access is awaiting verification. Continue your request to see its current status.</p>}
                           {askedRequest ? <ClaimInfoRequestNote request={askedRequest} className="mt-3" /> : null}
@@ -463,10 +480,7 @@ export default function HomesPage() {
                               {claimingId === h.id ? 'Claiming…' : 'Claim it now'}
                             </button>
                           )}
-                          {claimHeld && (
-                            <Link href={`/app/homes/${h.id}/verify-postcard`}
-                              className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">Verify by mail</Link>
-                          )}
+                          {claimHeld && <HeldHomeMailLink homeId={h.id} />}
                           {askedHref && (
                             <Link href={askedHref} className="px-3 py-2 rounded-lg bg-black text-white text-sm font-semibold hover:bg-gray-900">Upload documents</Link>
                           )}

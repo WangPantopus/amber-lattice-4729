@@ -73,7 +73,13 @@ fun LocationCheckScreen(
         LocationCheckStage.INTRO, LocationCheckStage.CHECKING ->
             LocationIntroPage(address, checking = state.stage == LocationCheckStage.CHECKING, onCheck = startCheck, onBack = onBack)
         LocationCheckStage.VERIFIED ->
-            FastVerifiedPage(FastCheckKind.LOCATION, address, state.renter, onMailCode = onMailCode, onDone = onDone)
+            FastVerifiedPage(
+                FastCheckKind.LOCATION,
+                address,
+                state.renter,
+                onMailCode = onMailCode.takeIf { state.options?.available("mail") != null },
+                onDone = onDone,
+            )
         LocationCheckStage.MISS ->
             LocationMissPage(state, address, onRetry = viewModel::again, onDone = onDone, onOpenMethod = onOpenMethod)
     }

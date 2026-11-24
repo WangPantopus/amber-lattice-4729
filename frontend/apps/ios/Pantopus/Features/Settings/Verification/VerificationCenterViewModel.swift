@@ -30,6 +30,7 @@ public final class VerificationCenterViewModel: GroupedListDataSource {
 
     public private(set) var state: GroupedListState = .loading
 
+    private let onOpenClaims: @MainActor () -> Void
     private let api: APIClient
     private let auth: AuthManager
     private var emailVerified: Bool = false
@@ -44,7 +45,8 @@ public final class VerificationCenterViewModel: GroupedListDataSource {
         case failed(message: String)
     }
 
-    init(api: APIClient = .shared, auth: AuthManager = .shared) {
+    init(api: APIClient = .shared, auth: AuthManager = .shared, onOpenClaims: @escaping @MainActor () -> Void = {}) {
+        self.onOpenClaims = onOpenClaims
         self.api = api
         self.auth = auth
     }
@@ -68,6 +70,8 @@ public final class VerificationCenterViewModel: GroupedListDataSource {
 
     public func tapRow(_ rowId: String) async {
         switch rowId {
+        case "photoid.status":
+            onOpenClaims()
         case "email.resend":
             await resendVerification()
         default:
@@ -146,8 +150,8 @@ public final class VerificationCenterViewModel: GroupedListDataSource {
                 GroupedListRow(
                     id: "photoid.status",
                     label: "Government-issued ID",
-                    subtext: "Used by business listings only",
-                    control: .chipStatus(label: "Optional", tone: .neutral, includesChevron: false)
+                    subtext: "Open My Homes to continue identity verification for your ownership claim.",
+                    control: .chevron
                 )
             ]
         )

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
 import credits from './credits.json';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /about/data-sources
@@ -19,6 +20,14 @@ type CreditRow = {
   dataset?: string;
   statement?: string;
 };
+
+
+export const metadata = publicPageMetadata({
+  path: '/about/data-sources',
+  title: 'Data sources for address and property records',
+  description:
+    "The public files behind Pantopus's address and property records: who publishes each one, the license it comes under, and the credit each publisher asks for.",
+});
 
 export default function DataSourcesPage() {
   return (
@@ -94,7 +103,7 @@ function SiteNav() {
             <LayoutDashboard className="w-7 h-7 text-primary-600" />
             <div className="flex flex-col leading-none">
               <span className="text-xl font-bold tracking-tight text-primary-700 dark:text-primary-400">Pantopus</span>
-              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Your real-world network</span>
+              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Real life, connected</span>
             </div>
           </Link>
           <div className="flex items-center gap-3">

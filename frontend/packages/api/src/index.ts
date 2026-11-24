@@ -407,6 +407,17 @@ export type {
 
 // Place — home record watch, rate-watch half (Wave 2b)
 export * as recordWatch from './endpoints/recordWatch';
+export * as homeRecord from './endpoints/homeRecord';                  // Home record page (/api/public/home-record, /api/homes/:id/record)
+export * as profilePage from './endpoints/profilePage';                // Profile with sources (/api/profile-page, contract v1)
+export type {
+  ProfilePage, ProfilePageHeader, ProfilePageSummary, ProfilePageTab, ProfilePageAction, ProfileBlock, ProfileKnownBlock,
+  ProfileLine, ProfileBadgeLine, ProfileInk, ProfileLane, ProfileView, ProfilePreviewView, ProfileLink, ProfileMore,
+  ProfileRings, ProfilePlace, ProfileShare, ProfileSharePart, ProfileSharePartKey, ProfilePartSetting,
+  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileInCommonBlock, ProfileDoorsBlock,
+  ProfileDoor, ProfileShelfBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
+  ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
+  ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
+} from './endpoints/profilePage';
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 
 // Place — Block Founders growth mechanic (Wave 3)

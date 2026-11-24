@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHomePermissions } from './useHomePermissions';
-import { post } from '@pantopus/api';
 import * as api from '@pantopus/api';
 import LandlordVerificationFlow from './LandlordVerificationFlow';
-import { toast } from '@/components/ui/toast-store';
 import { removalLink } from './member-removals/removalModel';
 
 interface VerificationCenterProps {
@@ -18,31 +16,19 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
   const router = useRouter();
   const { access, reload: reloadPermissions } = useHomePermissions();
   const reload = onRefresh ?? reloadPermissions;
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // ── Landlord check ──────────────────────────────────────
   const [landlordCheck, setLandlordCheck] = useState<{
     checked: boolean;
     hasLandlord: boolean;
     hasLease: boolean;
+    mailAvailable: boolean;
     failed: boolean;
-  }>({ checked: false, hasLandlord: false, hasLease: false, failed: false });
+  }>({ checked: false, hasLandlord: false, hasLease: false, mailAvailable: false, failed: false });
 
   const handleMoveOut = useCallback(() => {
     router.push(removalLink(homeId, 'self'));
   }, [homeId, router]);
-
-  const handleResendPostcard = useCallback(async () => {
-    setActionLoading('resend');
-    try {
-      await post(`/api/homes/${homeId}/request-postcard`);
-      toast.success('A new code has been requested. Please allow 3-7 business days for delivery.');
-    } catch {
-      toast.error('Failed to request a new code. Please try again.');
-    } finally {
-      setActionLoading(null);
-    }
-  }, [homeId]);
 
   useEffect(() => {
     let canceled = false;
@@ -54,13 +40,14 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
           checked: true,
           hasLandlord: res.landlord.has_landlord,
           hasLease: res.lease.state !== 'none',
+          mailAvailable: res.home_id === homeId && res.mail_available === true,
           failed: false,
         });
       } catch {
         // The existing landlord error/retry view owns unavailable status; a
         // failed read does not establish that no landlord or lease exists.
         if (!canceled) {
-          setLandlordCheck({ checked: true, hasLandlord: false, hasLease: false, failed: true });
+          setLandlordCheck({ checked: true, hasLandlord: false, hasLease: false, mailAvailable: false, failed: true });
         }
       }
     })();
@@ -79,12 +66,7 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
   }
 
   const status = access?.verification_status || 'unverified';
-  // When claim was rejected (or needs more info), show that instead of generic "under review"
-  const effectiveStatus = access?.ownership_claim_state === 'rejected'
-    ? 'claim_rejected'
-    : access?.ownership_claim_state === 'needs_more_info'
-      ? 'claim_needs_more_info'
-      : status;
+  const effectiveStatus = access?.ownership_claim_state === 'needs_more_info' ? 'claim_needs_more_info' : status;
   const isResidency = access?.verification_kind === 'residency';
   const config = isResidency ? {
     icon: '\u23F3', iconBg: 'bg-blue-100', title: 'Your residency request is under review',
@@ -109,13 +91,6 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
       <p className="text-app-text-secondary text-center text-[15px] leading-relaxed mb-8 max-w-sm mx-auto">
         {config.body}
       </p>
-
-      {/* Rejected / needs more info subtitle */}
-      {(effectiveStatus === 'claim_rejected' || effectiveStatus === 'claim_needs_more_info') && (
-        <p className="text-center text-sm text-red-600 dark:text-red-400 mb-6">
-          This ownership claim is {effectiveStatus === 'claim_rejected' ? 'rejected' : 'awaiting more information'}.
-        </p>
-      )}
 
       {/* Postcard countdown */}
       {status === 'pending_postcard' && access?.postcard_expires_at && (
@@ -170,28 +145,21 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
               icon="&#128273;"
               onClick={() => router.push(`/app/homes/${homeId}/verify-postcard`)}
             />
-            <ActionButton
-              label="Resend code"
-              description="Request a new code by mail"
-              icon="&#128231;"
-              onClick={handleResendPostcard}
-              loading={actionLoading === 'resend'}
-            />
           </>
         )}
 
-        {/* Upload documents — show when under review, needs more info, or rejected (so they can try again) */}
-        {(status === 'provisional_bootstrap' || status === 'pending_doc' || status === 'provisional' || effectiveStatus === 'claim_rejected' || effectiveStatus === 'claim_needs_more_info') && (
+        {/* Upload documents while verification is open. */}
+        {(status === 'provisional_bootstrap' || status === 'pending_doc' || status === 'provisional' || effectiveStatus === 'claim_needs_more_info') && (
           <ActionButton
             label="Upload proof"
-            description={effectiveStatus === 'claim_rejected' ? 'Upload new or additional documentation if you believe this was an error.' : 'Speed up verification with a document'}
+            description="Submit a document for review"
             icon="&#128228;"
             onClick={() => router.push(`/app/homes/${homeId}/claim-owner/evidence`)}
           />
         )}
 
         {/* Request mailed code */}
-        {status === 'provisional_bootstrap' && (
+        {landlordCheck.mailAvailable && status === 'provisional_bootstrap' && (
           <ActionButton
             label="Mail me a code"
             description="Receive a verification code at this address"
@@ -200,8 +168,8 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
           />
         )}
 
-        {/* Verify by mail (for statuses that allow it, including rejected/needs_more_info) */}
-        {(status === 'provisional' || status === 'pending_doc' || effectiveStatus === 'claim_rejected' || effectiveStatus === 'claim_needs_more_info') && (
+        {/* Additional eligible mail methods. */}
+        {landlordCheck.mailAvailable && (status === 'provisional' || status === 'pending_doc' || effectiveStatus === 'claim_needs_more_info') && (
           <ActionButton
             label="Verify with mailed code"
             description="Receive a code at this address"
@@ -300,13 +268,6 @@ function getStatusConfig(
   access: { is_in_challenge_window?: boolean } | null,
 ): StatusConfig {
   switch (status) {
-    case 'claim_rejected':
-      return {
-        icon: '\uD83D\uDEAB',
-        iconBg: 'bg-red-100 dark:bg-red-900/30',
-        title: 'Your ownership claim was rejected',
-        body: 'You can upload new or additional proof if you believe this was an error, or request help below.',
-      };
     case 'claim_needs_more_info':
       return {
         icon: '\uD83D\uDCC4',
@@ -341,7 +302,7 @@ function getStatusConfig(
         iconBg: 'bg-amber-100',
         title: 'Your document is under review',
         // No review time is promised while document review is undecided (founder, 2026-10-06).
-        body: 'Your uploaded documents are waiting for a Pantopus reviewer. Meanwhile, you can verify your address by mail.',
+        body: 'Your uploaded documents are waiting for a Pantopus reviewer.',
       };
     case 'provisional':
       if (access?.is_in_challenge_window) {

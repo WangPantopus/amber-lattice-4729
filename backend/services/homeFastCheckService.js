@@ -33,10 +33,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Section 6 words. Every refusal is { code, error }.
 const REFUSALS = Object.freeze({
-  FAST_CHECK_OFF: [404, "This way to verify isn't available. Verify by mail instead."],
+  FAST_CHECK_OFF: [404, "This way to verify isn't available. Choose another way to verify."],
   // No claim to mark (a private setup that isn't claimed, a household invitation, proof already, a set-aside claim).
-  FAST_CHECK_NEEDS_CLAIM: [409, "This way to verify isn't available. Verify by mail instead."],
-  FAST_CHECK_ONE_HOME: [409, 'A fast check covers one home. Verify this one by mail.'],
+  FAST_CHECK_NEEDS_CLAIM: [409, "This way to verify isn't available. Choose another way to verify."],
+  FAST_CHECK_ONE_HOME: [409, 'A fast check covers one home. Choose another way to verify this address.'],
   FAST_CHECK_LIMIT: [429, 'Too many tries for now. Try again later, or verify another way.'],
   PHONE_IN_USE: [409, 'This number already verified another account. Use a different way.'],
   PHONE_INVALID: [400, 'Check the number and try again.'],
@@ -313,8 +313,8 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'phone' && await used(ceilingRead)) reason = 'UNAVAILABLE';
     } else if (id === 'mail') {
       // eslint-disable-next-line global-require
-      const mailVendorService = require('./addressValidation/mailVendorService');
-      if (proven || nonResident || !mailVendorService.canSendPostcards()) reason = 'UNAVAILABLE';
+      const postcardRequests = require('./homePostcardRequestService');
+      if (proven || nonResident || !await postcardRequests.available({ homeId, actorId: userId }).catch(() => false)) reason = 'UNAVAILABLE';
       else if (reported) reason = 'IN_REVIEW';
     } else if (id === 'landlord') {
       if (proven || nonResident || !(await used(landlordRead))) reason = 'UNAVAILABLE';

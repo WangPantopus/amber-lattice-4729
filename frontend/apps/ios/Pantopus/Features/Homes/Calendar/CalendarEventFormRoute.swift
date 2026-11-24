@@ -122,6 +122,8 @@ private struct LoadingShell: View {
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
             }
+            // On an iPad the bar runs the window's width, Close in its top-left corner.
+            .topBarSpansWindow()
             VStack(spacing: Spacing.s3) {
                 Shimmer(height: 80, cornerRadius: Radii.lg)
                 Shimmer(height: 200, cornerRadius: Radii.lg)
@@ -154,6 +156,8 @@ private struct ErrorShell: View {
             }
             .frame(height: 44)
             .background(Theme.Color.appSurface)
+            // On an iPad the bar runs the window's width, Close in its top-left corner.
+            .topBarSpansWindow()
             EmptyState(
                 icon: .alertCircle,
                 headline: "Couldn't load this event",

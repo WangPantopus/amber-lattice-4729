@@ -10,8 +10,10 @@
  *   unit      the unit's own (shown only on an exact match)
  *   building  the building's (shown on an exact match, labeled, and on a building-only match)
  *   parcel    the land's or the account's
- * `owner: true` stays out of everything but a verified owner's own screens: a tax
- * status can say something about a person's age or health.
+ * `owner: true` stays out of everything but a verified owner's own screens, a buyer's public record of the home
+ * included (SPEC section 8): a tax status or an exemption can say something about a person's age or health.
+ * `value: true` is a value-type fact: never in a lookup's open facts, and in a signed-in buyer's public record only
+ * for a county on the switch file's buyer_report list (router.js buyerReportFor).
  */
 const FACTS = {
   // Building
@@ -75,6 +77,9 @@ const FACTS = {
   lot_number: { section: 'lot', label: 'Lot number', format: 'code', scope: 'parcel' },
   zoning: { section: 'lot', label: 'Zoning', format: 'code', scope: 'parcel' },
   pool: { section: 'lot', label: 'Pool', format: 'text', scope: 'unit' },
+  // The lot's outline from the county's open parcel map, [[lng, lat], ...] (scripts/property-index/lib/lot-rings.cjs), for
+  // the home record's photo from above. Never a row of its own; only ever held under lot_rings, served as copy.lot_ring.
+  lot_ring: { section: 'lot', format: 'none', scope: 'parcel' },
 
   // Parcel and records
   property_type: { section: 'records', label: 'Property type', format: 'text', scope: 'parcel' },
@@ -105,10 +110,10 @@ const FACTS = {
   value_year: { section: 'assessment', label: 'Value year', format: 'year', scope: 'unit', value: true },
   // Where a record's values come from when it isn't the record's own publisher (Miami-Dade's are the state's certified roll).
   value_source: { section: 'assessment', format: 'none', scope: 'unit', value: true },
-  value_history: { section: 'assessment', format: 'history', scope: 'unit', value: true, owner: true },
+  value_history: { section: 'assessment', format: 'history', scope: 'unit', value: true },
   tax_amount: { section: 'assessment', label: 'Property tax', format: 'money', scope: 'unit', value: true },
   tax_year: { section: 'assessment', label: 'Tax year', format: 'year', scope: 'unit', value: true },
-  tax_history: { section: 'assessment', format: 'history', scope: 'unit', value: true, owner: true },
+  tax_history: { section: 'assessment', format: 'history', scope: 'unit', value: true },
   tax_status: { section: 'assessment', label: 'Tax status', format: 'text', scope: 'unit', value: true, owner: true },
   exemptions: { section: 'assessment', format: 'none', scope: 'unit', value: true, owner: true },
 
@@ -119,6 +124,20 @@ const FACTS = {
   sale_document: { section: 'sale', label: 'Document number', format: 'code', scope: 'unit', value: true },
   // How many homes share this sale's deed, where several do (scripts/property-index/lib/shared-deeds.cjs): its price is the deed's.
   sale_parcels: { section: 'sale', format: 'none', scope: 'unit', value: true },
+
+  // Recorded history: every line the county's sales table holds for this home, the sales and the lines that aren't one (a
+  // quit claim, a gift, a correction, part of an interest, a boundary change...), newest first, each in the county's own
+  // words, with its date, its price where it is a sale, and its document number. Never a name. { since: 'YYYY', lines:
+  // [{ date, sale, word, price?, document?, parcels? }] } (scripts/property-index/lib/sales.cjs recordedHistory). Only ever
+  // held under new_columns, so a live county's pages show it once the founder names the county (router.js).
+  // Value-type: never in a lookup's open facts; a buyer's public record shows it only where the county is on buyer_report.
+  recorded_history: { section: 'history', format: 'none', scope: 'unit', value: true },
+  // Permits on the home's account, newest first: { from, lines: [{ issued, word, system?, done?, number? }] }, `word` the
+  // system it dates or the county's own fixed word for its kind, never an applicant's text or name. A finished roof,
+  // heating, water heater or panel permit dates that system on Place (homeRecord.js permitSystems). Only ever held under
+  // new_columns (scripts/property-index/sources/wa-clark.cjs addPermits). Value-type for who sees it: the confirmed owner,
+  // and a buyer's public record where the county is on buyer_report.
+  permits: { section: 'permits', format: 'none', scope: 'unit', value: true },
 };
 
 const SECTIONS = [
@@ -130,6 +149,8 @@ const SECTIONS = [
   ['records', 'Parcel & records'],
   ['assessment', 'Assessment & taxes'],
   ['sale', 'Last sale'],
+  ['history', 'Recorded history'],
+  ['permits', 'Permits'],
 ];
 
 module.exports = { FACTS, SECTIONS };

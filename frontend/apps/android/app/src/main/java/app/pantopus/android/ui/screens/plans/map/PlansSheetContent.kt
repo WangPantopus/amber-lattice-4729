@@ -836,6 +836,7 @@ internal fun PlanCardContent(
                 caption = hostCaption(plan),
                 seed = host.userId,
                 avatarUrl = host.avatarUrl,
+                userId = host.userId,
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

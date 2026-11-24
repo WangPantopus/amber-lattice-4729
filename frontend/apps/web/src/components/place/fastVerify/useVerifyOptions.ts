@@ -33,6 +33,18 @@ export function useVerifyOptions(homeId: string | null | undefined, options: { e
   };
 }
 
+// Postal status remains available when the fast verification switch is off.
+export function useMailAvailable(homeId: string) {
+  const result = useQuery({
+    queryKey: ['homeVerify', 'mail', api.authSessionMarker(), homeId],
+    queryFn: () => api.homeOwnership.getCurrentPostcardStatus(homeId),
+    enabled: !!homeId && !!api.getAuthToken(),
+    retry: false,
+  });
+  const status = result.data;
+  return status?.home_id === homeId && (status.can_request || status.can_resume || status.can_verify);
+}
+
 /** After a check or a postcard changes the person's level. */
 export function invalidateVerifyOptions(queryClient: QueryClient, homeId: string) {
   return queryClient.invalidateQueries({ queryKey: verifyOptionsKey(homeId) });

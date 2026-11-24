@@ -18,6 +18,8 @@
 //  Mirrors `ui/screens/mailbox/mail_task/MailTaskScreen.kt` on Android.
 //
 
+// swiftlint:disable type_body_length
+
 import SwiftUI
 
 public struct MailTaskView: View {
@@ -33,6 +35,8 @@ public struct MailTaskView: View {
             content
         }
         .background(Theme.Color.appBg)
+        // On an iPad window wide enough the task sits beside its steps and its mail, across the window.
+        .wideColumnsScreen()
         .accessibilityIdentifier("mailTask")
         .task { await viewModel.load() }
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
@@ -99,6 +103,7 @@ public struct MailTaskView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     private var showsUnbuiltActions: Bool {
@@ -137,7 +142,91 @@ public struct MailTaskView: View {
     /// next-up suggestion, and delegate hint have no backend source on the
     /// live task API, so they only render when the projection carries them
     /// (i.e. the sample/preview path) — never faked from live data.
+    @ViewBuilder
     private func loaded(_ task: MailTaskContent) -> some View {
+        if WideLayout.isPad {
+            padLoaded(task)
+        } else {
+            phoneLoaded(task)
+        }
+    }
+
+    /// On an iPad: the task (and Pantopus's read of it) in one column, its due date, steps, mail and what's next in
+    /// the other, where the window holds two; one column in the phone's order where it doesn't.
+    private func padLoaded(_ task: MailTaskContent) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                headerRow(task)
+                WideColumns {
+                    VStack(alignment: .leading, spacing: 14) {
+                        TaskCard(content: task)
+                        if let elf = task.elf {
+                            TaskElfStrip(elf: elf)
+                        }
+                    }
+                    .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: 14) {
+                        taskDetails(task)
+                    }
+                    .padding(.top, 14)
+                    .placeColumn(.trailing, order: 1, trimsTop: 14)
+                }
+            }
+            .wideColumnsMargins(Spacing.s4)
+            .padding(.top, Spacing.s3)
+            .padding(.bottom, Spacing.s6)
+        }
+        .safeAreaInset(edge: .bottom) {
+            actionDock(task)
+        }
+    }
+
+    /// Under the task card on a phone; beside it on an iPad.
+    @ViewBuilder
+    private func taskDetails(_ task: MailTaskContent) -> some View {
+        if task.isDone {
+            if let completion = task.completion {
+                CompletionSummaryCard(completion: completion)
+            }
+            if !task.subtasks.isEmpty {
+                SubtaskChecklist(
+                    subtasks: task.subtasks,
+                    allDone: true,
+                    onToggle: { viewModel.toggleSubtask(id: $0) },
+                    onAddStep: { viewModel.addStep() }
+                )
+            }
+            if let source = task.source {
+                SourceMailCard(source: source) { viewModel.openSourceMail() }
+            }
+            if let nextUp = task.nextUp {
+                NextUpCard(nextUp: nextUp) { viewModel.openNextUp() }
+            }
+        } else {
+            if let due = task.due, !task.snoozeOptions.isEmpty {
+                DueSnoozeCard(
+                    due: due,
+                    options: task.snoozeOptions
+                ) { viewModel.snooze(optionId: $0) }
+            }
+            if !task.subtasks.isEmpty {
+                SubtaskChecklist(
+                    subtasks: task.subtasks,
+                    allDone: false,
+                    onToggle: { viewModel.toggleSubtask(id: $0) },
+                    onAddStep: { viewModel.addStep() }
+                )
+            }
+            if let source = task.source {
+                SourceMailCard(source: source) { viewModel.openSourceMail() }
+            }
+            if task.elf != nil {
+                DelegateHintCard { viewModel.delegate() }
+            }
+        }
+    }
+
+    private func phoneLoaded(_ task: MailTaskContent) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 headerRow(task)
@@ -232,6 +321,8 @@ public struct MailTaskView: View {
                 openDock(task)
             }
         }
+        // Not stretched across an iPad window.
+        .mailPadBarWidth()
         .padding(.horizontal, Spacing.s4)
         .padding(.top, Spacing.s3)
         .padding(.bottom, Spacing.s2)
@@ -341,6 +432,8 @@ public struct MailTaskView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, 120)
                 .transition(.opacity)
                 .task {

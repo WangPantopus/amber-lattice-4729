@@ -39,6 +39,7 @@ export type TenantHomeStatus = {
   request_context: { home_id: string; actor_id: string; lease_id: string | null;
     lease_state: 'pending' | 'active' | 'ended' | 'canceled' | null };
   home_id: string;
+  mail_available?: boolean;
   landlord: LandlordInfo;
   lease: {
     state: TenantLeaseState;

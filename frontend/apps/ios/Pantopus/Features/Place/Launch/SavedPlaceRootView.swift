@@ -165,6 +165,9 @@ struct SavedPlaceRootView: View {
         }
         .padding(.horizontal, 2)
         .padding(.top, Spacing.s2)
+        // On an iPad the row runs the window's width: the menu in its top-left corner, the bell and Messages in its
+        // top-right.
+        .topBarSpansWindow()
     }
 
     /// The one next step: make the saved address their Home.

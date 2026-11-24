@@ -855,4 +855,26 @@ object PantopusColors {
     val momentMarksEdgeDark = Color(0x73000000)
     val momentMarksEdgeLight = Color(0xB3FFFFFF)
     val momentMarksShadow = Color(0x99000000)
+
+    /**
+     * The profile with sources (SPEC 2026-11-23, boards 1, 12, 13): the ring's "now" dot and the record tab's
+     * underline — `#0284C7`; a year's band behind the full chart — `#EEF0F3`; the chart's month ticks — `#9CA3AF`;
+     * the shelf's plank and its lit edge — `#B98A5A` / `#CAA06B`.
+     */
+    val profileRecordNow = Color(0xFF0284C7)
+    val profileRecordYearBand = Color(0xFFEEF0F3)
+    val profileRecordTick = Color(0xFF9CA3AF)
+    val profileShelfPlank = Color(0xFFB98A5A)
+    val profileShelfEdge = Color(0xFFCAA06B)
+
+    // The home record page (drawn screens `~/pantopus-home-record/design`, Nov 22 2026).
+
+    /** Behind a photo from above while it loads, and where it has none. */
+    val recordPhotoBg = Color(0xFF1F2937)
+
+    /** The dimming outside the lot's outline on a photo from above, drawn at 34%. */
+    val recordPhotoScrim = Color(0xFF020617)
+
+    /** The newest year's bar of the county value chart; earlier years are [primary200]. */
+    val recordBarCurrent = Color(0xFF0284C7)
 }

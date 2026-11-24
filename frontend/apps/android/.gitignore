@@ -49,3 +49,6 @@ vendor/bundle
 # OS
 .DS_Store
 Thumbs.db
+
+# The design's sample photos from above for the home record fixtures: copied in locally, never committed.
+app/src/debug/assets/home-record/*.jpg

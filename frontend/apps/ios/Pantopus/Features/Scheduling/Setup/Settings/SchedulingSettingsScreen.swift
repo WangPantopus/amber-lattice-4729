@@ -249,6 +249,8 @@ struct SchedulingSettingsScreen: View {
                 .padding(.vertical, 10)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .pantopusShadow(.lg)
                 .padding(.top, Spacing.s3)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -263,6 +265,8 @@ struct SchedulingSettingsScreen: View {
                 .padding(.vertical, 10)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .pantopusShadow(.lg)
                 .padding(.top, Spacing.s3)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -300,6 +304,8 @@ struct SettingsTopBar52: View {
         .frame(height: 52)
         .background(Theme.Color.appBg)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.Color.appBorder).frame(height: 1) }
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 }
 

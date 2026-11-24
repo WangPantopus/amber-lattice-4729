@@ -358,10 +358,21 @@ struct HolidayCardPickStep: View {
     /// The collection picked in the row; until then the one holding the card
     /// already chosen (back from step 3), else the first.
     @State private var collectionId: String?
+    /// The grid's width, for how many go across on an iPad page.
+    @State private var gridWidth: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
+    /// A page across an iPad window: the grid takes as many across as the shelves would, each in the same frame.
+    @Environment(\.holidayCardWidePage) private var widePage
 
-    /// Two across (about 177 pt each on an iPhone 17), so every caption gets two full lines.
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: Spacing.s3, alignment: .top), count: 2)
+    /// Two across (about 177 pt each on an iPhone 17), so every caption gets two full lines. On an iPad page, as many
+    /// as fit at a shelf card's width, with the page's gap.
+    private var columns: [GridItem] {
+        guard widePage else {
+            return Array(repeating: GridItem(.flexible(), spacing: Spacing.s3, alignment: .top), count: 2)
+        }
+        let across = HolidayCardShelfSizes.padAcross(column: gridWidth)
+        return Array(repeating: GridItem(.flexible(), spacing: HolidayCardPad.gap, alignment: .top), count: across)
+    }
 
     var body: some View {
         if cards.showsShelves {
@@ -408,11 +419,12 @@ struct HolidayCardPickStep: View {
     /// grid after its collection.
     @ViewBuilder
     private func grid(_ designs: [HolidayCardDesign], label: String?) -> some View {
-        let grid = LazyVGrid(columns: columns, spacing: Spacing.s4) {
+        let grid = LazyVGrid(columns: columns, spacing: widePage ? Spacing.s6 : Spacing.s4) {
             ForEach(designs) { design in
                 tile(design)
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
         if let label {
             grid
                 .accessibilityElement(children: .contain)
@@ -428,9 +440,14 @@ struct HolidayCardPickStep: View {
         return Button {
             viewModel.largeDesign = design
         } label: {
-            HolidayCardTile(design: design, selected: selected)
-                .padding(Spacing.s1)
-                .contentShape(Rectangle())
+            HolidayCardTile(
+                design: design,
+                selected: selected,
+                reservesTwoLines: widePage,
+                frameAspect: widePage ? HolidayCardPad.frameAspect : nil
+            )
+            .padding(Spacing.s1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(design.caption)
@@ -455,11 +472,15 @@ struct HolidayCardTile: View {
     var loads = true
     /// The card shelves: the card rack grows out of this picture (iOS 18 and later; `ItemZoomTransition`).
     var zoomID: String?
+    /// Pick a card as a page across an iPad window: the frame (width over height) every card in its rows and grids
+    /// stands in, on the card's own paper, so the cards are one size and their captions level. Nil draws the picture
+    /// at its own shape, as on a phone.
+    var frameAspect: CGFloat?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: 6) {
-            zoomSource(picture)
+            zoomSource(framed)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 .overlay {
                     if selected {
@@ -481,6 +502,18 @@ struct HolidayCardTile: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2, reservesSpace: reservesTwoLines)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The picture, fitted in the page's frame on its paper where it has one.
+    @ViewBuilder
+    private var framed: some View {
+        if let frameAspect {
+            MailPaper.cardPaper(design.paper)
+                .aspectRatio(frameAspect, contentMode: .fit)
+                .overlay { picture.clipped() }
+        } else {
+            picture
         }
     }
 
@@ -619,88 +652,26 @@ struct HolidayCardWriteStep: View {
     var body: some View {
         let count = viewModel.letterCount
         let empty = viewModel.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        VStack(spacing: Spacing.s3) {
-            HolidayCardFlip(showBack: showBack) {
-                HolidayCardFront(design: design.id, caption: design.caption, paper: design.paper, height: design.height, year: cards.year)
-                    .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                    .shadow(color: MailPaper.cardShadow.opacity(0.24), radius: 13, x: 0, y: 12)
-            } back: {
-                HolidayCardBack(
-                    paper: design.paper,
-                    fromName: viewModel.fromName,
-                    year: cards.year,
-                    signature: viewModel.signature,
-                    noteText: viewModel.message
-                ) { width in
-                    HolidayCardNoteText(
-                        text: $viewModel.message,
-                        cardWidth: width,
-                        placeholder: viewModel.placeholder,
-                        isEditable: true,
-                        limit: cards.messageLimit
-                    )
+        Group {
+            if WideLayout.isPad {
+                // On an iPad window wide enough the card is written in one column with everything done to it beside it
+                // in the other; one column, in this order, in a narrower window and at the accessibility sizes. The same
+                // views either way, so turning the iPad keeps what's being written.
+                WideColumns {
+                    VStack(spacing: Spacing.s3) { card }
+                        .frame(maxWidth: .infinity)
+                        .placeColumn(.leading, order: 0)
+                    VStack(spacing: Spacing.s3) { controls(count: count, empty: empty) }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, Spacing.s3)
+                        .placeColumn(.trailing, order: 1, trimsTop: Spacing.s3)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                .shadow(color: MailPaper.cardShadow.opacity(0.24), radius: 13, x: 0, y: 12)
-            }
-            HStack {
-                HolidayCardPaperButton(title: showBack ? "Turn it over" : "Back to writing", isPressed: !showBack) {
-                    // The keyboard goes while the picture side is up.
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    showBack.toggle()
-                }
-                .accessibilityIdentifier("sendCardTurn")
-                Spacer(minLength: Spacing.s2)
-                Text("\(count) of \(cards.messageLimit) letters")
-                    .font(.system(size: 13, weight: count >= cards.messageLimit ? .semibold : .regular))
-                    .foregroundStyle(count >= cards.messageLimit ? MailPaper.wax : HolidayCardDesk.muted(scheme))
-                    .accessibilityIdentifier("sendCardCount")
-            }
-            // A note the table writes over two leaves (plan Part 9).
-            if LaunchFeatures.cardTable, CardTableNoteLayout.leaves(viewModel.message) != nil {
-                Text("This note runs onto a second leaf.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(HolidayCardDesk.muted(scheme))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("sendCardSecondLeaf")
-            }
-            if cards.noteHelp, let recipient = viewModel.recipient {
-                noteHelpRow(recipient)
-            }
-            // The card's own photo and greeting (memories plan steps 4 and 7): one person's card only, while the server
-            // takes them.
-            let onePerson = viewModel.recipient?.entries == nil
-            let attachments = viewModel.attachments
-            if attachments.photo != nil || attachments.voice != nil || attachments.recorder.recording
-                || (onePerson && (cards.takesPhoto || cards.takesVoice)) {
-                HolidayCardMediaRow(
-                    attachments: attachments,
-                    takesPhoto: onePerson && cards.takesPhoto,
-                    takesVoice: onePerson && cards.takesVoice,
-                    takesLive: onePerson && cards.takesLivePhoto,
-                    liveMaxBytes: cards.livePhotoMaxBytes,
-                    forName: viewModel.greetingFor,
-                    gift: CardTableMood(mood: design.mood, number: design.number) == .reverence,
-                    needsStamp: cards.mediaStamp == .buy
-                ) { viewModel.openStampsForMedia() }
-            }
-            if cards.signature != nil {
-                signRow
-            }
-            VStack(spacing: Spacing.s2) {
-                let wait = viewModel.attachments.wait
-                HolidayCardWaxButton(title: "Seal it", isEnabled: !empty && wait == nil) { viewModel.toSeal() }
-                    .accessibilityIdentifier("sendCardSealIt")
-                if empty || wait != nil {
-                    Text(verbatim: empty ? "Write a few words on the back first." : wait ?? "")
-                        .font(.system(size: 13))
-                        .foregroundStyle(HolidayCardDesk.muted(scheme))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("sendCardSealWait")
+            } else {
+                VStack(spacing: Spacing.s3) {
+                    card
+                    controls(count: count, empty: empty)
                 }
             }
-            .padding(.top, Spacing.s2)
         }
         .sheet(isPresented: $signing) {
             CardTableSignPad(
@@ -714,6 +685,97 @@ struct HolidayCardWriteStep: View {
             .presentationDetents([.medium, .large])
             .presentationBackground(MailPaper.cardPaper(nil))
         }
+    }
+
+    /// The card, its back up to write on (turned over to see the picture).
+    private var card: some View {
+        HolidayCardFlip(showBack: showBack) {
+            HolidayCardFront(design: design.id, caption: design.caption, paper: design.paper, height: design.height, year: cards.year)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .shadow(color: MailPaper.cardShadow.opacity(0.24), radius: 13, x: 0, y: 12)
+        } back: {
+            HolidayCardBack(
+                paper: design.paper,
+                fromName: viewModel.fromName,
+                year: cards.year,
+                signature: viewModel.signature,
+                noteText: viewModel.message
+            ) { width in
+                HolidayCardNoteText(
+                    text: $viewModel.message,
+                    cardWidth: width,
+                    placeholder: viewModel.placeholder,
+                    isEditable: true,
+                    limit: cards.messageLimit
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .shadow(color: MailPaper.cardShadow.opacity(0.24), radius: 13, x: 0, y: 12)
+        }
+    }
+
+    /// Everything under the card: turning it over and the letters left, help, the photo and greeting, signing, and
+    /// "Seal it".
+    @ViewBuilder
+    private func controls(count: Int, empty: Bool) -> some View {
+        HStack {
+            HolidayCardPaperButton(title: showBack ? "Turn it over" : "Back to writing", isPressed: !showBack) {
+                // The keyboard goes while the picture side is up.
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                showBack.toggle()
+            }
+            .accessibilityIdentifier("sendCardTurn")
+            Spacer(minLength: Spacing.s2)
+            Text("\(count) of \(cards.messageLimit) letters")
+                .font(.system(size: 13, weight: count >= cards.messageLimit ? .semibold : .regular))
+                .foregroundStyle(count >= cards.messageLimit ? MailPaper.wax : HolidayCardDesk.muted(scheme))
+                .accessibilityIdentifier("sendCardCount")
+        }
+        // A note the table writes over two leaves (plan Part 9).
+        if LaunchFeatures.cardTable, CardTableNoteLayout.leaves(viewModel.message) != nil {
+            Text("This note runs onto a second leaf.")
+                .font(.system(size: 13))
+                .foregroundStyle(HolidayCardDesk.muted(scheme))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("sendCardSecondLeaf")
+        }
+        if cards.noteHelp, let recipient = viewModel.recipient {
+            noteHelpRow(recipient)
+        }
+        // The card's own photo and greeting (memories plan steps 4 and 7): one person's card only, while the server
+        // takes them.
+        let onePerson = viewModel.recipient?.entries == nil
+        let attachments = viewModel.attachments
+        if attachments.photo != nil || attachments.voice != nil || attachments.recorder.recording
+            || (onePerson && (cards.takesPhoto || cards.takesVoice)) {
+            HolidayCardMediaRow(
+                attachments: attachments,
+                takesPhoto: onePerson && cards.takesPhoto,
+                takesVoice: onePerson && cards.takesVoice,
+                takesLive: onePerson && cards.takesLivePhoto,
+                liveMaxBytes: cards.livePhotoMaxBytes,
+                forName: viewModel.greetingFor,
+                gift: CardTableMood(mood: design.mood, number: design.number) == .reverence,
+                needsStamp: cards.mediaStamp == .buy
+            ) { viewModel.openStampsForMedia() }
+        }
+        if cards.signature != nil {
+            signRow
+        }
+        VStack(spacing: Spacing.s2) {
+            let wait = viewModel.attachments.wait
+            HolidayCardWaxButton(title: "Seal it", isEnabled: !empty && wait == nil) { viewModel.toSeal() }
+                .accessibilityIdentifier("sendCardSealIt")
+            if empty || wait != nil {
+                Text(verbatim: empty ? "Write a few words on the back first." : wait ?? "")
+                    .font(.system(size: 13))
+                    .foregroundStyle(HolidayCardDesk.muted(scheme))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sendCardSealWait")
+            }
+        }
+        .padding(.top, Spacing.s2)
     }
 
     /// "Help me write it": three notes from Pantopus AI to pick from; the one picked lands on the back, face up.

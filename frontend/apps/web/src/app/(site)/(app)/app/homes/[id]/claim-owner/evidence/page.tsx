@@ -57,9 +57,9 @@ export default function ClaimEvidencePage() {
   const existingClaimId = searchParams.get('claimId') || undefined;
 
   // What a Pantopus reviewer asked for on this claim (Request info), until a document answers it.
-  const myClaims = useQuery(myClaimsQuery());
-  const claimForNote = (myClaims.data?.claims ?? []).find((c) => (existingClaimId ? c.id === existingClaimId
-    : sameHomeId(c.home_id, homeId) && c.claim_type === 'owner' && c.status === 'under_review'));
+  const myClaims = useQuery({ ...myClaimsQuery(), ...(existingClaimId ? { staleTime: 0 } : {}) });
+  const claimForNote = (myClaims.data?.claims ?? []).find((c) => sameHomeId(c.home_id, homeId) && c.claim_type === 'owner'
+    && c.status === 'under_review' && (!existingClaimId || c.id === existingClaimId));
   const asked = claimForNote ? openInfoRequest(claimForNote) : null;
 
   const [selectedDoc, setSelectedDoc] = useState<EvidenceType | null>(null);
@@ -189,6 +189,13 @@ export default function ClaimEvidencePage() {
       setSubmitting(false);
     }
   }, [homeId, existingClaimId, selectedDoc, pickedFile, uploadSession, router]);
+
+  if (existingClaimId && !claimForNote && uploadSession.scope) {
+    if (myClaims.isFetching) return <p className="p-6" role="status">Checking your claim…</p>;
+    if (myClaims.isError) return <button className="p-6 underline" onClick={() => void myClaims.refetch()}>Retry claim status</button>;
+    return <div className="space-y-3 p-6"><p>This claim is closed or unavailable.</p>
+      <Link href="/app/homes" className="underline">Back to My Homes</Link></div>;
+  }
 
   if (!uploadSession.scope) return <div className="p-6"><p role="status">{uploadSession.error || 'Verifying your current session…'}</p>
     {uploadSession.error && <button type="button" onClick={uploadSession.retry}>Retry</button>}</div>;

@@ -238,7 +238,7 @@ internal fun FastVerifiedPage(
     kind: FastCheckKind,
     address: String,
     renter: Boolean,
-    onMailCode: () -> Unit,
+    onMailCode: (() -> Unit)?,
     onDone: () -> Unit,
 ) {
     FastCheckPage(
@@ -298,24 +298,26 @@ internal fun FastVerifiedPage(
                 Column {
                     Text("Residency letters and home Mail", fontSize = 14.5.sp, lineHeight = 20.sp, color = PantopusColors.appText)
                     Text(
-                        "Ask for the postcard whenever you need them.",
+                        if (onMailCode == null) "Mail is currently unavailable." else "Request a postcard to finish verification.",
                         fontSize = 12.5.sp,
                         lineHeight = 17.sp,
                         color = PantopusColors.appTextSecondary,
                     )
                 }
             }
-            Row(
-                modifier =
-                    Modifier
-                        .heightIn(min = 44.dp)
-                        .clickable(role = Role.Button, onClick = onMailCode)
-                        .testTag("fastCheck.mailCode"),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Mail me a code", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
-                PantopusIconImage(PantopusIcon.ArrowRight, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appText)
+            if (onMailCode != null) {
+                Row(
+                    modifier =
+                        Modifier
+                            .heightIn(min = 44.dp)
+                            .clickable(role = Role.Button, onClick = onMailCode)
+                            .testTag("fastCheck.mailCode"),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Mail me a code", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+                    PantopusIconImage(PantopusIcon.ArrowRight, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appText)
+                }
             }
         }
     }
@@ -385,8 +387,8 @@ internal fun fastCheckErrorWords(error: NetworkError): String {
 private val FAST_CHECK_WORDS =
     mapOf(
         "MAIL_PROOF_REQUIRED" to "This needs a mailed code. Ask for the postcard in Place.",
-        "FAST_CHECK_OFF" to "This way to verify isn't available. Verify by mail instead.",
-        "FAST_CHECK_ONE_HOME" to "A fast check covers one home. Verify this one by mail.",
+        "FAST_CHECK_OFF" to "This way to verify isn't available. Choose another way to verify.",
+        "FAST_CHECK_ONE_HOME" to "A fast check covers one home. Choose another way to verify this address.",
         "FAST_CHECK_LIMIT" to "Too many tries for now. Try again later, or verify another way.",
         "PHONE_IN_USE" to "This number already verified another account. Use a different way.",
         "PHONE_INVALID" to "Check the number and try again.",

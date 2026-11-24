@@ -26,6 +26,7 @@
 //   - momentsCleanup             → every 10 minutes (Moments: checks left behind, files 7 days after the end)
 //   - momentsShareLater          → every minute (Moments shared later: the push to connections at their time)
 //   - cardMediaCleanup           → daily at 04:50 UTC (a card's own photo or voice nobody can read any more)
+//   - aroundYouFeeds             → hourly at :36 (Around you: wildfires, federal notices, road projects, calendars)
 // ============================================================
 
 const cron = require('node-cron');
@@ -130,6 +131,7 @@ const momentsCleanup = require('./momentsCleanup');
 const fastCheckLocationLapse = require('./fastCheckLocationLapse');
 const momentsShareLater = require('./momentsShareLater');
 const cardMediaCleanup = require('./cardMediaCleanup');
+const aroundYouFeeds = require('./aroundYouFeeds');
 // Assistant nudges and briefs: pushes held for quiet hours
 const { releaseHeldNudges } = require('../services/ai/nudges/engine');
 const { runBookingReminders } = require('./bookingReminders');
@@ -834,6 +836,14 @@ function startJobs(options = {}) {
   // Daily at 4:50 AM UTC: a card's own photo or voice that no card took in seven days, or whose card is gone or was
   // withdrawn, is removed with its stored object (services/holidayCardMedia cleanup).
   scheduleCron('50 4 * * *', wrapJob('cardMediaCleanup', cardMediaCleanup), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+
+  // ─── Around you feeds ───
+  // Hourly at minute 36, off the busy minutes: public feeds for every active region (wildfires, federal disaster
+  // notices, state road projects, calendar files) into the list Around you reads. Does nothing while Around you is off.
+  scheduleCron('36 * * * *', wrapJob('aroundYouFeeds', aroundYouFeeds), {
     scheduled: true,
     timezone: 'UTC',
   });

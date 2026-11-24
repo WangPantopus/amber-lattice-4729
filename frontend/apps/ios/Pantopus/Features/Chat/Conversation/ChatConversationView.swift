@@ -2623,6 +2623,8 @@ private struct ChatConversationHeader: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the actions in its top-right.
+        .topBarSpansWindow()
         .accessibilityIdentifier("chatConversationHeader")
     }
 
@@ -3358,6 +3360,8 @@ private struct ChatSelectionTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width, Cancel in its top-right corner.
+        .topBarSpansWindow()
         .accessibilityIdentifier("chatSelectionTopBar")
     }
 }
@@ -4709,6 +4713,8 @@ private struct AttachmentTile: View {
                 ZStack {
                     Circle()
                         .fill(Theme.Color.appText.opacity(0.78))
+                        // Dark under white words in dark mode too (appText is near white there).
+                        .environment(\.colorScheme, .light)
                         .frame(width: 18, height: 18)
                     Icon(.x, size: 11, strokeWidth: 3, color: Theme.Color.appTextInverse)
                 }

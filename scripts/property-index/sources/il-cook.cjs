@@ -2,7 +2,8 @@
 // Cook County, Illinois: the Assessor's open data catalog. The county's terms of use are disclaimers, with no limit on
 // using what it publishes. Six tables joined on the parcel number. The address, sales and universe tables also hold owner,
 // mailing, buyer and seller columns: they are never asked for. Values are assessed values (10% of market for homes), never
-// market values. Condo units carry bedrooms and size where the Assessor has compiled them so far.
+// market values. Condo units carry bedrooms and size where the Assessor has compiled them so far. Every line of the sales
+// table is the home's recorded history.
 
 const path = require('node:path');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
@@ -10,7 +11,8 @@ const { getJson, socrataRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '17031';
@@ -22,7 +24,11 @@ const CONDO_COLUMNS = ['pin', 'card', 'class', 'char_yrblt', 'char_building_sf',
 const ADDRESS_COLUMNS = ['pin', 'prop_address_full', 'prop_address_city_name', 'prop_address_zipcode_1'];
 const UNIVERSE_COLUMNS = ['pin', 'class', 'township_name', 'cook_municipality_name', 'nbhd_code', 'tax_code', 'school_elementary_district_name', 'school_secondary_district_name', 'school_unified_district_name'];
 const VALUE_COLUMNS = ['pin', 'year', 'mailed_bldg', 'mailed_land', 'mailed_tot', 'certified_bldg', 'certified_land', 'certified_tot', 'board_bldg', 'board_land', 'board_tot'];
-const SALE_COLUMNS = ['pin', 'sale_date', 'sale_price', 'doc_no', 'deed_type', 'sale_type'];
+const SALE_COLUMNS = ['pin', 'sale_date', 'sale_price', 'doc_no', 'deed_type', 'sale_type', 'mydec_deed_type', 'num_parcels_sale'];
+// The Assessor's short deed types written as the transfer declaration's column writes the same kind, so each kind reads one way
+// in recorded history ("Warranty" and "Warranty Deed" are both the Assessor's own names for one kind of document; nothing about a
+// home is inferred). No other kinds are joined: a special warranty deed stays one.
+const DEED_IN_FULL = { 'Quit claim': 'Quit Claim Deed', Warranty: 'Warranty Deed', Trustee: 'Trustee Deed', Executor: 'Executor Deed' };
 
 // The Assessor's class code dictionary.
 const CLASS_WORDS = {
@@ -164,12 +170,49 @@ async function* build({ work }) {
     const was = map.get(row.pin);
     if (!was || String(row.sale_date) > String(was.sale_date)) map.set(row.pin, row);
   };
+  // Every line, for recorded history (facts.js): its date, price, document number, parcel count and its deed's name. The
+  // name is the line's own: the deed type from the state's transfer declaration for it (mydec_deed_type, "Special Warranty
+  // Deed"), where the Assessor's table has it, or else the Assessor's own (deed_type, "Warranty"). Seller and buyer columns
+  // are never asked for. Names are kept once each, as the table has millions of lines.
+  const saleLines = new Map();
+  const names = new Map();
+  const nameOf = (text) => {
+    const name = word(text);
+    if (!name) return null;
+    if (!names.has(name)) names.set(name, name);
+    return names.get(name);
+  };
+  let first = null;
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => socrataRows(DOMAIN, TABLES.sales, SALE_COLUMNS))) {
     // A quit claim isn't a sale, and the land alone isn't a home's sale.
-    if (!isHomeSale(positive(row.sale_price), row.deed_type)) continue;
+    const sold = isHomeSale(positive(row.sale_price), row.deed_type);
+    const date = isoDate(row.sale_date);
+    if (date) {
+      if (!first || date < first) first = date;
+      if (!saleLines.has(row.pin)) saleLines.set(row.pin, []);
+      saleLines.get(row.pin).push({ date, land: sold, home: sold && row.sale_type !== 'LAND', price: positive(row.sale_price), state: nameOf(row.mydec_deed_type), assessor: nameOf(DEED_IN_FULL[word(row.deed_type)] || row.deed_type), document: word(row.doc_no), parcels: positive(row.num_parcels_sale) });
+    }
+    if (!sold) continue;
     later(landSales, row);
     if (row.sale_type !== 'LAND') later(sales, row);
   }
+  const leftOut = {};
+  const personal = {};
+  // A sale is a sale, by the record's own last-sale rule (fromRow: the land's sale for vacant land); any other line says what
+  // it is in its deed's name, or is left out and counted.
+  const historyOf = (record, list) => recordedHistory((list || []).map(({ date, land, home, price, state, assessor, document, parcels }) => {
+    const sale = record.kind === 'parcel' ? land : home;
+    const said = countyWord(state) || countyWord(assessor);
+    const name = countyWord(state) ? state : assessor;
+    // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(state) || isPersonRecord(assessor)) {
+      personal[name] = (personal[name] || 0) + 1;
+      return null;
+    }
+    const line = historyLine({ date, sale, word: sale ? null : said, price, document, parcels });
+    if (!line) leftOut[name || '-'] = (leftOut[name || '-'] || 0) + 1;
+    return line;
+  }), { since: (first || '').slice(0, 4) });
   log(`${homes.size} homes, ${condos.size} condo parcels, ${universe.size} parcels, ${values.size} values, ${sales.size} sales`);
 
   const records = [];
@@ -177,10 +220,16 @@ async function* build({ work }) {
   for await (const place of cached(path.join(dir, 'addresses.jsonl.gz'), () => socrataRows(DOMAIN, TABLES.addresses, ADDRESS_COLUMNS, { where: `year=${addressYear}` }))) {
     const { pin } = place;
     const record = fromRow(pin, { place, universe: universe.get(pin), home: homes.get(pin), condo: condos.get(pin), values: values.get(pin), sale: sales.get(pin), landSale: landSales.get(pin) });
-    if (record) records.push(record);
-    else noAddress += 1;
+    if (record) {
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = historyOf(record, saleLines.get(pin));
+      if (history) hold(record, 'recorded_history', history);
+      records.push(record);
+    } else noAddress += 1;
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number`);
+  const count = (tally) => Object.values(tally).reduce((a, b) => a + b, 0);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([name, n]) => `${name} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${count(personal)}${count(personal) ? ` (${Object.entries(personal).sort((a, b) => b[1] - a[1]).map(([name, n]) => `${name} ${n}`).join(', ')})` : ''}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'IL', name: COUNTY, publisher: 'Cook County Assessor', dataset: 'open data catalog', method: 'county', source: 'il-cook', as_of: asOf, stale_after_days: 120, records,

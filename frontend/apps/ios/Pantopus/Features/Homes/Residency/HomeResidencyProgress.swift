@@ -123,6 +123,7 @@ struct PersonalHomeResidencyProgress: Decodable, Equatable {
     let currentAccess: String
     let nextStep: NextStep
     let rawProbation: String?
+    var mailAvailable: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case request
@@ -130,6 +131,7 @@ struct PersonalHomeResidencyProgress: Decodable, Equatable {
         case currentAccess = "current_access"
         case nextStep = "next_step"
         case rawProbation = "probation"
+        case mailAvailable = "mail_available"
     }
 
     var probation: Probation? {
@@ -160,7 +162,15 @@ struct PersonalHomeResidencyProgress: Decodable, Equatable {
     }
 
     var explanation: String {
-        if let probation { return probation.explanation }
+        if let probation {
+            if probation != .review, mailAvailable != true {
+                return "Household access is limited. Mail verification is currently unavailable. Contact support if you need help."
+            }
+            return probation.explanation
+        }
+        if nextStep == .addressVerification, !needsResidencyRequest, mailAvailable != true {
+            return "Your request is saved. Mail verification is currently unavailable."
+        }
         return switch nextStep {
         case .home: "Open the Home to see your household. What you can see and change depends on your role."
         case .householdReview:
@@ -174,7 +184,7 @@ struct PersonalHomeResidencyProgress: Decodable, Equatable {
                 + "then enter the code printed on it."
         case .resubmit: "Check the street, apartment and how you live here, then send your request again."
         case .accessReview: "To come back, add this Home again or ask someone in the household to invite you."
-        case .ownershipVerification: "Ownership has its own review. Verifying your address by mail doesn't make you an owner."
+        case .ownershipVerification: "Continue your ownership claim to see which steps are left."
         case .unavailable: "This Home isn't accepting changes right now. Your request is still saved."
         }
     }
@@ -240,8 +250,9 @@ final class HomeResidencyProgressViewModel {
         switch destination {
         case .home: return progress.currentAccess == "shared" && progress.nextStep == .home
         // Proof by mail ends probation, and it's the way back after a no (Pantopus reviews it then, again if needed).
-        case .mail: return (progress.nextStep == .addressVerification && !progress.needsResidencyRequest)
-            || [.active, .ended, .declined].contains(progress.probation)
+        case .mail: return progress.mailAvailable == true && (progress.nextStep == .ownershipVerification
+                || (progress.nextStep == .addressVerification && !progress.needsResidencyRequest)
+                || [.active, .ended, .declined].contains(progress.probation))
         case .ownership: return progress.nextStep == .ownershipVerification
         case .addHome: return progress.nextStep == .resubmit || progress.needsResidencyRequest
         }

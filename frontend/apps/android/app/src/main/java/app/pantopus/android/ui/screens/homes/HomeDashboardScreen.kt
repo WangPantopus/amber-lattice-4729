@@ -53,6 +53,7 @@ import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.compose.gig.GigChecklistLink
 import app.pantopus.android.ui.screens.gigs.GigsCategory
+import app.pantopus.android.ui.screens.homes.record.HomeRecordEntry
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailTopBarAction
 import app.pantopus.android.ui.screens.shared.content_detail.FabCreateCTA
@@ -119,6 +120,8 @@ fun HomeDashboardScreen(
     onSendMail: ((String) -> Unit)? = null,
     /** The "Ownership" tab — the home's ownership screen. */
     onOpenOwnership: ((String) -> Unit)? = null,
+    /** "Your home's record" near the top: the Home's record page. */
+    onOpenRecord: ((String) -> Unit)? = null,
     viewModel: HomeDashboardViewModel = hiltViewModel(),
 ) {
     RefreshOnStoreChange(viewModel::recheck)
@@ -380,6 +383,9 @@ fun HomeDashboardScreen(
         )
     }
 
+    val openRecord: (() -> Unit)? =
+        onOpenRecord?.let { handler -> { viewModel.currentHomeId()?.let { homeId -> handler(homeId) } } }
+
     HomeOfflineContent {
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -406,6 +412,7 @@ fun HomeDashboardScreen(
                                 }
                             },
                         onSecurityAction = ::handleSecurityAction,
+                        onOpenRecord = openRecord,
                         canPerform = viewModel::canPerform,
                         can = viewModel::can,
                     )
@@ -425,6 +432,7 @@ fun HomeDashboardScreen(
                                 }
                             },
                         onSecurityAction = ::handleSecurityAction,
+                        onOpenRecord = openRecord,
                         canPerform = viewModel::canPerform,
                         can = viewModel::can,
                     )
@@ -446,6 +454,7 @@ fun HomeDashboardScreen(
                                 }
                             },
                         onSecurityAction = ::handleSecurityAction,
+                        onOpenRecord = openRecord,
                         canPerform = viewModel::canPerform,
                         can = viewModel::can,
                     )
@@ -458,6 +467,7 @@ fun HomeDashboardScreen(
                         onRetry = viewModel::refresh,
                         onTasks = { viewModel.currentHomeId()?.let { onOpenTasks?.invoke(it) } },
                         onOwnership = { viewModel.currentHomeId()?.let { onClaimOwnership?.invoke(it) } },
+                        onOpenRecord = openRecord,
                     )
             }
         }
@@ -524,6 +534,8 @@ private fun DashboardLayout(
     onOpenSettings: (() -> Unit)? = null,
     /** Security-state banner CTA. No-op in preview/snapshot hosts. */
     onSecurityAction: (HomeSecurityBannerAction) -> Unit = {},
+    /** "Your home's record" card; none in preview/snapshot hosts. */
+    onOpenRecord: (() -> Unit)? = null,
     /** H1 — Home Intelligence stack slot (health ring, seasonal checklist,
      *  property value, bill trends). Empty in preview/snapshot hosts. */
     intelligence: @Composable () -> Unit = {},
@@ -570,6 +582,7 @@ private fun DashboardLayout(
                 content.attentionSummary?.let { summary ->
                     NeedsAttentionBanner(summary = summary, onJump = onQuickAction)
                 }
+                onOpenRecord?.let { HomeRecordDashboardEntry(it, Modifier.padding(horizontal = Spacing.s4)) }
                 GridTabsBody(
                     quickActions = content.quickActions,
                     tabs = content.tabs,
@@ -1199,6 +1212,7 @@ private fun LimitedLayout(
     onRetry: () -> Unit,
     onTasks: () -> Unit,
     onOwnership: () -> Unit,
+    onOpenRecord: (() -> Unit)? = null,
 ) {
     ContentDetailShell(title = "Home", onBack = onBack, header = {}, body = {
         Column(
@@ -1230,6 +1244,10 @@ private fun LimitedLayout(
                 style = PantopusTextStyle.small,
                 color = PantopusColors.appTextSecondary,
             )
+            // A person waiting on their verification sees the record's open part and what verifying opens.
+            if (state.verificationKind == "residency" || state.verificationKind == "ownership") {
+                onOpenRecord?.let { HomeRecordDashboardEntry(it) }
+            }
             Button(onClick = onRetry, modifier = Modifier.testTag("homeDashboard_accessRetry")) { Text("Reload access") }
             if (state.canOpenTasks) {
                 Button(
@@ -1247,4 +1265,19 @@ private fun LimitedLayout(
             }
         }
     })
+}
+
+/** "Your home's record", near the top of the Home profile (SPEC section 2). */
+@Composable
+private fun HomeRecordDashboardEntry(
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    HomeRecordEntry(
+        title = "Your home’s record",
+        line = "What the county and federal records hold for this home",
+        onClick = onOpen,
+        testTag = "homeDashboard_record",
+        modifier = modifier,
+    )
 }

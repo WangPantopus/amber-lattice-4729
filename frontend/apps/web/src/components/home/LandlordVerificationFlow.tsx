@@ -146,7 +146,7 @@ export default function LandlordVerificationFlow({ homeId, onApproved, onBack }:
         lease={lease.lease}
         homeId={homeId}
         onRetry={loadStatus}
-        onMailVerify={() => router.push(`/app/homes/${homeId}/verify-postcard`)}
+        onMailVerify={status.mail_available ? () => router.push(`/app/homes/${homeId}/verify-postcard`) : undefined}
         onUploadLease={() => router.push(`/app/homes/${homeId}/verify-residency`)}
       />
     );
@@ -185,7 +185,7 @@ export default function LandlordVerificationFlow({ homeId, onApproved, onBack }:
   return (
     <NoLandlordState
       homeId={homeId}
-      onMailVerify={() => router.push(`/app/homes/${homeId}/verify-postcard`)}
+      onMailVerify={status.mail_available ? () => router.push(`/app/homes/${homeId}/verify-postcard`) : undefined}
       onUploadLease={() => router.push(`/app/homes/${homeId}/verify-residency`)}
       onBack={onBack}
     />
@@ -399,7 +399,7 @@ function NoLandlordState({
   onBack,
 }: {
   homeId: string;
-  onMailVerify: () => void;
+  onMailVerify?: () => void;
   onUploadLease: () => void;
   onBack?: () => void;
 }) {
@@ -419,13 +419,13 @@ function NoLandlordState({
         No landlord on file
       </h2>
       <p className="text-app-text-secondary text-center text-[15px] leading-relaxed mb-8 max-w-sm mx-auto">
-        This property doesn&apos;t have a verified landlord yet. You can still verify your tenancy using one of these options:
+        This property doesn&apos;t have a verified landlord yet. You can submit a document to verify that you live here.
       </p>
 
       {/* Verification paths. No "Invite your landlord": there is no invite page or route yet. */}
       <div className="space-y-3 mb-8">
         {/* Path 2: Mail code verification */}
-        <button
+        {onMailVerify && <button
           type="button"
           onClick={onMailVerify}
           className="w-full flex items-center gap-3 bg-app-surface border border-app-border rounded-xl p-4 text-left hover:border-app-border hover:shadow-sm transition-all"
@@ -438,10 +438,10 @@ function NoLandlordState({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-app-text">Verify with a mailed code</p>
-            <p className="text-xs text-app-text-secondary mt-0.5">Receive a verification code at this address (3-7 days).</p>
+            <p className="text-xs text-app-text-secondary mt-0.5">Check mail verification for this address.</p>
           </div>
           <span className="text-app-text-muted flex-shrink-0">&rsaquo;</span>
-        </button>
+        </button>}
 
         {/* Path 3: Upload lease */}
         <button
@@ -730,7 +730,7 @@ function DeniedState({
   lease: tenant.TenantLease;
   homeId: string;
   onRetry: () => void;
-  onMailVerify: () => void;
+  onMailVerify?: () => void;
   onUploadLease: () => void;
 }) {
   const deniedReason = lease.metadata?.denied_reason;
@@ -776,7 +776,7 @@ function DeniedState({
       <div className="mb-6">
         <h4 className="text-sm font-semibold text-app-text mb-3">Try another way</h4>
         <div className="space-y-2">
-          <button
+          {onMailVerify && <button
             type="button"
             onClick={onMailVerify}
             className="w-full flex items-center gap-3 bg-app-surface border border-app-border rounded-xl p-4 text-left hover:border-app-border hover:shadow-sm transition-all"
@@ -792,7 +792,7 @@ function DeniedState({
               <p className="text-xs text-app-text-secondary mt-0.5">Prove you live here with a code mailed to this address.</p>
             </div>
             <span className="text-app-text-muted flex-shrink-0">&rsaquo;</span>
-          </button>
+          </button>}
 
           <button
             type="button"

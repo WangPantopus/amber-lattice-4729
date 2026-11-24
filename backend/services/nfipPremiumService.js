@@ -433,4 +433,6 @@ module.exports = {
   WINDOW_MONTHS,
   FETCH_ROW_CAP,
   SECTION_ID,
+  // The Around you feeds job's region facts (services/aroundYou/regionFacts.js).
+  STATE_BY_FIPS,
 };

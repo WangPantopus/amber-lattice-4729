@@ -26,11 +26,18 @@ export default function ResidencyStatusPage() {
   const { id: homeId } = useParams<{ id: string }>();
   const { progress, loading, error, refresh } = useResidencyProgress(homeId);
   const needsRequest = progress?.next_step === 'address_verification' && progress.request === null;
+  const mailAvailable = progress?.mail_available === true;
   const next = progress ? progress.probation ? probationGuidance[progress.probation] : needsRequest ? {
     title: 'Confirm your address',
     body: 'Check this Home’s address, apartment and how you live here, then send your request. We don’t mail anything until you ask for a postcard.',
   } : guidance[progress.next_step] : null;
   const mailBack = progress?.probation === 'active' || progress?.probation === 'ended' || progress?.probation === 'declined';
+  let body = next?.body;
+  if (!mailAvailable) {
+    if (mailBack) body = 'Household access is limited. Mail verification is currently unavailable. Contact support if you need help.';
+    else if (progress?.next_step === 'address_verification' && !needsRequest) body = 'Your request is saved. Mail verification is currently unavailable.';
+    else if (progress?.next_step === 'ownership_verification') body = 'Continue your ownership claim to see which steps are left.';
+  }
   return <main className="mx-auto max-w-lg px-4 py-6 pb-28">
     <Link href="/app/homes" className="inline-block rounded-lg py-2 text-sm font-semibold text-app-text-secondary">← My Homes</Link>
     <h1 className="mt-3 text-2xl font-semibold text-app-text">Residency status</h1>
@@ -47,15 +54,15 @@ export default function ResidencyStatusPage() {
         </section>}
         <section className="rounded-xl border border-app-border bg-app-surface p-5" aria-label="Current next step">
           <h2 className="text-lg font-semibold text-app-text">{next.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-app-text-secondary">{next.body}</p>
+          <p className="mt-2 text-sm leading-6 text-app-text-secondary">{body}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             {progress.next_step === 'home' && <Link href={`/app/homes/${homeId}/dashboard`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Open Home</Link>}
             {progress.next_step === 'resubmit' && <Link href={`/app/homes/new?joinHome=${homeId}`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Check address and send again</Link>}
             {needsRequest && <Link href={`/app/homes/new?joinHome=${homeId}`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Check address</Link>}
-            {((progress.next_step === 'address_verification' && !needsRequest) || mailBack) && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Verify by mail</Link>}
+            {mailAvailable && ((progress.next_step === 'address_verification' && !needsRequest) || mailBack) && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Verify by mail</Link>}
             {progress.next_step === 'ownership_verification' && <Link href={`/app/homes/${homeId}/claim-owner/evidence`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Continue ownership verification</Link>}
             {/* While ownership waits, a pending owner can still prove the address by mail (founder decision, 2026-10-06). */}
-            {progress.next_step === 'ownership_verification' && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text">Verify by mail</Link>}
+            {mailAvailable && progress.next_step === 'ownership_verification' && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text">Verify by mail</Link>}
             <button type="button" onClick={() => void refresh()} className="rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text">Refresh status</button>
           </div>
         </section>

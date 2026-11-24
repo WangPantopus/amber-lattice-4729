@@ -14,7 +14,7 @@ let query = new URLSearchParams();
 jest.mock('next/navigation', () => ({ useParams: () => ({ id: homeId }), useRouter: () => ({ push }), useSearchParams: () => query }));
 jest.mock('../src/components/home/useClaimUploadSession', () => ({ useClaimUploadSession: () => ({ scope: opened ? scope : null, error: '', assertCurrent, retry: jest.fn() }) }));
 jest.mock('../src/components/ui/toast-store', () => ({ toast: { error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
-jest.mock('@pantopus/api', () => ({ homeOwnership: { submitOwnershipClaim: jest.fn(), getMyOwnershipClaims: jest.fn() }, upload: { uploadOwnershipEvidence: jest.fn() } }));
+jest.mock('@pantopus/api', () => ({ authSessionMarker: () => 'session', getAuthToken: () => 'synthetic', homeOwnership: { submitOwnershipClaim: jest.fn(), getMyOwnershipClaims: jest.fn(), getCurrentPostcardStatus: jest.fn(async () => ({ home_id: homeId, can_request: false, can_resume: false, can_verify: false })) }, upload: { uploadOwnershipEvidence: jest.fn() } }));
 const upload = jest.mocked(api.upload.uploadOwnershipEvidence);
 const submit = jest.mocked(api.homeOwnership.submitOwnershipClaim);
 const read = jest.mocked(api.homeOwnership.getMyOwnershipClaims);

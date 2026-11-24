@@ -159,12 +159,12 @@ interface PlaceVerifySheetDeps {
 /**
  * A landlord request can only be answered by a verified landlord, so that door
  * joins once the Home has one (or the person already has a request). An
- * unreadable status keeps the two doors that work without a landlord.
+ * unreadable status keeps the document option.
  */
 @Composable
 private fun rememberVerifyMethods(homeId: String?): List<PlaceVerifyMethod> {
     val context = LocalContext.current
-    var methods by remember(homeId) { mutableStateOf(listOf(PlaceVerifyMethod.MAIL, PlaceVerifyMethod.DOCUMENT)) }
+    var methods by remember(homeId) { mutableStateOf(listOf(PlaceVerifyMethod.DOCUMENT)) }
     LaunchedEffect(homeId) {
         if (homeId == null) return@LaunchedEffect
         val repository =
@@ -172,8 +172,13 @@ private fun rememberVerifyMethods(homeId: String?): List<PlaceVerifyMethod> {
                 .fromApplication(context.applicationContext, PlaceVerifySheetDeps::class.java)
                 .tenantRepository()
         val status = (repository.homeStatus(homeId) as? NetworkResult.Success)?.data
-        if (status != null && status.matches(homeId) && status.offersLandlordConfirmation) {
-            methods = listOf(PlaceVerifyMethod.MAIL, PlaceVerifyMethod.DOCUMENT, PlaceVerifyMethod.LANDLORD)
+        if (status != null && status.matches(homeId)) {
+            methods =
+                buildList {
+                    if (status.mailAvailable) add(PlaceVerifyMethod.MAIL)
+                    add(PlaceVerifyMethod.DOCUMENT)
+                    if (status.offersLandlordConfirmation) add(PlaceVerifyMethod.LANDLORD)
+                }
         }
     }
     return methods
@@ -218,8 +223,8 @@ fun PlaceVerifySheet(
     var selected by remember { mutableStateOf(PlaceVerifyMethod.MAIL) }
     val methods = rememberVerifyMethods(homeId)
     val documentInReview = rememberDocumentInReview(homeId)
-    // A document already in review isn't a door to choose: mail leads again.
-    val chosen = if (documentInReview && selected == PlaceVerifyMethod.DOCUMENT) PlaceVerifyMethod.MAIL else selected
+    val available = methods.filter { it != PlaceVerifyMethod.DOCUMENT || !documentInReview }
+    val chosen = selected.takeIf { it in available } ?: available.firstOrNull()
     // The server's ways to verify (FASTVERIFY); null while `home_fast_verify` is off, and the sheet is today's.
     val options = rememberVerifyOptions(homeId)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -246,7 +251,7 @@ fun PlaceVerifySheet(
 private fun TodaySheetContent(
     address: String,
     methods: List<PlaceVerifyMethod>,
-    chosen: PlaceVerifyMethod,
+    chosen: PlaceVerifyMethod?,
     documentInReview: Boolean,
     onChoose: (PlaceVerifyMethod) -> Unit,
     onStart: (PlaceVerifyMethod) -> Unit,
@@ -314,7 +319,7 @@ private fun TodaySheetContent(
                 modifier = Modifier.padding(top = 1.dp),
             )
             Text(
-                "Postcards take about a week; documents are reviewed by a person. " +
+                "A reviewer checks your document. " +
                     "Everything you have now stays available while you wait.",
                 fontSize = 12.5.sp,
                 lineHeight = 18.sp,
@@ -322,7 +327,9 @@ private fun TodaySheetContent(
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
-        PrimaryButton(title = "Start verification", onClick = { onStart(chosen) }, modifier = Modifier.fillMaxWidth())
+        if (chosen != null) {
+            PrimaryButton(title = "Start verification", onClick = { onStart(chosen) }, modifier = Modifier.fillMaxWidth())
+        }
         Spacer(modifier = Modifier.height(20.dp))
     }
 }
@@ -355,7 +362,7 @@ internal fun VerifyRow(
 @Composable
 private fun VerifyDoors(
     methods: List<PlaceVerifyMethod>,
-    chosen: PlaceVerifyMethod,
+    chosen: PlaceVerifyMethod?,
     documentInReview: Boolean,
     onChoose: (PlaceVerifyMethod) -> Unit,
     onOpenDocumentStatus: (() -> Unit)?,

@@ -1,10 +1,19 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /terms
 // frontend/apps/web/src/app/(site)/terms/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/terms',
+  title: 'Terms of service in plain language',
+  description:
+    'The terms you agree to when you use Pantopus, in plain language: your account, what you post, payments, home claims and verification, and safety and moderation.',
+});
 
 export default function TermsPage() {
   return (
@@ -250,7 +259,7 @@ function SiteNav() {
             <LayoutDashboard className="w-7 h-7 text-primary-600" />
             <div className="flex flex-col leading-none">
               <span className="text-xl font-bold tracking-tight text-primary-700 dark:text-primary-400">Pantopus</span>
-              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Your real-world network</span>
+              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Real life, connected</span>
             </div>
           </Link>
           <div className="flex items-center gap-3">
@@ -274,15 +283,16 @@ function SiteFooter() {
               <span className="text-lg font-bold text-white">Pantopus</span>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
-              Your real-world network. Verified people, real homes, local work, and Beacons in one place.
+              Real life, connected. Every account starts at a real home.
             </p>
           </div>
           <div>
             <h3 className="text-white font-semibold mb-4 text-sm">Product</h3>
             <ul className="space-y-2.5 text-sm">
-              <li><Link href="/#features" className="hover:text-white transition">Features</Link></li>
               <li><Link href="/#how-it-works" className="hover:text-white transition">How it works</Link></li>
-              <li><Link href="/#trust" className="hover:text-white transition">Security</Link></li>
+              <li><Link href="/start" className="hover:text-white transition">See your place</Link></li>
+              <li><Link href="/property-records" className="hover:text-white transition">Property records</Link></li>
+              <li><Link href="/tax-check" className="hover:text-white transition">Property tax check</Link></li>
             </ul>
           </div>
           <div>

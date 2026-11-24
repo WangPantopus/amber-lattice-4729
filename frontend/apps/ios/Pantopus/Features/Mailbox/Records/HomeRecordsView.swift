@@ -12,7 +12,7 @@
 //  Mirrors `ui/screens/mailbox/home_records/HomeRecordsScreen.kt`.
 //
 
-// swiftlint:disable type_body_length
+// swiftlint:disable type_body_length file_length
 
 import SwiftUI
 
@@ -34,6 +34,8 @@ public struct HomeRecordsView: View {
         }
         .background(Theme.Color.appBg)
         .navigationBarBackButtonHidden(true)
+        // On an iPad window wide enough the assets lie in a grid across it and an asset's details sit beside its mail.
+        .wideColumnsScreen()
         .accessibilityIdentifier("homeRecords")
         .task { await viewModel.load() }
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
@@ -89,6 +91,7 @@ public struct HomeRecordsView: View {
         }
         .padding(.horizontal, Spacing.s4)
         .padding(.bottom, Spacing.s2)
+        .topBarSpansWindow()
     }
 
     private var subtitle: String {
@@ -150,8 +153,16 @@ public struct HomeRecordsView: View {
                 if viewModel.rooms.count > 1 {
                     roomChips
                 }
-                ForEach(viewModel.filteredAssets) { asset in
-                    AssetLinkCard(asset: asset) { viewModel.openAsset(asset) }
+                if WideLayout.isPad {
+                    // On an iPad, as many assets across as fit at a phone card's width.
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 340), spacing: Spacing.s3, alignment: .top)],
+                        spacing: Spacing.s3
+                    ) {
+                        assetCards
+                    }
+                } else {
+                    assetCards
                 }
                 if viewModel.filteredAssets.isEmpty {
                     Text("No assets in this room.")
@@ -167,6 +178,12 @@ public struct HomeRecordsView: View {
         }
         .refreshable { await viewModel.refresh() }
         .accessibilityIdentifier("homeRecords_list")
+    }
+
+    private var assetCards: some View {
+        ForEach(viewModel.filteredAssets) { asset in
+            AssetLinkCard(asset: asset) { viewModel.openAsset(asset) }
+        }
     }
 
     private var autoDetect: some View {
@@ -231,16 +248,33 @@ public struct HomeRecordsView: View {
 
     // MARK: - Asset detail
 
+    @ViewBuilder
     private func assetDetail(_ asset: HomeRecordAsset) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.s3) {
-                detailsCard(asset)
-                linkedMailCard
+        if WideLayout.isPad {
+            // The details beside the linked mail, where the window holds two columns.
+            ScrollView {
+                WideColumns {
+                    detailsCard(asset)
+                        .placeColumn(.leading, order: 0)
+                    linkedMailCard
+                        .padding(.top, Spacing.s3)
+                        .placeColumn(.trailing, order: 1, trimsTop: Spacing.s3)
+                }
+                .wideColumnsMargins(Spacing.s4)
+                .padding(.bottom, Spacing.s10)
             }
-            .padding(.horizontal, Spacing.s4)
-            .padding(.bottom, Spacing.s10)
+            .accessibilityIdentifier("homeRecords_assetDetail")
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.s3) {
+                    detailsCard(asset)
+                    linkedMailCard
+                }
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s10)
+            }
+            .accessibilityIdentifier("homeRecords_assetDetail")
         }
-        .accessibilityIdentifier("homeRecords_assetDetail")
     }
 
     private func detailsCard(_ asset: HomeRecordAsset) -> some View {
@@ -464,6 +498,10 @@ public struct HomeRecordsView: View {
                 .padding(.vertical, Spacing.s3)
                 .background(Theme.Color.appText.opacity(0.92))
                 .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
+                // Not stretched across an iPad window.
+                .mailPadBarWidth()
                 .padding(.horizontal, Spacing.s4)
                 .accessibilityIdentifier("homeRecords_undoBar")
             }
@@ -475,6 +513,8 @@ public struct HomeRecordsView: View {
                     .padding(.vertical, Spacing.s2)
                     .background(Theme.Color.appText.opacity(0.9))
                     .clipShape(Capsule())
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
                     .accessibilityIdentifier("homeRecords_toast")
                     .task {
                         try? await Task.sleep(nanoseconds: 2_200_000_000)

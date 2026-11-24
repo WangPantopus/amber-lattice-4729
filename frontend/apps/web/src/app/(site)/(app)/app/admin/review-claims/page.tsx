@@ -453,7 +453,7 @@ export default function AdminReviewClaimsPage() {
             {claimDetail.approval ? <ClaimReviewApprovalPanel approval={claimDetail.approval} /> : null}
 
             {/* Evidence */}
-            <section>
+            {!claimDetail.evidence_archived && <section>
               <h3 className="text-xs font-bold text-app-text-secondary uppercase tracking-wider mb-2">
                 Evidence ({claimDetail.evidence?.length || 0})
               </h3>
@@ -498,7 +498,7 @@ export default function AdminReviewClaimsPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </section>}
 
             {/* Actions */}
             <section className="pt-4 border-t border-app-border space-y-3">

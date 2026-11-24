@@ -7,6 +7,7 @@
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const householdClaimConfig = require('../config/householdClaims');
+const { isOpenForReview } = require('./homeClaimRoutingService');
 const homeClaimIdentityService = require('./homeClaimIdentityService');
 
 /**
@@ -51,20 +52,21 @@ function infoRequest(claim, documentTimes) {
 
 /** The claims `userId` made, newest first, with masked statuses. Throws when they can't be read. */
 async function listOwnClaims(userId) {
-  const { data: claims, error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('HomeOwnershipClaim')
-    .select('id, home_id, claim_type, state, claim_phase_v2, method, created_at, updated_at, reviewed_at, review_note, home:home_id ( address, address2, city, state )')
+    .select('id, home_id, claim_type, state, claim_phase_v2, terminal_reason, merged_into_claim_id, expires_at, method, created_at, updated_at, reviewed_at, review_note, home:home_id ( address, address2, city, state )')
     .eq('claimant_user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+  const claims = (data || []).filter(claim => isOpenForReview(claim));
 
   // Whether each claim has documents, so a claim started from Add Home isn't
   // described as documents waiting for review, and when each came in. Unknown
   // (null) if unreadable. An identity check is not a document.
   let withEvidence = null;
   const uploadedAt = new Map();
-  const claimIds = (claims || []).map(c => c.id);
+  const claimIds = claims.map(c => c.id);
   if (claimIds.length) {
     const { data: evidence, error: evidenceError } = await supabaseAdmin
       .from('HomeVerificationEvidence')
@@ -82,7 +84,7 @@ async function listOwnClaims(userId) {
   // What each claim in review still needs before it can be approved (the claimant's
   // checklist). Unknown (null) if unreadable; the claims still list.
   let progress = null;
-  const inReview = (claims || []).filter(c => maskClaimState(c.state, c.claim_phase_v2) === 'under_review').map(c => c.id);
+  const inReview = claims.filter(c => maskClaimState(c.state, c.claim_phase_v2) === 'under_review').map(c => c.id);
   if (inReview.length) {
     try {
       progress = await homeClaimIdentityService.progressFor(inReview);
@@ -92,7 +94,7 @@ async function listOwnClaims(userId) {
   }
 
   // The claimed address is the one they entered, so their own claim can name it.
-  return (claims || []).map(c => ({
+  return claims.map(c => ({
     id: c.id,
     home_id: c.home_id,
     claim_type: c.claim_type,

@@ -540,6 +540,64 @@ function addAssessment(section, facts) {
   }
 }
 
+// A home's recorded history may name this many lines (the release keeps no more: scripts/property-index/lib/sales.cjs).
+const MOST_HISTORY_ROWS = 30;
+
+/**
+ * Recorded history (facts.js `recorded_history`, a confirmed owner's only, as all of Property details is): one row per line
+ * of the county's sales table, newest first, in the county's words. A sale shows its price, for all the accounts its deed
+ * covers where there are several; no other line has one. The document number goes under the value. Its rows are built here,
+ * not through Section.add, since one home can have two sales or two quit claims.
+ */
+function historySection(history, many) {
+  const section = new Section('history', RECORD_SECTIONS.find(([key]) => key === 'history')[1]);
+  const lines = Array.isArray(history?.lines) ? history.lines.slice(0, MOST_HISTORY_ROWS) : [];
+  let newestSale = true;
+  lines.forEach((line, index) => {
+    const date = dateLabel(line?.date);
+    if (!date || (!line.sale && !cleanText(line.word))) return;
+    const label = cleanText(line.word) || 'Sale';
+    // The newest sale is the Last sale row's, whose price stays off screens when its deed covers more than this home.
+    let price = line.sale && !(newestSale && many) ? format('money', line.price) : null;
+    if (line.sale) newestSale = false;
+    if (price && line.parcels > 1) price = `${price} for ${grouped(line.parcels)} parcels`;
+    const document = format('code', line.document);
+    section.rows.push({ id: `recorded_history_${index}`, label, value: price ? `${price} \u00b7 ${date}` : date, mono: false,
+      ...(document ? { tag: `Document ${document}` } : {}) });
+  });
+  if (section.rows.length) {
+    const since = /^\d{4}$/.test(String(history.since || '')) ? ` since ${history.since}, when its table begins` : '';
+    section.note = `The county\u2019s lines for this home${since}. No names are kept.`;
+  }
+  return section;
+}
+
+// A home's permits may name this many (the release keeps no more: scripts/property-index/sources/wa-clark.cjs).
+const MOST_PERMIT_ROWS = 30;
+
+/**
+ * Permits (facts.js `permits`, a confirmed owner's only): one row per permit, newest first, the system it dates or the
+ * county's word for its kind, and the month it was issued; its number under the value. Never an applicant's words.
+ */
+function permitsSection(permits) {
+  const section = new Section('permits', RECORD_SECTIONS.find(([key]) => key === 'permits')[1]);
+  const lines = Array.isArray(permits?.lines) ? permits.lines.slice(0, MOST_PERMIT_ROWS) : [];
+  lines.forEach((line, index) => {
+    const date = dateLabel(line?.issued);
+    const label = cleanText(line?.word);
+    if (!date || !label) return;
+    const [month, , year] = date.split(' ');
+    const number = format('code', line.number);
+    section.rows.push({ id: `permits_${index}`, label: sentenceCase(label), value: `${month} ${year}`, mono: false,
+      ...(number ? { tag: `Permit ${number}` } : {}) });
+  });
+  if (section.rows.length) {
+    const from = cleanText(permits.from);
+    section.note = `${from ? `From ${from}.` : 'From the county\u2019s permit records.'} Other cities in the county list only their new buildings here.`;
+  }
+  return section;
+}
+
 function estimateSection(estimate) {
   const section = new Section('value', 'Value');
   for (const row of estimateRows(estimate)) section.add(row.id, row.label, row.value, true);
@@ -664,6 +722,8 @@ function serializePropertyRecord(copy, estimate = null) {
     addFacts(sale, facts, ['sale'], (fact) => !(many && fact === FACTS.sale_price));
     if (many) sale.note = COVERS_MORE_NOTE;
     sections.push(assessment, sale);
+    if (facts.recorded_history) sections.push(historySection(facts.recorded_history, many));
+    if (facts.permits) sections.push(permitsSection(facts.permits));
   }
   if (estimate) sections.push(estimateSection(estimate));
 

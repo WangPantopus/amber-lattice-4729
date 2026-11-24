@@ -161,6 +161,8 @@ struct PlaceDashboardView: View {
                 }
                 .padding(.horizontal, Spacing.s4)
                 .background(Theme.Color.appBg.ignoresSafeArea(edges: .top))
+                // On an iPad the row runs the window's width: Back or the menu in its top-left corner.
+                .topBarSpansWindow()
             }
         }
         .navigationBarBackButtonHidden(true)

@@ -81,6 +81,7 @@ public struct CommunityMailView: View {
         }
         .padding(.horizontal, Spacing.s4)
         .padding(.bottom, Spacing.s2)
+        .topBarSpansWindow()
     }
 
     private var subtitle: String {
@@ -175,18 +176,19 @@ public struct CommunityMailView: View {
 
     private func feed(_ items: [CommunityFeedItem]) -> some View {
         ScrollView {
-            LazyVStack(spacing: Spacing.s3) {
-                ForEach(items) { item in
-                    CommunityFeedCard(
-                        item: item,
-                        onReact: { reaction in
-                            Task { await viewModel.react(itemId: item.id, reaction: reaction) }
-                        },
-                        onRsvp: {
-                            Task { await viewModel.rsvp(itemId: item.id) }
-                        },
-                        onFlag: { viewModel.requestFlag(itemId: item.id) }
-                    )
+            Group {
+                if WideLayout.isPad {
+                    // On an iPad, as many items across as fit at a phone card's width.
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 340), spacing: Spacing.s3, alignment: .top)],
+                        spacing: Spacing.s3
+                    ) {
+                        feedCards(items)
+                    }
+                } else {
+                    LazyVStack(spacing: Spacing.s3) {
+                        feedCards(items)
+                    }
                 }
             }
             .padding(.horizontal, Spacing.s4)
@@ -194,6 +196,21 @@ public struct CommunityMailView: View {
         }
         .refreshable { await viewModel.refresh() }
         .accessibilityIdentifier("communityMail_feed")
+    }
+
+    private func feedCards(_ items: [CommunityFeedItem]) -> some View {
+        ForEach(items) { item in
+            CommunityFeedCard(
+                item: item,
+                onReact: { reaction in
+                    Task { await viewModel.react(itemId: item.id, reaction: reaction) }
+                },
+                onRsvp: {
+                    Task { await viewModel.rsvp(itemId: item.id) }
+                },
+                onFlag: { viewModel.requestFlag(itemId: item.id) }
+            )
+        }
     }
 
     private var skeleton: some View {
@@ -223,6 +240,8 @@ public struct CommunityMailView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s10)
                 .accessibilityIdentifier("communityMail_toast")
                 .task {

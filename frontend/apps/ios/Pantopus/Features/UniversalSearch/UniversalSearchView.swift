@@ -42,7 +42,7 @@ public struct UniversalSearchView: View {
     public var body: some View {
         VStack(spacing: Spacing.s0) {
             header
-            Divider().background(Theme.Color.appBorderSubtle)
+            Divider().background(Theme.Color.appBorderSubtle).topBarSpansWindow()
             tabStrip
             phaseBody
         }
@@ -72,18 +72,24 @@ public struct UniversalSearchView: View {
                 .accessibilityIdentifier("universalSearchBack")
 
                 searchField
+                    // On an iPad the field keeps its place over the results while the header spans the window.
+                    .keepsColumnWidthInSpanningBar(besides: 3 * Spacing.s2 + 44)
             }
             if let hint = viewModel.thresholdHint {
                 Text(hint)
                     .pantopusTextStyle(.caption)
                     .foregroundStyle(Theme.Color.appTextMuted)
                     .padding(.leading, Spacing.s12 + Spacing.s3)
+                    // Under the field, where it was.
+                    .keepsColumnWidthInSpanningBar(besides: 2 * Spacing.s2, alignment: .leading)
                     .accessibilityIdentifier("universalSearchHint")
             }
         }
         .padding(.horizontal, Spacing.s2)
         .padding(.vertical, Spacing.s2)
         .background(Theme.Color.appSurface)
+        // On an iPad the header runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     private var searchField: some View {

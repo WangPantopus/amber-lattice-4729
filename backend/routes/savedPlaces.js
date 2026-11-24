@@ -181,6 +181,34 @@ router.get('/:id/preview', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/saved-places/:id/record — "This home's public record" for a saved address (services/homeRecord, SPEC
+// section 8): the `buyer` state at the saved point, read like its preview above (no lookup is spent, nothing is written
+// about the address).
+router.get('/:id/record', verifyToken, async (req, res) => {
+  if (Joi.string().uuid().validate(req.params.id).error) {
+    return res.status(400).json({ error: 'Invalid saved place id' });
+  }
+  try {
+    const { data: place, error } = await supabaseAdmin
+      .from('SavedPlace')
+      .select('id, label, latitude, longitude, city, state')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!place) return res.status(404).json({ error: 'Saved place not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!Number.isFinite(Number(place.latitude)) || !Number.isFinite(Number(place.longitude))) {
+      return res.status(422).json({ error: 'This saved place has no location.' });
+    }
+    const { fetchFloodCached } = require('./public');
+    return res.json(await require('../services/homeRecord').forSavedPlace(place, { flood: fetchFloodCached }));
+  } catch (err) {
+    logger.error('Failed to load saved place record:', err);
+    return res.status(500).json({ error: 'Failed to load this home\'s record' });
+  }
+});
+
 // POST /api/saved-places — add a saved place
 router.post('/', verifyToken, async (req, res) => {
   try {

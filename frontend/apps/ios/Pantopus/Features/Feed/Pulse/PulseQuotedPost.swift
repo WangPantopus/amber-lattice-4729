@@ -266,6 +266,8 @@ private struct PulseQuotedCardBody: View {
                 Icon(.play, size: 14, strokeWidth: 2.4, color: Theme.Color.appTextInverse)
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(Theme.Color.appText.opacity(0.55)))
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
             }
         }
         .frame(width: 52, height: 52)

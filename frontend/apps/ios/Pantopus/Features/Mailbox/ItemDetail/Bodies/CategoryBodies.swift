@@ -395,6 +395,8 @@ private struct PorchPhotoIllustration: View {
         }
         .aspectRatio(4.0 / 3.0, contentMode: .fit)
         .background(Theme.Color.appText)
+        // Dark under white words in dark mode too (appText is near white there).
+        .environment(\.colorScheme, .light)
         .accessibilityLabel("Courier proof photo at \(photo.location)")
     }
 

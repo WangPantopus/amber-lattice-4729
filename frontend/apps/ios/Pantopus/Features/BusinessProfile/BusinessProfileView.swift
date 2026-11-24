@@ -180,6 +180,8 @@ public struct BusinessProfileView: View {
                 .padding(.horizontal, Spacing.s4)
                 .padding(.vertical, Spacing.s3)
                 .background(Capsule().fill(Theme.Color.appText.opacity(0.95)))
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.horizontal, Spacing.s4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .task(id: undo) {
@@ -329,6 +331,8 @@ struct BusinessProfileLoadedView: View {
             )
         }
         .background(Theme.Color.appBg)
+        // On an iPad window that holds two columns the banner and the sections take the window's whole width.
+        .wideColumnsScreen()
         .overlay(alignment: .bottom) {
             ActionBar(
                 dock: content.dock,
@@ -370,13 +374,37 @@ private struct BusinessProfileSections: View {
             // Plans with businesses (board B6): its upcoming plans, only when the server sends any.
             BusinessUpcomingPlansSection(businessId: content.businessId)
 
-            aboutSection
-            hoursSection
-            serviceAreaSection
-            servicesSection
-            recentWorkSection
-            reviewsSection
+            if WideLayout.isPad {
+                padColumns
+            } else {
+                aboutSection
+                hoursSection
+                serviceAreaSection
+                servicesSection
+                recentWorkSection
+                reviewsSection
+            }
             footer
+        }
+    }
+
+    /// On an iPad window wide enough: who they are and where they work (About, Hours, Service area) in one column,
+    /// what they do and what people say (Services, Recent work, Reviews) beside it. A narrower window keeps one
+    /// column, in the phone's order.
+    private var padColumns: some View {
+        WideColumns {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                aboutSection
+                hoursSection
+                serviceAreaSection
+            }
+            .placeColumn(.leading, order: 0)
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                servicesSection
+                recentWorkSection
+                reviewsSection
+            }
+            .placeColumn(.trailing, order: 1)
         }
     }
 
@@ -861,6 +889,8 @@ private struct FloatingControls: View {
         }
         .padding(.horizontal, Spacing.s3)
         .padding(.top, Spacing.s2)
+        // On an iPad the controls run the window's width: Back in its top-left corner, Share and More in its top-right.
+        .topBarSpansWindow()
     }
 
     private func control(_ icon: PantopusIcon, label: String, action: @escaping @MainActor () -> Void) -> some View {

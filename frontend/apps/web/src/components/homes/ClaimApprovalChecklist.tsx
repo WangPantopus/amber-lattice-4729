@@ -47,8 +47,11 @@ export function approvalSummary(approval: ClaimApprovalProgress): string {
   const identityDone = approval.identity === 'verified';
   const proofDone = approval.proof === 'verified';
   if (identityDone && proofDone) return 'Waiting for approval';
+  if (!identityDone && (approval.identity === 'processing' || !approval.identity_check_available)) {
+    return approval.proof === 'missing' ? 'Document needed' : approval.identity === 'processing' ? 'Checking your ID' : 'Waiting for identity review';
+  }
   if (!identityDone && approval.proof === 'missing') return 'Identity and document needed';
-  if (!identityDone) return approval.identity === 'processing' ? 'Checking your ID' : 'Identity check needed';
+  if (!identityDone) return 'Identity check needed';
   return approval.proof === 'pending' ? 'Document in review' : 'Document needed';
 }
 

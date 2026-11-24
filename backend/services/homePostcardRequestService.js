@@ -62,7 +62,7 @@ async function mailingAddress(homeId) {
     postal_code: h.zipcode, country: h.country || 'US' };
   return validAddress(address) ? address : null;
 }
-async function current(input) {
+async function current(input, { includeAddress = true } = {}) {
   const args = identity(input, false);
   const r = await rpc('get_home_postcard_current_status', args);
   if (r.home_id !== args.p_home_id || r.actor_id !== args.p_actor_id || !date(r.checked_at)
@@ -80,14 +80,21 @@ async function current(input) {
     if (request.state !== 'completed' || request.postcard_id !== p?.id || !validAddress(r.request.address)) throw failure();
     request.address = { ...r.request.address };
   }
+  const canSend = mailVendorService.canSendPostcards();
+  const canRequest = canSend && r.can_request;
+  const restriction = r.restriction || (!canSend && (r.can_request || r.can_resume) ? 'POSTCARD_HOME_UNAVAILABLE' : null);
   return { home_id: r.home_id, actor_id: r.actor_id, checked_at: r.checked_at,
-    can_request: r.can_request, can_resume: r.can_resume, can_verify: r.can_verify,
-    restriction: r.restriction, restriction_message: r.restriction ? MESSAGES[r.restriction] : null,
+    can_request: canRequest, can_resume: canSend && r.can_resume, can_verify: r.can_verify,
+    restriction, restriction_message: restriction ? MESSAGES[restriction] : null,
     request, postcard: p === null ? null : { id: p.id, requested_at: p.requested_at, expires_at: p.expires_at,
       status: p.status, delivery: p.delivery, attempts_remaining: p.attempts_remaining, mail_state: p.mail_state ?? null },
     current_access: 'not_checked',
-    mailing_address: r.can_request ? await mailingAddress(args.p_home_id) : null,
+    mailing_address: includeAddress && canRequest ? await mailingAddress(args.p_home_id) : null,
   };
+}
+async function available(input) {
+  const status = await current(input, { includeAddress: false });
+  return status.can_request || status.can_resume || status.can_verify;
 }
 async function cardInTheMail(args) {
   try {
@@ -119,9 +126,13 @@ async function submit(input) {
     // Missing new-code configuration must not hide an already saved request.
     candidate = null; codeHash = null; keyId = null;
   }
-  const replaced = await cardInTheMail(args);
+  const canSend = mailVendorService.canSendPostcards();
+  const replaced = canSend ? await cardInTheMail(args) : null;
   const work = await rpc('begin_home_postcard_request', { ...args, p_address: input.address,
-    p_candidate_id: candidate, p_code_hash: codeHash, p_code_key_id: keyId });
+    p_candidate_id: canSend ? candidate : null, p_code_hash: codeHash, p_code_key_id: keyId }).catch(error => {
+    if (!canSend && error.code === 'POSTCARD_CODE_KEY_UNAVAILABLE') throw failure('POSTCARD_HOME_UNAVAILABLE', 503);
+    throw error;
+  });
   const result = projectCommand(work, args);
   if (result.state !== 'completed') return result;
   if (replaced && replaced.id !== result.postcard_id) await pullBack(replaced);
@@ -131,6 +142,7 @@ async function submit(input) {
     result.dispatch_error = 'POSTCARD_NO_LONGER_AVAILABLE'; return result;
   }
   if (card.status !== 'pending' || card.dispatch_status !== 'pending' || !work.code_key_id) return result;
+  if (!canSend) { result.dispatch_error = 'POSTCARD_HOME_UNAVAILABLE'; return result; }
   try {
     const code = material.deriveCode({ actorId: args.p_actor_id, homeId: args.p_home_id, postcardId: card.id, keyId: work.code_key_id });
     const claimed = await rpc('claim_home_postcard_current_dispatch', { ...args, p_postcard_id: card.id, p_code_hash: hashPostcardCode(code) });
@@ -220,4 +232,4 @@ function sendError(res, error) {
   const safe = (Object.hasOwn(MESSAGES, error?.code) || error?.code === 'POSTCARD_REQUEST_UNAVAILABLE') && STATUS_CODES.includes(error.statusCode) ? error : failure();
   return res.status(safe.statusCode).json({ code: safe.code, error: safe.message });
 }
-module.exports = { submit, read, cancel, current, reconcileCards, send, sendError };
+module.exports = { submit, read, cancel, current, available, reconcileCards, send, sendError };

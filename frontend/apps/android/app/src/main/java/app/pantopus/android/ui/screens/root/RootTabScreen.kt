@@ -266,6 +266,8 @@ import app.pantopus.android.ui.screens.homes.postal.ScannedPostcardCode
 import app.pantopus.android.ui.screens.homes.property_correction.PROPERTY_CORRECTION_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.property_correction.PropertyCorrectionScreen
 import app.pantopus.android.ui.screens.homes.property_details.PropertyDetailsScreen
+import app.pantopus.android.ui.screens.homes.record.HomeRecordScreen
+import app.pantopus.android.ui.screens.homes.record.HomeRecordViewModel
 import app.pantopus.android.ui.screens.homes.residency.HOME_RESIDENCY_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.residency.HomeResidencyNavigation
 import app.pantopus.android.ui.screens.homes.residency.HomeResidencyProgressScreen
@@ -442,6 +444,8 @@ import app.pantopus.android.ui.screens.profile.OwnerNavigation
 import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_USER_ID_KEY
 import app.pantopus.android.ui.screens.profile.PublicProfileScreen
 import app.pantopus.android.ui.screens.profile.professional.ProfessionalProfileScreen
+import app.pantopus.android.ui.screens.profile.sources.ProfileMarksHolder
+import app.pantopus.android.ui.screens.profile.sources.rememberProfileMarksEntry
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimDetailScreen
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimsScreen
 import app.pantopus.android.ui.screens.saved_places.SavedPlacesScreen
@@ -624,6 +628,11 @@ private object ChildRoutes {
     /** T6.5e (P19.5) — Mailbox Vault list. Personal pillar. */
     const val MAILBOX_VAULT = "mailbox/vault"
     const val HOME_DASHBOARD = "homes/{$HOME_DASHBOARD_HOME_ID_KEY}"
+
+    /** "Your home's record" for a Home (the Home profile's button and the `/homes/:id/record` link). */
+    const val HOME_RECORD = "homes/{${HomeRecordViewModel.HOME_ID_KEY}}/record"
+
+    fun homeRecord(homeId: String): String = "homes/$homeId/record"
 
     /**
      * W3 — Place Intelligence dashboard for a home. The Home tab
@@ -2705,6 +2714,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         }
     SideEffect { MomentRingsHolder.current = if (momentsOn) momentRings else null }
     DisposableEffect(Unit) { onDispose { MomentRingsHolder.current = null } }
+    // The profile with sources: a picture of a person also wears the outer ring of their mark (board 6).
+    if (LaunchFeatures.profileSources) {
+        val profileMarks = rememberProfileMarksEntry()
+        SideEffect { ProfileMarksHolder.current = profileMarks }
+        DisposableEffect(Unit) { onDispose { ProfileMarksHolder.current = null } }
+    }
     // The Place tab's root sits at the bottom of the stack for the whole session. Its host holds the session's
     // current home, which the homes sheet, links and Add Home set, so they reach it from here.
     val placeRootEntry =
@@ -3032,6 +3047,18 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
             }
             is DeepLinkRouter.Destination.VerifyLandlord -> {
                 navController.navigate(ChildRoutes.verifyLandlord(pending.id))
+                DeepLinkRouter.consume()
+            }
+            is DeepLinkRouter.Destination.HomeRecord -> {
+                navController.navigate(ChildRoutes.homeRecord(pending.id))
+                DeepLinkRouter.consume()
+            }
+            is DeepLinkRouter.Destination.ClaimOwnership -> {
+                navController.navigate(ChildRoutes.claimOwnership(pending.id))
+                DeepLinkRouter.consume()
+            }
+            is DeepLinkRouter.Destination.VerifyResidency -> {
+                navController.navigate(ChildRoutes.verifyResidency(pending.id))
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.HomeResidency -> {
@@ -4029,6 +4056,24 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     NeighborMessageReceivedScreen(onBack = { navController.popBackStack() })
                 }
                 composable(
+                    route = ChildRoutes.HOME_RECORD,
+                    arguments = listOf(navArgument(HomeRecordViewModel.HOME_ID_KEY) { type = NavType.StringType }),
+                ) { entry ->
+                    val homeId = entry.arguments?.getString(HomeRecordViewModel.HOME_ID_KEY).orEmpty()
+                    HomeRecordScreen(
+                        title = "Your home’s record",
+                        onBack = { navController.popBackStack() },
+                        onAppLink = { path ->
+                            // The record's id-less buttons name this Home's own claim and address verification.
+                            when (path.removePrefix("/app")) {
+                                "/homes/claim-owner" -> navController.navigate(ChildRoutes.claimOwnership(homeId))
+                                "/homes/verify-address" -> navController.navigate(ChildRoutes.verifyResidency(homeId))
+                                else -> DeepLinkRouter.handle(path)
+                            }
+                        },
+                    )
+                }
+                composable(
                     route = ChildRoutes.HOME_DASHBOARD,
                     arguments = listOf(navArgument(HOME_DASHBOARD_HOME_ID_KEY) { type = NavType.StringType }),
                 ) {
@@ -4099,6 +4144,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenOwnership = { homeId ->
                             navController.navigate(ChildRoutes.homeOwnershipSecurity(homeId))
                         },
+                        onOpenRecord = { homeId -> navController.navigate(ChildRoutes.homeRecord(homeId)) },
                         onOpenPropertyDetails = { homeId ->
                             navController.navigate(ChildRoutes.propertyDetails(homeId))
                         },
@@ -6888,7 +6934,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     PasswordChangeScreen(onBack = { navController.popBackStack() })
                 }
                 composable(ChildRoutes.SETTINGS_VERIFICATION) {
-                    VerificationCenterScreen(onBack = { navController.popBackStack() })
+                    VerificationCenterScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenVerificationHomes = { navController.navigate(ChildRoutes.MY_HOMES) },
+                    )
                 }
                 composable(ChildRoutes.SETTINGS_DEVICES) {
                     DevicesScreen(onBack = { navController.popBackStack() })
@@ -7599,6 +7648,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             onSignIn = { navController.popBackStack() },
                             onCreateAccount = { navController.popBackStack() },
                             onSavePreview = { confirming = true },
+                            onSetUpHome = { address -> navController.navigate(ChildRoutes.addHomeAt(address)) },
                         )
                     } else {
                         // Its own host: the arrival step for the preview just kept, over this lookup only.
@@ -8244,6 +8294,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 ) {
                     VerifyLandlordWizardScreen(
                         onDismiss = { navController.popBackStack() },
+                        onOpenDocumentVerification = { resolvedHomeId ->
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.verifyResidency(resolvedHomeId))
+                        },
                         onOpenPostcardVerification = { resolvedHomeId ->
                             // Replace the wizard with the postcard tracker so
                             // Back returns to the home dashboard, not the
@@ -8450,6 +8504,7 @@ private fun PlaceTabRoot(
                         onCreateAccount = {},
                         onSavePreview = host::openArrival,
                         embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu, addressFocus),
+                        onSetUpHome = { address -> navController.navigate(ChildRoutes.addHomeAt(address)) },
                     )
                 }
         }

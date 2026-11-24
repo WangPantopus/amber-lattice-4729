@@ -32,6 +32,8 @@ export interface AddressAutocompleteProps {
   autoFocus?: boolean;
   /** The field's accessible name where no visible label points at it. */
   ariaLabel?: string;
+  /** The words on the button beside the field, which the hint tells people to choose when suggestions fail. */
+  submitLabel?: string;
 }
 
 const DEBOUNCE_MS = 200;
@@ -45,6 +47,7 @@ export default function AddressAutocomplete({
   placeholder = 'Enter your address',
   autoFocus = false,
   ariaLabel,
+  submitLabel = 'See your place',
 }: AddressAutocompleteProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeoSuggestion[]>([]);
@@ -253,7 +256,7 @@ export default function AddressAutocomplete({
       ) : null}
       {onFallbackChange && (limitMessage || lookupFailed) ? (
         <p className="mt-1 text-[13.5px] text-app-text-secondary">
-          Type the full address, including city and state, then choose See your place.
+          Type the full address, including city and state, then choose {submitLabel}.
         </p>
       ) : null}
     </div>

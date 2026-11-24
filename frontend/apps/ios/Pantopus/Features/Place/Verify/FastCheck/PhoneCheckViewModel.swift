@@ -170,7 +170,7 @@ final class PhoneCheckViewModel {
         case let .server(_, body):
             return FastCheckErrors.message(body) ?? "The phone check isn't available right now. Verify another way."
         case .notFound:
-            return "This way to verify isn't available. Verify by mail instead."
+            return "This way to verify isn't available. Choose another way to verify."
         case .transport:
             return "Can't reach Pantopus. Check your connection."
         default:
@@ -183,8 +183,8 @@ final class PhoneCheckViewModel {
 enum FastCheckErrors {
     static let words: [String: String] = [
         "MAIL_PROOF_REQUIRED": "This needs a mailed code. Ask for the postcard in Place.",
-        "FAST_CHECK_OFF": "This way to verify isn't available. Verify by mail instead.",
-        "FAST_CHECK_ONE_HOME": "A fast check covers one home. Verify this one by mail.",
+        "FAST_CHECK_OFF": "This way to verify isn't available. Choose another way to verify.",
+        "FAST_CHECK_ONE_HOME": "A fast check covers one home. Choose another way to verify this address.",
         "FAST_CHECK_LIMIT": "Too many tries for now. Try again later, or verify another way.",
         "PHONE_IN_USE": "This number already verified another account. Use a different way.",
         "PHONE_INVALID": "Check the number and try again.",

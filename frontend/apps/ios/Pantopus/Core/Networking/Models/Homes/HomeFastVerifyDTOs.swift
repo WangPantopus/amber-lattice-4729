@@ -92,6 +92,10 @@ public struct HomeVerifyOptions: Decodable, Sendable, Hashable {
         option(id)?.available == true
     }
 
+    public var canRequestNeededMail: Bool {
+        needsMail && offers(.mail)
+    }
+
     /// Verified at this Home, by a fast check or by proof.
     public var isVerified: Bool {
         level == .fast || level == .proven

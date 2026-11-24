@@ -43,6 +43,7 @@ public struct MailboxMapView: View {
             ZStack(alignment: .top) {
                 mapLayer(geo: geo)
                 floatingPill
+                    .modifier(MailboxMapPadCard(isOn: Self.padCards(geo)))
                     .padding(.top, geo.safeAreaInsets.top + 4)
                     .padding(.horizontal, 14)
                 categoryChips
@@ -51,8 +52,22 @@ public struct MailboxMapView: View {
             }
             .ignoresSafeArea(edges: .bottom)
         }
+        // On an iPad the map fills the window, and its title, list and details are cards on its leading side, as
+        // Maps lays them out.
+        .readableColumnWidens(from: WideLayout.isPad ? 0 : .infinity)
         .task { await viewModel.load() }
         .accessibilityIdentifier("mailboxMap")
+    }
+
+    /// An iPad window wide enough for the map beside its cards.
+    @MainActor
+    private static func padCards(_ geo: GeometryProxy) -> Bool {
+        WideLayout.isPad && geo.size.width >= 700
+    }
+
+    /// Room under a card floating over the map's bottom edge on an iPad.
+    private static func padCardBottom(_ geo: GeometryProxy) -> CGFloat {
+        max(14, geo.safeAreaInsets.bottom + Spacing.s2)
     }
 
     // MARK: - Derived
@@ -96,8 +111,10 @@ public struct MailboxMapView: View {
         let width = geo.size.width
         switch viewModel.state {
         case let .selected(spot, spots):
-            mapCanvas(width: width, height: Self.selectedMapHeight) {
-                selectedMapContent(spot: spot, context: spots, width: width, height: Self.selectedMapHeight)
+            // On an iPad the details are a card beside the map, which keeps the whole window.
+            let height = Self.padCards(geo) ? geo.size.height : Self.selectedMapHeight
+            mapCanvas(width: width, height: height) {
+                selectedMapContent(spot: spot, context: spots, width: width, height: height)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         case let .populated(spots):
@@ -295,6 +312,7 @@ public struct MailboxMapView: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: -10)
             .gesture(sheetDrag(containerHeight: geo.size.height))
+            .modifier(MailboxMapPadCard(isOn: Self.padCards(geo), bottom: Self.padCardBottom(geo)))
         }
         .accessibilityIdentifier("mailboxMapSheet")
     }
@@ -504,12 +522,19 @@ public struct MailboxMapView: View {
                 detailActionBar(spot)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: geo.size.height - Self.selectedMapHeight + 22)
+            .frame(height: detailPanelHeight(geo))
             .background(Theme.Color.appSurface)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: -10)
+            .modifier(MailboxMapPadCard(isOn: Self.padCards(geo), bottom: Self.padCardBottom(geo)))
         }
         .accessibilityIdentifier("mailboxMapDetail")
+    }
+
+    /// Under the map's strip on a phone; on an iPad, a card under the title and chips, beside the map.
+    private func detailPanelHeight(_ geo: GeometryProxy) -> CGFloat {
+        guard Self.padCards(geo) else { return geo.size.height - Self.selectedMapHeight + 22 }
+        return max(320, geo.size.height - (geo.safeAreaInsets.top + 92) - Self.padCardBottom(geo))
     }
 
     private var detailTopBar: some View {
@@ -1105,3 +1130,22 @@ private struct MailboxPaginationDots: View {
     ) {}
 }
 #endif
+
+/// On an iPad, a card of the map's (its title, list, details) keeps a phone's width on the map's leading side, floating
+/// clear of the bottom edge; on phones it is as drawn.
+private struct MailboxMapPadCard: ViewModifier {
+    let isOn: Bool
+    var bottom: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content
+                .frame(width: 420)
+                .padding(.leading, bottom > 0 ? 14 : 0)
+                .padding(.bottom, bottom)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            content
+        }
+    }
+}

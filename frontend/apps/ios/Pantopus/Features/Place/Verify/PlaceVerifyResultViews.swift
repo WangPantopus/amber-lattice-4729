@@ -30,7 +30,7 @@ struct FastCheckVerifiedView: View {
     let address: String
     /// "What others near you pay in rent" is for renters only.
     let isRenter: Bool
-    let onMailCode: () -> Void
+    let onMailCode: (() -> Void)?
     let onGoToPlace: () -> Void
 
     var body: some View {
@@ -111,14 +111,17 @@ struct FastCheckVerifiedView: View {
                         Text("Residency letters and home Mail")
                             .scaledFont(16)
                             .foregroundStyle(Theme.Color.appText)
-                        Text("Ask for the postcard whenever you need them.")
+                        Text(onMailCode == nil ? "Mail verification is currently unavailable." :
+                            "Ask for the postcard whenever you need them.")
                             .scaledFont(13)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                PlaceTextButton(title: "Mail me a code", minHeight: 44, action: onMailCode)
-                    .accessibilityIdentifier("fastCheck.mailCode")
+                if let onMailCode {
+                    PlaceTextButton(title: "Mail me a code", minHeight: 44, action: onMailCode)
+                        .accessibilityIdentifier("fastCheck.mailCode")
+                }
             }
         }
     }

@@ -504,6 +504,8 @@ private struct PhotoTile: View {
                         Icon(.x, size: 14, color: Theme.Color.appTextInverse)
                             .padding(Spacing.s1)
                             .background(Circle().fill(Theme.Color.appText.opacity(0.65)))
+                            // Dark under white words in dark mode too (appText is near white there).
+                            .environment(\.colorScheme, .light)
                     }
                 )
                 .padding(Spacing.s1)

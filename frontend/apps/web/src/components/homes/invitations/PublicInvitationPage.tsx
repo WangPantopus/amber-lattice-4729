@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Image from 'next/image';
 import { useInvitationPreview } from '@/components/homes/useInvitationPreview';
 import { usernameHandle } from '@pantopus/utils';
+import { invitationRoleLabel } from '../invitationPreviewModel';
 
 const ROLE_LABELS: Record<string, { label: string; icon: string; desc: string }> = {
   roommate: { label: 'Roommate', icon: '🏠', desc: 'Household role with assigned permissions' },
@@ -88,7 +89,9 @@ export default function PublicInvitationPage() {
   const invite = data.invitation;
   const home = data.home;
   const inviter = data.inviter;
-  const roleInfo = ROLE_LABELS[invite.proposed_role || 'member'] || ROLE_LABELS.member;
+  const roleInfo = ROLE_LABELS[invite.proposed_role || 'member'] ?? {
+    label: invitationRoleLabel(invite.proposed_role), icon: '🏠', desc: 'Access follows the permissions assigned to this role.',
+  };
   const homeIcon = HOME_TYPE_ICONS[home?.home_type || 'other'] || '🏠';
 
   // Expired

@@ -21,47 +21,72 @@ struct HolidayCardSealStep: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.s0) {
-            MailPieceView(model: preview)
-                .frame(maxWidth: 380)
-                .rotationEffect(.degrees(1))
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier("sendCardEnvelopePreview")
-            if let entries = recipient.entries {
-                Text("One envelope for each of the \(entries.count) people.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(HolidayCardDesk.muted(scheme))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, Spacing.s3)
-                    .accessibilityIdentifier("sendCardEnvelopeCount")
+        if WideLayout.isPad {
+            // On an iPad window wide enough the envelope as it will go in one column, and when it arrives beside it in the
+            // other; one column, in this order, in a narrower window and at the accessibility sizes.
+            WideColumns {
+                VStack(alignment: .leading, spacing: Spacing.s0) { envelope }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .placeColumn(.leading, order: 0)
+                VStack(alignment: .leading, spacing: Spacing.s0) { choices }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s6)
             }
-            arrivalChoices
-                .padding(.top, Spacing.s6)
-            Text(sealNote)
-                .font(.system(size: 13))
-                .foregroundStyle(MailPaper.cardTextSoft)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-                .padding(.vertical, Spacing.s3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
-                .padding(.top, 14)
-            // The postage is read here too, so a sender who skips Look it over has read it (experience plan 5.1).
-            if cards.postageEnabled {
-                StampPostageLine(
-                    store: viewModel.stamps,
-                    design: design.id,
-                    count: recipient.entries?.count ?? 1,
-                    media: recipient.entries == nil && viewModel.carriesMedia
-                )
-                .padding(.top, Spacing.s3)
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                envelope
+                choices
             }
-            // "Seal and send" and "Look it over" are pinned under the page (`HolidayCardSealFooter`); the page's own
-            // end leaves room for the last line to scroll clear of them.
         }
+    }
+
+    /// The red envelope as it will go, and how many go on a list.
+    @ViewBuilder
+    private var envelope: some View {
+        MailPieceView(model: preview)
+            .frame(maxWidth: 380)
+            .rotationEffect(.degrees(1))
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("sendCardEnvelopePreview")
+        if let entries = recipient.entries {
+            Text("One envelope for each of the \(entries.count) people.")
+                .font(.system(size: 14))
+                .foregroundStyle(HolidayCardDesk.muted(scheme))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, Spacing.s3)
+                .accessibilityIdentifier("sendCardEnvelopeCount")
+        }
+    }
+
+    /// When it should arrive, until when it can be taken back, and the postage.
+    @ViewBuilder
+    private var choices: some View {
+        arrivalChoices
+            .padding(.top, Spacing.s6)
+        Text(sealNote)
+            .font(.system(size: 13))
+            .foregroundStyle(MailPaper.cardTextSoft)
+            .lineSpacing(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, Spacing.s3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
+            .padding(.top, 14)
+        // The postage is read here too, so a sender who skips Look it over has read it (experience plan 5.1).
+        if cards.postageEnabled {
+            StampPostageLine(
+                store: viewModel.stamps,
+                design: design.id,
+                count: recipient.entries?.count ?? 1,
+                media: recipient.entries == nil && viewModel.carriesMedia
+            )
+            .padding(.top, Spacing.s3)
+        }
+        // "Seal and send" and "Look it over" are pinned under the page (`HolidayCardSealFooter`); the page's own
+        // end leaves room for the last line to scroll clear of them.
     }
 
     /// "When should it arrive?" and its three choices; at the table (plan Part 9) on a cream slip lying on the cloth.

@@ -77,8 +77,8 @@ public struct CertifiedTermsSheet: View {
         }
         .padding(Spacing.s4)
         .background(Theme.Color.appBg)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        // On an iPad, a card fitted to what it says instead of a half-empty sheet.
+        .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .visible)
         .accessibilityIdentifier("certifiedTermsSheet")
     }
 }

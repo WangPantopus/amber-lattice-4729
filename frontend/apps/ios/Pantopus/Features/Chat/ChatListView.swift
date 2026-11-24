@@ -313,6 +313,8 @@ private struct ChatListTopBar: View {
         // The Back button's 44 points keep the bar's height with 6 above and below.
         .padding(.vertical, 6)
         .background(Theme.Color.appSurface)
+        // On an iPad the bar runs the window's width: Back in its top-left corner, New message in its top-right.
+        .topBarSpansWindow()
     }
 }
 

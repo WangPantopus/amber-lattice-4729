@@ -454,7 +454,7 @@ private fun PersonRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl)
+        PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl, userId = person.userId)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = person.displayName,
@@ -567,7 +567,7 @@ private fun SentRow(
     ) {
         val person = row.person
         if (person != null) {
-            PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl)
+            PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl, userId = person.userId)
         } else {
             PlanIconTile(
                 when (row.channel) {

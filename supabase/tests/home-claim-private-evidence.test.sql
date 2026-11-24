@@ -125,8 +125,7 @@ BEGIN
     RAISE EXCEPTION 'Resident evidence approval became ownership'; END IF;
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'reserve',pg_temp.ce_id(301),payload),'CLAIM_NOT_ELIGIBLE');
 
-  -- A non-private claimant can retire only their exact unverified bytes after
-  -- a protected withdrawal. A forged terminal row alone supplies no receipt.
+  -- Ordinary application access ends at withdrawal. The original proof remains in company storage.
   h:=pg_temp.ce_id(100);c:=pg_temp.ce_id(207);actor:=pg_temp.ce_id(7);u:=pg_temp.ce_id(307);
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'reserve',u,payload));
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'begin_upload',u));
@@ -137,9 +136,11 @@ BEGIN
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_review(h,c,actor,'withdraw'));
   IF EXISTS(SELECT FROM public."HomeClaimReviewReceipt" WHERE claim_id=c AND private_setup) THEN RAISE EXCEPTION 'Fixture unexpectedly private'; END IF;
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,pg_temp.ce_id(8),'retire',u),'CLAIM_NOT_ELIGIBLE');
-  r:=pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'retire',u));
-  IF r->'record'->>'state'<>'retired' OR (SELECT storage_used FROM public."FileQuota" WHERE user_id=actor)<>0
-    OR public.home_secret_context(h,actor)->>'private'='true' THEN RAISE EXCEPTION 'Withdrawal retirement retained quota or granted private Home'; END IF;
+  PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'retire',u),'CLAIM_NOT_ELIGIBLE');
+  PERFORM pg_temp.ce_expect(public.get_home_claim_evidence(h,c,actor,u),'CLAIM_NOT_FOUND');
+  PERFORM pg_temp.ce_expect(public.get_home_claim_evidence(h,c,admin_id,u,true),'CLAIM_NOT_FOUND');
+  IF NOT EXISTS (SELECT FROM public."HomeClaimEvidenceIntent" WHERE id=u AND state='ready' AND NOT cleanup_pending)
+    OR public.home_secret_context(h,actor)->>'private'='true' THEN RAISE EXCEPTION 'Withdrawal lost filed proof or granted private Home'; END IF;
 
   -- A genuine private creator retains their setup throughout upload/retirement/withdrawal.
   h:=pg_temp.ce_id(101);c:=pg_temp.ce_id(206);actor:=pg_temp.ce_id(6);u:=pg_temp.ce_id(306);
@@ -149,7 +150,6 @@ BEGIN
   r:=pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'begin_upload',u));attempt:=(r->'storage'->>'upload_attempt')::uuid;
   PERFORM pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'finalize',u));
   IF public.home_secret_context(h,actor)->>'private'<>'true' THEN RAISE EXCEPTION 'Pending evidence broke private first use'; END IF;
-  PERFORM pg_temp.ce_expect(public.mutate_home_claim_review(h,c,actor,'withdraw'));
   r:=pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'retire',u));cleanup:=(r->'storage'->>'cleanup_claim')::uuid;
   IF public.home_secret_context(h,actor)->>'private'<>'true' OR (SELECT file_count FROM public."FileQuota"WHERE user_id=actor)<>0 THEN
     RAISE EXCEPTION 'Retirement broke private first use or quota'; END IF;
@@ -157,6 +157,7 @@ BEGIN
   IF public.finish_home_claim_evidence_cleanup(u,cleanup,true) THEN RAISE EXCEPTION 'Late upload accepted stale cleanup'; END IF;
   r:=pg_temp.ce_expect(public.mutate_home_claim_evidence(h,c,actor,'retire',u));
   IF NOT public.finish_home_claim_evidence_cleanup(u,(r->'storage'->>'cleanup_claim')::uuid,true) THEN RAISE EXCEPTION 'Exact cleanup failed'; END IF;
+  PERFORM pg_temp.ce_expect(public.mutate_home_claim_review(h,c,actor,'withdraw'));
   BEGIN DELETE FROM public."File" WHERE id=u; RAISE EXCEPTION 'Deleted private File history'; EXCEPTION WHEN check_violation THEN NULL; END;
   BEGIN DELETE FROM public."HomeVerificationEvidence" WHERE id=u; RAISE EXCEPTION 'Deleted verification history'; EXCEPTION WHEN check_violation THEN NULL; END;
   BEGIN UPDATE public."HomeClaimEvidenceIntent" SET uploaded_by=owner_id WHERE id=u; RAISE EXCEPTION 'Changed uploader'; EXCEPTION WHEN check_violation THEN NULL; END;

@@ -10,7 +10,8 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '51540';
@@ -97,8 +98,18 @@ async function* build({ work, today }) {
   const values = new Map();
   for await (const row of cached(path.join(work, 'va-charlottesville', 'values.jsonl.gz'), () => layerRows(`${SERVICE}/1`, ['ParcelNumber', 'CurrentAssessedValue'], { oid: 'OBJECTID' }))) values.set(row.ParcelNumber, row.CurrentAssessedValue);
   const sales = new Map();
-  for await (const row of cached(path.join(work, 'va-charlottesville', 'sales.jsonl.gz'), () => layerRows(`${SERVICE}/3`, ['ParcelNumber', 'SaleAmount', 'SaleDate'], { oid: 'RecordID_Int' }))) {
+  // Every sale line, for recorded history (facts.js): the layer names no kind for a line, so only its sales show, each with
+  // its deed book and page. A line that isn't a sale has no word for what it is and is left out.
+  const saleLines = new Map();
+  let first = null;
+  for await (const row of cached(path.join(work, 'va-charlottesville', 'sales-lines.jsonl.gz'), () => layerRows(`${SERVICE}/3`, ['ParcelNumber', 'SaleAmount', 'SaleDate', 'BookPage'], { oid: 'RecordID_Int' }))) {
     const [date, price] = [isoDate(row.SaleDate), positive(row.SaleAmount)];
+    if (date && (!first || date < first)) first = date;
+    const line = historyLine({ date, sale: Boolean(date) && isHomeSale(price), price, document: row.BookPage });
+    if (line) {
+      if (!saleLines.has(row.ParcelNumber)) saleLines.set(row.ParcelNumber, []);
+      saleLines.get(row.ParcelNumber).push(line);
+    }
     if (!date || !isHomeSale(price)) continue;
     const held = sales.get(row.ParcelNumber);
     if (!held || held.date < date) sales.set(row.ParcelNumber, { date, price });
@@ -122,6 +133,9 @@ async function* build({ work, today }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the city went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = recordedHistory(saleLines.get(row.ParcelNumber) || [], { since: (first || '').slice(0, 4) });
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }

@@ -80,6 +80,8 @@ public struct VacationHoldView: View {
             .background(Theme.Color.appBg)
         }
         .background(Theme.Color.appBg)
+        // On an iPad window wide enough, the dates and what a hold does sit side by side across the window.
+        .wideColumnsScreen()
         .accessibilityIdentifier("vacationHold")
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .task { await viewModel.load() }
@@ -171,6 +173,7 @@ public struct VacationHoldView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 }
 
@@ -187,6 +190,40 @@ private struct VacationSchedulingBody: View {
     let onTapEmergency: () -> Void
 
     var body: some View {
+        if WideLayout.isPad {
+            // Two columns on an iPad window wide enough: the dates, and what a hold does beside them.
+            WideColumns {
+                whenSection
+                    .placeColumn(.leading, order: 0)
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    holdHelp
+                }
+                // Level with the dates' card, past its "When" overline.
+                .mailTopPaddingWhenSplit(Spacing.s8)
+                .placeColumn(.trailing, order: 1)
+            }
+            .wideColumnsMargins(Spacing.s0)
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                whenSection
+                holdHelp
+            }
+        }
+    }
+
+    /// What a hold does, under the dates (beside them on an iPad).
+    @ViewBuilder
+    private var holdHelp: some View {
+        // What a hold does (Mail build contract, SRV-5).
+        VacationCardHelper(
+            "Ordinary mail waits until you're back. Special deliveries still come. "
+                + "What's held arrives as one bundle the morning you're back."
+        )
+
+        VacationMonoFooter(draft.footerBlurb)
+    }
+
+    private var whenSection: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
             VacationOverline("When")
             whenCard
@@ -206,14 +243,6 @@ private struct VacationSchedulingBody: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("vacationHoldDateError")
             }
-
-            // What a hold does (Mail build contract, SRV-5).
-            VacationCardHelper(
-                "Ordinary mail waits until you're back. Special deliveries still come. "
-                    + "What's held arrives as one bundle the morning you're back."
-            )
-
-            VacationMonoFooter(draft.footerBlurb)
         }
     }
 
@@ -325,31 +354,56 @@ private struct VacationActiveBody: View {
     let onEndHold: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.s0) {
-            HoldStatusHero(
-                daysLeft: hold.daysLeft,
-                untilLabel: hold.untilLabel,
-                stats: [],
-                statusLabel: hold.statusLabel,
-                daysLabel: "days until return"
-            )
-            .padding(.horizontal, Spacing.s3)
-            .padding(.top, 14)
-
-            VacationCardHelper(hold.resumeBlurb)
-
-            VacationCard {
-                VacationDestructiveRow(
-                    label: "End the hold",
-                    sub: "What it kept comes with the next morning's mail",
-                    onTap: onEndHold,
-                    identifier: "vacationHoldEndEarly"
-                )
+        if WideLayout.isPad {
+            // Two columns on an iPad window wide enough: the hold, and ending it beside it.
+            WideColumns {
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    holdStatus
+                }
+                .placeColumn(.leading, order: 0)
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    endHold
+                }
+                // Level with the hero at the top of the other column.
+                .placeColumn(.trailing, order: 1, trimsTop: 4)
             }
-            .padding(.top, 18)
-
-            VacationMonoFooter(hold.activeSinceLabel)
+            .wideColumnsMargins(Spacing.s0)
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                holdStatus
+                endHold
+            }
         }
+    }
+
+    @ViewBuilder
+    private var holdStatus: some View {
+        HoldStatusHero(
+            daysLeft: hold.daysLeft,
+            untilLabel: hold.untilLabel,
+            stats: [],
+            statusLabel: hold.statusLabel,
+            daysLabel: "days until return"
+        )
+        .padding(.horizontal, Spacing.s3)
+        .padding(.top, 14)
+
+        VacationCardHelper(hold.resumeBlurb)
+    }
+
+    @ViewBuilder
+    private var endHold: some View {
+        VacationCard {
+            VacationDestructiveRow(
+                label: "End the hold",
+                sub: "What it kept comes with the next morning's mail",
+                onTap: onEndHold,
+                identifier: "vacationHoldEndEarly"
+            )
+        }
+        .padding(.top, 18)
+
+        VacationMonoFooter(hold.activeSinceLabel)
     }
 }
 
@@ -726,9 +780,8 @@ private struct VacationDatePickerSheet: View {
             Spacer(minLength: 0)
         }
         .background(Theme.Color.appBg)
-        // The graphical calendar, title and Done don't fit the medium detent.
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        // The graphical calendar, title and Done don't fit the medium detent. On an iPad, a card fitted to them.
+        .presentationDetentsFittingContentOnIPad([.large], dragIndicator: .visible)
     }
 }
 
@@ -748,6 +801,8 @@ private struct ToastBanner: View {
             .padding(.vertical, Spacing.s2)
             .background(Theme.Color.appText.opacity(0.9))
             .clipShape(RoundedRectangle(cornerRadius: Radii.pill))
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .accessibilityLabel(message)
     }
 }

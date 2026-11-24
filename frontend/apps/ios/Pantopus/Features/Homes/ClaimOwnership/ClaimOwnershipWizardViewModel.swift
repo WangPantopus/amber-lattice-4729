@@ -204,7 +204,7 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
 
     // MARK: - Init
 
-    private let homeId: String
+    let homeId: String
     private let api: APIClient
     private let isOnlineProvider: @MainActor () -> Bool
 

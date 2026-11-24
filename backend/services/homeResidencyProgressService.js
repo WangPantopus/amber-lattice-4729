@@ -1,4 +1,5 @@
 const db = require('../config/supabaseAdmin');
+const postcardRequests = require('./homePostcardRequestService');
 const { readAccessState } = require('./homeListService');
 const { currentOccupancy } = require('../utils/homeAccessPolicy');
 
@@ -48,7 +49,7 @@ async function list(actorId, after) {
   // Stable UUID ordering permits bounded pagination even when a request's
   // status/date changes. A page never silently truncates the personal history.
   async function page() {
-    let query = db.from('HomeResidencyClaim').select(COLUMNS).eq('user_id', actorId).order('id').limit(51);
+    let query = db.from('HomeResidencyClaim').select(COLUMNS).eq('user_id', actorId).eq('status', 'pending').order('id').limit(51);
     if (after) query = query.gt('id', after.toLowerCase());
     const result = await checked(query);
     if (!Array.isArray(result)) throw failure();
@@ -122,11 +123,15 @@ async function read(homeId, actorId) {
   if (JSON.stringify(await references(homeId, actorId)) !== JSON.stringify(refs)) throw failure('RESIDENCY_PROGRESS_CHANGED');
   const current = await readAccessState(homeId, actorId);
   if (JSON.stringify(current) !== JSON.stringify(opening)) throw failure('RESIDENCY_PROGRESS_CHANGED');
+  const next = nextStep(refs, current, actorId);
+  const probationState = current.mode === 'shared' ? null : probation(current.access.occupancy, refs.dispute);
+  const mayUseMail = ['ownership_verification', 'address_verification'].includes(next)
+    || ['active', 'ended', 'declined'].includes(probationState);
   return {
-    home_id: homeId, request: refs.request ? project(refs.request) : null,
+    home_id: homeId, request: refs.request?.status === 'pending' ? project(refs.request) : null,
     current_access: current.mode === 'shared' ? 'shared' : current.mode === 'private_setup' ? 'private_setup' : 'none',
-    next_step: nextStep(refs, current, actorId),
-    probation: current.mode === 'shared' ? null : probation(current.access.occupancy, refs.dispute),
+    next_step: next, probation: probationState,
+    mail_available: mayUseMail && await postcardRequests.available({ homeId, actorId }).catch(() => false),
   };
 }
 function sendError(res, error) {

@@ -1174,6 +1174,8 @@ public struct PulseComposeContent: View {
                 }
                 Circle()
                     .fill(Theme.Color.appText.opacity(0.7))
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
                     .frame(width: 18, height: 18)
                     .overlay(
                         Icon(.x, size: 10, strokeWidth: 2.5, color: Theme.Color.appTextInverse)

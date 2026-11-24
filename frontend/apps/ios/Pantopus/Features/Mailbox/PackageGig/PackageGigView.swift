@@ -93,6 +93,7 @@ public struct PackageGigView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     // MARK: - Form frame
@@ -152,6 +153,8 @@ public struct PackageGigView: View {
 
                 submitButton
             }
+            // A form's width on an iPad, centered.
+            .mailPadFormWidth()
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s4)
             .padding(.bottom, Spacing.s10)
@@ -355,6 +358,8 @@ public struct PackageGigView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("packageGig_viewListing")
             }
+            // A form's width on an iPad, centered.
+            .mailPadFormWidth(MailPadLayout.barWidth)
             .padding(.horizontal, Spacing.s5)
             .padding(.top, Spacing.s10)
             .padding(.bottom, Spacing.s10)

@@ -183,6 +183,8 @@ struct PostGigV1PhotoTile: View {
                     .padding(.vertical, 2)
                     .background(Theme.Color.appText.opacity(0.78))
                     .clipShape(RoundedRectangle(cornerRadius: Radii.xs, style: .continuous))
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(Spacing.s1)
                     .accessibilityHidden(true)
@@ -193,6 +195,8 @@ struct PostGigV1PhotoTile: View {
                     .frame(width: 24, height: 24)
                     .background(Theme.Color.appText.opacity(0.72))
                     .clipShape(Circle())
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
             }
             .buttonStyle(.plain)
             .padding(5)

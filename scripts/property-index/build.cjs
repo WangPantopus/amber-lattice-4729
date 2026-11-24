@@ -10,6 +10,7 @@
 // it was and where in this code, never what row it was reading. No packages: Node, curl and unzip.
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
@@ -19,6 +20,7 @@ const { buildModel } = require('./lib/value-model.cjs');
 const { markSharedDeeds } = require('./lib/shared-deeds.cjs');
 const { deriveFacts } = require('./lib/derive.cjs');
 const { measureFacts } = require('./lib/measure.cjs');
+const { holdLotRings } = require('./lib/lot-rings.cjs');
 const { STATE_FILES, compareRecords } = require('./lib/agreement.cjs');
 const { dropPlaceholders } = require('./lib/placeholders.cjs');
 const { settleMapLots } = require('./lib/held.cjs');
@@ -28,7 +30,7 @@ const RECORD_KEYS = new Set(['id', 'kind', 'home_type', 'address', 'facts', 'hel
 // The lists a record's held facts may sit under (format.js `held`, router.js), and measured_rows' years beside them;
 // bath_totals marks facts the record states as well, which leave its screens once the county is on that list; mapped_lots
 // marks a lot it states that the county's parcel map measured, which says so once the county is on that list (lib/held.cjs).
-const HELD_LISTS = new Set(['new_columns', 'derived_rows', 'measured_rows', 'measured_years', 'bath_totals', 'mapped_lots']);
+const HELD_LISTS = new Set(['new_columns', 'derived_rows', 'measured_rows', 'measured_years', 'bath_totals', 'mapped_lots', 'lot_rings']);
 // The lists a county may say where facts come from, in words (format.js `held_from`).
 const WORDED_LISTS = new Set(['new_columns', 'derived_rows', 'measured_rows', 'mapped_lots']);
 const LOT_FACTS = new Set(['lot_acres', 'lot_sqft']);
@@ -62,6 +64,8 @@ function assertAllowed(records) {
       if (list === 'measured_years') for (const year of Object.values(facts)) if (!Number.isInteger(year)) throw new Error('A measured year isn\'t a year');
       if (list === 'bath_totals') for (const [key, value] of Object.entries(facts)) if (record.facts?.[key] !== value) throw new Error('A record marks a bath count it doesn\'t state');
       if (list === 'mapped_lots') for (const [key, value] of Object.entries(facts)) if (!LOT_FACTS.has(key) || record.facts?.[key] !== value) throw new Error('A record marks a lot it doesn\'t state');
+      if (list === 'lot_rings' && (Object.keys(facts).join() !== 'lot_ring' || !Array.isArray(facts.lot_ring) || facts.lot_ring.length < 4
+        || !facts.lot_ring.every((point) => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)))) throw new Error('A record holds a lot outline that isn\'t a ring');
     }
   }
 }
@@ -72,6 +76,22 @@ function assertHeldFrom(heldFrom) {
     if (!WORDED_LISTS.has(list)) throw new Error(`A county says where facts under ${list} come from`);
     for (const [key, text] of Object.entries(words)) if (!FACTS[key] || typeof text !== 'string') throw new Error(`A county's held_from names ${key}`);
   }
+}
+
+const REPO = path.resolve(__dirname, '..', '..');
+
+/**
+ * Which reader made a release (`reader` in its county's state entry): a hash of this repository's code the build had loaded
+ * when its source gave a county, the connector, its libraries and the backend files they share. Two releases with the same
+ * reader read their county's files the same way, so what differs between them is the county's (homeRecord.js keeps such
+ * differences on a Home's copy for "Worth a look"). Any change to that code is a new reader, and a refresh across it says
+ * nothing. Files read as data rather than required aren't in it.
+ */
+function readerStamp() {
+  const files = Object.keys(require.cache).filter((file) => file.startsWith(REPO + path.sep) && !file.includes(`${path.sep}node_modules${path.sep}`)).sort();
+  const hash = crypto.createHash('sha256');
+  for (const file of files) hash.update(path.relative(REPO, file)).update('\0').update(fs.readFileSync(file)).update('\0');
+  return hash.digest('hex').slice(0, 16);
 }
 
 function releaseId(asOf, built) {
@@ -117,7 +137,10 @@ async function main() {
   const source = require(`./sources/${path.basename(opts.source)}.cjs`);
   const built = new Date();
 
+  // Taken as the source gives its first county, before a comparison loads another connector (agreementOf).
+  let reader = null;
   for await (const county of await source.build({ work, today: built })) {
+    reader = reader || readerStamp();
     const { records, stale_after_days: staleAfterDays, extra_zips: extraZips = [], ...about } = county;
     // parse() also says which form an address came in (addressKey.js). A record keeps only its parts.
     for (const { address } of records) delete address.form;
@@ -145,6 +168,10 @@ async function main() {
         log(`${about.fips}: measured rows skipped: ${err.constructor === Error && !/JSON|Unexpected/.test(err.message) ? err.message : err.name}`);
       }
     }
+    // Each house's lot as a simplified ring from the same parcel map, held off screens until the county's lot_rings switch is on
+    // (lib/lot-rings.cjs), for the home record's photo from above. PROPERTY_INDEX_LOT_RINGS=off skips them; a map that can't
+    // be read leaves the release without them.
+    if (shapes && process.env.PROPERTY_INDEX_LOT_RINGS !== 'off') await holdLotRings(records, about, { work, parcelShapes: shapes });
     const heldFrom = derived?.held_from || about.held_from || measured || mapWords ? { ...about.held_from, ...mapWords, ...derived?.held_from, ...measured } : null;
     assertHeldFrom(heldFrom);
     const shared = markSharedDeeds(records);
@@ -178,6 +205,7 @@ async function main() {
       zips: [...zips].sort(),
       cities: [...cities].sort(),
       records: report.records,
+      reader,
       ...(heldFrom ? { held_from: heldFrom } : {}),
       ...(valueModel ? { value_model: valueModel } : {}),
     }));

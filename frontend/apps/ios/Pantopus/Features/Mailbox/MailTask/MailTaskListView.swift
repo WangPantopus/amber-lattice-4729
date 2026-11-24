@@ -19,7 +19,7 @@
 //  archetype. Mirrors `MailTaskListScreen.kt` on Android.
 //
 
-// swiftlint:disable function_body_length type_body_length
+// swiftlint:disable function_body_length type_body_length file_length
 
 import SwiftUI
 
@@ -111,6 +111,7 @@ public struct MailTaskListView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     // MARK: - Content
@@ -170,16 +171,12 @@ public struct MailTaskListView: View {
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .accessibilityIdentifier("mailTaskList_counts")
 
-                ForEach(active) { row in
-                    taskCard(row)
-                }
+                taskCards(active)
 
                 if !completed.isEmpty {
                     completedToggle(count: completed.count)
                     if viewModel.showsCompleted {
-                        ForEach(completed) { row in
-                            taskCard(row)
-                        }
+                        taskCards(completed)
                     }
                 }
             }
@@ -189,6 +186,25 @@ public struct MailTaskListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .refreshable { await viewModel.refresh() }
+    }
+
+    /// The tasks one under another; on an iPad, as many across as fit at a phone card's width.
+    @ViewBuilder
+    private func taskCards(_ rows: [MailTaskRow]) -> some View {
+        if WideLayout.isPad {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 340), spacing: Spacing.s3, alignment: .top)],
+                spacing: Spacing.s3
+            ) {
+                ForEach(rows) { row in
+                    taskCard(row)
+                }
+            }
+        } else {
+            ForEach(rows) { row in
+                taskCard(row)
+            }
+        }
     }
 
     private func completedToggle(count: Int) -> some View {
@@ -409,6 +425,8 @@ public struct MailTaskListView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("mailTaskList_seeAll")
             }
+            // A form's width on an iPad, centered.
+            .mailPadFormWidth()
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s4)
             .padding(.bottom, Spacing.s10)
@@ -487,6 +505,8 @@ public struct MailTaskListView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s10)
                 .transition(.opacity)
                 .task {

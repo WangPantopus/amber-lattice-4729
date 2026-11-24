@@ -23,6 +23,9 @@ struct HolidayCardCollectionPage: View {
     @State private var pageHeight: CGFloat = 700
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Pick a card as a page across an iPad window: the grid runs the page's width, as many across as a shelf shows,
+    /// every card in the same frame.
+    @Environment(\.holidayCardWidePage) private var widePage
 
     private static func partId(_ index: Int) -> String {
         "sendCardPart.\(index)"
@@ -31,8 +34,9 @@ struct HolidayCardCollectionPage: View {
     var body: some View {
         let all = cards.designs(in: collection)
         let parts = collection.parts.filter { part in part.designs.contains { id in all.contains { $0.id == id } } }
-        let column = min(width - Spacing.s8, 560)
-        let columns = Self.columns(column: column, screen: width)
+        let margin = widePage ? HolidayCardPad.margin : Spacing.s4
+        let column = widePage ? min(width - margin * 2, HolidayCardPad.pageWidth) : min(width - Spacing.s8, 560)
+        let columns = widePage ? HolidayCardShelfSizes.padAcross(column: column) : Self.columns(column: column, screen: width)
         ScrollViewReader { scroller in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Spacing.s0, pinnedViews: [.sectionHeaders]) {
@@ -49,12 +53,17 @@ struct HolidayCardCollectionPage: View {
                                 }
                             }
                         } header: {
-                            pills(parts, scroller: scroller)
+                            pills(
+                                parts,
+                                scroller: scroller,
+                                margin: margin,
+                                bleed: widePage ? max(margin, (width - column) / 2) : Spacing.s16
+                            )
                         }
                     }
                 }
                 .frame(maxWidth: column)
-                .padding(.horizontal, Spacing.s4)
+                .padding(.horizontal, margin)
                 .padding(.bottom, Spacing.s8)
                 .frame(maxWidth: .infinity)
             }
@@ -104,8 +113,14 @@ struct HolidayCardCollectionPage: View {
 
     // MARK: Parts
 
-    /// The parts' names as the flow's pills, staying under the title row; the part in view in wax red.
-    private func pills(_ parts: [HolidayCardCollectionPart], scroller: ScrollViewProxy) -> some View {
+    /// The parts' names as the flow's pills, staying under the title row; the part in view in wax red. The row runs out
+    /// over the page's `margin` at each side, its background out to the screen's edges (`bleed` from the page's edge).
+    private func pills(
+        _ parts: [HolidayCardCollectionPart],
+        scroller: ScrollViewProxy,
+        margin: CGFloat,
+        bleed: CGFloat
+    ) -> some View {
         let current = passed.max() ?? 0
         return ScrollViewReader { row in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -123,9 +138,9 @@ struct HolidayCardCollectionPage: View {
                         .accessibilityIdentifier("sendCardPart.\(index)")
                     }
                 }
-                .padding(.horizontal, Spacing.s4)
+                .padding(.horizontal, margin)
             }
-            .padding(.horizontal, -Spacing.s4)
+            .padding(.horizontal, -margin)
             .stopsBeforeOcclusion()
             .onChange(of: current) {
                 if reduceMotion {
@@ -136,7 +151,7 @@ struct HolidayCardCollectionPage: View {
             }
         }
         .padding(.vertical, Spacing.s2)
-        .background(HolidayCardDesk.background(scheme).padding(.horizontal, -Spacing.s16))
+        .background(HolidayCardDesk.background(scheme).padding(.horizontal, -max(Spacing.s16, bleed)))
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillsHeight = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Parts")
@@ -173,8 +188,11 @@ struct HolidayCardCollectionPage: View {
 
     private func grid(_ designs: [HolidayCardDesign], all: [HolidayCardDesign], columns: Int) -> some View {
         LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.s3, alignment: .top), count: columns),
-            spacing: Spacing.s4
+            columns: Array(
+                repeating: GridItem(.flexible(), spacing: widePage ? HolidayCardPad.gap : Spacing.s3, alignment: .top),
+                count: columns
+            ),
+            spacing: widePage ? Spacing.s6 : Spacing.s4
         ) {
             ForEach(designs) { design in
                 tile(design, all: all)
@@ -189,9 +207,15 @@ struct HolidayCardCollectionPage: View {
             viewModel.rackZoomSource = "page/\(design.id)"
             viewModel.largeDesign = design
         } label: {
-            HolidayCardTile(design: design, selected: selected, zoomID: "page/\(design.id)")
-                .padding(Spacing.s1)
-                .contentShape(Rectangle())
+            HolidayCardTile(
+                design: design,
+                selected: selected,
+                reservesTwoLines: widePage,
+                zoomID: "page/\(design.id)",
+                frameAspect: widePage ? HolidayCardPad.frameAspect : nil
+            )
+            .padding(Spacing.s1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .modifier(HolidayCardHoldPreview(design: design) { viewModel.largeDesign = design })

@@ -37,13 +37,16 @@ export default function UsernamePrompt({
   currentUsername,
   onShareAsIs,
   onSaved,
+  required = false,
 }: {
   open: boolean;
   currentUsername: string;
-  /** Share the link as it is (the made-up username). */
+  /** Share the link as it is (the made-up username). With `required`: close without sharing. */
   onShareAsIs: () => void;
   /** Saved: share the new link. */
   onSaved: (user: User) => void;
+  /** The profile with sources: a made-up username is never shared, so the only way on is to choose one. */
+  required?: boolean;
 }) {
   const [value, setValue] = useState('');
   const [status, setStatus] = useState<UsernameStatus>('unchanged');
@@ -71,8 +74,10 @@ export default function UsernamePrompt({
       onClose={onShareAsIs}
       icon={AtSign}
       title="Pick a username for your link"
-      subtitle={`Your profile link uses a made-up name: ${profileLinkLabel(currentUsername)}. Choose one people will recognize.`}
-      cancelLabel="Share as is"
+      subtitle={required
+        ? `Your profile link uses a made-up name: ${profileLinkLabel(currentUsername)}. Choose one people will recognize before you share it.`
+        : `Your profile link uses a made-up name: ${profileLinkLabel(currentUsername)}. Choose one people will recognize.`}
+      cancelLabel={required ? 'Not now' : 'Share as is'}
       onCancel={onShareAsIs}
       cancelDisabled={saving}
       submitLabel="Save and share"

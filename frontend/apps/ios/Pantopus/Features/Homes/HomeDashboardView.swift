@@ -115,6 +115,8 @@ struct HomeDashboardView: View {
     private let onSendMail: ((String) -> Void)?
     /// The "Ownership" tab — the host's ownership screen for this home.
     private let onOpenOwnership: ((String) -> Void)?
+    /// "Your home's record" near the top — the host's record page for this home.
+    private let onOpenRecord: ((String) -> Void)?
 
     init(
         homeId: String,
@@ -141,7 +143,8 @@ struct HomeDashboardView: View {
         onTrackBill: ((String) -> Void)? = nil,
         onTrackPackage: ((String) -> Void)? = nil,
         onSendMail: ((String) -> Void)? = nil,
-        onOpenOwnership: ((String) -> Void)? = nil
+        onOpenOwnership: ((String) -> Void)? = nil,
+        onOpenRecord: ((String) -> Void)? = nil
     ) {
         _viewModel = State(initialValue: HomeDashboardViewModel(homeId: homeId))
         self.homeId = homeId
@@ -169,6 +172,7 @@ struct HomeDashboardView: View {
         self.onTrackPackage = onTrackPackage
         self.onSendMail = onSendMail
         self.onOpenOwnership = onOpenOwnership
+        self.onOpenRecord = onOpenRecord
     }
 
     /// Current signed-in user's email; used by the Invite Owner form
@@ -271,6 +275,7 @@ struct HomeDashboardView: View {
         .accessibilityIdentifier("homeDashboard_limited")
     }
 
+    // swiftlint:disable:next function_body_length
     private func dashboardBody(
         for content: HomeDashboardContent,
         brandNew: HomeDashboardBrandNewContent?
@@ -296,6 +301,7 @@ struct HomeDashboardView: View {
             },
             body: {
                 VStack(spacing: Spacing.s4) {
+                    recordEntry
                     if let notice = viewModel.staleNotice {
                         RefreshNotice(text: notice) { Task { await viewModel.refresh() } }
                     }
@@ -320,17 +326,22 @@ struct HomeDashboardView: View {
                         overview: {
                             if let brandNew {
                                 BrandNewHomeSection(brandNew: brandNew) { handleQuickAction($0) }
+                            } else if WideLayout.isPad {
+                                // On an iPad the home's intelligence cards and its overview sit side by side where
+                                // the page holds two columns; one column, in this order, where it doesn't.
+                                WideColumns {
+                                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                                        homeIntelligenceStack
+                                    }
+                                    .placeColumn(.leading, order: 0)
+                                    overviewSection(content)
+                                        .padding(.top, Spacing.s4)
+                                        .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                                }
                             } else {
                                 VStack(alignment: .leading, spacing: Spacing.s4) {
                                     homeIntelligenceStack
-                                    HomeOverviewSection(
-                                        content: content,
-                                        onOpenEmergency: { if viewModel.can("sensitive.view") { onOpenEmergency?(homeId) } },
-                                        onOpenIssues: viewModel.can("maintenance.view")
-                                            ? onOpenIssues.map { openIssues in { openIssues(homeId) } } : nil,
-                                        canViewActivity: viewModel.shows("security.manage"),
-                                        canViewEmergency: viewModel.shows("sensitive.view")
-                                    )
+                                    overviewSection(content)
                                 }
                             }
                         }
@@ -357,6 +368,33 @@ struct HomeDashboardView: View {
                 homeId: homeId,
                 currentUserEmail: currentUserEmail
             ) { showsInviteOwner = false }
+        }
+    }
+
+    private func overviewSection(_ content: HomeDashboardContent) -> some View {
+        HomeOverviewSection(
+            content: content,
+            onOpenEmergency: { if viewModel.can("sensitive.view") { onOpenEmergency?(homeId) } },
+            onOpenIssues: viewModel.can("maintenance.view")
+                ? onOpenIssues.map { openIssues in { openIssues(homeId) } } : nil,
+            canViewActivity: viewModel.shows("security.manage"),
+            canViewEmergency: viewModel.shows("sensitive.view")
+        )
+    }
+
+    /// "Your home's record", for anyone of this Home. It only navigates: the
+    /// access it reads is already here.
+    @ViewBuilder
+    private var recordEntry: some View {
+        if let onOpenRecord, viewModel.access?.hasAccess == true {
+            HomeRecordEntryButton(
+                title: "Your home's record",
+                line: "What the county and federal records show"
+            ) {
+                if viewModel.isCurrent { onOpenRecord(homeId) }
+            }
+            .padding(.horizontal, Spacing.s4)
+            .accessibilityIdentifier("homeDashboard.record")
         }
     }
 

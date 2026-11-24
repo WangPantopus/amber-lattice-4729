@@ -26,6 +26,8 @@ struct GenericMailDetailLayout: View {
     @Environment(\.mailPieceShowsBack) private var showsBack
     /// A booklet beside the Mailbox can lie open as two pages (`mailBookletLayOpen`).
     @Environment(\.mailBookletLayOpen) private var bookletLayOpen
+    /// Set while a booklet lies open as two pages (its Back puts the Mailbox back beside it).
+    @Environment(\.mailPieceBack) private var laidOpenBack
     let content: MailDetailContent
     let ackInFlight: Bool
     let onBack: @MainActor () -> Void
@@ -76,6 +78,9 @@ struct GenericMailDetailLayout: View {
     private func pinnedActionsPage(_ letter: MailLetter, hooks: MailLetterPageHooks, onShowPage: @escaping () -> Void) -> some View {
         MailItemDetailShell(
             topBar: letterTopBar(letter, removed: hooks.removed != nil).showingBack(showsBack),
+            // A booklet laid open as two pages takes the page's whole width; elsewhere an iPad page puts the actions
+            // in a panel beside the piece.
+            wideLayout: content.bookletDetail != nil && laidOpenBack != nil ? .oneColumn : .panel,
             hero: {
                 if let card = letter.card {
                     // A Christmas card opens as a card, from its envelope.
@@ -361,25 +366,30 @@ private extension GenericMailDetailLayout {
     /// A letter gets the screen (plan Part 10): nothing is pinned over it; its actions come at the end of it, and
     /// are in the "…" menu as well.
     func plainLetterPage(_ letter: MailLetter, hooks: MailLetterPageHooks) -> some View {
+        // On an iPad page wide enough the letter has the main column and its envelope and actions sit in the panel
+        // beside it; elsewhere the actions come at the end of the letter.
         MailItemDetailShell(
             topBar: letterTopBar(letter, removed: hooks.removed != nil).showingBack(showsBack),
+            wideLayout: .letterBeside,
             hero: {
                 MailEnvelopeButton(piece: letter.piece, onTap: hooks.onEnvelope)
             },
             body: {
                 VStack(alignment: .leading, spacing: Spacing.s0) {
                     letterBody(letter, hooks: hooks)
-                    MailLetterActions(
-                        letter: letter,
-                        inFlight: hooks.inFlight,
-                        removed: hooks.removed,
-                        restoreInFlight: hooks.restoreInFlight,
-                        onAction: hooks.onAction,
-                        onRestore: hooks.onRestore
-                    )
-                    .padding(.top, Spacing.s5)
-                    .accessibilityIdentifier("mailLetterEndActions")
+                    MailLetterEndActions(letter: letter, hooks: hooks)
                 }
+            },
+            actions: {
+                MailLetterActions(
+                    letter: letter,
+                    inFlight: hooks.inFlight,
+                    removed: hooks.removed,
+                    restoreInFlight: hooks.restoreInFlight,
+                    onAction: hooks.onAction,
+                    onRestore: hooks.onRestore
+                )
+                .accessibilityIdentifier("mailLetterEndActions")
             }
         )
         .modifier(MailPageScrollPlace(offset: hooks.keptScrollOffset, onChange: hooks.onScrollOffset))
@@ -405,6 +415,28 @@ private extension GenericMailDetailLayout {
         }
         items.append(item(.shred, .scissors, "Shred", destructive: true))
         return items
+    }
+}
+
+/// A letter's actions at its end; in the panel beside it instead while an iPad page shows one (`mailItemSidePanel`).
+private struct MailLetterEndActions: View {
+    @Environment(\.mailItemSidePanel) private var inPanel
+    let letter: MailLetter
+    let hooks: MailLetterPageHooks
+
+    var body: some View {
+        if !inPanel {
+            MailLetterActions(
+                letter: letter,
+                inFlight: hooks.inFlight,
+                removed: hooks.removed,
+                restoreInFlight: hooks.restoreInFlight,
+                onAction: hooks.onAction,
+                onRestore: hooks.onRestore
+            )
+            .padding(.top, Spacing.s5)
+            .accessibilityIdentifier("mailLetterEndActions")
+        }
     }
 }
 

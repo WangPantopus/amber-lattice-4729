@@ -26,6 +26,7 @@ import app.pantopus.android.data.connections.ConnectionsRepository
 import app.pantopus.android.data.identity.LocalProfileRepository
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.profile.ProfileInsightsRepository
+import app.pantopus.android.data.profile.ProfilePageRepository
 import app.pantopus.android.data.profile.ProfileRepository
 import app.pantopus.android.data.profile.ProfileTabsRepository
 import app.pantopus.android.data.profile.ProfileTipsStore
@@ -67,6 +68,7 @@ class PublicProfileViewModelTest {
     private val localProfiles: LocalProfileRepository = mockk()
     private val insights: ProfileInsightsRepository = mockk()
     private val tips: ProfileTipsStore = mockk()
+    private val pages: ProfilePageRepository = mockk()
 
     /**
      * Nav arg handed to the VM. A UUID by default so resolution takes the
@@ -100,6 +102,8 @@ class PublicProfileViewModelTest {
         coEvery { insights.inviteCodeStored(any()) } returns Stored()
         coEvery { relationships.list(any(), any(), any(), any()) } returns NetworkResult.Failure(NetworkError.NotFound)
         every { tips.dismissed(any()) } returns emptySet()
+        // The profile with sources answers as a server with its switch off: today's screen.
+        coEvery { pages.page(any(), any()) } returns NetworkResult.Failure(NetworkError.NotFound)
     }
 
     @After fun tearDown() {
@@ -120,6 +124,7 @@ class PublicProfileViewModelTest {
             localProfiles = localProfiles,
             insights = insights,
             tips = tips,
+            pages = pages,
             savedStateHandle = SavedStateHandle(mapOf(PUBLIC_PROFILE_USER_ID_KEY to routeIdentifier)),
         )
 

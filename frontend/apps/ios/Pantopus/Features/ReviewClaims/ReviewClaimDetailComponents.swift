@@ -294,6 +294,8 @@ private struct EvidenceThumb: View {
                         .padding(.vertical, 2)
                         .background(Theme.Color.appText.opacity(0.78))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
+                        // Dark under white words in dark mode too (appText is near white there).
+                        .environment(\.colorScheme, .light)
                         .padding(5)
                 }
             }

@@ -132,7 +132,8 @@ class UsernameShareViewModel
 fun UsernameShareSheet(
     model: UsernameShareViewModel,
     form: UsernameShareForm,
-    onShareAsIs: () -> Unit,
+    /** Null leaves out "Share as is" (the share sheet with parts never shares a made-up username). */
+    onShareAsIs: (() -> Unit)?,
     onSaved: (String) -> Unit,
 ) {
     val checkState by model.checker.state.collectAsStateWithLifecycle()
@@ -181,12 +182,14 @@ fun UsernameShareSheet(
                 isLoading = form.isSaving,
                 isEnabled = canSave,
             )
-            GhostButton(
-                title = "Share as is",
-                onClick = onShareAsIs,
-                modifier = Modifier.fillMaxWidth().testTag(UsernameShareTags.SHARE_AS_IS),
-                isEnabled = !form.isSaving,
-            )
+            if (onShareAsIs != null) {
+                GhostButton(
+                    title = "Share as is",
+                    onClick = onShareAsIs,
+                    modifier = Modifier.fillMaxWidth().testTag(UsernameShareTags.SHARE_AS_IS),
+                    isEnabled = !form.isSaving,
+                )
+            }
         }
     }
 }

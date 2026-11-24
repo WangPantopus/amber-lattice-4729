@@ -28,6 +28,8 @@ public struct CeremonialMailWizardView: View {
     public var body: some View {
         WizardShell(model: viewModel) {
             stepBody
+                // A form's width on an iPad, centered.
+                .mailPadFormWidth()
             if let error = viewModel.submitError {
                 HStack(spacing: Spacing.s2) {
                     Icon(.alertCircle, size: 14, color: Theme.Color.error)
@@ -39,6 +41,7 @@ public struct CeremonialMailWizardView: View {
                 .padding(.vertical, 6)
                 .background(Theme.Color.errorBg)
                 .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+                .mailPadFormWidth(alignment: .leading)
                 .accessibilityIdentifier("ceremonialSubmitError")
             }
         }

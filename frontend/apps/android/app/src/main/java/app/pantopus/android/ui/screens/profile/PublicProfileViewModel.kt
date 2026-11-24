@@ -18,6 +18,7 @@ import app.pantopus.android.data.connections.ConnectionsRepository
 import app.pantopus.android.data.identity.LocalProfileRepository
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.profile.ProfileInsightsRepository
+import app.pantopus.android.data.profile.ProfilePageRepository
 import app.pantopus.android.data.profile.ProfileRepository
 import app.pantopus.android.data.profile.ProfileTabsRepository
 import app.pantopus.android.data.profile.ProfileTipsStore
@@ -27,6 +28,7 @@ import app.pantopus.android.data.store.StoreKind
 import app.pantopus.android.ui.components.IdentityPillar
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastActionFor
+import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesLoader
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileReviewCard
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileStatCell
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileTab
@@ -288,6 +290,8 @@ class PublicProfileViewModel
         localProfiles: LocalProfileRepository,
         insights: ProfileInsightsRepository,
         tips: ProfileTipsStore,
+        /** The profile with sources (launch key `profile_sources`): the page read beside today's. */
+        pages: ProfilePageRepository,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         /**
@@ -445,6 +449,9 @@ class PublicProfileViewModel
                 build(profile, PublicProfileKind.Local, rows.map(::project), forPreview = true)
             }
 
+        /** The profile with sources: the page for this viewer, read beside today's profile; Off while the key is off. */
+        val sources = ProfileSourcesLoader(viewModelScope, pages)
+
         /** The [ProfileChanges] version the shown profile was read at: a name or tagline saved since reads it again. */
         private var readAtVersion = ProfileChanges.version.value
 
@@ -469,6 +476,8 @@ class PublicProfileViewModel
         ) {
             if (loading) return
             loading = true
+            // The page is read beside today's profile, never after it (SPEC 4.13).
+            sources.load(profileIdentifier())
             _refreshing.value = spinner && _state.value is PublicProfileUiState.Loaded
             if (_state.value !is PublicProfileUiState.Loaded) {
                 profileCopy().data?.let { profile ->
@@ -868,6 +877,8 @@ class PublicProfileViewModel
             postCards.show(emptyList(), postCards.actionRevision)
             _relationshipLoaded.value = false
             _state.value = PublicProfileUiState.Loading
+            // Connecting changes the view (member → connection), so the page is read again too.
+            sources.load(userId)
             fetch(force = true)
         }
 
@@ -893,6 +904,7 @@ class PublicProfileViewModel
                         // A block shares nothing: "You and …" and the Pinned row leave at once.
                         inCommon.clear()
                         pins.clear()
+                        sources.drop()
                         _toastMessage.value = "User blocked"
                     }
                     is NetworkResult.Failure -> {
@@ -918,6 +930,7 @@ class PublicProfileViewModel
                         _isBlockedByViewer.value = false
                         _connection.value = ProfileConnection.None
                         _toastMessage.value = "User unblocked"
+                        sources.load(userId, dropOnFailure = true)
                         fetch()
                     }
                     is NetworkResult.Failure -> {
@@ -1107,6 +1120,9 @@ class PublicProfileViewModel
             )
 
         private fun signedInId(): String? = (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id
+
+        /** The signed-in person's account id ("You and …" words on the profile with sources). */
+        fun viewerId(): String? = signedInId()
 
         /**
          * A21.2 — the Local profile's post feed. Mirrors the RN

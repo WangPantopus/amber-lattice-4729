@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import * as api from '@pantopus/api';
+import RentalAuthoritySetup from './RentalAuthoritySetup';
 import type { landlord } from '@pantopus/api';
 
 // ── Verification tier badges ────────────────────────────────
@@ -72,12 +73,13 @@ function PropertyCard({
   onClick: () => void;
 }) {
   const home = property.home;
-  const homeName = home?.name || 'Unnamed Property';
+  const homeName = home?.name || 'Property ' + property.home_id.slice(0, 8);
 
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={property.status !== 'verified'}
       className="w-full text-left rounded-xl border border-app-border bg-app-surface p-5 hover:border-app-border hover:shadow-sm transition-all group"
     >
       {/* Header */}
@@ -133,34 +135,6 @@ function PropertyCard({
   );
 }
 
-// ── Empty state ─────────────────────────────────────────────
-
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="text-center py-16 px-6">
-      <div className="w-16 h-16 rounded-full bg-app-surface-sunken flex items-center justify-center mx-auto mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-app-text-muted" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clipRule="evenodd" />
-        </svg>
-      </div>
-      <h3 className="text-lg font-semibold text-app-text mb-1">No properties yet</h3>
-      <p className="text-sm text-app-text-secondary mb-6 max-w-sm mx-auto">
-        No landlord properties are linked to this account. You can add a home through Home setup; landlord access requires separate verification.
-      </p>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-xl font-semibold hover:bg-black transition-colors"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-        </svg>
-        Add Home
-      </button>
-    </div>
-  );
-}
-
 // ── Main component ──────────────────────────────────────────
 
 export default function PropertiesDashboard() {
@@ -180,15 +154,16 @@ export default function PropertiesDashboard() {
       setProperties(res.properties || []);
 
       // Fetch detail stats for each property in parallel
+      const verified = (res.properties || []).filter(p => p.status === 'verified');
       const detailResults = await Promise.allSettled(
-        (res.properties || []).map((p) =>
+        verified.map((p) =>
           api.landlord.getPropertyDetail(p.home_id),
         ),
       );
 
       const newStats: Record<string, { units: number; requests: number; leases: number }> = {};
       detailResults.forEach((result, i) => {
-        const homeId = res.properties[i]?.home_id;
+        const homeId = verified[i]?.home_id;
         if (homeId && result.status === 'fulfilled') {
           const detail = result.value;
           if (detail.home?.id !== homeId || ![detail.units, detail.pending_requests, detail.leases].every(Array.isArray)) return;
@@ -211,10 +186,6 @@ export default function PropertiesDashboard() {
     loadProperties();
   }, [loadProperties]);
 
-  const handleAddProperty = () => {
-    router.push('/app/homes/new');
-  };
-
   const handlePropertyClick = (homeId: string) => {
     router.push(`/app/landlord/properties/${homeId}`);
   };
@@ -231,18 +202,7 @@ export default function PropertiesDashboard() {
             Manage your rental properties, tenants, and leases.
           </p>
         </div>
-        {properties.length > 0 && (
-          <button
-            type="button"
-            onClick={handleAddProperty}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl font-semibold text-sm hover:bg-black transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-            Add Home
-          </button>
-        )}
+
       </div>
 
       {/* Loading */}
@@ -267,10 +227,7 @@ export default function PropertiesDashboard() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && properties.length === 0 && (
-        <EmptyState onAdd={handleAddProperty} />
-      )}
+      {!error && <RentalAuthoritySetup properties={properties} onChanged={loadProperties} />}
 
       {/* Property grid */}
       {!loading && properties.length > 0 && (

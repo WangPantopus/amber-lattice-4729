@@ -150,6 +150,8 @@ struct MailRoutingQueueView: View {
                 aliasRow
             }
         }
+        // A form's width on an iPad, centered.
+        .mailPadFormWidth()
         .padding(.horizontal, Spacing.s4)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -275,6 +277,8 @@ struct MailRoutingQueueView: View {
                 isLoading: viewModel.isSubmitting,
                 isEnabled: viewModel.canSubmit
             ) { await viewModel.submit() }
+                // Not stretched across an iPad window.
+                .mailPadBarWidth()
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s4)
                 .accessibilityIdentifier("mailRoutingQueueConfirm")

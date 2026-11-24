@@ -245,7 +245,7 @@ private fun RequestCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            PlanAvatar(name = name, seed = user?.userId ?: request.id, avatarUrl = user?.avatarUrl)
+            PlanAvatar(name = name, seed = user?.userId ?: request.id, avatarUrl = user?.avatarUrl, userId = user?.userId)
             Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                     Text(text = name, style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold), color = PantopusColors.appText)

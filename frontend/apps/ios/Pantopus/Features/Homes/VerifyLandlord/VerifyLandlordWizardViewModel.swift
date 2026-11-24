@@ -55,6 +55,8 @@ final class VerifyLandlordWizardViewModel: WizardModel {
     private let submitDelayNanos: UInt64
     private let api: APIClient
     private let sessionScope: HomeClaimSessionScope
+    private(set) var noLandlord = false
+    private var mailAvailable = false
     private var isLoadingStatus = false
     private var statusNeedsRetry = false
     @ObservationIgnored private var pendingWork: Task<Void, Never>?
@@ -98,7 +100,7 @@ final class VerifyLandlordWizardViewModel: WizardModel {
                 progressLabel: .stepOf(current: 1, total: 3),
                 progressFraction: 1.0 / 3.0,
                 leading: .close,
-                primaryCTALabel: statusNeedsRetry ? "Retry status" : "Start verification",
+                primaryCTALabel: statusNeedsRetry ? "Retry status" : (noLandlord ? "Verify with a document" : "Start verification"),
                 primaryCTAEnabled: !isSubmitting,
                 secondaryCTA: nil,
                 isSubmitting: isSubmitting,
@@ -128,10 +130,10 @@ final class VerifyLandlordWizardViewModel: WizardModel {
                 leading: .close,
                 primaryCTALabel: statusNeedsRetry ? "Retry status" : "Done",
                 primaryCTAEnabled: !isSubmitting,
-                secondaryCTA: WizardSecondaryCTA(
+                secondaryCTA: mailAvailable ? WizardSecondaryCTA(
                     label: "Review mail verification",
                     identifier: "verifyLandlordMailCodeCTA"
-                ),
+                ) : nil,
                 isSubmitting: isSubmitting,
                 dirty: false,
                 showsProgressBar: true
@@ -309,7 +311,9 @@ final class VerifyLandlordWizardViewModel: WizardModel {
             currentStep = .sent
         } else if status == 400,
                   message == "This property has no verified landlord. Cannot submit a lease request." {
-            await startPostcardFallback()
+            submitState = .idle
+            noLandlord = true
+            pendingEvent = .openDocumentVerification(homeId: homeId)
         } else {
             submitState = .error(
                 message: message ?? "Couldn't send the request. Try again."
@@ -428,7 +432,7 @@ extension VerifyLandlordWizardViewModel {
         }
         switch currentStep {
         case .start:
-            currentStep = .details
+            if noLandlord { pendingEvent = .openDocumentVerification(homeId: homeId) } else { currentStep = .details }
         case .details:
             guard !isSubmitting else { return }
             pendingWork?.cancel()
@@ -449,7 +453,7 @@ extension VerifyLandlordWizardViewModel {
         guard isCurrentSession else { sessionChanged()
             return
         }
-        guard currentStep == .sent else { return }
+        guard currentStep == .sent, mailAvailable else { return }
         pendingWork?.cancel()
         let generation = requestGeneration
         pendingWork = Task { [weak self] in
@@ -489,6 +493,30 @@ extension VerifyLandlordWizardViewModel {
         }
     }
 
+    private func applySavedStatus(_ status: TenantHomeStatusResponse) throws {
+        guard status.matches(homeId: homeId), let saved = status.lease else { throw APIError.invalidResponse }
+        noLandlord = status.landlord?.hasLandlord == false
+        mailAvailable = status.mailAvailable == true
+        if saved.state == .pending || saved.state == .active {
+            guard let lease = saved.lease, lease.homeId == homeId,
+                  lease.id == status.requestContext.leaseId, lease.state == saved.state,
+                  lease.state.rawValue == status.requestContext.leaseState else { throw APIError.invalidResponse }
+            approvalResult = VerifyLandlordApprovalResult(
+                kind: saved.state == .active ? .alreadyActive : .alreadyPending,
+                submittedAt: lease.createdAt,
+                requestedStartAt: lease.startAt,
+                message: lease.metadata?.message
+            )
+            currentStep = .sent
+            submitState = .submitted
+        } else {
+            guard status.landlord != nil else { throw APIError.invalidResponse }
+            approvalResult = nil
+            if noLandlord || currentStep != .details { currentStep = .start }
+            submitState = .idle
+        }
+    }
+
     /// Recover the actor's existing request without creating another request.
     func restoreSavedRequest() async {
         guard isCurrentSession else { sessionChanged()
@@ -504,24 +532,7 @@ extension VerifyLandlordWizardViewModel {
                 return
             }
             guard requestGeneration == generation, !Task.isCancelled else { return }
-            guard status.matches(homeId: homeId), let saved = status.lease else { throw APIError.invalidResponse }
-            if saved.state == .pending || saved.state == .active {
-                guard let lease = saved.lease, lease.homeId == homeId,
-                      lease.id == status.requestContext.leaseId, lease.state == saved.state,
-                      lease.state.rawValue == status.requestContext.leaseState else { throw APIError.invalidResponse }
-                approvalResult = VerifyLandlordApprovalResult(
-                    kind: saved.state == .active ? .alreadyActive : .alreadyPending,
-                    submittedAt: lease.createdAt,
-                    requestedStartAt: lease.startAt,
-                    message: lease.metadata?.message
-                )
-                currentStep = .sent
-                submitState = .submitted
-            } else {
-                approvalResult = nil
-                if currentStep != .details { currentStep = .start }
-                submitState = .idle
-            }
+            try applySavedStatus(status)
             submissionOutcomeUnknown = false
             statusNeedsRetry = false
         } catch {

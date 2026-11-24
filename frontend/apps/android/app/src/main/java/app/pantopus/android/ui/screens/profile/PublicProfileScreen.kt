@@ -26,6 +26,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -61,6 +62,9 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
 import app.pantopus.android.ui.screens.feed.pulse.toastButton
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
+import app.pantopus.android.ui.screens.moments.MomentRingsHolder
+import app.pantopus.android.ui.screens.profile.sources.ProfileShareSheet
+import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesState
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
@@ -161,6 +165,17 @@ fun PublicProfileScreen(
     val preview by viewModel.preview.state.collectAsStateWithLifecycle()
     val cardsOpen by christmasCards.open.collectAsStateWithLifecycle()
     val cardGoesTo by christmasCards.sendableTo.collectAsStateWithLifecycle()
+    // The profile with sources (launch key `profile_sources`): the page, a month opened on its Record chart, and the
+    // owner's Preview as on the new page.
+    val sourcesState by viewModel.sources.state.collectAsStateWithLifecycle()
+    val sourcesMonth by viewModel.sources.month.collectAsStateWithLifecycle()
+    val sourcesPreview by viewModel.sources.preview.collectAsStateWithLifecycle()
+    var sourcesTab by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourcesPreviewAudience by remember { mutableStateOf<PreviewAudience?>(null) }
+    var showSourcesShare by rememberSaveable { mutableStateOf(false) }
+    var showPersonPosts by rememberSaveable { mutableStateOf(false) }
+    var shareReload by remember { mutableIntStateOf(0) }
+    val viewerId = viewModel.viewerId()
     var showPreviewSheet by rememberSaveable { mutableStateOf(false) }
     var showReceipt by rememberSaveable { mutableStateOf(false) }
     var showInvite by rememberSaveable { mutableStateOf(false) }
@@ -217,6 +232,16 @@ fun PublicProfileScreen(
     }
     // A preview ends with Done or Back, never by leaving the page.
     BackHandler(enabled = preview != null) { viewModel.endPreview() }
+    // The profile with sources: Back closes the person's posts, ends a preview, then returns from Work or Record to
+    // the first tab before it leaves the page.
+    val sourcesFirstTab = (sourcesState as? ProfileSourcesState.Ready)?.page?.tabs?.firstOrNull()?.key
+    BackHandler(enabled = sourcesTab != null && sourcesTab != sourcesFirstTab && !showPersonPosts) { sourcesTab = null }
+    BackHandler(enabled = sourcesPreviewAudience != null) {
+        sourcesPreviewAudience = null
+        sourcesTab = null
+        viewModel.sources.endPreview()
+    }
+    BackHandler(enabled = showPersonPosts) { showPersonPosts = false }
     // Your own link on a made-up username offers to pick one first, once (as the ⋯ menu's Share does).
     val shareOwnProfile: (PublicProfileContent) -> Unit = { loaded ->
         if (usernameShare.shouldAsk(loaded.profile.id, loaded.profile.chosenUsername == null)) {
@@ -283,77 +308,145 @@ fun PublicProfileScreen(
                                 onSendCard?.takeIf { mayOfferCard && cardGoesTo == personId }?.let { send ->
                                     { send(personId, content.header.displayName) }
                                 }
-                            LocalProfileLoadedFrame(
-                                content = content,
-                                selectedTab = selectedLocalTab,
-                                actions =
-                                    ProfileActionsState(
-                                        isOwner = content.isOwner,
-                                        connection = connection,
-                                        showsConnection = canFollow && relationshipLoaded,
-                                        inFlight = connectState is PublicProfileActionState.InFlight,
-                                        relationshipPending = !content.isOwner && !relationshipLoaded && !relationshipFailed,
-                                    ),
-                                callbacks =
-                                    ProfileActionCallbacks(
-                                        onConnect = viewModel::openConnectSheet,
-                                        onWithdraw = viewModel::requestWithdraw,
-                                        onAccept = { viewModel.connect() },
-                                        onDecline = viewModel::declineRequest,
-                                        onDisconnect = viewModel::requestDisconnect,
-                                        onMessage = { onOpenMessages(content.profile) },
-                                        onEditProfile = onEditProfile,
-                                        onSendCard = sendCard,
-                                    ),
-                                onBack = onBack,
-                                onSelectTab = { viewModel.selectLocalTab(it) },
-                                onOverflow = { viewModel.setShowOverflow(true) },
-                                onTrustClick = { showTrustExplainer = true },
-                                hiddenByBlock = connection == ProfileConnection.Blocked,
-                                onOpenGig = onOpenGig,
-                                onOpenProfile = onOpenProfile,
-                                onOpenLink = { url -> runCatching { uriHandler.openUri(url) } },
-                                postsLoadFailed = postsLoadFailed,
-                                postsLoading = postsLoading,
-                                onRetryPosts = { viewModel.refresh() },
-                                postCards = postCards,
-                                postCardActions = postCardActions,
-                                // Nothing shared shows on your own page or across a block.
-                                inCommon = inCommon.takeIf { !content.isOwner && connection != ProfileConnection.Blocked },
-                                pinned = pinnedCards.takeIf { connection != ProfileConnection.Blocked },
-                                onOpenInCommon = { target ->
-                                    when (target) {
-                                        is InCommonTarget.Plan -> onOpenPlan(target.id)
-                                        is InCommonTarget.SupportTrain -> onOpenSupportTrain(target.id)
-                                    }
-                                },
-                                mode =
-                                    if (content.isOwner) {
-                                        ProfileFrameMode.Owner(
-                                            extras = ownerExtras,
-                                            cover = ownerCover,
-                                            navigation = ownerNavigation,
-                                            actions =
-                                                OwnerPageActions(
-                                                    onShare = { shareOwnProfile(content) },
-                                                    onPreviewAs = { showPreviewSheet = true },
-                                                    onDismissTip = viewModel.owner::dismissTip,
-                                                    onOpenMonth = { showReceipt = true },
-                                                    onShareMonth = { viewModel.owner.receiptShareMessage()?.let { context.shareText(it) } },
-                                                    onOpenInvite = {
-                                                        if (ownerExtras?.invite != null) {
-                                                            showInvite = true
-                                                        } else {
-                                                            viewModel.owner.inviteShareMessage()?.let { context.shareText(it) }
-                                                        }
-                                                    },
-                                                    onLogOut = { showLogOutConfirm = true },
-                                                ),
-                                        )
-                                    } else {
-                                        ProfileFrameMode.Visitor
-                                    },
-                            )
+                            val frameActions =
+                                ProfileActionsState(
+                                    isOwner = content.isOwner,
+                                    connection = connection,
+                                    showsConnection = canFollow && relationshipLoaded,
+                                    inFlight = connectState is PublicProfileActionState.InFlight,
+                                    relationshipPending = !content.isOwner && !relationshipLoaded && !relationshipFailed,
+                                )
+                            val frameCallbacks =
+                                ProfileActionCallbacks(
+                                    onConnect = viewModel::openConnectSheet,
+                                    onWithdraw = viewModel::requestWithdraw,
+                                    onAccept = { viewModel.connect() },
+                                    onDecline = viewModel::declineRequest,
+                                    onDisconnect = viewModel::requestDisconnect,
+                                    onMessage = { onOpenMessages(content.profile) },
+                                    onEditProfile = onEditProfile,
+                                    onSendCard = sendCard,
+                                )
+                            val frameMode =
+                                if (content.isOwner) {
+                                    ProfileFrameMode.Owner(
+                                        extras = ownerExtras,
+                                        cover = ownerCover,
+                                        navigation = ownerNavigation,
+                                        actions =
+                                            OwnerPageActions(
+                                                onShare = { shareOwnProfile(content) },
+                                                onPreviewAs = { showPreviewSheet = true },
+                                                onDismissTip = viewModel.owner::dismissTip,
+                                                onOpenMonth = { showReceipt = true },
+                                                onShareMonth = { viewModel.owner.receiptShareMessage()?.let { context.shareText(it) } },
+                                                onOpenInvite = {
+                                                    if (ownerExtras?.invite != null) {
+                                                        showInvite = true
+                                                    } else {
+                                                        viewModel.owner.inviteShareMessage()?.let { context.shareText(it) }
+                                                    }
+                                                },
+                                                onLogOut = { showLogOutConfirm = true },
+                                            ),
+                                    )
+                                } else {
+                                    ProfileFrameMode.Visitor
+                                }
+                            val sourcesPage = (sourcesState as? ProfileSourcesState.Ready)?.page
+                            val shownPage = sourcesPreview.takeIf { frameMode is ProfileFrameMode.Owner } ?: sourcesPage
+                            when {
+                                // The profile with sources is read beside today's page: wait for it rather than flash today's first.
+                                sourcesState == ProfileSourcesState.Loading -> LoadingLayout(onBack = onBack)
+                                shownPage != null && connection != ProfileConnection.Blocked && showPersonPosts ->
+                                    ProfileSourcesPostsPage(
+                                        firstName = shownPage.header.firstName,
+                                        content = content,
+                                        cards = postCards,
+                                        actions = postCardActions,
+                                        loadFailed = postsLoadFailed,
+                                        loading = postsLoading,
+                                        hiddenByBlock = false,
+                                        onSayHi = frameCallbacks.onMessage,
+                                        onRetry = { viewModel.refresh() },
+                                        onBack = { showPersonPosts = false },
+                                    )
+                                shownPage != null && connection != ProfileConnection.Blocked ->
+                                    ProfileSourcesPage(
+                                        page = shownPage,
+                                        content = content,
+                                        mode =
+                                            sourcesPreviewAudience
+                                                ?.takeIf { sourcesPreview != null }
+                                                ?.let { audience ->
+                                                    ProfileFrameMode.Preview(audience) {
+                                                        sourcesPreviewAudience = null
+                                                        sourcesTab = null
+                                                        viewModel.sources.endPreview()
+                                                    }
+                                                } ?: frameMode,
+                                        actions = frameActions,
+                                        callbacks = frameCallbacks,
+                                        pinned = pinnedCards.takeIf { sourcesPreview == null },
+                                        selectedTab = sourcesTab,
+                                        month = sourcesMonth,
+                                        viewerId = viewerId,
+                                        host =
+                                            SourcesHostCallbacks(
+                                                onBack = onBack,
+                                                onOverflow = { viewModel.setShowOverflow(true) },
+                                                onOpenShareSheet = { showSourcesShare = true },
+                                                onShareLink = { url -> context.shareText(url) },
+                                                onSelectTab = { key -> sourcesTab = key },
+                                                onOpenMonth = viewModel.sources::openMonth,
+                                                onCloseMonth = viewModel.sources::closeMonth,
+                                                onOpenPost = onOpenPost,
+                                                onOpenProfile = onOpenProfile,
+                                                onOpenPlan = onOpenPlan,
+                                                onOpenGig = onOpenGig,
+                                                onOpenSupportTrain = onOpenSupportTrain,
+                                                onOpenUrl = { url -> runCatching { uriHandler.openUri(url) } },
+                                                onOpenAppLink = { uri -> DeepLinkRouter.handle(uri) },
+                                                onOpenPosts = {
+                                                    if (content.isOwner) ownerNavigation.onSeeAllPosts() else showPersonPosts = true
+                                                },
+                                                onPiecesChanged = { viewModel.sources.load(content.profile.id) },
+                                                onOpenMoments = { userId ->
+                                                    MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
+                                                },
+                                            ),
+                                    )
+                                else ->
+                                    LocalProfileLoadedFrame(
+                                        content = content,
+                                        selectedTab = selectedLocalTab,
+                                        actions = frameActions,
+                                        callbacks = frameCallbacks,
+                                        onBack = onBack,
+                                        onSelectTab = { viewModel.selectLocalTab(it) },
+                                        onOverflow = { viewModel.setShowOverflow(true) },
+                                        onTrustClick = { showTrustExplainer = true },
+                                        hiddenByBlock = connection == ProfileConnection.Blocked,
+                                        onOpenGig = onOpenGig,
+                                        onOpenProfile = onOpenProfile,
+                                        onOpenLink = { url -> runCatching { uriHandler.openUri(url) } },
+                                        postsLoadFailed = postsLoadFailed,
+                                        postsLoading = postsLoading,
+                                        onRetryPosts = { viewModel.refresh() },
+                                        postCards = postCards,
+                                        postCardActions = postCardActions,
+                                        // Nothing shared shows on your own page or across a block.
+                                        inCommon = inCommon.takeIf { !content.isOwner && connection != ProfileConnection.Blocked },
+                                        pinned = pinnedCards.takeIf { connection != ProfileConnection.Blocked },
+                                        onOpenInCommon = { target ->
+                                            when (target) {
+                                                is InCommonTarget.Plan -> onOpenPlan(target.id)
+                                                is InCommonTarget.SupportTrain -> onOpenSupportTrain(target.id)
+                                            }
+                                        },
+                                        mode = frameMode,
+                                    )
+                            }
                         } else {
                             PublicProfileLoadedFrame(
                                 content = content,
@@ -456,17 +549,39 @@ fun PublicProfileScreen(
                 )
             }
         }
+        if (showSourcesShare) {
+            (sourcesState as? ProfileSourcesState.Ready)?.page?.let { page ->
+                ProfileShareSheet(
+                    name = page.header.name,
+                    portraitUrl = page.header.portraitUrl,
+                    userId = page.header.userId,
+                    onPickUsername = { current -> usernameShare.open(page.header.userId, current) },
+                    onDismiss = { showSourcesShare = false },
+                    reloadKey = shareReload,
+                )
+            }
+        }
         usernameShareForm?.let { form ->
             UsernameShareSheet(
                 model = usernameShare,
                 form = form,
-                onShareAsIs = {
-                    usernameShare.close()
-                    profileShareUrl(state)?.let { context.shareText(it) }
-                },
+                // From the share sheet with parts, a made-up username is never shared (contract §6): no "Share as is".
+                onShareAsIs =
+                    if (showSourcesShare) {
+                        null
+                    } else {
+                        {
+                            usernameShare.close()
+                            profileShareUrl(state)?.let { context.shareText(it) }
+                        }
+                    },
                 onSaved = { username ->
                     viewModel.refresh()
-                    context.shareText(InviteLinks.profileUrl(username))
+                    if (showSourcesShare) {
+                        shareReload += 1
+                    } else {
+                        context.shareText(InviteLinks.profileUrl(username))
+                    }
                 },
             )
         }
@@ -677,7 +792,17 @@ fun PublicProfileScreen(
             PreviewAsSheet(
                 onPick = { audience ->
                     showPreviewSheet = false
-                    viewModel.startPreview(audience)
+                    if (sourcesState is ProfileSourcesState.Ready) {
+                        // Preview as on the new page: the server's `?as=` answer, exactly what that viewer gets.
+                        sourcesPreviewAudience = audience
+                        sourcesTab = null
+                        viewModel.sources.startPreview(audience) {
+                            sourcesPreviewAudience = null
+                            viewModel.showToast("That preview can't be loaded right now.")
+                        }
+                    } else {
+                        viewModel.startPreview(audience)
+                    }
                 },
                 onDismiss = { showPreviewSheet = false },
             )
@@ -1113,7 +1238,7 @@ private fun ProfileFrameTopBar(
 
 /** Under the name: a preview's note, your Edit profile and Preview as (then your tips), or a visitor's actions. */
 @Composable
-private fun ProfileFrameHeaderActions(
+internal fun ProfileFrameHeaderActions(
     mode: ProfileFrameMode,
     content: PublicProfileContent,
     header: PublicProfileHeader,

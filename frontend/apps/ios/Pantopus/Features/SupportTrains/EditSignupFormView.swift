@@ -43,11 +43,28 @@ public struct EditSignupFormView: View {
             onClose: onClose,
             onCommit: { Task { await viewModel.save() } },
             content: {
-                contributionGroup
-                timingGroup
-                notesGroup
+                if WideLayout.isPad {
+                    // An iPad window wide enough for two columns: what they're bringing and when on the left, the
+                    // organizer's notes beside them. A narrow window keeps the phone's one column.
+                    WideColumns {
+                        contributionGroup
+                            .placeColumn(.leading, order: 0)
+                        timingGroup
+                            .padding(.top, Spacing.s5)
+                            .placeColumn(.leading, order: 1)
+                        notesGroup
+                            .padding(.top, Spacing.s5)
+                            .placeColumn(.trailing, order: 2, trimsTop: Spacing.s5)
+                    }
+                } else {
+                    contributionGroup
+                    timingGroup
+                    notesGroup
+                }
             }
         )
+        // On an iPad window that holds both columns the form takes the window's whole width.
+        .wideColumnsScreen()
         .disabled(viewModel.isSaving)
         .formShakeOnChange(of: viewModel.shakeTrigger)
         .overlay(alignment: .bottom) { toastOverlay }

@@ -115,7 +115,9 @@ private struct HeaderScrollsAway: ViewModifier {
             // Away, it leaves no room: slid up out of it, or with Reduce
             // Motion faded where it is.
             .frame(height: away ? 0 : nil, alignment: reduceMotion ? .top : .bottom)
-            .clipped()
+            // Top and bottom only: a bar that runs the iPad window's width past the reading column
+            // (`topBarSpansWindow()`) keeps its width.
+            .clipShape(VerticalClip())
             .opacity(away ? 0 : 1)
             .allowsHitTesting(!away)
             .accessibilityHidden(away)
@@ -164,5 +166,12 @@ private struct ScreenReader: UIViewRepresentable {
             // After SwiftUI's update, never during it.
             Task { @MainActor [weak self] in self?.report?(found) }
         }
+    }
+}
+
+/// Clips to a view's top and bottom edges only, leaving whatever reaches past its sides.
+private struct VerticalClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: -10000, dy: 0))
     }
 }

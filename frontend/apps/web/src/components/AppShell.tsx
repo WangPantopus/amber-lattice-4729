@@ -226,7 +226,7 @@ const SHELL_FALLBACK = shellFrame(
 // ────────────────────────────────────────────────────────────────
 // AppShellInner
 // ────────────────────────────────────────────────────────────────
-function AppShellInner({ children }: { children: React.ReactNode }) {
+function AppShellInner({ children, publicPage = false }: { children: React.ReactNode; publicPage?: boolean }) {
   // Queries pause while offline; say so instead of leaving skeletons or stale
   // content unexplained. They refetch on reconnect.
   const { isOnline } = useOnlineStatus();
@@ -735,7 +735,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        *  UNIFIED FAB + COMPOSER
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
-      <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
+      {/* A page anyone can open (a person's profile) has nothing to create for someone signed out. */}
+      {publicPage && !user ? null : (
+        <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
+      )}
       {!isMapWorkspace && <FloatingChatWidget />}
       {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
       <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
@@ -794,12 +797,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, publicPage = false }: {
+  children: React.ReactNode;
+  /** A page anyone can open (a person's profile): no create button while nobody is signed in. */
+  publicPage?: boolean;
+}) {
   return (
     <SocketProvider>
       <BadgeProvider>
         <PrerenderSuspense fallback={SHELL_FALLBACK}>
-          <AppShellInner>{children}</AppShellInner>
+          <AppShellInner publicPage={publicPage}>{children}</AppShellInner>
         </PrerenderSuspense>
       </BadgeProvider>
     </SocketProvider>

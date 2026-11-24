@@ -13,7 +13,8 @@ const { year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -183,12 +184,35 @@ async function* build({ work }) {
   const lands = new Map();
   for await (const row of rows(work, 'appraisal_account')) lands.set(row[0], { type: row[1], buildings: row[5], acres: row[7], netAcres: row[8], netSqft: row[10], sewer: row[19], water: row[20] });
   const sales = new Map();
+  // Every line, for recorded history (facts.js): its ETN, parcel count, date, price and the county's own name for the
+  // document (Deed Type, a fixed list of the county's). The grantor and grantee columns are never read.
+  const saleLines = new Map();
+  let first = null;
   for await (const row of rows(work, 'sale')) {
     const [date, price] = [isoDate(row[3]), positive(row[4])];
-    if (row[1] !== '1' || !date || !isHomeSale(price, row[5], row[10])) continue;
+    const sale = row[1] === '1' && Boolean(date) && isHomeSale(price, row[5], row[10]);
+    if (date) {
+      if (!first || date < first) first = date;
+      if (!saleLines.has(row[2])) saleLines.set(row[2], []);
+      saleLines.get(row[2]).push({ date, sale, price, type: row[5], document: row[0], parcels: Number(row[1]) });
+    }
+    if (!sale) continue;
     const held = sales.get(row[2]);
     if (!held || held.date < date) sales.set(row[2], { date, price });
   }
+  const leftOut = {};
+  let personal = 0;
+  const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, type, document, parcels }) => {
+    // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(type)) {
+      personal += 1;
+      return null;
+    }
+    // A sale is a sale; any other line says what it is in the county's name for its document, or is left out.
+    const line = historyLine({ date, sale, word: sale ? null : countyWord(type), price, document, parcels });
+    if (!line) leftOut[String(type || '').trim() || '-'] = (leftOut[String(type || '').trim() || '-'] || 0) + 1;
+    return line;
+  }), { since: (first || '').slice(0, 4) });
   log(`${lands.size} parcels with land, ${sales.size} with a single-parcel sale`);
   const records = [];
   const seen = new Set();
@@ -199,10 +223,14 @@ async function* build({ work }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = historyOf(saleLines.get(row[0]));
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without an address`);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${personal}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   const asOf = zipDates(path.join(work, 'wa-pierce', 'tax_account.zip')).get('tax_account.txt');
   if (!asOf) throw new Error('The file no longer says when it was made');

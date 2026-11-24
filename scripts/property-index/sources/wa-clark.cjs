@@ -12,12 +12,18 @@ const { parse, parts, zip5, unitKey } = require('../../../backend/services/prope
 const { resolve } = require('../../../backend/services/propertyRecords/identity');
 const { download, zipTable, cachedLayer } = require('../lib/tables.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
+const { hold } = require('../lib/held.cjs');
+const { historyLine, recordedHistory, isPersonRecord } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '53011';
 const ZIP_URL = 'https://gis.clark.wa.gov/openDataHub/PacsData/PACS_OpenData.zip';
 const TAXLOTS_URL = 'https://services2.arcgis.com/ylxwjFBdCPBzP16d/arcgis/rest/services/TaxlotsforPublicUse/FeatureServer/0';
 const SITUS_URL = 'https://services2.arcgis.com/ylxwjFBdCPBzP16d/arcgis/rest/services/SitusAddress/FeatureServer/0';
+// Building permits for every city in the county, and remodeling, mechanical, plumbing and the like for unincorporated Clark
+// County and the City of Vancouver, updated weekly (metadata 1004). Terms: the county's disclaimer, no license and no limit
+// on use (cost-and-rights.md). Its `name` column is the applicant's name and is never asked for.
+const PERMITS_URL = 'https://gis.clark.wa.gov/arcgisfed2/rest/services/MapCatalog/Permitting/MapServer/4';
 const TABLE = { delimiter: '|', quoted: false };
 const VALUE_YEARS_KEPT = 5;
 
@@ -113,6 +119,20 @@ const STORY_LINES = new Map([['MAIN', 1], ['SECOND', 2], ['THIRD', 3]]);
 const NOT_A_SALE = new Set(['EASEMENT', '$1000 SALE OR LESS', 'QUIT CLAIM DEED', 'PARTIAL INTEREST', 'SEGREGATION', 'GIFT', 'CORPORATE TRANSFER', 'TIMBER']);
 // The sales table starts here, so only the map layer can say an older sale.
 const SALES_TABLE_STARTS = '2016-01-01';
+// Recorded history (facts.js): the Assessor's reasons are Washington's ratio-study transaction types (WAC 458-53-080), so a
+// line takes the state's words for its own reason. Reasons that only say why a sale left the study (other, exempt, ratio, a
+// sale of $1,000 or less) don't say what the line is: a sale is then just a sale, and any other line is left out and counted.
+// A deed type code never stands in for a line's reason, since what most lines of a type carry isn't what this one did; and
+// the county publishes no names for its deed type codes (its own property pages show the bare code), so none is shown.
+const REASON_WORDS = new Map([
+  ['QUIT CLAIM DEED', 'Quit claim deed'], ['GIFT', 'Gift deed'], ['CORRECTION DEED', 'Correction deed'],
+  ['SEGREGATION', 'Segregation'], ['EASEMENT', 'Easement or right of way'], ['PARTIAL INTEREST', 'Partial interest'],
+  ['TIMBER', 'Timber or forest land'], ['CORPORATE TRANSFER', 'Transfer within a corporation'], ['ESTATE SALE', 'Estate sale'],
+  ['FAMILY SALE', 'Family sale'], ['NEW CONSTRUCTION', 'New construction'], ['SHERIFF', 'Sheriff\u2019s sale'],
+  ['DEFAULT', 'Default'], ['FORCED SALES', 'Forced sale'], ['FULFILLMENT', 'Fulfillment of contract'], ['OPEN SPACE', 'Open space'],
+  ['TAX DEED', 'Tax deed'], ['PLOTTAGE', 'Plottage'], ['NEW PLAT', 'New plat'], ['TRADE', 'Trade'], ['LEASE', 'Lease'],
+  ['S.A.C. OR P.A.C.', 'Assignment of contract'],
+]);
 const PARKING_WORDS = new Map([
   ['ATTACHED GARAGE', 'Attached garage'], ['BUILT-IN GARAGE', 'Built-in garage'], ['DETACHED GARAGE', 'Detached garage'],
   ['BASEMENT GARAGE', 'Basement garage'], ['MH ATTACHED GARAGE', 'Attached garage'], ['CARPORT', 'Carport'], ['MH CARPORT', 'Carport'],
@@ -344,12 +364,37 @@ async function readFacts(zip, records, today) {
   }
 
   const sales = new Map();
-  for await (const row of zipTable(zip, 'PropSalesInfoOnlyVw.txt', ['prop_id', 'SalePrice', 'SaleDate', 'deed_num', 'sl_ratio_desc'], TABLE)) {
-    if (!records.has(row.prop_id) || !positive(row.SalePrice) || NOT_A_SALE.has(row.sl_ratio_desc)) continue;
+  // Every line, for recorded history, and how many accounts each deed (change of owner) covers.
+  const lines = new Map();
+  const accounts = new Map();
+  for await (const row of zipTable(zip, 'PropSalesInfoOnlyVw.txt', ['prop_id', 'chg_of_owner_id', 'SalePrice', 'SaleDate', 'deed_num', 'sl_ratio_desc', 'deed_type_cd'], TABLE)) {
+    accounts.set(row.chg_of_owner_id, (accounts.get(row.chg_of_owner_id) || 0) + 1);
+    if (!records.has(row.prop_id)) continue;
     const date = dateOnly(row.SaleDate);
+    const sale = Boolean(positive(row.SalePrice)) && !NOT_A_SALE.has(row.sl_ratio_desc);
+    if (!lines.has(row.prop_id)) lines.set(row.prop_id, []);
+    lines.get(row.prop_id).push({ date, sale, row });
+    if (!sale) continue;
     const held = sales.get(row.prop_id);
     if (date && (!held || date > held.date)) sales.set(row.prop_id, { date, row });
   }
+  const leftOut = {};
+  let withHistory = 0;
+  for (const [id, list] of lines) {
+    const history = recordedHistory(list.map(({ date, sale, row }) => {
+      const type = String(row.deed_type_cd || '').trim();
+      // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord); none of the state's reasons is one.
+      const said = isPersonRecord(row.sl_ratio_desc) ? null : REASON_WORDS.get(row.sl_ratio_desc) || null;
+      const line = historyLine({ date, sale, word: said, price: positive(row.SalePrice), document: word(row.deed_num), parcels: accounts.get(row.chg_of_owner_id) });
+      if (!line) leftOut[type || '-'] = (leftOut[type || '-'] || 0) + 1;
+      return line;
+    }), { since: SALES_TABLE_STARTS.slice(0, 4) });
+    if (!history) continue;
+    // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+    hold(records.get(id), 'recorded_history', history);
+    withHistory += 1;
+  }
+  log(`${FIPS}: recorded history for ${withHistory} accounts; lines with no word for what they are, left out, by deed type: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
   for (const [id, { date, row }] of sales) {
     const { facts } = records.get(id);
     facts.sale_date = date;
@@ -362,6 +407,81 @@ async function readFacts(zip, records, today) {
       record.facts.sale_date = record.layerSale.date;
     }
   }
+}
+
+// Permits: a description the layer's rows carry this many times or more is one of the county's fixed words (its older
+// system's "Mechanical Permit", "Residential Addition/Alteration"). A row takes its own fixed word, or its code's commonest;
+// the newer system's rows carry the applicant's own free text, which is never shown. A business license review isn't the home's.
+const PERMIT_WORD_ROWS = 500;
+const PERMIT_CODES_LEFT_OUT = new Set(['BLR']);
+const PERMIT_NOT_ISSUED = /^(DEN|RVK)$|DENIED|VOID|WITHDR|REVOK|CANCEL/i;
+// Work the county records as finished: only these date a system.
+const PERMIT_DONE = new Set(['FNL', 'COMP', 'Closed', 'Closed - Approved']);
+// The systems Place's Home systems keeps (services/homeSystemsService.js), from the permit's own words.
+const PERMIT_SYSTEMS = [
+  // A whole roof only: a reroof, never a patio's or a shed's roof.
+  ['roof', 'Roof', (text, work) => work === 'REROOF' || /\bRE-?ROOF|ROOF REPLACE|REPLACE (THE )?ROOF|NEW ROOF\b|TEAR ?OFF/.test(text)],
+  ['water_heater', 'Water heater', (text) => /WATER HEATER/.test(text)],
+  ['hvac', 'Heating or cooling', (text) => /FURNACE|HEAT PUMP|AIR HANDLER|DUCTLESS|AIR CONDITION/.test(text)],
+  ['electrical_panel', 'Electrical panel', (text) => /ELECTRICAL PANEL|\bPANEL (CHANGE|UPGRADE|REPLACE)|SERVICE (CHANGE|UPGRADE)/.test(text)],
+];
+const PERMITS_KEPT = 30;
+const PERMITS_FROM = 'Clark County\u2019s and the City of Vancouver\u2019s permit records';
+
+/**
+ * Each account's permits (facts.js `permits`), newest first: when it was issued, the system it dates or the county's own word
+ * for its kind, the permit's number, and whether the county records the work as finished. Held off a live county's screens
+ * until its new_columns switch is on (lib/held.cjs). Counts only in the log.
+ */
+async function addPermits(dir, records, today) {
+  const rows = [];
+  const descriptions = new Map();
+  for await (const row of cachedLayer(path.join(dir, 'permits.jsonl'), PERMITS_URL, ['sn', 'caseno', 'CaseType', 'case_type', 'WorkType', 'status', 'issued'],
+    { where: 'sn > 0 AND issued IS NOT NULL' })) {
+    const code = String(row.case_type || '').trim();
+    const text = String(row.CaseType || '').trim();
+    if (code && text) descriptions.set(`${code}|${text}`, (descriptions.get(`${code}|${text}`) || 0) + 1);
+    if (records.has(String(row.sn))) rows.push(row);
+  }
+  // The word each code's rows carry most, where that many rows carry it.
+  const words = new Map();
+  for (const [key, count] of descriptions) {
+    const [code, text] = key.split('|');
+    if (count >= PERMIT_WORD_ROWS && count > (words.get(code)?.count || 0)) words.set(code, { text, count });
+  }
+  const byAccount = new Map();
+  let noWord = 0;
+  const latest = today.getTime() + 86400000;
+  for (const row of rows) {
+    const code = String(row.case_type || '').trim();
+    const issued = Number(row.issued);
+    if (PERMIT_CODES_LEFT_OUT.has(code) || PERMIT_NOT_ISSUED.test(String(row.status || '')) || !(issued > Date.UTC(1950, 0, 1)) || issued > latest) continue;
+    const text = String(row.CaseType || '').toUpperCase();
+    const system = PERMIT_SYSTEMS.find(([, , names]) => names(text, String(row.WorkType || '').trim()));
+    // The row's own words where they are one of its code's fixed words, else the code's commonest.
+    const fixed = descriptions.get(`${code}|${String(row.CaseType || '').trim()}`) >= PERMIT_WORD_ROWS;
+    const said = system ? system[1] : (fixed ? String(row.CaseType).trim() : words.get(code)?.text);
+    if (!said) {
+      noWord += 1;
+      continue;
+    }
+    const line = { issued: new Date(issued).toISOString().slice(0, 10), word: said };
+    if (system) line.system = system[0];
+    if (PERMIT_DONE.has(String(row.status || '').trim())) line.done = true;
+    const number = word(row.caseno);
+    if (number) line.number = number;
+    const id = String(row.sn);
+    if (!byAccount.has(id)) byAccount.set(id, []);
+    byAccount.get(id).push(line);
+  }
+  let systems = 0;
+  for (const [id, lines] of byAccount) {
+    lines.sort((a, b) => b.issued.localeCompare(a.issued) || String(a.number || '').localeCompare(String(b.number || '')));
+    systems += lines.some((line) => line.system && line.done) ? 1 : 0;
+    hold(records.get(id), 'permits', { from: PERMITS_FROM, lines: lines.slice(0, PERMITS_KEPT) });
+  }
+  log(`${FIPS}: permits for ${byAccount.size} accounts (${systems} with a finished roof, heating, water heater or panel permit); `
+    + `${noWord} permits with no fixed word for their kind left out; words for ${words.size} codes`);
 }
 
 function addressOf(row) {
@@ -424,6 +544,12 @@ async function build({ work, today = new Date() }) {
   log(`accounts with an address: ${records.size}, without: ${noAddress}`);
 
   await readFacts(zip, records, today);
+  // A permits layer that can't be read leaves the release without permits: it never stops the county's publish.
+  try {
+    await addPermits(dir, records, today);
+  } catch (err) {
+    log(`${FIPS}: permits skipped: ${err.constructor === Error && !/JSON|Unexpected/.test(err.message) ? err.message : err.name}`);
+  }
 
   // The address list: a parcel's other street numbers, and the units of its buildings.
   const pointsByParcel = new Map();

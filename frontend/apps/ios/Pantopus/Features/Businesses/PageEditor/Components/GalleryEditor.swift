@@ -92,6 +92,8 @@ private struct GalleryTileView: View {
                     ZStack {
                         Circle()
                             .fill(Theme.Color.appText.opacity(0.65))
+                            // Dark under white words in dark mode too (appText is near white there).
+                            .environment(\.colorScheme, .light)
                             .frame(width: 22, height: 22)
                         Icon(.x, size: 11, strokeWidth: 2.5, color: Theme.Color.appTextInverse)
                     }
