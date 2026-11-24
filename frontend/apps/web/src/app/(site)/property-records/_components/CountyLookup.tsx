@@ -67,6 +67,7 @@ export default function CountyLookup({ fips, inName }: { fips: string; inName: s
           <AddressAutocomplete
             ariaLabel={`An address in ${inName}`}
             placeholder="Start typing an address"
+            submitLabel="Look it up"
             onSelect={(place) => {
               setSelected(place);
               go(place.label);

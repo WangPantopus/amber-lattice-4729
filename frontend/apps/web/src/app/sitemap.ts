@@ -4,8 +4,8 @@ import { API_BASE_URL } from '@pantopus/utils';
 // The pages search engines may read, at the address every page's canonical link uses. robots.ts points to this file
 // in production only; staging and local builds tell search engines to stay out, whatever is listed here.
 //
-// The county pages come from the backend's list (backend/services/countyGuide), kept a day. Built per request so a
-// backend that can't answer leaves the county pages out of one answer, not out of a day's copy.
+// The county pages come from the backend's list (backend/services/countyGuide), kept an hour, so a release is listed
+// within the hour. Built per request so a backend that can't answer leaves the county pages out of one answer only.
 export const dynamic = 'force-dynamic';
 
 const SITE_URL = 'https://pantopus.com';
@@ -18,7 +18,7 @@ type GuideIndex = { states: { slug: string }[]; counties: { state: string; slug:
 async function countyPages(): Promise<string[]> {
   try {
     const res = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/public/county-guide`, {
-      next: { revalidate: 86400 },
+      next: { revalidate: 3600 },
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];

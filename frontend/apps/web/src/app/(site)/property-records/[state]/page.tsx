@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// /property-records/<state>: the state's counties that have a page. Static, built on first visit and rebuilt about
-// daily from the backend's answer (backend/services/countyGuide); an unknown state is a 404.
+// /property-records/<state>: the state's counties that have a page. Static, built on first visit and rebuilt hourly
+// from the backend's answer (backend/services/countyGuide); an unknown state is a 404.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from 'next';
@@ -9,7 +9,8 @@ import { notFound } from 'next/navigation';
 import { Breadcrumb, SiteFooter, SiteNav } from '../_components/Chrome';
 import { SITE_URL, countyPath, statePage, statePath } from '../_lib/guide';
 
-export const revalidate = 86400;
+// Rebuilt within the hour of a release, so a newly released county is listed (the backend answer is cached too).
+export const revalidate = 3600;
 export const dynamicParams = true;
 
 // Built on first visit, not at deploy: the backend decides which pages exist.

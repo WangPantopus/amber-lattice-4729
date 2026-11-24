@@ -1,7 +1,95 @@
 {
   "v": 1,
-  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `q` and `a` are the question the row answers, in what the office's page says.",
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says.",
   "counties": {
+    "41051": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Multnomah County Assessment, Recording & Taxation (DART)",
+          "url": "https://www.multco.us/services/tax-property-marriage-and-military-discharge-records",
+          "line": "Recorded indices from 1965 on are electronic, with public terminals at the office.",
+          "q": "Where are deeds recorded in Multnomah County?",
+          "a": "Multnomah County's Assessment, Recording & Taxation office (DART) records documents. Its recorded indices from 1965 on are electronic, with public terminals at the office."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Multnomah County Assessment, Recording & Taxation (DART)",
+          "url": "https://www.multco.us/services/pay-property-taxes",
+          "line": "Payments online, by phone, by mail or in person.",
+          "q": "Where do I pay property tax in Multnomah County?",
+          "a": "Multnomah County's Assessment, Recording & Taxation office takes property tax payments online, by phone, by mail or in person."
+        }
+      ]
+    },
+    "48113": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Dallas County Clerk, Recording Division",
+          "url": "https://www.dallascounty.org/government/county-clerk/recording/",
+          "line": "The county's recorder of deeds and official public records. Its online search shows non-certified copies.",
+          "q": "Where are deeds recorded in Dallas County?",
+          "a": "The Dallas County Clerk's Recording Division records deeds and keeps the official public records. Its page links to an online search of them, which shows non-certified copies."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Dallas County Tax Office",
+          "url": "https://www.dallascounty.org/departments/tax/pay-property-tax.php",
+          "line": "Collects property tax. Its page notes penalty and interest on payments made after January 31.",
+          "q": "Where do I pay property tax in Dallas County?",
+          "a": "The Dallas County Tax Office, the county's tax assessor-collector, collects property tax. Its page looks up and pays a bill, and notes penalty and interest on payments made after January 31."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property fraud alert",
+          "office": "Dallas County Clerk",
+          "url": "https://www.dallascounty.org/government/county-clerk/recording/property-fraud.php",
+          "line": "An alert about documents recorded in the county, offered with a partner company. The county charges no fee for it."
+        }
+      ]
+    },
+    "48201": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Harris County Clerk, Real Property Department",
+          "url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx",
+          "line": "Search real property records by grantor, grantee, date or instrument; images from November 1960. The online copy is not the official record.",
+          "q": "Where are deeds recorded in Harris County?",
+          "a": "The Harris County Clerk's Real Property Department keeps the county's real property records. Its online search covers them with images from November 1960; the online copy is not the official record."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Harris County Tax Office",
+          "url": "https://www.hctax.net/Property/PropertyTax",
+          "line": "Collects property tax: online, by phone, by mail or at a branch. Mailed payments must be postmarked by the last business day in January.",
+          "q": "Where do I pay property tax in Harris County?",
+          "a": "The Harris County Tax Office, the county's tax assessor-collector, collects property tax online, by phone, by mail or at its branches. Mailed payments must be postmarked by the last business day in January."
+        }
+      ]
+    },
+    "53007": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recording_alert",
+          "title": "Recording notification",
+          "office": "Chelan County Auditor",
+          "url": "https://co.chelan.wa.us/auditor/pages/recording-notification-service",
+          "line": "Emails a subscriber whenever a document is recorded with any of up to five names they register. The county charges no fee for it."
+        }
+      ]
+    },
     "53011": {
       "read": "2026-11-23",
       "property_search_office": "Clark County GIS, Property Information Center",
@@ -46,6 +134,179 @@
           "office": "Clark County Auditor",
           "url": "https://e-docs.clark.wa.gov/LandmarkWeb/FraudAlert",
           "line": "Emails a subscriber each time a land record document is recorded under a name or parcel number they chose."
+        }
+      ]
+    },
+    "53033": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "King County Recorder's Office",
+          "url": "https://kingcounty.gov/en/dept/executive-services/certificates-permits-licenses/records-licensing/recorders-office",
+          "line": "Records real estate deeds and mortgages; its page links to the online records search.",
+          "q": "Where are deeds recorded in King County?",
+          "a": "The King County Recorder's Office records real estate deeds and mortgages. Its page links to an online search of recorded documents."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "King County Treasury Operations",
+          "url": "https://kingcounty.gov/en/dept/executive-services/buildings-property/treasury-operations/property-tax",
+          "line": "Collects property tax: online, by mail or in person. The halves are due April 30 and October 31.",
+          "q": "Where do I pay property tax in King County?",
+          "a": "King County Treasury Operations collects property tax. Its page lists paying online, by mail or in person, and a parcel lookup for an account."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording Activity Notification System",
+          "office": "King County Recorder's Office",
+          "url": "https://recordsearch.kingcounty.gov/LandmarkWeb/RecordingActivity",
+          "line": "Emails a subscriber each time a land records document is recorded with a name they chose."
+        }
+      ],
+      "property_search_office": "King County, eReal Property",
+      "property_search_url": "https://blue.kingcounty.com/Assessor/eRealProperty/default.aspx"
+    },
+    "53035": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Kitsap County Auditor, Recording Division",
+          "url": "https://www.kitsap.gov/auditor/Pages/recording.aspx",
+          "line": "Its public records search covers recorded documents, land records and survey maps.",
+          "q": "Where are deeds recorded in Kitsap County?",
+          "a": "The Kitsap County Auditor's Recording Division records deeds. Its page links to a public records search of recorded documents and land records."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Kitsap County Treasurer",
+          "url": "https://www.kitsap.gov/treasurer/Pages/default.aspx",
+          "line": "Statements are mailed in February; the halves are due April 30 and October 31.",
+          "q": "Where do I pay property tax in Kitsap County?",
+          "a": "The Kitsap County Treasurer's page links to paying property tax online and to each parcel's tax statement. Statements are mailed in February."
+        },
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Kitsap County Department of Community Development",
+          "url": "https://kitsap.gov/dcd/Pages/DCD-Public-Records.aspx",
+          "line": "Its permit records cover unincorporated Kitsap County, with a search of historical permits and the Online Permit Center.",
+          "q": "Where do I find building permits in Kitsap County?",
+          "a": "The Kitsap County Department of Community Development keeps building, land use and site permits for unincorporated Kitsap County. Its records page links to its permit searches."
+        }
+      ],
+      "property_search_office": "Kitsap County, Parcel Search",
+      "property_search_url": "https://psearch.kitsap.gov/psearch/index.html"
+    },
+    "53053": {
+      "read": "2026-11-23",
+      "property_search_office": "Pierce County Assessor-Treasurer, Information Portal (ATIP)",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Pierce County Auditor, Recorded Documents",
+          "url": "https://www.piercecountywa.gov/359/Recorded-Documents",
+          "line": "Deeds, easements, mortgage documents and more are indexed online with their images; certified copies can be bought online.",
+          "q": "Where are deeds recorded in Pierce County?",
+          "a": "The Pierce County Auditor's Office records deeds and other property documents. Its Recorded Documents page links to the online search, where deeds, easements and mortgage documents show with their images."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Pierce County Assessor-Treasurer",
+          "url": "https://www.piercecountywa.gov/748/Tax-Bills-Payments",
+          "line": "Statements are mailed in February. A bill over $50 can be paid in two halves, by April 30 and October 31.",
+          "q": "Where do I pay property tax in Pierce County?",
+          "a": "The Pierce County Assessor-Treasurer's Tax Bills & Payments page lists the ways to pay: online, by mail, by phone or in person. Statements are mailed in February."
+        },
+        {
+          "id": "parcel_map",
+          "title": "Parcel map",
+          "office": "Pierce County Planning & Public Works, Public GIS",
+          "url": "https://matterhornwab.co.pierce.wa.us/publicgis/",
+          "line": "The county's interactive map of parcels."
+        },
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Pierce County Planning & Public Works",
+          "url": "https://pals.piercecountywa.gov/palsonline/#/permitSearch",
+          "line": "Search applications and permits by application or permit number.",
+          "q": "Where do I find building permits in Pierce County?",
+          "a": "Pierce County Planning & Public Works keeps building applications and permits; its online permits website (PALS) searches them by application or permit number."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Owner Alert",
+          "office": "Pierce County Auditor",
+          "url": "https://www.piercecountywa.gov/8573/Owner-Alert-Service",
+          "line": "Emails a subscriber any time a document is recorded under their name. The county charges no fee for it."
+        }
+      ]
+    },
+    "53057": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Skagit County Auditor, Recording Department",
+          "url": "https://www.skagitcountywa.gov/government/auditor-s-office/recording-department/",
+          "line": "Documents from 1973 on are in its current document search; earlier ones are in its historic search.",
+          "q": "Where are deeds recorded in Skagit County?",
+          "a": "The Skagit County Auditor's Recording Department records documents. Its page links to the current document search (1973 on) and the historic search for earlier documents."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Skagit County Treasurer",
+          "url": "https://www.skagitcountywa.gov/government/treasurer-s-office/",
+          "line": "Collects property tax. The halves are due April 30 and October 31; a tax under $50 is due in full by April 30.",
+          "q": "Where do I pay property tax in Skagit County?",
+          "a": "The Skagit County Treasurer collects property tax. Its page lists paying online, by phone, by mail or in person, and the due dates of April 30 and October 31."
+        }
+      ],
+      "property_search_office": "Skagit County, Property Search",
+      "property_search_url": "https://classic.skagitcountywa.gov/Search/Property/"
+    },
+    "53061": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Snohomish County Auditor, Recording Division",
+          "url": "https://www.snohomishcountywa.gov/5840/Search-Recorded-Documents",
+          "line": "Most documents recorded since July 1976 are online; earlier ones are on microfilm at the office.",
+          "q": "Where are deeds recorded in Snohomish County?",
+          "a": "The Snohomish County Auditor's Recording Division records documents. Most recorded since July 1976 can be searched online; earlier ones are on microfilm at its office."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recorded document notification",
+          "office": "Snohomish County Auditor",
+          "url": "https://www.snohomishcountywa.gov/6335/Recorded-Document-Notification-System",
+          "line": "Emails a subscriber when a document is recorded in their name or for their property. The county charges no fee for it."
+        }
+      ]
+    },
+    "53071": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Walla Walla County Treasurer",
+          "url": "https://www.wwcowa.gov/government/treasurer/payment_center.php",
+          "line": "Property taxes are due by April 30 and October 31.",
+          "q": "Where do I pay property tax in Walla Walla County?",
+          "a": "The Walla Walla County Treasurer's payment center lists paying by phone, online, by mail or in person. Property taxes are due by April 30 and October 31."
         }
       ]
     }

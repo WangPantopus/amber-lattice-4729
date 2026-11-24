@@ -11,27 +11,40 @@
  */
 
 const places = require('./places');
-const { officesOf } = require('./offices');
+const { officesOf, allReadByHand } = require('./offices');
 const { holdsFor, isLive } = require('./holds');
 const federal = require('./federal');
 const { questionsOf } = require('./questions');
 const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/homesteadPrograms');
 const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
-// Released states, by postal code, in the order they went out. Live counties have pages whatever this says.
+// Released states, by postal code, in the order they went out. Live counties have pages whatever this says. A state
+// release shows links from NETR Online's directory where no office was read by hand, so it waits on the founder's
+// decision about those links (FOUNDER-STEPS.md); until then, release county by county below.
 const BATCHES = [];
+
+// Released counties, by FIPS: each one's every office row was read by hand on the office's own site
+// (data/offices.json), so its page shows no directory link. A county listed here without that has no page.
+const COUNTIES = [
+  // November 23, 2026: Pierce and Kitsap counties, WA (Clark County, WA is live).
+  '53053', '53035',
+];
+
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
-// BATCHES alone, so a release is a reviewed change here.
+// BATCHES and COUNTIES alone, so a release is a reviewed change here.
 const released = new Set([
   ...BATCHES.flat(),
   ...String(process.env.COUNTY_GUIDE_STATES || '').split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)),
 ]);
+const releasedCounties = new Set(COUNTIES);
 
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
+const INCOMPLETE_TTL_MS = 10 * 60 * 1000;
 const answers = new Map();
 
 /** Whether a county has a page now. */
-const published = (county) => Boolean(county) && (isLive(county.fips) || released.has(county.state.abbr));
+const published = (county) => Boolean(county) && (isLive(county.fips) || released.has(county.state.abbr)
+  || (releasedCounties.has(county.fips) && allReadByHand(county)));
 
 const statePart = (state) => ({ slug: state.slug, name: state.name, abbr: state.abbr, unit: state.unit, units: state.units });
 
@@ -80,17 +93,21 @@ function homesOf(county) {
 
 async function compose(county) {
   const offices = officesOf(county);
-  const [holds, hazards, disasters, radon, floodCost] = await Promise.all([
-    holdsFor(county),
+  const read = await Promise.all([
     federal.hazards(county.fips),
     federal.disasters(county.fips),
     federal.radon(county.fips),
     federal.floodCost(county.fips),
   ]);
+  const holds = await holdsFor(county);
+  // A part that couldn't be read just now is left out of this answer, which is then kept only briefly.
+  const incomplete = read.some(federal.isUnread);
+  const [hazards, disasters, radon, floodCost] = read.map((part) => (federal.isUnread(part) ? null : part));
   const exemption = exemptionOf(county.state);
   const appeal = appealOf(county.state);
   return {
     v: 1,
+    ...(incomplete ? { incomplete: true } : {}),
     // The day the answer was made, Pacific time.
     built: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }),
     state: statePart(county.state),
@@ -117,13 +134,13 @@ async function countyAnswer(stateSlug, countySlug) {
   const county = places.county(stateSlug, countySlug);
   if (!published(county)) return null;
   const kept = answers.get(county.fips);
-  if (kept && Date.now() - kept.at < ANSWER_TTL_MS) return kept.answer;
+  if (kept && Date.now() - kept.at < kept.ttl) return kept.answer;
   const pending = compose(county);
   // Concurrent asks share one composition.
-  answers.set(county.fips, { at: Date.now(), answer: pending });
+  answers.set(county.fips, { at: Date.now(), ttl: ANSWER_TTL_MS, answer: pending });
   try {
     const answer = await pending;
-    answers.set(county.fips, { at: Date.now(), answer });
+    answers.set(county.fips, { at: Date.now(), ttl: answer.incomplete ? INCOMPLETE_TTL_MS : ANSWER_TTL_MS, answer });
     return answer;
   } catch (err) {
     answers.delete(county.fips);
@@ -160,4 +177,4 @@ function indexAnswer() {
 /** Whether a FIPS code is a county with a page now (the visit beacon counts only those). */
 const isPage = (fips) => /^\d{5}$/.test(String(fips || '')) && published(places.countyByFips(fips));
 
-module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES };
+module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES, COUNTIES };
