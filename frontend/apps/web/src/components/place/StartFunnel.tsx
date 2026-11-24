@@ -471,8 +471,10 @@ function LegacyFreeTiles({ preview, onWall, stack }: { preview: PlacePreview; on
 
 // Exported for the /dev/start-preview fixture page (design QA + the aha
 // audit without a live backend).
-export function PreviewBody({ preview, onWall, onRetry, retrying, stack = false }: {
+export function PreviewBody({ preview, onWall, onRetry, retrying, stack = false, afterAha }: {
   preview: PlacePreview;
+  /** Drawn right after the stand-out card, when there is one (the funnel's dollar figure, as the phones order it). */
+  afterAha?: ReactNode;
   onWall: () => void;
   /** Re-reads the preview when a section failed to load ("Try again"). */
   onRetry?: () => void;
@@ -508,6 +510,7 @@ export function PreviewBody({ preview, onWall, onRetry, retrying, stack = false 
           className="mb-6"
         />
       ) : null}
+      {aha && afterAha ? <div className="mb-6">{afterAha}</div> : null}
 
       {/* Ballot P0 (ballot_p0): the election card under the aha, per the
           guide §5.8 — the aha ranking itself is unchanged. */}
@@ -988,15 +991,21 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
                   <ChevronRight className="h-5 w-5 shrink-0" aria-hidden="true" />
                 </button>
               ) : null}
-              <div className="mt-4">
-                {/* The dollar figure leads when there is a real one;
-                    otherwise the original hero carries the page exactly
-                    as before — never a placeholder in its place. */}
-                {isRenderableLead(preview.money_lead)
+              {/* The stand-out card leads, then the dollar figure when there is
+                  a real one (otherwise the original hero), as on the phones
+                  (D1). With no stand-out card the dollar figure leads, as
+                  before — never a placeholder in its place. */}
+              {preview.aha ? null : (
+                <div className="mt-4">
+                  {isRenderableLead(preview.money_lead)
+                    ? <MoneyLeadCard lead={preview.money_lead} />
+                    : <PreviewHeroCard />}
+                </div>
+              )}
+              <PreviewBody
+                afterAha={isRenderableLead(preview.money_lead)
                   ? <MoneyLeadCard lead={preview.money_lead} />
                   : <PreviewHeroCard />}
-              </div>
-              <PreviewBody
                 preview={preview}
                 onWall={goWall}
                 onRetry={() => { void previewQuery.refetch(); }}
