@@ -7,11 +7,11 @@
 -- picture, or id of a card or of the person it went to.
 --   card_sent        a card stored by POST /cards or /cards/batch (user: the sender; meta via, list_size, stamp, travels)
 --   card_taken_back  the sender took it back (meta via)
---   card_page_seen   a card's link page was read, signed out (no user; meta via, sealed; link-preview robots count too)
+--   card_page_seen   a card's link page was read, signed out (no user; meta via, sealed, web_server on the web page's own server read; at most one a minute per card from each)
 --   card_code_sent   a sign-in code went out from a card's page (no user; meta via)
 --   card_claimed     someone took a card by email or link (user: the claimer; meta via, new_account, after)
 --   card_reply_sent  the person a card went to wrote back (user: the replier)
---   card_passed_on   a travelling card was passed on (user: the passer; meta to 1 or 2, via)
+--   card_passed_on   a travelling card was passed on (user: the passer; meta place 1 or 2, via)
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 

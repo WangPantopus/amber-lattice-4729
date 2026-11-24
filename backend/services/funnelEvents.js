@@ -70,11 +70,11 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   // Counts only: no name, address, note, or id of a card or of the person it went to.
   'card_sent', //       user: the sender; meta via person | email | link, list_size, stamp free | paid | none, travels
   'card_taken_back', // user: the sender; meta via
-  'card_page_seen', //  no user (a card's link page, signed out; link-preview robots count too); meta via, sealed
+  'card_page_seen', //  no user (a card's link page, signed out; at most one a minute per card); meta via, sealed, web_server
   'card_code_sent', //  no user; meta via
   'card_claimed', //    user: the claimer; meta via, new_account, after lt_1h | lt_1d | lt_7d | later
   'card_reply_sent', // user: the replier
-  'card_passed_on', //  user: the passer; meta to 1 | 2 (the card's place), via
+  'card_passed_on', //  user: the passer; meta place 1 | 2 (which of the card's two places), via
 ]);
 
 // Only these pilot events are accepted from an authenticated app. Delivery

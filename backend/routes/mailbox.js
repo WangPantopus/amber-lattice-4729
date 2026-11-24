@@ -2615,6 +2615,23 @@ router.get('/cards/waiting', verifyToken, async (req, res) => {
 // recorded after the answer is decided and never awaited by it, so sending, opening and claiming are no slower.
 /** How a card went: to a person on Pantopus, by email, or by link. */
 const cardVia = (mail) => (holidayCards.isByLink(mail) ? 'link' : mail?.escrow_status ? 'email' : 'person');
+// card_page_seen is written on a public GET, so reloading a working link must not grow FunnelEvent without bound: at most
+// one row a minute for each card, per process, from its readers and (apart, so a web visit still counts once) from the
+// web page's own server. A small map of when each was last counted, pruned of anything older than the minute.
+const PAGE_SEEN_GAP_MS = 60 * 1000;
+const PAGE_SEEN_MAX_KEYS = 10000;
+const pageSeenAt = new Map();
+function pageSeenDue(key, now = Date.now()) {
+  const last = pageSeenAt.get(key);
+  if (last !== undefined && now - last < PAGE_SEEN_GAP_MS) return false;
+  if (pageSeenAt.size >= PAGE_SEEN_MAX_KEYS) {
+    for (const [k, at] of pageSeenAt) if (now - at >= PAGE_SEEN_GAP_MS) pageSeenAt.delete(k);
+    // Still full of fresh keys (a flood of different links): skip counting rather than grow.
+    if (pageSeenAt.size >= PAGE_SEEN_MAX_KEYS) return false;
+  }
+  pageSeenAt.set(key, now);
+  return true;
+}
 /** How long after it was sent a card was taken: under an hour, a day, a week, or later. */
 function cardTakenAfter(sentAt, now = Date.now()) {
   const ms = now - Date.parse(sentAt);
@@ -3731,7 +3748,7 @@ router.post('/cards/:id/pass-on', verifyToken, validate(passOnSchema), async (re
       logger.info('Travelling card passed on', { mailId: answer.body.card?.id, cardId: req.params.id, senderId: userId });
       // A card by email or link is in nobody's mailbox until it's taken; a person's reaches them at 7 a.m.
       const to = req.body.to || {};
-      void recordFunnelEvent('card_passed_on', { userId, meta: { to: Number(req.body.place),
+      void recordFunnelEvent('card_passed_on', { userId, meta: { place: Number(req.body.place),
         via: to.link ? 'link' : to.email ? 'email' : 'person' } });
     }
     return reply(res, answer);
@@ -5099,8 +5116,10 @@ router.get('/claim/:mailId', async (req, res) => {
     // once from the browser. That first read is marked `web_server`, so the report can leave it out.
     if (card) {
       const webServer = !req.get('origin') && /^(node|undici)\b/i.test(String(req.get('user-agent') || ''));
-      void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas',
-        ...(webServer ? { web_server: true } : {}) } });
+      if (pageSeenDue(`${mail.id}:${webServer ? 'server' : 'reader'}`)) {
+        void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas',
+          ...(webServer ? { web_server: true } : {}) } });
+      }
     }
 
     return res.json({
