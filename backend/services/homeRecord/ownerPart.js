@@ -230,6 +230,34 @@ async function exemptionsBlock(row) {
   };
 }
 
+const CFPB_PMI = 'https://www.consumerfinance.gov/ask-cfpb/when-can-i-remove-private-mortgage-insurance-pmi-from-my-loan-en-202/';
+
+/**
+ * The rule on private mortgage insurance, in the Consumer Financial Protection Bureau's terms (read November 23, 2026),
+ * with the county's last sale price and the two marks figured from it. Facts and arithmetic, never a suggestion: it
+ * doesn't know whether the owner has a loan, or whether the last sale was theirs, and says so.
+ */
+function mortgageInsuranceBlock(copy) {
+  const facts = copy?.facts || {};
+  const price = positive(facts.sale_price) >= LOWEST_SALE_PRICE && !coversMoreThanHome(facts) ? facts.sale_price : null;
+  if (!price) return null;
+  return {
+    kind: 'card',
+    id: 'mortgage_insurance',
+    title: 'Mortgage insurance',
+    chip: null,
+    lead: 'On a conventional loan, the law lets you ask your servicer to cancel private mortgage insurance once the balance is scheduled to reach 80% of the home\'s original value, and it ends by itself at 78%. FHA and VA loans have their own rules.',
+    rows: [
+      { id: 'last_sale', label: 'Last sale price on the county\'s record', value: money(price) },
+      { id: 'pmi_80', label: '80% of that price', value: money(price * 0.8) },
+      { id: 'pmi_78', label: '78% of that price', value: money(price * 0.78) },
+    ],
+    notes: ['"Original value" generally means the price you paid or the appraisal when you bought, whichever is lower. The county\'s last sale may not be your purchase.'],
+    source: 'Consumer Financial Protection Bureau',
+    action: { label: 'Read the rule on the CFPB\'s page', url: CFPB_PMI },
+  };
+}
+
 const settle = (label, read) => read.catch((err) => {
   logger.warn('homeRecord.owner_part_failed', { part: label, error: err.message });
   return null;
@@ -260,7 +288,7 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
       lotBlock(copy),
     ]
     : [above, systems, groundBlock(extras.ground)];
-  const protect = [copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions].filter(Boolean);
+  const protect = [copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions, mortgageInsuranceBlock(copy)].filter(Boolean);
   return [
     ...blocks,
     ...open,

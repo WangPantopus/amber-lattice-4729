@@ -244,6 +244,8 @@ function closedItems(copy, { similar = null, estimate = null, years = null, grou
   if (recordingAlerts.forCounty(copy?.jurisdiction)) {
     protect.push({ icon: 'mail', title: 'Recording alerts', line: 'The county emails you when a document is recorded' });
   }
+  // The owner's card figures from the county's last sale price, so it shows where one is held.
+  if (price) protect.push({ icon: 'percent', title: 'Mortgage insurance', line: 'When the law lets you ask to drop it' });
 
   return [
     { id: 'closed_money', title: 'Ownership and money', items: money },
