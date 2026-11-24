@@ -22,7 +22,7 @@ export default async function UsernameLayout({
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
       </div>
     }>
-      <AppShell>{children}</AppShell>
+      <AppShell publicPage>{children}</AppShell>
     </Suspense>
   );
 }
