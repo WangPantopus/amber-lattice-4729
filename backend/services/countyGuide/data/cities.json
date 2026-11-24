@@ -2048,6 +2048,114 @@
       "other_counties": true,
       "built": 1991,
       "value": 572800
+    },
+    "0655156": {
+      "name": "Palmdale",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Palmdale, Building and Safety",
+          "url": "https://www.cityofpalmdaleca.gov/152/Building-Safety",
+          "line": "Regulates the construction of all new, remodeled and existing residential, commercial and industrial buildings; every permit application goes through the Accela Citizen Portal, plan reviews are electronic, and inspections are scheduled online.",
+          "q": "Where do I find building permits in Palmdale?",
+          "a": "The City of Palmdale's Building and Safety division regulates the construction of all new, remodeled and existing buildings under the State of California's and the City's building codes. All permit applications are submitted through the Accela Citizen Portal, where inspections are also scheduled."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Palmdale, Planning",
+          "url": "https://www.cityofpalmdaleca.gov/176/Planning",
+          "line": "Oversees application review, the General Plan, specific plans, the Zoning Ordinance and Map and annexations, and supports the Planning Commission.",
+          "q": "Where is Palmdale's zoning?",
+          "a": "The City of Palmdale's Planning division oversees development application review, the General Plan and specific plans, and the Zoning Ordinance and Zoning Map. It also supports the Planning Commission."
+        }
+      ],
+      "built": 1989,
+      "value": 471000
+    },
+    "0640130": {
+      "name": "Lancaster",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lancaster Development Services, Building and Safety",
+          "url": "https://www.cityoflancasterca.org/our-city/departments-services/development-services/city-engineering/building-and-safety",
+          "line": "Issues permits, reviews all building plans for code compliance and inspects during construction; since January 1, 2026 new plan submittals must be designed to the 2025 California Building Code.",
+          "q": "Where do I find building permits in Lancaster?",
+          "a": "The City of Lancaster's Building and Safety division issues permits, reviews all building plans for compliance with code requirements and makes periodic inspections during construction. Since January 1, 2026, all new plan submittals must be designed to the 2025 California Building Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lancaster Development Services, Current Planning",
+          "url": "https://www.cityoflancasterca.org/our-city/departments-services/development-services/planning/current-planning",
+          "line": "Planning staff review every development and subdivision proposal for conformance with the general plan, specific plans, zoning ordinance and subdivision regulations; the page maps projects under review.",
+          "q": "Where is Lancaster's zoning?",
+          "a": "The City of Lancaster's planning staff review all development and subdivision proposals in the city for conformance with the adopted general plan, specific plans, zoning ordinance and subdivision regulations. The page includes a map of projects currently under Planning review."
+        }
+      ],
+      "built": 1986,
+      "value": 446600
+    },
+    "0616350": {
+      "name": "Corona",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Corona Planning and Development, Building Division",
+          "url": "https://www.coronaca.gov/departments/building-division",
+          "line": "Makes sure new development is built to the highest safety standards and existing structures are kept safe; from January 1, 2027, plan review submittals for major new development, including tract homes and residential infill lots, must be made online.",
+          "q": "Where do I find building permits in Corona?",
+          "a": "The City of Corona's Building Division handles plan check and inspection. Its page links applying for a building permit, a permit history search and inspection requests, and from January 1, 2027 plan review submittals for major new development must be made online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Corona Planning and Development, Planning Division",
+          "url": "https://www.coronaca.gov/departments/planning-and-development/planning-division",
+          "line": "Works with developers on residential, commercial and industrial projects, reviews and issues permits for fences and walls, patio covers, signage and additions, and provides general zoning and General Plan information.",
+          "q": "Where is Corona's zoning?",
+          "a": "The City of Corona's Planning Division plans for the City's balanced and orderly growth, reviews and issues permits for fences and walls, patio covers, signage and residential and commercial additions, and provides general zoning and General Plan information."
+        }
+      ],
+      "built": 1991,
+      "value": 700700
+    },
+    "0613210": {
+      "name": "Chino",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Chino Development Services, Building Division",
+          "url": "https://www.cityofchino.org/178/Building",
+          "line": "Issues building permits, takes in plans for review and inspects residential and commercial structures; the City has adopted the 2025 California Building Code, with amendments in Chapter 15 of the Chino Municipal Code.",
+          "q": "Where do I find building permits in Chino?",
+          "a": "The City of Chino's Building Division issues building permits, takes in plans for review and inspects both residential and commercial structures. The City has adopted the 2025 Edition of the California Building Code, with its amendments listed in Chapter 15 of the Chino Municipal Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Chino Development Services, Planning Division",
+          "url": "https://www.cityofchino.org/202/Planning",
+          "line": "Helps ensure land uses comply with the General Plan, Specific Plans and Zoning regulations, approves land use and other zoning applications, and updates the Zoning Ordinance with the Planning Commission and City Council.",
+          "q": "Where is Chino's zoning?",
+          "a": "The City of Chino's Planning Division, part of the Development Services Department, helps ensure land uses comply with the City's General Plan, Specific Plans and Zoning regulations. It approves land use and other zoning applications and, with the Planning Commission and City Council, updates the Zoning Ordinance as needed."
+        }
+      ],
+      "built": 1987,
+      "value": 683400
     }
   }
 }
