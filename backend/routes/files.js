@@ -611,7 +611,9 @@ router.get('/portfolio/:userId', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch portfolio' });
     }
     
-    res.json({ files: (files || []).map(toPublicPortfolioFile) });
+    // A profile with sources (services/profilePage/pieces.js): never more than the person's pieces show.
+    const shown = await require('../services/profilePage/pieces').publicGridFilter(userId, files || []);
+    res.json({ files: shown.map(toPublicPortfolioFile) });
     
   } catch (err) {
     logger.error('Portfolio fetch error', { error: err.message });
