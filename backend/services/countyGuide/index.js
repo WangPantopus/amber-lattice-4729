@@ -19,8 +19,8 @@ const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/hom
 const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
 // Released states, by postal code, in the order they went out. Live counties have pages whatever this says. A state
-// release shows links from NETR Online's directory where no office was read by hand, so it waits on the founder's
-// decision about those links (FOUNDER-STEPS.md); until then, release county by county below.
+// release would show links from NETR Online's directory where no office was read by hand, and the founder decided on
+// November 23 to keep those off ("Keep them off"), so states stay closed: release county by county below.
 const BATCHES = [];
 
 // Released counties, by FIPS: each one's every office row was read by hand on the office's own site
