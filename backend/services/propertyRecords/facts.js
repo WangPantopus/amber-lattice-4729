@@ -10,8 +10,10 @@
  *   unit      the unit's own (shown only on an exact match)
  *   building  the building's (shown on an exact match, labeled, and on a building-only match)
  *   parcel    the land's or the account's
- * `owner: true` stays out of everything but a verified owner's own screens: a tax
- * status can say something about a person's age or health.
+ * `owner: true` stays out of everything but a verified owner's own screens, a buyer's public record of the home
+ * included (SPEC section 8): a tax status or an exemption can say something about a person's age or health.
+ * `value: true` is a value-type fact: never in a lookup's open facts, and in a signed-in buyer's public record only
+ * for a county on the switch file's buyer_report list (router.js buyerReportFor).
  */
 const FACTS = {
   // Building
@@ -105,10 +107,10 @@ const FACTS = {
   value_year: { section: 'assessment', label: 'Value year', format: 'year', scope: 'unit', value: true },
   // Where a record's values come from when it isn't the record's own publisher (Miami-Dade's are the state's certified roll).
   value_source: { section: 'assessment', format: 'none', scope: 'unit', value: true },
-  value_history: { section: 'assessment', format: 'history', scope: 'unit', value: true, owner: true },
+  value_history: { section: 'assessment', format: 'history', scope: 'unit', value: true },
   tax_amount: { section: 'assessment', label: 'Property tax', format: 'money', scope: 'unit', value: true },
   tax_year: { section: 'assessment', label: 'Tax year', format: 'year', scope: 'unit', value: true },
-  tax_history: { section: 'assessment', format: 'history', scope: 'unit', value: true, owner: true },
+  tax_history: { section: 'assessment', format: 'history', scope: 'unit', value: true },
   tax_status: { section: 'assessment', label: 'Tax status', format: 'text', scope: 'unit', value: true, owner: true },
   exemptions: { section: 'assessment', format: 'none', scope: 'unit', value: true, owner: true },
 
