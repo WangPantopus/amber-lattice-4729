@@ -4,7 +4,9 @@
 // backend/serializers/placeIntelligenceSerializer.js (the sections and their sources),
 // backend/services/placeIntelligenceService.js (who sees what), backend/services/propertyRecords/facts.js (the county
 // record's facts), backend/services/nfipPremiumService.js (flood policies by census tract),
-// backend/services/ballot/governments.js, backend/services/pmmsService.js, backend/data/homesteadPrograms.js.
+// backend/services/ballot/governments.js, backend/services/pmmsService.js, backend/data/homesteadPrograms.js, and who
+// sees a home's value: backend/services/homeRecord/index.js (`buyerReportFor`: the county's public half for anyone signed
+// in, in the counties on `buyer_report`) and ownerPart.js (`buyerCountyBlocks`).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Sources } from '../_components/parts';
@@ -37,7 +39,7 @@ export const PLACE: PillarContent = {
         What can you learn about <em>an address?</em>
       </>
     ),
-    intro: 'Four kinds of facts, read from public sources and put in plain words. Some are for anyone who looks; the home’s money and its full record are for the people who live there.',
+    intro: 'Four kinds of facts, read from public sources and put in plain words. Most are for anyone who looks. A home’s value is for its confirmed owner, and for anyone signed in where Pantopus opens the county’s public record; the household’s own records are for the people who live there.',
     groups: [
       {
         title: 'Risk and health',
@@ -69,7 +71,7 @@ export const PLACE: PillarContent = {
         items: [
           {
             text: 'Value, last sale and the area’s trend',
-            small: 'For a confirmed owner: the county’s values, the last recorded sale and how the area is moving.',
+            small: 'The county’s values and the recorded sales. The confirmed owner always sees them; anyone signed in sees them too in the counties where Pantopus opens the public record to signed-in people.',
           },
           {
             text: 'A property-tax exemption check in all 50 states',
@@ -160,7 +162,7 @@ export const PLACE: PillarContent = {
       { title: 'Save it, or add your home', text: 'Keep an address you care about, or add the home you live in. An account is free and asks for no card.' },
       {
         title: 'Prove you live there',
-        text: 'A code on a postcard mailed to your door, a bill or your lease, your landlord’s yes, or a fast check. Verifying opens the home’s money, its record and the Verified mark.',
+        text: 'A code on a postcard mailed to your door, a bill or your lease, your landlord’s yes, or a fast check. Verifying opens the Verified mark and the home’s mail; confirming you own it opens the home’s money.',
       },
       { title: 'Bring your household', text: 'Invite the people you live with. Everyone at home sees the same tasks, documents and dates.' },
     ],
@@ -178,7 +180,7 @@ export const PLACE: PillarContent = {
       { title: 'Verified homes are counted in ranges,', text: 'never shown as dots on a map.' },
       { title: 'See your home the way an outsider sees it,', text: 'before anyone else does.' },
       { title: 'Take your address off data-broker sites,', text: 'from the same place you look it up.' },
-      { title: 'The money stays with the home.', text: 'A home’s value and its full county record are for its confirmed owner; a verified renter sees rent and bills, not the value.' },
+      { title: 'A lookup never shows a home’s value.', text: 'The confirmed owner sees it, and so does anyone signed in where Pantopus opens the county’s public record. A verified renter sees rent and bills.' },
     ],
   },
   extra: [
@@ -268,7 +270,7 @@ export const PLACE: PillarContent = {
       },
       {
         q: 'Who can see a home’s value?',
-        a: 'Its confirmed owner. A renter who proves they live there sees rent ranges and bill comparisons, not the value. Someone just looking sees the public facts.',
+        a: 'Its confirmed owner, always. In the counties where Pantopus opens the public record to signed-in people, anyone signed in also sees the county’s value and the recorded sales. A lookup without an account never shows the value. A renter who proves they live there sees rent ranges and bill comparisons.',
       },
       {
         q: 'Will other people see my address?',
