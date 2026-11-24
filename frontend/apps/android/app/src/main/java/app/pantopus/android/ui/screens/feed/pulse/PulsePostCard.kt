@@ -182,6 +182,9 @@ data class PulsePostCardContent(
 ) {
     val isCurator: Boolean get() = origin == "curator"
 
+    /** Who the card names where an author goes: a story's outlet (it published the story), else the author. */
+    val bylineName: String get() = story?.outlet ?: authorName
+
     /** Thumbnail-preferring URL projection kept for test compatibility. */
     val mediaUrls: List<String>
         get() = media.map { it.thumbnailUrl ?: it.url }
@@ -1118,8 +1121,7 @@ private fun quotedA11yPart(quoted: PulseQuotedCard): String =
 private fun buildA11yLabel(content: PulsePostCardContent): String {
     val parts = mutableListOf<String>()
     content.repostedBy?.let { parts.add(it) }
-    // A story is read by the outlet that published it, as it is drawn.
-    parts.add(content.story?.outlet ?: content.authorName)
+    parts.add(content.bylineName)
     if (content.likePending || content.savePending) parts.add("Pending")
     if (content.chipLabel.isNotEmpty()) parts.add(content.chipLabel)
     if (content.isCurator) parts.add("Pantopus curator")
