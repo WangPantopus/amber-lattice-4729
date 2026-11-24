@@ -27,6 +27,7 @@ extension PublicProfileView {
         .background(Theme.Color.appBg)
         .accessibilityIdentifier(isOwner ? "profileOwnerPage" : "publicProfileSources")
         .modifier(SourcesSheets(view: self, payload: payload, page: page, content: content))
+        .showsMomentsRingViewer(on: momentsOwnStage)
     }
 
     private func sourcesPage(
@@ -256,8 +257,17 @@ extension PublicProfileView {
             } else {
                 showSourcesPosts = true
             }
-        case .moments:
-            DeepLinkRouter.shared.handle(path: "/moments")
+        case let .moments(userId):
+            // Their Moments play from the first one not watched yet, as a tap on their ring does; otherwise the tab.
+            if let ring = MomentsPeopleRings.shared.ring(for: userId) {
+                if let momentsStage, momentsStage.canShow {
+                    momentsStage.play(ring, scheme: colorScheme)
+                } else {
+                    momentsOwnStage.play(ring, scheme: colorScheme)
+                }
+            } else {
+                DeepLinkRouter.shared.handle(path: "/moments")
+            }
         case let .url(url, _):
             openURL(url)
         }

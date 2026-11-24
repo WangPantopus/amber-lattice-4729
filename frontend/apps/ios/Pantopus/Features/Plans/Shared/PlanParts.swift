@@ -168,6 +168,8 @@ struct PlanAvatar: View {
     let name: String
     var url: String?
     var size: CGFloat = 40
+    /// Whose face it is: it wears the outer ring of their mark (the profile with sources, board 6) when known.
+    var userId: String?
 
     var body: some View {
         let colors = Self.palette(for: name)
@@ -186,6 +188,7 @@ struct PlanAvatar: View {
             }
         }
         .frame(width: size, height: size)
+        .profileMarkRing(of: userId)
         .accessibilityHidden(true)
     }
 
@@ -226,7 +229,7 @@ struct PlanHostRow: View {
 
     var body: some View {
         HStack(spacing: Spacing.s3) {
-            PlanAvatar(name: host.displayName, url: host.avatarUrl)
+            PlanAvatar(name: host.displayName, url: host.avatarUrl, userId: host.userId)
             VStack(alignment: .leading, spacing: 2) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: Spacing.s2) { name

@@ -139,6 +139,10 @@ final class ProfilePageModel {
             state = .loaded(content)
             if previewAs == nil {
                 Self.recent[cacheKey] = (content, Date())
+                // The person's own ring is known now, without asking (board 6).
+                if let rings = content.rings {
+                    ProfileMarks.shared.remember(ProfileMarkSummary(rings: rings), for: page.header.userId)
+                }
             }
         } catch is CancellationError {
             return
