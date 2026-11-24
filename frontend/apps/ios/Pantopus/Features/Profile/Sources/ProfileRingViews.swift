@@ -14,7 +14,7 @@ import SwiftUI
 
 // MARK: - Strokes
 
-private enum RingStroke {
+enum RingStroke {
     /// An arc over months `start..<end` on a circle, January at the top, clockwise.
     static func arc(center: CGPoint, radius: CGFloat, start: Double, end: Double) -> Path {
         var path = Path()
@@ -42,8 +42,10 @@ private enum RingStroke {
     }
 
     static func point(center: CGPoint, radius: CGFloat, degrees: Double) -> CGPoint {
-        let angle = degrees * .pi / 180
-        return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
+        let angle: Double = degrees * .pi / 180
+        let x: Double = cos(angle)
+        let y: Double = sin(angle)
+        return CGPoint(x: center.x + radius * CGFloat(x), y: center.y + radius * CGFloat(y))
     }
 }
 
@@ -256,7 +258,9 @@ struct ProfileRecordChart: View {
             context.stroke(Path(ellipseIn: rect), with: .color(Theme.Color.appSurface), lineWidth: 1.6 * geo.scale)
         }
         context.fill(circle(geo.center, geo.r0 - 7 * geo.scale), with: .color(Theme.Color.appSurfaceSunken))
-        let first = Text(verbatim: "\(years[0])").font(.system(size: 10 * max(1, geo.scale), weight: .bold))
+        // CI's Xcode can't tell which `draw` this is without the type.
+        // swiftlint:disable:next redundant_type_annotation
+        let first: Text = Text(verbatim: "\(years[0])").font(.system(size: 10 * max(1, geo.scale), weight: .bold))
             .foregroundStyle(Theme.Color.appTextSecondary)
         context.draw(first, at: geo.center, anchor: .center)
     }
@@ -275,7 +279,8 @@ struct ProfileRecordChart: View {
         for quarter in 0..<4 {
             let degrees = -90 + 90 * Double(quarter)
             let point = RingStroke.point(center: geo.center, radius: geo.r1 + 11 * geo.scale, degrees: degrees)
-            let text = Text(names[quarter]).font(.system(size: 10 * max(1, geo.scale), weight: .semibold))
+            // swiftlint:disable:next redundant_type_annotation
+            let text: Text = Text(names[quarter]).font(.system(size: 10 * max(1, geo.scale), weight: .semibold))
                 .foregroundStyle(Theme.Color.appTextSecondary)
             context.draw(text, at: point, anchor: anchors[quarter])
         }

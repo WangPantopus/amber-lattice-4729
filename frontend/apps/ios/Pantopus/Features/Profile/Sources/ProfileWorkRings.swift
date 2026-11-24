@@ -161,9 +161,7 @@ struct ProfileWorkFan: View {
         }
         for dot in dots {
             guard let index = years.firstIndex(of: dot.year) else { continue }
-            let angle = (180 + 15 * (Double(dot.month) + 0.5)) * .pi / 180
-            let r = radius(index)
-            let point = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+            let point = RingStroke.point(center: center, radius: radius(index), degrees: 180 + 15 * (Double(dot.month) + 0.5))
             let size = (dot.pinned ? 8.8 : 6.6) * scale
             var inner = context
             inner.opacity = selectedYear.map { $0 == dot.year ? 1 : 0.5 } ?? 1
