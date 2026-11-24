@@ -82,6 +82,7 @@ export const homeManagement: TopicPage = {
     { q: 'Is it only for homeowners?', a: 'No. It works for a home you own, rent or share.' },
     { q: 'Is it free?', a: 'Yes. Pantopus is free on iPhone and Android, and on the web.' },
   ],
+  pillars: ['today', 'place', 'mail'],
   related: [
     { href: '/today', label: 'Today' },
     { href: '/guides/how-to-share-household-tasks', label: 'How to share household tasks' },

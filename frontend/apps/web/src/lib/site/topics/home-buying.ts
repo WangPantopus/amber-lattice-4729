@@ -67,6 +67,7 @@ export const homeBuying: TopicPage = {
     { q: 'Is this a home inspection?', a: 'No. It is the public record about the place and the house. Hire an inspector, and test for radon, before you buy.' },
     { q: 'Can I see what the house sold for?', a: 'In the counties where Pantopus opens the public record to signed-in people, you see its recorded sales and the county’s value. The confirmed owner always sees them.' },
   ],
+  pillars: ['place', 'today'],
   related: [
     { href: '/guides/what-to-check-before-buying-a-house', label: 'What to check before buying a house' },
     { href: '/home-safety', label: 'How safe is your address?' },
