@@ -119,10 +119,15 @@ async function* build({ work }) {
   // has no word for what it is and is left out.
   const saleLines = new Map();
   let first = null;
+  let notSale = 0;
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => layerRows(`${BASE}/5`, SALE_COLUMNS, { oid: 'objectid' }))) {
     const date = isoDate(row.sale_date);
     if (date && (!first || date < first)) first = date;
-    if (!isHomeSale(positive(row.sale_price))) continue;
+    if (!isHomeSale(positive(row.sale_price))) {
+      // Not this home's sale by the connector's rule (a token price): it has no word for what it is, so it is left out.
+      if (date) notSale += 1;
+      continue;
+    }
     const line = historyLine({ date, sale: true, price: positive(row.sale_price), document: word(row.reception_num) });
     if (line) {
       if (!saleLines.has(row.account_num)) saleLines.set(row.account_num, []);
@@ -161,7 +166,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} accounts, ${noAddress} without a street number, ${personal} personal or inactive; ${buildings.size} with buildings, ${sales.size} sales`);
-  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} accounts since ${(first || '').slice(0, 4)}`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} accounts since ${(first || '').slice(0, 4)}; lines that aren't a sale, left out: ${notSale}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'OK', name: COUNTY, publisher: 'Oklahoma County Assessor', dataset: 'public record tables', method: 'county', source: 'ok-oklahoma', as_of: asOf, stale_after_days: 60, extra_zips: zipsByCounty(work, ['40']).get(FIPS) || [], records,

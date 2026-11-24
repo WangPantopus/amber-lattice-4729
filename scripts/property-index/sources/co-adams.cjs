@@ -123,11 +123,16 @@ async function* build({ work }) {
   // sale has no word for what it is and is left out.
   const saleLines = new Map();
   let first = null;
+  let notSale = 0;
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => layerRows(SALES, SALE_COLUMNS))) {
     const date = isoDate(row.saledt);
     if (date && (!first || date < first)) first = date;
     // A quit claim moves no home at a price.
-    if (!isHomeSale(positive(row.salep)) || String(row.deedtype ?? '').trim() === 'QC') continue;
+    if (!isHomeSale(positive(row.salep)) || String(row.deedtype ?? '').trim() === 'QC') {
+      // Not this home's sale by the connector's rule (a token price, a quit claim): it has no word for what it is, so it is left out.
+      if (date) notSale += 1;
+      continue;
+    }
     const line = historyLine({ date, sale: true, price: positive(row.salep), document: word(row.recptno) });
     if (line) {
       if (!saleLines.has(row.pin)) saleLines.set(row.pin, []);
@@ -151,7 +156,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number; ${buildings.size} buildings, ${values.size} values, ${sales.size} sales`);
-  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines that aren't a sale, left out: ${notSale}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'CO', name: COUNTY, publisher: 'Adams County', dataset: 'parcels and property tables, open data (CC BY 4.0)', method: 'county', source: 'co-adams', as_of: asOf, stale_after_days: 60, records,
