@@ -15,6 +15,7 @@ const { officesOf, allReadByHand } = require('./offices');
 const { holdsFor, isLive } = require('./holds');
 const federal = require('./federal');
 const { questionsOf } = require('./questions');
+const cities = require('./cities');
 const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/homesteadPrograms');
 const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
@@ -130,6 +131,7 @@ async function compose(county) {
     appeal,
     homes: homesOf(county),
     questions: questionsOf(county, { offices, hazards, disasters, radon, exemption, appeal }),
+    cities: cities.citiesOf(county).map((city) => ({ slug: city.slug, name: city.name })),
     near: nearOf(county),
   };
 }
@@ -153,6 +155,31 @@ async function countyAnswer(stateSlug, countySlug) {
   }
 }
 
+/** A released city whose county has a page, by slugs, or null. */
+function cityOf(stateSlug, countySlug, citySlug) {
+  const county = places.county(stateSlug, countySlug);
+  return published(county) ? cities.city(county, citySlug) : null;
+}
+
+/** The answer for one city's page: the city's own offices, the Census's figures for it, and its county. Null when it has none. */
+function cityAnswer(stateSlug, countySlug, citySlug) {
+  const city = cityOf(stateSlug, countySlug, citySlug);
+  if (!city) return null;
+  const { county } = city;
+  return {
+    v: 1,
+    built: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }),
+    state: statePart(county.state),
+    county: countyPart(county),
+    city: { geoid: city.geoid, slug: city.slug, name: city.name, other_counties: city.otherCounties },
+    // A row's question rides in `questions`, not twice.
+    offices: { rows: city.rows.map(({ q, a, ...row }) => row) },
+    homes: cities.homesOf(city),
+    questions: city.rows.filter((row) => row.q && row.a).map((row) => ({ id: row.id, q: row.q, a: row.a, office: row.office, url: row.url })),
+    others: cities.citiesOf(county).filter((other) => other.geoid !== city.geoid).map((other) => ({ slug: other.slug, name: other.name })),
+  };
+}
+
 /** The answer for one state's page: its counties with a page, by name. Null when it has none. */
 function stateAnswer(stateSlug) {
   const state = places.state(stateSlug);
@@ -166,20 +193,29 @@ function stateAnswer(stateSlug) {
   };
 }
 
-/** Every state and county page, for the sitemap and the index page. */
+/** Every state, county and city page, for the sitemap and the index page. */
 function indexAnswer() {
   const states = [];
   const counties = [];
+  const cityPages = [];
   for (const state of places.states) {
     const list = places.countiesOf(state.slug).filter(published);
     if (!list.length) continue;
     states.push({ ...statePart(state), counties: list.length, live: list.filter((county) => isLive(county.fips)).length });
-    for (const county of list) counties.push({ state: state.slug, slug: county.slug });
+    for (const county of list) {
+      counties.push({ state: state.slug, slug: county.slug });
+      for (const city of cities.citiesOf(county)) cityPages.push({ state: state.slug, county: county.slug, slug: city.slug });
+    }
   }
-  return { v: 1, states, counties };
+  return { v: 1, states, counties, cities: cityPages };
 }
 
-/** Whether a FIPS code is a county with a page now (the visit beacon counts only those). */
-const isPage = (fips) => /^\d{5}$/.test(String(fips || '')) && published(places.countyByFips(fips));
+/** Whether a code is a county (FIPS) or a city (place GEOID) with a page now: the visit beacon counts only those. */
+function isPage(code) {
+  const id = String(code || '');
+  if (/^\d{5}$/.test(id)) return published(places.countyByFips(id));
+  const city = /^\d{7}$/.test(id) ? cities.cityByGeoid(id) : null;
+  return Boolean(city) && published(city.county);
+}
 
-module.exports = { countyAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES, COUNTIES };
+module.exports = { countyAnswer, cityAnswer, stateAnswer, indexAnswer, published, isPage, BATCHES, COUNTIES };

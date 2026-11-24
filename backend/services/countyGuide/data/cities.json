@@ -1,0 +1,228 @@
+{
+  "v": 1,
+  "note": "Cities with a page, by Census place GEOID (state FIPS + place code). Each row was read by hand on the city's own site on the day `read` names; only https links to the city's own pages, never a page for one parcel. A city needs a `permits` and a `zoning` row. `county` is the county the city's page sits under (most of the city is in it; `other_counties` says parts of the city are in other counties). `built` and `value` are the Census's medians for the city, filled by build-data.cjs.",
+  "sources": {
+    "homes": "U.S. Census Bureau, American Community Survey 2020-2024 5-year estimates, tables B25035 (median year structure built) and B25077 (median value, owner-occupied housing units), place geography",
+    "homes_survey": "2020-2024"
+  },
+  "cities": {
+    "1271000": {
+      "name": "Tampa",
+      "county": "12057",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Tampa, Construction Services",
+          "url": "https://www.tampa.gov/construction-services",
+          "line": "Issues every building permit and inspection for development inside the city.",
+          "q": "Where do I find building permits in Tampa?",
+          "a": "The City of Tampa's Construction Services Division reviews plans, issues building permits and inspects construction for property inside the city."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Tampa, Zoning Maps",
+          "url": "https://www.tampa.gov/development-coordination/zoning/maps",
+          "line": "An interactive map of zoning districts inside the city limits; the zoning code is Chapter 27 of the city code.",
+          "q": "Where is Tampa's zoning?",
+          "a": "The City of Tampa's zoning maps show the zoning district of each property inside the city limits, by address. The zoning code itself is Chapter 27 of the City of Tampa Code."
+        }
+      ],
+      "built": 1985,
+      "value": 420400
+    },
+    "2758000": {
+      "name": "Saint Paul",
+      "county": "27123",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Saint Paul Safety and Inspections, Building Permits & Inspections",
+          "url": "https://www.stpaul.gov/departments/safety-inspections/building-and-construction/construction-permits-and-inspections/building-permits-inspections",
+          "line": "Needed to build, add to or change a one- or two-family home or any other building in the city.",
+          "q": "Where do I find building permits in Saint Paul?",
+          "a": "The City of Saint Paul's Department of Safety and Inspections issues building permits in the city, for building, adding to or changing a home or any other building."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Saint Paul Safety and Inspections, Zoning Permits and Land Uses",
+          "url": "https://www.stpaul.gov/departments/safety-inspections/building-and-construction/zoning-permits-land-uses",
+          "line": "Zoning approval comes before a building permit; design standards are in chapter 63 of the city's zoning code.",
+          "q": "Where is Saint Paul's zoning?",
+          "a": "The City of Saint Paul's Department of Safety and Inspections reviews zoning, which a building permit, a license or a change of use needs first. The city's design standards are in chapter 63 of the Saint Paul Zoning Code."
+        }
+      ],
+      "built": 1952,
+      "value": 294500
+    },
+    "4159000": {
+      "name": "Portland",
+      "county": "41051",
+      "other_counties": true,
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Portland Permitting & Development, public records",
+          "url": "https://www.portland.gov/ppd/public-records",
+          "line": "Building permit, land use review and code enforcement records for private property; many are online.",
+          "q": "Where do I find building permits in Portland?",
+          "a": "Portland Permitting & Development issues building permits in the city and keeps its building permit, land use review and code enforcement records. Its public records page says which are online and how to ask for the rest."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Portland Permitting & Development, Zoning and Land Use",
+          "url": "https://www.portland.gov/ppd/zoning-land-use",
+          "line": "The city's zoning code, its zoning maps and answers to common zoning questions.",
+          "q": "Where is Portland's zoning?",
+          "a": "Portland Permitting & Development's Zoning and Land Use pages hold the city's zoning code, its zoning maps and answers to common zoning questions."
+        }
+      ],
+      "built": 1966,
+      "value": 581500
+    },
+    "4819000": {
+      "name": "Dallas",
+      "county": "48113",
+      "other_counties": true,
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Dallas Planning & Development, Permitting & Inspections",
+          "url": "https://dallascityhall.com/departments/sustainabledevelopment/Pages/permits-inspections.aspx",
+          "line": "The city's building permits and inspections, with its forms, fees and certificates of occupancy.",
+          "q": "Where do I find building permits in Dallas?",
+          "a": "The City of Dallas Planning & Development Department issues building permits and inspects construction in the city. Its Permitting & Inspections page holds its forms, fees and certificates of occupancy."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Dallas, Zoning Map",
+          "url": "https://developmentweb.dallascityhall.com/publiczoningweb/",
+          "line": "The city's interactive zoning map; the city notes it is not a surveyor's data.",
+          "q": "Where is Dallas's zoning?",
+          "a": "The City of Dallas's interactive zoning map shows the zoning of each property in the city. The city notes the map is not data certified by a land surveyor."
+        }
+      ],
+      "built": 1981,
+      "value": 320700
+    },
+    "5363000": {
+      "name": "Seattle",
+      "county": "53033",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Seattle Department of Construction and Inspections, Research a Project, Permit, or Property",
+          "url": "https://www.seattle.gov/construction-and-inspections/resources/research-a-project",
+          "line": "How to find a property's permit history, older permits and site records, gathered on one page.",
+          "q": "Where do I find building permits in Seattle?",
+          "a": "The Seattle Department of Construction and Inspections issues building permits in the city. Its Research a Project, Permit, or Property page says where to find a property's permit history and site records."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Seattle Department of Construction and Inspections, Zoning",
+          "url": "https://www.seattle.gov/construction-and-inspections/codes/codes-we-enforce-(a-z)/zoning",
+          "line": "Zoning districts are adopted by ordinance and shown on the city's official land use map.",
+          "q": "Where is Seattle's zoning?",
+          "a": "Seattle's Zoning Code sets how land is used and developed in the city. Its zoning districts are adopted by ordinance and shown on the city's official land use map; the Department of Construction and Inspections explains them."
+        }
+      ],
+      "built": 1976,
+      "value": 938600
+    },
+    "5370000": {
+      "name": "Tacoma",
+      "county": "53053",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Tacoma Planning and Development Services, Tacoma Permits",
+          "url": "https://www.tacomapermits.org/",
+          "line": "The city's permit office; its Tacoma Permits system submits and searches permits online.",
+          "q": "Where do I find building permits in Tacoma?",
+          "a": "The City of Tacoma's Planning and Development Services issues building permits in the city. Its Tacoma Permits site submits and searches permits online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Tacoma Planning and Development Services, Zoning",
+          "url": "https://tacoma.gov/government/departments/planning-and-development-services/zoning/",
+          "line": "Zoning is set in Chapter 13.06 of the Tacoma Municipal Code; the city's tMap shows a property's zoning by address or parcel.",
+          "q": "Where is Tacoma's zoning?",
+          "a": "Tacoma's zoning is set in Chapter 13.06 of the Tacoma Municipal Code. The city's interactive map, tMap, shows a property's zoning district by address or parcel number."
+        }
+      ],
+      "built": 1967,
+      "value": 479600
+    },
+    "5374060": {
+      "name": "Vancouver",
+      "county": "53011",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Vancouver, Residential Building Permits",
+          "url": "https://www.cityofvancouver.us/business/building-construction/residential-building-permits/",
+          "line": "Needed to build, add to, alter, repair or demolish a home; one to six homes on a lot go through this permit.",
+          "q": "Where do I find building permits in Vancouver?",
+          "a": "The City of Vancouver issues building permits for homes inside the city: building, adding to, altering, repairing or demolishing one. Its residential building permits page explains them and links to its online permit center."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Vancouver, Planning, Development and Zoning",
+          "url": "https://www.cityofvancouver.us/business/planning-development-and-zoning/",
+          "line": "The city's updated Comprehensive Plan, zoning map and zoning code took effect on July 31, 2026.",
+          "q": "Where is Vancouver's zoning?",
+          "a": "The City of Vancouver's planning, development and zoning pages hold its zoning. Its updated Comprehensive Plan, zoning map and zoning code took effect on July 31, 2026."
+        }
+      ],
+      "built": 1988,
+      "value": 462400
+    },
+    "0662000": {
+      "name": "Riverside",
+      "county": "06065",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Riverside Building & Safety, Permits",
+          "url": "https://www.riversideca.gov/cedd/building-safety/building-safety-services/permits",
+          "line": "Construction in the city needs a building permit; the city keeps permits as public records.",
+          "q": "Where do I find building permits in Riverside?",
+          "a": "The City of Riverside's Building & Safety Division issues building permits for construction in the city and keeps them as public records."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Riverside Planning, Zoning Code and Regulations",
+          "url": "https://www.riversideca.gov/cedd/planning/zoning-code-and-regulations",
+          "line": "The city's zoning is Title 19 of the Riverside Municipal Code, with its permitted uses table.",
+          "q": "Where is Riverside's zoning?",
+          "a": "The City of Riverside's zoning is Title 19 of the Riverside Municipal Code. The Planning Division's page links to it and to the table of uses each zone permits."
+        }
+      ],
+      "built": 1976,
+      "value": 584800
+    }
+  }
+}

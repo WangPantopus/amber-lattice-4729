@@ -6,7 +6,7 @@
 // /start from the browser, never in a link on the page, so a search engine follows no address.
 //
 // Counting: the funnel's beacons carry the route this browser came in on (api.rememberFunnelRoute). A lookup started
-// here records `county-page:<FIPS>` unless an earlier visit (a mailed card's `?r=`, the homepage) already set one, as
+// here records `county-page:<FIPS>` (`city-page:<place FIPS>` on a city's page) unless an earlier visit (a mailed card's `?r=`, the homepage) already set one, as
 // the homepage does, so the preview, the wall and an account made after count toward the county page. Visits are
 // counted per county and day by the page's own beacon (countVisit); backend/services/countyGuide/report.cjs adds it
 // all up.
@@ -18,7 +18,7 @@ import { ArrowRight } from 'lucide-react';
 import * as api from '@pantopus/api';
 import AddressAutocomplete, { type SelectedAddress } from '@/components/place/AddressAutocomplete';
 
-// One visit per tab and county: the backend counts visits per county and day, nothing else (countyGuide/visits.js).
+// One visit per tab and page: the backend counts visits per county or city and day, nothing else (countyGuide/visits.js).
 function countVisit(fips: string) {
   try {
     const key = `pantopus_county_visit:${fips}`;
@@ -35,7 +35,8 @@ function countVisit(fips: string) {
   }).catch(() => {});
 }
 
-export default function CountyLookup({ fips, inName }: { fips: string; inName: string }) {
+/** `fips` is the county's FIPS code, or on a city's page the city's place FIPS code (its Census GEOID). */
+export default function CountyLookup({ fips, inName, kind = 'county' }: { fips: string; inName: string; kind?: 'county' | 'city' }) {
   const router = useRouter();
   const [selected, setSelected] = useState<SelectedAddress | null>(null);
   const [fallbackAddress, setFallbackAddress] = useState<string | null>(null);
@@ -48,7 +49,7 @@ export default function CountyLookup({ fips, inName }: { fips: string; inName: s
   const go = (address: string | null) => {
     if (!address) return;
     setGoing(true);
-    if (!api.getFunnelRoute()) api.rememberFunnelRoute(`county-page:${fips}`);
+    if (!api.getFunnelRoute()) api.rememberFunnelRoute(`${kind}-page:${fips}`);
     router.push(`/start?address=${encodeURIComponent(address)}`);
   };
   const submit = () => go(selected?.label ?? fallbackAddress);
