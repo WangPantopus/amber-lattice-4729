@@ -31,6 +31,11 @@ export type CardDraft = {
   requestId: string | null;
   /** A list's request ID for each person or address on it. */
   listIds: [string, string][];
+  /**
+   * A card Pantopus AI put together in the assistant's chat (startAssistantCard): the flow opens it on Look it over,
+   * once. Gone from the draft as soon as the flow keeps it again.
+   */
+  fromAssistant?: boolean;
 };
 
 const isText = (x: unknown, max = 2000): x is string => typeof x === 'string' && x.length <= max;
@@ -72,6 +77,36 @@ export function readCardDraft(user: string): CardDraft | null {
 
 export function saveCardDraft(draft: Omit<CardDraft, 'v' | 'savedAt'>): void {
   try { sessionStorage.setItem(KEY, JSON.stringify({ ...draft, v: 1, savedAt: Date.now() })); } catch { /* storage unavailable: no draft */ }
+}
+
+/**
+ * A card the assistant put together, kept as this tab's draft so "Send a Christmas card" opens with it: the picture,
+ * who it is for, the note and the arrival. It replaces a card left half-written in this tab, as starting any new card
+ * does. Nothing is sent: the person looks it over and seals it on that screen. False when it can't be kept.
+ */
+export function startAssistantCard(user: string, card: {
+  designId: string;
+  to: DraftEntry;
+  message: string;
+  arrival: HolidayCardArrival;
+}): boolean {
+  if (!user || !isEntry(card.to) || !isText(card.designId, 120) || !isText(card.message, 5000)) return false;
+  saveCardDraft({
+    user,
+    step: 'seal',
+    to: card.to,
+    designId: card.designId,
+    message: card.message,
+    signature: null,
+    photo: null,
+    photoAlt: '',
+    voice: null,
+    arrival: card.arrival,
+    requestId: null,
+    listIds: [],
+    fromAssistant: true,
+  });
+  return readCardDraft(user)?.fromAssistant === true;
 }
 
 /** Sent, taken back, started over, or signed out. */

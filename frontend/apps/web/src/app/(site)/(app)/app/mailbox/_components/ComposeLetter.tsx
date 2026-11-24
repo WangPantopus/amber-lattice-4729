@@ -12,8 +12,13 @@ import { mailboxKeys } from '@/lib/mailbox-queries';
 import { toast } from '@/components/ui/toast-store';
 import ComposeMailModal from './ComposeMailModal';
 import type { AvailableHome } from './mailbox-types';
+import type { LetterChatDraft } from '@pantopus/types';
 
-export default function ComposeLetter({ onClose }: { onClose: () => void }) {
+export default function ComposeLetter({ onClose, letter = null }: {
+  onClose: () => void;
+  /** A letter Pantopus AI wrote in the assistant's chat: the composer opens with it filled in. */
+  letter?: LetterChatDraft | null;
+}) {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   const { data: homesReply } = useQuery(myHomesQuery());
@@ -34,6 +39,7 @@ export default function ComposeLetter({ onClose }: { onClose: () => void }) {
       currentUserId={me?.id ?? ''}
       availableHomes={availableHomes}
       scopeHomeId=""
+      letter={letter}
       onClose={onClose}
       onSent={() => { void queryClient.invalidateQueries({ queryKey: mailboxKeys.all }); }}
       setActionError={(message) => { if (message) toast.error(message); }}

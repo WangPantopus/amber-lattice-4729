@@ -36,6 +36,8 @@ export function streamChat(
     onStatus?: (data: { tool: string; message: string }) => void;
     onTextDelta?: (delta: string) => void;
     onDraft?: (data: { type: string; draft: unknown; valid: boolean }) => void;
+    /** A button under the reply that opens a screen in the app (sent only to apps that list "link" in `cards`). */
+    onLink?: (data: { label: string; url: string }) => void;
     onError?: (data: { error: string; message: string }) => void;
     onDone?: (data: { conversationId: string; usage: { inputTokens: number; outputTokens: number }; toolCalls: number }) => void;
   }
@@ -57,6 +59,9 @@ export function streamChat(
           break;
         case 'draft':
           handlers.onDraft?.(parsed);
+          break;
+        case 'link':
+          handlers.onLink?.(parsed);
           break;
         case 'error':
           handlers.onError?.(parsed);

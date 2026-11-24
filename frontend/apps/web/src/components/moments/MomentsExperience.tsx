@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { safeRedirectPath } from '@pantopus/ui-utils';
 import { useMe } from '@/lib/me';
+import type { MomentChatDraft } from '@pantopus/types';
+import { takeMomentDraft } from '@/lib/aiDraftHandoff';
 import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { useMomentsAccess } from './useMomentsAccess';
 import type { MapTarget } from './MomentsMap';
@@ -202,6 +204,15 @@ function Board({ account }: { account: string }) {
     [areaOpen, setAreaOpen] = useState(false);
   const [editor, setEditor] = useState(false),
     [note, setNote] = useState('');
+  // A Moment Pantopus AI wrote, on its way from the assistant's chat ("Open in Moments"): the composer opens with
+  // it, once, as Moments opens. Where it is pinned, the 18+ confirmation and Post stay the composer's.
+  const [aiDraft, setAiDraft] = useState<MomentChatDraft | null>(null);
+  useEffect(() => {
+    const draft = takeMomentDraft();
+    if (!draft) return;
+    setAiDraft(draft);
+    setEditor(true);
+  }, []);
   const [focus, setFocus] = useState<{ rings: string[]; title: string; previous: MapTarget } | null>(null);
   const [time, setTime] = useState(0),
     [live, setLive] = useState(false),
@@ -872,9 +883,14 @@ function Board({ account }: { account: string }) {
       {editor && (
         <Composer
           account={account}
-          onClose={() => setEditor(false)}
+          draft={aiDraft}
+          onClose={() => {
+            setEditor(false);
+            setAiDraft(null);
+          }}
           onDone={(msg) => {
             setEditor(false);
+            setAiDraft(null);
             setNote(msg);
             actions();
           }}
