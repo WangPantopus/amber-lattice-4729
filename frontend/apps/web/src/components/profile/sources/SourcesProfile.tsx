@@ -343,12 +343,14 @@ export default function SourcesProfile({
       }
       case 'moments': {
         const id = value('user_id');
-        return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(window.location.pathname)}`) } : null;
+        // From a link for one purpose, back to the person's main page: its key never rides in another address.
+        const back = viaLink ? `/${encodeURIComponent(viaLink.username)}` : window.location.pathname;
+        return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(back)}`) } : null;
       }
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
       default: return null;
     }
-  }, [tabs, openTab, load, header.username, router]);
+  }, [tabs, openTab, load, header.username, router, viaLink]);
 
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
@@ -394,7 +396,8 @@ export default function SourcesProfile({
           hasName={Boolean(header.name?.trim())}
           photoUrl={header.portrait_url}
           seed={personId}
-          wrapPortrait={(portrait) => <MomentAvatar id={personId} name={name}>{portrait}</MomentAvatar>}
+          // Moments open with this page's address to come back to; a link for one purpose keeps its key to itself.
+          wrapPortrait={viaLink ? undefined : (portrait) => <MomentAvatar id={personId} name={name}>{portrait}</MomentAvatar>}
         />
       </div>
       <div className="px-5 pt-1.5 pb-4 flex flex-col items-center gap-0.5 text-center">

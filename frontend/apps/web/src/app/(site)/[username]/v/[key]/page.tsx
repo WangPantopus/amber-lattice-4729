@@ -36,6 +36,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       smartBanner: false,
     }),
     robots: { index: false, follow: false },
+    // The key is in this page's address: nothing it links out to (a piece's site, a picture's host) may receive it
+    // in a Referer.
+    referrer: 'no-referrer',
   };
 }
 

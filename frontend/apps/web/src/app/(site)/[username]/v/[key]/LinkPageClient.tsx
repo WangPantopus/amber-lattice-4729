@@ -19,7 +19,9 @@ export default function LinkPageClient({ page, username, linkKey }: { page: Prof
   const [reporting, setReporting] = useState(false);
   useEffect(() => setSignedIn(Boolean(api.getAuthToken())), []);
   const viaLink = useMemo(() => ({ username, key: linkKey }), [username, linkKey]);
-  const here = typeof window === 'undefined' ? `/${username}` : window.location.pathname;
+  // Sign-in and sign-up come back to the person's main page, never to this address: the key must not ride along in
+  // another page's address (where a Referer or a sign-in provider could see it).
+  const here = `/${encodeURIComponent(username)}`;
 
   return (
     <div className="bg-app min-h-screen">
