@@ -87,6 +87,33 @@
       "built": 1979,
       "value": 518100
     },
+    "1264175": {
+      "name": "Sarasota",
+      "county": "12115",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sarasota Development Services, Building & Permitting",
+          "url": "https://www.sarasotafl.gov/Department-Pages/Development-Services/Building-Permitting",
+          "line": "Reviews building plans and inspects every building project in the City for code compliance; permits are submitted and inspections requested online.",
+          "q": "Where do I find building permits in Sarasota?",
+          "a": "The City of Sarasota's Building & Permitting division reviews building plans and inspects every building project in the City. Permits are submitted and inspections requested online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sarasota Planning Department",
+          "url": "https://www.sarasotafl.gov/Department-Pages/Planning",
+          "line": "Its Long-Range Planning Division keeps the Sarasota City Plan, the comprehensive plan, and the City Zoning Code.",
+          "q": "Where is Sarasota's zoning?",
+          "a": "The City of Sarasota's Planning Department keeps the City Zoning Code; its Long-Range Planning Division develops and maintains the code and the Sarasota City Plan."
+        }
+      ],
+      "built": 1976,
+      "value": 463000
+    },
     "1271000": {
       "name": "Tampa",
       "county": "12057",
@@ -499,6 +526,61 @@
       "built": 1981,
       "value": 320700
     },
+    "4829000": {
+      "name": "Garland",
+      "county": "48113",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Garland Development & Permitting Center, Residential Building & Construction Permits",
+          "url": "https://www.garlandtx.gov/3344/Residential-Building-Construction-Permit",
+          "line": "Lists the City's permit application for each kind of home project, from additions, re-roofing and foundation repair to fences, pools and a new house.",
+          "q": "Where do I find building permits in Garland?",
+          "a": "The City of Garland's Development & Permitting Center issues building permits. Its residential permits page has the application for each kind of home project, from additions, re-roofing and foundation repair to fences, pools and a new house."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Garland, Zoning",
+          "url": "https://www.garlandtx.gov/3316/Zoning",
+          "line": "Each zoning district sets the uses allowed and limits such as height, density and setbacks; zoning requests go to public hearings before the Plan Commission and City Council.",
+          "q": "Where is Garland's zoning?",
+          "a": "The City of Garland divides the city into zoning districts, each setting the uses allowed and limits such as height, density and setbacks. Zoning requests go to public hearings before the Plan Commission and the City Council, which decides them."
+        }
+      ],
+      "built": 1978,
+      "value": 270800
+    },
+    "4870808": {
+      "name": "Sugar Land",
+      "county": "48157",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sugar Land, Permits & Inspections",
+          "url": "https://www.sugarlandtx.gov/2362/Permits-Inspections",
+          "line": "Takes permit applications and payments and schedules inspections; applications submitted on or after January 21, 2026 must meet the 2024 International Code Council codes.",
+          "q": "Where do I find building permits in Sugar Land?",
+          "a": "The City of Sugar Land issues building permits and schedules inspections. Permit applications submitted on or after January 21, 2026 must meet the 2024 International Code Council codes the City adopted."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sugar Land, Planning",
+          "url": "https://www.sugarlandtx.gov/112/Planning",
+          "line": "The Interactive Zoning Map gives a property's zoning designation, and the Development Code guides requests to alter or develop property.",
+          "q": "Where is Sugar Land's zoning?",
+          "a": "The City of Sugar Land's Planning page leads to the Interactive Zoning Map, which gives a property's zoning designation, and to the Development Code that guides requests to alter or develop property."
+        }
+      ],
+      "built": 1994,
+      "value": 430200
+    },
     "5305210": {
       "name": "Bellevue",
       "county": "53033",
@@ -768,6 +850,60 @@
       ],
       "built": 1965,
       "value": 921200
+    },
+    "0643000": {
+      "name": "Long Beach",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Long Beach Community Development, Building and Safety Bureau",
+          "url": "https://www.longbeach.gov/lbcd/building/permit-center/building-permits/",
+          "line": "Most residential, commercial and industrial construction, including alterations, replacements and repairs, needs a permit and inspections; historic districts and coastal zones may add requirements.",
+          "q": "Where do I find building permits in Long Beach?",
+          "a": "The City of Long Beach's Building and Safety Bureau issues building permits; most construction, alteration, replacement and repair work needs one, with inspections. Historic districts and coastal zones may add requirements."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Long Beach Planning Bureau, Zoning Maps",
+          "url": "https://www.longbeach.gov/lbcd/planning/current/maps/zoning/",
+          "line": "The citywide and GIS zoning maps show a property's zoning district, which leads to its permitted uses and development standards.",
+          "q": "Where is Long Beach's zoning?",
+          "a": "The City of Long Beach's Planning Bureau publishes citywide and GIS zoning maps that show a property's zoning district, and the district's page gives its permitted uses and development standards."
+        }
+      ],
+      "built": 1959,
+      "value": 806600
+    },
+    "0649270": {
+      "name": "Moreno Valley",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Moreno Valley Community Development, Building and Safety Division",
+          "url": "https://moval.org/cdd/department/divisions-building-safety.html",
+          "line": "Issues permits and provides plan check and inspections under the city's and the State's building codes; submittals after December 31, 2025 must meet the codes in effect January 1, 2026.",
+          "q": "Where do I find building permits in Moreno Valley?",
+          "a": "The City of Moreno Valley's Building and Safety Division issues building permits and provides plan check and inspections under the city's and the State's building codes."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Moreno Valley Community Development, 2040 General Plan and zoning",
+          "url": "https://moval.org/cdd/documents/general-plan-adopted.html",
+          "line": "The adopted zoning documents: the zoning map, the zoning atlas pages, the overlay maps and the permitted uses table, beside the 2040 General Plan's land use map.",
+          "q": "Where is Moreno Valley's zoning?",
+          "a": "The City of Moreno Valley's Community Development Department publishes its adopted zoning documents, including the zoning map, the zoning atlas pages and the permitted uses table, beside the 2040 General Plan's land use map."
+        }
+      ],
+      "built": 1988,
+      "value": 503700
     }
   }
 }
