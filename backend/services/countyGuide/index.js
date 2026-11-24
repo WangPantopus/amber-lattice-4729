@@ -37,6 +37,9 @@ const COUNTIES = [
   // November 23, 2026, fourth: Stark and Delaware, OH; Chesterfield and Henrico, VA; Cumberland and Iredell, NC;
   // Boulder, CO; Alachua and St. Johns, FL; Cumberland, PA.
   '39151', '39041', '51041', '51087', '37051', '37097', '08013', '12001', '12109', '42041',
+  // November 23, 2026, fifth: Broomfield and Mesa, CO; Martin, FL; Woodbury, IA; Scott, MN; Carteret, Lincoln and
+  // Sampson, NC; Fairfield and Greene, OH; Johnson, TX; Roanoke County, VA.
+  '08014', '08077', '12085', '19193', '27139', '37031', '37109', '37163', '39045', '39057', '48251', '51161',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
