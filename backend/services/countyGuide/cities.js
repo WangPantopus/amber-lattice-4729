@@ -86,6 +86,10 @@ const CITIES = [
   // County) and Little Elm (Denton County), TX; Delaware (Delaware County) and Fairborn (Greene County), OH; Maplewood
   // (Ramsey County), MN.
   '0656924', '0659514', '0604758', '0633588', '1249475', '4825452', '4843012', '3921434', '3925914', '2740382',
+  // November 24, 2026, twenty-fourth: Cerritos, Beverly Hills, Lynwood and Huntington Park (Los Angeles County) and San
+  // Jacinto (Riverside County), CA; Roseville (Ramsey County) and Shakopee (Scott County), MN; Winter Springs (Seminole
+  // County) and Cutler Bay (Miami-Dade County), FL; Stow (Summit County), OH.
+  '0612552', '0606308', '0644574', '0636056', '0667112', '2755852', '2759350', '1278325', '1215968', '3974944',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
