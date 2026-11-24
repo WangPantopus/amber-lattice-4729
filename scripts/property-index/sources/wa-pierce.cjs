@@ -13,7 +13,7 @@ const { year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale, historyLine, recordedHistory, countyWord } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
 const { hold } = require('../lib/held.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { log } = require('../lib/log.cjs');
@@ -201,7 +201,13 @@ async function* build({ work }) {
     if (!held || held.date < date) sales.set(row[2], { date, price });
   }
   const leftOut = {};
+  let personal = 0;
   const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, type, document, parcels }) => {
+    // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(type)) {
+      personal += 1;
+      return null;
+    }
     // A sale is a sale; any other line says what it is in the county's name for its document, or is left out.
     const line = historyLine({ date, sale, word: sale ? null : countyWord(type), price, document, parcels });
     if (!line) leftOut[String(type || '').trim() || '-'] = (leftOut[String(type || '').trim() || '-'] || 0) + 1;
@@ -224,7 +230,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without an address`);
-  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${personal}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   const asOf = zipDates(path.join(work, 'wa-pierce', 'tax_account.zip')).get('tax_account.txt');
   if (!asOf) throw new Error('The file no longer says when it was made');

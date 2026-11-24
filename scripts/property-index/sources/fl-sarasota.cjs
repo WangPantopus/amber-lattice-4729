@@ -11,7 +11,7 @@ const { download, zipDates, zipTable } = require('../lib/tables.cjs');
 const { year, isoDate, zipCode, realUnit, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale, historyLine, recordedHistory, countyWord } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
 const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -210,8 +210,14 @@ async function* build({ work }) {
   if (!asOf) throw new Error('The file no longer says when it was made');
   const { details, words } = await readDetails(detailed);
   const leftOut = {};
+  let personal = 0;
   // A sale is a sale; any other line says what it is in the Appraiser's name for its deed code, or is left out.
   const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, type, code, document }) => {
+    // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(type)) {
+      personal += 1;
+      return null;
+    }
     const line = historyLine({ date, sale, word: sale ? null : countyWord(type), price, document });
     if (!line) leftOut[code || '-'] = (leftOut[code || '-'] || 0) + 1;
     return line;
@@ -235,7 +241,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number`);
-  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${details.since}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${details.since}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${personal}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'FL', name: COUNTY, publisher: 'Sarasota County Property Appraiser', dataset: 'parcel file', method: 'county', source: 'fl-sarasota', as_of: asOf, stale_after_days: 450, records,

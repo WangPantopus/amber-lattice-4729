@@ -11,7 +11,7 @@ const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { mapLot, hold } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale, historyLine, recordedHistory, countyWord } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -21,8 +21,6 @@ const FILE = 'https://files.scpafl.org/data/cama/SeminoleCounty.zip';
 const COLUMNS = ['Parcel', 'PrimaryAddress', 'PrimaryPropertyType', 'VacantImproved', 'LegalDescription', 'Subdivision', 'TaxDistrict', 'DORCode', 'Zoning', 'BuildingCount', 'YearBuilt', 'MaxEffectiveYearBlt', 'TotalJustValue', 'AppraisedBuildingValue', 'AppraisedLandValue', 'TotalGrossArea', 'TotalLivingArea', 'TotalBedrooms', 'TotalBathrooms', 'MaxBaseFloors', 'Pool', 'SUM_GISAcres'];
 // Deeds that move no home at a price: a quit claim, a correction, an affidavit, a lease, a right of way, an order of taking.
 const NOT_A_DEED_OF_SALE = new Set(['QD', 'CR', 'AF', 'LE', 'RW', 'OT', 'OR']);
-// Recorded history leaves out a death certificate: a record of a person, not of the home.
-const NOT_THE_HOMES_RECORD = new Set(['DC']);
 const CITIES = 'ALTAMONTE SPRINGS|APOPKA|CASSELBERRY|CHULUOTA|FERN PARK|GENEVA|GOLDENROD|HEATHROW|LAKE MARY|LAKE MONROE|LONGWOOD|MAITLAND|MIDWAY|OSTEEN|OVIEDO|SANFORD|WINTER PARK|WINTER SPRINGS|ORLANDO';
 const SITUS = new RegExp(`^(.*?)\\s+(${CITIES})\\s+FL\\s+(\\d{5})`, 'i');
 
@@ -109,7 +107,7 @@ async function* build({ work }) {
   for await (const row of zipTable(zip, 'AllSales.csv', ['Parcel', 'SaleDate', 'SaleAmt', 'DeedType', 'DeedDescription', 'QualificationDescription'])) {
     const [date, price] = [isoDate(row.SaleDate), positive(row.SaleAmt)];
     const sale = Boolean(date) && isHomeSale(price, row.QualificationDescription) && !NOT_A_DEED_OF_SALE.has(row.DeedType.trim());
-    if (date && !NOT_THE_HOMES_RECORD.has(row.DeedType.trim())) {
+    if (date) {
       if (!first || date < first) first = date;
       if (!saleLines.has(row.Parcel)) saleLines.set(row.Parcel, []);
       saleLines.get(row.Parcel).push({ date, sale, price, type: row.DeedDescription });
@@ -144,8 +142,14 @@ async function* build({ work }) {
     if (!districts.has(row.Parcel)) districts.set(row.Parcel, word(row.TaxDistrictDescription.replace(/-.*$/, '')));
   }
   const leftOut = {};
+  let personal = 0;
   // A sale is a sale; any other line says what it is in the Appraiser's name for its deed, or is left out.
   const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, type }) => {
+    // A record of a person, not of the home (a death certificate), never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(type)) {
+      personal += 1;
+      return null;
+    }
     const line = historyLine({ date, sale, word: sale ? null : countyWord(type), price });
     if (!line) leftOut[String(type || '').trim() || '-'] = (leftOut[String(type || '').trim() || '-'] || 0) + 1;
     return line;
@@ -165,7 +169,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number`);
-  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${personal}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'FL', name: COUNTY, publisher: 'Seminole County Property Appraiser', dataset: 'appraisal data', method: 'county', source: 'fl-seminole', as_of: asOf, stale_after_days: 450, records,

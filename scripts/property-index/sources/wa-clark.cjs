@@ -13,7 +13,7 @@ const { resolve } = require('../../../backend/services/propertyRecords/identity'
 const { download, zipTable, cachedLayer } = require('../lib/tables.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { hold } = require('../lib/held.cjs');
-const { historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { historyLine, recordedHistory, isPersonRecord } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '53011';
@@ -383,7 +383,8 @@ async function readFacts(zip, records, today) {
   for (const [id, list] of lines) {
     const history = recordedHistory(list.map(({ date, sale, row }) => {
       const type = String(row.deed_type_cd || '').trim();
-      const said = REASON_WORDS.get(row.sl_ratio_desc) || null;
+      // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord); none of the state's reasons is one.
+      const said = isPersonRecord(row.sl_ratio_desc) ? null : REASON_WORDS.get(row.sl_ratio_desc) || null;
       const line = historyLine({ date, sale, word: said, price: positive(row.SalePrice), document: word(row.deed_num), parcels: accounts.get(row.chg_of_owner_id) });
       if (!line) leftOut[type || '-'] = (leftOut[type || '-'] || 0) + 1;
       return line;
