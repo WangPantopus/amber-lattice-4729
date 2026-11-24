@@ -248,7 +248,11 @@ async function summary(args, ctx) {
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = openSlots.filter((slot) => !slot.slot_date || String(slot.slot_date) >= today);
-  const list = (value) => (Array.isArray(value) && value.length ? value.map((item) => clip(String(item), 40)).filter(Boolean).join(', ') : null);
+  // The profile keeps these as { items: [...] } (older rows as a bare list).
+  const list = (value) => {
+    const items = Array.isArray(value) ? value : (Array.isArray(value?.items) ? value.items : []);
+    return items.map((item) => clip(String(item), 40)).filter(Boolean).join(', ') || null;
+  };
   const recipientSummary = profile
     ? `Household of ${profile.household_size || '?'}${profile.contactless_preferred ? ', contactless preferred' : ''}`
     : null;
