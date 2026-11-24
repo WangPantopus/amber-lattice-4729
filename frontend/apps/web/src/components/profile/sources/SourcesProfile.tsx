@@ -267,7 +267,13 @@ export default function SourcesProfile({
   const name = header.name?.trim() || 'Pantopus member';
   const firstName = header.first_name?.trim() || name.split(/\s+/)[0];
   const inert = Boolean(previewAs);
-  const tabs = useMemo(() => drawnTabs(page), [page]);
+  // The first tab's key lines sit in the header card; a first tab left with nothing else is not drawn as a tab.
+  const { headerLines, tabs } = useMemo(() => {
+    const all = drawnTabs(page);
+    const split = splitHeaderLines(all[0]);
+    const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: split.rest } : tab)).filter((tab) => tab.blocks.length > 0);
+    return { headerLines: split.header, tabs: rest };
+  }, [page]);
   const pieces = useMemo(() => pieceInks(tabs.flatMap((tab) => tab.blocks)), [tabs]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [explainerOpen, setExplainerOpen] = useState(false);
@@ -275,7 +281,6 @@ export default function SourcesProfile({
   const openRound = useRef(0);
   const tabsRef = useRef<HTMLDivElement>(null);
   const shownKey = tabs.some((tab) => tab.key === activeKey) ? activeKey! : tabs[0]?.key ?? null;
-  const { header: headerLines, rest: firstRest } = splitHeaderLines(tabs[0]);
   const place = header.place && header.place.label ? header.place : null;
   const sky = place ? SKIES[String(place.sky || '').split('_')[0]] ?? null : null;
   const clock = useCityClock(place?.time ? place.tz : null, place?.time);
@@ -455,9 +460,9 @@ export default function SourcesProfile({
               })}
             </div>
           ) : null}
-          {tabs.map((tab, index) => {
+          {tabs.map((tab) => {
             const active = tab.key === shownKey;
-            const blocks = index === 0 ? firstRest : tab.blocks;
+            const blocks = tab.blocks;
             return (
               <div
                 key={tab.key}
