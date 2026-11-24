@@ -410,6 +410,7 @@ fun PublicProfileScreen(
                                                 onOpenPosts = {
                                                     if (content.isOwner) ownerNavigation.onSeeAllPosts() else showPersonPosts = true
                                                 },
+                                                onPiecesChanged = { viewModel.sources.load(content.profile.id) },
                                                 onOpenMoments = { userId ->
                                                     MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
                                                 },

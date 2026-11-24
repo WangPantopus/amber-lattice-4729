@@ -107,6 +107,11 @@ internal class SourcesFrameSlots(
     val pinnedPosts: @Composable () -> Unit,
     /** After the last block of the first tab: the owner's "Your account" and Log out; nothing for anyone else. */
     val pageEnd: @Composable () -> Unit = {},
+    /**
+     * The owner's own Work tools after Work's blocks ("Add or remove pieces", where today's Work tab had Add portfolio
+     * item). With it, the owner always has a Work tab, as today; null for anyone else.
+     */
+    val workEnd: (@Composable () -> Unit)? = null,
     /** The bar's share button on Work and Record; null leaves it out. */
     val onShare: (() -> Unit)?,
     val onBack: () -> Unit,
@@ -125,7 +130,7 @@ internal fun ProfileSourcesFrame(
     actions: SourcesBlockActions,
     month: RecordMonth? = null,
 ) {
-    val tabs = page.tabs
+    val tabs = remember(page.tabs, slots.workEnd != null) { tabsWithOwnerWork(page, slots.workEnd != null) }
     val tab = tabs.firstOrNull { it.key == selectedTab } ?: tabs.firstOrNull()
     val first = tab == null || tab == tabs.firstOrNull()
     val scroll = rememberScrollState()
@@ -171,6 +176,7 @@ internal fun ProfileSourcesFrame(
                                 block ->
                             SourcesBlock(block = block, page = page, actions = actions, slots = slots, month = month)
                         }
+                        if (tab.key == WORK_TAB) slots.workEnd?.invoke()
                         // Board 12 ends the record with how to read its lines.
                         if (tab.blocks.any { it is ProfileBlock.RecordChart }) HowToReadLines(firstName = page.header.firstName)
                         page.footer?.let { FooterLine(it) }
@@ -184,6 +190,17 @@ internal fun ProfileSourcesFrame(
             }
         }
     }
+}
+
+private const val WORK_TAB = "work"
+
+/** The server's tabs, plus an empty Work tab right after the first one for an owner whose page has none yet. */
+private fun tabsWithOwnerWork(
+    page: ProfilePage,
+    ownerWork: Boolean,
+): List<ProfilePageTab> {
+    if (!ownerWork || page.tabs.any { it.key == WORK_TAB } || page.tabs.isEmpty()) return page.tabs
+    return listOf(page.tabs.first(), ProfilePageTab(WORK_TAB, "Work", emptyList())) + page.tabs.drop(1)
 }
 
 @Composable

@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.profile
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,16 +15,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -39,10 +49,14 @@ import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
 import app.pantopus.android.ui.screens.profile.sources.SourcesFrameSlots
+import app.pantopus.android.ui.screens.profile.sources.SourcesTile
 import app.pantopus.android.ui.screens.profile.sources.SourcesType
 import app.pantopus.android.ui.screens.profile.sources.SourcesVisitorBar
+import app.pantopus.android.ui.screens.profile.sources.sourcesCard
+import app.pantopus.android.ui.screens.profile.tabs.ProfilePortfolioSection
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
 
 /** Where the profile with sources hands off to today's screen and the app. */
 internal class SourcesHostCallbacks(
@@ -67,6 +81,8 @@ internal class SourcesHostCallbacks(
     val onOpenPosts: () -> Unit,
     /** The person's Moments: their ring's player, when they have one now. */
     val onOpenMoments: (String) -> Unit,
+    /** The owner added or removed pieces: the page is read again. */
+    val onPiecesChanged: () -> Unit = {},
 )
 
 /**
@@ -92,6 +108,7 @@ internal fun ProfileSourcesPage(
     val header = page.header
     val shareUrl = page.actions.filterIsInstance<ProfilePageAction.Share>().firstOrNull()?.url
     val context = LocalContext.current
+    var showPieces by rememberSaveable { mutableStateOf(false) }
     val onOpenLink: (ProfilePageLink) -> Unit = { link ->
         when (link) {
             is ProfilePageLink.Tab -> host.onSelectTab(link.key)
@@ -168,6 +185,10 @@ internal fun ProfileSourcesPage(
                     onEdit = callbacks.onEditProfile.takeIf { owner != null },
                 )
             },
+            workEnd =
+                owner?.let {
+                    { OwnerPiecesRow(onClick = { showPieces = true }) }
+                },
             pageEnd = {
                 if (owner != null) {
                     OwnerAccountSection(
@@ -204,6 +225,15 @@ internal fun ProfileSourcesPage(
         actions = blockActions,
         month = month?.takeIf { it !is ProfileMonthState.Empty }?.at,
     )
+    if (showPieces && owner != null) {
+        OwnerPiecesSheet(
+            userId = header.userId,
+            onDismiss = {
+                showPieces = false
+                host.onPiecesChanged()
+            },
+        )
+    }
     val chart = page.tabs.flatMap { it.blocks }.filterIsInstance<ProfileBlock.RecordChart>().firstOrNull()
     if (month != null && month !is ProfileMonthState.Empty && chart != null) {
         ProfileMonthSheet(
@@ -307,6 +337,49 @@ internal fun ProfileSourcesPostsPage(
                 )
             }
             Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+/** The owner's way to today's portfolio tools from Work: "Add or remove pieces" (today's Work tab had them). */
+@Composable
+private fun OwnerPiecesRow(onClick: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .sourcesCard()
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SourcesTile(PantopusIcon.Hammer, PantopusColors.businessBg, PantopusColors.business)
+        Column(Modifier.weight(1f)) {
+            Text("Add or remove pieces", style = SourcesType.rowTitle)
+            Text("Only you see this.", style = SourcesType.caption)
+        }
+        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+    }
+}
+
+/** Today's portfolio section, as the owner's Work tab had it: add, open and remove pieces. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OwnerPiecesSheet(
+    userId: String,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = PantopusColors.appBg) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
+            Text(
+                text = "Your pieces",
+                style = SourcesType.h3,
+                modifier = Modifier.padding(horizontal = 20.dp).semantics { heading() },
+            )
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.padding(horizontal = 20.dp)) { ProfilePortfolioSection(userId = userId, isOwnProfile = true) }
         }
     }
 }
