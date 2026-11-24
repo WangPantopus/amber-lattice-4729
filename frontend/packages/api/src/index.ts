@@ -317,7 +317,7 @@ export type { SendMailResponse, RecipientSearchResult, HomeContext, EscrowedMail
 export type { MagicDraftRequest, MagicDraftResponse, MagicTaskDraft, MagicPostRequest, MagicPostResponse, SmartTemplate, SavedTaskTemplate, MagicSettings, ClarifyingQuestion, TaskItem, ScheduleType, PayType, TaskSourceFlow, PrivacyLevel, LocationMode } from '@pantopus/types';
 
 // Types from AI Agent
-export type { GigDraft, ListingDraft, PostDraft, ClarifyingQuestionAI, MailKeyFact, MailRecommendedAction, MailSummary, PlaceBriefHeadline, PlaceBriefSource, PlaceBrief, AIDraftType, AIChatDraft, AIChatMessage, AIConversation, AIStreamEvent, AIChatRequest, AIDraftListingRequest, AIDraftListingResponse, AIDraftPostRequest, AIDraftPostResponse, AISummarizeMailRequest } from '@pantopus/types';
+export type { GigDraft, ListingDraft, PostDraft, ClarifyingQuestionAI, MailKeyFact, MailRecommendedAction, MailSummary, PlaceBriefHeadline, PlaceBriefSource, PlaceBrief, AIDraftType, AIChatDraft, AIChatMessage, AIConversation, AIStreamEvent, AIChatRequest, AIChatContext, AIDraftListingRequest, AIDraftListingResponse, AIDraftPostRequest, AIDraftPostResponse, AISummarizeMailRequest } from '@pantopus/types';
 
 // Types from Home Intelligence
 export type { DimensionScore, HomeHealthScore, SeasonalChecklistItem, SeasonalChecklist, BillTrendData, PropertyValueData, HomeTimelineItem } from '@pantopus/types';
