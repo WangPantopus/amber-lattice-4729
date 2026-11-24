@@ -10,6 +10,8 @@ const SITE_CARDS: Record<string, ShareCard> = {
   '/privacy': { heading: 'Privacy policy', line: 'What Pantopus collects, why, and the choices you have.' },
   '/terms': { heading: 'Terms of service', line: 'What you agree to when you use Pantopus, in plain words.' },
   '/child-safety': { heading: 'Child safety standards', line: 'Zero tolerance for child sexual abuse and exploitation.' },
+  '/start': { heading: 'See what’s true about your address.', line: 'Public records and local risks for any U.S. address. Free, no account.' },
+  '/tax-check': { heading: 'Does the county value your home higher?', line: 'Where county records allow it, compare with similar houses on your street.' },
 };
 
 /** Every page with a share picture, by path: the site-wide ones, then the pillar and guide pages that name one. */

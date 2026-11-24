@@ -8,6 +8,7 @@
 
 import type { Metadata, Viewport } from 'next';
 import StartFunnel from '@/components/place/StartFunnel';
+import { shareImage } from '@/lib/site/pageMetadata';
 
 const TITLE = "Know what matters for your home, and stay on top of it";
 const DESCRIPTION =
@@ -27,8 +28,8 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
     description: DESCRIPTION,
     alternates: { canonical: '/start' },
     robots: { index: true, follow: true },
-    openGraph: { type: 'website', url: '/start', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION },
-    twitter: { card: 'summary', title: TITLE, description: DESCRIPTION },
+    openGraph: { type: 'website', url: '/start', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION, images: [shareImage('/start')] },
+    twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: [shareImage('/start').url] },
   };
   if (!address) return base;
   const shareTitle = `What's true about ${address}`;

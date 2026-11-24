@@ -8,6 +8,7 @@
 
 import type { Metadata, Viewport } from 'next';
 import StartFunnel from '@/components/place/StartFunnel';
+import { shareImage } from '@/lib/site/pageMetadata';
 
 const TITLE = 'Does the county value your home above similar homes on your street?';
 const DESCRIPTION =
@@ -19,8 +20,8 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   alternates: { canonical: '/tax-check' },
   robots: { index: true, follow: true },
-  openGraph: { type: 'website', url: '/tax-check', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION },
-  twitter: { card: 'summary', title: TITLE, description: DESCRIPTION },
+  openGraph: { type: 'website', url: '/tax-check', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION, images: [shareImage('/tax-check')] },
+  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: [shareImage('/tax-check').url] },
 };
 
 export const viewport: Viewport = {
