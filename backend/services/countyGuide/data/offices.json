@@ -571,11 +571,11 @@
         {
           "id": "treasurer",
           "title": "Property tax",
-          "office": "Clark County Treasurer, Real Property Tax Information",
-          "url": "https://www.clarkcountynv.gov/government/elected_officials/county_treasurer/real-property-tax-information",
-          "line": "Collects real property tax; its pages give the payment options and the coming due dates.",
+          "office": "Clark County Treasurer, Real Property Tax Payment Options",
+          "url": "https://www.clarkcountynv.gov/government/elected_officials/county_treasurer/real-property-tax-payment-options",
+          "line": "Takes real property tax online, by phone, by mail, through a bank's online bill pay, at a drop box or in person at the County Government Center; card payments carry a third-party service fee.",
           "q": "Where do I pay property tax in Clark County?",
-          "a": "The Clark County Treasurer collects real property tax. Its pages give the ways to pay and the coming due dates, and pay taxes online."
+          "a": "The Clark County Treasurer collects real property tax. It takes payment online, by phone, by mail, through a bank's online bill pay, at a drop box or in person at the County Government Center in Las Vegas."
         },
         {
           "id": "recording_alert",
