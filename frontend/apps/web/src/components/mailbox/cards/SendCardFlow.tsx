@@ -615,6 +615,8 @@ function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }
           data-testid="sendCardPickBar"
           className={`${shelvesBarClass} sticky bottom-0 z-10 -mx-4 mt-5 border-t border-[#e3d8c3] bg-[#f5f0e8] px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_16px_rgba(60,40,10,0.08)] md:-bottom-6 [@media(prefers-color-scheme:dark)]:border-app [@media(prefers-color-scheme:dark)]:bg-app`}
         >
+          {/* On the wide page the chosen card and the button keep the other steps' width, in the middle. */}
+          <div className="mx-auto max-w-[528px]">
           <div className="flex min-h-[48px] items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={cardPicture(picked.id, 'thumb')} alt="" className="w-10 flex-shrink-0 -rotate-2 rounded-[2px] shadow-[0_3px_8px_rgba(60,40,10,0.25)]" />
@@ -629,6 +631,7 @@ function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }
             </button>
           </div>
           <button type="button" data-testid="sendCardWriteOn" onClick={onNext} className={`${primary} mt-2`} style={{ backgroundColor: WAX }}>Write on this card</button>
+          </div>
         </div>
       ) : null}
       {rack ? (
@@ -2544,9 +2547,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   // Write on the back, Seal it for the day and Look it over lie on the card's cloth (design plan Part 9, card_table).
   const atTable = launchFeatures.cardTable && Boolean(design) && (step === 'write' || step === 'seal' || step === 'look');
 
+  // "Pick a card" as shelves is a wide page: its title, its headings and each row's first card start on one line, and
+  // the rows end with the page. The other steps keep the narrow column.
+  const widePage = step === 'pick' && Boolean(shelves);
+
   return (
     <div className={`${page} pb-6`}>
-      <div className="mx-auto w-full max-w-[560px]">
+      <div className={`mx-auto w-full ${widePage ? 'max-w-[1240px]' : 'max-w-[560px]'}`}>
       <StepHeader
         step={step}
         title={step === 'sent' && sent?.by_link ? 'Your card is ready.' : openShelf ? 'All collections' : undefined}
