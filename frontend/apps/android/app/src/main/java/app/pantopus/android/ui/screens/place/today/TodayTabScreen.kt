@@ -246,7 +246,7 @@ fun TodayTabScreen(
         viewModel.load()
         needsYou.load()
     }
-    val pullAll = {
+    val pullAll: () -> Unit = {
         viewModel.pull()
         needsYou.pull()
         viewModel.readAround(aroundPlace)
