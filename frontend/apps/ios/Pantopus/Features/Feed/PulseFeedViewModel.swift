@@ -1552,7 +1552,7 @@ public final class PulseFeedViewModel {
             createdAt: post.createdAt
         )
         let keptOpen = live.keptOpen
-        return PulsePostCardContent(
+        var content = PulsePostCardContent(
             id: post.id,
             authorName: post.creator?.displayName ?? "Pantopus user",
             authorInitials: initials,
@@ -1622,6 +1622,10 @@ public final class PulseFeedViewModel {
             source: post.source,
             quoted: PulseQuotedPost(post.quotedPost)
         )
+        // A story Today's Around you posted for an outlet, and who replied to it (PulseStory.swift).
+        content.story = PulseStory(aroundYou: post.aroundYou, source: post.source, text: post.content)
+        content.conversation = live.commentCount > 0 ? PulseConversation(post.conversation) : nil
+        return content
     }
 
     /// Where the author's photo and name lead, as on the post's page: a business's published page or a person's
