@@ -75,6 +75,9 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   'card_claimed', //    user: the claimer; meta via, new_account, after lt_1h | lt_1d | lt_7d | later
   'card_reply_sent', // user: the replier
   'card_passed_on', //  user: the passer; meta place 1 | 2 (which of the card's two places), via
+  // Around you (Today's second half), recorded by services/aroundYouService.js on a read that returns sections, at
+  // most once an hour per person. Counts only: no place, region or item.
+  'around_you_opened', // user: the reader; meta sections, rows, hand_made (the region was set up by hand)
 ]);
 
 // Only these pilot events are accepted from an authenticated app. Delivery

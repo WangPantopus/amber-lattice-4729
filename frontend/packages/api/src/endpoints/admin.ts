@@ -320,6 +320,17 @@ export interface FunnelCardCounts {
   loop: number | null;
 }
 
+/** Around you for the last 7 or 30 days: distinct people who opened it, opens, and what its posts got. */
+export interface FunnelAroundYouCounts {
+  people: number;
+  opens: number;
+  reactions: number;
+  replies: number;
+  saves: number;
+  /** Reposts and reposts with the person's own words. */
+  reposts: number;
+}
+
 export interface FunnelSummary {
   days: number;
   since: string;
@@ -332,6 +343,8 @@ export interface FunnelSummary {
   activation: { cohort_users: number; activated_users: number; matured_users: number; activated_matured_users: number;
     pending_users: number; matured_rate: number | null; truncated: boolean };
   cards: FunnelCardCounts & { days: (FunnelCardCounts & { day: string })[] };
+  /** Null when it couldn't be read; absent from older servers. */
+  around_you?: { last_7_days: FunnelAroundYouCounts; last_30_days: FunnelAroundYouCounts } | null;
 }
 
 export async function getFunnelSummary(days = 30): Promise<FunnelSummary> {

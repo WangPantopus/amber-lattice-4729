@@ -174,6 +174,19 @@ export default function AdminFunnelPage() {
 
                 {summary && (
                   <>
+                    {summary.around_you && (
+                      <KeyValues
+                        title="Around you (last 7 days · last 30 days)"
+                        testId="admin-funnel-around-you"
+                        rows={([
+                          ['People who opened it', 'people'], ['Opens (at most one an hour per person)', 'opens'],
+                          ['Reactions on its posts', 'reactions'], ['Replies', 'replies'], ['Saves', 'saves'],
+                          ['Reposts', 'reposts'],
+                        ] as const).map(([label, key]): [string, string] => [
+                          label, `${num(summary.around_you?.last_7_days[key])} · ${num(summary.around_you?.last_30_days[key])}`,
+                        ])}
+                      />
+                    )}
                     <KeyValues
                       title="The ladder"
                       testId="admin-funnel-ladder"

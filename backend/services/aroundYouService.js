@@ -15,6 +15,13 @@
  * their own post page and in a person's saved posts. A post's id is derived from its queue row's id, so two reads at
  * once make one post, and a post moderation removed stays removed.
  *
+ * The everywhere layer (AROUNDFEEDS, 2026-11-24): the worker's feeds job (jobs/aroundYouFeeds.js) adds wildfires,
+ * federal disaster notices, road projects and calendar events to the same list; the page rules (sections, the outlet's
+ * own summary, subscription outlets, the region's own town first, Across <State>, On watch) are in
+ * services/aroundYou/sections.js. A status row (a fire, a project, a notice) keeps one post whose text follows the
+ * row's title; every other post stays as it was made. A read that returns sections is counted (around_you_opened, at
+ * most once an hour per person, counts only).
+ *
  * Switch: AROUND_YOU ('1' on, '0' off). Unset, it is on for hosted staging (APP_ENV=staging) and off everywhere else.
  * Nothing is read or posted while it is off.
  */
@@ -27,6 +34,11 @@ const { haversineM, hasUsableCoordinates } = require('./seederProvisioningServic
 const {
   FEED_POST_SELECT, normalizeFeedPostRow, enrichFeedPosts, getMuteAndHideFilters,
 } = require('./feedService');
+const {
+  CATEGORIES, LONGEST_HOURS, buildSections, onWatch, publicItem, webLink,
+} = require('./aroundYou/sections');
+const { readChecked } = require('./aroundYou/checked');
+const { recordFunnelEvent } = require('./funnelEvents');
 
 const HOUR_MS = 3_600_000;
 const CACHE_TTL_MS = 300_000;
@@ -36,46 +48,13 @@ const DEFAULT_RADIUS_M = 25_000;
 // The nearest regions that cover the point; a place between two metros reads both.
 const MAX_REGIONS = 2;
 const MAX_ROWS = 400;
-const MAX_TITLE_LENGTH = 180;
 // The fetcher keeps at most four pictures for a story; a link longer than this is not one a card should load.
 const MAX_PICTURES = 4;
 const MAX_PICTURE_LINK_LENGTH = 2048;
-
-// What a page can hold, in the order it shows. `hours` is how long an item stays after the fetcher last saw it.
-// `sources`, when set, limits a category to rows from those sources (by type): Alerts' safety rows are the feeds job's
-// wildfires and federal notices and the Lambda's strong earthquakes, never its weather alerts, which At home shows.
-const SECTIONS = [
-  {
-    id: 'alerts',
-    title: 'Alerts',
-    categories: ['earthquake', 'safety'],
-    sources: { safety: ['wildfire', 'fema', 'usgs_earthquakes'] },
-    hours: 24,
-    max: 3,
-  },
-  { id: 'headlines', title: 'Headlines', categories: ['local_news'], hours: 48, max: 8 },
-  { id: 'events', title: 'Events', categories: ['event'], hours: 72, max: 5 },
-  { id: 'around_town', title: 'Around town', categories: ['community_resource'], hours: 168, max: 4 },
-  { id: 'season', title: 'This season', categories: ['seasonal'], hours: 168, max: 1 },
-  { id: 'history', title: 'On this day', categories: ['history'], hours: 24, max: 1 },
-];
-const CATEGORIES = [...new Set(SECTIONS.flatMap((section) => section.categories))];
-const LONGEST_HOURS = Math.max(...SECTIONS.map((section) => section.hours));
-
-// Sports is left out: a region's sports sources are mostly league-wide feeds and team searches (trades elsewhere,
-// memorabilia listings), which do not read as local news. They keep feeding the Pulse Sports lane.
-// No outlet fills a section while another has something to show.
-const MAX_PER_OUTLET = 5;
-
-// The fetcher's filter already drops crime, obituaries and party politics by a word list
-// (pantopus-seeder/src/config/constants.py BLOCKLIST_TERMS). The same kinds of story under words that list misses
-// stay off this page too; whole words only, headline only.
-const LEFT_OUT = new RegExp(`\\b(${[
-  'police say', 'suspect', 'suspects', 'killed', 'kills', 'killing', 'dead', 'die', 'dies', 'died', 'death', 'deaths', 'fatal',
-  'fatally', 'fentanyl', 'overdose', 'overdoses', 'rape', 'raped', 'gunman', 'gunfire', 'shot', 'stabbed', 'victim',
-  'victims', 'kidnapped', 'kidnapping', 'sexual assault', 'sex abuse', 'sexual abuse', 'trafficking',
-  'republican', 'republicans', 'gop', 'maga', 'trump', 'biden',
-].join('|')})\\b`, 'i');
+// Rows whose post text follows the row: a fire's acres, a project's dates, a notice's help.
+const STATUS_KINDS = new Set(['wildfire', 'fema', 'roadwork']);
+// Around you is counted at most once an hour per person (per server process).
+const OPEN_COUNT_MS = HOUR_MS;
 
 const EMPTY = Object.freeze({ available: false, area: null, sections: [] });
 
@@ -84,13 +63,14 @@ let regionsCache = { rows: null, expires: 0 };
 // posts (their own reaction, a post they hid) is added for each read (withPosts).
 const pageCache = new Map();
 const pageBuilds = new Map(); // region ids -> the read in flight, so one process builds a page once
+const lastCounted = new Map(); // user id -> when their open was last counted
 
 async function activeRegions() {
   const now = Date.now();
   if (regionsCache.rows && now < regionsCache.expires) return regionsCache.rows;
   const { data, error } = await supabaseAdmin
     .from('seeder_config')
-    .select('region, lat, lng, radius_meters, display_name, curator_user_id')
+    .select('region, lat, lng, radius_meters, display_name, curator_user_id, timezone, state, county_name, provisioned_by')
     .eq('active', true);
   if (error) throw error;
   regionsCache = { rows: data || [], expires: now + CACHE_TTL_MS };
@@ -105,109 +85,6 @@ function coveringRegions(regions, latitude, longitude) {
     .sort((a, b) => a.meters - b.meters)
     .slice(0, MAX_REGIONS)
     .map(({ region }) => region);
-}
-
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-function plainText(value) {
-  return String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&([a-z]+);/gi, (match, name) => ENTITIES[name.toLowerCase()] ?? match)
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// The outlet's headline. Google News ends a title with " - Outlet"; the fetcher removes most of those, and what it
-// leaves (a lower-case site name) goes here, since the outlet shows on its own line.
-function headline(row, outlet) {
-  let text = plainText(row.raw_title);
-  if (outlet) {
-    const tail = new RegExp(`\\s+[-–—|]\\s+${outlet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    text = text.replace(tail, '').trim();
-  }
-  return text.length > MAX_TITLE_LENGTH ? `${text.slice(0, MAX_TITLE_LENGTH - 1).trimEnd()}…` : text;
-}
-
-// Only a web link leaves this service.
-function webLink(value) {
-  try {
-    const url = new URL(String(value || ''));
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function hostName(link) {
-  if (!link) return null;
-  const host = new URL(link).hostname.replace(/^www\./, '');
-  return host || null;
-}
-
-// Who published it. Google News names the outlet in its summary (<font>Outlet</font>); a feed's items carry the feed's
-// own name; anything else is named for the site its link opens.
-function outletName(row, link, sourceNames) {
-  const type = String(row.source || '').split(':')[0];
-  if (type === 'google_news') {
-    const named = /<font[^>]*>([^<]{2,80})<\/font>/i.exec(row.raw_body || '');
-    return (named && plainText(named[1])) || 'Google News';
-  }
-  if (type === 'seasonal') return 'Pantopus';
-  if (type === 'on_this_day') return 'Wikipedia';
-  if (type === 'usgs_earthquakes') return 'USGS';
-  if (type === 'wildfire') return 'National Interagency Fire Center';
-  if (type === 'fema') return 'FEMA';
-  return sourceNames.get(row.source) || hostName(link) || null;
-}
-
-function titleKey(title) {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-// `rows` come in the order they should show: the nearest region's first, newest first within a region.
-function buildSections(rows, sourceNames, now = Date.now()) {
-  const seen = new Set();
-  const sections = [];
-  for (const spec of SECTIONS) {
-    const candidates = [];
-    for (const row of rows) {
-      if (!spec.categories.includes(row.category)) continue;
-      const onlyFrom = spec.sources?.[row.category];
-      if (onlyFrom && !onlyFrom.includes(String(row.source || '').split(':')[0])) continue;
-      const seenAt = Date.parse(row.fetched_at);
-      if (!Number.isFinite(seenAt) || now - seenAt > spec.hours * HOUR_MS) continue;
-      const link = webLink(row.source_url);
-      // A headline with nowhere to read it is left out; a seasonal tip is its own text.
-      if (!link && row.category !== 'seasonal') continue;
-      const source = outletName(row, link, sourceNames);
-      const title = headline(row, source);
-      if (!title || LEFT_OUT.test(title)) continue;
-      const key = titleKey(title);
-      // A story is one link; road projects share their state's traveler map, so they are told apart by title alone.
-      const linkKey = String(row.source || '').startsWith('roadwork:') ? null : link;
-      if (seen.has(key) || (linkKey && seen.has(linkKey))) continue;
-      seen.add(key);
-      if (linkKey) seen.add(linkKey);
-      candidates.push({ id: row.id, title, source, url: link, seen_at: new Date(seenAt).toISOString() });
-    }
-    // First what fits with each outlet held to its share, then the rest in order if there is room.
-    const perOutlet = new Map();
-    const items = [];
-    const held = [];
-    for (const item of candidates) {
-      const count = perOutlet.get(item.source) || 0;
-      if (count < MAX_PER_OUTLET && items.length < spec.max) {
-        perOutlet.set(item.source, count + 1);
-        items.push(item);
-      } else {
-        held.push(item);
-      }
-    }
-    items.push(...held.slice(0, Math.max(spec.max - items.length, 0)));
-    if (items.length) sections.push({ id: spec.id, title: spec.title, items });
-  }
-  return sections;
 }
 
 // The story's own pictures, as the fetcher kept them from the outlet's feed (media_urls, with media_types beside
@@ -227,6 +104,13 @@ function postIdFor(itemId) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+// A post's text: the headline, and the outlet's own summary on the next line. Every app draws a post's text; the
+// iPhone and Android cards draw a `title` on one line and the text in 2 lines beside a title or 3 without one, so the
+// summary goes in the text after a single line break (a blank line would use up the third line), never in `title`.
+function postText(item) {
+  return item.summary ? `${item.title}\n${item.summary}` : item.title;
+}
+
 // An item as a post by its region's curator account: the outlet's headline as written, its name and link in the
 // metadata, the story's pictures, no place. Visible to anyone signed in (visibility public), listed nowhere but here (no
 // distribution target), and off the curator's profile. Its time is when the fetcher first saw the story.
@@ -238,7 +122,7 @@ function postRow(item, sectionId, curatorUserId, localProfileId, itemPictures = 
     identity_context_type: 'local',
     identity_context_id: localProfileId || null,
     title: null,
-    content: item.title,
+    content: postText(item),
     media_urls: itemPictures,
     media_types: itemPictures.map(() => 'image'),
     post_type: 'local_update',
@@ -277,8 +161,27 @@ async function addMissingPictures(rows) {
   if (failed) throw failed.error;
 }
 
+// A status row's post follows its row: when a fire's acres or a project's dates changed, the post's text does too, as
+// the pictures are given to older posts. A story's post made before posts carried the outlet's summary (its text is
+// the bare headline) gets the summary once. Reactions and replies stay; no other post changes.
+async function followText(status, summarized) {
+  const rows = [...status, ...summarized];
+  if (!rows.length) return;
+  const { data: made, error } = await supabaseAdmin.from('Post').select('id, content').in('id', rows.map((row) => row.id));
+  if (error) throw error;
+  const current = new Map((made || []).map((post) => [post.id, post.content]));
+  const changed = [
+    ...status.filter((row) => current.has(row.id) && current.get(row.id) !== row.content),
+    ...summarized.filter((row) => current.get(row.id) === row.headline),
+  ];
+  const results = await Promise.all(changed.map((row) => supabaseAdmin.from('Post')
+    .update({ content: row.content }).eq('id', row.id).eq('origin', 'curator')));
+  const failed = results.find((result) => result.error);
+  if (failed) throw failed.error;
+}
+
 // Makes the posts a page's items don't have yet; one that exists (or was removed by moderation) is left as it is,
-// but for its pictures (addMissingPictures).
+// but for its pictures (addMissingPictures) and its text where followText says so.
 async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
   const curatorOf = new Map(regions.map((region) => [region.region, region.curator_user_id]));
   const curatorIds = [...new Set([...curatorOf.values()].filter(Boolean))];
@@ -286,10 +189,15 @@ async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
     ? await supabaseAdmin.from('LocalProfile').select('id, user_id').in('user_id', curatorIds)
     : { data: [] };
   const profileOf = new Map((profiles || []).map((row) => [String(row.user_id), row.id]));
+  const status = [];
+  const summarized = [];
   const rows = sections.flatMap((section) => section.items.flatMap((item) => {
     const curator = curatorOf.get(regionOfItem.get(item.id));
-    return curator
-      ? [postRow(item, section.id, curator, profileOf.get(String(curator)), picturesOfItem.get(item.id))] : [];
+    if (!curator) return [];
+    const row = postRow(item, section.id, curator, profileOf.get(String(curator)), picturesOfItem.get(item.id));
+    if (STATUS_KINDS.has(item._kind)) status.push(row);
+    else if (item.summary) summarized.push({ id: row.id, content: row.content, headline: item.title });
+    return [row];
   }));
   if (!rows.length) return;
   const { error } = await supabaseAdmin.from('Post').upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
@@ -297,15 +205,18 @@ async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
   await addMissingPictures(rows).catch((err) => {
     logger.warn('Around you pictures could not be added', { error: err.message });
   });
+  await followText(status, summarized).catch((err) => {
+    logger.warn('Around you post text could not be updated', { error: err.message });
+  });
 }
 
 async function readPage(regions) {
   const regionIds = regions.map((region) => region.region);
   const since = new Date(Date.now() - LONGEST_HOURS * HOUR_MS).toISOString();
-  const [queue, sources] = await Promise.all([
+  const [queue, sources, checked] = await Promise.all([
     supabaseAdmin
       .from('seeder_content_queue')
-      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at, media_urls, media_types')
+      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at, created_at, media_urls, media_types')
       .in('region', regionIds)
       .in('category', CATEGORIES)
       .eq('scope', 'local')
@@ -314,11 +225,20 @@ async function readPage(regions) {
       .gte('fetched_at', since)
       .order('fetched_at', { ascending: false })
       .limit(MAX_ROWS),
-    supabaseAdmin.from('seeder_sources').select('source_id, display_name').in('region', regionIds),
+    supabaseAdmin.from('seeder_sources')
+      .select('source_id, source_type, display_name, region, active, keep_hours, access')
+      .in('region', regionIds),
+    readChecked(),
   ]);
   if (queue.error) throw queue.error;
-  // A feed's name is a nicety: without the table's answer an item is named for its site.
-  const sourceNames = new Map((sources.data || []).map((row) => [row.source_id, row.display_name]));
+  if (sources.error) logger.warn('Around you sources could not be read', { error: sources.error.message });
+  // A source's name, keep window and access are niceties: without the table's answer an item is named for its site.
+  const sourceRows = new Map();
+  for (const row of sources.data || []) {
+    const kept = sourceRows.get(row.source_id);
+    // The same source in two regions: the nearer region's row speaks.
+    if (!kept || regionIds.indexOf(row.region) < regionIds.indexOf(kept.region)) sourceRows.set(row.source_id, row);
+  }
   // The nearest region's items first, newest first within a region: a place between two metros reads its own news
   // before the next one's.
   const order = new Map(regionIds.map((id, index) => [id, index]));
@@ -327,20 +247,29 @@ async function readPage(regions) {
     .sort((x, y) => (order.get(x.row.region) - order.get(y.row.region))
       || (Date.parse(y.row.fetched_at) - Date.parse(x.row.fetched_at)) || (x.index - y.index))
     .map(({ row }) => row);
-  const sections = buildSections(rows, sourceNames)
+  const built = buildSections(rows, sourceRows, regions);
+  const watch = onWatch(built, regions, new Map((sources.data || []).map((row) => [`${row.region}|${row.source_id}`, row])),
+    checked);
+  if (watch) built.push(watch);
+  const sections = built
     .map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, post_id: postIdFor(item.id) })) }));
   if (!sections.length) return EMPTY;
+  const regionOfItem = new Map(rows.map((row) => [row.id, row.region]));
+  if (watch) regionOfItem.set(watch.items[0].id, regions[0].region);
   let postsReady = true;
   try {
-    await makePosts(
-      sections, new Map(rows.map((row) => [row.id, row.region])), regions,
-      new Map(rows.map((row) => [row.id, pictures(row)])),
-    );
+    await makePosts(sections, regionOfItem, regions, new Map(rows.map((row) => [row.id, pictures(row)])));
   } catch (err) {
     postsReady = false;
     logger.warn('Around you posts could not be made', { error: err.message });
   }
-  return { available: true, area: regions[0].display_name || null, sections, postsReady };
+  return {
+    available: true,
+    area: regions[0].display_name || null,
+    sections: sections.map((section) => ({ ...section, items: section.items.map(publicItem) })),
+    postsReady,
+    handMade: regions[0].provisioned_by === 'manual',
+  };
 }
 
 // The page for these regions, from the cache or read once however many ask at the same time.
@@ -393,14 +322,39 @@ async function withPosts(page, viewerId) {
   }
 }
 
+// Counts an open of Around you that returned sections: at most once an hour per person (this process remembers; a
+// restarted or second server asks the table first), counts only (no place, no item). Fire-and-forget: the read never
+// waits on it.
+function countOpen(userId, page) {
+  if (!userId) return;
+  const now = Date.now();
+  if (now - (lastCounted.get(userId) || 0) < OPEN_COUNT_MS) return;
+  if (lastCounted.size > 20_000) lastCounted.clear();
+  lastCounted.set(userId, now);
+  supabaseAdmin.from('FunnelEvent').select('id').eq('event_type', 'around_you_opened').eq('user_id', userId)
+    .gte('created_at', new Date(now - OPEN_COUNT_MS).toISOString()).limit(1)
+    .then(({ data, error }) => {
+      if (error || data?.length) return null;
+      return recordFunnelEvent('around_you_opened', {
+        userId,
+        meta: {
+          sections: page.sections.length,
+          rows: page.sections.reduce((count, section) => count + section.items.length, 0),
+          hand_made: Boolean(page.handMade),
+        },
+      });
+    })
+    .catch(() => {});
+}
+
 /**
  * The Around you page for a point, as `userId` sees it: { available, area, sections: [{ id, title, items: [{ id,
- * title, source, url, seen_at, post_id }], posts: [feed post] }] }. `items` are the first build's rows (apps from
- * before the posts read only them); `posts` holds the same items as posts in the feed's shape (GET /api/posts/feed),
- * in the same order, and is left out when the posts could not be made or read, so the apps draw the rows instead.
- * `available` is false (and the apps show no switch) while the feature is off, where no content region covers the
- * point, and when the region has nothing to show. A failed read answers the same way: Today's first half never waits
- * on this.
+ * title, source, url, seen_at, summary?, post_id }], posts: [feed post] }] }. `items` are the first build's rows (apps
+ * from before the posts read only them); `posts` holds the same items as posts in the feed's shape
+ * (GET /api/posts/feed), in the same order, and is left out when the posts could not be made or read, so the apps draw
+ * the rows instead. `available` is false (and the apps show no switch) while the feature is off, where no content
+ * region covers the point, and when the region has nothing to show. A failed read answers the same way: Today's first
+ * half never waits on this.
  */
 async function aroundYou({ latitude, longitude, userId = null }) {
   if (!aroundYouEnabled()) return EMPTY;
@@ -412,6 +366,7 @@ async function aroundYou({ latitude, longitude, userId = null }) {
     if (!regions.length) return EMPTY;
     const page = await regionPage(regions);
     if (!page.available) return EMPTY;
+    countOpen(userId, page);
     return await withPosts(page, userId);
   } catch (err) {
     // The point stays out of the log.
@@ -423,6 +378,7 @@ async function aroundYou({ latitude, longitude, userId = null }) {
 function resetAroundYouCache() {
   regionsCache = { rows: null, expires: 0 };
   pageCache.clear();
+  lastCounted.clear();
 }
 
 module.exports = { aroundYou, resetAroundYouCache, buildSections, coveringRegions, postIdFor, pictures, EMPTY };
