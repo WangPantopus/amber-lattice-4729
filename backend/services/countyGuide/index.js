@@ -28,6 +28,9 @@ const BATCHES = [];
 const COUNTIES = [
   // November 23, 2026: Pierce and Kitsap counties, WA (Clark County, WA is live).
   '53053', '53035',
+  // November 23, 2026, second: King and Skagit, WA; Multnomah, OR; Riverside and San Joaquin, CA; Hillsborough, FL;
+  // Dallas, Harris and Fort Bend, TX; Ramsey, MN.
+  '53033', '53057', '41051', '06065', '06077', '12057', '48113', '48201', '48157', '27123',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
