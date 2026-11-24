@@ -90,10 +90,10 @@ function withinBudget(read, label) {
  * The picture from above for someone who isn't the owner, with how many survey years the owner's record holds (one
  * search, kept in memory, answers both). `{ above, years }`.
  */
-async function pictureForViewer(point, copy) {
+async function pictureForViewer(point, copy, { earlierYears = 'owner' } = {}) {
   if (!point) return { above: null, years: null };
   const [above, years] = await Promise.all([
-    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), earlierYearsForOwner: true }), 'picture'),
+    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), earlierYears }), 'picture'),
     withinBudget(aerial.yearsAt(point), 'years'),
   ]);
   return { above, years };
@@ -149,7 +149,8 @@ async function forAddress(place, { flood, signedIn = false, saved = false }) {
   const title = place.line || subtitleOf(place) || 'This address';
 
   if (!signedIn) {
-    const [extras, { above, years }] = await Promise.all([extrasWithin(copy, home), pictureForViewer(point, copy)]);
+    // Signed out, the earlier survey years open with a free account (SPEC section 8).
+    const [extras, { above, years }] = await Promise.all([extrasWithin(copy, home), pictureForViewer(point, copy, { earlierYears: 'account' })]);
     return answer('lookup', { chip: open.foundChip(copy), title, subtitle: place.line ? subtitleOf(place) : null }, [
       above,
       open.factsBlock(copy),

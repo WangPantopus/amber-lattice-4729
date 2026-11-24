@@ -164,9 +164,10 @@ function MetersView({ block }: { block: api.homeRecord.MetersBlock }) {
 function ClosedGroupView({ block }: { block: api.homeRecord.ClosedGroupBlock }) {
   return (
     <section className={`${card} px-3.5 pt-1 pb-1.5`} data-testid={`home-record-${block.id}`}>
-      <div className="flex min-h-12 items-center justify-between gap-3">
-        <h3 className="text-[15px] font-semibold -tracking-[0.01em] text-app-text">{block.title}</h3>
-        {block.chip ? <span className="inline-flex items-center gap-1 rounded-full bg-app-info-bg px-2.5 py-0.5 text-xs font-semibold text-app-info"><Lock className="h-3 w-3" aria-hidden="true" />{block.chip}</span> : null}
+      {/* One line when the title and the chip fit; on a narrow phone the chip goes under the title, never beside a wrapped one. */}
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+        <h3 className="whitespace-nowrap text-[15px] font-semibold -tracking-[0.01em] text-app-text">{block.title}</h3>
+        {block.chip ? <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-app-info-bg px-2.5 py-0.5 text-xs font-semibold text-app-info"><Lock className="h-3 w-3" aria-hidden="true" />{block.chip}</span> : null}
       </div>
       {block.items.map((item) => {
         const Icon = iconFor(item.icon);
