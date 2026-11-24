@@ -36,7 +36,8 @@ const COLUMNS: FooterColumn[] = [
       { href: '/property-records', label: 'Property records' },
       { href: '/tax-check', label: 'Property tax check' },
       { href: '/#how-it-works', label: 'How it works' },
-      { href: '/#plans', label: 'Plans' },
+      // The homepage's Plans section, until Plans has its own page in the Pantopus column.
+      ...(PILLAR_PAGES.some((page) => page.path === '/plans') ? [] : [{ href: '/#plans', label: 'Plans' }]),
       { href: '/login', label: 'Sign in' },
     ],
   },
