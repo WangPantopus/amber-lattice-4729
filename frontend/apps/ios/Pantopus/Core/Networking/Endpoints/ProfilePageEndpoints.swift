@@ -67,6 +67,26 @@ public enum ProfilePageEndpoints {
         )
     }
 
+    /// `PUT /api/profile-page/me/share` with `links_enabled` alone: links for one purpose on or off for this person.
+    public static func setLinksEnabled(_ on: Bool) -> Endpoint {
+        Endpoint(method: .put, path: "/api/profile-page/me/share", body: ProfileLinksEnabledBody(linksEnabled: on))
+    }
+
+    /// `POST /api/profile-page/me/links` — a link for one purpose (409 `PROFILE_LINKS_LIMIT` past ten live ones).
+    public static func createLink(_ body: ProfileShareLinkBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/links", body: body)
+    }
+
+    /// `PATCH /api/profile-page/me/links/:id` — its name, parts, end date or switch.
+    public static func updateLink(id: String, _ body: ProfileShareLinkBody) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/profile-page/me/links/\(Endpoint.pathSegment(id))", body: body)
+    }
+
+    /// `DELETE /api/profile-page/me/links/:id`.
+    public static func deleteLink(id: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/profile-page/me/links/\(Endpoint.pathSegment(id))")
+    }
+
     /// `GET /api/profile-page/marks?ids=a,b,c` — the ring on each avatar (board 6): since when each person has
     /// anything on record, and whether anything is seen. People the viewer may not see are left out.
     public static func marks(ids: [String]) -> Endpoint {
@@ -93,5 +113,14 @@ public struct ProfileShareSaveBody: Encodable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(parts, forKey: .parts)
         try c.encodeIfPresent(searchEngines, forKey: .searchEngines)
+    }
+}
+
+/// `{ "links_enabled": true | false }`.
+public struct ProfileLinksEnabledBody: Encodable, Sendable {
+    public let linksEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case linksEnabled = "links_enabled"
     }
 }

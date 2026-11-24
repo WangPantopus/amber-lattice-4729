@@ -101,12 +101,23 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
     /// anyone | connections | none
     public let cityLimit: String?
     public let visitor: ProfilePageDTO?
+    /// Links for one purpose (v1.3): nil while the server's `PROFILE_LINKS` is off (no section is drawn).
+    public let linksEnabled: Bool?
+    public let links: [ProfileShareLinkDTO]
+    /// False only on a server where a private profile's links don't open (v1.4); always true from v1.6.
+    public let linksOpen: Bool
+    /// A plain note for the owner when their profile isn't open to visitors (v1.6); nil when it is.
+    public let linksNote: String?
 
     enum CodingKeys: String, CodingKey {
         case username, url, saved, parts, visitor
         case usernameIsMadeUp = "username_is_made_up"
         case searchEngines = "search_engines"
         case cityLimit = "city_limit"
+        case linksEnabled = "links_enabled"
+        case links
+        case linksOpen = "links_open"
+        case linksNote = "links_note"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -119,5 +130,9 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
         searchEngines = (try? c.decode(Bool.self, forKey: .searchEngines)) ?? false
         cityLimit = try? c.decodeIfPresent(String.self, forKey: .cityLimit)
         visitor = try? c.decodeIfPresent(ProfilePageDTO.self, forKey: .visitor)
+        linksEnabled = try? c.decodeIfPresent(Bool.self, forKey: .linksEnabled)
+        links = ((try? c.decodeIfPresent([Lossy<ProfileShareLinkDTO>].self, forKey: .links)) ?? []).compactMap(\.value)
+        linksOpen = (try? c.decodeIfPresent(Bool.self, forKey: .linksOpen)) ?? true
+        linksNote = try? c.decodeIfPresent(String.self, forKey: .linksNote)
     }
 }

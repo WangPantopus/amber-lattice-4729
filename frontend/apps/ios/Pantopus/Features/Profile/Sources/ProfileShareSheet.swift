@@ -71,6 +71,54 @@ final class ProfileShareModel {
         await save(key: key, parts: [key: setting], searchEngines: nil)
     }
 
+    func setLinksEnabled(_ on: Bool) async {
+        saving.insert("links_enabled")
+        defer { saving.remove("links_enabled") }
+        do {
+            let share: ProfileShareDTO = try await client.request(ProfilePageEndpoints.setLinksEnabled(on))
+            state = .loaded(share)
+        } catch {
+            toast = "Couldn't save that. Try again."
+        }
+    }
+
+    /// Makes a link; the server's sentence when it can't (ten working links at most).
+    func createLink(_ body: ProfileShareLinkBody) async -> String? {
+        do {
+            _ = try await client.request(ProfilePageEndpoints.createLink(body), as: ProfileShareLinkDTO.self)
+            await load()
+            return nil
+        } catch {
+            return Self.sentence(error)
+        }
+    }
+
+    func updateLink(_ id: String, _ body: ProfileShareLinkBody) async -> String? {
+        do {
+            _ = try await client.request(ProfilePageEndpoints.updateLink(id: id, body), as: ProfileShareLinkDTO.self)
+            await load()
+            return nil
+        } catch {
+            return Self.sentence(error)
+        }
+    }
+
+    func deleteLink(_ id: String) async -> Bool {
+        do {
+            _ = try await client.request(ProfilePageEndpoints.deleteLink(id: id), as: EmptyResponse.self)
+            await load()
+            return true
+        } catch {
+            toast = "Couldn't delete that link. Try again."
+            return false
+        }
+    }
+
+    private static func sentence(_ error: any Error) -> String {
+        if case let APIError.clientError(_, message?) = error, !message.isEmpty { return message }
+        return "Couldn't save that. Try again."
+    }
+
     func setSearchEngines(_ on: Bool) async {
         await save(key: "search_engines", parts: nil, searchEngines: on)
     }
@@ -106,6 +154,8 @@ struct ProfileShareSheet: View {
     @State private var sendItems: [Any]?
     @State private var showCode = false
     @State private var copied = false
+    /// The link for one purpose being made (nil inside) or looked after.
+    @State private var editing: ProfileShareLinkEditing?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -133,6 +183,9 @@ struct ProfileShareSheet: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Theme.Color.infoBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         parts(share)
+                        ProfileShareLinksSection(model: model, share: share) { link in
+                            editing = ProfileShareLinkEditing(link: link)
+                        }
                         Button(action: onSeeAsVisitor) {
                             ProfileActionButton(title: "See it as a visitor", icon: .eye, style: .secondary)
                         }
@@ -166,8 +219,13 @@ struct ProfileShareSheet: View {
         .sheet(isPresented: Binding(get: { sendItems != nil }, set: { if !$0 { sendItems = nil } })) {
             if let sendItems { SystemShareSheet(items: sendItems) }
         }
+        .sheet(item: $editing) { item in
+            if let share = model.share {
+                ProfileShareLinkEditor(model: model, share: share, link: item.link) { editing = nil }
+            }
+        }
         .fullScreenCover(isPresented: $showCode) {
-            if let url = model.share?.url { ProfileLinkCode(url: url, name: name) { showCode = false } }
+            if let url = model.share.flatMap(Self.appURL) { ProfileLinkCode(url: url, name: name) { showCode = false } }
         }
         .accessibilityIdentifier("profileShareSheet")
     }
@@ -175,7 +233,8 @@ struct ProfileShareSheet: View {
     // MARK: - The link
 
     private func linkCard(_ share: ProfileShareDTO) -> some View {
-        let shown = share.url.map { $0.absoluteString.replacingOccurrences(of: "https://", with: "") } ?? share.username
+        let appURL = Self.appURL(share)
+        let shown = appURL.map { Self.shown($0) } ?? share.username
         return ProfileBlockCard {
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 HStack(spacing: Spacing.s3) {
@@ -200,7 +259,7 @@ struct ProfileShareSheet: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("profileSharePickUsername")
-                } else if let url = share.url {
+                } else if let url = appURL {
                     let layout = typeSize.isAccessibilitySize
                         ? AnyLayout(VStackLayout(spacing: Spacing.s2))
                         : AnyLayout(HStackLayout(spacing: Spacing.s2))
@@ -225,6 +284,17 @@ struct ProfileShareSheet: View {
                 }
             }
         }
+    }
+
+    /// The main link on this build's own web origin (the app's link builder), so a staging build shares staging.
+    static func appURL(_ share: ProfileShareDTO) -> URL? {
+        guard let url = share.url else { return nil }
+        return URL(string: InviteLinks.publicPageURLString(path: url.path))
+    }
+
+    /// "pantopus.com/mariakovacs".
+    static func shown(_ url: URL) -> String {
+        (url.host ?? "") + (url.port.map { ":\($0)" } ?? "") + url.path
     }
 
     // MARK: - Parts
@@ -275,7 +345,12 @@ struct ProfileShareSheet: View {
                     get: { share.searchEngines },
                     set: { on in Task { await model.setSearchEngines(on) } }
                 )) {
-                    rowText("Let search engines list this page", detail: "On unless you switch it off.")
+                    rowText(
+                        "Let search engines list this page",
+                        detail: share.linksEnabled == nil
+                            ? "On unless you switch it off."
+                            : "On unless you switch it off. Links for one purpose are never listed."
+                    )
                 }
                 .tint(Theme.Color.primarySolid)
                 .disabled(model.saving.contains("search_engines"))
@@ -377,7 +452,7 @@ struct ProfileLinkCode: View {
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .accessibilityLabel("Code for \(name)'s profile link")
             }
-            Text(url.absoluteString.replacingOccurrences(of: "https://", with: ""))
+            Text(ProfileShareSheet.shown(url))
                 .scaledFont(17, weight: .semibold)
                 .foregroundStyle(Theme.Color.appText)
             Spacer()
@@ -392,5 +467,14 @@ struct ProfileLinkCode: View {
         filter.correctionLevel = "M"
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 12, y: 12)) else { return nil }
         return CIContext().createCGImage(output, from: output.extent)
+    }
+}
+
+/// A link sheet: making one (`link` nil) or looking after one.
+struct ProfileShareLinkEditing: Identifiable {
+    let link: ProfileShareLinkDTO?
+
+    var id: String {
+        link?.id ?? "new"
     }
 }
