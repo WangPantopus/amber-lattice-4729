@@ -153,7 +153,7 @@ function BusinessSignature({ role, firstName, onChanged }: { role: ProfileRoleLi
     setBusy(false);
   };
   const off = async () => {
-    if (!window.confirm(`Take the name ${business} off ${firstName}’s role? It leaves the role and the work circle at once.`)) return;
+    if (!window.confirm(`Take the name ${business} off ${firstName}’s role? The role stays in ${firstName}’s own words, without the name ${business}.`)) return;
     setBusy(true); setNote(null);
     try {
       await api.profilePage.removeTie(role.id);
