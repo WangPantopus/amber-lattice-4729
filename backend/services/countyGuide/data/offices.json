@@ -25,6 +25,59 @@
         }
       ]
     },
+    "48113": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Dallas County Clerk, Recording Division",
+          "url": "https://www.dallascounty.org/government/county-clerk/recording/",
+          "line": "The county's recorder of deeds and official public records. Its online search shows non-certified copies.",
+          "q": "Where are deeds recorded in Dallas County?",
+          "a": "The Dallas County Clerk's Recording Division records deeds and keeps the official public records. Its page links to an online search of them, which shows non-certified copies."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Dallas County Tax Office",
+          "url": "https://www.dallascounty.org/departments/tax/pay-property-tax.php",
+          "line": "Collects property tax. Its page notes penalty and interest on payments made after January 31.",
+          "q": "Where do I pay property tax in Dallas County?",
+          "a": "The Dallas County Tax Office, the county's tax assessor-collector, collects property tax. Its page looks up and pays a bill, and notes penalty and interest on payments made after January 31."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property fraud alert",
+          "office": "Dallas County Clerk",
+          "url": "https://www.dallascounty.org/government/county-clerk/recording/property-fraud.php",
+          "line": "An alert about documents recorded in the county, offered with a partner company. The county charges no fee for it."
+        }
+      ]
+    },
+    "48201": {
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Harris County Clerk, Real Property Department",
+          "url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx",
+          "line": "Search real property records by grantor, grantee, date or instrument; images from November 1960. The online copy is not the official record.",
+          "q": "Where are deeds recorded in Harris County?",
+          "a": "The Harris County Clerk's Real Property Department keeps the county's real property records. Its online search covers them with images from November 1960; the online copy is not the official record."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Harris County Tax Office",
+          "url": "https://www.hctax.net/Property/PropertyTax",
+          "line": "Collects property tax: online, by phone, by mail or at a branch. Mailed payments must be postmarked by the last business day in January.",
+          "q": "Where do I pay property tax in Harris County?",
+          "a": "The Harris County Tax Office, the county's tax assessor-collector, collects property tax online, by phone, by mail or at its branches. Mailed payments must be postmarked by the last business day in January."
+        }
+      ]
+    },
     "53007": {
       "read": "2026-11-23",
       "rows": [
