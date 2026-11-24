@@ -14,6 +14,7 @@ import { promptText } from '@/lib/profilePrompts';
 import { HowLine, InkGlyph, InkLine, LineText, Opens, howText, inkOf, type Target } from './ink';
 import { RecordChart, WorkFan } from './RingArt';
 import Picture from './Picture';
+import { CircleFace } from './CircleView';
 import type { FanDot } from './rings';
 
 /** What a block needs to know about the page around it. */
@@ -668,33 +669,40 @@ function WorkRingsBlock({ block, ctx }: { block: ProfileWorkRingsBlock; ctx: Blo
   return <WorkLineBlock rings={block} list={null} ctx={ctx} />;
 }
 
-function CircleBlock({ block }: { block: ProfileCircleBlock }) {
-  const groups = (block.groups || []).filter((group) => (group?.people || []).length > 0);
+/** Board 7's order for the circle's tiles. */
+const CIRCLE_TILES = ['learned_from', 'works_beside', 'taught_or_led'];
+
+/**
+ * Board 7's work circle card: a few of the faces, the server's sentence ("4 people on Maria's work"), a tile for each
+ * group with its count, and "Open the circle" (board 9). A group with nobody in it has no tile.
+ */
+function CircleBlock({ block, ctx }: { block: ProfileCircleBlock; ctx: BlockContext }) {
+  const groups = (block.groups || []).filter((group) => group && (group.count > 0 || (group.people || []).length > 0));
   if (groups.length === 0) return null;
+  const faces = groups.flatMap((group) => group.people || []).slice(0, 5);
+  const tiles = [...groups].sort((a, b) => CIRCLE_TILES.indexOf(a.key) - CIRCLE_TILES.indexOf(b.key));
+  const opens = ctx.target(block.link);
   return (
-    <Section title={block.title || 'Work circle'}>
-      {block.text ? <p className="-mt-1 mb-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary">{block.text}</p> : null}
-      <div className="flex flex-col gap-4">
-        {groups.map((group) => (
-          <div key={group.key}>
-            <h3 className="text-xs leading-4 font-semibold text-app-secondary">{group.title}</h3>
-            <ul className="mt-2 flex flex-col gap-2">
-              {group.people.map((person, j) => {
-                const ink = inkOf(person.ink);
-                return (
-                  <li key={person.user_id || j} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2.5 items-start">
-                    <InkGlyph ink={ink} />
-                    <div className="min-w-0">
-                      <p className="text-[0.9375rem] leading-[1.3125rem] text-app">{person.name || person.did}</p>
-                      <HowLine>{howText(ink, person.name ? person.did : null)}</HowLine>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+    <Section
+      title={block.title || 'Work circle'}
+      aside={opens ? (
+        <Opens target={opens} className="!w-auto min-h-[2.75rem] -my-3 flex items-center text-[0.8125rem] font-semibold text-app-link hover:underline">Open the circle</Opens>
+      ) : null}
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex shrink-0 -space-x-2" aria-hidden="true">
+          {faces.map((person, i) => <span key={i} className="rounded-full ring-2 ring-[rgb(var(--app-surface))]"><CircleFace person={person} size={36} /></span>)}
+        </span>
+        {block.text ? <p className="min-w-0 text-[0.9375rem] leading-[1.3125rem] text-app">{block.text}</p> : null}
       </div>
+      <ul className="mt-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${tiles.length}, minmax(0, 1fr))` }}>
+        {tiles.map((group) => (
+          <li key={group.key} className="rounded-xl bg-app-surface-sunken px-3 py-2.5">
+            <span className="block text-[1.25rem] leading-7 font-bold text-app">{group.count || (group.people || []).length}</span>
+            <span className="block text-xs leading-4 text-app-secondary">{group.title}</span>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -779,7 +787,7 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'can_do': return <CanDoBlock block={block as ProfileCanDoBlock} ctx={ctx} />;
     case 'pieces': return <PiecesBlock block={block as ProfilePiecesBlock} ctx={ctx} />;
     case 'work_rings': return <WorkRingsBlock block={block as ProfileWorkRingsBlock} ctx={ctx} />;
-    case 'circle': return <CircleBlock block={block as ProfileCircleBlock} />;
+    case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
     default: return null;
