@@ -411,6 +411,33 @@
       "built": 1976,
       "value": 463000
     },
+    "1269555": {
+      "name": "Sunny Isles Beach",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sunny Isles Beach Building Department",
+          "url": "https://www.sibfl.gov/Building-Code/Building-Department/Building-Permits",
+          "line": "Issues building permits for new construction and renovations, reviewing applications for compliance with zoning codes and the Florida Building Code; the process is fully digital, with every application submitted online through a portal account.",
+          "q": "Where do I find building permits in Sunny Isles Beach?",
+          "a": "The City of Sunny Isles Beach's Building Department issues building permits for new construction and renovations, reviewing applications for compliance with zoning codes, the Florida Building Code and other regulatory agencies. Its permit process is fully digital: all permit applications are submitted online through a portal account, which covers plan review, comments, permit issuance, inspections and permit closeout."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sunny Isles Beach Planning and Zoning Department",
+          "url": "https://www.sibfl.gov/Building-Code/Planning-Zoning",
+          "line": "Offers zoning plan review and administers the Land Development Regulations, which implement the City's Comprehensive Plan; it also reviews all building permits submitted to the Building Department.",
+          "q": "Where is Sunny Isles Beach's zoning?",
+          "a": "The City of Sunny Isles Beach's Planning and Zoning Department offers zoning plan review and uses comprehensive planning, site planning and zoning regulations, known as the Land Development Regulations, which implement the City's Comprehensive Plan. It advertises zoning public hearings for site plan review, conditional uses, variances and zoning changes, and reviews all building permits submitted to the Building Department."
+        }
+      ],
+      "built": 1983,
+      "value": 549100
+    },
     "1271000": {
       "name": "Tampa",
       "county": "12057",
@@ -437,6 +464,33 @@
       ],
       "built": 1985,
       "value": 420400
+    },
+    "1273900": {
+      "name": "Venice",
+      "county": "12115",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Venice Building and Code Enforcement Department",
+          "url": "https://www.venicegov.com/government/building-and-code",
+          "line": "Provides permitting and inspections for residents, contractors and developers; permit information, inspection scheduling and fee payment are on the City's Online Permitting service, and the Building Department no longer accepts paper permit applications.",
+          "q": "Where do I find building permits in Venice?",
+          "a": "The City of Venice's Building and Code Enforcement Department provides permitting and inspection services to residents, contractors and developers. Permits are applied for through the City's Online Permitting service, which also handles inspection scheduling and fee payment, and the Building Department no longer accepts paper permit applications. A permit becomes invalid unless the work it authorizes starts within six months of issuance."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Venice Planning & Zoning Department",
+          "url": "https://www.venicegov.com/government/planning-and-zoning",
+          "line": "Implements the Land Development Code and the City's Comprehensive Plan, adopted January 12, 2018; an interactive map searches the Zoning or Future Land Use designation of any property in the City.",
+          "q": "Where is Venice's zoning?",
+          "a": "The City of Venice's Planning & Zoning Department guides growth and development through the Land Development Code, the review of development projects and the City's Comprehensive Plan, updated in 2017 and adopted on January 12, 2018. Its interactive map searches the Zoning or Future Land Use designation of any property in the City of Venice."
+        }
+      ],
+      "built": 1986,
+      "value": 434700
     },
     "1702154": {
       "name": "Arlington Heights",
@@ -574,6 +628,60 @@
       ],
       "built": 1953,
       "value": 481200
+    },
+    "1729938": {
+      "name": "Glenview",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Glenview Community Development, Development Center",
+          "url": "https://www.glenview.il.us/651/Development-Center-Building-Permits",
+          "line": "Takes permit applications online or in person, issues simple permits over the counter and small and medium-sized ones through same-day review; in a code update for January 1, 2027 the Village is adopting the 2024 International Construction Codes.",
+          "q": "Where do I find building permits in Glenview?",
+          "a": "The Village of Glenview's Development Center, just inside Village Hall, is the first point of contact for building permits: applications are submitted online or in person, simple permits are issued over the counter, and small and medium-sized permits can be obtained through same-day review. In a code update for January 1, 2027, the Village is adopting the 2024 International Construction Codes, the 2024 Illinois Energy Code and the 2023 National Electrical Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Glenview Community Development, Planning Division",
+          "url": "https://www.glenview.il.us/593/Planning-Division",
+          "line": "Processes petitions for rezoning, site plan reviews, subdivisions, variations and conditional use permits; the Land Use Table in the Municipal Code says which uses each zoning district permits, and the page links the Zoning District Map.",
+          "q": "Where is Glenview's zoning?",
+          "a": "The Village of Glenview's Planning Division processes petitions for annexations, rezoning, site plan reviews, subdivisions, variations and conditional use permits. The Land Use Table within the Municipal Code identifies which uses are permitted in the Village's zoning districts, and the Planning Division's page links the Zoning District Map and an interactive zoning map."
+        }
+      ],
+      "built": 1977,
+      "value": 609600
+    },
+    "1735411": {
+      "name": "Hoffman Estates",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Hoffman Estates Development Services Department",
+          "url": "https://www.hoffmanestates.org/services/permits_licenses/building_permits_inspections.php",
+          "line": "Permits are applied for, checked and paid on the BS&A Online Permit Portal, where inspections are also scheduled, online by 3:00 PM the day before; the page has permit handouts for residential projects from decks and fences to roofs and water heaters.",
+          "q": "Where do I find building permits in Hoffman Estates?",
+          "a": "The Village of Hoffman Estates takes building permit applications on its BS&A Online Permit Portal, where residents and contractors also check permit status, pay and schedule inspections; all inspection requests must be submitted online by 3:00 PM the day before the desired date. The Building Permits & Inspections page has permit handouts for residential projects, from decks and fences to roofs and water heaters."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Hoffman Estates Development Services, Planning Division",
+          "url": "https://www.hoffmanestates.org/government/departments/development_services/zoning_information_inquiries.php",
+          "line": "The Village's Interactive Zoning District Map identifies the zoning designation of any property in the Village; a Zoning Verification Letter, $100 per parcel, officially verifies a property's current zoning.",
+          "q": "Where is Hoffman Estates' zoning?",
+          "a": "The Village of Hoffman Estates' Interactive Zoning District Map identifies the zoning designation of any property within the Village. A Zoning Verification Letter, an official document verifying a property's current zoning, costs $100 per parcel, and the Planning Division answers questions about whether one is needed."
+        }
+      ],
+      "built": 1976,
+      "value": 351900
     },
     "1751089": {
       "name": "Mount Prospect",
@@ -3427,6 +3535,168 @@
       ],
       "built": 2002,
       "value": 566000
+    },
+    "0602462": {
+      "name": "Arcadia",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Arcadia Development Services, Building Services Division",
+          "url": "https://www.arcadiaca.gov/government/development_services/building_services/index.php",
+          "line": "Enforces City and state codes for the construction, remodeling, alteration, repair and demolition of buildings; the City requires plans for most types of projects and inspects work at periodic stages, and EDGE takes permit applications and inspection requests and shows past permit history.",
+          "q": "Where do I find building permits in Arcadia?",
+          "a": "In Arcadia, building and construction-related matters are channeled through the Building Services Division, which implements and enforces City and state codes for the construction, remodeling, alteration, repair and demolition of buildings and structures. The City requires comprehensive plans for most types of projects and inspects work at periodic stages, and its EDGE (ePermitting and Development Gateway) takes building permit applications and inspection requests and shows past permit history."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Arcadia Development Services, Planning & Zoning Services",
+          "url": "https://www.arcadiaca.gov/government/development_services/planning_zoning_services/index.php",
+          "line": "Gives property owners, architects and developers information and assistance on zoning, development and use regulations; the Development Code defines the City's rules for property use, development, subdivision and required permits.",
+          "q": "Where is Arcadia's zoning?",
+          "a": "The City of Arcadia's Planning Division assists property owners, architects and developers with their building projects and provides information and assistance on zoning, development and use regulations. The City's Development Code defines its rules for property use, development, subdivision and required permits and processes."
+        }
+      ],
+      "built": 1965,
+      "value": 1441800
+    },
+    "0648816": {
+      "name": "Montebello",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Montebello Planning & Community Development, Building & Safety Division",
+          "url": "https://www.montebelloca.gov/departments/planning_community_development/building_safety_division",
+          "line": "Plan-checks and inspects new construction, renovations, additions and remodeling and issues Building, Electrical, Plumbing, Mechanical and Grading permits; complete applications go in by email, and the Division asks to be contacted before any project.",
+          "q": "Where do I find building permits in Montebello?",
+          "a": "The City of Montebello's Building & Safety Division provides plan checking and inspections of new construction and renovated structures, additions and remodeling, and issues Building, Electrical, Plumbing, Mechanical and Grading permits. Complete applications are submitted by email, and the Division asks to be contacted before any project starts to determine whether city approvals, permits and inspections are required."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Montebello Planning & Community Development, Planning Division",
+          "url": "https://www.montebelloca.gov/departments/planning_community_development/planning_division",
+          "line": "Implements the City's General Plan and Zoning Code, reviews land use entitlements for new construction and gives zoning and land use information to the public; the Division's pages include the Zoning Map.",
+          "q": "Where is Montebello's zoning?",
+          "a": "The City of Montebello's Planning Division is responsible for implementing the City's General Plan and Zoning Code. It reviews land use entitlements for new construction, provides zoning and land use information to the general public and reviews business licenses to ensure each business is in its appropriate zone, and its pages include the Zoning Map."
+        }
+      ],
+      "built": 1963,
+      "value": 697900
+    },
+    "0687042": {
+      "name": "Yucaipa",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Yucaipa Community Development, Building & Safety Division",
+          "url": "https://yucaipa.gov/community-development/",
+          "line": "Performs plan check and inspection services before building permits are issued and issues building, plumbing, electrical, mechanical and demolition permits; all applications go through the Yucaipa Permit Exchange online portal.",
+          "q": "Where do I find building permits in Yucaipa?",
+          "a": "The City of Yucaipa's Building & Safety Division performs plan check and inspection services before building permits are issued, to ensure compliance with the California Building Codes, and issues building, plumbing, electrical, mechanical and demolition permits. All applications are submitted through the Yucaipa Permit Exchange online portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Yucaipa Community Development, Planning Division",
+          "url": "https://yucaipa.gov/planning/",
+          "line": "Current Planning reviews land use applications for compliance with the City's Development Code and Citywide Design Guidelines; the page links the Zoning Map and the City's specific plans and overlays.",
+          "q": "Where is Yucaipa's zoning?",
+          "a": "The City of Yucaipa's Planning Division reviews land use applications to ensure compliance with the City's Development Code and Citywide Design Guidelines, and its page links the City's Zoning Map. The page also holds the City's specific plans and overlay districts, such as the Wine Country Specific Plan and the College Village Overlay District."
+        }
+      ],
+      "built": 1978,
+      "value": 502100
+    },
+    "0816495": {
+      "name": "Commerce City",
+      "county": "08001",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Commerce City Community Development, Building Safety Division",
+          "url": "https://www.c3gov.com/Residents/Living-In-Commerce-City/Home-and-Property/Building-on-My-Property",
+          "line": "Many home projects, from additions and roof replacements to decks and water heaters, need a building permit from the city's Building Safety Division; for projects valued at $500 or less, a permit costs $23.50 and can be applied for online.",
+          "q": "Where do I find building permits in Commerce City?",
+          "a": "In Commerce City, many home projects need a building permit from the city's Building Safety Division, from major renovations such as building an addition or replacing a roof to smaller upgrades such as installing a deck or replacing a water heater. For projects valued at $500 or less, a building permit costs $23.50 and the application can be submitted online; permits are also subject to a 4.5 percent use tax on the value of building materials."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Commerce City Community Development, Land Use Standards",
+          "url": "https://www.c3gov.com/Business-Development/Developing-in-Commerce-City/Land-Use-Standards",
+          "line": "Planning requirements for a project depend on the zoning district of the property, each with its own purpose; the City's interactive map looks up the zoning designation of a specific property.",
+          "q": "Where is Commerce City's zoning?",
+          "a": "In Commerce City, planning requirements for a project depend on the zoning district of the property, and each zone district has a unique purpose and its own combination of regulations. The City's interactive map service looks up zoning designations for specific properties, and most types of development other than single-family detached homes and duplexes need a development plan before a building permit is issued."
+        }
+      ],
+      "built": 2005,
+      "value": 499700
+    },
+    "0656700": {
+      "name": "Perris",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Perris Development Services, Building & Safety Division",
+          "url": "https://www.cityofperris.org/departments/development-services/building-safety",
+          "line": "Enforces the City's Building Codes through public information, plan check, permit and inspection services; the page links the building permit application, and inspections are requested through the inspection hotline.",
+          "q": "Where do I find building permits in Perris?",
+          "a": "The City of Perris' Building & Safety Division enforces the City's Building Codes through public information, plan check, permit and inspection services, and its page links the application for a building permit. Inspections are requested through the City's inspection hotline before 3:00 p.m., Monday through Friday, and the City does its best to arrange next-day inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Perris Development Services, Planning Division",
+          "url": "https://www.cityofperris.org/departments/development-services/planning",
+          "line": "Current planning helps builders, developers, residents and business owners with their projects, using the general plan, the zoning code and land use entitlement permits; the Building/Planning Portal has online applications and a property lookup.",
+          "q": "Where is Perris' zoning?",
+          "a": "The City of Perris' Planning Division handles current and advanced planning. Its current planning section helps builders, developers, residents and business owners with their projects using the general plan, the zoning code and land use entitlement permits, and the City's Building/Planning Portal has online permit and planning applications and a property lookup."
+        }
+      ],
+      "built": 2000,
+      "value": 474700
+    },
+    "0619192": {
+      "name": "Diamond Bar",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Diamond Bar Community Development, Building and Safety Division",
+          "url": "https://www.diamondbarca.gov/159/Building-and-Safety",
+          "line": "Enforces the California Building Codes through plan check, permit issuance and construction inspection; the page links the online permit application and inspection requests.",
+          "q": "Where do I find building permits in Diamond Bar?",
+          "a": "The City of Diamond Bar's Building and Safety Division enforces the California Building Codes and related regulations. It reviews plans, drawings and documents for compliance with building codes, issues permits and provides construction inspection services, and its page links the online permit application and inspection requests."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Diamond Bar Community Development, Planning Division",
+          "url": "https://www.diamondbarca.gov/171/Planning-Division",
+          "line": "Prepares and administers the zoning and subdivision ordinances and reviews development projects for compliance with the City's ordinances; the page links the Zoning Map and the General Plan Land Use Map.",
+          "q": "Where is Diamond Bar's zoning?",
+          "a": "The City of Diamond Bar's Planning Division prepares and administers the zoning and subdivision ordinances, reviews development projects for compliance with the City's ordinances and carries out the General Plan. Its page links the Zoning Map and the General Plan Land Use Map, and a Planning inquiry form starts new projects or questions."
+        }
+      ],
+      "built": 1980,
+      "value": 902200
     }
   }
 }
