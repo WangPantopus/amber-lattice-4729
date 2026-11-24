@@ -1,7 +1,8 @@
 'use strict';
 // Oklahoma County, Oklahoma: the Assessor's own public record tables on its map server. No terms are stated on the service. The owner
 // table is never read; neither are the owner-occupied flag, the sales table's grantor and grantee, or mobile-home title numbers.
-// total_market_value is the Assessor's fair cash value. Sale prices come from the Assessor's sales table.
+// total_market_value is the Assessor's fair cash value. Sale prices come from the Assessor's sales table, whose sales are each home's
+// recorded history.
 
 const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
@@ -9,7 +10,8 @@ const { year, isoDate, realUnit, streetParts, onRecord } = require('../lib/addre
 const { positive, put, word } = require('../lib/values.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '40109';
@@ -112,8 +114,20 @@ async function* build({ work }) {
   }
   const sales = new Map();
   const when = (sale) => new Date(sale.sale_date).getTime() || 0;
+  // Every sale line, for recorded history (facts.js): the table's deed_type holds the first ten letters of a category ("Hmstd
+  // Off", "Multiple p"), not a document's name, so only sales show, each with its reception number; a line that isn't a sale
+  // has no word for what it is and is left out.
+  const saleLines = new Map();
+  let first = null;
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => layerRows(`${BASE}/5`, SALE_COLUMNS, { oid: 'objectid' }))) {
+    const date = isoDate(row.sale_date);
+    if (date && (!first || date < first)) first = date;
     if (!isHomeSale(positive(row.sale_price))) continue;
+    const line = historyLine({ date, sale: true, price: positive(row.sale_price), document: word(row.reception_num) });
+    if (line) {
+      if (!saleLines.has(row.account_num)) saleLines.set(row.account_num, []);
+      saleLines.get(row.account_num).push(line);
+    }
     const was = sales.get(row.account_num);
     if (!was || when(row) > when(was)) sales.set(row.account_num, row);
   }
@@ -140,10 +154,14 @@ async function* build({ work }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = recordedHistory(saleLines.get(row.account_num) || [], { since: (first || '').slice(0, 4) });
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
   log(`${COUNTY}: ${records.length} accounts, ${noAddress} without a street number, ${personal} personal or inactive; ${buildings.size} with buildings, ${sales.size} sales`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} accounts since ${(first || '').slice(0, 4)}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'OK', name: COUNTY, publisher: 'Oklahoma County Assessor', dataset: 'public record tables', method: 'county', source: 'ok-oklahoma', as_of: asOf, stale_after_days: 60, extra_zips: zipsByCounty(work, ['40']).get(FIPS) || [], records,
