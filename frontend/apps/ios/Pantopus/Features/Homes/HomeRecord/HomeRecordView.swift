@@ -64,8 +64,19 @@ struct HomeRecordView: View {
     @ViewBuilder private var header: some View {
         switch viewModel.state {
         case let .loaded(record):
-            HomeRecordHeaderView(header: record.header, state: record.state)
-                .padding(.horizontal, Spacing.s4)
+            VStack(alignment: .leading, spacing: 0) {
+                HomeRecordHeaderView(header: record.header, state: record.state)
+                if !record.actions.isEmpty {
+                    HomeRecordActionsRow(
+                        actions: record.actions,
+                        shareSubject: record.header.title,
+                        // The page's own "Buying this home?" says it already; the row keeps save and share.
+                        showsClaim: !record.drawnBlocks.contains { if case .promise = $0 { true } else { false } },
+                        onOpen: open
+                    )
+                }
+            }
+            .padding(.horizontal, Spacing.s4)
         case .loading:
             HomeRecordSkeleton.header
                 .padding(.horizontal, Spacing.s4)
@@ -109,10 +120,12 @@ struct HomeRecordHeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             if let chip = header.chip {
+                // "Found in the county's records" and "Confirmed owner" carry a mark; a buyer's
+                // "Public record" is a plain sky label.
                 PlaceChip(model: PlaceChipModel(
-                    tone: chip.tone.placeTone,
+                    tone: chip.tone == .neutral ? .sky : chip.tone.placeTone,
                     text: chip.text,
-                    icon: state == .owner ? .shieldCheck : .check
+                    icon: state == .owner ? .shieldCheck : chip.tone == .success ? .check : nil
                 ))
             }
             Text(header.title)
@@ -131,6 +144,93 @@ struct HomeRecordHeaderView: View {
         }
         .padding(.top, Spacing.s3)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - A buyer's actions
+
+/// Save this home and Share this record side by side under the header, as
+/// drawn, and "Buying this home?" under them when the page has no promise of
+/// its own. Share opens the share sheet with the record's web link.
+struct HomeRecordActionsRow: View {
+    let actions: [HomeRecordAction]
+    let shareSubject: String
+    let showsClaim: Bool
+    let onOpen: (String) -> Void
+
+    var body: some View {
+        let pair = actions.filter { $0.kind != .claim }
+        let claim = showsClaim ? actions.first { $0.kind == .claim } : nil
+        VStack(spacing: Spacing.s2) {
+            if !pair.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.s2) { buttons(pair) }
+                    VStack(spacing: Spacing.s2) { buttons(pair) }
+                }
+            }
+            if let claim {
+                button(claim)
+            }
+        }
+        .padding(.top, 14)
+    }
+
+    private func buttons(_ actions: [HomeRecordAction]) -> some View {
+        ForEach(actions, id: \.kind) { button($0) }
+    }
+
+    @ViewBuilder
+    private func button(_ action: HomeRecordAction) -> some View {
+        if action.kind == .share, let url = Self.shareURL(action.url) {
+            ShareLink(item: url, subject: Text(shareSubject)) { label(action) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("homeRecord.action.share")
+        } else if action.kind != .share {
+            Button { onOpen(action.url) } label: { label(action) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("homeRecord.action.\(action.kind.rawValue)")
+        }
+    }
+
+    private func label(_ action: HomeRecordAction) -> some View {
+        let filled = action.kind == .save
+        let ink = filled ? Theme.Color.appTextInverse : Theme.Color.primaryInk
+        return HStack(spacing: Spacing.s2) {
+            Icon(icon(action.kind), size: 16, strokeWidth: 2.25, color: ink)
+            Text(action.label)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(ink)
+        .padding(.horizontal, Spacing.s3)
+        .frame(maxWidth: .infinity, minHeight: 46)
+        .background(
+            RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
+                .fill(filled ? Theme.Color.primarySolid : Theme.Color.appSurface)
+        )
+        .overlay {
+            if !filled {
+                RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
+                    .strokeBorder(Theme.Color.appBorderStrong, lineWidth: 1)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func icon(_ kind: HomeRecordAction.Kind) -> PantopusIcon {
+        switch kind {
+        case .save: .bookmark
+        case .share: .share
+        case .claim: .home
+        }
+    }
+
+    /// The server's share link: an https page as it is; a path on this build's web origin.
+    static func shareURL(_ raw: String) -> URL? {
+        if raw.hasPrefix("https://") { return URL(string: raw) }
+        guard raw.hasPrefix("/"), !raw.hasPrefix("//") else { return nil }
+        return URL(string: InviteLinks.publicPageURLString(path: raw))
     }
 }
 
@@ -209,6 +309,12 @@ extension View {
 #if DEBUG
 #Preview("Lookup") {
     if let record = HomeRecordFixtures.record(.lookup) {
+        HomeRecordView(previewing: record, source: .lookup(address: "1 Pantopus Way"))
+    }
+}
+
+#Preview("Buyer") {
+    if let record = HomeRecordFixtures.record(.buyer) {
         HomeRecordView(previewing: record, source: .lookup(address: "1 Pantopus Way"))
     }
 }
