@@ -1,0 +1,5 @@
+{
+  "v": 1,
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel.",
+  "counties": {}
+}

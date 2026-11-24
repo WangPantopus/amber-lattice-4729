@@ -1,0 +1,100 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// The county pages' data: the backend's public answers (backend/routes/countyGuide.js), read on the server only and
+// kept a day, so a visit costs the backend nothing. No cookie, header or query is read, so each page is static.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { cache } from 'react';
+import { API_BASE_URL } from '@pantopus/utils';
+
+/** The address search engines are given for every page (the site's other pages use it too). */
+export const SITE_URL = 'https://pantopus.com';
+
+const API = API_BASE_URL.replace(/\/+$/, '');
+const DAY_S = 86400;
+
+export type GuideState = { slug: string; name: string; abbr: string; unit: string; units: string };
+
+export type GuideIndex = {
+  v: 1;
+  states: (GuideState & { counties: number; live: number })[];
+  counties: { state: string; slug: string }[];
+};
+
+export type GuideStatePage = {
+  v: 1;
+  state: GuideState & { town_records: boolean };
+  counties: { slug: string; name: string; live: boolean }[];
+};
+
+export type GuideOffice = {
+  id: string;
+  title: string;
+  office: string | null;
+  url: string;
+  host: string | null;
+  line?: string;
+  from: string | null;
+};
+
+export type GuideQuestion = { id: string; q: string; a: string; office?: string | null; url?: string };
+
+export type GuideCountyPage = {
+  v: 1;
+  built: string;
+  state: GuideState;
+  county: { fips: string; slug: string; name: string; in_name: string; census_name: string };
+  live: boolean;
+  town_records: boolean;
+  offices: { rows: GuideOffice[]; towns: { name: string; url: string; host: string | null }[] };
+  questions: GuideQuestion[];
+  near: { slug: string; name: string; state_slug: string; state_abbr: string }[];
+};
+
+async function get<T>(path: string): Promise<T | null> {
+  const res = await fetch(`${API}/api/public/county-guide${path}`, {
+    next: { revalidate: DAY_S },
+    headers: { Accept: 'application/json' },
+  });
+  if (res.status === 404) return null;
+  // Anything else unanswered is thrown, so a page rebuilt while the backend is down keeps its last copy.
+  if (!res.ok) throw new Error(`county guide ${res.status}`);
+  return (await res.json()) as T;
+}
+
+const SLUG = /^[a-z0-9-]{1,80}$/;
+
+export const guideIndex = cache(() => get<GuideIndex>(''));
+
+export const statePage = cache((state: string) => (SLUG.test(state) ? get<GuideStatePage>(`/${state}`) : Promise.resolve(null)));
+
+export const countyPage = cache((state: string, county: string) =>
+  SLUG.test(state) && SLUG.test(county) ? get<GuideCountyPage>(`/${state}/${county}`) : Promise.resolve(null));
+
+export const statePath = (state: string) => `/property-records/${state}`;
+export const countyPath = (state: string, county: string) => `/property-records/${state}/${county}`;
+
+/** "November 17, 2026" from "2026-11-17". */
+export function dateWords(iso: string | null | undefined): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const at = new Date(`${iso}T12:00:00Z`);
+  return at.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** A JSON-LD block's text, safe inside a script element. */
+export function jsonLd(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, '\\u003c');
+}
+
+/** The breadcrumb's structured data: Property records › State › County. */
+export function breadcrumbLd(items: { name: string; path: string }[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: `${SITE_URL}${item.path}`,
+    })),
+  };
+}
