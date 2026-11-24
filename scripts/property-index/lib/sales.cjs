@@ -44,4 +44,21 @@ function recordedHistory(lines, { since }) {
   return kept.length ? { since: String(since), lines: kept.slice(0, MOST_LINES) } : null;
 }
 
-module.exports = { isHomeSale, TOKEN_PRICE, NOT_A_SALE, historyLine, recordedHistory };
+/**
+ * A county's name for a kind of line as a screen says it: "Quit Claim Deed" and "QUIT CLAIM DEED" read "Quit claim deed".
+ * Short all-capital words a county writes that way inside mixed case stay ("US Marshall Deed"). Null for a name that says
+ * nothing ("Unknown", "Other", "N/A").
+ */
+function countyWord(text) {
+  const name = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!name || /^(unknown|other|none|n\/?a|misc\.?|miscellaneous)$/i.test(name)) return null;
+  const mixed = /[a-z]/.test(name);
+  const words = name.split(' ').map((word, i) => {
+    if (mixed && /^[A-Z]{2,4}$/.test(word)) return word;
+    const lower = word.toLowerCase();
+    return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+  });
+  return words.join(' ');
+}
+
+module.exports = { isHomeSale, TOKEN_PRICE, NOT_A_SALE, historyLine, recordedHistory, countyWord };
