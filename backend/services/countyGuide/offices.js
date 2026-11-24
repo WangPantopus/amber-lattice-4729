@@ -58,7 +58,8 @@ function officeName(county, link) {
       return town && town !== ref ? `${town}'s assessor` : ref;
     }
     if (ref.startsWith(`${short} `)) {
-      const rest = ref.slice(short.length + 1);
+      // "Richmond City Assessor" for the City of Richmond is its Assessor, not "City of Richmond City Assessor".
+      const rest = ref.slice(short.length + 1).replace(/^City (?=\S)/, county.name.startsWith('City of') ? '' : 'City ');
       if (OFFICE_WORDS.test(rest)) return `${county.name} ${SHORTHAND[rest] || rest}`;
     }
     return OFFICE_WORDS.test(ref) && !ref.includes(' - ') ? ref : null;
@@ -71,13 +72,17 @@ function officeName(county, link) {
 function propertySearch(county) {
   const link = county.link;
   if (TOWN_ELSEWHERE.has(county.fips) || !httpsOnly(link.url)) return null;
+  // Where the office's own site was read, its name as the office gives it, and the day it was read.
+  const entry = handRead.counties?.[county.fips];
+  const named = typeof entry?.property_search_office === 'string' && entry.property_search_office ? entry.property_search_office : null;
+  const read = named ? dateWords(entry.read) : null;
   return {
     id: 'property_search',
     title: 'Property search',
-    office: officeName(county, link),
+    office: named || officeName(county, link),
     url: link.url,
     host: host(link.url),
-    from: FROM[link.src] || null,
+    from: read ? `Read on the office's own site, ${read}.` : FROM[link.src] || null,
   };
 }
 
@@ -103,6 +108,8 @@ function readByHand(county) {
     url: row.url,
     host: host(row.url),
     ...(row.line ? { line: row.line } : {}),
+    // The question this office answers, as read on its site (questions.js).
+    ...(row.q && row.a ? { q: row.q, a: row.a } : {}),
     from: read ? `Read on the office's own site, ${read}.` : null,
   }));
 }

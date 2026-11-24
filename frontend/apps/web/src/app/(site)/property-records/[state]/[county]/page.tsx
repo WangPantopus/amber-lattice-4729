@@ -10,6 +10,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Breadcrumb, SiteFooter, SiteNav, linkClass } from '../../_components/Chrome';
+import CountyLookup from '../../_components/CountyLookup';
+import { Holds, Homes, Land, Owning, Section } from '../../_components/CountyParts';
 import { SITE_URL, countyPage, countyPath, jsonLd, statePath, type GuideCountyPage } from '../../_lib/guide';
 
 export const revalidate = 86400;
@@ -46,15 +48,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     openGraph: { type: 'website', url: path, siteName: 'Pantopus', title, description },
     twitter: { card: 'summary', title, description },
   };
-}
-
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section aria-labelledby={`${id}-title`} className="mt-10">
-      <h2 id={`${id}-title`} className="text-xl font-bold text-app-text dark:text-white">{title}</h2>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
 }
 
 function Offices({ page }: { page: GuideCountyPage }) {
@@ -99,6 +92,14 @@ function Offices({ page }: { page: GuideCountyPage }) {
   );
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
 function Questions({ page }: { page: GuideCountyPage }) {
   if (!page.questions.length) return null;
   return (
@@ -110,7 +111,7 @@ function Questions({ page }: { page: GuideCountyPage }) {
             <p className="mt-1 text-app-text-secondary dark:text-app-text-muted leading-relaxed">{item.a}</p>
             {item.url ? (
               <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className={`mt-1 inline-block text-sm ${linkClass}`}>
-                {item.office ? `Open ${item.office}'s page` : 'Open the office’s page'}
+                {hostOf(item.url) ?? 'Open the office’s page'}
               </a>
             ) : null}
           </div>
@@ -177,7 +178,12 @@ export default async function CountyPage({ params }: Params) {
             ? `Where the towns of ${page.county.in_name}, ${page.state.name}, keep their property records, and what public records say about homes there.`
             : `${page.county.name}'s own offices, and what public records say about homes in ${page.county.in_name}, ${page.state.name}.`}
         </p>
+        <CountyLookup fips={page.county.fips} inName={page.county.in_name} />
         <Offices page={page} />
+        <Holds page={page} />
+        <Land page={page} />
+        <Owning page={page} />
+        <Homes page={page} />
         <Questions page={page} />
         <NextTo page={page} />
         {page.questions.length ? (

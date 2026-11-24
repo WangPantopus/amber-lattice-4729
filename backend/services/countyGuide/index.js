@@ -12,7 +12,11 @@
 
 const places = require('./places');
 const { officesOf } = require('./offices');
-const { isLive } = require('./holds');
+const { holdsFor, isLive } = require('./holds');
+const federal = require('./federal');
+const { questionsOf } = require('./questions');
+const { programForState, CHECKED_AT: EXEMPTIONS_READ } = require('../../data/homesteadPrograms');
+const { appealForState, CHECKED_AT: APPEALS_READ } = require('../../data/appealPrograms');
 
 // Released states, by postal code, in the order they went out. Live counties have pages whatever this says.
 const BATCHES = [];
@@ -48,37 +52,43 @@ function nearOf(county) {
     .sort((a, b) => a.name.localeCompare(b.name, 'en'));
 }
 
-/** The questions people ask, each answered with the office that holds the answer. Only what this county's page holds. */
-function questionsOf(county, { offices }) {
-  const questions = [];
-  const search = offices.rows.find((row) => row.id === 'property_search');
-  if (search) {
-    questions.push({
-      id: 'records',
-      q: `How do I look up property records in ${county.inName}?`,
-      a: `${search.office || 'The county'}'s property search${search.host ? ` (${search.host})` : ''} holds each property's record. Pantopus's lookup on this page shows what public records say about one address.`,
-      office: search.office,
-      url: search.url,
-    });
-  } else if (offices.towns.length) {
-    questions.push({
-      id: 'records',
-      q: `How do I look up property records in ${county.inName}?`,
-      a: `In ${county.state.name}, each town keeps its own property records. The towns' own property cards are listed on this page. Pantopus's lookup shows what public records say about one address.`,
-    });
-  }
-  questions.push({
-    id: 'flood_zone',
-    q: `How do I find a home's flood zone in ${county.inName}?`,
-    a: "FEMA's Flood Map Service Center (msc.fema.gov) holds the official flood maps. Pantopus's lookup reads the same FEMA map for an address.",
-    office: 'FEMA',
-    url: 'https://msc.fema.gov/portal/home',
-  });
-  return questions;
+/** The state's exemption program, only where the table holds the state's own page for it. */
+function exemptionOf(state) {
+  const program = programForState(state.abbr);
+  if (!program.curated) return null;
+  return { label: program.label, filing: program.filing, note: program.note, source_name: program.source_name, source_url: program.source_url, read: EXEMPTIONS_READ };
+}
+
+/** How a value is appealed in the state, only where the table holds it. */
+function appealOf(state) {
+  const appeal = appealForState(state.abbr);
+  return appeal ? { note: appeal.note, source: appeal.source, read: APPEALS_READ } : null;
+}
+
+/** The Census's medians for the county, from the survey named in data/counties.json. */
+function homesOf(county) {
+  const { built, value } = county.facts;
+  if (!built && !value) return null;
+  return {
+    median_year_built: built || null,
+    median_value: value || null,
+    survey: places.censusSources.homes_survey,
+    source: 'U.S. Census Bureau, American Community Survey 5-year estimates',
+    url: 'https://data.census.gov/',
+  };
 }
 
 async function compose(county) {
   const offices = officesOf(county);
+  const [holds, hazards, disasters, radon, floodCost] = await Promise.all([
+    holdsFor(county),
+    federal.hazards(county.fips),
+    federal.disasters(county.fips),
+    federal.radon(county.fips),
+    federal.floodCost(county.fips),
+  ]);
+  const exemption = exemptionOf(county.state);
+  const appeal = appealOf(county.state);
   return {
     v: 1,
     // The day the answer was made, Pacific time.
@@ -87,8 +97,17 @@ async function compose(county) {
     county: countyPart(county),
     live: isLive(county.fips),
     town_records: county.state.townRecords,
-    offices,
-    questions: questionsOf(county, { offices }),
+    // A row's question rides in `questions`, not twice.
+    offices: { rows: offices.rows.map(({ q, a, ...row }) => row), towns: offices.towns },
+    holds,
+    hazards: hazards ? { ...hazards, source: 'FEMA, National Risk Index', url: 'https://hazards.fema.gov/nri/' } : null,
+    disasters: disasters ? { ...disasters, source: 'FEMA, Disaster Declarations Summaries (OpenFEMA)', url: 'https://www.fema.gov/disaster/declarations', notice: federal.OPENFEMA_NOTICE } : null,
+    radon: radon ? { ...radon, source: "EPA's Map of Radon Zones (1993)", url: 'https://www.epa.gov/radon/epa-map-radon-zones' } : null,
+    flood_cost: floodCost ? { ...floodCost, source: 'FEMA, National Flood Insurance Program policies (OpenFEMA)', notice: federal.OPENFEMA_NOTICE } : null,
+    exemption,
+    appeal,
+    homes: homesOf(county),
+    questions: questionsOf(county, { offices, hazards, disasters, radon, exemption, appeal }),
     near: nearOf(county),
   };
 }

@@ -1,5 +1,53 @@
 {
   "v": 1,
-  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel.",
-  "counties": {}
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `q` and `a` are the question the row answers, in what the office's page says.",
+  "counties": {
+    "53011": {
+      "read": "2026-11-23",
+      "property_search_office": "Clark County GIS, Property Information Center",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Clark County Auditor, Recording",
+          "url": "https://e-docs.clark.wa.gov/LandmarkWeb",
+          "line": "Open to search online or on the office's public computers; copies cost a fee.",
+          "q": "Where are deeds recorded in Clark County?",
+          "a": "The Clark County Auditor's recording department keeps the county's recorded real estate documents. Anyone can search them online (e-docs.clark.wa.gov) or on the office's public computers."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Clark County Treasurer",
+          "url": "https://clark.wa.gov/treasurer",
+          "line": "Collects property tax. A copy of a tax statement needs the property's identification number.",
+          "q": "Where do I pay property tax in Clark County?",
+          "a": "The Clark County Treasurer collects property tax. Its page lists the ways to pay and how to get a copy of a tax statement."
+        },
+        {
+          "id": "parcel_map",
+          "title": "Parcel map",
+          "office": "Clark County GIS, MapsOnline",
+          "url": "https://gis.clark.wa.gov/mapsonline/",
+          "line": "Parcels and tax lots. The county notes the map is for reference: tax lot lines are not property lines on the ground."
+        },
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Clark County Community Development",
+          "url": "https://clark.wa.gov/community-development/permit-status",
+          "line": "Search permits by address or permit number. Almost all of its records are for parcels in unincorporated Clark County.",
+          "q": "Where do I find building permits in Clark County?",
+          "a": "Clark County Community Development's permit status page searches its permits by address, permit number or contractor. Almost all of its records are for parcels in unincorporated Clark County."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording notification",
+          "office": "Clark County Auditor",
+          "url": "https://e-docs.clark.wa.gov/LandmarkWeb/FraudAlert",
+          "line": "Emails a subscriber each time a land record document is recorded under a name or parcel number they chose."
+        }
+      ]
+    }
+  }
 }
