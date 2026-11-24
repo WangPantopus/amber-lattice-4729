@@ -165,7 +165,7 @@ struct ProfileSourcesHeader<Actions: View>: View {
             color: avatarColor,
             size: size
         )
-        .momentsRing(of: header.userId)
+        .momentsRing(of: header.userId, profileMark: false)
     }
 
     private var markLabel: String {

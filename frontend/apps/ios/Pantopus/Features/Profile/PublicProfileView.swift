@@ -59,6 +59,11 @@ public struct PublicProfileView: View {
     @State var showOwnerPieces = false
     @Environment(\.dynamicTypeSize) var typeSize
     @Environment(\.openURL) var openURL
+    /// Where a person's Moments play from the "Moments" row (as a tap on their ring plays them).
+    @Environment(\.momentsRingStage) var momentsStage
+    /// The row's own stage, for when the tabs' stage can't show the viewer (this page is itself shown over the tabs).
+    @State var momentsOwnStage = MomentsRingStage()
+    @Environment(\.colorScheme) var colorScheme
     @Environment(RootTabModel.self) var rootTabs: RootTabModel?
     let onBack: @MainActor () -> Void
     let onOpenMessages: @MainActor (PublicProfile) -> Void
