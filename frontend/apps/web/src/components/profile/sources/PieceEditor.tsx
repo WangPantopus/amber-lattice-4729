@@ -9,6 +9,8 @@ import Screen from './Screen';
 import Picture from './Picture';
 import { LinkCardView, type Piece } from './PieceView';
 import { InkGlyph } from './ink';
+import CreditsField, { type QueuedCredit } from './CreditsField';
+import { toast } from '@/components/ui/toast-store';
 import { overline } from './blocks';
 
 /** What the editor opens on: a new piece, one started from a job or plan Pantopus saw, or a piece to change. */
@@ -116,20 +118,23 @@ function Labelled({ id, title, count, note, children }: { id: string; title: str
 }
 
 /** "Prove it's yours" (board 11): a line to put on the page, then "Check now". Only for a link the piece has saved. */
-/** One line to copy (the proof line, or the meta tag for a person's own site). */
-function CopyLine({ text, label }: { text: string; label: string }) {
+/** One line to copy (the proof line, or the meta tag for a person's own site), under what it is for. */
+function CopyLine({ text, label, title }: { text: string; label: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
-      <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{text}</code>
-      <button
-        type="button"
-        aria-label={copied ? `${label} copied` : `Copy ${label}`}
-        onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
-        className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
-      >
-        {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
-      </button>
+    <div className="flex flex-col gap-1">
+      <p className="text-xs leading-4 font-semibold text-app-secondary">{title}</p>
+      <div className="flex items-center gap-2 rounded-xl border border-app bg-surface px-3 py-2">
+        <code className="min-w-0 flex-1 text-[0.8125rem] text-app [overflow-wrap:anywhere]">{text}</code>
+        <button
+          type="button"
+          aria-label={copied ? `${label} copied` : `Copy ${label}`}
+          onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }, () => {}); }}
+          className="shrink-0 min-h-[2.5rem] px-2.5 inline-flex items-center gap-1.5 rounded-lg text-[0.8125rem] font-semibold text-app-link hover-bg-app"
+        >
+          {copied ? <Check aria-hidden="true" className="w-4 h-4" /> : <Copy aria-hidden="true" className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -143,7 +148,8 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
   const [proof, setProof] = useState<{ line: string; how: string; meta?: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  if (!card.id || card.ink === 'seen') return null;
+  // A page anyone can edit (a wiki) can't be proven: no button (p2.5 `provable`).
+  if (!card.id || card.ink === 'seen' || card.provable === false) return null;
   const ask = async () => {
     setBusy(true); setNote(null);
     try { setProof(await api.profilePage.proveLink(pieceId, card.id!)); } catch (err) { setNote(extractApiError(err, 'Couldn’t start that. Try again.')); }
@@ -164,9 +170,10 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
     <div className="flex flex-col gap-2">
       {proof ? (
         <>
-          <CopyLine text={proof.line} label="the line" />
-          {proof.meta ? <CopyLine text={proof.meta} label="the meta tag" /> : null}
-          {proof.how ? <p className="text-xs leading-4 text-app-muted">{proof.how}</p> : null}
+          {/* The server's sentence first, then each box under what it is for. */}
+          {proof.how ? <p className="text-[0.8125rem] leading-[1.125rem] text-app-secondary">{proof.how}</p> : null}
+          <CopyLine text={proof.line} label="the line" title="For the page's title or description" />
+          {proof.meta ? <CopyLine text={proof.meta} label="the meta tag" title="For your own site" /> : null}
           <button type="button" disabled={busy} onClick={check} className="self-start min-h-[2.75rem] px-4 rounded-xl bg-app-surface-sunken text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60">
             {busy ? 'Checking…' : 'Check now'}
           </button>
@@ -187,26 +194,29 @@ function ProveLink({ pieceId, card, onProven }: { pieceId: string; card: Profile
  * piece will show" as the server works it out. Save a draft, add it to Work, pin it, choose who sees it, hide it or
  * remove it.
  */
-export default function PieceEditor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCount }: {
+export default function PieceEditor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCount, tiesOn = false }: {
   start: PieceEditorStart | null;
   onClose: () => void;
   onSaved: (piece: { id: string }) => void;
   onRemoved: (id: string) => void;
   skillsSuggested: string[];
   pinnedCount: number;
+  /** Credits are on (the server's PROFILE_TIES): "Who was on it?" is drawn. */
+  tiesOn?: boolean;
 }) {
   if (!start) return null;
   const key = start.kind === 'edit' ? `edit-${start.piece.id}` : start.kind === 'offer' ? `offer-${start.offer.id}` : 'new';
-  return <Editor key={key} start={start} onClose={onClose} onSaved={onSaved} onRemoved={onRemoved} skillsSuggested={skillsSuggested} pinnedCount={pinnedCount} />;
+  return <Editor key={key} start={start} onClose={onClose} onSaved={onSaved} onRemoved={onRemoved} skillsSuggested={skillsSuggested} pinnedCount={pinnedCount} tiesOn={tiesOn} />;
 }
 
-function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCount }: {
+function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCount, tiesOn }: {
   start: PieceEditorStart;
   onClose: () => void;
   onSaved: (piece: { id: string }) => void;
   onRemoved: (id: string) => void;
   skillsSuggested: string[];
   pinnedCount: number;
+  tiesOn: boolean;
 }) {
   const ids = { title: useId(), role: useId(), month: useId(), year: useId(), place: useId(), link: useId(), words: useId(), skill: useId() };
   const editing = start.kind === 'edit' ? start.piece : null;
@@ -253,6 +263,11 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
   const [linkNote, setLinkNote] = useState<string | null>(null);
   const [showsLines, setShowsLines] = useState<string[] | null>(editing?.how_it_will_show ?? null);
   const [saving, setSaving] = useState<'draft' | 'work' | 'remove' | null>(null);
+  // "Who was on it?": a saved piece's credits change at once (`creditsTouched` reads the piece again on close); a new
+  // piece's names wait in `queued` and are asked once it is on the Work.
+  const [queued, setQueued] = useState<QueuedCredit[]>([]);
+  const creditsTouched = useRef(false);
+  const showCredits = tiesOn && (editing ? Array.isArray(editing.credits) : true);
   const [error, setError] = useState<string | null>(null);
   const pickers = { photo: useRef<HTMLInputElement>(null), video: useRef<HTMLInputElement>(null), document: useRef<HTMLInputElement>(null) };
   const live = useRef(true);
@@ -364,8 +379,10 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
     !== JSON.stringify({ ...initial, items: initialItems.map((i) => i.fileId), links: initialLinks.map((l) => l.url) });
   const close = () => {
     if (saving) return;
-    if (dirty && !window.confirm('Leave without saving? What you added here won’t be kept.')) return;
+    if ((dirty || queued.length > 0) && !window.confirm('Leave without saving? What you added here won’t be kept.')) return;
     dropUploads(items.map((i) => i.fileId));
+    // Credits already changed on a saved piece: read it again on the way out.
+    if (editing && creditsTouched.current) { onSaved({ id: editing.id }); return; }
     onClose();
   };
 
@@ -373,12 +390,24 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
     if (!title.trim()) { setError('Give the piece a title.'); return; }
     if (placeRead.error) { setError(placeRead.error); return; }
     if (uploading) { setError('Wait for the files to finish adding.'); return; }
+    if (!editing && draft && queued.length > 0
+      && !window.confirm('Save it as a draft? The people you named are asked only once the piece is on your Work, so they aren’t kept with a draft.')) return;
     setSaving(draft ? 'draft' : 'work');
     setError(null);
     try {
       const saved = editing
         ? await api.profilePage.updatePiece(editing.id, fields(draft))
         : await api.profilePage.createPiece(fields(draft));
+      // A new piece on the Work: now ask the people named on it, one by one; a refusal says why in the server's words.
+      if (!editing && !draft) {
+        for (const q of queued) {
+          try {
+            await api.profilePage.addCredit(saved.id, { ...(q.user_id ? { user_id: q.user_id } : { name: q.name }), role: q.role, relation: q.relation });
+          } catch (err) {
+            toast.error(`${q.shown}: ${extractApiError(err, 'couldn’t be added.')}`);
+          }
+        }
+      }
       if (live.current) onSaved({ id: saved.id });
     } catch (err) {
       if (live.current) setError(extractApiError(err, 'Couldn’t save the piece. Try again.'));
@@ -616,6 +645,17 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
             );
           })}
         </div>
+
+        {showCredits ? (
+          <CreditsField
+            pieceId={editing ? editing.id : null}
+            initial={(editing?.credits || []).filter((c) => c && c.id)}
+            queued={queued}
+            onQueued={setQueued}
+            onChanged={() => { creditsTouched.current = true; }}
+            waiting={editing && (editing.draft || editing.hidden) ? 'Put the piece on your Work (not hidden) to ask anyone to sign it.' : null}
+          />
+        ) : null}
 
         <Labelled id={ids.words} title="In your words" count={`${words.length} of ${WORDS_MAX}`}>
           <textarea id={ids.words} className={`${field} min-h-[7rem] font-serif italic`} value={words} maxLength={WORDS_MAX} onChange={(e) => setWords(e.target.value)} placeholder="What you did, and anything worth knowing about it." />

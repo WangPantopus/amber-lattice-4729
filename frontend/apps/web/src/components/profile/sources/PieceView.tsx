@@ -2,11 +2,13 @@
 
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { AppWindow, BookOpen, ChevronRight, Code2, FileText, Globe, Newspaper, Play, PlayCircle, User } from 'lucide-react';
+import * as api from '@pantopus/api';
 import type { ProfileAttachment, ProfileCredit, ProfileInk, ProfileLinkCard, ProfilePieceRead } from '@pantopus/api';
 import { HowLine, InkGlyph, InkLine, howText, inkOf, type Target, Opens } from './ink';
 import { card, overline } from './blocks';
 import Picture from './Picture';
 import Screen from './Screen';
+import { extractApiError } from '@/lib/auth-utils';
 
 type PieceState = 'loading' | 'gone' | 'failed' | ProfilePieceRead;
 export type Piece = ProfilePieceRead['piece'];
@@ -172,10 +174,37 @@ export function LinkCardView({ link, footer }: { link: ProfileLinkCard; footer?:
 
 const STATUS_WORD: Record<string, string> = { asked: 'Asked', did_not_confirm: 'Did not confirm' };
 
+/** The one named takes their name off (p2.5): it leaves the piece, their Work and the circle at once. */
+function NameOff({ credit, onDone }: { credit: ProfileCredit; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const off = async () => {
+    if (!window.confirm('Take your name off this piece? It leaves the piece, your Work and the work circle at once.')) return;
+    setBusy(true); setNote(null);
+    try {
+      await api.profilePage.removeTie(credit.id);
+      onDone();
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t take your name off. Try again.'));
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="flex flex-col items-end">
+      <button type="button" disabled={busy} onClick={off} className="min-h-[2.5rem] px-2 text-[0.8125rem] font-semibold text-app-link hover:underline disabled:opacity-60">
+        {busy ? 'Taking it off…' : 'Take my name off'}
+      </button>
+      {note ? <span role="alert" className="text-xs text-app-error">{note}</span> : null}
+    </span>
+  );
+}
+
 /** "Who was on it" (board 8): the person first, then each credit as the server names it. */
-function Credits({ piece, owner, credits, target }: {
+function Credits({ piece, owner, credits, target, viewerId, onNameOff }: {
   piece: Piece; owner: { name: string; portraitUrl: string | null }; credits: ProfileCredit[];
   target: (who: { user_id: string | null; username: string | null }) => Target | null;
+  viewerId: string;
+  onNameOff: () => void;
 }) {
   return (
     <Card title="Who was on it" flush>
@@ -192,7 +221,9 @@ function Credits({ piece, owner, credits, target }: {
           const ink = inkOf(credit.ink);
           const shownName = credit.party?.name?.trim() || null;
           const what = shownName ? credit.role : credit.party?.did || credit.role;
-          const status = credit.status && STATUS_WORD[credit.status];
+          // Asked and not confirmed are shown in the server's words ("Asked today", "Asked of you", "Did not confirm").
+          const status = credit.status && STATUS_WORD[credit.status] ? credit.how || STATUS_WORD[credit.status] : null;
+          const mine = Boolean(viewerId && credit.party?.user_id === viewerId && credit.status === 'signed');
           const opens = shownName && (credit.party.username || credit.party.user_id)
             ? target({ user_id: credit.party.user_id, username: credit.party.username })
             : null;
@@ -208,8 +239,11 @@ function Credits({ piece, owner, credits, target }: {
           return (
             <li key={credit.id} className="flex items-center gap-3 px-5 py-2.5">
               {opens ? <Opens target={opens} className="!w-auto min-w-0 flex-1 rounded-lg">{who}</Opens> : who}
-              <span className="shrink-0 inline-flex items-center gap-1.5 text-[0.8125rem] text-app-secondary">
-                {status ? status : <><InkGlyph ink={ink} inline />{howText(ink)}</>}
+              <span className="shrink-0 flex flex-col items-end">
+                <span className="inline-flex items-center gap-1.5 text-[0.8125rem] text-app-secondary">
+                  {status ? status : <><InkGlyph ink={ink} inline />{howText(ink)}</>}
+                </span>
+                {mine ? <NameOff credit={credit} onDone={onNameOff} /> : null}
               </span>
             </li>
           );
@@ -220,9 +254,10 @@ function Credits({ piece, owner, credits, target }: {
   );
 }
 
-function PieceBody({ piece, firstName, owner, target, view }: {
+function PieceBody({ piece, firstName, owner, target, view, viewerId, onNameOff }: {
   piece: Piece; firstName: string; owner: { name: string; portraitUrl: string | null };
   target: (who: { user_id: string | null; username: string | null }) => Target | null; view: string;
+  viewerId: string; onNameOff: () => void;
 }) {
   const gallery = galleryOf(piece);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -276,7 +311,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
           </Card>
         ) : null}
 
-        {credits.length > 0 ? <Credits piece={piece} owner={owner} credits={credits} target={target} /> : null}
+        {credits.length > 0 ? <Credits piece={piece} owner={owner} credits={credits} target={target} viewerId={viewerId} onNameOff={onNameOff} /> : null}
 
         {skills.length > 0 ? (
           <section aria-label={`Shows ${firstName} can`} className="flex flex-col gap-2">
@@ -356,7 +391,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
 /**
  * One piece opened (board 8) as a screen of its own. The owner can change it from here (board 10).
  */
-export default function PieceView({ state, onClose, onRetry, firstName, owner, target, onChange }: {
+export default function PieceView({ state, onClose, onRetry, firstName, owner, target, onChange, viewerId = '', onNameOff }: {
   state: PieceState | null;
   onClose: () => void;
   onRetry: () => void;
@@ -365,6 +400,9 @@ export default function PieceView({ state, onClose, onRetry, firstName, owner, t
   target: (who: { user_id: string | null; username: string | null }) => Target | null;
   /** The owner's view: open this piece in the editor. */
   onChange?: ((piece: Piece) => void) | null;
+  /** The signed-in viewer ('' signed out): their own signed credit can be taken off. */
+  viewerId?: string;
+  onNameOff?: () => void;
 }) {
   let body: ReactNode = null;
   if (state === 'loading') {
@@ -379,7 +417,7 @@ export default function PieceView({ state, onClose, onRetry, firstName, owner, t
       </div>
     );
   } else if (state && state.piece) {
-    body = <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} />;
+    body = <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} viewerId={viewerId} onNameOff={onNameOff ?? (() => {})} />;
   }
   const editable = onChange && state && typeof state === 'object' && state.view === 'owner' && state.piece ? state.piece : null;
   return (
