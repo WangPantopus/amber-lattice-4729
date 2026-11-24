@@ -144,6 +144,19 @@ function withTiesFrom(rows) {
 }
 
 /**
+ * Roles and schools (phase 2B), none while PROFILE_TIES is off: typed places, and roles at a business on Pantopus,
+ * asked or signed (the composer names the business only where it may). A "Not me" stays for the owner alone. A role
+ * whose business turned naming off, or with a block between the person and the business or any of its owners, is
+ * gone for everyone.
+ */
+function rolesFrom(rows, { owner = false } = {}) {
+  if (!rows || !profileTiesEnabled()) return [];
+  return (rows.roles || [])
+    .filter((r) => !r.party_user_id || (r.party_ties_enabled !== false && r.party_blocked !== true))
+    .filter((r) => owner || r.status !== 'declined');
+}
+
+/**
  * One person's rows, shaped as the composer reads them (compose.buildRecord). `viewerId`: the signed-in viewer whose
  * side the rows were read for (null for a preview or a link), so an ask shows to the one asked.
  */
@@ -164,8 +177,10 @@ async function sourcesFrom(userId, rows, { pinned = true, owner = false, viewerI
     supportTrains: (rows.trains || []).map((t) => ({ support_train_id: t.support_train_id, created_at: t.created_at, slot: { slot_date: t.slot_date } })),
     helpful: { count: Number(rows.helpful_count) || 0, months: rows.helpful_months || [] },
     pinned: pinned ? Boolean(rows.pinned) : null,
+    tiesOn: profileTiesEnabled(),
     credits: creditsFrom(rows, { owner, viewerId }),
     withTies: withTiesFrom(rows),
+    roles: rolesFrom(rows, { owner }),
   };
 }
 

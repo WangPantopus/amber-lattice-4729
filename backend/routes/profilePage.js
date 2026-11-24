@@ -11,7 +11,8 @@
  *   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   links for one purpose (PROFILE_LINKS)
  *   GET /api/profile-page/:username/v/:key[/piece/:id | /month/:m]   a link for one purpose, opened by its key
  *   POST | DELETE …/me/pieces/:id/credits[/:creditId], GET /me/asks, POST /me/asks/:id/sign | decline,
- *   DELETE /me/ties/:id                         credits and signing (PROFILE_TIES; CONTRACT P2.5)
+ *   PATCH | DELETE /me/ties/:id                 credits and signing (PROFILE_TIES; CONTRACT P2.5)
+ *   POST | PATCH | DELETE /me/roles[/:id], GET …/circle[/:userId]   roles, schools and the circle (PROFILE_TIES; P2.6)
  */
 
 const express = require('express');
@@ -81,7 +82,11 @@ router.delete('/me/pieces/:id/credits/:creditId', verifyToken, tiesOn,
 router.get('/me/asks', verifyToken, tiesOn, handle('asks', (req) => ties.listAsks(String(req.user.id))));
 router.post('/me/asks/:id/sign', verifyToken, tiesOn, handle('ask-sign', (req) => ties.signAsk(String(req.user.id), req.params.id, req.body)));
 router.post('/me/asks/:id/decline', verifyToken, tiesOn, handle('ask-decline', (req) => ties.declineAsk(String(req.user.id), req.params.id)));
+router.patch('/me/ties/:id', verifyToken, tiesOn, handle('tie-change', (req) => ties.changeTie(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/ties/:id', verifyToken, tiesOn, handle('tie-remove', (req) => ties.removeTie(String(req.user.id), req.params.id)));
+router.post('/me/roles', verifyToken, tiesOn, handle('role-add', (req) => ties.addRole(String(req.user.id), req.body), 201));
+router.patch('/me/roles/:id', verifyToken, tiesOn, handle('role-change', (req) => ties.updateRole(String(req.user.id), req.params.id, req.body)));
+router.delete('/me/roles/:id', verifyToken, tiesOn, handle('role-remove', (req) => ties.removeRole(String(req.user.id), req.params.id)));
 
 // Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.
 function linksOn(req, res, next) {
@@ -98,6 +103,9 @@ router.get('/id/:id/piece/:pieceId', publicRead,
   handle('piece-id', (req) => profilePage.getPiece(req, { id: req.params.id }, req.params.pieceId)));
 router.get('/id/:id/month/:month', publicRead,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
+router.get('/id/:id/circle', publicRead, tiesOn, handle('circle-id', (req) => profilePage.getCircle(req, { id: req.params.id })));
+router.get('/id/:id/circle/:userId', publicRead, tiesOn,
+  handle('circle-pieces-id', (req) => profilePage.getCircle(req, { id: req.params.id }, req.params.userId)));
 
 // The ring an avatar wears, for up to 100 people (CONTRACT section 7).
 router.get('/marks', verifyToken, handle('marks', (req) => {
@@ -124,9 +132,16 @@ router.get('/:username/v/:key/piece/:pieceId', publicRead, linksOn,
   handle('link-piece', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'piece', req.params.pieceId)));
 router.get('/:username/v/:key/month/:month', publicRead, linksOn,
   handle('link-month', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'month', req.params.month)));
+router.get('/:username/v/:key/circle', publicRead, linksOn, tiesOn,
+  handle('link-circle', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'circle', null)));
+router.get('/:username/v/:key/circle/:userId', publicRead, linksOn, tiesOn,
+  handle('link-circle-pieces', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'circle', req.params.userId)));
 router.get('/:username/piece/:pieceId', publicRead,
   handle('piece', (req) => profilePage.getPiece(req, byUsername(req), req.params.pieceId)));
 router.get('/:username/month/:month', publicRead,
   handle('month', (req) => profilePage.getMonth(req, byUsername(req), req.params.month)));
+router.get('/:username/circle', publicRead, tiesOn, handle('circle', (req) => profilePage.getCircle(req, byUsername(req))));
+router.get('/:username/circle/:userId', publicRead, tiesOn,
+  handle('circle-pieces', (req) => profilePage.getCircle(req, byUsername(req), req.params.userId)));
 
 module.exports = router;

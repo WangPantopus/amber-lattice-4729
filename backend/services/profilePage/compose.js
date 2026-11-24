@@ -144,7 +144,8 @@ function didOf(credit, first) {
   if (credit.relation === 'for') return `Someone who hired ${first}`;
   const role = String(credit.role || '').trim();
   if (role) return `${/^[aeiou]/i.test(role) ? 'An' : 'A'} ${lowerFirst(role)}`;
-  return { with: `Someone who worked with ${first}`, led: 'Someone who led it', learned_from: `Someone ${first} learned from` }[credit.relation]
+  // `led`: the owner led them (board 9's "Has taught or led"); `learned_from`: the owner learned from them.
+  return { with: `Someone who worked with ${first}`, led: `Someone ${first} led`, learned_from: `Someone ${first} learned from` }[credit.relation]
     || 'Someone on it';
 }
 
@@ -270,6 +271,128 @@ function withTiesFor(ctx, list, view) {
     return reaches(readShare(t.owner_share).parts, 'work', ownerView)
       && reaches({ piece: t.piece.audience || 'anyone' }, 'piece', ownerView);
   });
+}
+
+// ---------- roles and schools, and the work circle (phase 2B, CONTRACT P2.6) ----------
+
+function yearsWords(from, to) {
+  const fy = from ? String(from).slice(0, 4) : null;
+  const ty = to ? String(to).slice(0, 4) : null;
+  if (!fy) return null;
+  if (!ty) return `${fy} to now`;
+  return fy === ty ? fy : `${fy} to ${ty}`;
+}
+
+/**
+ * A role or school as this view sees it. The owner sees everything, the business named. Others see an asked role as
+ * the person's own words with the business unnamed, a signed one with it named (on a link only if the business
+ * allowed it), and a typed place named only to signed-in viewers; a "Not me" never reaches them.
+ */
+function roleOf(r, { view, first, now = new Date() }) {
+  const owner = view === 'owner';
+  const typed = !r.party_user_id;
+  const biz = r.party || {};
+  const signed = r.status === 'signed';
+  const named = owner || (typed ? view !== 'link' : signed && (view !== 'link' || r.name_on_links === true));
+  const place = typed ? r.party_name : (biz.name || null);
+  const title = String(r.role || '').trim();
+  let status = r.status;
+  let how;
+  if (signed) how = named ? `Signed by ${place}` : 'Signed by a business on Pantopus';
+  else if (r.status === 'asked' && owner) how = askedWords(r.asked_at, now);
+  else if (r.status === 'declined') {
+    status = 'did_not_confirm';
+    how = 'Did not confirm';
+  } else how = `In ${first}'s words`;
+  if (!owner && status === 'asked') status = 'said';
+  const month = (d) => (d ? String(d).slice(0, 7) : null);
+  return line(signed ? 'signed' : 'said', named && place ? `${title} at ${place}` : title,
+    [how, yearsWords(r.from_month, r.to_month)].filter(Boolean).join(', '), 'work',
+    named && !typed && biz.username ? { kind: 'business', username: biz.username } : null, {
+      id: r.id, title, relation: r.relation, from: month(r.from_month), to: month(r.to_month),
+      where: named
+        ? { name: place, user_id: typed ? null : r.party_user_id, username: typed ? null : (biz.username || null),
+          picture_url: typed ? null : (biz.picture_url || null), typed }
+        : { name: null, user_id: null, username: null, picture_url: null, typed },
+      status,
+    });
+}
+
+const CIRCLE_GROUPS = [['taught_or_led', 'Has taught or led'], ['works_beside', 'Works beside'], ['learned_from', 'Learned from']];
+// A credit on the person's own piece: `led` → they led them; `learned_from` → they learned from them.
+const OWN_GROUP = { led: 'taught_or_led', with: 'works_beside', learned_from: 'learned_from' };
+// A piece of someone else's that the person signed: the owner's word, turned round.
+const SIGNED_GROUP = { with: 'works_beside', led: 'learned_from', learned_from: 'taught_or_led' };
+
+/**
+ * The work circle for this view (board 9): from the pieces this viewer can open (signed credits and typed names on
+ * the person's own pieces, and the "With" pieces they signed) and their schools and places they learned. A tie both
+ * sides confirmed is Signed, a typed name Said; an ask is never in it. Hiring is only the count under it.
+ */
+function circleOf(ctx, record) {
+  const people = new Map();
+  const shared = new Map();
+  const add = (group, key, person, ink, pieceId) => {
+    const k = `${group}|${key}`;
+    const had = people.get(k);
+    if (!had) people.set(k, { group, key, person: { ...person, ink }, order: people.size });
+    else if (ink === 'signed') had.person.ink = 'signed';
+    if (pieceId) {
+      if (!shared.has(key)) shared.set(key, new Set());
+      shared.get(key).add(String(pieceId));
+    }
+  };
+  const first = ctx.firstName;
+  const live = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
+  for (const p of live) {
+    if (p.with) {
+      const t = p.tie;
+      const group = SIGNED_GROUP[t.relation];
+      if (!group) continue;
+      const o = t.owner_shown || {};
+      add(group, `u:${t.owner_id}`, { name: o.name || null, user_id: t.owner_id, username: o.username || null,
+        portrait_url: o.avatar || null, did: String(t.piece.owner_role || '').trim() || `Worked with ${first}` }, 'signed', p.row.id);
+      continue;
+    }
+    for (const { raw, credit } of p.credits || []) {
+      if (credit.status !== 'signed' && credit.status !== 'said') continue;
+      const group = OWN_GROUP[raw.relation];
+      if (!group) continue;
+      const key = raw.party_user_id ? `u:${raw.party_user_id}` : `t:${String(raw.party_name).toLowerCase()}`;
+      add(group, key, { name: credit.party.name, user_id: credit.party.user_id, username: credit.party.username,
+        portrait_url: credit.party.portrait_url, did: credit.role || credit.party.did }, credit.ink, p.row.id);
+    }
+  }
+  for (const r of record.roles || []) {
+    if (r.relation !== 'learned' || r.status === 'did_not_confirm') continue;
+    const key = r.where.user_id ? `u:${r.where.user_id}` : `r:${r.id}`;
+    add('learned_from', key, { name: r.where.name, user_id: r.where.user_id, username: r.where.username,
+      portrait_url: r.where.picture_url, did: [r.title, yearsWords(r.from, r.to)].filter(Boolean).join(', '), place: true }, r.ink, null);
+  }
+  return CIRCLE_GROUPS.map(([key, title]) => {
+    const list = [...people.values()].filter((p) => p.group === key)
+      .map((p) => ({ ...p.person, shared_pieces: shared.get(p.key)?.size || 0, _order: p.order }))
+      .sort((a, b) => (a.ink === b.ink ? 0 : a.ink === 'signed' ? -1 : 1) || b.shared_pieces - a.shared_pieces || a._order - b._order)
+      .map(({ _order, place, ...person }) => (place ? { ...person, _place: true } : person));
+    return { key, title, people: list };
+  }).filter((g) => g.people.length);
+}
+
+/**
+ * "Hired by 14 households and 2 businesses": the people and businesses whose paid jobs the person completed, counted
+ * once each, Seen. Households are counted, never named. Null when there are none.
+ */
+function hiredBy(paidJobs) {
+  const households = new Set();
+  const businesses = new Set();
+  for (const job of paidJobs || []) {
+    if (!job.poster_id) continue;
+    (job.poster_type === 'business' ? businesses : households).add(String(job.poster_id));
+  }
+  if (!households.size && !businesses.size) return null;
+  const parts = [households.size ? plural(households.size, 'household', 'households') : null,
+    businesses.size ? plural(businesses.size, 'business', 'businesses') : null].filter(Boolean);
+  return line('seen', `Hired by ${parts.join(' and ')}`, 'Pantopus\'s own records. Households are counted, never named.', 'work', null);
 }
 
 // ---------- the record: every line, its part and its months ----------
@@ -438,7 +561,10 @@ function buildRecord(ctx, sources, { now }) {
   const viewOf = ctx.view || 'link';
   const creditsOf = (id) => creditsFor(sources.credits, id, { view: viewOf, viewerId: ctx.viewerId, first, now });
   const pieces = (sources.pieces || []).filter((row) => row.title && reaches({ piece: row.audience || 'anyone' }, 'piece', viewOf))
-    .map((row) => pieceOf(row, first, viewOf === 'owner', creditsOf(row.id)));
+    .map((row) => {
+      const credits = creditsOf(row.id);
+      return { ...pieceOf(row, first, viewOf === 'owner', credits), credits };
+    });
   // "With <owner>" (phase 2B): a piece of someone else's that this person signed and shows on their Work, kept once
   // (the owner's piece, never a copy), only where this viewer may open the owner's piece; Signed in this person's
   // record. Never on a page opened without signing in: the owner never allowed their name there.
@@ -450,6 +576,7 @@ function buildRecord(ctx, sources, { now }) {
       row: t.piece,
       month: base.month,
       with: true,
+      tie: t,
       piece: {
         ...base.piece, ink: 'signed', how: ownerName ? `With ${ownerName}` : 'Signed together', pinned: false,
         link: { kind: 'piece', id: t.piece.id, user_id: t.owner_id, username },
@@ -507,7 +634,11 @@ function buildRecord(ctx, sources, { now }) {
       line: line('said', `Tools: ${tools}`, `In ${first}'s words`, 'work', null, { badge: null }) });
   }
 
-  return { entries, months, events, pieces, skills };
+  // Roles and schools (phase 2B): lines only, no months (a six-year role would fill the rings).
+  const roles = (sources.roles || []).map((r) => roleOf(r, { view: viewOf, first, now }));
+  roles.forEach((ln, i) => entries.push({ id: `role_${i}`, parts: ['record_work'], place: 'record_work', order: 5, line: ln }));
+
+  return { entries, months, events, pieces, skills, roles };
 }
 
 const SOCIAL_LINKS = [['website', 'Website'], ['linkedin', 'LinkedIn'], ['twitter', 'X'], ['instagram', 'Instagram'], ['facebook', 'Facebook']];
@@ -713,6 +844,12 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       work.push({ kind: 'pieces', id: 'all', title: pinned.length ? 'All pieces' : 'Pieces', style: 'list', subtitle: null,
         pieces: rest.map(withPlace), filters, more: null });
     }
+    // The work circle and "Worked and learned" (phase 2B), only with PROFILE_TIES on.
+    if (sources.tiesOn) {
+      const circle = circleBlock(ctx, record, sources, on);
+      if (circle) work.push(circle);
+      if (record.roles.length) work.push({ kind: 'lines', id: 'worked_learned', title: 'Worked and learned', lines: record.roles, more: null });
+    }
     const owns = shownEntries('owns');
     if (owns.length) work.push({ kind: 'owns', id: 'owns', title: 'Owns', lines: owns });
   }
@@ -802,7 +939,7 @@ function composeMonth(ctx, record, month) {
  * GET …/piece/:id: one piece, opened (CONTRACT P2.2). Null when the Work part or the piece's own "who sees it" doesn't
  * reach the view. Never the job's address, price or poster: the job appears only as "a paid job, completed".
  */
-function composePiece(ctx, row, { attachments = [], reviews = [], credits = null, party = false, now = new Date() } = {}) {
+function composePiece(ctx, row, { attachments = [], reviews = [], credits = null, party = false, suggested = null, now = new Date() } = {}) {
   const view = ctx.view;
   // `party`: the viewer was asked to sign a credit on this piece, or signed one; they may open it whatever its "who sees
   // it" (they were shown it when asked). Everyone else by the Work part and the piece's own setting.
@@ -821,7 +958,7 @@ function composePiece(ctx, row, { attachments = [], reviews = [], credits = null
   } else if (row.source_kind === 'plan') {
     howWeKnow.push(line('seen', 'A plan that took place on Pantopus', row.source_at ? dayLabel(row.source_at) : 'Pantopus\'s own records', 'work', null));
   }
-  const RELATION_HOW = { with: `Worked with ${first}`, led: 'Led it', learned_from: `${first} learned from them`, for: `Hired ${first}` };
+  const RELATION_HOW = { with: `Worked with ${first}`, led: `${first} led them`, learned_from: `${first} learned from them`, for: `Hired ${first}` };
   const signed = shownCredits.filter((c) => c.credit.status === 'signed');
   for (const { credit } of signed) {
     const who = credit.party.name || (credit.party.did[0].toLowerCase() + credit.party.did.slice(1));
@@ -867,8 +1004,53 @@ function composePiece(ctx, row, { attachments = [], reviews = [], credits = null
   if (owner) {
     const { howItWillShow } = require('./pieces');
     answer.piece.how_it_will_show = howItWillShow(row, ctx.parts.work, shownCredits.map((c) => c.credit));
+    // Who hired them, when they could be asked now (owner only; ties.suggestionsFor).
+    if (suggested) answer.piece.suggested_credits = suggested;
   }
   return answer;
+}
+
+const CIRCLE_BLOCK_PEOPLE = 6;
+
+/** The circle as the Work tab's block (CONTRACT section 3.2's `circle`, p2.6): up to six a group, `count` all. */
+function circleBlock(ctx, record, sources, on) {
+  const groups = circleOf(ctx, record);
+  // Hiring is counted from paid jobs, which the Record's work part holds.
+  const hired = on('record_work') ? hiredBy(sources.paidJobs) : null;
+  if (!groups.length && !hired) return null;
+  // People only: the places they learned (a school, a business) are in the circle but not counted as people.
+  const n = new Set(groups.flatMap((g) => g.people.filter((p) => !p._place).map((p) => p.user_id || `${g.key}:${p.name}:${p.did}`))).size;
+  const clean = (list) => list.map(({ _place, ...person }) => person);
+  return {
+    kind: 'circle', id: 'circle', title: 'Work circle',
+    text: n ? `${plural(n, 'person', 'people')} on ${ctx.firstName}'s work` : (hired ? hired.text : `Where ${ctx.firstName} learned`),
+    groups: groups.map((g) => ({ key: g.key, title: g.title, count: g.people.length, people: clean(g.people.slice(0, CIRCLE_BLOCK_PEOPLE)) })),
+    hired_by: hired,
+    link: groups.length ? { kind: 'circle' } : null,
+  };
+}
+
+/** GET …/circle: every group in full and the hiring count, or null when the Work part doesn't reach this view. */
+function composeCircle(ctx, record, sources) {
+  const on = (part) => reaches(ctx.parts, part, ctx.view);
+  if (!on('work')) return null;
+  const groups = circleOf(ctx, record).map((g) => ({ ...g, count: g.people.length, people: g.people.map(({ _place, ...person }) => person) }));
+  return { v: 1, groups, hired_by: on('record_work') ? hiredBy(sources.paidJobs) : null };
+}
+
+/**
+ * GET …/circle/:userId: the pieces the person and that account share that this viewer can open: the person's own
+ * pieces where that account signed a credit, and that account's pieces the person signed ("With").
+ */
+function composeCirclePieces(ctx, record, userId) {
+  const on = (part) => reaches(ctx.parts, part, ctx.view);
+  if (!on('work')) return null;
+  const cityOk = on('city') && ctx.cityByPrivacy;
+  const id = String(userId);
+  const pieces = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false).filter((p) => (p.with
+    ? String(p.tie.owner_id) === id
+    : (p.credits || []).some(({ raw, credit }) => credit.status === 'signed' && String(raw.party_user_id) === id && credit.party.user_id)));
+  return { v: 1, pieces: pieces.map((p) => ({ ...p.piece, place: !p.with && cityOk && p.row.place_city ? [p.row.place_city, p.row.place_state].filter(Boolean).join(', ') : null })) };
 }
 
 /**
@@ -913,6 +1095,6 @@ function dayLabel(at) {
 }
 
 module.exports = {
-  pieceOf, cardOf, provable, creditsFor, creditOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, cardOf, provable, creditsFor, creditOf, roleOf, buildRecord, composeCircle, composeCirclePieces, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };
