@@ -44,7 +44,7 @@ const CARD_COLUMNS: { label: string; title: string; cell: (c: CardCounts) => str
   { label: 'Books 5 / 20 / 50', title: 'Stamp books bought, by size (refunds apart)', cell: (c) => books(c.books) },
   { label: 'Refunded', title: 'Stamp books refunded, by size', cell: (c) => books(c.refunded) },
   { label: 'Sales', title: 'Books not refunded, at list price', cell: (c) => dollars(c.sales_cents) },
-  { label: 'Loop', title: 'Joiners who sent their own, per sender', cell: (c) => pct(c.loop) },
+  { label: 'Loop', title: 'Joiners who sent their own, per sender (0.50 = one for every two senders)', cell: (c) => (c.loop === null ? '—' : c.loop.toFixed(2)) },
 ];
 
 function KeyValues({ title, rows, testId }: { title: string; rows: [string, string][]; testId: string }) {
