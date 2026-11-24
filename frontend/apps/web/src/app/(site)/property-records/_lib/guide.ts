@@ -46,9 +46,29 @@ export type GuideCountyPage = {
   live: boolean;
   town_records: boolean;
   offices: { rows: GuideOffice[]; towns: { name: string; url: string; host: string | null }[] };
+  /** Only where the county's records are live: the county's file, its date and its records, rounded down. */
+  holds?: { publisher: string; dataset: string | null; as_of: string; records: number | null; municipal?: boolean } | null;
+  hazards?: { version: string | null; read: string | null; rows: { label: string; level: number; word: string }[]; source: string; url: string } | null;
+  disasters?: {
+    total: number;
+    first: string | null;
+    read: string | null;
+    items: { number: number; date: string; type: string | null; kind: string | null; incident: string | null; id: string }[];
+    source: string;
+    url: string;
+    notice: string;
+  } | null;
+  radon?: { zone: 1 | 2 | 3; source: string; url: string } | null;
+  flood_cost?: { median: number; p25: number | null; p75: number | null; months: number; read: string | null; source: string; notice: string } | null;
+  exemption?: { label: string; filing: string; note: string; source_name: string; source_url: string; read: string } | null;
+  appeal?: { note: string; source: { name: string; url: string }; read: string } | null;
+  homes?: { median_year_built: number | null; median_value: number | null; survey: string; source: string; url: string } | null;
   questions: GuideQuestion[];
   near: { slug: string; name: string; state_slug: string; state_abbr: string }[];
 };
+
+/** "$522,900". */
+export const dollars = (amount: number) => `$${Math.round(amount).toLocaleString('en-US')}`;
 
 async function get<T>(path: string): Promise<T | null> {
   const res = await fetch(`${API}/api/public/county-guide${path}`, {
