@@ -394,6 +394,7 @@ export interface ProfilePieceRead {
     owner_role?: string | null;
     /** The owner's view only. */
     how_it_will_show?: string[] | null;
+    suggested_credits?: ProfileSuggestedCredit[] | null;
   };
 }
 
@@ -540,6 +541,17 @@ export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartK
 
 // ── Phase 2: the owner's pieces (CONTRACT P2.3, P2.4) ──
 
+/** The person who hired the owner, offered to ask in one tap (owner only, p2.6). Never in anyone else's read. */
+export interface ProfileSuggestedCredit {
+  user_id: string;
+  name: string | null;
+  username: string | null;
+  portrait_url: string | null;
+  relation: 'for' | string;
+  role: string | null;
+  why: string;
+}
+
 /** A job or plan Pantopus saw that isn't a piece yet (board 10's top). `with` is for the owner's eyes only. */
 export interface ProfilePieceOffer {
   kind: 'gig' | 'plan' | string;
@@ -548,6 +560,7 @@ export interface ProfilePieceOffer {
   when: string | null;
   with: string | null;
   text: string;
+  suggested_credits?: ProfileSuggestedCredit[] | null;
 }
 
 /** What the owner writes on a piece. Fields not sent keep theirs on a change. */
