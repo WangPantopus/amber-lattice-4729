@@ -18,6 +18,8 @@ import UIKit
 /// Typed routes within the You tab's NavigationStack.
 public enum YouRoute: Hashable {
     case signOutConfirm
+    /// Adding or changing a piece on your own Work (the profile with sources, board 10).
+    case pieceEditor(ProfilePieceEditorStart)
     /// B.1 — unified Mailbox root (drawer chips × tabs). Entry point for
     /// mailbox navigation from the You tab.
     case mailboxRoot
@@ -778,6 +780,7 @@ public struct YouTabRoot: View {
         case .settings: .settings
         case .myHomes: .myHomes
         case .help, .developerTools: .helpCenter
+        case let .piece(start): .pieceEditor(start)
         }
     }
 
@@ -2334,6 +2337,10 @@ public struct YouTabRoot: View {
                 secretId: secretId,
                 initialCategory: categoryRaw.flatMap { AccessCategory(rawValue: $0) }
             ) {
+                if !path.isEmpty { path.removeLast() }
+            }
+        case let .pieceEditor(start):
+            ProfilePieceEditor(start: start) { _ in
                 if !path.isEmpty { path.removeLast() }
             }
         case .myHomes:

@@ -115,7 +115,8 @@ final class ProfileShareModel {
     }
 
     private static func sentence(_ error: any Error) -> String {
-        if case let APIError.clientError(_, message?) = error, !message.isEmpty { return message }
+        // The server's own sentence from its `{ error }` body, never the raw JSON.
+        if case let APIError.clientError(_, message) = error, let text = APIError.friendlyClientMessage(message) { return text }
         return "Couldn't save that. Try again."
     }
 
@@ -323,7 +324,7 @@ struct ProfileShareSheet: View {
             ])
             section("About you", always: "Portrait, name and rings", rows: about, share: share)
             let done = shown([
-                PartRow(key: "work", title: "Work", detail: "What you can do and your pieces"),
+                PartRow(key: "work", title: "Work", detail: workDetail(share)),
                 PartRow(key: "known_for", title: "Known for", detail: "Writers show by name only if they allow it."),
                 PartRow(key: "reviews", title: "Reviews", detail: "All of them or none"),
                 PartRow(key: "record_work", title: "Record: work and learning", detail: nil),
@@ -412,6 +413,12 @@ struct ProfileShareSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// "12 of your 18 pieces", counted by the server from each piece's "Who sees it" (phase 2).
+    private func workDetail(_ share: ProfileShareDTO) -> String {
+        guard let pieces = share.workPieces, pieces.total > 0 else { return "What you can do and your pieces" }
+        return "\(pieces.shown) of your \(pieces.total) \(pieces.total == 1 ? "piece" : "pieces")"
     }
 
     /// The city follows Settings' "Who sees your city": a link shows it only where that allows anyone.

@@ -301,6 +301,8 @@ struct ProfilePieceRow: View {
     let piece: ProfilePieceDTO
     let context: ProfileBlockContext
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     enum MediaPart {
         case photos, videos, documents, links
     }
@@ -330,6 +332,35 @@ struct ProfilePieceRow: View {
             .joined(separator: " · ")
     }
 
+    private var picture: some View {
+        ProfilePiecePicture(url: piece.coverURL)
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func words(_ source: ProfileSourceLine) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(piece.title)
+                .scaledFont(14, weight: .semibold)
+                .foregroundStyle(Theme.Color.appText)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                ProfileInkGlyph(ink: source.ink, size: 9)
+                Text(detail)
+                    .scaledFont(12)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let onlyYou {
+                Text(onlyYou)
+                    .scaledFont(12, weight: .semibold)
+                    .foregroundStyle(Theme.Color.appTextStrong)
+            }
+        }
+    }
+
     /// The owner's own view only: a draft or hidden piece reaches nobody else (P2.1).
     private var onlyYou: String? {
         if piece.draft { return "Draft · only you see it" }
@@ -340,32 +371,24 @@ struct ProfilePieceRow: View {
     var body: some View {
         let source = piece.line.sourceLine(at: 0)
         Button { context.openLink(.piece(id: piece.id)) } label: {
-            HStack(spacing: Spacing.s3) {
-                ProfilePiecePicture(url: piece.coverURL)
-                    .frame(width: 52, height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(piece.title)
-                        .scaledFont(14, weight: .semibold)
-                        .foregroundStyle(Theme.Color.appText)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        ProfileInkGlyph(ink: source.ink, size: 9)
-                        Text(detail)
-                            .scaledFont(12)
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // The words get the full width: the small picture sits on its own line above them.
+                    VStack(alignment: .leading, spacing: Spacing.s2) {
+                        HStack {
+                            picture
+                            Spacer(minLength: 0)
+                            Icon(.chevronRight, size: 16, color: Theme.Color.appTextMuted)
+                        }
+                        words(source)
                     }
-                    if let onlyYou {
-                        Text(onlyYou)
-                            .scaledFont(12, weight: .semibold)
-                            .foregroundStyle(Theme.Color.appTextStrong)
+                } else {
+                    HStack(spacing: Spacing.s3) {
+                        picture
+                        words(source).frame(maxWidth: .infinity, alignment: .leading)
+                        Icon(.chevronRight, size: 16, color: Theme.Color.appTextMuted)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Icon(.chevronRight, size: 16, color: Theme.Color.appTextMuted)
             }
             .padding(.vertical, Spacing.s3)
             .contentShape(Rectangle())
