@@ -49,7 +49,14 @@ export async function GET(req: NextRequest) {
   let page: ProfilePage | null = null;
   if (username) {
     try {
-      const res = await fetch(`${API_BASE}/api/profile-page/${encodeURIComponent(username)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+      // For whoever fetched the picture (a link-preview crawler): their address with the edge secret, so signed-out
+      // reads keep each visitor's own limit (as the page's read does).
+      const edgeSecret = process.env.EDGE_PROXY_SECRET;
+      const address = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+      const res = await fetch(`${API_BASE}/api/profile-page/${encodeURIComponent(username)}`, {
+        headers: { accept: 'application/json', ...(edgeSecret ? { 'x-pantopus-edge': edgeSecret, ...(address ? { 'x-forwarded-for': address } : {}) } : {}) },
+        cache: 'no-store',
+      });
       if (res.ok) page = (await res.json()) as ProfilePage;
     } catch {
       page = null;
