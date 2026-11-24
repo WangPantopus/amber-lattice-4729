@@ -18,6 +18,20 @@ const KEEP_CHOICES: { label: string; hours: number | null }[] = [
   { label: 'A week (a weekly paper)', hours: 168 },
 ];
 
+// What a feed is about when it is about one thing: Around you's topics, as its chips name them
+// (backend/services/aroundYou/topics.js). A feed about one thing shows in that topic's list and stays off the first
+// page's Headlines.
+const TOPIC_CHOICES: { id: string; label: string }[] = [
+  { id: '', label: 'General news' },
+  { id: 'kids', label: 'Kids & schools' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'government', label: 'Government' },
+  { id: 'business', label: 'Business' },
+  { id: 'safety', label: 'Roads & safety' },
+];
+const topicLabel = (topic: string | null | undefined) => (
+  topic ? TOPIC_CHOICES.find((choice) => choice.id === topic)?.label ?? topic : null);
+
 const errorText = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 const statusOf = (err: unknown) => {
   const e = err as { statusCode?: number; status?: number } | null;
@@ -76,6 +90,7 @@ function Proposal({ source, kinds, onDone }: { source: Source; kinds: Kind[]; on
   const asked = source.note?.subscription?.asked === true;
   const [access, setAccess] = useState<'free' | 'subscription'>(asked ? 'subscription' : 'free');
   const [keep, setKeep] = useState<number | null>(null);
+  const [topic, setTopic] = useState<string>('');
   const [name, setName] = useState(source.display_name);
   const [busy, setBusy] = useState(false);
   const numbers = numbersLine(source);
@@ -85,7 +100,9 @@ function Proposal({ source, kinds, onDone }: { source: Source; kinds: Kind[]; on
     setBusy(true);
     try {
       if (approve) {
-        await api.admin.approveAroundSource(source.id, { access, keep_hours: keep, display_name: name.trim() || null });
+        await api.admin.approveAroundSource(source.id, {
+          access, keep_hours: keep, display_name: name.trim() || null, topic: topic || null,
+        });
         toast.success(`${name.trim() || source.display_name} approved: it is read from the next run`);
       } else {
         await api.admin.rejectAroundSource(source.id);
@@ -137,6 +154,16 @@ function Proposal({ source, kinds, onDone }: { source: Source; kinds: Kind[]; on
             {KEEP_CHOICES.map((c) => <option key={c.label} value={c.hours === null ? '' : String(c.hours)}>{c.label}</option>)}
           </select>
         </label>
+        {source.source_type === 'rss' && (
+          <label className="text-xs text-app-text-muted flex flex-col gap-1">
+            About
+            <select value={topic} onChange={(e) => setTopic(e.target.value)} data-testid="admin-sources-topic"
+              title="A feed about one thing shows in that topic's list and stays off the first page's Headlines"
+              className="px-2 py-1.5 rounded-lg border border-app-border bg-app-surface text-sm text-app-text">
+              {TOPIC_CHOICES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        )}
         <button type="button" disabled={busy} onClick={() => act(true)}
           className="px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition">
           Approve
@@ -280,7 +307,7 @@ function RegionCard({ region, kinds, onChanged }: { region: Region; kinds: Kind[
               {approved.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="text-app-text">{s.display_name}</span>
-                  <span className="text-xs text-app-text-muted">{s.access || 'access not set'}{s.keep_hours ? ` · stays ${s.keep_hours} h` : ''}</span>
+                  <span className="text-xs text-app-text-muted">{s.access || 'access not set'}{s.keep_hours ? ` · stays ${s.keep_hours} h` : ''}{topicLabel(s.topic) ? ` · ${topicLabel(s.topic)}` : ''}</span>
                   <SourceLink url={s.url} />
                 </li>
               ))}

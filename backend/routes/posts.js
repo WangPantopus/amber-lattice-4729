@@ -769,6 +769,8 @@ function photoBasisFields(post) {
 function signedOutPostView(post) {
   const view = Object.fromEntries(SIGNED_OUT_POST_FIELDS.map((field) => [field, post[field] ?? null]));
   view.post_metadata = sourceMetadata(post);
+  // An Around you story's public page says how many replies it has (a number only; who and what stay in the app).
+  if (view.post_metadata?.around_you) view.comment_count = Number(post.comment_count) || 0;
   // The author as the post shows them, without the profile or home id behind it.
   const { id: _creatorId, ...creator } = post.creator || {};
   view.creator = post.creator ? creator : null;
