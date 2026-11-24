@@ -1260,6 +1260,276 @@
       ],
       "built": 1988,
       "value": 503700
+    },
+    "0665000": {
+      "name": "San Bernardino",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of San Bernardino Community Development and Housing, Building and Safety Division",
+          "url": "https://www.sanbernardino.gov/205/Building-Safety-Division",
+          "line": "With a few minor exceptions, permits are required for all structural, electrical, plumbing, heating and air-conditioning work; minor jobs such as a water heater replacement are usually issued over the counter, and permit records from 1996 to the present can be searched online.",
+          "q": "Where do I find building permits in San Bernardino?",
+          "a": "The City of San Bernardino's Building and Safety Division issues building permits and inspects new and remodeled buildings on private property. With a few minor exceptions, permits are required for all structural, electrical, plumbing, heating and air-conditioning work, and permit records from 1996 to the present can be searched online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of San Bernardino Community Development and Housing, Planning Division",
+          "url": "https://www.sanbernardino.gov/372/Planning-Division",
+          "line": "Implements the City's General Plan and Development Code and manages land use entitlements for proposed residential, commercial and industrial projects under California's planning, zoning and development laws.",
+          "q": "Where is San Bernardino's zoning?",
+          "a": "The City of San Bernardino's Planning Division implements the City's General Plan and Development Code and manages land use entitlements for proposed residential, commercial and industrial projects, in line with California's planning, zoning and development laws. It also supports the Planning Commission."
+        }
+      ],
+      "built": 1973,
+      "value": 422300
+    },
+    "0624680": {
+      "name": "Fontana",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Fontana Development Services, Building and Safety",
+          "url": "https://www.fontanaca.gov/136/Building-Safety",
+          "line": "Permit and plan check applications are taken at the customer service counter or on the Build Fontana Public Portal, which also takes fees and schedules inspections; the office is closed every Friday.",
+          "q": "Where do I find building permits in Fontana?",
+          "a": "The City of Fontana's Building and Safety Department takes permit and plan check applications at its customer service counter and through the Build Fontana Public Portal, where people can also pay fees and schedule inspections. It is open Monday to Thursday and closed every Friday."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Fontana Development Services, Planning",
+          "url": "https://www.fontanaca.gov/834/Planning",
+          "line": "Every new development, and every modification or upgrade of a residential, commercial or industrial structure, is reviewed against the Development Code and the General Plan before construction; the page links the Zoning and General Plan Land Use Map.",
+          "q": "Where is Fontana's zoning?",
+          "a": "The City of Fontana's Planning Department processes land use applications and reviews every new development, and every modification or upgrade of an existing structure, against the Development Code, any applicable specific or community plan and the General Plan before construction begins. Its page links the City's Zoning and General Plan Land Use Map."
+        }
+      ],
+      "built": 1989,
+      "value": 586800
+    },
+    "0659451": {
+      "name": "Rancho Cucamonga",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Rancho Cucamonga Community Development, Building and Safety",
+          "url": "https://www.cityofrc.us/community-development/building-safety",
+          "line": "All permits are applied for online through the Online Permit Center; the City does not issue permits over the counter.",
+          "q": "Where do I find building permits in Rancho Cucamonga?",
+          "a": "The City of Rancho Cucamonga's Building and Safety Department takes every permit application online, through its Online Permit Center, and does not issue permits over the counter. Permit questions can be sent by text, phone or email."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Rancho Cucamonga, Zoning Map",
+          "url": "https://www.cityofrc.us/everything-we-do/zoning-map",
+          "line": "Links the Zoning Plan Interactive Viewer maintained by the City.",
+          "q": "Where is Rancho Cucamonga's zoning?",
+          "a": "The City of Rancho Cucamonga maintains a Zoning Plan Interactive Viewer, linked from its Zoning Map page."
+        }
+      ],
+      "built": 1988,
+      "value": 740200
+    },
+    "0653896": {
+      "name": "Ontario",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Ontario Community Development, Building Permit FAQs",
+          "url": "https://www.ontarioca.gov/government/community-development/building/general-requirements/building-permit-faqs",
+          "line": "A homeowner who lives or will live in the house can obtain a permit and do the work; fees are based on the project's valuation, with a plan review fee equal to 80% of the permit fee, and a property's zone comes from the Planning Department.",
+          "q": "Where do I find building permits in Ontario?",
+          "a": "The City of Ontario issues building permits; a homeowner who lives or will live in the house can obtain one and do the work. Permit fees are based on the project's valuation, and a plan review fee equal to 80% of the permit fee is collected when the application is submitted."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Ontario Community Development, Planning",
+          "url": "https://www.ontarioca.gov/government/community-development/planning/zoning-map",
+          "line": "The City's Zoning Map as a downloadable PDF, and an interactive map that searches the zoning designation of a property in Ontario.",
+          "q": "Where is Ontario's zoning?",
+          "a": "The City of Ontario's Planning page has its Zoning Map as a downloadable PDF and an interactive map that searches the zoning designation of properties in the city."
+        }
+      ],
+      "built": 1980,
+      "value": 607600
+    },
+    "0678120": {
+      "name": "Temecula",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Temecula Community Development, Building and Safety",
+          "url": "https://www.temeculaca.gov/275/Building-Safety",
+          "line": "Handles plan review, inspections and the enforcement of building codes and standards; permits for new homes, commercial buildings and solar systems are submitted digitally through the Citizen Self Service portal.",
+          "q": "Where do I find building permits in Temecula?",
+          "a": "The City of Temecula's Building and Safety Division handles plan review, inspections and the enforcement of building codes and standards. Permits for new homes, commercial buildings and solar systems are submitted digitally through its Citizen Self Service portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Temecula Community Development, Planning",
+          "url": "https://www.temeculaca.gov/340/Zoning",
+          "line": "A property's zoning designation shows in the City's online GIS tool and on its Zoning Map, and the regulations are in the Zoning Chapter of the Temecula Municipal Code; a formal Zoning Letter can be requested.",
+          "q": "Where is Temecula's zoning?",
+          "a": "The City of Temecula's online GIS tool and Zoning Map show a property's zoning designation, and the Zoning Chapter of the Temecula Municipal Code holds the regulations. The Planner of the Day answers questions by phone, and the Planning Department issues formal Zoning Letters on request."
+        }
+      ],
+      "built": 1998,
+      "value": 679700
+    },
+    "0650076": {
+      "name": "Murrieta",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Murrieta Development Services, Building and Safety Division",
+          "url": "https://www.murrietaca.gov/162/Building-Safety",
+          "line": "Administers building codes, fees, plan review and inspections; applications are submitted digitally through the Citizen Self-Service portal, a project needs an address and parcel number first, and the completeness check takes about 15 business days.",
+          "q": "Where do I find building permits in Murrieta?",
+          "a": "The City of Murrieta's Building and Safety Division administers building codes, fees, plan review and inspections. Permit applications are submitted digitally through its Citizen Self-Service portal, a project needs an address and assessor's parcel number before plans are submitted, and the completeness check takes approximately 15 business days."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Murrieta Development Services, Planning",
+          "url": "https://www.murrietaca.gov/288/Maps-Zoning-Information",
+          "line": "Holds the Murrieta Zoning Map and Land Use Map, and interactive GIS mapping that shows whether an address is within City limits; the City will update its zoning map for the land use changes adopted with the Murrieta General Plan 2035.",
+          "q": "Where is Murrieta's zoning?",
+          "a": "The City of Murrieta's Planning page holds the Murrieta Zoning Map and Land Use Map, and its interactive GIS mapping shows whether an address is within City limits. The City will be updating its zoning map to reflect the land use changes adopted with the Murrieta General Plan 2035."
+        }
+      ],
+      "built": 2000,
+      "value": 639800
+    },
+    "0680238": {
+      "name": "Tracy",
+      "county": "06077",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Tracy Community and Economic Development, Building Safety Division",
+          "url": "https://www.cityoftracy.org/Departments/Community-and-Economic-Development/Building-Safety",
+          "line": "Building permits are issued every working day at 333 Civic Center Plaza; residential permits can be applied for online through e-TRAKiT, which also tracks permits and schedules inspections.",
+          "q": "Where do I find building permits in Tracy?",
+          "a": "The City of Tracy's Building Safety Division issues building permits every working day at 333 Civic Center Plaza. Residential permits can be applied for online through e-TRAKiT, which also tracks permits and schedules inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Tracy Community and Economic Development, Planning Division",
+          "url": "https://www.cityoftracy.org/Departments/Community-and-Economic-Development/Planning",
+          "line": "Carries out the City's development policies, checking projects against its Specific Plans, the Zoning Code, the Growth Management Ordinance, Planned Unit Developments and the Design Guidelines; its section holds the Zoning and General Plan Maps.",
+          "q": "Where is Tracy's zoning?",
+          "a": "The City of Tracy's Planning Division implements the City's development policies, checking projects for conformance with its Specific Plans, Zoning Code, Growth Management Ordinance, Planned Unit Developments and Design Guidelines. Its pages hold the General Plan and Zoning Ordinance and the Zoning and General Plan Maps."
+        }
+      ],
+      "built": 1995,
+      "value": 699000
+    },
+    "0645484": {
+      "name": "Manteca",
+      "county": "06077",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Manteca Development Services, Building Safety",
+          "url": "https://www.manteca.gov/226/Building-Permits",
+          "line": "Residents and contractors obtain building permits, research permit histories and schedule inspections through the online Citizen Access portal; approved plans must be printed and kept on site for inspections.",
+          "q": "Where do I find building permits in Manteca?",
+          "a": "The City of Manteca issues building permits through its online Citizen Access portal, where residents and contractors can also research permit histories and schedule inspections. Approved plans and documents must be printed and kept on site for inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Manteca Development Services, Planning",
+          "url": "https://www.manteca.gov/249/Zoning-Ordinance-Title-17",
+          "line": "Title 17 of the Manteca Municipal Code holds the City's rules on land use, development and their permits; a draft comprehensive zoning code update addresses the 2043 General Plan Update and the 6th Cycle Housing Element.",
+          "q": "Where is Manteca's zoning?",
+          "a": "Manteca's zoning is Title 17 of the Manteca Municipal Code, the local laws on land use, development and development permits. A draft comprehensive zoning code update addresses the City's 2043 General Plan Update and its 6th Cycle Housing Element."
+        }
+      ],
+      "built": 1995,
+      "value": 589900
+    },
+    "0642202": {
+      "name": "Lodi",
+      "county": "06077",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lodi Community Development, Building Division",
+          "url": "https://www.lodi.gov/173/Building-Division",
+          "line": "Its Plan Check and Inspection sections guide builders through the California Building, Plumbing and Electrical Codes; residential permits can be applied for online through eTRAKiT, and the 2025 California Building Code took effect January 1, 2026.",
+          "q": "Where do I find building permits in Lodi?",
+          "a": "The City of Lodi's Building Division, through its Plan Check and Inspection sections, guides contractors, developers and property owners in meeting the California Building, Plumbing and Electrical Codes. Residential permits can be applied for online through eTRAKiT, and its monthly reports list permits issued, pending and finaled."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lodi Community Development, Planning Division",
+          "url": "https://www.lodi.gov/1261/Zoning",
+          "line": "Zoning regulations are in the Lodi Development Code, which says whether a use is allowed, needs a use permit or is not allowed, and sets setbacks, height and parking; the GIS Property Viewer Map shows a property's planning layers.",
+          "q": "Where is Lodi's zoning?",
+          "a": "Lodi's zoning regulations are in the Lodi Development Code, which says whether a use is allowed, needs a use permit or minor use permit, or is not allowed in each zone, and sets controls like setbacks, height and parking. The City's GIS Property Viewer Map shows a property's zoning under its Planning layers."
+        }
+      ],
+      "built": 1976,
+      "value": 492500
+    },
+    "0656784": {
+      "name": "Petaluma",
+      "county": "06097",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Petaluma, City Permits",
+          "url": "https://cityofpetaluma.org/city-permits/",
+          "line": "Permits are applied for and inspections scheduled in the online Planning and Permits Hub; building construction permits, zoning and planning permits, and permits for work in the public right-of-way each have their own contact.",
+          "q": "Where do I find building permits in Petaluma?",
+          "a": "The City of Petaluma takes permit applications and schedules inspections in its online Planning and Permits Hub. Its permits page lists when a permit is needed, from new construction and remodels to additions, with separate contacts for building, planning and zoning, and right-of-way permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Petaluma, Planning",
+          "url": "https://cityofpetaluma.org/zoning/",
+          "line": "The Zoning Ordinance divides the city into zones, each allowing specific activities and development, and sets rules on parking, landscaping and building height; the City suggests confirming a property's zoning before signing a lease or purchase agreement.",
+          "q": "Where is Petaluma's zoning?",
+          "a": "Petaluma's Zoning Ordinance divides the city into zones, each allowing specific activities and types of development, and sets requirements on parking, landscaping and building height. The City's Planning team answers zoning questions by email or in person at 11 English Street, given a property's address or Assessor's Parcel Number."
+        }
+      ],
+      "built": 1979,
+      "value": 878600
     }
   }
 }

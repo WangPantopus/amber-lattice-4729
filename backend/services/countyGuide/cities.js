@@ -32,6 +32,9 @@ const CITIES = [
   // November 24, 2026, sixth: Kirkland, Redmond, Federal Way and Auburn, WA (King County); Lakewood, WA; Lewisville and
   // Flower Mound, TX; Independence and Lee's Summit, MO; Evanston, IL.
   '5335940', '5357535', '5323515', '5303180', '5338038', '4842508', '4826232', '2935000', '2941348', '1724582',
+  // November 24, 2026, seventh: San Bernardino, Fontana, Rancho Cucamonga and Ontario (San Bernardino County); Temecula
+  // and Murrieta (Riverside County); Tracy, Manteca and Lodi (San Joaquin County); Petaluma (Sonoma County), CA.
+  '0665000', '0624680', '0659451', '0653896', '0678120', '0650076', '0680238', '0645484', '0642202', '0656784',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
