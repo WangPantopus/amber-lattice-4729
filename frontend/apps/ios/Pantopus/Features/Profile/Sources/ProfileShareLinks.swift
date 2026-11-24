@@ -98,8 +98,19 @@ struct ProfileShareLinksSection: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 ProfileBlockTitle(title: "Links for one purpose")
                     .padding(.horizontal, Spacing.s1)
+                if let note = share.linksNote {
+                    Text(note)
+                        .scaledFont(13)
+                        .foregroundStyle(Theme.Color.appText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(Spacing.s3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.Color.infoBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityIdentifier("profileShareLinksNote")
+                }
                 ProfileBlockCard(padded: false) {
-                    if enabled {
+                    // An older server closes a private profile's links: nothing is handed out then (v1.4).
+                    if enabled, share.linksOpen {
                         ForEach(Array(share.links.enumerated()), id: \.element.id) { index, link in
                             if index > 0 { ProfileRowDivider(inset: 0) }
                             ProfileTileRow(title: link.name, detail: link.detail) { onOpen(link) }
