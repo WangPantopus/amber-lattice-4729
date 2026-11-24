@@ -318,7 +318,11 @@ async function findCards(args, ctx) {
   const collection = holidayCards.COLLECTIONS.find((c) => c.id === args.collection) || null;
   const asked = wordsOf(args.query);
   let stamps = null;
-  if (mailStamps.enabled(ctx.userId)) {
+  // The Stamps wallet is in Mail, which the phones open only after their identity check: the count is read only once
+  // that check has passed (tools.js PRIVATE_TOOL_NAMES follows the same rule for Mail and the Wallet).
+  if (mailStamps.enabled(ctx.userId) && !ctx.identity) {
+    stamps = { each_card_uses: 1, count: 'Their stamp count shows on the card screen and in Mail, Stamps; it isn\'t read here.' };
+  } else if (mailStamps.enabled(ctx.userId)) {
     const balance = await mailStamps.balance(ctx.userId).catch(() => null);
     stamps = balance
       ? { each_card_uses: 1, free_left: Math.max(0, Number(balance.free_remaining) || 0), bought_left: Math.max(0, Number(balance.paid_remaining) || 0) }
