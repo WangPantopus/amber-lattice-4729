@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -17,6 +17,7 @@ import { RingMark, yearsText } from './RingArt';
 import PieceView from './PieceView';
 import PieceEditor, { type PieceEditorStart } from './PieceEditor';
 import OwnerWork from './OwnerWork';
+import RoleEditor from './RoleEditor';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -251,6 +252,8 @@ export default function SourcesProfile({
   const [editing, setEditing] = useState<PieceEditorStart | null>(null);
   // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
   const [tiesOn, setTiesOn] = useState(false);
+  // A role or school being added (`role: null`) or changed.
+  const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
   // Each new read of the page (after a change) reads the owner's offers again.
   const [pageRound, setPageRound] = useState(0);
   useEffect(() => { setPageRound((n) => n + 1); }, [page]);
@@ -429,6 +432,7 @@ export default function SourcesProfile({
 
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
+    onEditRole: owner ? (role: ProfileRoleLine) => setRoleEdit({ role }) : null,
     onDoor: onDoor ?? (() => {}),
     onConnect: onConnect ?? (() => {}),
   };
@@ -564,6 +568,7 @@ export default function SourcesProfile({
                     onOffer={(offer) => setEditing({ kind: 'offer', offer })}
                     onTies={setTiesOn}
                     onAnswered={() => onChanged?.()}
+                    onAddRole={() => setRoleEdit({ role: null })}
                   />
                 ) : null}
                 <Blocks blocks={blocks} ctx={ctx} keyPrefix={tab.key} />
@@ -630,6 +635,14 @@ export default function SourcesProfile({
           skillsSuggested={skillsSuggested}
           pinnedCount={pinnedCount}
           tiesOn={tiesOn}
+        />
+      ) : null}
+      {owner ? (
+        <RoleEditor
+          open={Boolean(roleEdit)}
+          role={roleEdit?.role ?? null}
+          onClose={() => setRoleEdit(null)}
+          onSaved={() => { setRoleEdit(null); onChanged?.(); }}
         />
       ) : null}
     </div>

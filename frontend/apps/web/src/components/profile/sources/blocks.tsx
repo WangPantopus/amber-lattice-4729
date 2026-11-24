@@ -6,7 +6,7 @@ import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
   ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
-  ProfileRecordChartBlock, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
+  ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
 import PinnedPostsRow from '@/components/profile/public/PinnedPostsRow';
 import { YouAndRows, linesFor } from '@/components/profile/public/YouAndSection';
@@ -35,6 +35,8 @@ export interface BlockContext {
   onConnect: () => void;
   /** Each piece's ink and whether it is pinned, for its dot on the work rings. */
   pieces: Map<string, { ink: ProfileInk; pinned: boolean }>;
+  /** The owner: change one of their roles ("Worked and learned"). */
+  onEditRole?: ((role: ProfileRoleLine) => void) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -129,6 +131,28 @@ function LinesBlock({ block, ctx }: { block: ProfileLinesBlock | ProfileOwnsBloc
   const lines = (block.lines || []).filter((line) => typeof line?.text === 'string' && line.text.trim());
   if (lines.length === 0) return null;
   const lane = RECORD_LANES[block.id];
+  // "Worked and learned" on the owner's own page: each role can be changed (or removed) from here.
+  if (block.id === 'worked_learned' && ctx.onEditRole) {
+    return (
+      <Section title={block.title}>
+        <ul className="flex flex-col gap-3">
+          {lines.map((line, i) => {
+            const role = line as unknown as ProfileRoleLine;
+            return (
+              <li key={role.id || i} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1"><InkLine line={line} target={ctx.target(line.link)} /></div>
+                {role.id ? (
+                  <button type="button" onClick={() => ctx.onEditRole!(role)} aria-label={`Change ${role.title || line.text}`} className="shrink-0 -mt-1 min-h-[2.75rem] px-2 text-[0.8125rem] font-semibold text-app-link hover:underline">
+                    Change
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+    );
+  }
   return (
     <Section title={block.title} titleClass={lane ? LANE_TITLE[lane] : ''} aside={'more' in block ? <MoreLink more={block.more} ctx={ctx} /> : null}>
       <div className="flex flex-col gap-3">

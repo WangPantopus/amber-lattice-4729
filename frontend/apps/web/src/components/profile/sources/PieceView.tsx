@@ -199,6 +199,43 @@ function NameOff({ credit, onDone }: { credit: ProfileCredit; onDone: () => void
   );
 }
 
+/** The signer's two choices, changed later (p2.7 `mine`): show it on my Work, my name on pages opened by a link. */
+function WhatShows({ credit }: { credit: ProfileCredit }) {
+  const [onWork, setOnWork] = useState(Boolean(credit.mine?.show_on_my_work));
+  const [onLinks, setOnLinks] = useState(Boolean(credit.mine?.show_name_on_links));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const save = async (body: { show_on_my_work?: boolean; show_name_on_links?: boolean }) => {
+    setBusy(true); setNote(null);
+    try {
+      const saved = await api.profilePage.updateTie(credit.id, body);
+      setOnWork(saved.show_on_my_work);
+      setOnLinks(saved.show_name_on_links);
+      setNote('Saved.');
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t save that. Try again.'));
+    }
+    setBusy(false);
+  };
+  const row = 'flex items-start gap-3 min-h-[2.75rem] py-1 cursor-pointer';
+  return (
+    <div className="mt-2 rounded-xl bg-app-surface-sunken px-3.5 py-2.5 flex flex-col gap-1">
+      <label className={row}>
+        <input type="checkbox" checked={onWork} disabled={busy} onChange={(e) => save({ show_on_my_work: e.target.checked })} className="mt-0.5 w-5 h-5 accent-[color:var(--color-link)]" />
+        <span className="text-[0.9375rem] leading-5 text-app">Show this piece on my Work too</span>
+      </label>
+      <label className={row}>
+        <input type="checkbox" checked={onLinks} disabled={busy} onChange={(e) => save({ show_name_on_links: e.target.checked })} className="mt-0.5 w-5 h-5 accent-[color:var(--color-link)]" />
+        <span className="text-[0.9375rem] leading-5 text-app">
+          Show my name on pages opened by a link
+          <span className="block text-xs leading-4 text-app-muted">Off: those pages say what you did, not who you are.</span>
+        </span>
+      </label>
+      {note ? <p role="status" className="text-xs leading-4 text-app-secondary">{note}</p> : null}
+    </div>
+  );
+}
+
 /** "Who was on it" (board 8): the person first, then each credit as the server names it. */
 function Credits({ piece, owner, credits, target, viewerId, onNameOff }: {
   piece: Piece; owner: { name: string; portraitUrl: string | null }; credits: ProfileCredit[];
@@ -237,14 +274,18 @@ function Credits({ piece, owner, credits, target, viewerId, onNameOff }: {
             </span>
           );
           return (
-            <li key={credit.id} className="flex items-center gap-3 px-5 py-2.5">
-              {opens ? <Opens target={opens} className="!w-auto min-w-0 flex-1 rounded-lg">{who}</Opens> : who}
-              <span className="shrink-0 flex flex-col items-end">
-                <span className="inline-flex items-center gap-1.5 text-[0.8125rem] text-app-secondary">
-                  {status ? status : <><InkGlyph ink={ink} inline />{howText(ink)}</>}
+            <li key={credit.id} className="px-5 py-2.5">
+              <div className="flex items-center gap-3">
+                {opens ? <Opens target={opens} className="!w-auto min-w-0 flex-1 rounded-lg">{who}</Opens> : who}
+                <span className="shrink-0 flex flex-col items-end">
+                  <span className="inline-flex items-center gap-1.5 text-[0.8125rem] text-app-secondary">
+                    {status ? status : <><InkGlyph ink={ink} inline />{howText(ink)}</>}
+                  </span>
+                  {mine ? <NameOff credit={credit} onDone={onNameOff} /> : null}
                 </span>
-                {mine ? <NameOff credit={credit} onDone={onNameOff} /> : null}
-              </span>
+              </div>
+              {/* The signer's own row: what they chose when signing, to change now. */}
+              {mine && credit.mine ? <WhatShows credit={credit} /> : null}
             </li>
           );
         })}

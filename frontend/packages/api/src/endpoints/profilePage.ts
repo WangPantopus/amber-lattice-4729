@@ -249,6 +249,8 @@ export interface ProfileCredit {
   how: string | null;
   /** The owner's view only: `asked`, `signed`, `did_not_confirm`. */
   status?: string | null;
+  /** The signer's own signed credit only (p2.7): what they chose, to change with `updateTie`. */
+  mine?: { show_on_my_work: boolean; show_name_on_links: boolean } | null;
 }
 
 /** An attachment on a piece (P2.2). */
@@ -637,6 +639,9 @@ export interface ProfileAsk {
   role: string | null;
   relation?: string | null;
   asked_at: string;
+  /** A role ask (p2.6): the business the person owns, asked to confirm, and the years. */
+  business?: { name: string | null; user_id: string | null; username: string | null; picture_url: string | null } | null;
+  when?: string | null;
 }
 
 /** Name a person (`user_id`: a connection, or the other party of the job or plan; they are asked) or type a name. */
@@ -661,7 +666,47 @@ export async function declineAsk(id: string): Promise<{ id: string; status: stri
   return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/decline`, {});
 }
 
+/** The signer changes their two choices later (p2.6). */
+export async function updateTie(id: string, body: { show_on_my_work?: boolean; show_name_on_links?: boolean }): Promise<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }> {
+  return patch<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`, body);
+}
+
 /** The signer takes their name off a piece (or a role). */
 export async function removeTie(id: string): Promise<{ id: string; removed: boolean }> {
   return del<{ id: string; removed: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`);
+}
+
+// ── Phase 2: roles and schools ("Worked and learned", CONTRACT P2.6, p2.6; behind PROFILE_TIES) ──
+
+/** A role line in the `worked_learned` block (and Record's work lines). The owner's view adds `status`. */
+export interface ProfileRoleLine extends ProfileLine {
+  id: string;
+  title: string;
+  relation: 'worked' | 'learned' | string;
+  from: string | null;
+  to: string | null;
+  where: { name: string | null; user_id: string | null; username: string | null; picture_url: string | null; typed: boolean | null } | null;
+  status?: string | null;
+}
+
+export interface ProfileRoleFields {
+  title: string;
+  /** A business on Pantopus (asked to confirm through its owners) or a typed place, which stays Said. */
+  where?: { business_user_id: string } | { name: string };
+  relation: 'worked' | 'learned';
+  from: string;
+  to: string | null;
+}
+
+export async function createRole(fields: ProfileRoleFields): Promise<ProfileRoleLine> {
+  return post<ProfileRoleLine>('/api/profile-page/me/roles', fields);
+}
+
+/** Title, relation, from and to; the place can't change (remove the role and add it again). */
+export async function updateRole(id: string, fields: Partial<Omit<ProfileRoleFields, 'where'>>): Promise<ProfileRoleLine> {
+  return patch<ProfileRoleLine>(`/api/profile-page/me/roles/${encodeURIComponent(id)}`, fields);
+}
+
+export async function deleteRole(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/roles/${encodeURIComponent(id)}`);
 }
