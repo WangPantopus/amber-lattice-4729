@@ -132,7 +132,7 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     rowsRead,
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
-  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn });
+  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn, owner: opened.view === 'owner' });
   const inCommon = inCommonRead && !(rows.blocked_by_them || rows.blocked_by_viewer) ? inCommonRead : null;
   const ctx = contextFrom(opened, rows.share || null, found);
   if (keyed) {
@@ -176,27 +176,24 @@ async function getMonth(req, lookup, month) {
 async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
   const viewing = keyed || req.query?.as !== undefined ? null : (req.user?.id || null);
-  const rowsRead = personRows(found.userData.id, viewing);
-  const [opened, rows, pieceRead] = await Promise.all([
+  const signedIn = Boolean(req.user?.id) && !keyed && req.query?.as === undefined;
+  const rowsRead = personRows(found.userData.id, viewing, { reviewers: signedIn });
+  const [opened, rows] = await Promise.all([
     openFor(req, found, keyed ? { viewOverride: 'link', keyed: true, rows: rowsRead } : { rows: rowsRead }),
     rowsRead,
-    supabaseAdmin.from('UserPortfolio')
-      .select('id, user_id, title, description, portfolio_type, media_urls, thumbnail_url, file_ids, skills_used, '
-        + 'external_url, github_url, demo_url, completed_at, created_at, is_visible')
-      .eq('id', pieceId)
-      .eq('user_id', found.userData.id)
-      .eq('is_visible', true)
-      .maybeSingle(),
   ]);
   const missing = () => new PageRefusal(404, 'PIECE_NOT_FOUND', 'That piece isn\'t here.');
-  if (pieceRead.error) {
-    if (pieceRead.error.code === '22P02') throw missing();
-    throw pieceRead.error;
-  }
-  if (!pieceRead.data) throw missing();
   const ctx = contextFrom(opened, rows.share || null, found);
   if (keyed) ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
-  const answer = composePiece(ctx, pieceRead.data);
+  // The owner may open their drafts and hidden pieces; nobody else's rows carry them (sources.js).
+  const owner = ctx.view === 'owner';
+  const candidates = owner ? [...(rows.pieces || []), ...(rows.owner_only_pieces || [])] : (rows.pieces || []);
+  const row = candidates.find((r) => String(r.id) === String(pieceId));
+  if (!row) throw missing();
+  const sources = await sourcesFrom(String(found.userData.id), rows, { pinned: false, owner });
+  const { attachmentsOf } = require('./pieces');
+  const attachments = await attachmentsOf(row);
+  const answer = composePiece(ctx, row, { attachments, reviews: sources.reviews?.rows || [] });
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
 }
@@ -225,8 +222,9 @@ async function visitorFrom(loaded) {
     relationship: 'none',
     canMessage: false,
   };
-  const visitorSources = { ...loaded.sources, pinned: null };
-  return composePage(visitorCtx, visitorSources, { record: loaded.record, inCommon: null });
+  // The visitor's own sources and record: the owner's carry drafts and hidden pieces, a visitor's never do.
+  const visitorSources = await sourcesFrom(String(ctx.userData.id), rows, { pinned: false, owner: false });
+  return composePage(visitorCtx, visitorSources, { record: buildRecord(visitorCtx, visitorSources, { now: new Date() }), inCommon: null });
 }
 
 async function shareBody(req) {

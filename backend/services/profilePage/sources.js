@@ -107,8 +107,9 @@ function professionalFrom(row) {
 }
 
 /** One person's rows, shaped as the composer reads them (compose.buildRecord). */
-async function sourcesFrom(userId, rows, { pinned = true } = {}) {
+async function sourcesFrom(userId, rows, { pinned = true, owner = false } = {}) {
   if (!rows) return {};
+  // Hidden and draft pieces are the owner's alone (SPEC phase 2A): nobody else's rows ever carry them.
   return {
     homes: await homesFrom(rows),
     paidJobs: rows.paid_jobs || [],
@@ -117,7 +118,8 @@ async function sourcesFrom(userId, rows, { pinned = true } = {}) {
     professional: professionalFrom(rows.professional),
     businesses: rows.businesses || [],
     skills: rows.skills || [],
-    pieces: rows.pieces || [],
+    pieces: owner ? [...(rows.pieces || []), ...(rows.owner_only_pieces || [])] : (rows.pieces || []),
+    tools: rows.tools || null,
     plansHosted: rows.plans || [],
     supportTrains: (rows.trains || []).map((t) => ({ support_train_id: t.support_train_id, created_at: t.created_at, slot: { slot_date: t.slot_date } })),
     helpful: { count: Number(rows.helpful_count) || 0, months: rows.helpful_months || [] },
