@@ -839,10 +839,16 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
 
   // Funnel: the aha rate (D1) — which card led, and whether it was the
   // calm fallback. Section id, tone and grade only; never the address.
+  // Counted once per submit for every preview that shows the card, as
+  // t0_preview_viewed counts every preview: a ready one, or a partial one
+  // once no retry of its failed cards is coming (the lead card can change on
+  // a retry). Counting ready previews alone left partial lookups out.
   const aha = previewQuery.data?.aha ?? null;
   const viewedAha = useRef<string | null>(null);
+  const settled = previewStatus === 'ready' || (previewStatus === 'partial' && !previewQuery.isFetching
+    && (!previewQuery.data?.sections?.some((section) => section.status === 'error') || recovery.current.attempts >= 2));
   useEffect(() => {
-    if (submitted && previewStatus === 'ready' && aha && viewedAha.current !== submitted) {
+    if (submitted && settled && aha && viewedAha.current !== submitted) {
       viewedAha.current = submitted;
       api.recordFunnelEvent('t0_aha_viewed', {
         section_id: aha.section_id ?? '',
@@ -850,7 +856,7 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
         grade: aha.grade ?? '',
       });
     }
-  }, [submitted, previewStatus, aha]);
+  }, [submitted, settled, aha]);
 
   const [continuationError, setContinuationError] = useState('');
   const goBrowse = () => {
