@@ -191,12 +191,19 @@ async function offeredFor(userId, rows) {
     supabaseAdmin.from('Gig').select('id, title, user_id, owner_confirmed_at, worker_completed_at, updated_at')
       .eq('accepted_by', userId).eq('status', 'completed').in('payment_status', PAID_STATUSES)
       .order('updated_at', { ascending: false }).limit(50),
-    supabaseAdmin.from('Plan').select('post_id, ended_at, post:post_id ( title, content )')
+    supabaseAdmin.from('Plan').select('post_id, ended_at')
       .eq('host_user_id', userId).eq('status', 'ended').order('ended_at', { ascending: false }).limit(50),
   ]);
   if (gigs.error) throw gigs.error;
   if (plans.error) throw plans.error;
   const openGigs = (gigs.data || []).filter((g) => !usedGigs.has(String(g.id)));
+  const openPlans = (plans.data || []).filter((p) => !usedPlans.has(String(p.post_id)));
+  const titles = new Map();
+  if (openPlans.length) {
+    const { data, error: postError } = await supabaseAdmin.from('Post').select('id, title, content').in('id', openPlans.map((p) => p.post_id));
+    if (postError) throw postError;
+    for (const post of data || []) titles.set(String(post.id), String(post.title || post.content || 'A plan').trim().slice(0, 60));
+  }
   // The people who hired them, by the name others see (shown to the owner only, never on the piece).
   const posterIds = [...new Set(openGigs.map((g) => g.user_id).filter(Boolean))];
   const names = new Map();
@@ -214,8 +221,8 @@ async function offeredFor(userId, rows) {
       return { kind: 'gig', id: g.id, title: g.title || 'A paid job', when: day(at), with: who || null,
         text: who ? `You completed a paid job for ${who} on ${short(at)}.` : `You completed a paid job on ${short(at)}.` };
     }),
-    ...(plans.data || []).filter((p) => !usedPlans.has(String(p.post_id))).map((p) => {
-      const title = String(p.post?.title || p.post?.content || 'A plan').trim().slice(0, 60);
+    ...openPlans.map((p) => {
+      const title = titles.get(String(p.post_id)) || 'A plan';
       return { kind: 'plan', id: p.post_id, title, when: day(p.ended_at), with: null, text: `You hosted ${title} on ${short(p.ended_at)}.` };
     }),
   ];
