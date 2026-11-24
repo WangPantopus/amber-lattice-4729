@@ -1705,6 +1705,143 @@
           "via": "https://www.dentoncounty.gov/262/Recording-Division"
         }
       ]
+    },
+    "12115": {
+      "read": "2026-11-23",
+      "property_search_office": "Sarasota County Property Appraiser, Property Search",
+      "property_search_url": "https://www.sarasotapropertyappraiser.gov/search/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Sarasota County Clerk of the Circuit Court and County Comptroller, Official Records",
+          "url": "https://secure.sarasotaclerk.com/OfficialRecords.aspx",
+          "line": "Searches the county's official records: deeds, mortgages, liens and judgments, and plats.",
+          "q": "Where are deeds recorded in Sarasota County?",
+          "a": "The Sarasota County Clerk of the Circuit Court and County Comptroller records deeds and keeps the county's official records. Its official records search finds deeds, mortgages, liens and judgments."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Sarasota County Tax Collector",
+          "url": "https://www.sarasotataxcollector.gov/services/tax-services/property-tax",
+          "line": "Bills are payable November 1, with a 4% discount in November down to 1% in February; the full amount is due by March 31.",
+          "q": "Where do I pay property tax in Sarasota County?",
+          "a": "The Sarasota County Tax Collector collects property tax. Bills are payable from November 1, with a discount for paying early (4% in November, down to 1% in February), and the full amount is due by March 31."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alerts",
+          "office": "Sarasota County Clerk of the Circuit Court and County Comptroller",
+          "url": "https://secure.sarasotaclerk.com/ORFraudAlerts.aspx",
+          "line": "Emails a person within 24 hours whenever a document is recorded in Sarasota County with their personal or business name; the Clerk charges no fee for it."
+        }
+      ]
+    },
+    "12117": {
+      "read": "2026-11-23",
+      "property_search_office": "Seminole County Property Appraiser, Real Property Search",
+      "property_search_url": "https://www.scpafl.org/search/parcels",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Seminole County Clerk of the Circuit Court & Comptroller, Official Records",
+          "url": "https://www.seminoleclerk.org/home/official-records/",
+          "line": "Records deeds, mortgages, liens, plats and the county's other official records, in person or by mail.",
+          "q": "Where are deeds recorded in Seminole County?",
+          "a": "The Seminole County Clerk of the Circuit Court & Comptroller records deeds, mortgages, liens and plats in the county's Official Records, in person or by mail."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Seminole County Tax Collector",
+          "url": "https://seminolecounty.tax/services/property-taxes/property-and-tangible-taxes/",
+          "line": "Prints, mails and collects tax bills in November once the Property Appraiser certifies the roll; its site searches and pays a bill.",
+          "q": "Where do I pay property tax in Seminole County?",
+          "a": "The Seminole County Tax Collector mails tax bills in November, once the Property Appraiser certifies the tax roll, and collects them. Its site searches and pays a bill."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alerts",
+          "office": "Seminole County Clerk of the Circuit Court & Comptroller",
+          "url": "https://www.seminoleclerk.org/property-fraud-alerts/",
+          "line": "Notifies a subscriber when a name they submitted is used in a recording in the Official Records; the Clerk charges no fee for it."
+        }
+      ]
+    },
+    "08001": {
+      "read": "2026-11-23",
+      "property_search_office": "Adams County Assessor, Property Search Portal",
+      "property_search_url": "https://gisapp.adcogov.org/PropertySearch",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Adams County Clerk & Recorder, Recording Department",
+          "url": "https://adamscountyco.gov/our-county/elected-officials/clerk-recorder/recording/",
+          "line": "Records and keeps real estate records, maps and plats, indexes every recorded document by grantor and grantee, and provides copies on request.",
+          "q": "Where are deeds recorded in Adams County, Colorado?",
+          "a": "The Recording Department of the Adams County Clerk & Recorder records deeds and keeps real estate records, maps and plats. It indexes every recorded document by grantor and grantee and provides copies on request."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Adams County Treasurer & Public Trustee",
+          "url": "https://adamscountyco.gov/our-county/elected-officials/treasurer-public-trustee/treasurer-division/property-tax-information/",
+          "line": "Sends the tax bills, collects payments and pays the money out to the schools, cities and districts that levy it.",
+          "q": "Where do I pay property tax in Adams County, Colorado?",
+          "a": "The Adams County Treasurer sends property tax bills, collects payments and distributes the money to the school districts, cities and special districts that levy it. The Assessor sets each property's value."
+        }
+      ]
+    },
+    "11001": {
+      "read": "2026-11-23",
+      "property_search_office": "District of Columbia Office of Tax and Revenue, Real Property Tax Database Search",
+      "property_search_url": "https://otr.cfo.dc.gov/page/real-property-tax-database-search",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "District of Columbia Recorder of Deeds, Office of Tax and Revenue",
+          "url": "https://otr.cfo.dc.gov/page/recorder-deeds",
+          "line": "Keeps the District's official land and property records; its page links to a search of recorded documents and images back to August 1921, on a private website the District does not run.",
+          "q": "Where are deeds recorded in the District of Columbia?",
+          "a": "The Recorder of Deeds, part of the District's Office of Tax and Revenue, records deeds and keeps the official land and property records. Its page links to a search of recorded documents and images back to August 1921, on a private website the District does not run."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "District of Columbia Office of Tax and Revenue",
+          "url": "https://otr.cfo.dc.gov/page/real-property-payments-billing",
+          "line": "Its payments page leads to paying real property tax online, by mail or in person, to the bill due dates and to signing up for electronic bill notices.",
+          "q": "Where do I pay property tax in the District of Columbia?",
+          "a": "The District's Office of Tax and Revenue collects real property tax. Its payments page leads to paying online, by mail or in person, to the bill due dates and to signing up for electronic bill notices."
+        }
+      ]
+    },
+    "51540": {
+      "read": "2026-11-23",
+      "property_search_office": "Charlottesville City Assessor, Charlottesville Property Site",
+      "property_search_url": "https://gisweb.charlottesville.org/GisViewer/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deed filing and court records",
+          "office": "Charlottesville Circuit Court Clerk's Office",
+          "url": "https://www.charlottesville.gov/178/Online-Resources",
+          "line": "Its page has the deed filing fee calculator and says remote access to its public court records is through a third-party vendor, paid per view."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Charlottesville City Treasurer",
+          "url": "https://www.charlottesville.gov/571/Real-Estate-Taxes",
+          "line": "Collects real estate tax in equal installments due June 5 and December 5, by mail or online.",
+          "q": "Where do I pay property tax in Charlottesville?",
+          "a": "The Charlottesville City Treasurer collects real estate tax in two equal installments, due June 5 and December 5, by mail or online. The City Assessor sets each property's value."
+        }
+      ]
     }
   }
 }
