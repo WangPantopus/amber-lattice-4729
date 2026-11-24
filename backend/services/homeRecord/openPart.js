@@ -192,7 +192,7 @@ const LOWEST_SALE_PRICE = 1000;
  * What the record holds for this home that opens for its owner, as `closed_group` items (SPEC rule 1: only where we hold
  * it; rule 2: a name and one line). `extras`: what was read beside the record ({ similar, estimate }).
  */
-function closedItems(copy, { similar = null, estimate = null, years = null } = {}) {
+function closedItems(copy, { similar = null, estimate = null, years = null, ground = null } = {}) {
   const facts = copy?.facts || {};
   const exact = copy?.match === 'exact';
   const money = [];
@@ -226,6 +226,13 @@ function closedItems(copy, { similar = null, estimate = null, years = null } = {
   if (years && years.count > 1) {
     changes.push({ icon: 'image', title: 'Your lot through the years', line: `${years.count} photos from above, ${years.first} to ${years.last}` });
   }
+
+  // Only the parts that answered for this point are named.
+  const groundParts = ground ? [
+    ground.soil ? 'soil' : null, ground.soil && ground.soil.slope !== null ? 'slope' : null, ground.elevation ? 'elevation' : null,
+    ground.levee ? 'levees' : null, ground.dams ? 'dams' : null,
+  ].filter(Boolean) : [];
+  if (groundParts.length) house.push({ icon: 'layers', title: 'Ground under your home', line: listWords(groundParts) });
 
   if (positive(facts.year_built)) {
     house.push({ icon: 'home', title: 'Roof, heating, water heater, panel', line: 'Ages against their typical service life' });

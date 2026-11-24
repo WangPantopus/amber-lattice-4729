@@ -16,6 +16,7 @@ const { stateCode } = require('../propertyRecords/addressKey');
 const { SALE_PRICES_NOT_PUBLIC } = require('../../data/valuePractice');
 const logger = require('../../utils/logger');
 const recordingAlerts = require('./recordingAlerts');
+const { groundBlock } = require('./ground');
 const { recordSource } = require('./openPart');
 const { positive, grouped, money, dateLabel } = require('./words');
 
@@ -255,9 +256,10 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
       taxBlock(copy),
       similarBlock(copy, extras.similar),
       systems,
+      groundBlock(extras.ground),
       lotBlock(copy),
     ]
-    : [above, systems];
+    : [above, systems, groundBlock(extras.ground)];
   const protect = [copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions].filter(Boolean);
   return [
     ...blocks,

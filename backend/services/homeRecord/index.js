@@ -26,6 +26,7 @@ const placeIntelligenceService = require('../placeIntelligenceService');
 const authority = require('../homeDashboardService');
 const open = require('./openPart');
 const aerial = require('./aerial');
+const ground = require('./ground');
 const { ownerBlocks } = require('./ownerPart');
 const { check } = require('./contract');
 const { FOOTERS } = require('./words');
@@ -114,9 +115,10 @@ function answer(state, header, blocks) {
  */
 async function forLookup(place, { flood }) {
   const address = { line1: place.line, unit: null, city: place.city, state: place.state, zip: place.zipcode };
-  const [copy, read] = await Promise.all([
+  const [copy, read, under] = await Promise.all([
     place.line ? recordForAddress(address) : null,
     open.readings({ lat: place.lat, lng: place.lng }, { flood }),
+    groundAt({ lat: place.lat, lng: place.lng }),
   ]);
   const [extras, { above, years }] = await Promise.all([
     extrasWithin(copy, { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode }),
@@ -126,7 +128,7 @@ async function forLookup(place, { flood }) {
     above,
     open.factsBlock(copy),
     open.metersBlock(read),
-    ...open.closedPart(open.closedItems(copy, { ...extras, years }), {
+    ...open.closedPart(open.closedItems(copy, { ...extras, years, ground: under }), {
       // No Home yet, so no id: each app opens Add Home at the looked-up address when signed in, and the lookup's own
       // sign-up (which keeps the address) when signed out (~/pantopus-home-record/DECISIONS.md, 11-22).
       button: { label: 'Verify you own this home', url: '/homes/claim-owner' },
@@ -176,14 +178,17 @@ async function copyForHome(row) {
   }
 }
 
+// The ground's readings for a point, each on the section budget. Null without a point.
+const groundAt = (point) => (point ? ground.readingsAt(point, (read) => withinBudget(read, 'ground')) : null);
+
 async function openFor(row, flood, { owner = false } = {}) {
   const point = pointOf(row);
-  const [copy, read] = await Promise.all([copyForHome(row), point ? open.readings(point, { flood }) : noReadings]);
+  const [copy, read, under] = await Promise.all([copyForHome(row), point ? open.readings(point, { flood }) : noReadings, groundAt(point)]);
   const [extras, pictured] = await Promise.all([
     extrasWithin(copy, row),
     owner ? pictureForOwner(point, copy).then((above) => ({ above, years: null })) : pictureForViewer(point, copy),
   ]);
-  return { copy, read, extras: { ...extras, years: pictured.years }, above: pictured.above };
+  return { copy, read, extras: { ...extras, years: pictured.years, ground: under }, above: pictured.above };
 }
 
 /**
