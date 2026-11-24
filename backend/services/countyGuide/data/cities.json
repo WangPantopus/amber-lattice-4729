@@ -60,6 +60,33 @@
       "built": 1989,
       "value": 451100
     },
+    "1214250": {
+      "name": "Coral Gables",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Coral Gables Development Services, Building Division",
+          "url": "https://www.coralgables.com/department/development-services",
+          "line": "The Building Division is in charge of the permitting process and the Florida Building Code related plan review and inspections; permits are applied for, searched and paid for by category from this page.",
+          "q": "Where do I find building permits in Coral Gables?",
+          "a": "The City of Coral Gables' Building Division, in the Development Services Department, is in charge of the permitting process and the Florida Building Code related plan review and inspections. The Development Services page lets people apply, search and pay for permits by category, and schedule and check inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Coral Gables Development Services, Planning & Zoning Division",
+          "url": "https://www.coralgables.com/department/development-services/planning-and-zoning-division/services/zoning-code-and-map",
+          "line": "The City's Zoning Code, an interactive 3D Zoning Map and a Parcel Zoning Check that looks up zoning and property data, on a platform the City launched with Gridics, LLC.",
+          "q": "Where is Coral Gables' zoning?",
+          "a": "The City of Coral Gables, in conjunction with Gridics, LLC, launched a zoning code and map platform holding the City's Zoning Code, an interactive 3D Zoning Map and a Parcel Zoning Check to look up zoning and property data. The map combines zoning district designations, future land use classifications and other data layers."
+        }
+      ],
+      "built": 1969,
+      "value": 1089900
+    },
     "1217935": {
       "name": "Doral",
       "county": "12086",
@@ -548,6 +575,33 @@
       "built": 1953,
       "value": 481200
     },
+    "1751089": {
+      "name": "Mount Prospect",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Mount Prospect Community Development, Building & Inspection Services",
+          "url": "https://www.mountprospect.org/departments/community_development/about_the_department/index.php",
+          "line": "Takes permit applications electronically through the Online Portal; the building codes adopted February 15, 2022 include the 2021 International Building Code and the 2021 International Residential Code.",
+          "q": "Where do I find building permits in Mount Prospect?",
+          "a": "The Village of Mount Prospect's Building & Inspection Services takes permit applications electronically through its Online Portal and lists the building codes adopted February 15, 2022, including the 2021 International Building Code and the 2021 International Residential Code. All commercial projects require architecturally stamped plans, while some residential projects require an Architect or a Licensed Professional."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Mount Prospect Community Development, Zoning and GIS",
+          "url": "https://www.mountprospect.org/departments/community_development/zoning_and_gis.php",
+          "line": "The Village's zoning regulations are in Chapter 14 of the Village Code; searching an address in the online GIS Map Viewer gives a printable report on a property's zoning, and the page links the zoning maps.",
+          "q": "Where is Mount Prospect's zoning?",
+          "a": "The Village of Mount Prospect's zoning regulations are found in Chapter 14 of the Village Code. Searching an address in the Village's online GIS Map Viewer gives a printable report on a property's zoning, and the Zoning and GIS page links the zoning maps and the Land Use Table of Permitted and Conditional Uses for the zoning districts."
+        }
+      ],
+      "built": 1969,
+      "value": 397400
+    },
     "1754820": {
       "name": "Oak Lawn",
       "county": "17031",
@@ -683,6 +737,33 @@
       ],
       "built": 1952,
       "value": 294500
+    },
+    "2906652": {
+      "name": "Blue Springs",
+      "county": "29095",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Blue Springs Development Department, Codes Administration",
+          "url": "https://www.bluespringsmo.gov/business_development/building_construction.php",
+          "line": "The City Development Department helps property owners and contractors with building permits, construction plan review and inspections; Codes Administration asks to be contacted early to confirm the requirements for a project.",
+          "q": "Where do I find building permits in Blue Springs?",
+          "a": "The City of Blue Springs' Development Department helps property owners and contractors navigate building permits, construction plan review and inspections. Codes Administration asks to be contacted early to discuss proposed work and confirm the requirements that apply, and the Permit & Application Center has the building permit submittal instructions."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Blue Springs Planning Division",
+          "url": "https://www.bluespringsmo.gov/business_development/zoning.php",
+          "line": "The Blue Springs GIS Map Viewer looks up a property by address and shows its parcel and zoning information; Planning Division staff can verify the zoning assigned to a property, and the zoning regulations are in the Municipal Code.",
+          "q": "Where is Blue Springs' zoning?",
+          "a": "In Blue Springs, the City's GIS Map Viewer looks up a property by address and shows the available parcel and zoning information, and Planning Division staff can verify the zoning assigned to a property or parcel. Even where a parcel's zoning category is appropriate for a project, there may be additional development requirements, and the zoning regulations are in the Municipal Code."
+        }
+      ],
+      "built": 1986,
+      "value": 263100
     },
     "2935000": {
       "name": "Independence",
@@ -875,6 +956,33 @@
       ],
       "built": 1984,
       "value": 188000
+    },
+    "3744220": {
+      "name": "Mooresville",
+      "county": "37097",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Town of Mooresville Building Permitting & Inspections Department",
+          "url": "https://mooresvillenc.gov/government/departments/building_permitting___inspections/index.php",
+          "line": "Created in 2023 so Town residents no longer travel to Statesville for permits from the Iredell County Building Standards Division; it enforces the North Carolina State Building Codes through plan review, issuance of permits and inspections, and takes permits and plans through its online portal.",
+          "q": "Where do I find building permits in Mooresville?",
+          "a": "The Town of Mooresville's Building Permitting & Inspections Department, created in 2023, helps residents submit plans, receive permits and undergo inspections, so Town residents no longer travel to Statesville to get permits from the Iredell County Building Standards Division. It administers and enforces the North Carolina State Building Codes through plan review, issuance of permits and inspections, and permits and plans are submitted through its online permitting portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Town of Mooresville Planning and Community Development, Planning",
+          "url": "https://www.mooresvillenc.gov/government/departments/planning___community_development/planning.php",
+          "line": "Planning staff guide property owners, developers and business owners on property development, rezonings and permitting to ensure compliance with the Unified Development Ordinance; permitting and plans submittals go through idtPlans.",
+          "q": "Where is Mooresville's zoning?",
+          "a": "The Town of Mooresville's planning staff work with property owners, developers, design professionals and business owners on property development, rezonings, permitting and annexation, to ensure compliance with the Unified Development Ordinance and other Town policies and plans. The page links the Unified Development Ordinance, adopted October 5, 2026, and the Town uses the online platform idtPlans for permitting and plans submittals."
+        }
+      ],
+      "built": 2006,
+      "value": 390900
     },
     "3912000": {
       "name": "Canton",
@@ -1287,6 +1395,33 @@
       "built": 1997,
       "value": 348200
     },
+    "4820092": {
+      "name": "DeSoto",
+      "county": "48113",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of DeSoto Development Services, Building Inspection Division",
+          "url": "https://www.desototexas.gov/462/Building-Inspections",
+          "line": "Handles plan review, permit issuance, public consultation and on-site inspections to verify compliance with the adopted codes; permits are managed through the City's Customer Self-Service (CSS) Portal.",
+          "q": "Where do I find building permits in DeSoto?",
+          "a": "The City of DeSoto's Building Inspection Division handles plan review, permit issuance, public consultation and on-site inspections to verify compliance with the adopted codes, and processes Certificate of Occupancy applications. Projects are managed through the City's Customer Self-Service (CSS) Portal, with step-by-step instructions on its Permit Application Submission page."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of DeSoto Development Services, Planning & Zoning",
+          "url": "https://www.desototexas.gov/467/Planning-Zoning",
+          "line": "Administers and interprets the Comprehensive Zoning Ordinance, maintains and updates the official Zoning Ordinance and Zoning Maps, and reviews zoning change requests, notifying property owners.",
+          "q": "Where is DeSoto's zoning?",
+          "a": "The City of DeSoto's Planning & Zoning division administers and interprets the Comprehensive Zoning Ordinance and maintains and updates the official Zoning Ordinance and Zoning Maps. It reviews and processes zoning change requests, publishing the required public notices and notifying property owners, and sets the agendas for the Planning and Zoning Commission."
+        }
+      ],
+      "built": 1993,
+      "value": 319400
+    },
     "4826232": {
       "name": "Flower Mound",
       "county": "48121",
@@ -1509,6 +1644,33 @@
       "built": 1982,
       "value": 1340300
     },
+    "5308850": {
+      "name": "Burien",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Burien Community Development, Permit Center",
+          "url": "https://www.burienwa.gov/business/community_development/permit_center",
+          "line": "Oversees the intake, review, tracking and issuing of land use, building and construction permits; most new construction, alterations and repairs related to an existing structure or system need a permit, and plans go in as PDF files through MyBuildingPermit.",
+          "q": "Where do I find building permits in Burien?",
+          "a": "The City of Burien's Permit Center oversees the intake, review, tracking and issuing of land use, building and construction permits, with staff from the Planning, Building and Public Works Departments. In general, most new construction, alterations and repairs related to an existing structure or system require a permit, and plans are submitted as PDF files online through MyBuildingPermit, where permits are also issued."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Burien Community Development, Land Use Review",
+          "url": "https://www.burienwa.gov/business/community_development/land_use_review",
+          "line": "Land Use Review determines whether land uses and projects comply with the City's Zoning Code and Comprehensive Plan; the Zoning Code's Use Zone Charts (BMC 19.15) say which of four types of review a use or project needs.",
+          "q": "Where is Burien's zoning?",
+          "a": "In Burien, Land Use Review determines whether certain land uses and projects comply with the City's Zoning Code and Comprehensive Plan, and lets community members comment on proposals. The Zoning Code's Use Zone Charts (BMC 19.15) indicate which of four types of land use review, if any, a use or project needs, and all land use applications are submitted on MyBuildingPermit."
+        }
+      ],
+      "built": 1966,
+      "value": 638800
+    },
     "5323515": {
       "name": "Federal Way",
       "county": "53033",
@@ -1616,6 +1778,33 @@
       ],
       "built": 1993,
       "value": 1167800
+    },
+    "5361115": {
+      "name": "Sammamish",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sammamish Community Development, Permit Center",
+          "url": "https://www.sammamish.us/government/community-development/permit-center/",
+          "line": "All applications are processed online at MyBuildingPermit.com, where permit status is checked and inspections are scheduled; the Permit Center answers general questions about the permit process, and Project Guidance gives zoning and development information about a property.",
+          "q": "Where do I find building permits in Sammamish?",
+          "a": "The City of Sammamish processes all permit applications online at MyBuildingPermit.com, where applicants also check permit status and schedule inspections. The City's Permit Center answers general questions about the permit process, but permits are not issued as a result of a Permit Center visit or meeting; questions about a specific project or parcel go through Project Guidance."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sammamish Community Development, Permit Center",
+          "url": "https://www.sammamish.us/government/community-development/permit-center/getting-started-and-faqs/",
+          "line": "Zoning and land use maps are in the City's Maps and GIS Gallery, and the Sammamish Property Tool is an interactive map with Property, Zoning, Sensitive Areas and Imagery layers.",
+          "q": "Where is Sammamish's zoning?",
+          "a": "The City of Sammamish points to its Maps and GIS Gallery for zoning and land use maps, and to the Sammamish Property Tool, an interactive map with Property, Zoning, Sensitive Areas and Imagery layers."
+        }
+      ],
+      "built": 1994,
+      "value": 1407300
     },
     "5363000": {
       "name": "Seattle",
@@ -3157,6 +3346,87 @@
       ],
       "built": 1999,
       "value": 661600
+    },
+    "0628168": {
+      "name": "Gardena",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Gardena Community Development, Building Services",
+          "url": "https://cityofgardena.org/building-services/",
+          "line": "Reviews construction plans, issues permits and inspects building construction; most residential, commercial and industrial construction and demolition work needs a building permit, including fences, re-roofs, electrical and plumbing upgrades and window change outs.",
+          "q": "Where do I find building permits in Gardena?",
+          "a": "The City of Gardena's Building Services reviews construction plans for compliance with building codes, issues permits and inspects building construction. Most residential, commercial and industrial construction and demolition work, whether new construction, an addition, remodel, repair or alteration, requires a building permit, including signs, fences, re-roofs, electrical upgrades, plumbing upgrades and window change outs."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Gardena Community Development, Planning Division",
+          "url": "https://cityofgardena.org/planning-and-zoning/",
+          "line": "Implements the City's General Plan and Zoning Ordinance; Title 18, Zoning, of the Gardena Municipal Code gives the allowable uses for each piece of property in the city, and an interactive map shows a property's zoning.",
+          "q": "Where is Gardena's zoning?",
+          "a": "A central responsibility of the City of Gardena's Planning Division is to implement the City's General Plan and Zoning Ordinance. Title 18, Zoning, of the Gardena Municipal Code provides the allowable uses for each piece of property within the city, and the City's interactive map finds the zoning of a particular property."
+        }
+      ],
+      "built": 1964,
+      "value": 700600
+    },
+    "0648914": {
+      "name": "Monterey Park",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Monterey Park Community Development, Building & Safety",
+          "url": "https://www.montereypark.ca.gov/184/Building-Permits",
+          "line": "Other than a few exempt items, a building permit is required to construct, install, alter, repair, relocate or demolish any building or structure, from a garage or patio to roofing and windows; electrical, mechanical and plumbing work need their own permits.",
+          "q": "Where do I find building permits in Monterey Park?",
+          "a": "In Monterey Park, other than a few items that are exempt, a building permit is required to construct, install, alter, repair, relocate or demolish any building or structure, such as a garage, patio, retaining wall, swimming pool, roofing or windows. Electrical, mechanical and plumbing work need their own trade permits, which may be bundled with a building permit as a combo permit."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Monterey Park Community Development, Planning Division",
+          "url": "https://www.montereypark.ca.gov/543/Zoning-Development-Standards",
+          "line": "All properties in the city are placed in zones on the City's digital zoning map, whose interactive version searches by address and is effective May 16, 2025; the page also has the residential and commercial development standards handouts.",
+          "q": "Where is Monterey Park's zoning?",
+          "a": "In Monterey Park, all properties within the city are placed in the zones indicated on the City's digital zoning map, whose interactive version searches by address and is effective May 16, 2025. The Planning Division's Zoning & Development Standards page also has development standards handouts for residential (R-1, R-2 and R-3) and commercial properties."
+        }
+      ],
+      "built": 1963,
+      "value": 863000
+    },
+    "0639486": {
+      "name": "Lake Elsinore",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lake Elsinore Community Development, Building & Safety",
+          "url": "https://www.lake-elsinore.org/268/Permits-Inspection",
+          "line": "Anyone who intends to construct, enlarge, alter, repair, move or demolish a building, or to install or replace an electrical, gas, mechanical or plumbing system, must first obtain a permit from the building official; applications go in online on the Citizen Self-Service Portal.",
+          "q": "Where do I find building permits in Lake Elsinore?",
+          "a": "In Lake Elsinore, any owner or authorized agent who intends to construct, enlarge, alter, repair, move, demolish or change the occupancy of a building or structure, or to install or replace a regulated electrical, gas, mechanical or plumbing system, must first apply to the building official and obtain the required permit. Building permit applications can be submitted online on the Citizen Self-Service Portal, and permitted work is subject to inspection by the building official."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lake Elsinore Community Development, Planning Division",
+          "url": "https://www.lake-elsinore.org/303/Planning",
+          "line": "Works to make sure land use complies with the General Plan and Zoning regulations, maintaining the records of zoning districts, subdivision maps, site plans and conditional use permits; building or modifying a home starts with the Planning Division.",
+          "q": "Where is Lake Elsinore's zoning?",
+          "a": "The City of Lake Elsinore's Planning Division helps citizens, businesses and City departments manage land so that land use complies with the General Plan and Zoning regulations, and maintains records of zoning districts, subdivision maps, site plans and conditional use permits. Anyone planning to build or modify a home or business works with the Planning Division before proceeding."
+        }
+      ],
+      "built": 2002,
+      "value": 566000
     }
   }
 }
