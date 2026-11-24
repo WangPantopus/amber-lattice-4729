@@ -16,6 +16,9 @@
 --   ical:camas_library     Camas Public Library's calendar file; ical:downtown_camas the Downtown Camas Association's;
 --   ical:washougal_community  the City of Washougal's Community Events calendar. Each answered with events in the
 --                          next 7 days. (The City of Vancouver publishes no calendar file.)
+--   google_news rows       every region's Google News searches for local news and for "around town" are switched off:
+--                          Around you no longer shows Google's search, and its feed is for personal readers. The
+--                          sports searches stay (they feed Pulse's Sports lane).
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
@@ -28,6 +31,10 @@ UPDATE public.seeder_sources
  WHERE source_id = 'rss:camas_washougal';
 
 UPDATE public.seeder_sources SET access = 'free' WHERE source_id IN ('rss:opb_news', 'rss:city_portland');
+
+UPDATE public.seeder_sources
+   SET active = false
+ WHERE source_type = 'google_news' AND category IN ('local_news', 'community_resource') AND active;
 
 INSERT INTO public.seeder_sources (source_id, source_type, url, category, display_name, region, active, priority, access)
 SELECT v.source_id, v.source_type, v.url, v.category, v.display_name, v.region, true, 2, v.access

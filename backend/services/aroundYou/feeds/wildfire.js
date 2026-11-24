@@ -4,9 +4,9 @@
  * contained, changed in the last three days, and either 10 acres or more or within 25 km. Summer fires stay listed for
  * months at 95 to 100% contained; the 90% and three-day rules leave those out.
  *
- * Link: the fire's InciWeb page when InciWeb lists it (matched on the dispatch unit and the name), else the national
- * incident layer in ArcGIS's public map viewer, centred on the fire (a page a person can read on a phone; most fires
- * are not on InciWeb).
+ * Link: the fire's InciWeb page when InciWeb lists it (matched on the dispatch unit and the name), else the AirNow Fire and
+ * Smoke Map (EPA and the Forest Service) centred on the fire, which draws its outline and marker full screen on a phone
+ * (most fires are not on InciWeb). The page names the link by where it opens ("InciWeb", "AirNow Fire and Smoke Map").
  */
 
 const logger = require('../../../utils/logger');
@@ -27,7 +27,7 @@ const CHANGED_MS = 3 * 24 * 3_600_000;
 // At this containment a fire is no longer news for the people near it.
 const MAX_CONTAINED = 90;
 const LAYER = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0';
-const MAP_VIEWER = 'https://www.arcgis.com/apps/mapviewer/index.html';
+const FIRE_MAP = 'https://fire.airnow.gov/';
 const KM_PER_MILE = 1.609344;
 
 function slug(text) {
@@ -87,8 +87,7 @@ function fireLink(fire, pages) {
   const name = slug(String(fire.name).replace(/\bfire$/i, ''));
   const page = unit && name && pages.find((candidate) => candidate.startsWith(`${unit}-`) && candidate.includes(name));
   if (page) return `https://inciweb.wildfire.gov/incident-information/${page}`;
-  const params = new URLSearchParams({ url: LAYER, center: `${fire.lng.toFixed(3)},${fire.lat.toFixed(3)}`, level: '11' });
-  return `${MAP_VIEWER}?${params}`;
+  return `${FIRE_MAP}#10/${fire.lat.toFixed(3)}/${fire.lng.toFixed(3)}`;
 }
 
 function number(value) {

@@ -580,8 +580,10 @@ async function loadAroundYou(now) {
     const [opens, posts] = await Promise.all([
       readPages(() => supabaseAdmin.from('FunnelEvent').select('user_id, created_at').eq('event_type', 'around_you_opened')
         .gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }).order('id')),
+      // Posts made in the last 38 days: an older one gets almost nothing in a 30-day window.
       readPages(() => supabaseAdmin.from('Post').select('id').eq('origin', 'curator')
-        .not('post_metadata->around_you', 'is', null).order('id')),
+        .not('post_metadata->around_you', 'is', null)
+        .gte('created_at', new Date(now - 38 * 86400000).toISOString()).order('id')),
     ]);
     const ids = posts.rows.map((post) => post.id);
     const read = (table, extra = (q) => q, column = 'post_id') => (ids.length === 0 ? { rows: [] }

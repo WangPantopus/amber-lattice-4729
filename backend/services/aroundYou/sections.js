@@ -16,9 +16,10 @@ const MAX_TITLE_LENGTH = 180;
 const MAX_SUMMARY_LENGTH = 220;
 // No outlet fills a section while another has something to show.
 const MAX_PER_OUTLET = 5;
-// Google's news search is not a headline source (founder's choice of the everywhere layer, 2026-11-24): it lists
-// pages that are not local stories and its feed is for personal readers. Turn this on to bring it back.
-const GOOGLE_IN_HEADLINES = false;
+// Google's news search is not a source for this page (founder's choice of the everywhere layer, 2026-11-24): it lists
+// pages that are not local stories and its feed is for personal readers. Its rows stay off every section; turn this
+// on to bring them back.
+const GOOGLE_NEWS_ON_PAGE = false;
 // A calendar event leaves the page soon after it starts: the feeds job refreshes upcoming events every hour.
 const CALENDAR_KEEP_HOURS = 3;
 // On watch shows when these sections hold this many rows or fewer between them.
@@ -38,8 +39,7 @@ const SECTIONS = [
       || (row.category === 'safety' && ['wildfire', 'fema', 'usgs_earthquakes'].includes(row.kind)) },
   { id: 'roads', title: 'Roads', hours: 48, max: 4, takes: (row) => row.kind === 'roadwork' },
   { id: 'headlines', title: 'Headlines', hours: 48, max: 8,
-    takes: (row) => row.category === 'local_news' && !row.stateOutlet
-      && (GOOGLE_IN_HEADLINES || row.kind !== 'google_news') },
+    takes: (row) => row.category === 'local_news' && !row.stateOutlet },
   { id: 'events', title: 'Events', hours: 72, max: 5, takes: (row) => row.category === 'event' },
   { id: 'around_town', title: 'Around town', hours: 168, max: 4,
     takes: (row) => row.category === 'community_resource' && row.kind !== 'roadwork' },
@@ -61,13 +61,15 @@ const LEFT_OUT = new RegExp(`\\b(${[
 ].join('|')})\\b`, 'i');
 // Letters and opinion pieces are not news about the place.
 const OPINION = /^\s*(letters?|opinion|commentary|editorial|column)\s*:/i;
-// Across <State>: only a state outlet's stories about what touches a home. A word list, no model.
+// Across <State>: only a state outlet's stories about what touches a home. A word list, no model; phrases rather than
+// bare words that also mean something else ("fires an agency head", "graduation rates").
 const HOME_WORDS = new RegExp(`\\b(${[
-  'property taxe?s?', 'tax(es)? on (homes?|property)', 'levy', 'levies', 'assessments?', 'insurance', 'insurers?',
-  'premiums?', 'housing', 'homes?', 'homeowners?', 'rent', 'rents', 'renters?', 'tenants?', 'landlords?', 'eviction',
-  'evictions', 'mortgages?', 'utility', 'utilities', 'electric', 'electricity', 'power bills?', 'rates?',
-  'water bills?', 'roads?', 'highways?', 'tolls?', 'bridges?', 'transportation', 'gas tax', 'schools?',
-  'school districts?', 'wildfires?', 'fires?', 'floods?', 'flooding', 'drought', 'storms?',
+  'property taxe?s?', 'tax(es)? on (homes?|property)', 'levy', 'levies', 'insurance', 'insurers?', 'premiums?',
+  'housing', 'homeowners?', 'home (prices?|values?|insurance|sales|buyers?|loans?)', 'rent', 'rents', 'renters?',
+  'tenants?', 'landlords?', 'eviction', 'evictions', 'mortgages?', 'utility', 'utilities',
+  '(utility|power|water|electric(ity)?|insurance|mortgage|sewer) (rates?|bills?)', 'rate (increases?|hikes?)',
+  'roads?', 'highways?', 'tolls?', 'transportation', 'gas tax', 'schools?', 'school districts?', 'wildfires?',
+  'fire season', 'burn bans?', 'floods?', 'flooding', 'drought', 'storms?',
 ].join('|')})\\b`, 'i');
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', hellip: '…', rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”', mdash: '—', ndash: '–' };
@@ -145,7 +147,8 @@ function outletName(row, link, source) {
   if (kind === 'seasonal') return 'Pantopus';
   if (kind === 'on_this_day') return 'Wikipedia';
   if (kind === 'usgs_earthquakes') return 'USGS';
-  if (kind === 'wildfire') return 'National Interagency Fire Center';
+  // A fire's link opens its InciWeb page or the AirNow Fire and Smoke Map; the body says who reported the numbers.
+  if (kind === 'wildfire') return /(^|\.)inciweb\.wildfire\.gov$/.test(hostName(link) || '') ? 'InciWeb' : 'AirNow Fire and Smoke Map';
   if (kind === 'fema') return 'FEMA';
   if (kind === 'roadwork') return roadAgency(row.source);
   return source?.display_name || hostName(link) || null;
@@ -191,6 +194,7 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     for (const row of rows) {
       const kind = kindOf(row);
       const source = sources.get(row.source);
+      if (kind === 'google_news' && !GOOGLE_NEWS_ON_PAGE) continue;
       const facts = { category: row.category, kind, stateOutlet: String(row.source || '').startsWith('rss:state_') };
       if (spec.id === 'across_state' && row.source !== nearestOutlet) continue;
       if (!spec.takes(facts)) continue;
@@ -296,6 +300,9 @@ function checkedList(region, sources, checked) {
  * fewer between them, listing only what was really checked there. No link.
  */
 function onWatch(sections, regions, sources, checked, now = Date.now()) {
+  // Stamped with the feeds job's last check (it runs hourly), so the card reads "checked … ago", not hours old.
+  const checkedAt = Date.parse(checked?.at);
+  const stamp = Number.isFinite(checkedAt) && checkedAt <= now ? checkedAt : now;
   const region = regions[0];
   if (!region) return null;
   const busy = sections.filter((section) => QUIET_SECTIONS.includes(section.id))
@@ -313,7 +320,7 @@ function onWatch(sections, regions, sources, checked, now = Date.now()) {
       title: `Nothing to report around ${city} today. Checked: ${list.join(', ')}.`,
       source: 'Pantopus',
       url: null,
-      seen_at: new Date(Date.parse(`${day}T00:00:00Z`) || now).toISOString(),
+      seen_at: new Date(stamp).toISOString(),
       _kind: 'on_watch',
       _region: 0,
     }],
@@ -329,7 +336,7 @@ module.exports = {
   SECTIONS,
   CATEGORIES,
   LONGEST_HOURS,
-  GOOGLE_IN_HEADLINES,
+  GOOGLE_NEWS_ON_PAGE,
   buildSections,
   onWatch,
   outletSummary,
