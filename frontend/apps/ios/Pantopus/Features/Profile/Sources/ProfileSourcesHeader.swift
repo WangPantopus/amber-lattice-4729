@@ -22,6 +22,14 @@ struct ProfileSourcesHeader<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// The two chips' width on one line each, and the room over the sky: "Seen as …" moves under the mark when both
+    /// don't fit on one line.
+    @State private var chipsWidth: CGFloat = 0
+    @State private var skyWidth: CGFloat = .infinity
+
+    private var chipsFitOnSky: Bool {
+        !typeSize.isAccessibilitySize && chipsWidth <= skyWidth
+    }
 
     private var header: ProfilePageHeaderDTO {
         content.header
@@ -100,7 +108,7 @@ struct ProfileSourcesHeader<Actions: View>: View {
                         .accessibilityElement()
                         .accessibilityLabel("The sky over \(place.label) now: \(ProfileSky(place.sky).spoken)")
                     if !typeSize.isAccessibilitySize {
-                        chips(place: place)
+                        skyChips(place: place)
                             .padding(10)
                     }
                 }
@@ -111,6 +119,10 @@ struct ProfileSourcesHeader<Actions: View>: View {
                     chips(place: place)
                         .padding(.horizontal, Spacing.s4)
                         .padding(.top, Spacing.s2)
+                } else if !chipsFitOnSky, let seenAs = trimmed(header.seenAs) {
+                    // Too long to share the sky's line with the place: it goes under the mark, on one line.
+                    ProfileSeenAsChip(text: seenAs, onSky: false)
+                        .padding(.top, Spacing.s1)
                 }
             }
         } else {
@@ -121,6 +133,32 @@ struct ProfileSourcesHeader<Actions: View>: View {
                 mark(size: markSize)
             }
             .padding(.top, Spacing.s4)
+        }
+    }
+
+    /// The place, and "Seen as …" beside it when both fit on one line; each chip stays on one line.
+    private func skyChips(place: ProfilePagePlaceDTO) -> some View {
+        HStack(alignment: .top, spacing: Spacing.s2) {
+            ProfilePlaceChip(place: place)
+            Spacer(minLength: 0)
+            if chipsFitOnSky, let seenAs = trimmed(header.seenAs) {
+                ProfileSeenAsChip(text: seenAs, onSky: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { skyWidth = $0 }
+        .background(alignment: .topLeading) {
+            // Measures both chips at their one-line widths, unseen.
+            HStack(spacing: Spacing.s2) {
+                ProfilePlaceChip(place: place)
+                if let seenAs = trimmed(header.seenAs) {
+                    ProfileSeenAsChip(text: seenAs, onSky: true)
+                }
+            }
+            .fixedSize()
+            .hidden()
+            .accessibilityHidden(true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chipsWidth = $0 }
         }
     }
 
