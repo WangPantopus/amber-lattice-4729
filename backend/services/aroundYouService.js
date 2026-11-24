@@ -163,8 +163,8 @@ async function addMissingPictures(rows) {
 
 // A made post follows its item where the item says something the post doesn't yet: a status row's text (a fire's
 // acres, a project's dates), the outlet's summary for a story post made before posts carried one (its text is still
-// the bare headline), and the outlet's name when the outlet was marked a subscription since. Reactions and replies
-// stay; nothing else about a post changes.
+// the bare headline), and the outlet's name and link when they changed (an outlet marked a subscription since, a
+// fire's page moved). Reactions and replies stay; nothing else about a post changes.
 async function followItems(rows) {
   if (!rows.length) return;
   const { data: made, error } = await supabaseAdmin.from('Post').select('id, content, post_metadata')
@@ -179,9 +179,14 @@ async function followItems(rows) {
     if (status ? now.content !== post.content : (post.content !== headline && now.content === headline)) {
       change.content = post.content;
     }
-    const name = post.post_metadata.source_name;
-    if (name && now.post_metadata?.source_name && now.post_metadata.source_name !== name) {
-      change.post_metadata = { ...now.post_metadata, source_name: name };
+    // The outlet's name and the link follow the item (an outlet marked a subscription since; a fire's page moved).
+    const metadata = { ...(now.post_metadata || {}) };
+    for (const key of ['source_name', 'source_url']) {
+      const value = post.post_metadata[key];
+      if (value && metadata[key] && metadata[key] !== value) metadata[key] = value;
+    }
+    if (metadata.source_name !== now.post_metadata?.source_name || metadata.source_url !== now.post_metadata?.source_url) {
+      change.post_metadata = metadata;
     }
     if (Object.keys(change).length) updates.push({ id: post.id, change });
   }
@@ -331,29 +336,22 @@ async function withPosts(page, viewerId) {
   }
 }
 
-// Counts an open of Around you that returned sections: at most once an hour per person (this process remembers; a
-// restarted or second server asks the table first), counts only (no place, no item). Fire-and-forget: the read never
-// waits on it.
+// Counts an open of Around you that returned sections: at most once an hour per person in this process (a restart may
+// count one open twice in that hour), counts only (no place, no item). Fire-and-forget: the read never waits on it.
 function countOpen(userId, page) {
   if (!userId) return;
   const now = Date.now();
   if (now - (lastCounted.get(userId) || 0) < OPEN_COUNT_MS) return;
   if (lastCounted.size > 20_000) lastCounted.clear();
   lastCounted.set(userId, now);
-  supabaseAdmin.from('FunnelEvent').select('id').eq('event_type', 'around_you_opened').eq('user_id', userId)
-    .gte('created_at', new Date(now - OPEN_COUNT_MS).toISOString()).limit(1)
-    .then(({ data, error }) => {
-      if (error || data?.length) return null;
-      return recordFunnelEvent('around_you_opened', {
-        userId,
-        meta: {
-          sections: page.sections.length,
-          rows: page.sections.reduce((count, section) => count + section.items.length, 0),
-          hand_made: Boolean(page.handMade),
-        },
-      });
-    })
-    .catch(() => {});
+  recordFunnelEvent('around_you_opened', {
+    userId,
+    meta: {
+      sections: page.sections.length,
+      rows: page.sections.reduce((count, section) => count + section.items.length, 0),
+      hand_made: Boolean(page.handMade),
+    },
+  });
 }
 
 /**
