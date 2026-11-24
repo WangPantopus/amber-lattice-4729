@@ -1,0 +1,211 @@
+/* ============================================================
+   The guides' and topic pages' reading styles, on top of the public pages' shell (public.module.css, whose tokens come
+   from home.module.css's .page): a calm column of text in the homepage's serif headings and its colours.
+   ============================================================ */
+
+/* ---------- the head of a guide or topic page ---------- */
+.head {
+  display: grid;
+  gap: 20px;
+  max-width: var(--read);
+}
+.meta {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.lookupTitle {
+  display: grid;
+  gap: 2px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: -8px;
+}
+.lookupTitle span {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* ---------- the running text ---------- */
+.article {
+  position: relative;
+  padding-block: clamp(8px, 2vw, 24px) clamp(48px, 7vw, 84px);
+}
+.column {
+  max-width: var(--read);
+}
+.column h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  color: var(--text);
+  text-wrap: balance;
+  margin-top: clamp(36px, 5vw, 52px);
+  margin-bottom: 14px;
+  scroll-margin-top: 80px;
+}
+.column > section:first-child > h2 {
+  margin-top: 0;
+}
+.prose {
+  display: grid;
+  gap: 16px;
+  color: var(--soft);
+  font-size: clamp(1.02rem, 1.25vw, 1.1rem);
+  line-height: 1.7;
+}
+.prose ul,
+.prose ol {
+  display: grid;
+  gap: 10px;
+  padding-left: 1.3em;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li::marker {
+  color: var(--gold);
+}
+.prose a,
+.note a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 200, 103, 0.55);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.prose a:hover,
+.note a:hover {
+  text-decoration-color: var(--gold);
+}
+.prose a:focus-visible,
+.more:focus-visible,
+.cta:focus-visible,
+.sourceList a:focus-visible,
+.list a:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* a link under a section to the page that says more, and a guide's own way into Pantopus */
+.more,
+.cta {
+  display: inline-flex;
+  margin-top: 18px;
+  font-weight: 600;
+  color: var(--gold);
+  text-decoration: none;
+}
+.more::after,
+.cta::after {
+  content: ' →';
+  white-space: pre;
+}
+.more:hover,
+.cta:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cta {
+  margin-top: 28px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 200, 103, 0.45);
+  background: rgba(255, 200, 103, 0.08);
+}
+.cta:hover {
+  text-decoration: none;
+  border-color: var(--gold);
+}
+
+/* the not-advice line */
+.note {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ---------- sources ---------- */
+.sourceList {
+  display: grid;
+  gap: 12px;
+  max-width: var(--read);
+}
+.sourceList li {
+  display: grid;
+  gap: 2px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.sourceList a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 200, 103, 0.5);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.sourceList span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* ---------- /guides: the list ---------- */
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+}
+.list a {
+  display: grid;
+  gap: 8px;
+  height: 100%;
+  padding: 22px 24px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.list a:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+.list b {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.42rem;
+  line-height: 1.15;
+  color: var(--text);
+}
+.list span {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list a {
+    transition: none;
+  }
+  .list a:hover {
+    transform: none;
+  }
+}
