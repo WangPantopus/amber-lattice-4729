@@ -19,7 +19,8 @@ ALTER TABLE public."UserPortfolio"
   ADD COLUMN source_plan_id uuid REFERENCES public."Plan"(post_id) ON DELETE SET NULL,
   ADD COLUMN audience text NOT NULL DEFAULT 'anyone' CHECK (audience IN ('anyone', 'members', 'connections')),
   ADD COLUMN links jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(links) = 'array'),
-  ADD COLUMN is_draft boolean NOT NULL DEFAULT false;
+  ADD COLUMN is_draft boolean NOT NULL DEFAULT false,
+  ADD COLUMN owner_role text CHECK (owner_role IS NULL OR char_length(owner_role) <= 40);
 
 CREATE UNIQUE INDEX user_portfolio_source_gig ON public."UserPortfolio" (source_gig_id) WHERE source_gig_id IS NOT NULL;
 CREATE UNIQUE INDEX user_portfolio_source_plan ON public."UserPortfolio" (source_plan_id) WHERE source_plan_id IS NOT NULL;

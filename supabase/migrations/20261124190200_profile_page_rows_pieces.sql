@@ -90,7 +90,7 @@ SELECT COALESCE(jsonb_object_agg(u.id::text, jsonb_build_object(
       SELECT pf.id, pf.title, pf.description, pf.portfolio_type, pf.media_urls, pf.thumbnail_url, pf.file_ids,
              pf.skills_used, pf.external_url, pf.github_url, pf.demo_url, pf.completed_at, pf.display_order,
              pf.is_featured, pf.is_visible, pf.created_at, pf.piece_kind, pf.started_on, pf.place_city, pf.place_state,
-             pf.audience, pf.links, pf.is_draft,
+             pf.audience, pf.links, pf.is_draft, pf.owner_role,
              CASE WHEN sg.id IS NOT NULL THEN 'gig' WHEN sp.post_id IS NOT NULL THEN 'plan' END AS source_kind,
              COALESCE(sg.owner_confirmed_at, sg.worker_completed_at, sg.updated_at, sp.ended_at) AS source_at,
              sg.id AS source_gig_id
@@ -105,7 +105,7 @@ SELECT COALESCE(jsonb_object_agg(u.id::text, jsonb_build_object(
       SELECT pf.id, pf.title, pf.description, pf.portfolio_type, pf.media_urls, pf.thumbnail_url, pf.file_ids,
              pf.skills_used, pf.external_url, pf.github_url, pf.demo_url, pf.completed_at, pf.display_order,
              pf.is_featured, pf.is_visible, pf.created_at, pf.piece_kind, pf.started_on, pf.place_city, pf.place_state,
-             pf.audience, pf.links, pf.is_draft,
+             pf.audience, pf.links, pf.is_draft, pf.owner_role,
              CASE WHEN sg.id IS NOT NULL THEN 'gig' WHEN sp.post_id IS NOT NULL THEN 'plan' END AS source_kind,
              COALESCE(sg.owner_confirmed_at, sg.worker_completed_at, sg.updated_at, sp.ended_at) AS source_at,
              sg.id AS source_gig_id

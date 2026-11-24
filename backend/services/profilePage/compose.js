@@ -558,7 +558,11 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     const live = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
     const pinned = live.filter((p) => p.row.is_featured).slice(0, 3);
     // The owner's list also carries their drafts and hidden pieces (marked); nobody else's does.
-    const rest = record.pieces.filter((p) => !pinned.includes(p)).slice(0, 40);
+    // `all` is every other piece this viewer can open (the rows hold up to 80), so the apps can filter by year and kind
+    // themselves; nothing is cut.
+    const rest = record.pieces.filter((p) => !pinned.includes(p));
+    const kindsHere = ['did', 'built', 'owns'].filter((k) => live.some((p) => p.piece.kind === k));
+    const filters = kindsHere.length ? ['all', ...kindsHere] : null;
     if (pinned.length) {
       work.push({ kind: 'pieces', id: 'pinned', title: `Pinned by ${ctx.firstName}`, style: 'pinned', subtitle: `${pinned.length} of 3`,
         pieces: pinned.map(withPlace), filters: null, more: null });
@@ -572,13 +576,13 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       work.push({
         kind: 'work_rings', id: 'work_rings', title: `${plural(wr.summary.years, 'year', 'years')} of work`,
         from: wr.from, now: nowDate, months: wr.strings.work,
-        dots: live.filter((p) => p.month).map((p) => ({ piece_id: p.row.id, month: p.month })),
+        dots: live.filter((p) => p.month).map((p) => ({ piece_id: p.row.id, month: p.month, ink: p.piece.ink })),
         years: Object.entries(perYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, n]) => ({ year: Number(year), pieces: n })),
       });
     }
     if (rest.length) {
       work.push({ kind: 'pieces', id: 'all', title: pinned.length ? 'All pieces' : 'Pieces', style: 'list', subtitle: null,
-        pieces: rest.map(withPlace), filters: null, more: null });
+        pieces: rest.map(withPlace), filters, more: null });
     }
     const owns = shownEntries('owns');
     if (owns.length) work.push({ kind: 'owns', id: 'owns', title: 'Owns', lines: owns });
@@ -707,8 +711,11 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
       description: description ? line('said', description, `In ${first}'s words`, 'work', null) : null,
       how_we_know: howWeKnow,
       shows_can: (row.skills_used || []).filter(Boolean).slice(0, 5),
-      media: piece.media,
+      // v1's shape, kept: the photos and videos as a list (the counts stay on list Pieces only).
+      media: attachments.filter((a) => a.kind === 'photo' || a.kind === 'video')
+        .map((a) => ({ kind: a.kind, url: a.url, thumbnail_url: a.thumbnail_url })),
       attachments,
+      owner_role: String(row.owner_role || '').trim() || null,
       links: [],
       written,
       kept_once: null,

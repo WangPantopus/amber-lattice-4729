@@ -21,7 +21,7 @@ const AUDIENCES = ['anyone', 'members', 'connections'];
 const PAID_STATUSES = ['captured_hold', 'succeeded', 'transfer_pending', 'transfer_scheduled', 'transferred', 'paid'];
 const FILE_TYPES = ['portfolio_image', 'portfolio_video', 'portfolio_document'];
 const FIELDS = ['title', 'kind', 'from', 'to', 'city', 'state', 'description', 'skills', 'audience', 'pinned', 'hidden', 'draft',
-  'started_from', 'attachments'];
+  'started_from', 'attachments', 'role'];
 
 class PieceRefusal extends Error {
   constructor(status, code, message) {
@@ -73,6 +73,11 @@ async function columnsFrom(userId, body, { create }) {
     const text = plainText(body[key], max);
     if (text === undefined) throw invalid('A piece\'s place is a city and state, never an address.');
     out[column] = text;
+  }
+  if (body.role !== undefined) {
+    const role = plainText(body.role, 40);
+    if (role === undefined) throw invalid('Your part on a piece is a few words, at most 40 characters.');
+    out.owner_role = role;
   }
   if (body.description !== undefined) {
     const text = plainText(body.description, WORDS_MAX);
