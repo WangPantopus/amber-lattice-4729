@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says.",
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says. A link on a vendor's site rather than the office's own carries `via` (`property_search_via` for the property search): the office's own page that sends people to it, so the claim can be checked; without it the link is not shown.",
   "counties": {
     "06065": {
       "read": "2026-11-23",
@@ -70,6 +70,7 @@
       "read": "2026-11-23",
       "property_search_office": "Solano County Assessor/Recorder, Property and Assessment Search",
       "property_search_url": "https://ca-solano.publicaccessnow.com/Assessor.aspx",
+      "property_search_via": "https://www.solanocounty.gov/government/assessorrecorder",
       "rows": [
         {
           "id": "recorder",
@@ -159,6 +160,7 @@
       "read": "2026-11-23",
       "property_search_office": "Alachua County Property Appraiser, Property Search",
       "property_search_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=1081&LayerID=26490&PageTypeID=2&PageID=10768",
+      "property_search_via": "https://www.acpafl.org/",
       "rows": [
         {
           "id": "recorder",
@@ -255,6 +257,7 @@
       "read": "2026-11-23",
       "property_search_office": "St. Johns County Property Appraiser, Search Property Records",
       "property_search_url": "https://qpublic.schneidercorp.com/Application.aspx?App=StJohnsCountyFL&Layer=Parcels&PageType=Search",
+      "property_search_via": "https://www.sjcpa.gov/",
       "rows": [
         {
           "id": "recorder",
@@ -336,7 +339,8 @@
           "title": "Property Notification",
           "office": "Cumberland County Register of Deeds",
           "url": "https://ncpropertynotification.org/Description?AgencyId=5",
-          "line": "Emails a registered user when a document is indexed under a name they monitor; run for the Register by its records vendor."
+          "line": "Emails a registered user when a document is indexed under a name they monitor; run for the Register by its records vendor.",
+          "via": "https://www.ccrod.org/"
         }
       ]
     },
@@ -527,6 +531,7 @@
       "read": "2026-11-23",
       "property_search_office": "Cumberland County Property Assessment, DataScout",
       "property_search_url": "https://www.actdatascout.com/RealProperty/Pennsylvania/Cumberland",
+      "property_search_via": "https://www.cumberlandcountypa.gov/3429/Property-Assessment-Tools-Services",
       "rows": [
         {
           "id": "recorder",
