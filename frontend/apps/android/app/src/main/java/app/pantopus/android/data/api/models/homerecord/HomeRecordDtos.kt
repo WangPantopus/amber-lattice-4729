@@ -18,14 +18,25 @@ data class HomeRecordWire(
     val header: HomeRecordHeader? = null,
     val blocks: List<Map<String, Any?>>? = null,
     val footer: String? = null,
+    /** A buyer's row under the header (SPEC section 8): `save`, `share`, `claim`; read one at a time like blocks. */
+    val actions: List<Map<String, Any?>>? = null,
 )
 
-/** The page once its blocks are read. [state] is `lookup`, `member` or `owner`. */
+/** The page once its blocks are read. [state] is `lookup`, `buyer`, `member` or `owner`. */
 data class HomeRecord(
     val state: String,
     val header: HomeRecordHeader,
     val blocks: List<HomeRecordBlock>,
     val footer: String?,
+    val actions: List<HomeRecordAction> = emptyList(),
+)
+
+/** One of a buyer's actions under the header: [id] is `save`, `share` or `claim`; an id this app doesn't know is left out. */
+@JsonClass(generateAdapter = true)
+data class HomeRecordAction(
+    val id: String = "",
+    val label: String = "",
+    val url: String = "",
 )
 
 @JsonClass(generateAdapter = true)

@@ -3,6 +3,7 @@ package app.pantopus.android.data.homerecord
 import android.content.Context
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.data.api.models.homerecord.HomeRecord
+import app.pantopus.android.data.api.models.homerecord.HomeRecordAction
 import app.pantopus.android.data.api.models.homerecord.HomeRecordBarsBlock
 import app.pantopus.android.data.api.models.homerecord.HomeRecordBlock
 import app.pantopus.android.data.api.models.homerecord.HomeRecordCardBlock
@@ -74,7 +75,7 @@ class HomeRecordRepository
     }
 
 /**
- * Debug builds only: `adb shell am start … --es PANTOPUS_DEBUG_HOME_RECORD lookup|member|owner` answers every record
+ * Debug builds only: `adb shell am start … --es PANTOPUS_DEBUG_HOME_RECORD lookup|buyer|member|owner` answers every record
  * page from the design's sample answers (`src/debug/assets/home-record/`), whose `fixture://` pictures name files
  * there too. Empty turns it off.
  */
@@ -90,7 +91,7 @@ object HomeRecordFixtures {
 
     fun take(name: String?) {
         if (!BuildConfig.DEBUG) return
-        forced = name?.trim()?.takeIf { it in setOf("lookup", "member", "owner") }
+        forced = name?.trim()?.takeIf { it in setOf("lookup", "buyer", "member", "owner") }
     }
 
     /** A `fixture://` picture as an address the image loader reads; anything else as it is. */
@@ -128,7 +129,13 @@ class HomeRecordDecoder(
             header = wire.header ?: HomeRecordHeader(),
             blocks = wire.blocks.orEmpty().mapNotNull(::block),
             footer = wire.footer,
+            actions = wire.actions.orEmpty().mapNotNull(::action),
         )
+
+    private fun action(raw: Map<String, Any?>): HomeRecordAction? =
+        runCatching { moshi.adapter(HomeRecordAction::class.java).fromJsonValue(raw) }
+            .getOrNull()
+            ?.takeIf { it.id in ACTION_IDS && it.label.isNotBlank() && it.url.isNotBlank() }
 
     private fun block(raw: Map<String, Any?>): HomeRecordBlock? {
         val kind = raw["kind"] as? String ?: return null
@@ -151,3 +158,6 @@ class HomeRecordDecoder(
             onFailure = { NetworkResult.Failure(app.pantopus.android.data.api.net.NetworkError.Decoding(it)) },
         )
 }
+
+/** The buyer's actions this app draws (SPEC section 8). */
+private val ACTION_IDS = setOf("save", "share", "claim")

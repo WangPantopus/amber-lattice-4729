@@ -129,7 +129,9 @@ fun PlaceLaunchScreen(
             LaunchStep.Hero -> Hero(viewModel, onSignIn, browse, signedInEntry = onSavePreview != null, embedded = embedded)
             is LaunchStep.Preview ->
                 Box(modifier = Modifier.statusBarsPaddingIf(embedded == null)) {
-                    WithHomeRecord(current.address, onSetUpHome, continuePreview) { openRecord ->
+                    // Signed out, the record's "Sign in" keeps the address as the lookup's own Sign in does.
+                    val signIn = { if (viewModel.prepareForAuth()) onSignIn() }
+                    WithHomeRecord(current.address, HomeRecordLinks(onSetUpHome, continuePreview, signIn)) { openRecord ->
                         PreviewBody(
                             current.preview,
                             {
@@ -165,15 +167,25 @@ fun PlaceLaunchScreen(
 }
 
 /**
+ * Where the record's app links go from a lookup, which has no Home yet. [onSetUpHome] is Add Home at an address (signed
+ * in only); [continuePreview] is the lookup's own Continue: sign-up that keeps the address when signed out, saving the
+ * address when signed in; [signIn] is the lookup's own Sign in.
+ */
+private class HomeRecordLinks(
+    val onSetUpHome: ((String) -> Unit)?,
+    val continuePreview: () -> Unit,
+    val signIn: () -> Unit,
+)
+
+/**
  * The lookup result, or the home record page over it once "See this home's full record" is tapped (Back closes it).
- * The record's id-less buttons have no Home to claim yet: signed in they add this address ([onSetUpHome]), signed
- * out they take the lookup's own sign-up, which keeps the address ([continuePreview]).
+ * The record's id-less claim and verify links add this address (signed in) or take the lookup's sign-up (signed out);
+ * a buyer's "Save this home" saves it as the lookup's Continue does.
  */
 @Composable
 private fun WithHomeRecord(
     address: String,
-    onSetUpHome: ((String) -> Unit)?,
-    continuePreview: () -> Unit,
+    links: HomeRecordLinks,
     result: @Composable (openRecord: () -> Unit) -> Unit,
 ) {
     var recordOpen by rememberSaveable(address) { mutableStateOf(false) }
@@ -185,8 +197,10 @@ private fun WithHomeRecord(
         address = address,
         onClose = { recordOpen = false },
         onAppLink = { path ->
-            when (path.removePrefix("/app")) {
-                "/homes/claim-owner", "/homes/verify-address" -> onSetUpHome?.invoke(address) ?: continuePreview()
+            when (path.removePrefix("/app").substringBefore('?')) {
+                "/homes/claim-owner", "/homes/verify-address" -> links.onSetUpHome?.invoke(address) ?: links.continuePreview()
+                "/auth/sign-up", "/saved-places/add" -> links.continuePreview()
+                "/auth/sign-in" -> links.signIn()
                 else -> app.pantopus.android.core.routing.DeepLinkRouter.handle(path)
             }
         },

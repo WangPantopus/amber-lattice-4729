@@ -163,13 +163,13 @@
       "kind": "intro",
       "id": "more",
       "title": "There is more in this home's record",
-      "body": "Fifteen more parts are ready. They belong to the owner, and they are free."
+      "body": "Fifteen more parts are ready. Nine open with a free account. Six belong to the owner."
     },
     {
       "kind": "closed_group",
       "id": "closed_money",
       "title": "Ownership and money",
-      "chip": "For the owner",
+      "chip": "Free with an account",
       "items": [
         {
           "icon": "history",
@@ -195,11 +195,6 @@
           "icon": "bars",
           "title": "Estimate and similar homes",
           "line": "Beside 6 homes on this street"
-        },
-        {
-          "icon": "shield",
-          "title": "Exemptions on file",
-          "line": "Whether a homestead exemption is on this home"
         }
       ]
     },
@@ -207,7 +202,7 @@
       "kind": "closed_group",
       "id": "closed_changes",
       "title": "Changes over time",
-      "chip": "For the owner",
+      "chip": "Free with an account",
       "items": [
         {
           "icon": "image",
@@ -218,11 +213,6 @@
           "icon": "wrench",
           "title": "Permits",
           "line": "3 on record, with dates"
-        },
-        {
-          "icon": "bell",
-          "title": "Changes to the record",
-          "line": "We tell you when the county's record moves"
         }
       ]
     },
@@ -230,7 +220,7 @@
       "kind": "closed_group",
       "id": "closed_house",
       "title": "The house and the ground",
-      "chip": "For the owner",
+      "chip": "Free with an account",
       "items": [
         {
           "icon": "layers",
@@ -241,24 +231,34 @@
           "icon": "home",
           "title": "Roof, heating, water heater, panel",
           "line": "Ages against their typical service life"
-        },
-        {
-          "icon": "alert",
-          "title": "Recalls on what is in the house",
-          "line": "Checked against federal recalls"
         }
       ]
     },
     {
       "kind": "closed_group",
       "id": "closed_protect",
-      "title": "Protect it",
+      "title": "Only the owner sees",
       "chip": "For the owner",
       "items": [
         {
           "icon": "file",
           "title": "Insurance claims on this home",
           "line": "Seven years, every owner. Your free yearly report"
+        },
+        {
+          "icon": "alert",
+          "title": "Recalls on what is in the house",
+          "line": "Checked against federal recalls"
+        },
+        {
+          "icon": "shield",
+          "title": "Exemptions on file",
+          "line": "Whether a homestead exemption is on this home"
+        },
+        {
+          "icon": "bell",
+          "title": "Changes to the record",
+          "line": "We tell you when the county's record moves"
         },
         {
           "icon": "mail",
@@ -275,8 +275,8 @@
     {
       "kind": "promise",
       "id": "promise",
-      "title": "Yours for proving it's your home",
-      "body": "No payment, no card, no subscription. Show that you own this home and the whole record opens.",
+      "title": "Own this home? All of it is yours",
+      "body": "Show that you own this home and the owner's half opens too. No payment, no card, no subscription.",
       "steps": [
         {
           "title": "Show one document",
@@ -288,11 +288,11 @@
         },
         {
           "title": "We check it, usually within hours",
-          "line": "Then every part above opens, and stays open."
+          "line": "Then every part opens, and stays open."
         }
       ],
       "button": {
-        "label": "Finish verifying you own this home",
+        "label": "See where your claim stands",
         "url": "/homes/claim-owner"
       },
       "alt": null
@@ -301,7 +301,7 @@
       "kind": "note",
       "id": "privacy",
       "icon": "eye_off",
-      "text": "Only the confirmed owner sees those parts. People who look up this address never do, and no owner's name is shown to anyone."
+      "text": "No owner's name is shown to anyone. What an owner adds is seen only by that owner."
     }
   ],
   "footer": "A free look at what is public about this address. Nothing here is advice, and nothing is for sale."

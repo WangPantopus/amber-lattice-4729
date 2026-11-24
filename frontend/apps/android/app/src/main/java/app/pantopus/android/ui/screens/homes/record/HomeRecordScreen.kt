@@ -40,6 +40,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.routing.ExternalLinks
 import app.pantopus.android.data.api.models.homerecord.HomeRecord
+import app.pantopus.android.data.api.models.homerecord.HomeRecordAction
 import app.pantopus.android.data.api.models.homerecord.HomeRecordBlock
 import app.pantopus.android.data.api.models.homerecord.HomeRecordHeader
 import app.pantopus.android.data.api.models.homerecord.HomeRecordIntroBlock
@@ -84,7 +85,11 @@ fun HomeRecordScreen(
         when (val current = state) {
             HomeRecordUiState.Loading -> RecordSkeleton()
             is HomeRecordUiState.Error -> RecordError(current.message, viewModel::refresh)
-            is HomeRecordUiState.Loaded -> RecordPage(current.record, open)
+            is HomeRecordUiState.Loaded ->
+                RecordPage(current.record, open) { action ->
+                    // Share hands the server's link to the phone's share sheet; save and claim are app links.
+                    if (action.id == "share") shareRecordLink(context, action.url) else open(action.url)
+                }
         }
     }
 }
@@ -145,6 +150,7 @@ private fun RecordTopBar(
 private fun RecordPage(
     record: HomeRecord,
     open: (String) -> Unit,
+    onAction: (HomeRecordAction) -> Unit,
 ) {
     Column(
         modifier =
@@ -156,6 +162,7 @@ private fun RecordPage(
                 .testTag("homeRecord.state.${record.state}"),
     ) {
         RecordHeader(record.header)
+        if (record.actions.isNotEmpty()) RecordActions(record.actions, onAction)
         var previous: HomeRecordBlock? = null
         record.blocks.forEach { block ->
             if (!drawsSomething(block)) return@forEach
@@ -217,7 +224,8 @@ private fun RecordHeaderChip(
         when (tone) {
             "success" -> PantopusColors.successLight to PantopusColors.success
             "warning" -> PantopusColors.warningBg to PantopusColors.warning
-            else -> PantopusColors.appSurfaceSunken to PantopusColors.appTextSecondary
+            // "Public record" on a buyer's page (design/Buyer.dc.html).
+            else -> PantopusColors.primary100 to PantopusColors.primary700
         }
     Row(
         modifier =
