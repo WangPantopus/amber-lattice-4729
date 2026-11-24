@@ -220,6 +220,8 @@ export interface SourcesProfileProps {
   onJoin?: (() => void) | null;
   /** The owner (not previewing): their Work can be changed here; call after a change to read the page again. */
   onChanged?: (() => void) | null;
+  /** Any signed-in view (not a preview): read the page again after the viewer changed a tie of their own on it. */
+  onReread?: (() => void) | null;
   /** False while this is a stand-in page (a signed-in visit draws the visitor's page first): it opens no piece. */
   ready?: boolean;
 }
@@ -231,7 +233,7 @@ export interface SourcesProfileProps {
  */
 export default function SourcesProfile({
   page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, viaLink = null, signedOut = false,
-  onDoor, onConnect, onReport, onJoin, onChanged = null, ready = true,
+  onDoor, onConnect, onReport, onJoin, onChanged = null, onReread = null, ready = true,
 }: SourcesProfileProps) {
   const router = useRouter();
   const tabsId = useId();
@@ -260,8 +262,14 @@ export default function SourcesProfile({
   // A role or school being added (`role: null`) or changed.
   const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
   // Each new read of the page (after a change) reads the owner's offers again.
+  // The first page is read with round 0 already, so only a later read of the page counts.
   const [pageRound, setPageRound] = useState(0);
-  useEffect(() => { setPageRound((n) => n + 1); }, [page]);
+  const roundPage = useRef(page);
+  useEffect(() => {
+    if (roundPage.current === page) return;
+    roundPage.current = page;
+    setPageRound((n) => n + 1);
+  }, [page]);
   const workBlocks = useMemo(() => tabs.find((tab) => tab.key === 'work')?.blocks ?? [], [tabs]);
   const skillsSuggested = useMemo(() => workBlocks.flatMap((block) => (block.kind === 'can_do'
     ? ((block as ProfileCanDoBlock).skills || []).map((skill) => skill.name || skill.text).filter(Boolean) : [])), [workBlocks]);
@@ -489,6 +497,7 @@ export default function SourcesProfile({
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
     onEditRole: owner ? (role: ProfileRoleLine) => setRoleEdit({ role }) : null,
+    onReread: inert ? null : onReread ?? onChanged,
     onDoor: onDoor ?? (() => {}),
     onConnect: onConnect ?? (() => {}),
   };
@@ -672,7 +681,7 @@ export default function SourcesProfile({
         target={personTarget}
         onChange={owner ? (piece) => setEditing({ kind: 'edit', piece }) : null}
         viewerId={viewerId}
-        onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); onChanged?.(); }}
+        onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); (onReread ?? onChanged)?.(); }}
       />
       <CircleView
         open={circle !== null}
