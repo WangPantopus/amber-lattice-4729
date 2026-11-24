@@ -49,6 +49,9 @@ router.get('/id/:id/piece/:pieceId', optionalAuth,
 router.get('/id/:id/month/:month', optionalAuth,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
 
+// The avatar marks read (CONTRACT section 7) needs sign-in; it arrives in its own change and answers 404 until then.
+router.get('/marks', verifyToken, (req, res) => res.status(404).json({ error: 'Not found', code: 'MARKS_UNAVAILABLE' }));
+
 // "me", "id" and "marks" are never usernames here.
 const RESERVED = new Set(['me', 'id', 'marks']);
 function byUsername(req) {

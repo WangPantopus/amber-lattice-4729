@@ -108,9 +108,10 @@ async function readReviews(userId, { names = false } = {}) {
     names ? loadChatPeople(reviewerIds) : new Map(),
   ]);
   const gigById = new Map(rows(gigs).map((g) => [g.id, g]));
-  const nameById = new Map(rows(users).map((u) => {
-    const shown = reviewerRow(u, people);
-    return [u.id, shown?.name || null];
+  const { chosenUsernameOrNull } = require('../../utils/personalUsername');
+  const writerById = new Map(rows(users).map((u) => {
+    const shown = reviewerRow(u, people) || {};
+    return [u.id, { name: shown.name || null, username: chosenUsernameOrNull(shown.username), avatar: shown.profile_picture_url || null }];
   }));
   return {
     rows: reviews.map((r) => {
@@ -118,7 +119,11 @@ async function readReviews(userId, { names = false } = {}) {
       let role = null;
       if (gig && String(gig.accepted_by) === String(userId)) role = 'hired';
       else if (gig && String(gig.user_id) === String(userId)) role = 'worked_for';
-      return { ...r, role, reviewer_name: names ? nameById.get(r.reviewer_id) || null : null };
+      const writer = names ? writerById.get(r.reviewer_id) : null;
+      return {
+        ...r, role, reviewer_name: writer?.name || null, reviewer_username: writer?.username || null,
+        reviewer_avatar: writer?.avatar || null,
+      };
     }),
   };
 }

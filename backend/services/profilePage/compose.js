@@ -225,9 +225,17 @@ function buildRecord(ctx, sources, { now }) {
   (sources.reviews?.rows || []).forEach((review, i) => {
     const rm = monthOf(review.created_at);
     const did = { hired: `hired ${first}`, worked_for: `did a job for ${first}` }[review.role] || `worked with ${first}`;
+    // Signed in: the writer by name (their page opens from `who`) and the job the line opens. A link: by what they did.
     const make = (linkView) => {
-      const who = linkView || !review.reviewer_name ? `someone who ${did}` : review.reviewer_name;
-      return line('signed', String(review.comment).trim().slice(0, 500), `Written by ${who}${rm ? `, ${monthLabel(rm)}` : ''}`, 'work', null);
+      const named = !linkView && review.reviewer_name;
+      const by = named ? review.reviewer_name : `someone who ${did}`;
+      return line('signed', String(review.comment).trim().slice(0, 500), `Written by ${by}${rm ? `, ${monthLabel(rm)}` : ''}`, 'work',
+        !linkView && review.gig_id ? { kind: 'gig', id: review.gig_id } : null, {
+          who: named
+            ? { name: review.reviewer_name, user_id: review.reviewer_id, username: review.reviewer_username, portrait_url: review.reviewer_avatar, did }
+            : { name: null, user_id: null, username: null, portrait_url: null, did: `Someone who ${did}` },
+          when: rm ? monthLabel(rm) : null,
+        });
     };
     entries.push({ id: `review_${i}`, parts: ['reviews'], place: 'reviews', make, linkAware: true });
     mark('work', [rm], 'signed', ['record_work', 'reviews']);
@@ -318,6 +326,16 @@ function buildRecord(ctx, sources, { now }) {
   }).filter((s) => s.name);
 
   return { entries, months, events, pieces, skills };
+}
+
+const SOCIAL_LINKS = [['website', 'Website'], ['linkedin', 'LinkedIn'], ['twitter', 'X'], ['instagram', 'Instagram'], ['facebook', 'Facebook']];
+
+function socialLinkLines(socialLinks, first) {
+  if (!socialLinks || typeof socialLinks !== 'object') return [];
+  return SOCIAL_LINKS
+    .map(([key, label]) => [label, safeUrl(socialLinks[key])])
+    .filter(([, url]) => url)
+    .map(([label, url]) => line('said', label, `${first}'s own link`, null, { kind: 'url', url, site: hostOf(url) }));
 }
 
 // ---------- per view ----------
@@ -456,6 +474,11 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   }
   const others = shownEntries('others');
   if (others.length) person.push({ kind: 'lines', id: 'with_others', title: 'With others', lines: others, more: null });
+  // The person's own links (Edit profile's website and social links), to signed-in views only: never on a link.
+  if (!linkView) {
+    const links = socialLinkLines(ctx.userData.social_links, ctx.firstName);
+    if (links.length) person.push({ kind: 'lines', id: 'links', title: 'Links', lines: links, more: null });
+  }
   if (!linkView) {
     person.push({ kind: 'rows', id: 'rows', title: null, rows: [
       { key: 'posts', title: 'Posts in Pulse', detail: null, link: { kind: 'posts', user_id: ctx.userData.id } },
