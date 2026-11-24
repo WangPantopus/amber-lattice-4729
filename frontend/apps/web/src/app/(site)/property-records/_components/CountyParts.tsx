@@ -265,13 +265,25 @@ export function Homes({ page }: { page: { homes?: GuideCountyPage['homes'] } }) 
         {homes.median_year_built ? (
           <Card>
             <p className="text-sm text-app-text-secondary dark:text-app-text-muted">Median year a home was built</p>
-            <p className="mt-1 text-2xl font-bold text-app-text dark:text-white">{homes.median_year_built}</p>
+            <p className="mt-1 text-2xl font-bold text-app-text dark:text-white">
+              {homes.median_year_built_open === 'below'
+                ? `${homes.median_year_built} or earlier`
+                : homes.median_year_built_open === 'above'
+                  ? `${homes.median_year_built} or later`
+                  : homes.median_year_built}
+            </p>
           </Card>
         ) : null}
         {homes.median_value ? (
           <Card>
             <p className="text-sm text-app-text-secondary dark:text-app-text-muted">Median value of an owner-occupied home</p>
-            <p className="mt-1 text-2xl font-bold text-app-text dark:text-white">{dollars(homes.median_value)}</p>
+            <p className="mt-1 text-2xl font-bold text-app-text dark:text-white">
+              {homes.median_value_open === 'below'
+                ? `Under ${dollars(homes.median_value)}`
+                : homes.median_value_open === 'above'
+                  ? `${dollars(homes.median_value)} or more`
+                  : dollars(homes.median_value)}
+            </p>
           </Card>
         ) : null}
       </div>

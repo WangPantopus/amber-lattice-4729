@@ -19,6 +19,9 @@ const CITIES = [
   // November 23, 2026, first: Vancouver, Seattle and Tacoma, WA; Portland, OR; Tampa, FL; Dallas, TX; Saint Paul, MN;
   // Riverside, CA.
   '5374060', '5363000', '5370000', '4159000', '1271000', '4819000', '2758000', '0662000',
+  // November 23, 2026, second: Stockton and Santa Rosa, CA; Gainesville and Kissimmee, FL; Boulder, CO; Fayetteville,
+  // NC; Reading, PA; Bellevue, WA; Canton, OH; Gresham, OR.
+  '0675000', '0670098', '1225175', '1236950', '0807850', '3722920', '4263624', '5305210', '3912000', '4131250',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
@@ -44,6 +47,8 @@ function rowsOf(entry) {
 }
 
 const median = (n) => (Number.isFinite(n) && n > 0 ? n : null);
+// 'below' or 'above' where the median falls in the survey's open-ended lowest or highest interval (build-data.cjs).
+const openSide = (side) => (side === 'below' || side === 'above' ? side : null);
 
 // Every city in the file, by GEOID, under the county its page sits in.
 const byGeoid = new Map();
@@ -59,7 +64,9 @@ for (const [geoid, entry] of Object.entries(data.cities || {})) {
     otherCounties: entry.other_counties === true,
     rows: rowsOf(entry),
     built: median(entry.built),
+    builtOpen: openSide(entry.built_open),
     value: median(entry.value),
+    valueOpen: openSide(entry.value_open),
   };
   if (!byCounty.has(county.fips)) byCounty.set(county.fips, new Map());
   const inCounty = byCounty.get(county.fips);
@@ -90,7 +97,9 @@ function homesOf(city) {
   if (!city.built && !city.value) return null;
   return {
     median_year_built: city.built,
+    median_year_built_open: city.built ? city.builtOpen : null,
     median_value: city.value,
+    median_value_open: city.value ? city.valueOpen : null,
     survey: data.sources?.homes_survey || null,
     source: 'U.S. Census Bureau, American Community Survey 5-year estimates',
     url: 'https://data.census.gov/',
