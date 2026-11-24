@@ -22,6 +22,9 @@ const CITIES = [
   // November 23, 2026, second: Stockton and Santa Rosa, CA; Gainesville and Kissimmee, FL; Boulder, CO; Fayetteville,
   // NC; Reading, PA; Bellevue, WA; Canton, OH; Gresham, OR.
   '0675000', '0670098', '1225175', '1236950', '0807850', '3722920', '4263624', '5305210', '3912000', '4131250',
+  // November 24, 2026, third: Los Angeles, CA; Chicago, IL; Miami, FL; Las Vegas and Henderson, NV; Columbus, OH;
+  // Pittsburgh, PA; Madison, WI; Oklahoma City, OK; Kansas City, MO.
+  '0644000', '1714000', '1245000', '3240000', '3231900', '3918000', '4261000', '5548000', '4055000', '2938000',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
