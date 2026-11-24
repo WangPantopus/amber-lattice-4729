@@ -51,7 +51,7 @@ function recordedHistory(lines, { since }) {
  */
 function countyWord(text) {
   const name = String(text ?? '').replace(/\s+/g, ' ').trim();
-  if (!name || /^(unknown|other|none|n\/?a|misc\.?|miscellaneous)$/i.test(name)) return null;
+  if (!name || /^(unknown|other|none|n\/?a|not available|misc\.?|miscellaneous)$/i.test(name)) return null;
   const mixed = /[a-z]/.test(name);
   const words = name.split(' ').map((word, i) => {
     if ((mixed && /^[A-Z]{2,4}$/.test(word)) || /^([A-Z]\.){2,}$/.test(word)) return word;

@@ -11,7 +11,8 @@ const { download, zipDates, zipTable } = require('../lib/tables.cjs');
 const { year, isoDate, zipCode, realUnit, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '12115';
@@ -178,15 +179,26 @@ async function readDetails(zip) {
     if (type === 'POOL') held.pool = true;
   }
   const qualifications = await lookup(zip, 'LookupQualificationCode.txt');
+  // The Appraiser's own names for its deed codes, for recorded history (facts.js).
+  const deedNames = await lookup(zip, 'LookupDeedType.txt');
   const sales = new Map();
+  // Every line, for recorded history: its date, price, deed code and the Official Records reference.
+  const saleLines = new Map();
+  let first = null;
   for await (const row of zipTable(zip, 'Sales.txt', ['parcelid', 'saledate', 'saleprice', 'legalreference', 'nalcode', 'deedtype'])) {
     const [date, price, deed, code] = [isoDate(row.saledate), positive(row.saleprice), row.deedtype.trim(), row.nalcode.trim()];
-    if (!date || !isHomeSale(price, qualifications.get(code)) || NOT_A_DEED_OF_SALE.has(deed) || NOT_THIS_SALE.has(code)) continue;
+    const sale = Boolean(date) && isHomeSale(price, qualifications.get(code)) && !NOT_A_DEED_OF_SALE.has(deed) && !NOT_THIS_SALE.has(code);
+    if (date) {
+      if (!first || date < first) first = date;
+      if (!saleLines.has(row.parcelid)) saleLines.set(row.parcelid, []);
+      saleLines.get(row.parcelid).push({ date, sale, price, type: deedNames.get(deed) || null, code: deed, document: row.legalreference });
+    }
+    if (!sale) continue;
     const held = sales.get(row.parcelid);
     if (!held || held.date < date) sales.set(row.parcelid, { date, price, document: word(row.legalreference) });
   }
   log(`${cards.size} parcels with buildings, ${outbuildings.size} with detached garages, carports or pools, ${sales.size} with a sale of the home`);
-  return { details: { cards, outbuildings, sales }, words };
+  return { details: { cards, outbuildings, sales, saleLines, since: (first || '').slice(0, 4) }, words };
 }
 
 async function* build({ work }) {
@@ -197,6 +209,13 @@ async function* build({ work }) {
   const asOf = zipDates(zip).get(TABLE);
   if (!asOf) throw new Error('The file no longer says when it was made');
   const { details, words } = await readDetails(detailed);
+  const leftOut = {};
+  // A sale is a sale; any other line says what it is in the Appraiser's name for its deed code, or is left out.
+  const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, type, code, document }) => {
+    const line = historyLine({ date, sale, word: sale ? null : countyWord(type), price, document });
+    if (!line) leftOut[code || '-'] = (leftOut[code || '-'] || 0) + 1;
+    return line;
+  }), { since: details.since });
   words.grade = await lookup(zip, 'Parcel_Sales_CSV/BuildingClassCodes.csv');
   const [uses, subdivisions] = [new Map(), new Map()];
   for await (const row of zipTable(zip, 'Parcel_Sales_CSV/LandUseCodes.csv', ['Code', 'Description'])) uses.set(row.Code, word(row.Description));
@@ -209,10 +228,14 @@ async function* build({ work }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = historyOf(details.saleLines.get(word(row.ACCOUNT)));
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number`);
+  log(`${COUNTY}: recorded history for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${details.since}; lines with no name for what they are, left out: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'FL', name: COUNTY, publisher: 'Sarasota County Property Appraiser', dataset: 'parcel file', method: 'county', source: 'fl-sarasota', as_of: asOf, stale_after_days: 450, records,
