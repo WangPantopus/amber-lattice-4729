@@ -1257,10 +1257,11 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       : []),
   ];
 
-  // Phones: Back and ⋯ (yours: "Your profile" and Share), as the drawings' top bar. /app/profile has no Back.
+  // Phones: Back and ⋯ (yours: "Your profile" and Share), as the drawings' top bar. /app/profile has no Back, and
+  // neither has the profile with sources for someone signed out (board 22): they came by a link, with nowhere to go back to.
   const topRow = previewing ? null : (
     <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] lg:grid-cols-[auto_minmax(0,1fr)_2.75rem] items-center h-12 -mx-2 mb-1">
-      {canGoBack && !ownerHome ? (
+      {canGoBack && !ownerHome && !(withSources && !signedIn) ? (
         <button type="button" onClick={() => router.back()} aria-label="Back" className={iconButton}>
           <ChevronLeft aria-hidden="true" className="w-[1.625rem] h-[1.625rem]" strokeWidth={2.25} />
         </button>
