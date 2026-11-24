@@ -1,11 +1,20 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /child-safety
 // Child Safety Standards (CSAE policy for Google Play compliance)
 // frontend/apps/web/src/app/(site)/child-safety/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/child-safety',
+  title: 'Child safety standards',
+  description:
+    'Pantopus has zero tolerance for child sexual abuse and exploitation: how we prevent it, how to report it in the app, and how we work with the authorities.',
+});
 
 export default function ChildSafetyPage() {
   return (

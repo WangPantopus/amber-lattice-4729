@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
 import credits from './credits.json';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /about/data-sources
@@ -19,6 +20,14 @@ type CreditRow = {
   dataset?: string;
   statement?: string;
 };
+
+
+export const metadata = publicPageMetadata({
+  path: '/about/data-sources',
+  title: 'Data sources for address and property records',
+  description:
+    "The public files behind Pantopus's address and property records: who publishes each one, the license it comes under, and the credit each publisher asks for.",
+});
 
 export default function DataSourcesPage() {
   return (

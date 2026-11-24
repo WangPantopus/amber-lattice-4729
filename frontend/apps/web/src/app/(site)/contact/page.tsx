@@ -1,10 +1,19 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /contact
 // frontend/apps/web/src/app/(site)/contact/page.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+export const metadata = publicPageMetadata({
+  path: '/contact',
+  title: 'Contact Pantopus: support, business, privacy',
+  description:
+    'Write to Pantopus about your account, a business question or your privacy, at support, business or privacy@pantopus.com. We reply in 1 to 2 business days.',
+});
 
 export default function ContactPage() {
   return (
