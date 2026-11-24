@@ -19,6 +19,10 @@
  * is served with `past_date: true`, so screens say how old it is (provenanceOf,
  * countyRecordSerializer.js). That mark is never stored on the Home.
  *
+ * A refresh keeps on the copy what its county's newer file changed (`changes`,
+ * withChanges), for the owner's "Worth a look" (services/place/homeChanges.js).
+ * A release read by changed code keeps nothing: its `reader` stamp differs.
+ *
  * A lookup holds a screen for a moment at most. Past that the screen says "looking
  * up", the lookup finishes behind it, and a Home that was told so is tried again
  * until storage answers: writing to the Home tells its open screens to read again.
@@ -122,6 +126,9 @@ function copyFromAnswer(answer, address) {
     ...(county.held_from ? { held_from: county.held_from } : {}),
     ...(county.require_mapped_lot_label && held?.mapped_lots ? { require_mapped_lot_label: true } : {}),
     stored_at: new Date().toISOString(),
+    // Which reader made the release (scripts/property-index/build.cjs readerStamp), so a refresh can tell the county's
+    // changes from a change to how its files are read (withChanges).
+    ...(county.reader ? { reader: county.reader } : {}),
     address_stamp: addressStamp(address),
     facts,
     ...(answer.building ? { building: factsWhere(answer.building.facts, BUILDING_FIGURES) } : {}),
@@ -258,6 +265,62 @@ function setAside(home, copy) {
   return Boolean(county && (county.status === 'withdrawn' || county.rolled_back_from === copy.release));
 }
 
+// A Home's copy keeps what its last few refreshes changed, newest first.
+const CHANGES_KEPT = 6;
+const said = (name) => Boolean(FACTS[name]?.label) && !['none', 'history'].includes(FACTS[name].format);
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The facts a screen shows now (router.served, under today's switches) that a refresh gave a new value or newly states,
+ * as { name: [was, now] } (was null when the record didn't state it). A fact the new copy no longer states isn't one:
+ * a county file leaving a column empty is more often a gap than news.
+ */
+function changedFacts(old, next) {
+  const before = router.served(old)?.facts || {};
+  const after = router.served(next)?.facts || {};
+  const changed = {};
+  for (const [name, value] of Object.entries(after)) {
+    if (!said(name) || value === null || value === undefined || value === '' || sameValue(before[name], value)) continue;
+    changed[name] = [before[name] ?? null, value];
+  }
+  return changed;
+}
+
+/**
+ * Whether what differs between two copies of one home's record is the county's: the same record from the same source,
+ * a newer county file, read by the same reader. A release built by a changed reader (a fix to a connector or its
+ * libraries) has another `reader` stamp, and a copy made before releases had one has none: either way it says nothing.
+ */
+function countyMoved(old, next) {
+  return Boolean(old.reader && old.reader === next.reader && old.subject?.id && old.subject.id === next.subject?.id
+    && old.match === next.match && old.publisher === next.publisher && old.dataset === next.dataset
+    && String(next.as_of || '') > String(old.as_of || ''));
+}
+
+/**
+ * The next copy with `changes`, what its record's refreshes changed (services/place/homeChanges.js "Worth a look"):
+ * [{ at, release, as_of, was_as_of, facts: { name: [was, now] } }], newest first, the earlier ones carried over while it
+ * is the same record and only for facts it still shows at that value, so each says what the record shows now. A release
+ * taken back takes its changes with it.
+ */
+function withChanges(old, next, county) {
+  if (!next) return next;
+  const same = old?.subject?.id && old.subject.id === next.subject?.id;
+  const shown = router.served(next)?.facts || {};
+  const still = (entry) => {
+    const facts = Object.fromEntries(Object.entries(entry?.facts || {}).filter(([name, pair]) => Array.isArray(pair) && sameValue(shown[name], pair[1])));
+    return Object.keys(facts).length ? { ...entry, facts } : null;
+  };
+  const kept = same ? (old.changes || []).filter((entry) => entry?.release !== county?.rolled_back_from).map(still).filter(Boolean) : [];
+  let entry = null;
+  if (same && county?.rolled_back_from !== old.release && countyMoved(old, next)) {
+    const facts = changedFacts(old, next);
+    if (Object.keys(facts).length) entry = { at: next.stored_at, release: next.release, as_of: next.as_of, was_as_of: old.as_of, facts };
+  }
+  const changes = (entry ? [entry, ...kept] : kept).slice(0, CHANGES_KEPT);
+  return changes.length ? { ...next, changes } : next;
+}
+
 const refreshedAt = new Map();
 
 // Answers that don't say which home an address is: the copy stays until one does. (Storage that can't be read throws.)
@@ -286,7 +349,7 @@ function refreshSoon(home, copy) {
     }
     const address = homeAddress(home);
     const answer = await lookup(address);
-    const next = copyFromAnswer(answer, address);
+    const next = withChanges(copy, copyFromAnswer(answer, address), county);
     if (next || county.rolled_back_from === copy.release || !saysNothing(answer)) await storeCopy(home, next);
   })().catch((err) => logger.info('property_records.refresh_later', { error: err.name }));
 }
@@ -512,4 +575,4 @@ async function readForAddress(address, { patient = false } = {}) {
   }
 }
 
-module.exports = { copyFromAnswer, provenanceOf, storedCopy, liveCopy, storeCopy, refreshSoon, forHome, forAddress, finishLater, unitQuestion, noteLookup, homeAddress, dateLabel };
+module.exports = { copyFromAnswer, provenanceOf, storedCopy, liveCopy, storeCopy, refreshSoon, withChanges, forHome, forAddress, finishLater, unitQuestion, noteLookup, homeAddress, dateLabel };

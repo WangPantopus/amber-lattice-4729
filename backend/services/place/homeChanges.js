@@ -10,6 +10,10 @@
 //   household_activity  Home activity log rows (members.manage only, as the
 //                       Home timeline; narrower: no task, document, pickup or
 //                       system rows, which have their own visibility)
+//   record_changed      the Home's county record now shows something new after
+//                       a refresh (propertyRecords/homeRecord.js withChanges):
+//                       the confirmed owner only, whose record it is, one item
+//                       per refresh
 // Nothing is derived or padded: no `since` (a first visit) answers no items,
 // and the viewer's own changes aren't news to them, so they're left out.
 // Guests, someone whose claim is in review and a private setup's creator get
@@ -25,6 +29,11 @@ const { homeDocumentVisibilities } = require('../../utils/homeDocumentAccess');
 const { NON_RESIDENT_ROLES, resolveHomeRole } = require('../../utils/homeAccessPolicy');
 const { loadChatPeople } = require('../chatPeople');
 const { SYSTEM_DEFS } = require('../homeSystemsService');
+
+const homeRecords = require('../propertyRecords/homeRecord');
+const router = require('../propertyRecords/router');
+const { FACTS } = require('../propertyRecords/facts');
+const { factValue } = require('../../serializers/countyRecordSerializer');
 
 const MAX_ITEMS = 20;
 const MAX_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -176,6 +185,55 @@ async function householdActivity(homeId, userId, since) {
   }));
 }
 
+// "Living area" reads "living area" inside a sentence; "ZIP+4" and other leading capitals stay.
+const inSentence = (label) => (/^[A-Z][a-z]/.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label);
+
+/** "living area 2,140 sq ft (was 1,980 sq ft)", or with its label as written to start a line. */
+function factLine(name, [was, now], start = false) {
+  const fact = FACTS[name];
+  const shown = factValue(fact.format, now);
+  if (!shown) return null;
+  const before = was === null ? null : factValue(fact.format, was);
+  return `${start ? fact.label : inSentence(fact.label)} ${shown}${before ? ` (was ${before})` : ''}`;
+}
+
+/**
+ * The confirmed owner's county record after its refreshes since `since`: one item each, the first fact in the title and
+ * how many more, since Android draws the title alone; the rest in `detail`. "Your home's county record now shows": the
+ * county's file and our reading of it both move a record, and a refresh across a changed reader keeps nothing.
+ */
+async function recordChanged(home, since) {
+  const { data, error } = await supabaseAdmin
+    .from('Home')
+    .select('id, address, address2, city, state, zipcode, property_record:niche_data->property_record')
+    .eq('id', home.id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.property_record) return [];
+  const { property_record: stored, ...row } = data;
+  // The copy as screens get it: only while its county is live, its address is the Home's and its release stands.
+  const copy = await homeRecords.liveCopy({ ...row, niche_data: { property_record: stored } });
+  if (!copy || !Array.isArray(stored.changes)) return [];
+  const withheld = router.withholding(copy.jurisdiction);
+  return stored.changes
+    .filter((entry) => iso(entry?.at) && iso(entry.at) > since && entry.facts && typeof entry.facts === 'object')
+    .map((entry) => {
+      const names = Object.keys(FACTS).filter((name) => Array.isArray(entry.facts[name]) && !withheld?.has(name) && factLine(name, entry.facts[name]));
+      if (!names.length) return null;
+      const more = names.length - 1;
+      return {
+        id: `record_changed:${entry.release}`,
+        kind: 'record_changed',
+        title: `Your home\u2019s county record now shows ${factLine(names[0], entry.facts[names[0]])}${more ? ` and ${more} more ${more === 1 ? 'change' : 'changes'}` : ''}`,
+        detail: more ? names.slice(1).map((name) => factLine(name, entry.facts[name], true)).join(' \u00b7 ') : null,
+        occurred_at: iso(entry.at),
+        origin: copy.publisher || 'County records',
+        route: { screen: 'place_detail', group: 'your_home' },
+      };
+    })
+    .filter(Boolean);
+}
+
 /**
  * @param {object} args
  * @param {object} args.home     The Home row (id, map_center_lat, map_center_lng).
@@ -198,6 +256,7 @@ async function changesSince({ home, userId, reader, since: raw, now = Date.now()
     if (permissions.has('docs.view')) sources.push(documentsAdded(home.id, userId, access, since));
     if (permissions.has('members.manage')) sources.push(householdActivity(home.id, userId, since));
   }
+  if (access && access.hasAccess && access.isOwner) sources.push(recordChanged(home, since));
 
   const settled = await Promise.allSettled(sources);
   const failed = settled.filter((result) => result.status === 'rejected');

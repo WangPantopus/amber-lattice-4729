@@ -8,7 +8,8 @@
  * Everything lives in private storage under one prefix:
  *   states/<ST>.json                      which release each county of a state serves, its previous one, whose it is
  *                                         and how fresh, and which counties a ZIP or city can be in. Replacing this
- *                                         file is what switches readers over, or back.
+ *                                         file is what switches readers over, or back. A county's `reader` stamps the
+ *                                         code that read its files (scripts/property-index/build.cjs readerStamp).
  *   releases/<fips>/<release>/manifest.json.gz, data.bin    one county's release, never changed once written.
  *   suppressions.json                     salt, address hashes and optional parcel_hashes by county for standing exclusions.
  *   switches/<name>.json                  which counties an environment serves, and how (router.js).
