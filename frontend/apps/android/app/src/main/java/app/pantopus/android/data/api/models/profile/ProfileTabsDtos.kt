@@ -64,6 +64,8 @@ data class PortfolioUploadedFileDto(
     val id: String,
     val url: String? = null,
     val type: String? = null,
+    /** Picture sizes the server made (`small`, `medium`, …), when it made any. */
+    val thumbnails: Map<String, Any?>? = null,
 )
 
 /** `{ message, file }` from `POST /api/files/portfolio`. */

@@ -55,6 +55,49 @@ interface ProfilePageApi {
         @Query("as") audience: String? = null,
     ): ProfilePieceDto
 
+    /** `GET /api/profile-page/me/pieces` (P2.3): the owner's pieces (drafts and hidden included), offers and counts. */
+    @GET("api/profile-page/me/pieces")
+    suspend fun myPieces(): Map<String, Any?>
+
+    /** `POST /api/profile-page/me/pieces` (P2.3): make a piece. Raw JSON, so an explicit null reaches the server. */
+    @POST("api/profile-page/me/pieces")
+    suspend fun createPiece(
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `POST /api/profile-page/me/pieces/preview` (P2.3): "How this piece will show", nothing saved. */
+    @POST("api/profile-page/me/pieces/preview")
+    suspend fun previewPiece(
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `PATCH /api/profile-page/me/pieces/:id` (P2.3): change any of a piece's fields. */
+    @PATCH("api/profile-page/me/pieces/{id}")
+    suspend fun updatePiece(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `DELETE /api/profile-page/me/pieces/:id` (P2.3): remove a piece; its credits end. */
+    @DELETE("api/profile-page/me/pieces/{id}")
+    suspend fun deletePiece(
+        @Path("id") id: String,
+    ): Map<String, Any?>
+
+    /** `POST …/me/pieces/:id/links/:linkId/proof` (P2.4): the line to put on the page. */
+    @POST("api/profile-page/me/pieces/{id}/links/{linkId}/proof")
+    suspend fun linkProof(
+        @Path("id") id: String,
+        @Path("linkId") linkId: String,
+    ): Map<String, Any?>
+
+    /** `POST …/me/pieces/:id/links/:linkId/check` (P2.4): the card, Seen, when the line is on the page. */
+    @POST("api/profile-page/me/pieces/{id}/links/{linkId}/check")
+    suspend fun checkLink(
+        @Path("id") id: String,
+        @Path("linkId") linkId: String,
+    ): Map<String, Any?>
+
     /** `GET /api/profile-page/me/share`: the main link's parts, the link, and the page a visitor would see. */
     @GET("api/profile-page/me/share")
     suspend fun share(): ProfileShareDto

@@ -361,6 +361,7 @@ private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
         pinned = map["pinned"] == true,
         draft = map["draft"] == true,
         hidden = map["hidden"] == true,
+        audience = map.str("audience")?.takeIf { it in AUDIENCES },
     )
 }
 
@@ -392,19 +393,7 @@ fun mapProfilePiece(dto: ProfilePieceDto): ProfilePieceDetail? {
                 detail = item.str("detail"),
             )
         }
-    val links =
-        map.objs("links").mapNotNull { link ->
-            val url = link.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@mapNotNull null
-            PieceLinkCard(
-                url = url,
-                kind = link.str("kind")?.takeIf { it in LINK_KINDS } ?: "site",
-                site = link.str("site"),
-                title = link.str("title"),
-                description = link.str("description"),
-                ink = ProfileInk.fromApi(link.str("ink")),
-                how = link.str("how"),
-            )
-        }
+    val links = map.objs("links").mapNotNull(::mapLinkCard)
     return ProfilePieceDetail(
         piece = piece,
         description = mapLine(map.obj("description")),
@@ -415,8 +404,68 @@ fun mapProfilePiece(dto: ProfilePieceDto): ProfilePieceDetail? {
         links = links,
         written = map.objs("written").mapNotNull(::mapLine),
         keptOnce = map.str("kept_once"),
+        attachments = attachments,
+        ownerRole = map.str("owner_role"),
+        howItWillShow = map.strs("how_it_will_show"),
     )
 }
+
+/** A link on a piece as a card of words (P2.4); null for anything but a public http(s) page. */
+fun mapLinkCard(link: Map<String, Any?>): PieceLinkCard? {
+    val url = link.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return null
+    return PieceLinkCard(
+        id = link.str("id"),
+        url = url,
+        kind = link.str("kind")?.takeIf { it in LINK_KINDS } ?: "site",
+        site = link.str("site"),
+        title = link.str("title"),
+        description = link.str("description"),
+        ink = ProfileInk.fromApi(link.str("ink")),
+        how = link.str("how"),
+    )
+}
+
+/** `GET /me/pieces` (P2.3). */
+fun mapOwnerPieces(map: Map<String, Any?>): OwnerPieces {
+    val counts = map.obj("counts")
+    val pieces = map.objs("pieces").mapNotNull(::mapPiece)
+    return OwnerPieces(
+        pieces = pieces,
+        offered =
+            map.objs("offered").mapNotNull { offer ->
+                val kind = offer.str("kind")?.takeIf { it == "gig" || it == "plan" } ?: return@mapNotNull null
+                val id = offer.str("id") ?: return@mapNotNull null
+                PieceOffer(
+                    kind = kind,
+                    id = id,
+                    title = offer.str("title").orEmpty(),
+                    whenText = offer.str("when"),
+                    with = offer.str("with"),
+                    text = offer.str("text") ?: offer.str("title") ?: return@mapNotNull null,
+                )
+            },
+        shownOnLink = counts?.int("shown_on_link") ?: 0,
+        total = counts?.int("total") ?: pieces.size,
+    )
+}
+
+/** A saved piece's answer (P2.3: the owner's view, with "How this piece will show"). */
+fun mapSavedPiece(map: Map<String, Any?>): Pair<WorkPiece, List<String>>? = mapPiece(map)?.let { it to map.strs("how_it_will_show") }
+
+/** `POST …/proof` (P2.4). */
+fun mapPieceProof(map: Map<String, Any?>): PieceProof? {
+    val line = map.str("line") ?: return null
+    return PieceProof(
+        line = line,
+        meta = map.str("meta"),
+        how = map.str("how") ?: "Put this line in the page's title or description, then check.",
+    )
+}
+
+/** `POST …/preview` (P2.3). */
+fun mapHowItWillShow(map: Map<String, Any?>): List<String> = map.strs("how_it_will_show")
+
+private val AUDIENCES = setOf("anyone", "members", "connections")
 
 private val LINK_KINDS = setOf("site", "video", "code", "app", "article", "paper")
 private const val MAX_SKILLS = 5

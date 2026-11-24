@@ -468,6 +468,9 @@ private fun PartsCard(
                     part.key == "city" && share.cityLimit == "none" -> "Only you see your city (Settings, Privacy)."
                     part.key == "city" && share.cityLimit != "anyone" -> "Your privacy setting keeps your city to your connections."
                     part.key == "city" && !part.on -> "Off, the page names no place"
+                    // P2.5: counted from each piece's who-sees-it.
+                    part.key == "work" && share.workPieces != null ->
+                        share.workPieces.let { (shown, total) -> "$shown of your $total ${if (total == 1) "piece" else "pieces"}" }
                     else -> word.note
                 }
             ShareSwitchRow(

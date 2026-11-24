@@ -112,6 +112,11 @@ internal class SourcesFrameSlots(
      * item). With it, the owner always has a Work tab, as today; null for anyone else.
      */
     val workEnd: (@Composable () -> Unit)? = null,
+    /**
+     * Phase 2: the owner's way in at the top of Work (their offers and "Add a piece", board 10). With it, too, the
+     * owner always has a Work tab; null for anyone else.
+     */
+    val workStart: (@Composable () -> Unit)? = null,
     /** The bar's share button on Work and Record; null leaves it out. */
     val onShare: (() -> Unit)?,
     val onBack: () -> Unit,
@@ -130,7 +135,8 @@ internal fun ProfileSourcesFrame(
     actions: SourcesBlockActions,
     month: RecordMonth? = null,
 ) {
-    val tabs = remember(page.tabs, slots.workEnd != null) { tabsWithOwnerWork(page, slots.workEnd != null) }
+    val ownerWork = slots.workEnd != null || slots.workStart != null
+    val tabs = remember(page.tabs, ownerWork) { tabsWithOwnerWork(page, ownerWork) }
     val tab = tabs.firstOrNull { it.key == selectedTab } ?: tabs.firstOrNull()
     val first = tab == null || tab == tabs.firstOrNull()
     val scroll = rememberScrollState()
@@ -172,6 +178,7 @@ internal fun ProfileSourcesFrame(
                         modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
                     ) {
+                        if (tab.key == WORK_TAB) slots.workStart?.invoke()
                         SourcesBlocks(blocks = tab.blocks, page = page, actions = actions, slots = slots, month = month)
                         if (tab.key == WORK_TAB) slots.workEnd?.invoke()
                         // Board 12 ends the record with how to read its lines.

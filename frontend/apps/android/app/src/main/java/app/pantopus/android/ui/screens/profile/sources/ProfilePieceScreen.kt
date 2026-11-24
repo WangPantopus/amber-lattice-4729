@@ -74,9 +74,10 @@ internal fun ProfilePieceScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onOpenLink: (ProfilePageLink) -> Unit,
+    onEdit: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("profileSources.piece")) {
-        PieceTopBar(onBack)
+        PieceTopBar(onBack, onEdit.takeIf { state is ProfilePieceState.Ready })
         when (state) {
             is ProfilePieceState.Loading -> PieceSkeleton()
             is ProfilePieceState.Missing ->
@@ -99,7 +100,10 @@ internal fun ProfilePieceScreen(
 }
 
 @Composable
-private fun PieceTopBar(onBack: () -> Unit) {
+private fun PieceTopBar(
+    onBack: () -> Unit,
+    onEdit: (() -> Unit)?,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -117,7 +121,11 @@ private fun PieceTopBar(onBack: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f).semantics { heading() },
         )
-        Spacer(Modifier.size(48.dp))
+        if (onEdit != null) {
+            ProfileIconButton(icon = PantopusIcon.Pencil, label = "Change this piece", onClick = onEdit, iconSize = 20.dp, testTag = "profileSources.piece.edit")
+        } else {
+            Spacer(Modifier.size(48.dp))
+        }
     }
 }
 
@@ -161,6 +169,8 @@ private fun PieceContent(
                     }
                 }
             }
+            // The owner's own piece: who it reaches and how it shows, as the server works it out ("who sees it").
+            if (detail.howItWillShow.isNotEmpty()) HowItWillShow(detail.howItWillShow, title = "How this piece shows")
             if (detail.howWeKnow.isNotEmpty()) {
                 PieceCard(title = "How we know") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {

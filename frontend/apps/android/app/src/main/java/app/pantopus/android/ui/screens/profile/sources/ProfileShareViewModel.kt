@@ -59,6 +59,8 @@ data class ProfileShareState(
     /** v1.4: false while the profile is private: no link opens, and [linksNote] says why in Copy and Send's place. */
     val linksOpen: Boolean = true,
     val linksNote: String? = null,
+    /** P2.5: the pieces a link shows, of the pieces on Work ("12 of your 18 pieces"); null before phase 2. */
+    val workPieces: Pair<Int, Int>? = null,
 )
 
 /** A link's page as its visitor gets it, or why it isn't there. */
@@ -313,6 +315,11 @@ class ProfileShareViewModel
                 linksOpen = dto.linksOpen != false,
                 linksNote = dto.linksNote?.takeIf { it.isNotBlank() },
                 links = dto.links.orEmpty().mapNotNull(::mapLink),
+                workPieces =
+                    dto.workPieces?.let { counts ->
+                        val total = counts.total ?: return@let null
+                        (counts.shown ?: 0) to total
+                    }?.takeIf { it.second > 0 },
             )
 
         private fun mapLink(dto: ProfileShareLinkDto): ShareLink? {

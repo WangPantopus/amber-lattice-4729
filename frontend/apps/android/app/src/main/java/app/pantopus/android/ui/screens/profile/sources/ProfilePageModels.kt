@@ -205,6 +205,8 @@ data class WorkPiece(
     /** The owner's view only (P2.1): a draft or a hidden piece reaches nobody else. */
     val draft: Boolean = false,
     val hidden: Boolean = false,
+    /** The owner's view only: who sees it, anyone | members | connections. */
+    val audience: String? = null,
 ) {
     /** The year the piece belongs to: its finished month, else its started month, else the year in its "when". */
     val year: Int?
@@ -245,6 +247,8 @@ data class PieceAttachment(
 
 /** A link on a piece, read by the server into a card of words (P2.4, board 11): never a picture from the page. */
 data class PieceLinkCard(
+    /** The card's id on the piece (the owner proves a page by it); null on a card not saved yet. */
+    val id: String? = null,
     val url: String,
     /** site | video | code | app | article | paper */
     val kind: String,
@@ -271,6 +275,38 @@ data class ProfilePieceDetail(
     /** What the person who hired them wrote (v1.2 review lines, with who and when). */
     val written: List<ProfileLine>,
     val keptOnce: String?,
+    /** Every attachment in the person's order, photos included (the owner's editor keeps them by file id). */
+    val attachments: List<PieceAttachment> = emptyList(),
+    /** The owner's view only: their own part ("Lead carpenter") and "How this piece will show", as the server says. */
+    val ownerRole: String? = null,
+    val howItWillShow: List<String> = emptyList(),
+)
+
+/** A job done or a plan hosted that is not yet a piece (board 10's top): one tap starts a piece from it. */
+data class PieceOffer(
+    /** gig | plan */
+    val kind: String,
+    val id: String,
+    /** For a job, the poster's words: shown only in the owner's banner, never put in the title field. */
+    val title: String,
+    val whenText: String?,
+    val with: String?,
+    val text: String,
+)
+
+/** `GET /me/pieces`: the owner's pieces (drafts and hidden ones included), the offers, and how many a link shows. */
+data class OwnerPieces(
+    val pieces: List<WorkPiece>,
+    val offered: List<PieceOffer>,
+    val shownOnLink: Int,
+    val total: Int,
+)
+
+/** The line that proves a page is the person's (P2.4): put it in the page's title or description, then check. */
+data class PieceProof(
+    val line: String,
+    val meta: String?,
+    val how: String,
 )
 
 /** An owned thing: a business, a credential, a tool, with its badge. */
