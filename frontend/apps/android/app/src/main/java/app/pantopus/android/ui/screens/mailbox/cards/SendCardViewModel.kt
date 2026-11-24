@@ -5,6 +5,8 @@ package app.pantopus.android.ui.screens.mailbox.cards
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.ai.AIComposerDraft
+import app.pantopus.android.data.ai.AIComposerDrafts
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.mailbox.CardMediaFile
 import app.pantopus.android.data.api.models.mailbox.CardSignature
@@ -331,7 +333,7 @@ class SendCardViewModel
         private val _load = MutableStateFlow<SendCardLoad>(SendCardLoad.Loading)
         val load: StateFlow<SendCardLoad> = _load.asStateFlow()
 
-        private val _form = MutableStateFlow(restoredForm())
+        private val _form = MutableStateFlow(assistantDraft()?.let(::draftForm) ?: restoredForm())
         val form: StateFlow<SendCardForm> = _form.asStateFlow()
 
         /** The account's saved signature (founder, 2026-11-16): a new card starts signed with it (CardSignaturePad.kt). */
@@ -392,6 +394,9 @@ class SendCardViewModel
 
         private var theirsJob: Job? = null
 
+        /** The flow opened on the assistant's draft and its look hasn't been read yet ([lookOverDraft]). */
+        private var looksAtDraft = false
+
         init {
             viewModelScope.launch {
                 val profile = (localProfiles.me() as? NetworkResult.Success)?.data?.profile
@@ -417,11 +422,24 @@ class SendCardViewModel
             }
             // Back after Android let go of the screen on step 5: it's read again from step 4.
             val lookAgain = saved.get<String>(KEY_STEP) == SendCardStep.Look.name
+            // Opened from the assistant's draft with everything chosen: its look is read once the cards are.
+            looksAtDraft = assistantDraft() != null && _form.value.step == SendCardStep.Seal
             // What's chosen so far, kept with the screen's saved state.
             viewModelScope.launch { _form.collect { save(it) } }
             reload()
             readTheirs()
             if (lookAgain) look()
+        }
+
+        /**
+         * The assistant's draft once the cards are read: its arrival while that's open for who it's for (else the first
+         * that is), then "Look it over", the step where the person sees the card as it will arrive. A refusal stays on
+         * step 4 with the server's sentence, as a tap on "Look it over" would.
+         */
+        private suspend fun lookOverDraft() {
+            theirsJob?.join()
+            _form.update { form -> form.to?.let { form.copy(arrival = arrivalFor(it, form.arrival, form.theirs)) } ?: form }
+            if (_form.value.step == SendCardStep.Seal) look()
         }
 
         /** Read the cards again (and Try again). */
@@ -442,6 +460,10 @@ class SendCardViewModel
                                 },
                             )
                     }
+                if (looksAtDraft && loaded is NetworkResult.Success) {
+                    looksAtDraft = false
+                    lookOverDraft()
+                }
             }
         }
 
@@ -906,6 +928,42 @@ class SendCardViewModel
             if (saved.get<String>(KEY_STEP) != null) return null
             val userId = saved.get<String>(SEND_CARD_TO_USER_KEY)?.takeIf { it.isNotBlank() } ?: return null
             return CardRecipient.Person(userId, saved.get<String>(SEND_CARD_TO_NAME_KEY).orEmpty())
+        }
+
+        /**
+         * The card the assistant drafted ("Open the card" in the Pantopus AI thread), on first opening only: after that
+         * the flow saved with the screen stands, with whatever the person changed.
+         */
+        private fun assistantDraft(): AIComposerDraft.ChristmasCard? {
+            if (saved.get<String>(KEY_STEP) != null) return null
+            return AIComposerDrafts.find(saved.get<String>(AIComposerDrafts.KEY)) as? AIComposerDraft.ChristmasCard
+        }
+
+        /**
+         * The flow with [draft]'s picture, person or address, note and arrival chosen, on "Seal it for the day"; "Look it
+         * over" opens from there once the cards are read ([lookOverDraft]). Signing, a photo or voice greeting, stamps and
+         * "Seal and send" stay the person's.
+         */
+        private fun draftForm(draft: AIComposerDraft.ChristmasCard): SendCardForm {
+            val to =
+                draft.toUserId?.let { CardRecipient.Person(it, draft.toName.orEmpty()) }
+                    ?: draft.toEmail?.let { CardRecipient.Email(it) }
+            val message = draft.message.takeLetters(cards.value?.messageLimit ?: DEFAULT_LIMIT)
+            val step =
+                when {
+                    to == null -> SendCardStep.To
+                    message.isBlank() -> SendCardStep.Write
+                    else -> SendCardStep.Seal
+                }
+            return SendCardForm(
+                step = step,
+                byEmail = to is CardRecipient.Email,
+                email = draft.toEmail.orEmpty(),
+                to = to,
+                design = draft.design,
+                message = message,
+                arrival = draft.arrival,
+            )
         }
 
         /** The step saved with the screen (step 5 is read again from step 4); none saved: the first, or [opensAtPick]. */

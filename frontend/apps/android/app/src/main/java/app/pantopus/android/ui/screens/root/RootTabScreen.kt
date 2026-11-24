@@ -69,6 +69,8 @@ import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.perf.ScreenTiming
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.core.security.SensitiveScreenGuard
+import app.pantopus.android.data.ai.AIComposerDraft
+import app.pantopus.android.data.ai.AIComposerDrafts
 import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.data.api.models.businesses.BusinessPermission
 import app.pantopus.android.data.mailbox.HolidayCardsRepository
@@ -614,13 +616,15 @@ private object ChildRoutes {
 
     /**
      * Send a Christmas card, or today's card once it's sent (launch keys `holiday_cards` + `mailbox`), with a picture
-     * chosen (a public card page) or a person chosen ("Send Hazel a card" on a card they sent).
+     * chosen (a public card page), a person chosen ("Send Hazel a card" on a card they sent), or the card the assistant
+     * drafted ([mailboxCardsDraft]).
      */
     const val MAILBOX_CARDS =
         "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}={${SendCardViewModel.SEND_CARD_DESIGN_KEY}}" +
             "&${SendCardViewModel.SEND_CARD_TO_USER_KEY}={${SendCardViewModel.SEND_CARD_TO_USER_KEY}}" +
             "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}={${SendCardViewModel.SEND_CARD_TO_NAME_KEY}}" +
-            "&$SEND_CARD_SAME_PICTURE_KEY={$SEND_CARD_SAME_PICTURE_KEY}"
+            "&$SEND_CARD_SAME_PICTURE_KEY={$SEND_CARD_SAME_PICTURE_KEY}" +
+            "&${AIComposerDrafts.KEY}={${AIComposerDrafts.KEY}}"
 
     /** A card the person sent, opened from Sent in the Mailbox (launch key `mailbox`). */
     const val MAILBOX_SENT_CARD = "mailbox/sent/{$MAIL_SENT_CARD_ID_KEY}"
@@ -1284,10 +1288,28 @@ private object ChildRoutes {
     /** Ceremonial Mail Compose wizard (T3.7). */
     const val CEREMONIAL_MAIL = "mailbox/compose-letter"
 
-    /** The wizard's registered route: [CEREMONIAL_MAIL], or with a person chosen (a letter's Reply, [ceremonialMailTo]). */
+    /**
+     * The wizard's registered route: [CEREMONIAL_MAIL], with a person chosen (a letter's Reply, [ceremonialMailTo]), or
+     * with the letter the assistant drafted ([ceremonialMailDraft]).
+     */
     const val CEREMONIAL_MAIL_ROUTE =
         "$CEREMONIAL_MAIL?${CeremonialMailViewModel.LETTER_TO_USER_KEY}={${CeremonialMailViewModel.LETTER_TO_USER_KEY}}" +
-            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}={${CeremonialMailViewModel.LETTER_TO_NAME_KEY}}"
+            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}={${CeremonialMailViewModel.LETTER_TO_NAME_KEY}}" +
+            "&${AIComposerDrafts.KEY}={${AIComposerDrafts.KEY}}"
+
+    /**
+     * The letter form with the assistant's [draft] filled in ("Open in Mail" in the Pantopus AI thread): who it is to,
+     * the kind of letter and the letter. The draft is kept in memory; only its id is in the route.
+     */
+    fun ceremonialMailDraft(draft: AIComposerDraft.Letter): String =
+        "$CEREMONIAL_MAIL?${AIComposerDrafts.KEY}=${AIComposerDrafts.keep(draft)}"
+
+    /**
+     * The steps of sending a card with the assistant's [draft] chosen ("Open the card" in the Pantopus AI thread): the
+     * picture, who it is to, the note and the arrival.
+     */
+    fun mailboxCardsDraft(draft: AIComposerDraft.ChristmasCard): String =
+        "mailbox/cards?${AIComposerDrafts.KEY}=${AIComposerDrafts.keep(draft)}"
 
     /** The letter form with [userId] chosen on its first step (a letter's Reply, to the one who wrote it). */
     fun ceremonialMailTo(
@@ -2433,6 +2455,29 @@ private fun routeForAIDraft(draft: ChatAIDraftCard): String =
         "support_train" -> ChildRoutes.startSupportTrain(draft.prefill?.body.orEmpty())
         else -> ChildRoutes.composePost(PulseIntent.Ask.key)
     }
+
+/**
+ * A draft's button in the Pantopus AI thread. A Moment, a letter and a Christmas card open the app's own composer with
+ * the draft filled in (Pantopus AI everywhere contract, section 4), and the person sends from there: the Moment on the
+ * Moments tab ([momentsOn]), so Post lands on its map; the letter and the card on the Mail tab, as every way into Mail
+ * opens it, so both pass Mail's "who's holding the phone" check. Any other draft opens over the thread, as before.
+ */
+private fun NavHostController.openAIDraft(
+    draft: ChatAIDraftCard,
+    momentsOn: Boolean,
+) {
+    val mailRoute =
+        when (val opens = draft.opens) {
+            is AIComposerDraft.Moment -> {
+                val route = MomentsRoutes.compose(opens)
+                return if (momentsOn) openTabRoot(PantopusRoute.Moments, route) else navigate(route)
+            }
+            is AIComposerDraft.Letter -> ChildRoutes.ceremonialMailDraft(opens)
+            is AIComposerDraft.ChristmasCard -> ChildRoutes.mailboxCardsDraft(opens)
+            null -> return navigate(routeForAIDraft(draft))
+        }
+    if (LaunchFeatures.mailbox) openTabRoot(PantopusRoute.Mail, mailRoute) else navigate(mailRoute)
+}
 
 /** An optional (nullable, default-null) string nav arg — query-style args on scheduling routes. */
 private fun optionalStringNavArg(name: String) =
@@ -5636,6 +5681,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 type = NavType.BoolType
                                 defaultValue = false
                             },
+                            optionalStringNavArg(AIComposerDrafts.KEY),
                         ),
                 ) {
                     // Launch cut #12 (Christmas cards), with #10 (Mailbox).
@@ -6177,9 +6223,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         scrollToMessageId = scrollTo,
                         initialTopic = initialTopic,
                         gigId = gigId,
-                        onUseAIDraft = { draft ->
-                            navController.navigate(routeForAIDraft(draft))
-                        },
+                        onUseAIDraft = { draft -> navController.openAIDraft(draft, momentsOn) },
                         // A saved pickup-days card opens Today, where the days now show.
                         onOpenToday = { navController.navigateToRootTab(PantopusRoute.Today) },
                         onOpenGig = { gigId -> navController.navigate(ChildRoutes.gigDetail(gigId)) },
@@ -7059,6 +7103,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 nullable = true
                                 defaultValue = null
                             },
+                            optionalStringNavArg(AIComposerDrafts.KEY),
                         ),
                 ) {
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)

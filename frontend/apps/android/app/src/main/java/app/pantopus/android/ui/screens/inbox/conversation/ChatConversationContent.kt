@@ -4,6 +4,7 @@ package app.pantopus.android.ui.screens.inbox.conversation
 
 import androidx.compose.runtime.Immutable
 import app.pantopus.android.core.LaunchFeatures
+import app.pantopus.android.data.ai.AIComposerDraft
 import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.data.api.models.chats.ChatAttachmentDto
 import app.pantopus.android.ui.screens.compose.pulse.PulseComposeDraftFields
@@ -333,6 +334,10 @@ data class ChatAIDraftCard(
     val pickup: ChatAIPickupSchedule? = null,
     /** An action card (type `action`): its fields, buttons and how they went. */
     val action: ChatAIActionCard? = null,
+    /** A Moment, a letter or a Christmas card: what its button carries into the app's own composer. */
+    val opens: AIComposerDraft? = null,
+    /** Lines under the summary: how long and for whom, the kind of letter, when the card arrives. */
+    val details: List<String> = emptyList(),
 ) {
     /** Launch cut: a task (#4) or listing (#3) draft opens a composer hidden for the first launch. */
     val isLaunchAvailable: Boolean

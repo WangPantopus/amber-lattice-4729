@@ -8,6 +8,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import app.pantopus.android.data.ai.AIComposerDraft
+import app.pantopus.android.data.ai.AIComposerDrafts
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeScreen
 import app.pantopus.android.ui.screens.moments.viewer.MomentsViewerScreen
@@ -21,9 +23,16 @@ object MomentsRoutes {
     const val WATCH = "moments/watch"
 
     /** Posting (P1 to P4): the camera first, or the Library or Text tab with `mode`. */
-    const val COMPOSE = "moments/compose?$MODE_KEY={$MODE_KEY}"
+    const val COMPOSE = "moments/compose?$MODE_KEY={$MODE_KEY}&${AIComposerDrafts.KEY}={${AIComposerDrafts.KEY}}"
 
     fun compose(mode: String = "camera"): String = "moments/compose?$MODE_KEY=$mode"
+
+    /**
+     * Posting with a draft the assistant wrote ("Open in Moments" in the Pantopus AI thread): the text card with its
+     * words and background, or the camera for a photo's caption, with the draft's hours and who sees it.
+     */
+    fun compose(draft: AIComposerDraft.Moment): String =
+        "${compose(if (draft.photo) "camera" else "text")}&${AIComposerDrafts.KEY}=${AIComposerDrafts.keep(draft)}"
 
     /** Screens with the whole window: no tab bar under the viewer or the camera. */
     val fullScreen: Set<String> = setOf(WATCH, COMPOSE)
@@ -77,6 +86,11 @@ fun NavGraphBuilder.momentsRoutes(
                 navArgument(MomentsRoutes.MODE_KEY) {
                     type = NavType.StringType
                     defaultValue = "camera"
+                },
+                navArgument(AIComposerDrafts.KEY) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 },
             ),
     ) {

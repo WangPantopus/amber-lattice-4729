@@ -44,6 +44,15 @@ private const val HTTP_TOO_MANY_REQUESTS = 429
 private val AI_CARDS = listOf("pickup_schedule", "action", "link", "state", "memory", "follow_up", "rules", "identity_ask")
 
 /**
+ * [AI_CARDS] with the drafts this build opens in the app's own composers: a Moment, a letter and a Christmas card
+ * (Pantopus AI everywhere contract, section 3). The chat and the history requests send the same list.
+ */
+private fun aiCards(): List<String> = AI_CARDS + AIComposerDraft.cardNames()
+
+/** The drafts the app's own composers open: a card of one of these that can't be opened isn't shown. */
+private val COMPOSER_TYPES = setOf("moment", "letter", "christmas_card")
+
+/**
  * Added to `cards` when this phone's identity check for Mail and the Wallet (fingerprint, face or the screen lock)
  * would pass right now. The server reads Mail and the Wallet for the assistant only with it; without it the
  * assistant sends the person to that screen, where the app asks.
@@ -109,6 +118,73 @@ private fun postFieldsOf(draft: JSONObject): PulseComposeDraftFields =
         safetyAlertKind = draft.text("safetyAlertKind"),
     )
 
+/** How long a Moment stays up and who sees it, in its Post sheet's words ("Shows for 6 hours · Everyone nearby"). */
+private fun momentLine(draft: AIComposerDraft.Moment): String? {
+    val stays = draft.hours?.let { if (it == 1) "Shows for 1 hour" else "Shows for $it hours" }
+    val sees =
+        when (draft.audience) {
+            "nearby" -> "Everyone nearby"
+            "connections" -> "My connections"
+            else -> null
+        }
+    return listOfNotNull(stays, sees).joinToString(" · ").ifEmpty { null }
+}
+
+/** The kind of letter, in the wizard's words. */
+private fun letterKind(intent: String?): String? =
+    when (intent) {
+        "say_hello" -> "Say hello"
+        "congratulations" -> "Congratulations"
+        "condolences" -> "Condolences"
+        "business_note" -> "Business note"
+        "just_because" -> "Just because"
+        else -> null
+    }
+
+/**
+ * A Moment, a letter or a Christmas card as the chat's draft card shows it (contract section 4): what it says, and
+ * under it how long and for whom, the kind of letter, or when the card arrives.
+ */
+private fun composerCard(
+    type: String,
+    valid: Boolean,
+    opens: AIComposerDraft,
+): ChatAIDraftCard {
+    val id = "${type}_${java.util.UUID.randomUUID()}"
+    return when (opens) {
+        is AIComposerDraft.Moment ->
+            ChatAIDraftCard(
+                id = id,
+                type = type,
+                title = opens.text ?: opens.caption ?: "A photo or video",
+                summary = "You take or pick the photo or video in Moments.".takeIf { opens.photo },
+                valid = valid,
+                opens = opens,
+                details = listOfNotNull(momentLine(opens)),
+            )
+        is AIComposerDraft.Letter ->
+            ChatAIDraftCard(
+                id = id,
+                type = type,
+                title = "To ${opens.recipient.name ?: opens.recipient.username ?: "your recipient"}",
+                summary = opens.body,
+                valid = valid,
+                opens = opens,
+                details = listOfNotNull(letterKind(opens.intent)),
+            )
+        is AIComposerDraft.ChristmasCard ->
+            ChatAIDraftCard(
+                id = id,
+                type = type,
+                title = "To ${opens.toName ?: opens.toEmail ?: "your recipient"}",
+                summary = opens.message,
+                valid = valid,
+                opens = opens,
+                details = listOfNotNull(opens.arrivalLabel, opens.arrivalChanged),
+            )
+    }
+}
+
 /** A text field, or null when it is missing, blank or JSON null (`optString` reads JSON null as "null"). */
 private fun JSONObject.text(name: String): String? = if (isNull(name)) null else optString(name).trim().ifEmpty { null }
 
@@ -165,7 +241,7 @@ class AIChatRepository
          * history holds only the cards this app shows. Route `backend/routes/ai.js:459`.
          */
         suspend fun conversationMessages(id: String): NetworkResult<AIConversationMessagesResponse> =
-            safeApiCall { api.conversationMessages(id, AI_CARDS.joinToString(",")) }
+            safeApiCall { api.conversationMessages(id, aiCards().joinToString(",")) }
 
         /** A restored draft (`GET …/messages`) as the card a streamed one becomes. */
         fun draftCard(
@@ -206,7 +282,7 @@ class AIChatRepository
                             // the matching tools only to apps that list them.
                             put(
                                 "cards",
-                                org.json.JSONArray(if (appLock.passesSensitiveCheckNow()) AI_CARDS + IDENTITY_CARD else AI_CARDS),
+                                org.json.JSONArray(if (appLock.passesSensitiveCheckNow()) aiCards() + IDENTITY_CARD else aiCards()),
                             )
                             context?.let { put("context", it.toRequestJson()) }
                         }
@@ -294,6 +370,8 @@ class AIChatRepository
                 val card = AIActionCardParser.card(draft) ?: return null
                 return ChatAIDraftCard(id = "action_${card.id}", type = type, title = card.title, valid = valid, action = card)
             }
+            // A Moment, a letter or a Christmas card: the app's own composer opens it (AI everywhere contract, section 4).
+            if (type in COMPOSER_TYPES) return AIComposerDraft.of(type, draft)?.let { composerCard(type, valid, it) }
             val story = draft.text("story")
             val content = draft.text("content")
             val title =

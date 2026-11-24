@@ -5,6 +5,8 @@ package app.pantopus.android.ui.screens.ceremonial_mail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.ai.AIComposerDraft
+import app.pantopus.android.data.ai.AIComposerDrafts
 import app.pantopus.android.data.api.models.mail_compose.MailHomeContextResponse
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.mail_compose.SendMailBody
@@ -63,17 +65,31 @@ class CeremonialMailViewModel
 
         private var searchJob: Job? = null
 
-        /** The person a letter's Reply chose (its sender), until the writer picks someone else. */
+        /**
+         * Opened from a letter the assistant drafted ("Open in Mail" in the Pantopus AI thread): who it is to (a row of
+         * the recipient search, as picking them by hand gives), the kind of letter and the letter. The address step,
+         * paper, ink, seal and "Seal and send" stay the writer's.
+         */
+        private val draft: AIComposerDraft.Letter? =
+            AIComposerDrafts.find(savedStateHandle.get<String>(AIComposerDrafts.KEY)) as? AIComposerDraft.Letter
+
+        /** The person a letter's Reply chose (its sender) or the assistant's draft names, until the writer picks someone else. */
         private val replyTo: MailRecipientDto? =
-            savedStateHandle.get<String>(LETTER_TO_USER_KEY)?.takeIf { it.isNotBlank() }?.let { userId ->
-                val name = savedStateHandle.get<String>(LETTER_TO_NAME_KEY)?.takeIf { it.isNotBlank() }
-                MailRecipientDto(userId = userId, name = name)
-            }
+            draft?.recipient
+                ?: savedStateHandle.get<String>(LETTER_TO_USER_KEY)?.takeIf { it.isNotBlank() }?.let { userId ->
+                    val name = savedStateHandle.get<String>(LETTER_TO_NAME_KEY)?.takeIf { it.isNotBlank() }
+                    MailRecipientDto(userId = userId, name = name)
+                }
 
         init {
             replyTo?.let { to ->
                 selectRecipient(to)
-                completeReplyTo(to)
+                // A draft's recipient is already the search's own row.
+                if (draft == null) completeReplyTo(to)
+            }
+            draft?.let { letter ->
+                CeremonialMailIntent.entries.firstOrNull { it.wire == letter.intent }?.let(::selectIntent)
+                updateBody(letter.body)
             }
         }
 
@@ -354,11 +370,12 @@ class CeremonialMailViewModel
 
         private fun dirtyFor(form: CeremonialMailFormState): Boolean =
             when (form.step) {
-                // The sender a Reply chose isn't the writer's own change; words already written (back from step 3) are.
+                // The sender a Reply chose isn't the writer's own change, nor is the assistant's draft as it came; words
+                // already written (back from step 3) are.
                 CeremonialMailStep.Decide ->
                     _selectedRecipient.value?.userId.let { it != null && it != replyTo?.userId } ||
                         (form.recipientQuery.isNotEmpty() && form.recipientQuery != displayName(replyTo)) ||
-                        form.bodyText.isNotBlank()
+                        (form.bodyText.isNotBlank() && form.bodyText != draft?.body)
                 CeremonialMailStep.Verify, CeremonialMailStep.Compose, CeremonialMailStep.Commit -> true
                 CeremonialMailStep.Success -> false
             }

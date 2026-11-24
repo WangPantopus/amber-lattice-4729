@@ -149,6 +149,7 @@ import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.core.security.AppLockManager
 import app.pantopus.android.core.security.findFragmentActivity
 import app.pantopus.android.core.security.rememberAppLockManager
+import app.pantopus.android.data.ai.AIComposerDraft
 import app.pantopus.android.data.ai.AIPdfCheck
 import app.pantopus.android.data.links.LinkPreview
 import app.pantopus.android.ui.components.GhostButton
@@ -168,6 +169,7 @@ import app.pantopus.android.ui.screens.inbox.conversation.ai.ChatAiAvatar
 import app.pantopus.android.ui.screens.inbox.conversation.ai.starterChips
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasEnvelopeIcon
+import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFront
 import app.pantopus.android.ui.screens.moments.MomentOpenHolder
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentImages
@@ -5224,6 +5226,9 @@ private fun AiDraftCard(
             "support_train" -> PantopusIcon.Utensils
             "pickup_schedule" -> PantopusIcon.Calendar
             "mail_summary" -> PantopusIcon.Mailbox
+            "moment" -> PantopusIcon.Camera
+            "letter" -> PantopusIcon.Mail
+            "christmas_card" -> PantopusIcon.Gift
             else -> PantopusIcon.Sparkles
         }
     val label =
@@ -5234,6 +5239,9 @@ private fun AiDraftCard(
             "support_train" -> "Support Train"
             "pickup_schedule" -> "Pickup days"
             "mail_summary" -> "Mail Summary"
+            "moment" -> "Moment"
+            "letter" -> "Letter"
+            "christmas_card" -> "Christmas card"
             else -> "Draft"
         }
     Column(
@@ -5266,15 +5274,42 @@ private fun AiDraftCard(
                 Text(text = "Draft ready", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.success)
             }
         }
-        Text(text = draft.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText, maxLines = 2)
+        // A Christmas card shows its picture, with the words printed under it.
+        (draft.opens as? AIComposerDraft.ChristmasCard)?.let { card ->
+            HolidayCardFront(
+                design = card.design,
+                caption = card.caption,
+                paper = null,
+                year = cardYear(card.design),
+                thumb = true,
+                modifier = Modifier.width(AI_CARD_PICTURE_WIDTH).testTag("chatAIDraftCardPicture"),
+            )
+        }
+        Text(
+            text = draft.title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = PantopusColors.appText,
+            // A Moment's words are the card itself (up to 200 characters): all of them show.
+            maxLines = if (draft.opens is AIComposerDraft.Moment) Int.MAX_VALUE else 2,
+        )
         if (!draft.summary.isNullOrBlank() && draft.summary != draft.title) {
             Text(
                 text = draft.summary,
                 fontSize = 11.5.sp,
                 color = PantopusColors.appTextSecondary,
-                maxLines = if (draft.pickup != null) Int.MAX_VALUE else 3,
+                maxLines =
+                    when {
+                        // The card's note (up to 300 characters) shows whole; a letter shows how it starts.
+                        draft.pickup != null || draft.opens is AIComposerDraft.ChristmasCard -> Int.MAX_VALUE
+                        draft.opens is AIComposerDraft.Letter -> AI_LETTER_LINES
+                        else -> 3
+                    },
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        draft.details.forEach { line ->
+            Text(text = line, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextSecondary)
         }
         (draft.pickup?.save as? ChatAIPickupSave.Failed)?.let {
             Text(text = it.message, fontSize = 11.5.sp, color = PantopusColors.error, modifier = Modifier.testTag("chatAIPickupError"))
@@ -5289,7 +5324,8 @@ private fun AiDraftCard(
                 modifier =
                     Modifier
                         .heightIn(min = 34.dp)
-                        .clickable(enabled = draft.pickup?.save != ChatAIPickupSave.Saving) { onUse(draft) },
+                        .clickable(enabled = draft.pickup?.save != ChatAIPickupSave.Saving) { onUse(draft) }
+                        .then(draftOpenTag(draft)?.let { Modifier.testTag(it) } ?: Modifier),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
@@ -5306,6 +5342,9 @@ private fun draftActionTitle(draft: ChatAIDraftCard): String =
         "listing" -> "Use in listing composer"
         "post" -> "Use in Pulse composer"
         "support_train" -> "Set up the Support Train"
+        "moment" -> "Open in Moments"
+        "letter" -> "Open in Mail"
+        "christmas_card" -> "Open the card"
         "pickup_schedule" ->
             when (draft.pickup?.save) {
                 ChatAIPickupSave.Saving -> "Saving…"
@@ -5315,6 +5354,26 @@ private fun draftActionTitle(draft: ChatAIDraftCard): String =
             }
         else -> "Use draft"
     }
+
+/** The button of a draft the app's own composer opens, named as iOS names it; null for every other draft. */
+private fun draftOpenTag(draft: ChatAIDraftCard): String? =
+    when (draft.opens) {
+        is AIComposerDraft.Moment -> "aiDraftOpenMoment"
+        is AIComposerDraft.Letter -> "aiDraftOpenLetter"
+        is AIComposerDraft.ChristmasCard -> "aiDraftOpenCard"
+        null -> null
+    }
+
+/** The year printed on a card, from its design ("christmas-2026-16"); this year when the id names none. */
+private fun cardYear(design: String): Int = CARD_YEAR.find(design)?.groupValues?.get(1)?.toIntOrNull() ?: java.time.Year.now().value
+
+private val CARD_YEAR = Regex("-(\\d{4})-")
+
+/** A Christmas card's picture on its draft card. */
+private val AI_CARD_PICTURE_WIDTH = 132.dp
+
+/** How many lines of a letter its draft card shows. */
+private const val AI_LETTER_LINES = 6
 
 /** A15.3 `.ai-tag` — sparkles + "PANTOPUS AI" pill at the top of AI reply bubbles. */
 @Composable

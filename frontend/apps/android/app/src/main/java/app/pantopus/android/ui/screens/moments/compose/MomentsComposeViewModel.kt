@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.ai.AIComposerDraft
+import app.pantopus.android.data.ai.AIComposerDrafts
 import app.pantopus.android.data.api.models.moments.CreateMomentBody
 import app.pantopus.android.data.api.models.moments.MomentAltitudeBody
 import app.pantopus.android.data.api.models.moments.MomentDto
@@ -336,12 +338,31 @@ class MomentsComposeViewModel
         private val choices = context.getSharedPreferences(CHOICES_PREFS, Context.MODE_PRIVATE)
         private val accountId: String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
+        /**
+         * Opened from a draft the assistant wrote ("Open in Moments" in the Pantopus AI thread): the text card's words
+         * and background, or a photo's caption, with the draft's "How long" and "Who sees it". Everything else, and
+         * Post, is the person's, as on any Moment.
+         */
+        private val draft: AIComposerDraft.Moment? =
+            AIComposerDrafts.find(savedState.get<String>(AIComposerDrafts.KEY)) as? AIComposerDraft.Moment
+
+        /** A photo draft's caption, for the first photo or video that lands on the Post sheet. */
+        private var draftCaption: String? = draft?.caption?.take(MAX_CAPTION)
+
         private val _state =
             MutableStateFlow(
                 MomentsComposeUiState(
                     step = if (savedState.get<String>(MomentsRoutes.MODE_KEY) == "text") ComposeStep.Text else ComposeStep.Camera,
-                    hours = choices.getInt("$accountId.hours", DEFAULT_HOURS).takeIf { it in ALLOWED_HOURS } ?: DEFAULT_HOURS,
-                    audience = choices.getString("$accountId.audience", null).takeIf { it in ALLOWED_AUDIENCES } ?: "nearby",
+                    text = draft?.text?.take(MAX_TEXT).orEmpty(),
+                    background = draft?.background?.let(MomentCardBackground::fromWire) ?: MomentCardBackground.Teal,
+                    hours =
+                        draft?.hours?.takeIf { it in ALLOWED_HOURS }
+                            ?: choices.getInt("$accountId.hours", DEFAULT_HOURS).takeIf { it in ALLOWED_HOURS }
+                            ?: DEFAULT_HOURS,
+                    audience =
+                        draft?.audience?.takeIf { it in ALLOWED_AUDIENCES }
+                            ?: choices.getString("$accountId.audience", null).takeIf { it in ALLOWED_AUDIENCES }
+                            ?: "nearby",
                     showHeight = choices.getBoolean("$accountId.showHeight", false),
                     showWeather = choices.getBoolean("$accountId.showWeather", true),
                 ),
@@ -506,6 +527,7 @@ class MomentsComposeViewModel
             forgetMarks()
             val current = _state.value
             val shot = current.here?.takeIf { fromCamera }?.let { CameraShot(Instant.now(), it.latitude, it.longitude) }
+            val caption = takeDraftCaption()
             _state.update {
                 it.copy(
                     media = media,
@@ -517,7 +539,7 @@ class MomentsComposeViewModel
                     takenAt = takenAt,
                     shot = shot,
                     step = ComposeStep.Review,
-                    caption = "",
+                    caption = caption,
                     notice = null,
                     videoParts = 1,
                 )
@@ -529,6 +551,9 @@ class MomentsComposeViewModel
                 askWeather(shot, current.herePlace)
             }
         }
+
+        /** The assistant's caption for the first photo or video on the sheet; none for the ones after it, or without a draft. */
+        private fun takeDraftCaption(): String = draftCaption.orEmpty().also { draftCaption = null }
 
         /** The sheet's Live line and weather row go 10 minutes after the shot (Post checks the clock again). */
         private suspend fun endLiveAfter(shot: CameraShot) {
@@ -740,6 +765,7 @@ class MomentsComposeViewModel
                 val place = (repository.placePreview(lat, lng) as? NetworkResult.Success)?.data
                 val pin = ComposePin(lat, lng, takenAt ?: Instant.now(), capture = true, height = photoHeightFor(place, picked))
                 forgetMarks()
+                val caption = takeDraftCaption()
                 _state.update {
                     it.copy(
                         media = media,
@@ -753,7 +779,7 @@ class MomentsComposeViewModel
                         pinsAtPlace = it.pinsAtPlaceFor(pin),
                         takenAt = takenAt,
                         step = ComposeStep.Review,
-                        caption = "",
+                        caption = caption,
                         notice = null,
                         videoParts = 1,
                     )
