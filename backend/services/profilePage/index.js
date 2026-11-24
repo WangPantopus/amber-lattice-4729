@@ -35,6 +35,37 @@ async function readShareColumn(userId) {
   return data?.profile_share || null;
 }
 
+/**
+ * The Moments row (design session, 2026-11-23): the person's live Moments this viewer may see, decided by
+ * services/moments/momentStore.js's own canSee and live state from the rows already read (their Moments, the viewer's
+ * mutes and recent reports, blocks and connection), so it costs no call of its own; the Moments switch is the
+ * viewer's, as the Moments routes check it (memoized). Returns { count, placed } or null when there is no row.
+ */
+async function momentsFor(req, ctx, rows) {
+  if (ctx.view === 'link' || !req.user?.id || !(rows.moments || []).length) return null;
+  const { isFeatureEnabled } = require('../featureFlagService');
+  if (!(await isFeatureEnabled('moments', req.user))) return null;
+  const store = require('../moments/momentStore');
+  const { PREVIEW_VIEWER_ID } = require('../../utils/profilePreview');
+  const personId = String(ctx.userData.id);
+  const viewerId = ctx.view === 'owner' ? personId : String(ctx.preview ? PREVIEW_VIEWER_ID : req.user.id);
+  const blocked = !ctx.preview && (relationshipStatus(rows.relationship, viewerId) === 'blocked'
+    || rows.blocked_by_them === true || rows.blocked_by_viewer === true);
+  const seeCtx = {
+    viewerId,
+    blocked: new Set(blocked ? [personId] : []),
+    muted: new Set(!ctx.preview && rows.muted_by_viewer === true ? [personId] : []),
+    // An accepted connection only, as momentStore.viewerContext reads it (living together isn't a connection); the
+    // owner's preview as a connection stands in for one.
+    connected: new Set(ctx.preview === 'connection' || (!ctx.preview && ctx.relationship === 'connected') ? [personId] : []),
+  };
+  const reported = new Set((ctx.preview ? [] : rows.reported_moments || []).map(String));
+  const shown = rows.moments.filter((row) => store.momentState(row) === 'live' && store.canSee(row, seeCtx)
+    && !reported.has(String(row.id)));
+  if (!shown.length) return null;
+  return { count: shown.length, placed: shown.filter((row) => store.displayedPoint(row).latitude != null).length };
+}
+
 // "You and <name>" (services/profileInCommon.js). GET /api/users/:id/in-common also refuses a personal block either
 // way; that comes with the person's rows (blocked_by_them, blocked_by_viewer). Content: a failure leaves it out.
 function readInCommon(viewerUser, targetId) {
@@ -120,7 +151,11 @@ async function loadPage(req, lookup, { view, keyed = null } = {}) {
     ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
-  return { ctx, sources, record, rows, extras: { inCommon, record } };
+  const moments = await momentsFor(req, ctx, rows).catch((err) => {
+    logger.warn('Profile page Moments row unavailable; left out', { userId, error: err.message });
+    return null;
+  });
+  return { ctx, sources, record, rows, extras: { inCommon, record, moments } };
 }
 
 async function getPage(req, lookup) {
