@@ -72,6 +72,12 @@ public enum LaunchFeature: String, CaseIterable, Sendable {
     /// "Block {name}" on a card, and Sent's "Couldn't be delivered". Needs `mailbox` on too. A delivered card's photo
     /// and greeting show either way, as the server sends them.
     case holidayCardMemories = "holiday_card_memories"
+    /// 15. The profile with sources (founder decision, 2026-11-23; `~/pantopus-profile-sources/SPEC.md`): a person's
+    /// profile drawn from the blocks the server composes for the viewer (`GET /api/profile-page/…`), the rings around
+    /// the portrait and on avatars, the Record tab, and the share sheet with its parts. Beside the backend's
+    /// `PROFILE_SOURCES`: the app draws the new page only when this key is on and the server answers it. Off, every
+    /// profile screen is exactly today's.
+    case profileSources = "profile_sources"
 }
 
 /// Read-only switches for the features cut from the first launch.
@@ -145,6 +151,10 @@ public enum LaunchFeatures {
 
     public static var holidayCardMemories: Bool {
         isEnabled(.holidayCardMemories) && isEnabled(.mailbox)
+    }
+
+    public static var profileSources: Bool {
+        isEnabled(.profileSources)
     }
 
     /// Parses a comma-separated key list ("all" enables every feature).

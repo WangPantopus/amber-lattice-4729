@@ -99,7 +99,7 @@ extension PublicProfileView {
     }
 
     @ViewBuilder
-    private func ownerTips(_ payload: PublicProfileContent, owner: OwnerPageModel) -> some View {
+    func ownerTips(_ payload: PublicProfileContent, owner: OwnerPageModel) -> some View {
         let canPin = viewModel.pinnedReadSucceeded && viewModel.pinnedPosts.isEmpty && !viewModel.postCards.cards.isEmpty
         let tips = owner.tips(for: payload.profile, canPin: canPin)
         if !tips.isEmpty {
@@ -145,7 +145,7 @@ extension PublicProfileView {
     }
 
     /// Your month, "Your account" and Log out.
-    private func ownerExtras(_ owner: OwnerPageModel) -> some View {
+    func ownerExtras(_ owner: OwnerPageModel) -> some View {
         VStack(alignment: .leading, spacing: 28) {
             if let month = owner.monthLine {
                 ProfileMonthCard(

@@ -157,6 +157,9 @@ struct ProfileTogetherSection: View {
     let firstName: String
     let lines: [ProfileTogetherLine]
     let onOpen: @MainActor (ProfileTogetherLine.Target) -> Void
+    /// The profile with sources draws the title small and inside the card (board 1, "YOU AND MARIA"); nil keeps
+    /// today's title above it.
+    var titleInCard: String?
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .subheadline) private var scaledDisc: CGFloat = 30
@@ -179,12 +182,21 @@ struct ProfileTogetherSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("You and \(firstName)")
-                .scaledFont(20, weight: .bold)
-                .foregroundStyle(Theme.Color.appText)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+            if titleInCard == nil {
+                Text("You and \(firstName)")
+                    .scaledFont(20, weight: .bold)
+                    .foregroundStyle(Theme.Color.appText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
             VStack(spacing: Spacing.s0) {
+                if let titleInCard {
+                    ProfileBlockTitle(title: titleInCard)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.s4)
+                        .padding(.top, 14)
+                        .padding(.bottom, 2)
+                }
                 ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                     row(line)
                     if index < lines.count - 1 {
