@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Building2, ChevronRight, User } from 'lucide-react';
 import type { ProfileCircleGroup, ProfileCirclePerson, ProfileCircleRead, ProfileLink, ProfilePiece } from '@pantopus/api';
 import Screen from './Screen';
@@ -61,7 +61,8 @@ function layout(groups: ProfileCircleGroup[]): Slot[] {
   const bottom = fill(by('learned_from'), 3);
   const out: Slot[] = [];
   xsFor(top.length).forEach((x, i) => out.push({ ...top[i], x, y: 88, group: 'taught_or_led' }));
-  const midXs = [105, 40, 255, 320];
+  // Two each side of the person, far enough apart that their words never meet.
+  const midXs = [110, 36, 250, 324];
   mid.forEach((m, i) => out.push({ ...m, x: midXs[i], y: CY, group: 'works_beside' }));
   xsFor(bottom.length).forEach((x, i) => out.push({ ...bottom[i], x, y: 372, group: 'learned_from' }));
   return out;
@@ -89,7 +90,7 @@ function Diagram({ groups, center, chosen, onChoose, firstName }: {
   firstName: string;
 }) {
   const slots = layout(groups);
-  const titles: Array<{ key: string; y: number }> = [{ key: 'taught_or_led', y: 6 }, { key: 'works_beside', y: 158 }, { key: 'learned_from', y: 300 }];
+  const titles: Array<{ key: string; y: number }> = [{ key: 'taught_or_led', y: 6 }, { key: 'works_beside', y: 158 }, { key: 'learned_from', y: 314 }];
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   let previousMid: Record<'l' | 'r', Slot | null> = { l: null, r: null };
   const paths = slots.map((slot) => {
@@ -122,14 +123,17 @@ function Diagram({ groups, center, chosen, onChoose, firstName }: {
         const label = slot.person ? (
           <>
             <span className="block text-xs leading-4 font-semibold text-app [overflow-wrap:anywhere] line-clamp-2">{slot.person.name || slot.person.did}</span>
-            {slot.person.name && slot.person.did ? <span className="block text-[0.6875rem] leading-[0.875rem] text-app-muted [overflow-wrap:anywhere] line-clamp-2" title={slot.person.did}>{slot.person.did}</span> : null}
+            {/* What they did (when named) and the ink's word, always written. */}
+            <span className="block text-[0.6875rem] leading-[0.875rem] text-app-muted [overflow-wrap:anywhere] line-clamp-2" title={slot.person.did ?? undefined}>
+              {[slot.person.name ? slot.person.did : null, howText(inkOf(slot.person.ink))].filter(Boolean).join(' · ')}
+            </span>
           </>
         ) : <span className="block text-xs leading-4 font-semibold text-app">{slot.more} more</span>;
         const face = slot.person
           ? <CircleFace person={slot.person} size={R * 2} selected={chosen === slot.person} />
           : <span className="flex w-12 h-12 rounded-full border border-app-strong bg-surface items-center justify-center text-[0.875rem] font-bold text-app">+{slot.more}</span>;
         return (
-          <div key={i} className="absolute flex flex-col items-center" style={{ left: pct(slot.x, W), top: pct(slot.y, H), transform: `translate(-50%, ${above ? 'calc(-100% + 24px)' : '-24px'})`, width: '25%' }}>
+          <div key={i} className="absolute flex flex-col items-center" style={{ left: pct(slot.x, W), top: pct(slot.y, H), transform: `translate(-50%, ${above ? 'calc(-100% + 24px)' : '-24px'})`, width: slot.group === 'works_beside' ? '20%' : '25%' }}>
             {above ? <span className="mb-1 text-center">{label}</span> : null}
             {slot.person ? (
               <button type="button" onClick={() => onChoose(slot.person!)} aria-pressed={chosen === slot.person} aria-label={`${slot.person.name || slot.person.did}: ${howText(inkOf(slot.person.ink))}`} className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]">
@@ -141,6 +145,57 @@ function Diagram({ groups, center, chosen, onChoose, firstName }: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Everyone in the circle as a list, by group (the drawing shows a few of each; this reaches all of them, by keyboard
+ * too): face, name or what they did, the ink's word, and how many pieces the two share. Choosing one shows them above.
+ */
+function Everyone({ groups, chosen, onChoose, firstName }: {
+  groups: ProfileCircleGroup[];
+  chosen: ProfileCirclePerson | null;
+  onChoose: (person: ProfileCirclePerson) => void;
+  firstName: string;
+}) {
+  const shown = groups.filter((g) => (g.people || []).length > 0);
+  if (shown.length === 0) return null;
+  return (
+    <section aria-label={`Everyone in ${firstName}'s work circle`} className={`${card} overflow-hidden`}>
+      <h3 className={`${overline} px-5 pt-4 pb-1`}>Everyone in the circle</h3>
+      {shown.map((group) => (
+        <div key={group.key} className="pb-1">
+          <p className="px-5 pt-2 pb-1 text-xs leading-4 font-semibold text-app-secondary">
+            {group.title}{group.count > (group.people || []).length ? ` · ${group.count}, ${(group.people || []).length} shown` : ''}
+          </p>
+          <ul>
+            {group.people.map((person, i) => {
+              const ink = inkOf(person.ink);
+              const n = person.shared_pieces ?? 0;
+              return (
+                <li key={`${person.user_id ?? person.name ?? person.did}-${i}`}>
+                  <button
+                    type="button"
+                    aria-pressed={chosen === person}
+                    onClick={() => onChoose(person)}
+                    className={`w-full flex items-center gap-3 px-5 py-2 min-h-[3rem] text-left hover-bg-app focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--color-link)] ${chosen === person ? 'bg-app-surface-sunken' : ''}`}
+                  >
+                    <CircleFace person={person} size={36} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.9375rem] leading-5 font-semibold text-app [overflow-wrap:anywhere]">{person.name || person.did}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
+                        <InkGlyph ink={ink} inline />
+                        {howText(ink, [person.name ? person.did : null, n > 0 ? `${n} ${n === 1 ? 'piece' : 'pieces'} together` : null].filter(Boolean).join(' · '))}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -215,6 +270,7 @@ export default function CircleView({ open, state, onClose, onRetry, firstName, c
   const read = state && typeof state === 'object' ? state : null;
   const people = (read?.groups || []).flatMap((g) => g.people || []);
   const [chosen, setChosen] = useState<ProfileCirclePerson | null>(null);
+  const sharedRef = useRef<HTMLDivElement>(null);
   // Board 9 opens on the first confirmed person.
   const shown = chosen && people.includes(chosen) ? chosen : people.find((p) => p.user_id && inkOf(p.ink) === 'signed') ?? null;
   let body: ReactNode;
@@ -237,7 +293,8 @@ export default function CircleView({ open, state, onClose, onRetry, firstName, c
           </p>
         </div>
         {people.length > 0 ? <Diagram groups={read!.groups} center={center} chosen={shown} onChoose={setChosen} firstName={firstName} /> : null}
-        {shown ? <Shared key={`${shown.user_id}-${shown.name}`} person={shown} read={readPieces} target={target} /> : null}
+        {shown ? <div ref={sharedRef} className="scroll-mt-14"><Shared key={`${shown.user_id}-${shown.name}`} person={shown} read={readPieces} target={target} /></div> : null}
+        {people.length > 0 ? <Everyone groups={read!.groups} chosen={shown} firstName={firstName} onChoose={(person) => { setChosen(person); requestAnimationFrame(() => sharedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }} /> : null}
         {read!.hired_by?.text ? (
           <section className={`${card} px-5 py-3.5`}>
             <p className="flex items-start gap-2.5 text-[0.9375rem] leading-[1.3125rem] text-app"><InkGlyph ink={inkOf(read!.hired_by.ink)} />{read!.hired_by.text}</p>
