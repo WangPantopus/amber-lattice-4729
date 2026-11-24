@@ -29,6 +29,9 @@ const CITIES = [
   '0643000', '0649270', '4829000', '4870808', '1264175',
   // November 24, 2026, fifth: Denton, TX; North Las Vegas, NV; Edmond, OK.
   '4819972', '3251800', '4023200',
+  // November 24, 2026, sixth: Kirkland, Redmond, Federal Way and Auburn, WA (King County); Lakewood, WA; Lewisville and
+  // Flower Mound, TX; Independence and Lee's Summit, MO; Evanston, IL.
+  '5335940', '5357535', '5323515', '5303180', '5338038', '4842508', '4826232', '2935000', '2941348', '1724582',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
