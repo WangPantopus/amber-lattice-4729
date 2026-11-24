@@ -392,8 +392,43 @@ async function previewFor(url, userId) {
   return pending;
 }
 
-/** Whether the page at `url` contains `needle`, read through the same guarded fetch (2 MB, 5 s, 3 redirects). */
-async function pageContains(url, needle, userId) {
+// The proof line counts only in the page's head, which its author controls: the <title>, or the content of a
+// description, og:description, twitter:description or pantopus-proof meta tag. Reading stops at </head> or the first
+// <body>; nothing in the body ever counts, so a line left in someone else's comments proves nothing.
+const PROOF_META = new Set(['description', 'og:description', 'twitter:description', 'pantopus-proof']);
+
+function headReader(token) {
+  let found = false;
+  let ended = false;
+  let titleText = null;
+  let svgDepth = 0;
+  const check = (text) => { if (!found && text && text.includes(token)) found = true; };
+  const parser = new Parser({
+    onopentag(name, attrs) {
+      if (ended) return;
+      if (name === 'svg') svgDepth += 1;
+      else if (name === 'body') ended = true;
+      else if (name === 'title' && !svgDepth && titleText === null) titleText = '';
+      else if (name === 'meta') {
+        const key = String(attrs.property || attrs.name || '').trim().toLowerCase();
+        if (PROOF_META.has(key)) check(String(attrs.content || ''));
+      }
+    },
+    ontext(text) {
+      if (!ended && titleText !== null && titleText.length < 1000) titleText += text;
+    },
+    onclosetag(name) {
+      if (ended) return;
+      if (name === 'svg' && svgDepth) svgDepth -= 1;
+      else if (name === 'title' && titleText !== null) { check(titleText); titleText = null; }
+      else if (name === 'head') ended = true;
+    },
+  }, { decodeEntities: true });
+  return { write: (text) => { if (!ended && !found) parser.write(text); }, done: () => ended || found, found: () => found };
+}
+
+/** Whether the page's head carries `token` (title or a proof meta tag), read through the same guarded fetch. */
+async function headCarries(url, token, userId) {
   let target = parsePublicUrl(url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_DEADLINE_MS);
@@ -401,7 +436,7 @@ async function pageContains(url, needle, userId) {
     await acquireSlot(userId, controller.signal);
     try {
       for (let redirects = 0; redirects <= 3; redirects += 1) {
-        const result = await fetchText(target, controller.signal, needle);
+        const result = await fetchHead(target, controller.signal, token);
         if (result.found !== undefined) return result.found;
         if (!result.location || redirects === 3) throw previewError('Too many or invalid redirects');
         target = parsePublicUrl(new URL(result.location, target).href);
@@ -415,16 +450,15 @@ async function pageContains(url, needle, userId) {
   }
 }
 
-// fetchHtml's twin for a proof check: the same agent, lookup, headers and ceilings, reading the page's text for one
-// short line instead of its preview tags.
-function fetchText(url, signal, needle) {
+// fetchHtml's twin for a proof check: the same agent, lookup, headers and ceilings, reading only the page's head.
+function fetchHead(url, signal, token) {
   return new Promise((resolve, reject) => {
     let decoder = null;
     const fail = (error) => { decoder?.destroy(); reject(error); };
     const request = (url.protocol === 'https:' ? https : http).get(url, {
       agent: false, lookup: publicLookup, signal, maxHeaderSize: 16 * 1024,
       headers: { 'User-Agent': 'PantopusBot/1.0 (+https://pantopus.com)',
-        Accept: 'text/html,application/xhtml+xml,text/plain', 'Accept-Encoding': 'gzip, deflate, br' },
+        Accept: 'text/html,application/xhtml+xml', 'Accept-Encoding': 'gzip, deflate, br' },
     }, (response) => {
       const stop = (error) => { response.destroy(); fail(error); };
       response.on('error', fail);
@@ -434,26 +468,26 @@ function fetchText(url, signal, needle) {
         return resolve({ location });
       }
       if (response.statusCode < 200 || response.statusCode >= 300) return stop(previewError('Failed to fetch URL'));
-      if (!/^(text\/html|application\/xhtml\+xml|text\/plain)(?:\s*;|$)/i.test(response.headers['content-type'] || '')) {
-        return stop(previewError('URL does not return a page', 422));
+      if (!/^(text\/html|application\/xhtml\+xml)(?:\s*;|$)/i.test(response.headers['content-type'] || '')) {
+        return stop(previewError('URL does not return HTML', 422));
       }
       const encoding = String(response.headers['content-encoding'] || 'identity').trim().toLowerCase();
       if (encoding !== 'identity' && !DECODERS[encoding]) return stop(previewError('Unsupported encoding', 422));
+      const reader = headReader(token);
       const text = new StringDecoder('utf8');
       let size = 0;
-      let seen = '';
       let done = false;
-      const finish = (found) => {
+      const finish = () => {
         if (done) return;
         done = true;
         response.destroy();
         decoder?.destroy();
-        resolve({ found });
+        resolve({ found: reader.found() });
       };
       let body = response;
       if (encoding !== 'identity') {
         let received = 0;
-        response.on('data', (chunk) => { received += chunk.length; if (received >= MAX_BODY_BYTES) finish(false); });
+        response.on('data', (chunk) => { received += chunk.length; if (received >= MAX_BODY_BYTES) finish(); });
         decoder = DECODERS[encoding]();
         decoder.on('error', () => stop(previewError('Failed to fetch URL')));
         body = response.pipe(decoder);
@@ -462,18 +496,16 @@ function fetchText(url, signal, needle) {
         if (done) return;
         const kept = chunk.subarray(0, MAX_BODY_BYTES - size);
         size += kept.length;
-        // Keep a tail as long as the line, so a line split across chunks is still found.
-        seen = (seen.slice(-needle.length) + text.write(kept));
-        if (seen.includes(needle)) return finish(true);
-        if (size >= MAX_BODY_BYTES) finish(false);
+        reader.write(text.write(kept));
+        if (reader.done() || size >= MAX_BODY_BYTES) finish();
       });
-      body.on('end', () => finish((seen + text.end()).includes(needle)));
+      body.on('end', () => { if (!done) reader.write(text.end()); finish(); });
     });
     request.on('error', fail);
     request.on('upgrade', (_response, socket) => { socket.destroy(); fail(previewError('Failed to fetch URL')); });
   });
 }
 
-router.linkCards = { previewFor, pageContains, parsePublicUrl };
+router.linkCards = { previewFor, headCarries, parsePublicUrl, previewLimiter };
 
 module.exports = router;

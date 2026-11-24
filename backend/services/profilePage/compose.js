@@ -718,7 +718,7 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
         .map((a) => ({ kind: a.kind, url: a.url, thumbnail_url: a.thumbnail_url })),
       attachments,
       owner_role: String(row.owner_role || '').trim() || null,
-      links: Array.isArray(row.links) ? row.links.map((c) => cardOf(c, first)) : [],
+      links: Array.isArray(row.links) ? row.links.map((c) => cardOf(c, first, owner)) : [],
       written,
       kept_once: null,
       skills: (row.skills_used || []).filter(Boolean).slice(0, 5),
@@ -732,13 +732,13 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
 }
 
 /** A link card as the piece read sends it (CONTRACT P2.4): words only, never the proof line, never a page picture. */
-function cardOf(card, first) {
+function cardOf(card, first, owner = false) {
   const pm = monthOf(card.proven_at);
   return {
     id: card.id, url: card.url, site: card.site, kind: card.kind || 'site', title: card.title || null,
     description: card.description || null, picture_url: null,
     ink: card.proven_at ? 'seen' : 'said',
-    how: card.proven_at ? `Proven ${first}'s, ${monthLabel(pm)}` : 'Not proven yours yet',
+    how: card.proven_at ? `Proven ${first}'s, ${monthLabel(pm)}` : (owner ? 'Not proven yours yet' : `Not proven ${first}'s yet`),
   };
 }
 

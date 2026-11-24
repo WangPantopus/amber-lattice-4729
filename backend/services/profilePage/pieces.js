@@ -14,6 +14,7 @@ const TITLE_MAX = 60;
 const WORDS_MAX = 280;
 const SKILLS_MAX = 5;
 const ATTACH_MAX = 12;
+const PASTE_CEILING_MS = 8000;
 const PIN_MAX = 3;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const KINDS = ['did', 'built', 'owns'];
@@ -144,18 +145,22 @@ async function linkCards(userId, links, existing) {
   const crypto = require('crypto');
   const { previewFor } = require('../../routes/linkPreview').linkCards;
   const byUrl = new Map((existing || []).map((card) => [card.url, card]));
-  const out = [];
+  const urls = [];
   for (const item of links) {
     const url = cleanLink(item && typeof item === 'object' ? item.url : null);
-    if (out.some((c) => c.url === url)) continue;
-    if (byUrl.has(url)) { out.push(byUrl.get(url)); continue; }
-    const host = new URL(url).hostname.replace(/^www\./, '');
-    let words = {};
-    try { words = await previewFor(url, userId); } catch (_) { words = {}; }
-    out.push({ id: crypto.randomUUID(), url, site: host, kind: kindOf(host), title: words.title || null,
-      description: words.description || null, proof_token: null, proven_at: null });
+    if (!urls.includes(url)) urls.push(url);
   }
-  return out;
+  // New links are read side by side, under linkPreview's own per-person slots, with one ceiling for the whole save;
+  // a link that doesn't answer in time keeps a plain card.
+  const deadline = new Promise((resolve) => { const t = setTimeout(() => resolve(null), PASTE_CEILING_MS); t.unref?.(); });
+  const words = await Promise.all(urls.map((url) => (byUrl.has(url) ? null
+    : Promise.race([previewFor(url, userId).catch(() => null), deadline]))));
+  return urls.map((url, i) => {
+    if (byUrl.has(url)) return byUrl.get(url);
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return { id: crypto.randomUUID(), url, site: host, kind: kindOf(host), title: words[i]?.title || null,
+      description: words[i]?.description || null, proof_token: null, proven_at: null };
+  });
 }
 
 /** The twelve in all: files and link cards together. */
@@ -406,7 +411,11 @@ async function proofLine(userId, id, linkId) {
     const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
     if (error) throw error;
   }
-  return { line: `pantopus-proof: ${card.proof_token}`, how: 'Put this line anywhere on the page, then check.' };
+  return {
+    line: `pantopus-proof: ${card.proof_token}`,
+    meta: `<meta name="pantopus-proof" content="${card.proof_token}">`,
+    how: 'Put this line in the page\'s title or description, then check. On your own site, a meta tag works. A line in comments doesn\'t count.',
+  };
 }
 
 /** POST …/check: reads the page through the same guarded fetch; Seen once the line is there. */
@@ -416,9 +425,9 @@ async function checkProof(userId, id, linkId) {
   const card = links.find((c) => c.id === linkId);
   if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
   if (!card.proof_token) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Get your line first, then put it on the page.');
-  const { pageContains } = require('../../routes/linkPreview').linkCards;
+  const { headCarries } = require('../../routes/linkPreview').linkCards;
   let found;
-  try { found = await pageContains(card.url, `pantopus-proof: ${card.proof_token}`, userId); } catch (_) {
+  try { found = await headCarries(card.url, card.proof_token, userId); } catch (_) {
     throw new PieceRefusal(409, 'LINK_UNREADABLE', 'That page can\'t be read right now. Try again later.');
   }
   if (!found) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Your line isn\'t on the page yet.');
@@ -426,7 +435,7 @@ async function checkProof(userId, id, linkId) {
   const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
   if (error) throw error;
   const rows = await ownRows(userId);
-  return require('./compose').cardOf(card, firstNameOf(rows));
+  return require('./compose').cardOf(card, firstNameOf(rows), true);
 }
 
 /** POST /me/pieces/preview: how a piece with these fields would show; nothing saved. */

@@ -57,9 +57,11 @@ router.get('/me/pieces', verifyToken, handle('pieces', (req) => pieces.listMine(
 router.post('/me/pieces/preview', verifyToken, handle('piece-preview', (req) => pieces.previewPiece(String(req.user.id), req.body)));
 router.post('/me/pieces', verifyToken, handle('piece-make', (req) => pieces.createPiece(String(req.user.id), req.body), 201));
 router.patch('/me/pieces/:id', verifyToken, handle('piece-change', (req) => pieces.updatePiece(String(req.user.id), req.params.id, req.body)));
-router.post('/me/pieces/:id/links/:linkId/proof', verifyToken,
+// Proof and check share the link preview route's budget (linkPreview.js previewLimiter).
+const linkBudget = (req, res, next) => require('./linkPreview').linkCards.previewLimiter(req, res, next);
+router.post('/me/pieces/:id/links/:linkId/proof', verifyToken, linkBudget,
   handle('link-proof', (req) => pieces.proofLine(String(req.user.id), req.params.id, req.params.linkId)));
-router.post('/me/pieces/:id/links/:linkId/check', verifyToken,
+router.post('/me/pieces/:id/links/:linkId/check', verifyToken, linkBudget,
   handle('link-check', (req) => pieces.checkProof(String(req.user.id), req.params.id, req.params.linkId)));
 router.delete('/me/pieces/:id', verifyToken, handle('piece-delete', (req) => pieces.deletePiece(String(req.user.id), req.params.id)));
 
