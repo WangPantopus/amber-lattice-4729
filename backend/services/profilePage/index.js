@@ -7,9 +7,11 @@
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { serializeProfilePrompts } = require('../../utils/profilePrompts');
-const { findPerson, openFor, PageRefusal, cityLimit } = require('./person');
+const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require('./person');
 const { readSources, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
+const links = require('./links');
+const { profileLinksEnabled } = require('../../utils/featureFlags');
 const { buildRecord, composePage, composeMonth, composePiece, partContent, firstWord } = require('./compose');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -46,6 +48,7 @@ async function readInCommon(viewerUser, targetId) {
 
 function contextFrom(opened, stored, found) {
   const share = readShare(stored);
+  const linksEnabled = share.links_enabled;
   const { shown, userData } = opened;
   const displayName = String(shown.name || '').trim() || opened.username;
   const firstName = firstWord(displayName) || opened.username;
@@ -56,6 +59,7 @@ function contextFrom(opened, stored, found) {
     parts: share.parts,
     saved: share.saved,
     searchEngines: share.search_engines,
+    linksEnabled,
     displayName,
     firstName,
     accountName,
@@ -66,22 +70,31 @@ function contextFrom(opened, stored, found) {
   };
 }
 
-/** Reads everything for one request. `view` forces a view (the share read's visitor). */
-async function loadPage(req, lookup, { view } = {}) {
-  const found = await findPerson(lookup);
+/**
+ * Reads everything for one request. `view` forces a view (the share read's visitor). `keyed` opens a link for one
+ * purpose: the link view, with that link's parts.
+ */
+async function loadPage(req, lookup, { view, keyed = null } = {}) {
+  const found = keyed ? keyed.found : await findPerson(lookup);
   const userId = found.userData.id;
   const signedIn = req.user?.id ? String(req.user.id) : null;
-  const previewing = view !== undefined || req.query?.as !== undefined;
-  const readsForSignedIn = Boolean(signedIn) && !(previewing && (view || req.query?.as) === 'link');
+  const previewing = Boolean(keyed) || view !== undefined || req.query?.as !== undefined;
+  const readsForSignedIn = Boolean(signedIn) && !keyed && !(previewing && (view || req.query?.as) === 'link');
   const wantsInCommon = Boolean(signedIn) && signedIn !== String(userId) && !previewing;
 
   const [opened, stored, sources, inCommon] = await Promise.all([
-    openFor(req, found, { viewOverride: view }),
+    openFor(req, found, { viewOverride: keyed ? 'link' : view, keyed: Boolean(keyed) }),
     readShareColumn(userId),
     readSources(userId, { pinned: readsForSignedIn, reviewerNames: readsForSignedIn }),
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
   const ctx = contextFrom(opened, stored, found);
+  if (keyed) {
+    // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
+    // narrowest setting, and a link is never a connection). Never listed (item 9.5).
+    ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
+    ctx.searchEngines = false;
+  }
   // No profile city: the verified home's city may stand in, only where the home part reaches the view too (compose).
   const home = (sources.homes || []).find((h) => h.city);
   if (home) {
@@ -106,10 +119,10 @@ async function getMonth(req, lookup, month) {
   return loaded.ctx.preview ? { ...answer, preview_as: loaded.ctx.preview } : answer;
 }
 
-async function getPiece(req, lookup, pieceId) {
-  const found = await findPerson(lookup);
+async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
+  const found = keyed ? keyed.found : await findPerson(lookup);
   const [opened, stored, pieceRead] = await Promise.all([
-    openFor(req, found),
+    openFor(req, found, keyed ? { viewOverride: 'link', keyed: true } : {}),
     readShareColumn(found.userData.id),
     supabaseAdmin.from('UserPortfolio')
       .select('id, user_id, title, description, portfolio_type, media_urls, thumbnail_url, file_ids, skills_used, '
@@ -126,6 +139,7 @@ async function getPiece(req, lookup, pieceId) {
   }
   if (!pieceRead.data) throw missing();
   const ctx = contextFrom(opened, stored, found);
+  if (keyed) ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
   const answer = composePiece(ctx, pieceRead.data);
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
@@ -152,9 +166,19 @@ async function visitorFrom(loaded) {
 }
 
 async function shareBody(req) {
-  const loaded = await loadPage(req, { id: req.user.id });
+  const linksOn = profileLinksEnabled();
+  const [loaded, linkRows] = await Promise.all([
+    loadPage(req, { id: req.user.id }),
+    linksOn ? links.listRows(req.user.id) : null,
+  ]);
   const { ctx } = loaded;
   const content = partContent(ctx, loaded.record);
+  const linkFields = linksOn ? {
+    links_enabled: ctx.linksEnabled,
+    links: linkRows.map((row) => links.serialize(row, {
+      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled, day: links.today(),
+    })),
+  } : {};
   return {
     v: 1,
     username: ctx.username,
@@ -165,12 +189,13 @@ async function shareBody(req) {
     search_engines: ctx.searchEngines,
     city_limit: ctx.cityLimit,
     visitor: await visitorFrom(loaded),
+    ...linkFields,
   };
 }
 
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
-  const change = applyShareChange(readShare(stored), req.body);
+  const change = applyShareChange(readShare(stored), req.body, new Date(), { links: profileLinksEnabled() });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);
   if (error) throw error;
@@ -178,6 +203,86 @@ async function putShare(req) {
   return shareBody(req);
 }
 
+// ---------- links for one purpose ----------
+
+// The owner's switch for links and the name in their link (the handle others see).
+async function ownerLinkFields(req) {
+  const [stored, found] = await Promise.all([readShareColumn(req.user.id), findPerson({ id: req.user.id })]);
+  return { linksEnabled: readShare(stored).links_enabled, username: await handleOthersSee(found.userData) };
+}
+
+async function makeLink(req) {
+  const owner = await ownerLinkFields(req);
+  const row = await links.createLink(req.user.id, req.body, owner);
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+}
+
+async function changeLink(req) {
+  const owner = await ownerLinkFields(req);
+  const row = await links.updateLink(req.user.id, req.params.id, req.body);
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+}
+
+async function removeLink(req) {
+  return links.deleteLink(req.user.id, req.params.id);
+}
+
+/**
+ * A link for one purpose, opened by its key: `what` is 'page', 'piece' or 'month'. Every key that doesn't open gives
+ * the same 404, whatever the reason. Counts one open unless the owner opened it.
+ */
+async function openByKey(req, username, key, what = 'page', arg = null) {
+  const row = await links.rowForKey(key);
+  let found;
+  try {
+    found = await findPerson({ username });
+  } catch (err) {
+    if (err instanceof PageRefusal) throw links.NOT_FOUND();
+    throw err;
+  }
+  if (String(found.userData.id) !== String(row.user_id)) throw links.NOT_FOUND();
+  const signedIn = req.user?.id ? String(req.user.id) : null;
+  const isOwner = signedIn === String(row.user_id);
+  const [stored, blocked] = await Promise.all([
+    readShareColumn(row.user_id),
+    signedIn && !isOwner ? blockedEitherWay(signedIn, row.user_id) : false,
+  ]);
+  if (blocked || !links.isLive(row, readShare(stored).links_enabled)) throw links.NOT_FOUND();
+  let answer;
+  try {
+    if (what === 'piece') {
+      answer = await getPiece(req, null, arg, { keyed: { found, row } });
+    } else {
+      const loaded = await loadPage(req, null, { keyed: { found, row } });
+      if (what === 'month') {
+        if (!MONTH_RE.test(String(arg || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
+        answer = composeMonth(loaded.ctx, loaded.record, arg);
+        if (!answer) throw new PageRefusal(404, 'MONTH_NOT_FOUND', 'Nothing to show for that month.');
+      } else {
+        answer = composePage(loaded.ctx, loaded.sources, loaded.extras);
+      }
+    }
+  } catch (err) {
+    // A private profile behind a live key reads as a link that doesn't work, like every other closed key.
+    if (err instanceof PageRefusal && err.code === 'PROFILE_PRIVATE') throw links.NOT_FOUND();
+    throw err;
+  }
+  if (!isOwner && what === 'page') links.countOpen(row.id);
+  return answer;
+}
+
+// A block either way, as the profile reads count one: Block in the app, a profile block of any scope, a personal block.
+async function blockedEitherWay(viewerId, personId) {
+  const { isScopedBlocked } = require('../../utils/visibilityPolicy');
+  const blockService = require('../blockService');
+  const [scoped, personal] = await Promise.all([
+    isScopedBlocked(viewerId, personId, 'any'),
+    blockService.isBlocked(viewerId, personId),
+  ]);
+  return scoped || personal;
+}
+
 module.exports = {
   getPage, getMonth, getPiece, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
+  makeLink, changeLink, removeLink, openByKey, LinkRefusal: links.LinkRefusal,
 };

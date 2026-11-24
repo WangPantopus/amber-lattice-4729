@@ -47,8 +47,14 @@ function readShare(stored) {
       if (SETTINGS.includes(stored.parts[key])) parts[key] = stored.parts[key];
     }
   }
-  // Search engines list the page unless the person switched it off (founder, 2026-11-23, item 9.5).
-  return { saved, parts, search_engines: !(saved && stored.search_engines === false) };
+  // Search engines list the page unless the person switched it off (founder, 2026-11-23, item 9.5). Links for one
+  // purpose are on unless the person turned them off (item 9.1); that switch alone isn't a save of the parts.
+  return {
+    saved,
+    parts,
+    search_engines: !(saved && stored.search_engines === false),
+    links_enabled: !(stored && typeof stored === 'object' && stored.links_enabled === false),
+  };
 }
 
 /** Does `part` reach `view` under these settings? The owner sees everything. */
@@ -62,12 +68,16 @@ function reaches(parts, part, view) {
  * Checks a PUT /me/share body. Returns { value } (the share to store) or { error } (a sentence to show). Parts not sent
  * keep their setting; a first save stores all twelve.
  */
-function applyShareChange(current, body, now = new Date()) {
+function applyShareChange(current, body, now = new Date(), { links = false } = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { error: 'Send the parts to change, each set to anyone, members or connections.' };
   }
-  const unknown = Object.keys(body).filter((key) => key !== 'parts' && key !== 'search_engines');
-  if (unknown.length) return { error: 'Only parts and search_engines can be saved here.' };
+  const allowed = links ? ['parts', 'search_engines', 'links_enabled'] : ['parts', 'search_engines'];
+  const unknown = Object.keys(body).filter((key) => !allowed.includes(key));
+  if (unknown.length) {
+    return { error: links ? 'Only the parts, search engines and links for one purpose can be saved here.'
+      : 'Only the parts and search engines can be saved here.' };
+  }
   const parts = { ...current.parts };
   if (body.parts !== undefined) {
     if (!body.parts || typeof body.parts !== 'object' || Array.isArray(body.parts)) {
@@ -84,7 +94,16 @@ function applyShareChange(current, body, now = new Date()) {
     if (typeof body.search_engines !== 'boolean') return { error: 'Search engines is on or off.' };
     searchEngines = body.search_engines;
   }
-  return { value: { v: 1, parts, search_engines: searchEngines, saved_at: now.toISOString() } };
+  let linksEnabled = current.links_enabled !== false;
+  if (body.links_enabled !== undefined) {
+    if (typeof body.links_enabled !== 'boolean') return { error: 'Links for one purpose are on or off.' };
+    linksEnabled = body.links_enabled;
+  }
+  // Turning links on or off alone doesn't save the parts (rule 4.7 starts only with a save of the parts).
+  const savesParts = current.saved || body.parts !== undefined || body.search_engines !== undefined;
+  const value = { v: 1, links_enabled: linksEnabled };
+  if (savesParts) Object.assign(value, { parts, search_engines: searchEngines, saved_at: now.toISOString() });
+  return { value };
 }
 
 module.exports = {
