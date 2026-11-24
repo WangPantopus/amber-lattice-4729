@@ -800,6 +800,10 @@
   gap: 14px;
   margin-top: 10px;
 }
+/* A pillar section's "More about <pillar>" link, after its groups. */
+.more {
+  margin-top: 14px;
+}
 .group {
   border: 1px solid var(--line);
   background: var(--panel);

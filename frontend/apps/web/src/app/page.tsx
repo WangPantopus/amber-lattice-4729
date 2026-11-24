@@ -26,6 +26,7 @@ import { LevelThree, LevelTwo } from './_components/HomeLevelsTwoThree';
 import HomeWorld from './_components/HomeWorld';
 import CloseSection from './_components/CloseSection';
 import HomeFooter from './_components/HomeFooter';
+import { HOME_MENU } from './_components/pillarLinks';
 import { IconSprite } from './_components/HomeIcons';
 import styles from './_components/home.module.css';
 
@@ -83,16 +84,6 @@ export const metadata: Metadata = {
 // Re-rendered hourly, as before.
 export const revalidate = 3600;
 
-const NAV = [
-  ['#place', 'Place'],
-  ['#today', 'Today'],
-  ['#mail', 'Mail'],
-  ['#pulse', 'Pulse'],
-  ['#train', 'Support Train'],
-  ['#plans', 'Plans'],
-  ['#moments', 'Moments'],
-];
-
 export default function HomePage() {
   return (
     <div className={`${styles.page} ${serif.variable} ${mono.variable}`}>
@@ -107,11 +98,17 @@ export default function HomePage() {
             Pantopus
           </a>
           <div className={styles.navLinks}>
-            {NAV.map(([href, label]) => (
-              <a key={href} href={href}>
-                {label}
-              </a>
-            ))}
+            {HOME_MENU.map(({ href, label, page }) =>
+              page ? (
+                <Link key={href} href={href}>
+                  {label}
+                </Link>
+              ) : (
+                <a key={href} href={href}>
+                  {label}
+                </a>
+              ),
+            )}
           </div>
           <Link className={styles.signIn} href="/login">
             Sign in
