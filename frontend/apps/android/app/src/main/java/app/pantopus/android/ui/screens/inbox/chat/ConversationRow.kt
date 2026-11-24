@@ -28,6 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -66,6 +69,16 @@ fun ConversationRow(
                     if (content.pinned) PantopusColors.primary50.copy(alpha = 0.5f) else PantopusColors.appSurface,
                 )
                 .clickable(onClick = onTap)
+                // The line under the row runs along its bottom edge, as on iPhone, clear of the rings around the
+                // picture (the Moments ring and the profile mark reach past the picture's own bottom).
+                .drawBehind {
+                    val line = 1.dp.toPx()
+                    drawRect(
+                        color = PantopusColors.appBorderSubtle,
+                        topLeft = Offset(0f, size.height - line),
+                        size = Size(size.width, line),
+                    )
+                }
                 .padding(horizontal = Spacing.s4, vertical = Spacing.s4)
                 .semantics(mergeDescendants = true) {
                     contentDescription = buildA11yLabel(content)
@@ -92,14 +105,6 @@ fun ConversationRow(
             content.momentReply?.takeIf { !it.ended }?.let { reply -> MomentThumb(reply) }
             Trailing(content)
         }
-        Box(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(PantopusColors.appBorderSubtle),
-        )
     }
 }
 
