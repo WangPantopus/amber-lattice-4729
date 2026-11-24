@@ -3,7 +3,9 @@
 // darkens behind the words (stage/controller.ts).
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { Icon, type IconName } from './HomeIcons';
+import { pillarPageFor } from './pillarLinks';
 import { MEDIA } from './stage/media';
 import styles from './home.module.css';
 
@@ -32,6 +34,8 @@ interface ChapterProps {
 }
 
 export function Chapter({ id, u, scrim = '.78', flip, icon, eyebrow, title, lede, groups, visual, after }: ChapterProps) {
+  // A pillar's section ends its copy with a link to the pillar's own page, once that page is live.
+  const page = pillarPageFor(id);
   return (
     <section className={styles.chapter} id={id} data-u={u} data-scrim={scrim} aria-labelledby={`${id}-title`}>
       <div className={styles.wrap}>
@@ -64,6 +68,13 @@ export function Chapter({ id, u, scrim = '.78', flip, icon, eyebrow, title, lede
                 </div>
               ))}
             </div>
+            {page ? (
+              <p className={styles.more}>
+                <Link className={styles.textBtn} href={page.path}>
+                  More about {page.label}
+                </Link>
+              </p>
+            ) : null}
           </div>
           <div className={styles.visual}>{visual}</div>
         </div>
