@@ -67,6 +67,8 @@ function trendFrom(file, { countyFips, zip, countyName }) {
     // What `last_change_pct` is about: the ZIP, or the county the curve draws.
     area_name: scope === 'zip' ? `ZIP ${zip5}` : (countyName || 'the county'),
     county_name: countyName || null,
+    // The curve is the county's, so its labels use the county's own last year (review, 2026-11-24).
+    county_last_change_pct: Number.isFinite(countyChange) ? round1(countyChange) : null,
     year: Number.isInteger(file.year) ? file.year : years[years.length - 1],
     last_change_pct: round1(last),
     since_year: years[0],

@@ -849,6 +849,10 @@ async function buildPlacePreview(place) {
     // this address, else null and the tiles carry the page as before.
     money_lead: moneyLead,
     ...(moneyCard ? { money: moneyCard } : {}),
+    // The flood cost band whenever the benchmark is held, whatever the dollar
+    // card is: in a high-risk zone it must not vanish behind the home value.
+    // New clients draw it first in Risk; the store apps never read it.
+    flood_cost: money && money.kind === 'flood_premium' ? money : null,
     free: {
       flood: floodSection,
       density: densitySection,

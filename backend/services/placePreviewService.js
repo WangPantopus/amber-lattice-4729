@@ -573,9 +573,11 @@ const activeAlerts = (env) => {
   return data && Array.isArray(data.active) ? data.active : [];
 };
 
-// Risk and Health by stand-out score, highest first (ties keep the base order:
-// flood, earthquake, wildfire; radon and lead, water, EPA sites). Right now opens
-// on an alert while one is active, then air, then weather.
+// Risk and Health: a section at or above the stand-out floor moves ahead,
+// highest first; the rest keep the base order (flood, earthquake, wildfire;
+// radon and lead, water, EPA sites), so calm cards are not reshuffled by the few
+// points between their scores. Right now opens on an alert while one is
+// active, then air, then weather.
 function orderSections(sections, point = null) {
   const list = (sections || []).filter(Boolean);
   const base = new Map(list.map((env, i) => [env, i]));
@@ -595,11 +597,11 @@ function orderSections(sections, point = null) {
   for (const g of groupOrder) {
     const members = byGroup.get(g).slice();
     if (g === 'risk_readiness' || g === 'health_environment') {
-      members.sort((a, b) => {
-        const sa = scores.get(a) ?? -1;
-        const sb = scores.get(b) ?? -1;
-        return sb - sa || base.get(a) - base.get(b);
-      });
+      const lead = (env) => {
+        const score = scores.get(env);
+        return Number.isFinite(score) && score >= AHA_FLOOR ? score : -1;
+      };
+      members.sort((a, b) => lead(b) - lead(a) || base.get(a) - base.get(b));
     } else if (g === 'today') {
       members.sort((a, b) => (todayRank[a.id] ?? 9) - (todayRank[b.id] ?? 9) || base.get(a) - base.get(b));
     }
