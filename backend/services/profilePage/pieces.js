@@ -274,8 +274,25 @@ async function createPiece(userId, body) {
   return answerFor(userId, data.id);
 }
 
+/**
+ * Files a piece no longer holds go with it, unless another of the person's pieces still holds them: a removed piece's
+ * photos must not stay in today's portfolio grid (GET /api/files/portfolio). Marked deleted as files.js deletes them.
+ */
+async function dropUnheldFiles(userId, fileIds) {
+  const ids = [...new Set((fileIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return;
+  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('file_ids').eq('user_id', userId);
+  if (error) throw error;
+  const held = new Set((data || []).flatMap((r) => (r.file_ids || []).map(String)));
+  const unheld = ids.filter((id) => !held.has(id));
+  if (!unheld.length) return;
+  const { error: dropError } = await supabaseAdmin.from('File').update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .in('id', unheld).eq('user_id', userId);
+  if (dropError) throw dropError;
+}
+
 async function ownPiece(userId, id) {
-  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured').eq('id', id).eq('user_id', userId).maybeSingle();
+  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids').eq('id', id).eq('user_id', userId).maybeSingle();
   if (error) {
     if (error.code === '22P02') throw notFound();
     throw error;
@@ -285,21 +302,27 @@ async function ownPiece(userId, id) {
 }
 
 async function updatePiece(userId, id, body) {
-  await ownPiece(userId, id);
+  const before = await ownPiece(userId, id);
   const columns = await columnsFrom(userId, body, { create: false });
   if (columns.is_featured === true) await pinRoom(userId, id);
   if (Object.keys(columns).length) {
     const { error } = await supabaseAdmin.from('UserPortfolio').update({ ...columns, updated_at: new Date().toISOString() })
       .eq('id', id).eq('user_id', userId);
     if (error) throw error;
+    // Attachments taken off the piece go, unless another piece holds them.
+    if (columns.file_ids) {
+      const kept = new Set(columns.file_ids.map(String));
+      await dropUnheldFiles(userId, (before.file_ids || []).filter((f) => !kept.has(String(f))));
+    }
   }
   return answerFor(userId, id);
 }
 
 async function deletePiece(userId, id) {
-  await ownPiece(userId, id);
+  const before = await ownPiece(userId, id);
   const { error } = await supabaseAdmin.from('UserPortfolio').delete().eq('id', id).eq('user_id', userId);
   if (error) throw error;
+  await dropUnheldFiles(userId, before.file_ids);
   return { id, deleted: true };
 }
 
@@ -322,6 +345,35 @@ async function saveWork(userId, body) {
   const { error } = await supabaseAdmin.from('User').update({ profile_tools: tools }).eq('id', userId);
   if (error) throw error;
   return { tools };
+}
+
+/**
+ * Today's public portfolio grid (GET /api/files/portfolio/:userId, which the released apps draw, signed in or not)
+ * never shows more than the person's pieces do: a file held by a piece that doesn't reach everyone (hidden, a draft,
+ * members- or connections-only) is left out, and once the person saved a Work part that doesn't reach anyone, every
+ * file a piece holds is. Files no piece holds are listed as before. A failed read leaves out every piece's files.
+ */
+async function publicGridFilter(userId, files) {
+  if (!Array.isArray(files) || !files.length) return files;
+  const [pieces, owner] = await Promise.all([
+    supabaseAdmin.from('UserPortfolio').select('file_ids, is_visible, is_draft, audience').eq('user_id', userId),
+    supabaseAdmin.from('User').select('profile_share').eq('id', userId).maybeSingle(),
+  ]);
+  if (pieces.error) throw pieces.error;
+  const rows = pieces.data || [];
+  if (!rows.some((r) => (r.file_ids || []).length)) return files;
+  const share = owner.error ? { saved: true, parts: { work: 'members' } } : readShare(owner.data?.profile_share);
+  const workOpen = !share.saved || reaches(share.parts, 'work', 'link');
+  const held = new Set();
+  const closed = new Set();
+  for (const r of rows) {
+    const open = workOpen && r.is_visible !== false && r.is_draft !== true && (r.audience || 'anyone') === 'anyone';
+    for (const id of r.file_ids || []) {
+      held.add(String(id));
+      if (!open) closed.add(String(id));
+    }
+  }
+  return files.filter((f) => !closed.has(String(f.id)));
 }
 
 // ---------- the piece read's extra parts ----------
@@ -347,6 +399,6 @@ async function attachmentsOf(row) {
 }
 
 module.exports = {
-  PieceRefusal, listMine, saveWork, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
+  PieceRefusal, listMine, saveWork, publicGridFilter, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
   localDate,
 };
