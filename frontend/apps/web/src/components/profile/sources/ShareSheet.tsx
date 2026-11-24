@@ -11,37 +11,8 @@ import ProfileAvatar from '@/components/profile/public/atoms/ProfileAvatar';
 import { extractApiError } from '@/lib/auth-utils';
 import { AvatarRing } from './RingArt';
 import { card, overline } from './blocks';
-
-/** Board 21's words for each part, in its order and groups. A part the server doesn't send isn't drawn. */
-const GROUPS: Array<{ title: string; parts: Array<{ key: string; label: string; detail?: string }> }> = [
-  {
-    title: 'About you',
-    parts: [
-      { key: 'says', label: 'Says', detail: 'Your one line' },
-      { key: 'prompts', label: 'Get to know', detail: 'Your answers' },
-      { key: 'shelf', label: 'Shelf' },
-      { key: 'city', label: 'City' },
-    ],
-  },
-  {
-    title: "What you've done",
-    parts: [
-      { key: 'work', label: 'Work', detail: 'Your pieces and what you can do' },
-      { key: 'known_for', label: 'Known for', detail: 'Writers show by name only if they allow it.' },
-      { key: 'reviews', label: 'Reviews', detail: 'What people wrote after a paid job' },
-      { key: 'record_work', label: 'Record: work and learning' },
-      { key: 'record_home', label: 'Record: home', detail: 'That your home is verified. Never the address.' },
-      { key: 'record_others', label: 'Record: with others' },
-      { key: 'met', label: 'Met in person', detail: 'A count. Names are never on a shared page.' },
-    ],
-  },
-  {
-    title: 'Reaching you',
-    parts: [
-      { key: 'doors', label: 'Doors', detail: 'Hire, ask, send a card, leave a card. A visitor signs in to use one.' },
-    ],
-  },
-];
+import { GROUPS } from './parts';
+import LinksSection from './LinksSection';
 
 const linkLabel = (url: string) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
@@ -264,6 +235,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
             control={<Switch on={share.search_engines} label="Let search engines list this page" disabled={saving !== null} onChange={setListed} />}
           />
         </section>
+        <LinksSection share={share} onShare={setShare} onError={setError} />
       </div>
     );
   }

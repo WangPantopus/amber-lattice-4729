@@ -9,12 +9,14 @@
 //   GET  …/piece/:pieceId,  …/month/:month               one piece or one month, opened
 //   GET  /api/profile-page/me/share,  PUT the same       the owner's parts and what a visitor sees
 //   GET  /api/profile-page/marks?ids=…                    the avatar ring for up to 100 people
+//   GET  /api/profile-page/:username/v/:key (+ piece, month)   a link for one purpose (v1.3; PROFILE_LINKS)
+//   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   the owner's links for one purpose
 //
 // Behind the backend's PROFILE_SOURCES switch: while it is off every route answers 404 PROFILE_SOURCES_OFF and the apps
 // show today's profile.
 // ============================================================
 
-import { get, put } from '../client';
+import { del, get, patch, post, put } from '../client';
 import type { UserInCommon } from './users';
 
 export type ProfileInk = 'seen' | 'signed' | 'said';
@@ -366,6 +368,26 @@ export interface ProfileShare {
   city_limit: 'anyone' | 'connections' | 'none' | string;
   /** The page exactly as a signed-out visitor gets it; null when a signed-out visitor couldn't open it at all. */
   visitor: ProfilePage | null;
+  /** Links for one purpose (v1.3). Absent while the server's PROFILE_LINKS is off: no section is drawn. */
+  links_enabled?: boolean;
+  links?: ProfileShareLink[];
+}
+
+/** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
+export interface ProfileShareLink {
+  id: string;
+  name: string;
+  /** https://pantopus.com/<username>/v/<key>: the key is shown only to the owner. */
+  url: string;
+  parts: Partial<Record<ProfileSharePartKey, boolean>>;
+  /** YYYY-MM-DD: the link works through that Pacific day; null for no end. */
+  ends_on: string | null;
+  switched_off: boolean;
+  /** Not switched off, not ended, and links are on for the person. */
+  live: boolean;
+  opens: number;
+  last_opened_on: string | null;
+  created_at: string;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -391,12 +413,39 @@ export async function getMonth(identifier: string, month: string, options?: { as
   return get<ProfileMonthRead>(`${base(identifier)}/month/${encodeURIComponent(month)}`, options?.as ? { as: options.as } : undefined);
 }
 
+/** `/api/profile-page/<username>/v/<key>`: a link for one purpose (never needs sign-in). */
+function linkBase(username: string, key: string): string {
+  return `/api/profile-page/${encodeURIComponent(username)}/v/${encodeURIComponent(key)}`;
+}
+
+export async function getLinkMonth(username: string, key: string, month: string): Promise<ProfileMonthRead> {
+  return get<ProfileMonthRead>(`${linkBase(username, key)}/month/${encodeURIComponent(month)}`);
+}
+
+export async function getLinkPiece(username: string, key: string, pieceId: string): Promise<ProfilePieceRead> {
+  return get<ProfilePieceRead>(`${linkBase(username, key)}/piece/${encodeURIComponent(pieceId)}`);
+}
+
+/** Make a link for one purpose: parts not sent are off. */
+export async function createLink(body: { name: string; parts: Partial<Record<ProfileSharePartKey, boolean>>; ends_on: string | null }): Promise<ProfileShareLink> {
+  return post<ProfileShareLink>('/api/profile-page/me/links', body);
+}
+
+/** Rename, change parts (merged), change or clear the last day, switch off or on. */
+export async function updateLink(id: string, body: { name?: string; parts?: Partial<Record<ProfileSharePartKey, boolean>>; ends_on?: string | null; switched_off?: boolean }): Promise<ProfileShareLink> {
+  return patch<ProfileShareLink>(`/api/profile-page/me/links/${encodeURIComponent(id)}`, body);
+}
+
+export async function deleteLink(id: string): Promise<{ id: string; deleted: boolean }> {
+  return del<{ id: string; deleted: boolean }>(`/api/profile-page/me/links/${encodeURIComponent(id)}`);
+}
+
 /** The owner's parts and what a visitor would see. */
 export async function getShare(): Promise<ProfileShare> {
   return get<ProfileShare>('/api/profile-page/me/share');
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
 }

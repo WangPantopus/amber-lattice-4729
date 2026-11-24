@@ -1,5 +1,5 @@
 // ============================================================
-// /api/og/profile?u=<username> — a profile with sources' link picture (SPEC phase 1): 1200 x 630, the portrait in its
+// /api/og/profile?u=<username>[&k=<key>] — a profile with sources' link picture (SPEC phase 1): 1200 x 630, the portrait in its
 // rings, the name, the headline, and Says only while that part reaches anyone with the link. Drawn from the page a
 // signed-out visitor gets (GET /api/profile-page/:username), so a part that is off is absent here too, with no gap.
 // Nothing is stored. Used only while the web's profile_sources key is on (page.tsx).
@@ -46,6 +46,10 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 
 export async function GET(req: NextRequest) {
   const username = (req.nextUrl.searchParams.get('u') || '').trim().replace(/^@+/, '').slice(0, 64);
+  // A link for one purpose: the picture follows that link's parts.
+  const rawKey = req.nextUrl.searchParams.get('k');
+  const key = rawKey && /^[A-Za-z0-9_-]{32,64}$/.test(rawKey) ? rawKey : null;
+  if (rawKey && !key) return new Response('Not found', { status: 404 });
   let page: ProfilePage | null = null;
   if (username) {
     try {
@@ -53,8 +57,11 @@ export async function GET(req: NextRequest) {
       // reads keep each visitor's own limit (as the page's read does).
       const edgeSecret = process.env.EDGE_PROXY_SECRET;
       const address = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-      const res = await fetch(`${API_BASE}/api/profile-page/${encodeURIComponent(username)}`, {
-        headers: { accept: 'application/json', ...(edgeSecret ? { 'x-pantopus-edge': edgeSecret, ...(address ? { 'x-forwarded-for': address } : {}) } : {}) },
+      const path = `/api/profile-page/${encodeURIComponent(username)}${key ? `/v/${encodeURIComponent(key)}` : ''}`;
+      const res = await fetch(`${API_BASE}${path}`, {
+        // `x-pantopus-share-card`: a picture for a link preview, not someone opening the page (a link for one purpose
+        // counts opens; the server need not count this read).
+        headers: { accept: 'application/json', 'x-pantopus-share-card': '1', ...(edgeSecret ? { 'x-pantopus-edge': edgeSecret, ...(address ? { 'x-forwarded-for': address } : {}) } : {}) },
         cache: 'no-store',
       });
       if (res.ok) page = (await res.json()) as ProfilePage;

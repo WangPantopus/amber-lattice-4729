@@ -242,6 +242,8 @@ export interface SourcesProfileProps {
   postsReadable: boolean;
   /** The owner's Preview as: the page is to look at, not to act on, and opened months and pieces read as that view. */
   previewAs?: ProfilePreviewView | null;
+  /** A link for one purpose: its months and pieces open through the same link. */
+  viaLink?: { username: string; key: string } | null;
   signedOut?: boolean;
   /** A door was used (phase 3), or Leave your card. */
   onDoor?: (door: ProfileDoor | { key: 'leave_card' }) => void;
@@ -257,7 +259,7 @@ export interface SourcesProfileProps {
  * Every tab prints, in order, so "Save as PDF" gives the whole page.
  */
 export default function SourcesProfile({
-  page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, signedOut = false,
+  page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, viaLink = null, signedOut = false,
   onDoor, onConnect, onReport, onJoin,
 }: SourcesProfileProps) {
   const router = useRouter();
@@ -302,9 +304,13 @@ export default function SourcesProfile({
     const round = ++openRound.current;
     const options = previewAs ? { as: previewAs } : undefined;
     setOpened({ ...what, state: 'loading' } as Opened);
-    const read: Promise<ProfileMonthRead | ProfilePieceRead> = what.kind === 'month'
-      ? api.profilePage.getMonth(personId, what.month, options)
-      : api.profilePage.getPiece(personId, what.id, options);
+    const read: Promise<ProfileMonthRead | ProfilePieceRead> = viaLink
+      ? (what.kind === 'month'
+        ? api.profilePage.getLinkMonth(viaLink.username, viaLink.key, what.month)
+        : api.profilePage.getLinkPiece(viaLink.username, viaLink.key, what.id))
+      : what.kind === 'month'
+        ? api.profilePage.getMonth(personId, what.month, options)
+        : api.profilePage.getPiece(personId, what.id, options);
     read.then(
       (value) => { if (round === openRound.current) setOpened({ ...what, state: value } as Opened); },
       (err: { statusCode?: number } | null) => {
@@ -312,7 +318,7 @@ export default function SourcesProfile({
         setOpened({ ...what, state: err?.statusCode === 404 ? 'gone' : 'failed' } as Opened);
       },
     );
-  }, [personId, previewAs]);
+  }, [personId, previewAs, viaLink]);
 
   const target = useCallback((link: ProfileLink | null | undefined): Target | null => {
     if (!link || typeof link !== 'object' || typeof link.kind !== 'string') return null;
@@ -337,12 +343,14 @@ export default function SourcesProfile({
       }
       case 'moments': {
         const id = value('user_id');
-        return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(window.location.pathname)}`) } : null;
+        // From a link for one purpose, back to the person's main page: its key never rides in another address.
+        const back = viaLink ? `/${encodeURIComponent(viaLink.username)}` : window.location.pathname;
+        return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(back)}`) } : null;
       }
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
       default: return null;
     }
-  }, [tabs, openTab, load, header.username, router]);
+  }, [tabs, openTab, load, header.username, router, viaLink]);
 
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
@@ -388,7 +396,8 @@ export default function SourcesProfile({
           hasName={Boolean(header.name?.trim())}
           photoUrl={header.portrait_url}
           seed={personId}
-          wrapPortrait={(portrait) => <MomentAvatar id={personId} name={name}>{portrait}</MomentAvatar>}
+          // Moments open with this page's address to come back to; a link for one purpose keeps its key to itself.
+          wrapPortrait={viaLink ? undefined : (portrait) => <MomentAvatar id={personId} name={name}>{portrait}</MomentAvatar>}
         />
       </div>
       <div className="px-5 pt-1.5 pb-4 flex flex-col items-center gap-0.5 text-center">
