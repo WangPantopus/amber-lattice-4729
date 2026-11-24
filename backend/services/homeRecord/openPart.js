@@ -270,6 +270,12 @@ async function extrasFor(copy, home) {
   return { similar, estimate };
 }
 
+/** "Lot · 0.21 acres" for the picture's chip, from the open facts; null without a lot size. */
+function lotChip(copy) {
+  const tile = copy?.facts ? lotTile(copy.facts) : null;
+  return tile ? `Lot \u00b7 ${tile.value} ${tile.unit}` : null;
+}
+
 /** The header's chip: where the record was found. */
 function foundChip(copy) {
   if (!copy?.publisher) return null;
@@ -278,4 +284,4 @@ function foundChip(copy) {
   return { tone: 'success', text: `Found in ${name || copy.publisher}'s records` };
 }
 
-module.exports = { factsBlock, readings, metersBlock, closedItems, closedPart, extrasFor, foundChip, recordSource, OPEN_FACTS };
+module.exports = { lotChip, factsBlock, readings, metersBlock, closedItems, closedPart, extrasFor, foundChip, recordSource, OPEN_FACTS };

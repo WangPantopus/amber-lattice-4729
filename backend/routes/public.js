@@ -20,6 +20,7 @@ const { encodeGeohash, encodeGeohash6 } = require('../utils/geohash');
 const { GeoCache } = require('../utils/geoCache');
 const placePreviewService = require('../services/placePreviewService');
 const homeRecordService = require('../services/homeRecord');
+const homeRecordAerial = require('../services/homeRecord/aerial');
 const { withinBudget } = require('../services/placeIntelligenceService');
 const { foundingSlotsOpen } = require('../services/place/foundingWindow');
 const { recordFunnelEvent, CLIENT_POSTABLE_EVENT_TYPES } = require('../services/funnelEvents');
@@ -954,6 +955,26 @@ router.get('/place', optionalAuth, classifyPlaceLookup, placeLookupLimiter, shar
   } catch (err) {
     console.error('[public/place] Error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/public/home-record/aerial.jpg?at=<map cell>&item=<survey> — the picture from above
+//
+// The image a home record's `picture` block names: a federal aerial survey's view of a ~5 m map cell's block, cut
+// once and kept in this server's memory (services/homeRecord/aerial.js). The cell is in the query string, which the
+// request log leaves out; nothing about it is written anywhere. An image never changes for its cell and survey.
+// ============================================================
+router.get('/home-record/aerial.jpg', async (req, res) => {
+  try {
+    const bytes = await homeRecordAerial.image(String(req.query.at || ''), String(req.query.item || ''));
+    if (!bytes) return res.status(404).json({ error: 'Not found' });
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.send(bytes);
+  } catch (err) {
+    console.warn('[public/home-record/aerial] cut failed:', err.message);
+    return res.status(503).json({ error: 'The picture isn’t available right now.' });
   }
 });
 

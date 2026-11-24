@@ -25,6 +25,7 @@ const { stateCode } = require('../propertyRecords/addressKey');
 const placeIntelligenceService = require('../placeIntelligenceService');
 const authority = require('../homeDashboardService');
 const open = require('./openPart');
+const aerial = require('./aerial');
 const { ownerBlocks } = require('./ownerPart');
 const { check } = require('./contract');
 const { FOOTERS } = require('./words');
@@ -74,6 +75,17 @@ async function extrasWithin(copy, home) {
   return placeIntelligenceService.withinBudget(open.extrasFor(copy, home), placeIntelligenceService.sectionBudgetMs()).catch(() => ({}));
 }
 
+// The picture from above, on the lookup's section budget: past it the page goes without, and the search keeps running
+// to fill the cache for the next look.
+function picture(point, copy) {
+  if (!point) return null;
+  return placeIntelligenceService.withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), placeIntelligenceService.sectionBudgetMs())
+    .catch((err) => {
+      if (err?.message !== 'over budget') logger.info('homeRecord.picture_failed', { error: err?.message });
+      return null;
+    });
+}
+
 function answer(state, header, blocks) {
   return check({ v: CONTRACT_VERSION, state, header, blocks: blocks.filter(Boolean), footer: FOOTERS[state] });
 }
@@ -88,8 +100,12 @@ async function forLookup(place, { flood }) {
     place.line ? recordForAddress(address) : null,
     open.readings({ lat: place.lat, lng: place.lng }, { flood }),
   ]);
-  const extras = await extrasWithin(copy, { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode });
+  const [extras, above] = await Promise.all([
+    extrasWithin(copy, { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode }),
+    picture({ lat: place.lat, lng: place.lng }, copy),
+  ]);
   return answer('lookup', { chip: open.foundChip(copy), title: place.line || subtitleOf(place) || 'This address', subtitle: place.line ? subtitleOf(place) : null }, [
+    above,
     open.factsBlock(copy),
     open.metersBlock(read),
     ...open.closedPart(open.closedItems(copy, extras), {
@@ -145,7 +161,8 @@ async function copyForHome(row) {
 async function openFor(row, flood) {
   const point = pointOf(row);
   const [copy, read] = await Promise.all([copyForHome(row), point ? open.readings(point, { flood }) : noReadings]);
-  return { copy, read, extras: await extrasWithin(copy, row) };
+  const [extras, above] = await Promise.all([extrasWithin(copy, row), picture(point, copy)]);
+  return { copy, read, extras, above };
 }
 
 /**
@@ -163,16 +180,17 @@ async function forHome({ homeId, userId, flood }) {
     return authority.withCurrentAccess({ homeId, actorId: userId }, async (access) => {
       if (!access.isOwner) throw new HomeRecordError('HOME_RECORD_ACCESS_CHANGED', 409, 'Your access to this home changed. Please try again.');
       const row = await readRow(homeId);
-      const { copy, read, extras } = await openFor(row, flood);
+      const { copy, read, extras, above } = await openFor(row, flood);
       const place = subtitleOf(row);
-      const blocks = await ownerBlocks({ row, copy, extras, open: [open.factsBlock(copy), open.metersBlock(read)] });
+      const blocks = await ownerBlocks({ row, copy, extras, above, open: [open.factsBlock(copy), open.metersBlock(read)] });
       return answer('owner', header(row, { tone: 'success', text: 'Confirmed owner' }, place ? `${place} · everything in its record` : null), blocks);
     });
   }
 
   const row = await readRow(homeId);
-  const [{ copy, read, extras }, steps] = await Promise.all([openFor(row, flood), memberSteps(homeId, userId, standing)]);
+  const [{ copy, read, extras, above }, steps] = await Promise.all([openFor(row, flood), memberSteps(homeId, userId, standing)]);
   return answer('member', header(row, open.foundChip(copy), subtitleOf(row)), [
+    above,
     open.factsBlock(copy),
     open.metersBlock(read),
     ...open.closedPart(open.closedItems(copy, extras), steps),

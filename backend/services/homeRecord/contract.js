@@ -23,6 +23,10 @@ const isFraction = (n) => typeof n === 'number' && n >= 0 && n <= 1;
 function problem(block) {
   if (!block || !KINDS.has(block.kind) || !isText(block.id)) return 'kind or id';
   switch (block.kind) {
+    case 'picture':
+      return (!block.above || ((isText(block.above.image_url) && /^(\/|https:\/\/)/.test(block.above.image_url))
+        && (block.above.chips || []).every((chip) => ['bl', 'br'].includes(chip.at) && isText(chip.text))))
+        && (block.above || block.street) ? null : 'picture';
     case 'facts':
       return Array.isArray(block.tiles) && block.tiles.length <= 3 && block.tiles.every((tile) => isText(tile.label) && isText(tile.value)) ? null : 'tiles';
     case 'meters':
