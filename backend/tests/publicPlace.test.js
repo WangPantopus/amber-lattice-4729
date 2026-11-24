@@ -223,12 +223,16 @@ describe('GET /api/public/place', () => {
     it('returns every free layer as an available section envelope — and never Band B', async () => {
       const res = await request(buildApp()).get('/api/public/place').query({ address: '1421 SE Oak St' });
       expect(res.status).toBe(200);
-      const ids = res.body.sections.map((s) => s.id);
-      for (const id of ['weather', 'air_quality', 'alerts', 'sunrise_sunset', 'flood', 'seismic', 'wildfire',
+      // An unavailable layer outside Risk, Health and Right now is named in
+      // not_checked instead of drawn as an empty card (LOOKUPORDER).
+      const ids = [...res.body.sections.map((s) => s.id), ...(res.body.not_checked || []).map((n) => n.id)];
+      for (const id of ['weather', 'air_quality', 'alerts', 'flood', 'seismic', 'wildfire',
         'lead_radon', 'drinking_water', 'environmental_hazards', 'block_density', 'census_context', 'rent_band',
         'civic_districts', 'civic_election']) {
         expect(ids).toContain(id);
       }
+      // Sunrise stays on a home's Place and on Today, not on the lookup (LOOKUPORDER).
+      expect(ids).not.toContain('sunrise_sunset');
       expect(ids).not.toContain('your_home');
       for (const s of res.body.sections) {
         expect(s.access).toBe('available');
@@ -654,7 +658,13 @@ describe('GET /api/public/place', () => {
 // converting address ask there is — without ATTOM, an account, or any
 // persistence. The honesty rules are the point: every figure states its
 // scope, a benchmark is never a quote, and nothing is invented.
+// LOOKUPORDER: the dollar card is now the area's home value (lookupMoney);
+// LOOKUP_MONEY=off keeps the card as it was, which these cases still check.
 describe('the money lead', () => {
+  const before = process.env.LOOKUP_MONEY;
+  beforeEach(() => { process.env.LOOKUP_MONEY = 'off'; });
+  afterAll(() => { if (before === undefined) delete process.env.LOOKUP_MONEY; else process.env.LOOKUP_MONEY = before; });
+
   test('leads with the tract flood-premium band when one is warmed', async () => {
     seedTable('PlaceSectionCache', [{
       cache_key: 'tract:41051001902',
@@ -772,6 +782,8 @@ describe('the money lead', () => {
 // carries cents. Both native clients type money_lead.low/high as Int, so
 // a fractional value fails the decode and takes the entire preview down.
 test('the money lead is always whole dollars, even from fractional premiums', async () => {
+  // The flood premium leads only where the area has no home value (LOOKUPORDER).
+  process.env.LOOKUP_MONEY = 'off';
   seedTable('PlaceSectionCache', [{
     cache_key: 'tract:41051001902',
     section_id: '_nfip_tract',
@@ -787,6 +799,7 @@ test('the money lead is always whole dollars, even from fractional premiums', as
   // And the headline must not print a stray decimal.
   expect(lead.headline).not.toMatch(/\.\d/);
   expect(lead.headline).toMatch(/\$481–\$1,244 a year/);
+  delete process.env.LOOKUP_MONEY;
 });
 
 // ── Ballot P0 teaser (docs/ballot-implementation-plan-2026-09-24.md §5.3) ──

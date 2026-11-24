@@ -19,6 +19,7 @@ const placeSectionAdapters = require('../services/placeSectionAdapters');
 const { encodeGeohash, encodeGeohash6 } = require('../utils/geohash');
 const { GeoCache } = require('../utils/geoCache');
 const placePreviewService = require('../services/placePreviewService');
+const lookupMoney = require('../services/place/lookupMoney');
 const homeRecordService = require('../services/homeRecord');
 const homeRecordAerial = require('../services/homeRecord/aerial');
 const { withinBudget } = require('../services/placeIntelligenceService');
@@ -502,6 +503,49 @@ async function fetchFloodCached(lat, lng) {
 // Census tract teaser — area-level medians only (NOT an exact home record,
 // NOT ATTOM). Same two-layer caching as flood; the tract resolution itself
 // is persistently cached too (geocodeToTractCached — effectively permanent).
+//
+// The teaser also carries the tract's median real estate taxes (B25103_001E,
+// the money card's tax figure), from the same ACS call. A row stored before it
+// did is served as it is, and refreshed once in the background, so no lookup
+// waits on the Census for it.
+const CENSUS_TEASER_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const hasTaxField = (payload) => Boolean(payload) && Object.prototype.hasOwnProperty.call(payload, 'median_real_estate_taxes');
+const censusRefreshing = new Set();
+
+function censusTeaserFetch(lat, lng, resolveTract) {
+  return async () => {
+    const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
+    if (!tract) return null;
+    const { tractId, stateCode, countyCode } = tract;
+    const tractCode = tractId.slice(stateCode.length + countyCode.length);
+    const acs = await fetchCensusACS(stateCode, countyCode, tractCode);
+    if (!acs) return null;
+    const teaser = {
+      median_year_built: acs.median_year_built ?? null,
+      median_home_value: acs.median_home_value ?? null,
+      median_real_estate_taxes: acs.median_real_estate_taxes ?? null,
+    };
+    return teaser.median_year_built != null || teaser.median_home_value != null ? teaser : null;
+  };
+}
+
+function refreshCensusTeaser(lat, lng, key) {
+  const cell = encodeGeohash6(lat, lng);
+  if (censusRefreshing.has(cell)) return;
+  censusRefreshing.add(cell);
+  readThrough({
+    cacheKey: `geo:${cell}`,
+    sectionId: '_census_teaser',
+    ttlMs: CENSUS_TEASER_TTL_MS,
+    // An older row (no tax field) counts as missing here, so this one fetch rewrites it.
+    isUsable: (payload) => hasTaxField(payload),
+    fetch: censusTeaserFetch(lat, lng, null),
+  })
+    .then(({ payload }) => { if (hasTaxField(payload)) previewCache.set(key, payload, AREA_TTL_MS); })
+    .catch((err) => console.warn('[public/place] census teaser refresh failed:', err.message))
+    .finally(() => censusRefreshing.delete(cell));
+}
+
 async function fetchCensusTeaserCached(lat, lng, resolveTract) {
   const key = `census:${encodeGeohash6(lat, lng)}`;
   const cached = previewCache.get(key);
@@ -511,22 +555,13 @@ async function fetchCensusTeaserCached(lat, lng, resolveTract) {
     const { payload } = await readThrough({
       cacheKey: `geo:${encodeGeohash6(lat, lng)}`,
       sectionId: '_census_teaser',
-      ttlMs: 90 * 24 * 60 * 60 * 1000,
-      fetch: async () => {
-        const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
-        if (!tract) return null;
-        const { tractId, stateCode, countyCode } = tract;
-        const tractCode = tractId.slice(stateCode.length + countyCode.length);
-        const acs = await fetchCensusACS(stateCode, countyCode, tractCode);
-        if (!acs) return null;
-        const teaser = {
-          median_year_built: acs.median_year_built ?? null,
-          median_home_value: acs.median_home_value ?? null,
-        };
-        return teaser.median_year_built != null || teaser.median_home_value != null ? teaser : null;
-      },
+      ttlMs: CENSUS_TEASER_TTL_MS,
+      fetch: censusTeaserFetch(lat, lng, resolveTract),
     });
-    if (payload) previewCache.set(key, payload, AREA_TTL_MS);
+    if (payload) {
+      previewCache.set(key, payload, AREA_TTL_MS);
+      if (!hasTaxField(payload) && lookupMoney.enabled()) refreshCensusTeaser(lat, lng, key);
+    }
     return payload;
   } catch (err) {
     console.warn('[public/place] census teaser failed:', err.message);
@@ -564,11 +599,16 @@ async function fetchMoneyLeadCached(lat, lng, resolveTract) {
   try {
     const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
     if (tract) {
+      // LOOKUPORDER: the county rent figure is no longer the dollar card (it
+      // stays in the Money signals group); the card is the home's area value
+      // (lookupMoney) and, where there is none, the flood premium below. With
+      // LOOKUP_MONEY=off the card is what it was, rent included.
+      const rentLead = !lookupMoney.enabled();
       const [nfip, fmr] = await Promise.all([
         // enqueue: false — an anonymous drive-by must not take a slot in
         // the warm queue ahead of a tract someone actually lives in.
         placeSectionAdapters.nfipBenchmarkAt({ lat, lng, tractId: tract.tractId }, { enqueue: false }).catch(() => null),
-        placeSectionAdapters.hudFmrRow(`${tract.stateCode}${tract.countyCode}`).catch(() => null),
+        rentLead ? placeSectionAdapters.hudFmrRow(`${tract.stateCode}${tract.countyCode}`).catch(() => null) : null,
       ]);
 
       // Flood cost first: it is the most specific to the address (a
@@ -708,7 +748,10 @@ async function buildPlacePreview(place) {
   // retryable error (the money lead just stays out), and its lookup keeps
   // running to fill the caches for the next look.
   const budgetMs = placePreviewService.sectionBudgetMs();
-  const [floodSettled, areaSettled, bucketSettled, moneySettled, remoteSettled, foundingSettled] = await Promise.allSettled([
+  // The area's price index (the money card's curve): one small state file the
+  // index service holds in memory, answering null rather than waiting.
+  const trendFileP = lookupMoney.trendFile(place.state);
+  const [floodSettled, areaSettled, bucketSettled, moneySettled, remoteSettled, foundingSettled, trendSettled] = await Promise.allSettled([
     withinBudget(fetchFloodCached(place.lat, place.lng), budgetMs),
     withinBudget(fetchCensusTeaserCached(place.lat, place.lng, resolveTract), budgetMs),
     readDensityBucket(geohash),
@@ -722,6 +765,7 @@ async function buildPlacePreview(place) {
     // Are Founding Neighbor slots genuinely open in this cell? A boolean,
     // never a count — it only chooses the density card's invitation line.
     foundingSlotsOpen(geohash),
+    trendFileP,
   ]);
 
   const flood = floodSettled.status === 'fulfilled' ? floodSettled.value : null;
@@ -736,8 +780,27 @@ async function buildPlacePreview(place) {
     ...(areaSettled.status === 'rejected' ? ['census_context'] : []),
   ];
 
-  const sections = placePreviewService.assemblePreviewSections({ remote, flood, area, bucket, foundingOpen, late });
-  const aha = placePreviewService.pickAha(sections, { lat: place.lat, lng: place.lng });
+  const allSections = placePreviewService.assemblePreviewSections({ remote, flood, area, bucket, foundingOpen, late });
+  const point = { lat: place.lat, lng: place.lng };
+  // The stand-out card reads every section; the list a client draws, the
+  // glance, the could-not-check line and the order come from the same list.
+  const aha = placePreviewService.pickAha(allSections, point);
+  const shaped = placePreviewService.shapeLookup(allSections, point);
+
+  // The money card: area figures already in hand (the Census teaser, the
+  // index file), and the county the radon layer names.
+  const tract = await resolveTract();
+  const radon = allSections.find((env) => env && env.id === 'lead_radon');
+  const moneyCard = lookupMoney.buildMoney({
+    area,
+    file: trendSettled.status === 'fulfilled' ? trendSettled.value : null,
+    countyFips: tract && tract.stateCode && tract.countyCode ? `${tract.stateCode}${tract.countyCode}` : null,
+    zip: place.zipcode || null,
+    countyName: (radon && radon.data && radon.data.county_name) || null,
+  });
+  // The dollar card the store apps draw: the area's home value, else the flood
+  // premium, else nothing.
+  const moneyLead = lookupMoney.homeValueLead(moneyCard) || money;
 
   const floodSection = flood && flood.flood_zone
     ? {
@@ -784,14 +847,22 @@ async function buildPlacePreview(place) {
     },
     // The lead: a dollar figure when one is genuinely available for
     // this address, else null and the tiles carry the page as before.
-    money_lead: money,
+    money_lead: moneyLead,
+    ...(moneyCard ? { money: moneyCard } : {}),
+    // The flood cost band whenever the benchmark is held, whatever the dollar
+    // card is: in a high-risk zone it must not vanish behind the home value.
+    // New clients draw it first in Risk; the store apps never read it.
+    flood_cost: money && money.kind === 'flood_premium' ? money : null,
     free: {
       flood: floodSection,
       density: densitySection,
       area: areaSection,
     },
     aha,
-    sections,
+    sections: shaped.sections,
+    glance: shaped.glance,
+    not_checked: shaped.not_checked,
+    layout: shaped.layout,
     locked: LOCKED_SECTIONS,
     disclaimer: 'A free, one-time look at what\'s public. Claim this address to save it and get it every morning.',
   };

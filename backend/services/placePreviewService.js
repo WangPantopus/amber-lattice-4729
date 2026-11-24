@@ -39,13 +39,16 @@ const ballotSummary = require('./ballot/summary');
 // section becomes are shared with a saved home's Place.
 const { sectionBudgetMs, withBudget, failedSections: failed } = placeIntelligenceService;
 
-// Curated dashboard order — the same reading order the claimed
-// dashboard uses (Today → Risk → Health → Block → Money → Civic).
+// The lookup's sections, in their base order (LOOKUPORDER, 2026-11-24). Each
+// client draws the groups in its own order (or the answer's `layout`) and keeps
+// this order inside a group; Risk and Health are then ranked by their stand-out
+// score (orderSections). Sunrise is not on the lookup: it stays on a home's
+// Place and on Today.
 const PREVIEW_SECTION_ORDER = [
-  'weather', 'air_quality', 'alerts', 'sunrise_sunset',
   'flood', 'seismic', 'wildfire',
   'lead_radon', 'drinking_water', 'environmental_hazards',
-  'block_density', 'census_context',
+  'census_context', 'block_density',
+  'alerts', 'air_quality', 'weather',
   'rent_band',
   'civic_districts', 'civic_election',
 ];
@@ -143,7 +146,6 @@ async function composePreviewSections({ lat, lng, city = null, state = null, res
       ms + TODAY_RACE_GRACE_MS,
       failed(['weather', 'air_quality', 'alerts']),
     ),
-    withBudget(() => adapters.composeSunriseSunset(home), ms, failed(['sunrise_sunset'])),
     withBudget(() => adapters.composeSeismic(home), ms, failed(['seismic'])),
     withBudget(() => adapters.composeWildfire(home), ms, failed(['wildfire'])),
     withBudget(() => adapters.composeLeadRadon(home), ms, failed(['lead_radon'])),
@@ -218,6 +220,12 @@ function assemblePreviewSections({ remote = [], flood = null, area = null, bucke
   return PREVIEW_SECTION_ORDER.filter((id) => byId.has(id)).map((id) => byId.get(id));
 }
 
+// The groups whose cards stay whatever their status (the stand-out card's
+// "The cards below show what could not be checked" points at them), and whose
+// missing layers make a quiet address read as incomplete.
+const CORE_GROUPS = new Set(['risk_readiness', 'health_environment', 'today']);
+const NOT_CHECKED = new Set(['error', 'unavailable']);
+
 // ── The aha card ─────────────────────────────────────────────
 const DATA_BEARING = new Set(['ready', 'partial', 'stale']);
 const ready = (env) => env && DATA_BEARING.has(env.status) && env.data;
@@ -229,6 +237,31 @@ function toneFor(score) {
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The one step at the end of a stand-out card, from the agency behind the fact
+// (LOOKUPORDER WORDS.md; each line names the page it rests on there).
+const STEPS = {
+  radon: 'What to do: test. The EPA says to fix a home at 4 pCi/L or more.',
+  flood_high: 'What to do: check your flood insurance. FEMA says homes in high-risk areas with a government-backed mortgage must carry it, and a new policy usually takes 30 days to start.',
+  flood_moderate: 'What to do: ask what flood insurance would cost. A new policy usually takes 30 days to start.',
+  earthquake: 'What to do: secure heavy things that can tip, like bookcases and the water heater.',
+  wildfire: 'What to do: keep leaves, debris and anything that burns at least 30 feet from the house.',
+  water: 'What to do: read your water system\'s yearly report. It is due to customers by July 1.',
+  epa_sites: 'What to do: look the site up on the EPA\'s ECHO to see what the violation was.',
+};
+
+function withStep(detail, step) {
+  const text = String(detail || '').trim();
+  if (!step) return text;
+  return text ? `${/[.!?]$/.test(text) ? text : `${text}.`} ${step}` : step;
+}
+
+function firstSentence(text) {
+  const clean = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+  if (!clean) return null;
+  const sentence = clean.split(/(?<=[.!?])\s/)[0];
+  return sentence.length > 220 ? null : sentence;
+}
 
 // Each builder takes the section's data and the previewed point ({ lat, lng },
 // or null) and returns { score, grade, headline, detail, follow_up } or null.
@@ -245,7 +278,11 @@ const AHA_BUILDERS = {
       score: rank[top.severity] || 50,
       grade: label,
       headline: `${top.event || 'A weather alert'}: in effect right now`,
-      detail: (top.headline && top.headline !== top.event ? top.headline : top.description || '').slice(0, 160),
+      // The step is the National Weather Service's own instruction, when it gives one.
+      detail: withStep(
+        (top.headline && top.headline !== top.event ? top.headline : top.description || '').slice(0, 160),
+        firstSentence(top.original_instruction || top.instruction),
+      ),
       follow_up: 'Claim this address and we\'ll wake you for the next one.',
     };
   },
@@ -272,7 +309,10 @@ const AHA_BUILDERS = {
       score,
       grade: d.zone_label || (d.zone ? `Zone ${d.zone}` : null),
       headline,
-      detail: d.plain_meaning || (level === 'high' ? 'Flood insurance is usually required for a mortgage here.' : ''),
+      detail: withStep(
+        d.plain_meaning || (level === 'high' ? 'Flood insurance is usually required for a mortgage here.' : ''),
+        level === 'high' ? STEPS.flood_high : level === 'moderate' ? STEPS.flood_moderate : null,
+      ),
       follow_up: 'Claim it for the full risk picture.',
     };
   },
@@ -286,7 +326,7 @@ const AHA_BUILDERS = {
       headline: d.burnable
         ? `${d.hazard_label} wildfire hazard ${where}`
         : 'This point is classed as non-burnable land',
-      detail: d.summary || '',
+      detail: withStep(d.summary || '', d.burnable && cls != null && cls >= 3 ? STEPS.wildfire : null),
       follow_up: cls != null && cls >= 3
         ? 'Claim it to get smoke-day and burn-ban alerts every morning.'
         : 'Claim it to hear the morning that changes.',
@@ -307,7 +347,7 @@ const AHA_BUILDERS = {
         ? `Earthquake design category ${sdc}: new homes here are built for high shaking`
         : sdc ? `Earthquake design category ${sdc} at this point` : 'Earthquake design demand for this point',
       detail: high
-        ? `${cascadia ? 'This is the Cascadia zone. ' : ''}Homes built before the modern code often are not bolted to their foundations; a retrofit is the usual fix.`
+        ? withStep(`${cascadia ? 'This is the Cascadia zone. ' : ''}Homes built before the modern code often are not bolted to their foundations; a retrofit is the usual fix.`, STEPS.earthquake)
         : d.summary || '',
       follow_up: 'Claim it for the full risk picture.',
     };
@@ -324,7 +364,7 @@ const AHA_BUILDERS = {
         score,
         grade: 'Radon zone 1',
         headline: 'This county is in the EPA\'s highest radon band',
-        detail: 'Zone 1 means the predicted average indoor level is above the EPA action level. Only a test tells you about this home.',
+        detail: withStep('Zone 1 means the predicted average indoor level is above the EPA action level. Only a test tells you about this home.', STEPS.radon),
         follow_up: 'The EPA recommends testing every home, whatever the zone.',
       };
     }
@@ -333,7 +373,7 @@ const AHA_BUILDERS = {
       score,
       grade: `Radon zone ${zone}`,
       headline: `${level} radon potential for this county`,
-      detail: d.summary || '',
+      detail: withStep(d.summary || '', zone === 2 ? STEPS.radon : null),
       follow_up: 'The EPA recommends testing every home, whatever the zone.',
     };
   },
@@ -368,6 +408,8 @@ const AHA_BUILDERS = {
       headline = `${plural(tri, 'facility reports', 'facilities report')} toxic releases within a mile`;
       detail = 'Reporting to the Toxics Release Inventory is disclosure, not a violation.';
     }
+    // A violation on record (not a disclosure-only TRI report) gets the step.
+    if (score >= 46) detail = withStep(detail, STEPS.epa_sites);
     return { score, grade, headline, detail, follow_up: 'Claim it to see the sites on record near this home.' };
   },
   drinking_water(d) {
@@ -380,7 +422,7 @@ const AHA_BUILDERS = {
       headline: bad
         ? `${name}: ${plural(n, 'health-based violation', 'health-based violations')} in 5 years`
         : `${name}: no health-based violations in 5 years`,
-      detail: d.summary || '',
+      detail: withStep(d.summary || '', bad ? STEPS.water : null),
       follow_up: 'Claim it to see your water system\'s full record.',
     };
   },
@@ -477,8 +519,10 @@ function pickAha(sections, point = null) {
     const facts = calmFacts(byId);
     // A timed-out or missing layer is not evidence that the address is quiet.
     // Keep the facts we do have, without an all-clear over failed cards.
+    // Only Risk, Health and Right now count: a tract with no Census figures or
+    // an address with no districts on file is not a gap in the risk picture.
     const incomplete = !byId.size || [...byId.values()].some((env) =>
-      env.status === 'error' || env.status === 'unavailable');
+      CORE_GROUPS.has(env.group) && NOT_CHECKED.has(env.status));
     if (incomplete) {
       return {
         section_id: null,
@@ -507,10 +551,294 @@ function pickAha(sections, point = null) {
   return { ...card, tone: toneFor(score) };
 }
 
+// ── The lookup's order (LOOKUPORDER, 2026-11-24) ─────────────
+// Everything below is computed from the sections already in hand: no provider
+// call, no database read.
+
+// A section's stand-out score, or null when its builder has nothing to say.
+function scoreOf(env, point) {
+  const data = ready(env);
+  const build = env && AHA_BUILDERS[env.id];
+  if (!data || !build) return null;
+  try {
+    const built = build(data, point);
+    return built && Number.isFinite(built.score) ? built.score : null;
+  } catch {
+    return null;
+  }
+}
+
+const activeAlerts = (env) => {
+  const data = ready(env);
+  return data && Array.isArray(data.active) ? data.active : [];
+};
+
+// Risk and Health: a section at or above the stand-out floor moves ahead,
+// highest first; the rest keep the base order (flood, earthquake, wildfire;
+// radon and lead, water, EPA sites), so calm cards are not reshuffled by the few
+// points between their scores. Right now opens on an alert while one is
+// active, then air, then weather.
+function orderSections(sections, point = null) {
+  const list = (sections || []).filter(Boolean);
+  const base = new Map(list.map((env, i) => [env, i]));
+  const scores = new Map(list.map((env) => [env, scoreOf(env, point)]));
+  const alertsFirst = activeAlerts(list.find((env) => env.id === 'alerts')).length > 0;
+  const todayRank = alertsFirst
+    ? { alerts: 0, air_quality: 1, weather: 2 }
+    : { air_quality: 0, weather: 1, alerts: 2 };
+  const groupOrder = [];
+  const byGroup = new Map();
+  for (const env of list) {
+    const g = env.group || '';
+    if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+    byGroup.get(g).push(env);
+  }
+  const out = [];
+  for (const g of groupOrder) {
+    const members = byGroup.get(g).slice();
+    if (g === 'risk_readiness' || g === 'health_environment') {
+      const lead = (env) => {
+        const score = scores.get(env);
+        return Number.isFinite(score) && score >= AHA_FLOOR ? score : -1;
+      };
+      members.sort((a, b) => lead(b) - lead(a) || base.get(a) - base.get(b));
+    } else if (g === 'today') {
+      members.sort((a, b) => (todayRank[a.id] ?? 9) - (todayRank[b.id] ?? 9) || base.get(a) - base.get(b));
+    }
+    out.push(...members);
+  }
+  return out;
+}
+
+// What the could-not-check line names (WORDS.md: "Could not check today: Homes here, Next election.").
+const CHECK_LABELS = {
+  flood: 'Flood',
+  seismic: 'Earthquake',
+  wildfire: 'Wildfire',
+  lead_radon: 'Radon',
+  drinking_water: 'Water',
+  environmental_hazards: 'EPA sites',
+  census_context: 'Homes here',
+  alerts: 'Weather alerts',
+  air_quality: 'Air today',
+  weather: 'Weather',
+  rent_band: 'Rent',
+  civic_districts: 'Districts',
+  civic_election: 'Next election',
+};
+
+function notCheckedFor(sections) {
+  return (sections || [])
+    .filter((env) => env && NOT_CHECKED.has(env.status) && CHECK_LABELS[env.id])
+    .map((env) => ({ id: env.id, label: CHECK_LABELS[env.id] }));
+}
+
+// The list a client draws: every Risk, Health and Right now section whatever its
+// status (an `error` offers Try again; the stand-out card's "The cards below show
+// what could not be checked" stays true in the store apps), every `error`, and
+// no `unavailable` section outside those groups: those go to `not_checked`.
+function visibleSections(sections) {
+  return (sections || []).filter((env) => env
+    && (CORE_GROUPS.has(env.group) || env.status !== 'unavailable'));
+}
+
+// The election's days ahead, when it is ahead (a Ballot card after the vote is not).
+function electionDaysAhead(data) {
+  if (!data) return null;
+  if (data.phase === 'after') return null;
+  const days = Number(data.days_until);
+  return Number.isFinite(days) && days >= 0 ? days : null;
+}
+
+const GLANCE_WINDOW_DAYS = 45;
+const GLANCE_MAX = 9;
+const GLANCE_VALUE_MAX = 28;
+const TONE_RANK = { alert: 0, watch: 1, calm: 2, info: 3 };
+// The fixed vocabulary, in its tie order.
+const GLANCE_IDS = ['alerts', 'air', 'flood', 'earthquake', 'wildfire', 'radon', 'lead', 'water', 'epa_sites', 'homes_here', 'election'];
+
+const AIR_SHORT = {
+  good: 'Good',
+  moderate: 'Moderate',
+  unhealthy_sensitive: 'Unhealthy for some',
+  unhealthy: 'Unhealthy',
+  very_unhealthy: 'Very unhealthy',
+  hazardous: 'Hazardous',
+};
+
+function shortDollars(n) {
+  const v = Math.round(Number(n));
+  if (v >= 1000000) return `$${(v / 1000000).toFixed(2).replace(/\.?0+$/, '')}M`;
+  return `$${v.toLocaleString('en-US')}`;
+}
+
+// A row's tone: the section's stand-out score through toneFor; below the floor,
+// calm when the fact is a clear one and info when it is neither good nor bad.
+function toneOf(score, clear) {
+  if (Number.isFinite(score) && score >= AHA_FLOOR) return toneFor(score);
+  return clear ? 'calm' : 'info';
+}
+
+// Each row builder: (data, score) => { value, tone } or null.
+function glanceRows(sections, point = null) {
+  const byId = new Map();
+  for (const env of sections || []) if (env && env.id) byId.set(env.id, env);
+  const rows = [];
+  const add = (id, label, sectionId, built, score) => {
+    if (!built || !built.value) return;
+    // Never cut inside a word: past 28 characters, the value ends at the last whole word.
+    const value = built.value.length > GLANCE_VALUE_MAX
+      ? built.value.slice(0, GLANCE_VALUE_MAX + 1).replace(/[\s,·]+\S*$/, '').trim()
+      : built.value;
+    rows.push({ id, label, value, tone: built.tone, section_id: sectionId, _score: Number.isFinite(score) ? score : -1 });
+  };
+  const with_ = (sectionId, fn) => {
+    const env = byId.get(sectionId);
+    const data = ready(env);
+    if (!data) return;
+    fn(data, scoreOf(env, point));
+  };
+
+  with_('alerts', (d, score) => {
+    const active = Array.isArray(d.active) ? d.active : [];
+    if (!active.length) return;
+    const rank = { warning: 100, watch: 70, advisory: 50 };
+    const top = active.slice().sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0))[0];
+    add('alerts', 'Alert', 'alerts', { value: top.event || 'Weather alert', tone: toneOf(score, false) }, score);
+  });
+  with_('air_quality', (d, score) => {
+    const name = AIR_SHORT[d.category] || d.category_label;
+    if (!name) return;
+    const index = Number(d.index);
+    add('air', 'Air today', 'air_quality', {
+      value: Number.isFinite(index) ? `${name} · ${index}` : name,
+      tone: toneOf(score, d.category === 'good'),
+    }, score);
+  });
+  with_('flood', (d, score) => {
+    const value = { high: 'High-risk zone', moderate: 'Moderate', minimal: 'Minimal' }[d.risk_level];
+    if (value) add('flood', 'Flood', 'flood', { value, tone: toneOf(score, d.risk_level === 'minimal') }, score);
+  });
+  with_('seismic', (d, score) => {
+    const sdc = String(d.design_category || '').toUpperCase();
+    const value = (sdc === 'D' || sdc === 'E') ? 'Built for high shaking'
+      : sdc === 'C' ? 'Moderate shaking'
+        : (sdc === 'A' || sdc === 'B') ? 'Low shaking' : null;
+    if (value) add('earthquake', 'Earthquake', 'seismic', { value, tone: toneOf(score, sdc === 'A' || sdc === 'B') }, score);
+  });
+  with_('wildfire', (d, score) => {
+    const cls = Number(d.hazard_class);
+    let value = null;
+    if (!d.burnable) value = 'Not burnable land';
+    else if (cls >= 4) value = 'High hazard nearby';
+    else if (cls === 3) value = 'Moderate hazard nearby';
+    else if (cls === 1 || cls === 2) value = 'Low hazard';
+    if (value) add('wildfire', 'Wildfire', 'wildfire', { value, tone: toneOf(score, !d.burnable || cls <= 2) }, score);
+  });
+  with_('lead_radon', (d, score) => {
+    const zone = Number(d.radon_zone);
+    const value = { 1: 'Highest band', 2: 'Moderate band', 3: 'Lowest band' }[zone];
+    if (value) add('radon', 'Radon', 'lead_radon', { value, tone: toneOf(score, zone === 3) }, score);
+    if (d.lead_paint_risk) add('lead', 'Lead paint', 'lead_radon', { value: 'Depends on build year', tone: 'info' }, null);
+  });
+  with_('drinking_water', (d, score) => {
+    const bad = Boolean(d.recent_health_violations) && Number(d.violation_count) > 0;
+    add('water', 'Water', 'drinking_water', {
+      value: bad ? 'Health violation on record' : 'No violations, 5 years',
+      tone: toneOf(score, !bad),
+    }, score);
+  });
+  with_('environmental_hazards', (d, score) => {
+    const count = Number(d.facilities_within_mile);
+    if (!Number.isFinite(count)) return;
+    const n = d.notable || {};
+    const withViolation = Number(n.violations_3yr) || Number(n.significant_noncompliance) || 0;
+    let value;
+    if (withViolation > 0) value = `${withViolation} of ${count} with a violation`;
+    else if (count === 0) value = 'None within a mile';
+    // WORDS.md's "M sites, none with violations" runs past 28 characters at any count.
+    else value = `${plural(count, 'site', 'sites')}, no violations`;
+    add('epa_sites', 'EPA sites', 'environmental_hazards', { value, tone: toneOf(score, withViolation === 0) }, score);
+  });
+  with_('census_context', (d) => {
+    const parts = [];
+    if (Number(d.median_home_value) > 0) parts.push(`Near ${shortDollars(d.median_home_value)}`);
+    if (Number(d.median_year_built) > 0) parts.push(parts.length ? `built ~${d.median_year_built}` : `Built ~${d.median_year_built}`);
+    if (parts.length) add('homes_here', 'Homes here', 'census_context', { value: parts.join(' · '), tone: 'info' }, null);
+  });
+  with_('civic_election', (d, score) => {
+    const days = electionDaysAhead(d);
+    if (days == null || days > GLANCE_WINDOW_DAYS) return;
+    // Ballot's own row has no stand-out score; an election this close is worth a look.
+    const s = Number.isFinite(score) ? score : 66;
+    const value = days === 0 ? 'Today' : `In ${plural(days, 'day', 'days')}`;
+    add('election', 'Election', 'civic_election', { value, tone: toneOf(s, false) }, s);
+  });
+
+  rows.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]
+    || b._score - a._score
+    || GLANCE_IDS.indexOf(a.id) - GLANCE_IDS.indexOf(b.id));
+  // Past nine rows, "Lead paint" (the same line for every address) gives way
+  // first: the glance keeps its "Homes here" row (SPEC 1.7).
+  const kept = rows.length > GLANCE_MAX ? rows.filter((row) => row.id !== 'lead') : rows;
+  return kept.slice(0, GLANCE_MAX).map(({ _score, ...row }) => row);
+}
+
+// The side-by-side test (SPEC 6): off unless LOOKUP_ORDER_SPLIT is set, and the
+// founder's step. LOOKUP_ORDER_SPLIT_SHARE (0..1, default 0.5) is the share that
+// sees the new order; LOOKUP_ORDER_SPLIT_UNTIL (an ISO date) ends it.
+function splitConfig(now = Date.now()) {
+  const on = ['1', 'on', 'true', 'yes'].includes(String(process.env.LOOKUP_ORDER_SPLIT || '').trim().toLowerCase());
+  const shareRaw = Number(process.env.LOOKUP_ORDER_SPLIT_SHARE);
+  const share = Number.isFinite(shareRaw) && shareRaw >= 0 && shareRaw <= 1 ? shareRaw : 0.5;
+  const untilRaw = String(process.env.LOOKUP_ORDER_SPLIT_UNTIL || '').trim();
+  const untilMs = untilRaw ? Date.parse(untilRaw) : NaN;
+  const until = Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null;
+  return { on: on && (until == null || untilMs > now), share, until };
+}
+
+// The blocks a client draws, in order. A client skips a block it does not know
+// or has nothing to draw for. The Ballot card goes right after the stand-out
+// card while the election is at most 45 days ahead; otherwise clients draw it
+// at the top of the civic group.
+function layoutFor(sections) {
+  const election = (sections || []).find((env) => env && env.id === 'civic_election');
+  const data = ready(election);
+  const days = data && data.election_id ? electionDaysAhead(data) : null;
+  const ballotUp = days != null && days <= GLANCE_WINDOW_DAYS;
+  return {
+    version: 'v2',
+    order: [
+      'aha', ...(ballotUp ? ['ballot'] : []), 'glance', 'money', 'record', 'ask',
+      'group:risk_readiness', 'group:health_environment', 'section:census_context',
+      'group:today', 'group:money_signals', 'group:civic', 'section:block_density',
+      'locked', 'not_checked', 'privacy',
+    ],
+    split: splitConfig(),
+  };
+}
+
+// The lookup's new fields from the full section list (pickAha reads the same
+// full list first): the list to draw, the glance, what could not be checked
+// and the order.
+function shapeLookup(sections, point = null) {
+  const ordered = orderSections(sections, point);
+  return {
+    sections: visibleSections(ordered),
+    glance: glanceRows(ordered, point),
+    not_checked: notCheckedFor(ordered),
+    layout: layoutFor(ordered),
+  };
+}
+
 module.exports = {
   composePreviewSections,
   assemblePreviewSections,
   pickAha,
+  shapeLookup,
+  orderSections,
+  glanceRows,
+  layoutFor,
   PREVIEW_SECTION_ORDER,
   PREVIEW_DENSITY_LABELS,
   previewDensityLabel,
