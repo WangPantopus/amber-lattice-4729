@@ -81,6 +81,11 @@ const CITIES = [
   // (Riverside County), CA; Rohnert Park (Sonoma County), CA; The Colony (Denton County), TX; Bremerton (Kitsap
   // County) and Puyallup (Pierce County), WA; Lancaster (Fairfield County), OH.
   '0630014', '0603666', '0617568', '0616742', '0621230', '0662546', '4872530', '5307695', '5356695', '3941720',
+  // November 24, 2026, twenty-third: Pico Rivera and Rancho Palos Verdes (Los Angeles County), Beaumont (Riverside
+  // County) and Highland (San Bernardino County), CA; North Miami Beach (Miami-Dade County), FL; Farmers Branch (Dallas
+  // County) and Little Elm (Denton County), TX; Delaware (Delaware County) and Fairborn (Greene County), OH; Maplewood
+  // (Ramsey County), MN.
+  '0656924', '0659514', '0604758', '0633588', '1249475', '4825452', '4843012', '3921434', '3925914', '2740382',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
