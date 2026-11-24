@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says.",
+  "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says. A link on a vendor's site rather than the office's own carries `via` (`property_search_via` for the property search): the office's own page that sends people to it, so the claim can be checked; without it the link is not shown.",
   "counties": {
     "06065": {
       "read": "2026-11-23",
@@ -70,6 +70,7 @@
       "read": "2026-11-23",
       "property_search_office": "Solano County Assessor/Recorder, Property and Assessment Search",
       "property_search_url": "https://ca-solano.publicaccessnow.com/Assessor.aspx",
+      "property_search_via": "https://www.solanocounty.gov/government/assessorrecorder",
       "rows": [
         {
           "id": "recorder",
@@ -120,6 +121,71 @@
           "line": "Pay online, by mail, by phone or in person in Santa Rosa.",
           "q": "Where do I pay property tax in Sonoma County?",
           "a": "The Sonoma County Auditor-Controller-Treasurer-Tax Collector collects property tax online, by mail, by phone or in person at its Santa Rosa office."
+        }
+      ]
+    },
+    "08013": {
+      "read": "2026-11-23",
+      "property_search_office": "Boulder County Assessor, Property Search",
+      "property_search_url": "https://maps.bouldercounty.org/boco/PropertySearch/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Boulder County Clerk & Recorder, Recording Division",
+          "url": "https://bouldercounty.gov/records/recording/",
+          "line": "Records deeds, deeds of trust, liens and subdivision plats for public notice; its records search is online.",
+          "q": "Where are deeds recorded in Boulder County?",
+          "a": "The Recording Division of the Boulder County Clerk & Recorder records deeds, deeds of trust, liens and subdivision plats for public notice. Its records search is online, and copies can be requested online, by phone or by email."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Boulder County Treasurer",
+          "url": "https://bouldercounty.gov/property-and-land/treasurer/taxes/",
+          "line": "Collects taxes on real property; the Assessor sets the values they are figured from.",
+          "q": "Where do I pay property tax in Boulder County?",
+          "a": "The Boulder County Treasurer collects taxes on real property, mobile homes and business personal property. The Assessor sets the values the taxes are figured from."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert",
+          "office": "Boulder County Clerk & Recorder",
+          "url": "https://bouldercounty.gov/records/recording/propertyalert/",
+          "line": "Emails a registered user about documents recorded under a name they enter; the office charges no fee for it."
+        }
+      ]
+    },
+    "12001": {
+      "read": "2026-11-23",
+      "property_search_office": "Alachua County Property Appraiser, Property Search",
+      "property_search_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=1081&LayerID=26490&PageTypeID=2&PageID=10768",
+      "property_search_via": "https://www.acpafl.org/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Alachua County Clerk of the Circuit Court, Official Records",
+          "url": "https://www.alachuacounty.us/depts/clerk/publicrecords/pages/officialrecords.aspx",
+          "line": "Most official records are online to search; copies cost $1 a page, a certified copy $2 more.",
+          "q": "Where are deeds recorded in Alachua County?",
+          "a": "The Alachua County Clerk of the Circuit Court keeps the county's Official Records, where deeds and mortgages are recorded. Most are online to search; copies cost $1 a page, and a certified copy $2 more."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Alachua County Tax Collector",
+          "url": "https://www.alachuacollector.com/property-taxes/",
+          "line": "Collects real property tax each year from November 1; the Property Appraiser sets values and exemptions.",
+          "q": "Where do I pay property tax in Alachua County?",
+          "a": "The Alachua County Tax Collector collects real property tax each year, beginning November 1. The Property Appraiser sets the values and the exemptions the tax is figured from."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording Notification Service",
+          "office": "Alachua County Clerk of the Circuit Court",
+          "url": "https://www.alachuacounty.us/Depts/Clerk/Pages/RecordingNotificationService.aspx",
+          "line": "Emails a registered address when a document is recorded under one of up to 10 names it monitors; the office charges no fee for it."
         }
       ]
     },
@@ -187,6 +253,39 @@
         }
       ]
     },
+    "12109": {
+      "read": "2026-11-23",
+      "property_search_office": "St. Johns County Property Appraiser, Search Property Records",
+      "property_search_url": "https://qpublic.schneidercorp.com/Application.aspx?App=StJohnsCountyFL&Layer=Parcels&PageType=Search",
+      "property_search_via": "https://www.sjcpa.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "St. Johns County Clerk of the Circuit Court and Comptroller, Recording",
+          "url": "https://stjohnsclerk.com/recording/",
+          "line": "Records documents into the county's Official Records; most can be viewed online or at its offices.",
+          "q": "Where are deeds recorded in St. Johns County?",
+          "a": "The St. Johns County Clerk of the Circuit Court and Comptroller is the County Recorder: deeds and other documents recorded there become the county's Official Records. Most can be viewed online or at the Clerk's offices."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "St. Johns County Tax Collector",
+          "url": "https://sjctax.us/real-estate-taxes/",
+          "line": "Collects the taxes on real estate each year; they are due before April 1 of the following year.",
+          "q": "Where do I pay property tax in St. Johns County?",
+          "a": "The St. Johns County Tax Collector collects real estate taxes. They are due each year and become delinquent if unpaid by April 1 of the following year."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "St. Johns County Clerk of the Circuit Court and Comptroller",
+          "url": "https://apps.stjohnsclerk.com/Landmark/FraudAlert",
+          "line": "Emails a subscriber each time an Official Record is recorded with a name they asked for; the office charges no fee for it."
+        }
+      ]
+    },
     "27123": {
       "read": "2026-11-23",
       "property_search_office": "Ramsey County Property Tax, Records & Election Services, property lookup",
@@ -209,6 +308,135 @@
           "line": "Its property lookup shows a parcel's values and tax, and pays the tax.",
           "q": "Where do I pay property tax in Ramsey County?",
           "a": "Ramsey County's Property Tax, Records & Election Services: its property lookup finds a parcel and pays its property tax."
+        }
+      ]
+    },
+    "37051": {
+      "read": "2026-11-23",
+      "property_search_office": "Cumberland County Tax Administration, Property Search",
+      "property_search_url": "https://taxpwa.co.cumberland.nc.us/camapwa/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Cumberland County Register of Deeds",
+          "url": "https://www.ccrod.org/",
+          "line": "Land records back to 1754, the county's beginning; its record search is online.",
+          "q": "Where are deeds recorded in Cumberland County?",
+          "a": "The Cumberland County Register of Deeds records the county's deeds, so that an owner can give public notice of ownership. Its land records go back to 1754, and its record search is online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Cumberland County Tax Administration",
+          "url": "https://www.cumberlandcountync.gov/departments/tax-group/tax",
+          "line": "Bills and collects property tax; its page links to searching and paying a tax bill.",
+          "q": "Where do I pay property tax in Cumberland County?",
+          "a": "Cumberland County Tax Administration bills and collects property tax. Its page links to searching a tax bill and paying it online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Notification",
+          "office": "Cumberland County Register of Deeds",
+          "url": "https://ncpropertynotification.org/Description?AgencyId=5",
+          "line": "Emails a registered user when a document is indexed under a name they monitor; run for the Register by its records vendor.",
+          "via": "https://www.ccrod.org/"
+        }
+      ]
+    },
+    "37097": {
+      "read": "2026-11-23",
+      "property_search_office": "Iredell County Tax Administration, Real Estate Search",
+      "property_search_url": "https://taxweb.iredellcountync.gov/PublicAccess/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Iredell County Register of Deeds",
+          "url": "https://www.iredellcountync.gov/1677/Register-of-Deeds",
+          "line": "Records the county's deeds. Its online search is moving to a new system, and until then the office says it is not an official source.",
+          "q": "Where are deeds recorded in Iredell County?",
+          "a": "The Iredell County Register of Deeds records the county's deeds. Its online records search is moving to a new system, and until the move is finished the office says the online copy is not an official source of record."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Iredell County Tax Collector Division",
+          "url": "https://www.iredellcountync.gov/392/Tax-Collector-Division",
+          "line": "Collects property tax: bills go out in August, are due September 1 and carry interest after January 5.",
+          "q": "Where do I pay property tax in Iredell County?",
+          "a": "The Iredell County Tax Collector Division collects property tax. Bills are mailed in August, are due September 1, and unpaid bills carry interest after January 5 of the next year."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Fraud Detection Notification Service",
+          "office": "Iredell County Register of Deeds",
+          "url": "https://www.iredellcountync.gov/2117/Fraud-Detection-Notification-Service",
+          "line": "Emails a resident when recordings are filed in their name; the office charges no fee for it."
+        }
+      ]
+    },
+    "39041": {
+      "read": "2026-11-23",
+      "property_search_office": "Delaware County Auditor, GIS Property Search",
+      "property_search_url": "https://auditor.delco-gis.org/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Delaware County Recorder",
+          "url": "https://recorder.co.delaware.oh.us/",
+          "line": "Indexes the county's real estate records and collects the filing fees; its recorded document search is online.",
+          "q": "Where are deeds recorded in Delaware County?",
+          "a": "The Delaware County Recorder indexes all of the county's real estate records and collects the filing fees. Its recorded document search is online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Delaware County Treasurer",
+          "url": "https://treasurer.co.delaware.oh.us/",
+          "line": "Collects real estate tax in two halves a year; its page pays taxes online and prints a tax bill.",
+          "q": "Where do I pay property tax in Delaware County?",
+          "a": "The Delaware County Treasurer collects real estate tax, due in two halves a year. Its page pays taxes online and prints a tax bill."
+        },
+        {
+          "id": "recording_alert",
+          "title": "AlertMe",
+          "office": "Delaware County Recorder",
+          "url": "https://recorder.co.delaware.oh.us/resources/property-fraud/",
+          "line": "Emails a subscriber when a document bearing their registered name is recorded after they sign up; a vendor runs it for the Recorder."
+        }
+      ]
+    },
+    "39151": {
+      "read": "2026-11-23",
+      "property_search_office": "Stark County Auditor, Real Estate Search",
+      "property_search_url": "https://realestate.starkcountyohio.gov/search/commonsearch.aspx?mode=realprop",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Stark County Recorder",
+          "url": "https://www.starkcountyohio.gov/government/offices/recorder/index.php",
+          "line": "Keeps the county's deeds, mortgages and easements; its website searches them around the clock with no direct user cost.",
+          "q": "Where are deeds recorded in Stark County?",
+          "a": "The Stark County Recorder keeps the record of real estate documents such as deeds, mortgages and easements for all land in the county. Its website searches them around the clock, with no direct user cost."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Stark County Treasurer",
+          "url": "https://www.starkcountyohio.gov/government/offices/treasurer/index.php",
+          "line": "Collects real estate tax; its page links to paying online and to prior years' taxes.",
+          "q": "Where do I pay property tax in Stark County?",
+          "a": "The Stark County Treasurer collects real estate tax. Its page links to paying online, to a search of prior years' taxes and to its delinquent tax list."
+        },
+        {
+          "id": "recording_alert",
+          "title": "FraudSleuth",
+          "office": "Stark County Recorder",
+          "url": "https://www.starkcountyohio.gov/government/offices/recorder/fraudsleuth.php",
+          "line": "Emails a user when a document is recorded containing a name they chose; the office notes other owners may share the name."
         }
       ]
     },
@@ -299,6 +527,30 @@
         }
       ]
     },
+    "42041": {
+      "read": "2026-11-23",
+      "property_search_office": "Cumberland County Property Assessment, DataScout",
+      "property_search_url": "https://www.actdatascout.com/RealProperty/Pennsylvania/Cumberland",
+      "property_search_via": "https://www.cumberlandcountypa.gov/3429/Property-Assessment-Tools-Services",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Cumberland County Recorder of Deeds",
+          "url": "https://www.cumberlandcountypa.gov/123/Recorder-of-Deeds",
+          "line": "Keeps the county's deeds back to 1750; they can be searched online at any hour, or in the office on weekdays.",
+          "q": "Where are deeds recorded in Cumberland County?",
+          "a": "The Cumberland County Recorder of Deeds has kept the county's deeds and real estate documents since 1750. All of them can be searched online at any hour (landex.com), or in the Recorder's Office on weekdays."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Records Notification System",
+          "office": "Cumberland County Recorder of Deeds",
+          "url": "https://www.cumberlandcountypa.gov/5249/Records-Notification-System",
+          "line": "Texts or emails a registered user when a new document is recorded under their parcel number; the office charges no fee for it."
+        }
+      ]
+    },
     "48113": {
       "read": "2026-11-23",
       "rows": [
@@ -380,6 +632,56 @@
       ],
       "property_search_office": "Harris Central Appraisal District, Property Search",
       "property_search_url": "https://search.hcad.org/"
+    },
+    "51041": {
+      "read": "2026-11-23",
+      "property_search_office": "Chesterfield County Real Estate Assessor, Real Estate Assessment Data",
+      "property_search_url": "https://www.chesterfield.gov/828/Real-Estate-Assessment-Data",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Chesterfield County Circuit Court Clerk, Land Records",
+          "url": "https://www.chesterfield.gov/1278/Land-Records",
+          "line": "Keeps the county's land records from 1749 to now; its online index holds deeds from 1967.",
+          "q": "Where are deeds recorded in Chesterfield County?",
+          "a": "The Clerk of the Chesterfield County Circuit Court keeps the county's land records, from 1749 to now. Its online index holds deeds from 1967; the record room is in the Courts Building."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Chesterfield County Treasurer",
+          "url": "https://www.chesterfield.gov/734/Pay-Your-Taxes",
+          "line": "Collects real estate tax; its Citizen Portal pays online and shows the last six years' bills.",
+          "q": "Where do I pay property tax in Chesterfield County?",
+          "a": "The Chesterfield County Treasurer collects real estate tax. Its Citizen Portal takes payments online and shows a property's bills for the most recent six years."
+        }
+      ]
+    },
+    "51087": {
+      "read": "2026-11-23",
+      "property_search_office": "Henrico County Department of Finance, Real Estate Data",
+      "property_search_url": "https://henrico.gov/finance/online-real-estate-data/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Henrico County Circuit Court Clerk, Land Records",
+          "url": "https://henrico.gov/services/recording-land-records/",
+          "line": "The Clerk is the county's recorder of deeds; recording fees and taxes vary by document.",
+          "q": "Where are deeds recorded in Henrico County?",
+          "a": "The Clerk of the Henrico County Circuit Court is the county's recorder of deeds and records them in its Deed Book. Its page says what a document needs to be recorded; fees and taxes vary by document."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Henrico County Department of Finance",
+          "url": "https://henrico.gov/services/online-tax-bills/",
+          "line": "Real estate tax bills can be viewed and paid online; paying online carries a service fee.",
+          "q": "Where do I pay property tax in Henrico County?",
+          "a": "Henrico County's Department of Finance bills real estate tax. Its online tax bills page shows a bill and takes payment, with a service fee for paying online."
+        }
+      ]
     },
     "53007": {
       "read": "2026-11-23",
