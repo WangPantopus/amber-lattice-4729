@@ -21,7 +21,7 @@ const AUDIENCES = ['anyone', 'members', 'connections'];
 const PAID_STATUSES = ['captured_hold', 'succeeded', 'transfer_pending', 'transfer_scheduled', 'transferred', 'paid'];
 const FILE_TYPES = ['portfolio_image', 'portfolio_video', 'portfolio_document'];
 const FIELDS = ['title', 'kind', 'from', 'to', 'city', 'state', 'description', 'skills', 'audience', 'pinned', 'hidden', 'draft',
-  'started_from', 'attachments', 'role'];
+  'started_from', 'attachments', 'role', 'links'];
 
 class PieceRefusal extends Error {
   constructor(status, code, message) {
@@ -107,6 +107,64 @@ async function columnsFrom(userId, body, { create }) {
   return out;
 }
 
+// ---------- link cards (CONTRACT P2.4) ----------
+
+const TRACKING = /^(utm_[a-z]+|ref|ref_src|ref_url|fbclid|gclid|dclid|yclid|msclkid|igshid|si|mc_cid|mc_eid|spm|_hsenc|_hsmi|mkt_tok|s_cid)$/i;
+const KIND_HOSTS = [
+  ['video', /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|loom\.com)$/],
+  ['code', /(^|\.)(github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|npmjs\.com)$/],
+  ['app', /(^|\.)(apps\.apple\.com|play\.google\.com|chromewebstore\.google\.com)$/],
+  ['paper', /(^|\.)(doi\.org|arxiv\.org|scholar\.google\.com|researchgate\.net|ssrn\.com|pubmed\.ncbi\.nlm\.nih\.gov|jstor\.org)$/],
+  ['article', /(^|\.)(medium\.com|substack\.com|nytimes\.com|theguardian\.com|washingtonpost\.com|npr\.org|bbc\.co\.uk|bbc\.com)$/],
+];
+const linkInvalid = (message) => new PieceRefusal(400, 'LINK_INVALID', message);
+
+/** The link as kept: http(s) only, no credentials, tracking parts and the fragment cut. */
+function cleanLink(value) {
+  const { parsePublicUrl } = require('../../routes/linkPreview').linkCards;
+  if (typeof value !== 'string' || !value.trim()) throw linkInvalid('Paste a link to a page.');
+  let url;
+  try { url = parsePublicUrl(value.trim()); } catch (_) { throw linkInvalid('That link can\'t be read. Paste a link to a public page.'); }
+  for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key);
+  url.hash = '';
+  return url.href;
+}
+
+function kindOf(host) {
+  const found = KIND_HOSTS.find(([, re]) => re.test(host));
+  return found ? found[0] : 'site';
+}
+
+/**
+ * A piece's links as cards. A link already on the piece keeps its card (and its proof); a new one is read once now,
+ * on paste, through linkPreview's guarded fetch (words only). A page that can't be read keeps a plain card.
+ */
+async function linkCards(userId, links, existing) {
+  if (!Array.isArray(links)) throw linkInvalid('Links are a list of { "url" }.');
+  const crypto = require('crypto');
+  const { previewFor } = require('../../routes/linkPreview').linkCards;
+  const byUrl = new Map((existing || []).map((card) => [card.url, card]));
+  const out = [];
+  for (const item of links) {
+    const url = cleanLink(item && typeof item === 'object' ? item.url : null);
+    if (out.some((c) => c.url === url)) continue;
+    if (byUrl.has(url)) { out.push(byUrl.get(url)); continue; }
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    let words = {};
+    try { words = await previewFor(url, userId); } catch (_) { words = {}; }
+    out.push({ id: crypto.randomUUID(), url, site: host, kind: kindOf(host), title: words.title || null,
+      description: words.description || null, proof_token: null, proven_at: null });
+  }
+  return out;
+}
+
+/** The twelve in all: files and link cards together. */
+function checkTwelve(fileIds, links) {
+  if ((fileIds || []).length + (links || []).length > ATTACH_MAX) {
+    throw new PieceRefusal(409, 'PIECE_ATTACHMENT_LIMIT', `A piece holds ${ATTACH_MAX} attachments at most, files and links together.`);
+  }
+}
+
 // A paid job the person did that is completed and paid, or a plan they hosted that took place, not yet a piece.
 async function sourceColumns(userId, from) {
   if (from === null) return {};
@@ -172,6 +230,8 @@ function howItWillShow(row, workSetting) {
   if (row.source_kind === 'gig') lines.push('Seen: it started from a paid job on Pantopus.');
   else if (row.source_kind === 'plan') lines.push('Seen: it started from a plan that took place on Pantopus.');
   else lines.push('Said: your words, until someone on it signs or a link is proven yours.');
+  const unproven = (row.links || []).filter((c) => !c.proven_at).length;
+  if (unproven) lines.push(`Said: ${unproven === 1 ? 'the link' : `${unproven} links`}, until proven yours.`);
   if (row.is_draft) lines.push('A draft: nobody else sees it yet.');
   else if (row.is_visible === false) lines.push('Hidden: nobody else sees it.');
   else {
@@ -263,7 +323,10 @@ async function pinRoom(userId, exceptId) {
 }
 
 async function createPiece(userId, body) {
-  const columns = await columnsFrom(userId, body, { create: true });
+  const { links, ...rest } = body || {};
+  const columns = await columnsFrom(userId, rest, { create: true });
+  if (links !== undefined) columns.links = await linkCards(userId, links, []);
+  checkTwelve(columns.file_ids, columns.links);
   if (columns.is_featured) await pinRoom(userId, null);
   const { data, error } = await supabaseAdmin.from('UserPortfolio')
     .insert({ user_id: userId, portfolio_type: 'project', is_visible: true, ...columns }).select('id').single();
@@ -292,7 +355,7 @@ async function dropUnheldFiles(userId, fileIds) {
 }
 
 async function ownPiece(userId, id) {
-  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids').eq('id', id).eq('user_id', userId).maybeSingle();
+  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids, links').eq('id', id).eq('user_id', userId).maybeSingle();
   if (error) {
     if (error.code === '22P02') throw notFound();
     throw error;
@@ -303,7 +366,10 @@ async function ownPiece(userId, id) {
 
 async function updatePiece(userId, id, body) {
   const before = await ownPiece(userId, id);
-  const columns = await columnsFrom(userId, body, { create: false });
+  const { links, ...rest } = body || {};
+  const columns = await columnsFrom(userId, rest, { create: false });
+  if (links !== undefined) columns.links = await linkCards(userId, links, before.links || []);
+  checkTwelve(columns.file_ids ?? before.file_ids, columns.links ?? before.links);
   if (columns.is_featured === true) await pinRoom(userId, id);
   if (Object.keys(columns).length) {
     const { error } = await supabaseAdmin.from('UserPortfolio').update({ ...columns, updated_at: new Date().toISOString() })
@@ -324,6 +390,43 @@ async function deletePiece(userId, id) {
   if (error) throw error;
   await dropUnheldFiles(userId, before.file_ids);
   return { id, deleted: true };
+}
+
+/** POST /me/pieces/:id/links/:linkId/proof: the short line to put on the page (made once, kept). */
+async function proofLine(userId, id, linkId) {
+  const piece = await ownPiece(userId, id);
+  const links = piece.links || [];
+  const card = links.find((c) => c.id === linkId);
+  if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
+  if (!card.proof_token) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = require('crypto').randomBytes(8);
+    const token = [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
+    card.proof_token = `${token.slice(0, 4)}-${token.slice(4)}`;
+    const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+  return { line: `pantopus-proof: ${card.proof_token}`, how: 'Put this line anywhere on the page, then check.' };
+}
+
+/** POST …/check: reads the page through the same guarded fetch; Seen once the line is there. */
+async function checkProof(userId, id, linkId) {
+  const piece = await ownPiece(userId, id);
+  const links = piece.links || [];
+  const card = links.find((c) => c.id === linkId);
+  if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
+  if (!card.proof_token) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Get your line first, then put it on the page.');
+  const { pageContains } = require('../../routes/linkPreview').linkCards;
+  let found;
+  try { found = await pageContains(card.url, `pantopus-proof: ${card.proof_token}`, userId); } catch (_) {
+    throw new PieceRefusal(409, 'LINK_UNREADABLE', 'That page can\'t be read right now. Try again later.');
+  }
+  if (!found) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Your line isn\'t on the page yet.');
+  card.proven_at = card.proven_at || new Date().toISOString();
+  const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+  const rows = await ownRows(userId);
+  return require('./compose').cardOf(card, firstNameOf(rows));
 }
 
 /** POST /me/pieces/preview: how a piece with these fields would show; nothing saved. */
@@ -399,6 +502,6 @@ async function attachmentsOf(row) {
 }
 
 module.exports = {
-  PieceRefusal, listMine, saveWork, publicGridFilter, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
+  PieceRefusal, listMine, saveWork, publicGridFilter, proofLine, checkProof, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
   localDate,
 };

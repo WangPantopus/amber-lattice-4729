@@ -374,4 +374,106 @@ router.get('/', verifyToken, previewLimiter, async (req, res) => {
   }
 });
 
+// ── For the profile's link cards (services/profilePage/links on pieces) ──
+// The same guarded fetch, words only: a card's preview on paste, and whether a page carries a person's proof line on
+// "Check now". Nothing else ever fetches a linked page; viewing a card never does.
+
+/** The preview words for a pasted link, through the cache and the guarded fetch. Throws previewError. */
+async function previewFor(url, userId) {
+  const target = parsePublicUrl(url);
+  const cached = getCached(url);
+  if (cached?.failure) throw previewError(cached.failure.error, cached.failure.status);
+  if (cached) return cached.data;
+  let pending = inflight.get(url);
+  if (!pending) {
+    pending = loadPreview(url, target, userId).finally(() => inflight.delete(url));
+    inflight.set(url, pending);
+  }
+  return pending;
+}
+
+/** Whether the page at `url` contains `needle`, read through the same guarded fetch (2 MB, 5 s, 3 redirects). */
+async function pageContains(url, needle, userId) {
+  let target = parsePublicUrl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_DEADLINE_MS);
+  try {
+    await acquireSlot(userId, controller.signal);
+    try {
+      for (let redirects = 0; redirects <= 3; redirects += 1) {
+        const result = await fetchText(target, controller.signal, needle);
+        if (result.found !== undefined) return result.found;
+        if (!result.location || redirects === 3) throw previewError('Too many or invalid redirects');
+        target = parsePublicUrl(new URL(result.location, target).href);
+      }
+      return false;
+    } finally {
+      releaseSlot(userId);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// fetchHtml's twin for a proof check: the same agent, lookup, headers and ceilings, reading the page's text for one
+// short line instead of its preview tags.
+function fetchText(url, signal, needle) {
+  return new Promise((resolve, reject) => {
+    let decoder = null;
+    const fail = (error) => { decoder?.destroy(); reject(error); };
+    const request = (url.protocol === 'https:' ? https : http).get(url, {
+      agent: false, lookup: publicLookup, signal, maxHeaderSize: 16 * 1024,
+      headers: { 'User-Agent': 'PantopusBot/1.0 (+https://pantopus.com)',
+        Accept: 'text/html,application/xhtml+xml,text/plain', 'Accept-Encoding': 'gzip, deflate, br' },
+    }, (response) => {
+      const stop = (error) => { response.destroy(); fail(error); };
+      response.on('error', fail);
+      if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+        const location = response.headers.location;
+        response.destroy();
+        return resolve({ location });
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) return stop(previewError('Failed to fetch URL'));
+      if (!/^(text\/html|application\/xhtml\+xml|text\/plain)(?:\s*;|$)/i.test(response.headers['content-type'] || '')) {
+        return stop(previewError('URL does not return a page', 422));
+      }
+      const encoding = String(response.headers['content-encoding'] || 'identity').trim().toLowerCase();
+      if (encoding !== 'identity' && !DECODERS[encoding]) return stop(previewError('Unsupported encoding', 422));
+      const text = new StringDecoder('utf8');
+      let size = 0;
+      let seen = '';
+      let done = false;
+      const finish = (found) => {
+        if (done) return;
+        done = true;
+        response.destroy();
+        decoder?.destroy();
+        resolve({ found });
+      };
+      let body = response;
+      if (encoding !== 'identity') {
+        let received = 0;
+        response.on('data', (chunk) => { received += chunk.length; if (received >= MAX_BODY_BYTES) finish(false); });
+        decoder = DECODERS[encoding]();
+        decoder.on('error', () => stop(previewError('Failed to fetch URL')));
+        body = response.pipe(decoder);
+      }
+      body.on('data', (chunk) => {
+        if (done) return;
+        const kept = chunk.subarray(0, MAX_BODY_BYTES - size);
+        size += kept.length;
+        // Keep a tail as long as the line, so a line split across chunks is still found.
+        seen = (seen.slice(-needle.length) + text.write(kept));
+        if (seen.includes(needle)) return finish(true);
+        if (size >= MAX_BODY_BYTES) finish(false);
+      });
+      body.on('end', () => finish((seen + text.end()).includes(needle)));
+    });
+    request.on('error', fail);
+    request.on('upgrade', (_response, socket) => { socket.destroy(); fail(previewError('Failed to fetch URL')); });
+  });
+}
+
+router.linkCards = { previewFor, pageContains, parsePublicUrl };
+
 module.exports = router;

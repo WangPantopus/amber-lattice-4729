@@ -57,6 +57,10 @@ router.get('/me/pieces', verifyToken, handle('pieces', (req) => pieces.listMine(
 router.post('/me/pieces/preview', verifyToken, handle('piece-preview', (req) => pieces.previewPiece(String(req.user.id), req.body)));
 router.post('/me/pieces', verifyToken, handle('piece-make', (req) => pieces.createPiece(String(req.user.id), req.body), 201));
 router.patch('/me/pieces/:id', verifyToken, handle('piece-change', (req) => pieces.updatePiece(String(req.user.id), req.params.id, req.body)));
+router.post('/me/pieces/:id/links/:linkId/proof', verifyToken,
+  handle('link-proof', (req) => pieces.proofLine(String(req.user.id), req.params.id, req.params.linkId)));
+router.post('/me/pieces/:id/links/:linkId/check', verifyToken,
+  handle('link-check', (req) => pieces.checkProof(String(req.user.id), req.params.id, req.params.linkId)));
 router.delete('/me/pieces/:id', verifyToken, handle('piece-delete', (req) => pieces.deletePiece(String(req.user.id), req.params.id)));
 
 // Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.

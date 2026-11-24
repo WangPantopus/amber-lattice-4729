@@ -718,7 +718,7 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
         .map((a) => ({ kind: a.kind, url: a.url, thumbnail_url: a.thumbnail_url })),
       attachments,
       owner_role: String(row.owner_role || '').trim() || null,
-      links: [],
+      links: Array.isArray(row.links) ? row.links.map((c) => cardOf(c, first)) : [],
       written,
       kept_once: null,
       skills: (row.skills_used || []).filter(Boolean).slice(0, 5),
@@ -731,11 +731,22 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
   return answer;
 }
 
+/** A link card as the piece read sends it (CONTRACT P2.4): words only, never the proof line, never a page picture. */
+function cardOf(card, first) {
+  const pm = monthOf(card.proven_at);
+  return {
+    id: card.id, url: card.url, site: card.site, kind: card.kind || 'site', title: card.title || null,
+    description: card.description || null, picture_url: null,
+    ink: card.proven_at ? 'seen' : 'said',
+    how: card.proven_at ? `Proven ${first}'s, ${monthLabel(pm)}` : 'Not proven yours yet',
+  };
+}
+
 function dayLabel(at) {
   return new Date(at).toLocaleDateString('en-US', { timeZone: PACIFIC, month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 module.exports = {
-  pieceOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, cardOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };
