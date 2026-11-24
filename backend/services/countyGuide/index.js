@@ -43,6 +43,8 @@ const COUNTIES = [
   // November 23, 2026, sixth (live counties with a search-engine-listed link, now read in full): Los Angeles, CA;
   // Cook, IL; Miami-Dade, FL; Clark, NV; Franklin, OH.
   '06037', '17031', '12086', '32003', '39049',
+  // Walla Walla, WA: its property search and recorder, beside the treasurer row read before.
+  '53071',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows

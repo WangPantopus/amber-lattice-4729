@@ -1422,7 +1422,18 @@
     },
     "53071": {
       "read": "2026-11-23",
+      "property_search_office": "Walla Walla County Assessor, Property Search",
+      "property_search_url": "https://propertysearch.co.walla-walla.wa.us/PropertyAccess/propertysearch.aspx?cid=0",
       "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Walla Walla County Auditor, Recording",
+          "url": "https://www.wwcowa.gov/government/auditor/recording.php",
+          "line": "Records the county's documents; its page searches recorded documents and lists the recording fees and requirements.",
+          "q": "Where are deeds recorded in Walla Walla County?",
+          "a": "The Walla Walla County Auditor's recording office records the county's deeds and other documents. Its page searches recorded documents and lists the recording fees and requirements."
+        },
         {
           "id": "treasurer",
           "title": "Property tax",
