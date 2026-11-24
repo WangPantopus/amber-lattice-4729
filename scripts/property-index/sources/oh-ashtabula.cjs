@@ -3,8 +3,9 @@
 // comma-separated with a header row, and a published table crosswalk), linked from the county's GIS open data site. No license and no
 // limit on use are stated; the Auditor's site terms bar only unlawful or harmful use. Year built, living area, bedrooms, full and half
 // baths, stories, style, acres, the appraised land, building and total values (Ohio appraises at full market value; tax is figured on
-// 35% of it), and the last single-parcel sale the Auditor validated. Four tables are read, and only the columns named here: the owner,
-// mailing, tax and payment tables are never opened, and the sales table's owner columns are never asked for.
+// 35% of it), the last single-parcel sale the Auditor validated, and every line of its sales table as recorded history. Five tables are
+// read, and only the columns named here: the owner, mailing, tax and payment tables are never opened, and the sales table's owner and
+// note columns are never asked for.
 // Few rows carry a city or ZIP, so the county's ZIP codes (from the Census) let an address find it.
 
 const path = require('node:path');
@@ -14,7 +15,8 @@ const { year, monthDate, zipCode, realUnit, streetParts, onRecord } = require('.
 const { positive, put, word } = require('../lib/values.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord, isPersonRecord } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '39007';
@@ -23,7 +25,10 @@ const SITE = 'https://auditor.ashtabulacounty.gov/dnn';
 const PARCEL_COLUMNS = ['PARID', 'TAXYR', 'ADRNO', 'ADRADD', 'ADRDIR', 'ADRSTR', 'ADRSUF', 'ADRSUF2', 'UNITNO', 'CITYNAME', 'ZIP1', 'LUC', 'ACRES', 'NBHD'];
 const DWELLING_COLUMNS = ['PARID', 'CARD', 'STORIES', 'STYLE', 'YRBLT', 'RMTOT', 'RMBED', 'FIXBATH', 'FIXHALF', 'SFLA', 'EXTWALL'];
 const VALUE_COLUMNS = ['PARID', 'TAXYR', 'APRLAND', 'APRBLDG', 'APRTOT'];
-const SALE_COLUMNS = ['PARID', 'SALEDT', 'PRICE', 'SALEVAL', 'NOPAR'];
+const SALE_COLUMNS = ['PARID', 'SALEDT', 'PRICE', 'SALEVAL', 'NOPAR', 'INSTRTYP', 'BOOK', 'PAGE', 'INSTRUNO'];
+// Names in the Auditor's instrument table that don't say what paper a line is: a temporary exemption entry (never priced) and a
+// bare "Title". Those lines are left out of recorded history and counted, like a line with no name.
+const NOT_A_DOCUMENT = new Set(['TEMP EXEMPT', 'TITLE']);
 
 // The county's own code table in the zip (AEDIT.DAT, DWELDAT fields).
 const STYLES = {
@@ -146,14 +151,45 @@ async function* build({ work, today }) {
   }
   const values = new Map();
   for await (const row of read('APRVAL.DAT', VALUE_COLUMNS)) values.set(row.PARID, row);
+  // The Auditor's own names for its sales table's instrument codes (AEDIT.DAT, table SALES, field INSTRTYP), for recorded history.
+  const instruments = new Map();
+  for await (const row of read('AEDIT.DAT', ['TBLE', 'FLD', 'VAL', 'MSG'])) {
+    if (String(row.TBLE).trim() === 'SALES' && String(row.FLD).trim() === 'INSTRTYP') instruments.set(String(row.VAL).trim(), String(row.MSG).trim());
+  }
   // The latest sale of one parcel the Auditor marked validated (code 0 in its code table), at a home's price.
   const sales = new Map();
+  // Every line, for recorded history (facts.js): its date, price, parcel count, the Auditor's name for its instrument and its
+  // recorded book and page (or instrument number).
+  const saleLines = new Map();
+  let first = null;
   for await (const row of read('SALES.DAT', SALE_COLUMNS)) {
     const [date, price] = [monthDate(row.SALEDT, thisYear), positive(row.PRICE)];
-    if (String(row.SALEVAL).trim() !== '0' || (positive(row.NOPAR) || 1) > 1 || !date || !isHomeSale(price)) continue;
+    const sale = String(row.SALEVAL).trim() === '0' && (positive(row.NOPAR) || 1) <= 1 && Boolean(date) && isHomeSale(price);
+    if (date) {
+      if (!first || date < first) first = date;
+      const [book, page, number] = [word(row.BOOK), word(row.PAGE), word(row.INSTRUNO)];
+      if (!saleLines.has(row.PARID)) saleLines.set(row.PARID, []);
+      const code = String(row.INSTRTYP).trim();
+      saleLines.get(row.PARID).push({ date, sale, price, code, type: instruments.get(code) || null, document: book && page ? `${book}-${page}` : number, parcels: positive(row.NOPAR) });
+    }
+    if (!sale) continue;
     const held = sales.get(row.PARID);
     if (!held || held.date < date) sales.set(row.PARID, { date, price });
   }
+  const leftOut = {};
+  const personal = {};
+  const historyOf = (list) => recordedHistory((list || []).map(({ date, sale, price, code, type, document, parcels }) => {
+    // A record of a person, not of the home, never shows (lib/sales.cjs isPersonRecord).
+    if (isPersonRecord(type)) {
+      personal[type] = (personal[type] || 0) + 1;
+      return null;
+    }
+    // A sale is a sale; any other line says what it is in the Auditor's name for its instrument, or is left out.
+    const said = type && !NOT_A_DOCUMENT.has(type.toUpperCase()) ? countyWord(type) : null;
+    const line = historyLine({ date, sale, word: sale ? null : said, price, document, parcels });
+    if (!line) leftOut[code || '-'] = (leftOut[code || '-'] || 0) + 1;
+    return line;
+  }), { since: (first || '').slice(0, 4) });
   log(`${dwellings.size} parcels with a dwelling, ${values.size} with values, ${sales.size} with a validated sale`);
   const asOf = zipDates(zip).get('PARDAT.DAT');
   if (!asOf) throw new Error('The CAMA zip no longer dates its parcel table');
@@ -162,10 +198,16 @@ async function* build({ work, today }) {
   for await (const row of read('PARDAT.DAT', PARCEL_COLUMNS)) {
     const record = fromParcel(row, dwellings.get(row.PARID), values.get(row.PARID), sales.get(row.PARID));
     if (!record) noAddress += 1;
-    else if (!records.has(record.id)) records.set(record.id, record);
+    else if (!records.has(record.id)) {
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = historyOf(saleLines.get(row.PARID));
+      if (history) hold(record, 'recorded_history', history);
+      records.set(record.id, record);
+    }
   }
   const list = [...records.values()];
   log(`${COUNTY}: tax year ${taxYear}, ${list.length} parcels, ${noAddress} without a street number`);
+  log(`${COUNTY}: recorded history for ${list.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines with no name for what they are, left out, by instrument code: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).map(([code, n]) => `${code} ${n}`).join(', ') || 'none'}; a record of a person, left out: ${Object.values(personal).reduce((a, b) => a + b, 0)} (${Object.entries(personal).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${type} ${n}`).join(', ')})`);
   for (const building of condoBuildings(list, { fips: FIPS, county: COUNTY })) list.push(building);
   yield {
     fips: FIPS, state: 'OH', name: COUNTY, publisher: 'Ashtabula County Auditor', dataset: 'CAMA data download', method: 'county', source: 'oh-ashtabula', as_of: asOf, stale_after_days: 450, extra_zips: zipsByCounty(work, ['39']).get(FIPS) || [], records: list,
@@ -181,7 +223,8 @@ module.exports = {
       UNITNO: 'Address Unit Number', CITYNAME: 'City Name', ZIP1: 'Zip Code, First 5-digits', LUC: 'Land Use Code', ACRES: 'Acres', NBHD: 'Neighborhood', CARD: 'Building Card Number', STORIES: 'Story Height', STYLE: 'Architectural style',
       YRBLT: 'Year Built', RMTOT: 'Total Rooms', RMBED: 'Number of Bedrooms', FIXBATH: 'Number of Full Bathrooms', FIXHALF: 'Number of Half Bathrooms', SFLA: 'Total Living Area', EXTWALL: 'Exterior Wall Code',
       APRLAND: 'Appraised Land Value', APRBLDG: 'Appraised building value', APRTOT: 'Total Appraised Value', SALEDT: 'Sale Date', PRICE: 'Sale Price',
-      SALEVAL: 'Sale Validity Code', NOPAR: 'Number of Parcels',
+      SALEVAL: 'Sale Validity Code', NOPAR: 'Number of Parcels', INSTRTYP: 'Instrument Type', BOOK: 'Book Number', PAGE: 'Page Number', INSTRUNO: 'Instument Number',
+      TBLE: 'Table Location of Data Being Edited', FLD: 'Field Location of Data Being Edited', VAL: 'Allowable Value', MSG: 'Description of Value',
     },
     facts: {
       year_built: 'YRBLT', exterior_walls: 'EXTWALL', living_sqft: 'SFLA', gross_sqft: 'SFLA', rooms: 'RMTOT', bedrooms: 'RMBED', bathrooms: 'FIXBATH', full_baths: 'FIXBATH', half_baths: 'FIXHALF', stories: 'STORIES',

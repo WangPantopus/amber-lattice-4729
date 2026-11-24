@@ -19,10 +19,11 @@ const MOST_LINES = 30;
 
 // A line whose name is a record of a person rather than of the home never shows, in any county (design session's review,
 // Nov 23): a death certificate or affidavit of death (an affidavit confirming a transfer on death, of heirship, of a successor
-// trustee or of a life estate's end is one), a divorce or dissolution decree, a guardianship or conservatorship, a
-// bankruptcy, a name change, a power of attorney, a marriage record. A deed that moves the home stays even when its name says why: a personal representative's, guardian's, sheriff's,
+// trustee, of survivorship or of a life estate's end is one), a divorce or dissolution decree, a guardianship or conservatorship, a
+// bankruptcy, a name change, a power of attorney or a trust's affidavit or memorandum (who may act for a person or a trust), a
+// marriage record. A deed that moves the home stays even when its name says why: a personal representative's, guardian's, sheriff's,
 // trustee's or tax deed, an estate sale, a transfer on death deed.
-const PERSON_RECORD = /DEATH CERT|CERTIFICATE OF DEATH|AFFIDAVIT OF DEATH|DEATH AFFIDAVIT|AFFIDAVIT OF (TOD|TRANSFER ON DEATH)|(TOD|TRANSFER ON DEATH) (AFFIDAVIT|CONFIRMATION)|HEIRSHIP|SUCCESSOR TRUSTEE|TERMINATION OF LIFE ESTATE|DIVORCE|DISSOLUTION|GUARDIANSHIP|CONSERVATORSHIP|BANKRUPT|NAME CHANGE|CHANGE OF NAME|POWER OF ATTORNEY|\bMARRIAGE\b/i;
+const PERSON_RECORD = /DEATH CERT|CERTIFICATE OF DEATH|AFFIDAVIT OF DEATH|DEATH AFFIDAVIT|AFFIDAVIT OF (TOD|TRANSFER ON DEATH|CONFIRMATION|SURVIVORSHIP|HEIRS?\b)|(TOD|TRANSFER ON DEATH) (AFFIDAVIT|CONFIRMATION)|SURVIVORSHIP AFFIDAVIT|HEIRSHIP|SUCC(ESSOR|\.)? TRUSTEE|(AFFIDAVIT|MEMORANDUM|CERTIFICATE) OF TRUST\b|TRUST (AFFIDAVIT|MEMORANDUM|CERTIFICATE)|TERMINATION OF LIFE ESTATE|DIVORCE|DISSOLUTION|GUARDIANSHIP|CONSERVATORSHIP|BANKRUPT|NAME CHANGE|CHANGE OF NAME|POWER OF ATTORNEY|\bMARRIAGE\b/i;
 
 /** Whether a county's name for a line is a record of a person rather than of the home (PERSON_RECORD). */
 const isPersonRecord = (name) => PERSON_RECORD.test(String(name ?? ''));
