@@ -1290,6 +1290,26 @@ Decided November 24: you asked what a person in a place with few users would see
   3. Production only, if new counties should get their own sources there: set `AROUND_YOU_SOURCE_FINDER=1` on the production backend, and make sure the backend's Anthropic key has credit. Nothing shows until someone approves a proposed source on `/app/admin/sources`.
   4. Later, not in this build: local emergency alerts through FEMA need a signed agreement with FEMA.
 
+## Around you: topics, scrolling back and replies (added November 24)
+
+Asked November 24: make Around you "so much better, for users to interact with each other": good sources, topics ("Sports, politics, economy, parents, kids, etc."), keep scrolling "as long as there are available ones", and a better React and Reply. Before this the page showed at most 8 headlines, each for 48 hours after the fetcher last saw it (a weekly paper's for a week), and nothing older could be reached.
+
+- [x] Server (this pull request, into `dev`; no new switch, it rides `AROUND_YOU`):
+  - Every story the rules let through becomes a post, not only the 8 the first page has room for, and the posts are the history. The apps ask for a list a page at a time (20 stories) for as long as there are any. The worker's hourly job makes the posts for places nobody opened, so nothing is lost between visits. The first run after a release goes back as far as the fetcher's own list does (about a week).
+  - Topics: Events · Kids & schools · Sports · Government · Business · Roads & safety, plus "Talked about" (stories people replied or reacted to in the last 30 days). The server says which of them a place has, so a quiet place shows fewer chips and a new topic needs no app release. A story is sorted by its outlet's own label for it ("Schools", "Prep Sports", "Vancouver City Council": the hourly job reads those from the outlet's feed), and by whole words in its headline only when the outlet gives none. No Claude call.
+  - Quality: a story the outlet labels a legal notice, an obituary, an opinion piece or a wire story from elsewhere is left out; so is a story from an outlet that labels its stories when no label could be found for it (the Columbian's old whole-site feed left wire stories behind). The party-politics and crime word lists are unchanged, so "Government" is councils, levies, ballots and budgets.
+  - Sources added by migration, each read by hand that day: The Columbian's sports feed (prep scoreboards, local college players), Vancouver Business Journal, Washougal School District's news, and Willamette Week for Portland. A source that is about one thing never takes a headline's place on the first page; its stories are in that topic's list and in the history.
+  - The lists behind the first page are the person's own county's. The first page still fills up from the next region over (a Camas address sees Portland's city notices there), as before.
+  - Each card with replies carries who replied and the latest reply, so a story people are talking about says so before it is opened.
+  - Replies reach people: an Around you story is posted by the curator account, so the "commented on your post" notice a reply sends went to nobody. Now everyone already in a story's thread is told when someone else replies ("Blake replied to a story you replied to"), at most once per story per person in six hours, and never across a block. A reply to your own reply still tells you at once, as before.
+  - Speed: the first page takes the same time as on `dev` (410 ms against 493 ms and 385 ms against 386 ms, medians of 50 alternating reads on a busy Mac; the reply preview is read in the same round as the posts).
+- [ ] Web, iPhone and Android: the chip row, the endless list, the reply preview on the card and the reply box ready to type in. Each is its own pull request after this one. The apps already in the stores keep working unchanged: the first page's answer has the shape it had.
+- [ ] Yours to decide (nothing waits on these; each is one small change):
+  - The topic names and the set. They are the server's, in `backend/services/aroundYou/topics.js`.
+  - Politics. "Government" keeps the word lists that drop party politics. Say so if you want party-labelled local election stories let in.
+  - Whether the thread notice should also be a push, as it is now, or only show in the app's notification list.
+  - More sources for Portland and other places: propose them on `/app/admin/sources` (the source finder), or name outlets and I add them.
+
 ## Pulse reposts and repost with your words (added November 15)
 
 Decided November 14 (section 0). Built November 14 and 15 and checked in a browser, on an iPhone simulator and on an Android emulator against a local backend and database, with three test accounts acting on each other's posts across the three apps.

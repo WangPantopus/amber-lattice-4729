@@ -4,12 +4,14 @@
  * the sources and the regions, and makes the posts.
  *
  * Sections, in the order they show: Alerts · Roads · Headlines · Events · Around town · Across <State> · This season ·
- * On this day · On watch. `hours` is how long an item stays after the fetcher or the feeds job last saw it; a source's
+ * On this day · On watch. ("More" holds the topic feeds' stories and never shows on the first page.) Each item also
+ * gets its topics (services/aroundYou/topics.js). `hours` is how long an item stays after the fetcher or the feeds job last saw it; a source's
  * own `keep_hours` replaces it (a weekly paper keeps its stories 168 hours).
  */
 
 const { stateName } = require('../../utils/usState');
 const { roadAgency } = require('./feeds/roadwork');
+const { topicsOf, leftOutByTags, STORY_SECTIONS } = require('./topics');
 
 const HOUR_MS = 3_600_000;
 const MAX_TITLE_LENGTH = 180;
@@ -39,10 +41,14 @@ const SECTIONS = [
       || (row.category === 'safety' && ['wildfire', 'fema', 'usgs_earthquakes'].includes(row.kind)) },
   { id: 'roads', title: 'Roads', hours: 48, max: 4, takes: (row) => row.kind === 'roadwork' },
   { id: 'headlines', title: 'Headlines', hours: 48, max: 8,
-    takes: (row) => row.category === 'local_news' && !row.stateOutlet },
+    takes: (row) => row.category === 'local_news' && !row.stateOutlet && !row.topicFeed },
   { id: 'events', title: 'Events', hours: 72, max: 5, takes: (row) => row.category === 'event' },
   { id: 'around_town', title: 'Around town', hours: 168, max: 4,
-    takes: (row) => row.category === 'community_resource' && row.kind !== 'roadwork' },
+    takes: (row) => row.category === 'community_resource' && row.kind !== 'roadwork' && !row.topicFeed },
+  // A source about one thing (an outlet's sports feed, a school district's news): its stories are in that topic's
+  // list and under Earlier, never on the first page, so prep scores don't take a headline's place.
+  { id: 'more', title: 'More', hours: 72, max: 0,
+    takes: (row) => row.topicFeed && ['local_news', 'community_resource'].includes(row.category) },
   { id: 'across_state', title: 'Across', hours: 72, max: 3, takes: (row) => row.stateOutlet },
   { id: 'season', title: 'This season', hours: 168, max: 1, takes: (row) => row.category === 'seasonal' },
   { id: 'history', title: 'On this day', hours: 24, max: 1, takes: (row) => row.category === 'history' },
@@ -56,11 +62,16 @@ const LONGEST_HOURS = 168;
 const LEFT_OUT = new RegExp(`\\b(${[
   'police say', 'suspect', 'suspects', 'killed', 'kills', 'killing', 'dead', 'die', 'dies', 'died', 'death', 'deaths', 'fatal',
   'fatally', 'fentanyl', 'overdose', 'overdoses', 'rape', 'raped', 'gunman', 'gunfire', 'shot', 'stabbed', 'victim',
-  'victims', 'kidnapped', 'kidnapping', 'sexual assault', 'sex abuse', 'sexual abuse', 'trafficking',
+  'victims', 'kidnapped', 'kidnapping', 'sexual assault', 'sex abuse', 'sexual abuse', 'trafficking', 'sexualized',
+  'child pornography', 'molested', 'molestation', 'sex offenders?', 'predators?',
   'republican', 'republicans', 'gop', 'maga', 'trump', 'biden',
 ].join('|')})\\b`, 'i');
-// Letters and opinion pieces are not news about the place.
+// Letters and opinion pieces are not news about the place; nor are a paper's legal notices.
 const OPINION = /^\s*(letters?|opinion|commentary|editorial|column|poll)\s*:/i;
+const NOTICE = /\b(notice to creditors|probate notice|summons by publication|trustee'?s sale|notice of trustee)\b/i;
+// A topic feed mixes in wire stories; its story waits this long for the outlet's own labels (the hourly job reads
+// them), which say whether it is local. A feed without labels shows after the wait.
+const TOPIC_FEED_WAIT_MS = 90 * 60_000;
 // Across <State>: only a state outlet's stories about what touches a home. A word list, no model; phrases rather than
 // bare words that also mean something else ("fires an agency head", "graduation rates").
 const HOME_WORDS = new RegExp(`\\b(${[
@@ -176,10 +187,12 @@ function dayIn(at, timeZone) {
 
 /**
  * The sections for a page. `rows` come in the order they should show (the nearest region's first, newest first within
- * a region); `sources` maps a source id to its seeder_sources row (display_name, keep_hours, access, source_type);
- * `regions` are the page's regions, nearest first.
+ * a region); `sources` maps a source id to its seeder_sources row (display_name, keep_hours, access, source_type,
+ * topic); `regions` are the page's regions, nearest first. `everything` lifts the sections' sizes and the outlets'
+ * shares: every item the rules let through, for the lists behind the first page (a topic's list, Earlier). `anyAge`
+ * also lifts how long a story stays, and returns only the sections that hold stories: what the history keeps.
  */
-function buildSections(rows, sources, regions = [], now = Date.now()) {
+function buildSections(rows, sources, regions = [], now = Date.now(), { everything = false, anyAge = false } = {}) {
   const regionIndex = new Map(regions.map((region, index) => [region.region, index]));
   const regionById = new Map(regions.map((region) => [region.region, region]));
   const words = new Map(regions.map((region) => [region.region, placeWords(region)]));
@@ -188,26 +201,41 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
   const nearestOutlet = nearest?.state ? `rss:state_${nearest.state.toLowerCase()}` : null;
   const seen = new Set();
   const sections = [];
+  // The outlets that label their stories (the hourly job found labels for at least one of these rows).
+  const labelled = new Set(rows.filter((row) => Array.isArray(row.outlet_tags) && row.outlet_tags.length)
+    .map((row) => row.source));
   for (const spec of SECTIONS) {
+    if (anyAge && !STORY_SECTIONS.has(spec.id)) continue;
     const candidates = [];
     const taken = new Set();
     for (const row of rows) {
       const kind = kindOf(row);
       const source = sources.get(row.source);
       if (kind === 'google_news' && !GOOGLE_NEWS_ON_PAGE) continue;
-      const facts = { category: row.category, kind, stateOutlet: String(row.source || '').startsWith('rss:state_') };
+      const facts = {
+        category: row.category,
+        kind,
+        stateOutlet: String(row.source || '').startsWith('rss:state_'),
+        topicFeed: Boolean(source?.topic) && kind === 'rss',
+      };
       if (spec.id === 'across_state' && row.source !== nearestOutlet) continue;
       if (!spec.takes(facts)) continue;
       const seenAt = Date.parse(row.fetched_at);
       const keepHours = Number(source?.keep_hours) > 0 ? Number(source.keep_hours)
         : (kind === 'ical' ? CALENDAR_KEEP_HOURS : spec.hours);
-      if (!Number.isFinite(seenAt) || now - seenAt > keepHours * HOUR_MS) continue;
+      if (!Number.isFinite(seenAt) || (!anyAge && now - seenAt > keepHours * HOUR_MS)) continue;
+      if (facts.topicFeed && !Array.isArray(row.outlet_tags) && now - seenAt < TOPIC_FEED_WAIT_MS) continue;
+      // An outlet that labels its stories, and a story of its the job looked for and found no labels for: the
+      // outlet's local feed doesn't list it (a wire story from before the feed was narrowed, a story it withdrew).
+      if (labelled.has(row.source) && Array.isArray(row.outlet_tags) && !row.outlet_tags.length) continue;
       const link = webLink(row.source_url);
       // A headline with nowhere to read it is left out; a seasonal tip is its own text.
       if (!link && row.category !== 'seasonal') continue;
       const outlet = outletName(row, link, source);
       const title = headline(row, outlet);
-      if (!title || (!FEED_KINDS.has(kind) && (LEFT_OUT.test(title) || OPINION.test(title)))) continue;
+      if (!title || (!FEED_KINDS.has(kind) && (LEFT_OUT.test(title) || OPINION.test(title) || NOTICE.test(title)))) continue;
+      // The outlet's own labels for the story (a notice, an obituary, a wire story from elsewhere).
+      if (!FEED_KINDS.has(kind) && leftOutByTags(row.outlet_tags, words.get(row.region))) continue;
       if (spec.id === 'across_state' && !HOME_WORDS.test(title)) continue;
       const key = titleKey(title);
       // A story is one link; road projects, fires and calendar events can share one, so they are told apart by title.
@@ -226,6 +254,10 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
         url: link,
         seen_at: new Date(Date.parse(row.created_at) || seenAt).toISOString(),
         ...(summary ? { summary } : {}),
+        _topics: topicsOf({
+          sectionId: spec.id, kind, sourceTopic: source?.topic, tags: row.outlet_tags, title,
+        }),
+        _story: STORY_SECTIONS.has(spec.id),
         _key: key,
         _link: linkKey,
         _kind: kind,
@@ -250,11 +282,12 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     // First what fits with each outlet held to its share, then the rest in order if there is room. In Headlines and
     // Events each of the nearest region's outlets (calendars) gets an equal share first, so a weekly paper's story is
     // not pushed off by a daily's newer ones, nor a small calendar's event by a library's many.
-    let share = MAX_PER_OUTLET;
-    const fair = spec.id === 'headlines' || spec.id === 'events';
+    const max = everything ? Infinity : spec.max;
+    let share = everything ? Infinity : MAX_PER_OUTLET;
+    const fair = !everything && (spec.id === 'headlines' || spec.id === 'events');
     if (fair) {
       const nearOutlets = new Set(candidates.filter((item) => item._region === 0).map((item) => item._outlet));
-      if (nearOutlets.size) share = Math.min(MAX_PER_OUTLET, Math.max(1, Math.ceil(spec.max / nearOutlets.size)));
+      if (nearOutlets.size) share = Math.min(MAX_PER_OUTLET, Math.max(1, Math.ceil(max / nearOutlets.size)));
     }
     const perOutlet = new Map();
     const items = [];
@@ -262,14 +295,14 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     for (const item of candidates) {
       const count = perOutlet.get(item._outlet) || 0;
       const firstPass = !fair || item._region === 0;
-      if (firstPass && count < share && items.length < spec.max) {
+      if (firstPass && count < share && items.length < max) {
         perOutlet.set(item._outlet, count + 1);
         items.push(item);
       } else {
         held.push(item);
       }
     }
-    items.push(...held.slice(0, Math.max(spec.max - items.length, 0)));
+    items.push(...held.slice(0, Math.max(max - items.length, 0)));
     if (spec.id === 'events') items.sort((a, b) => (a._starts - b._starts) || (a._order - b._order));
     for (const item of items) {
       seen.add(item._key);

@@ -746,11 +746,17 @@ const READER_POST_FIELDS = [
 ];
 
 // The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
-// and its name, an Official or curator notice's source). Only the server sets those keys (POST /api/posts,
-// services/aroundYouService.js); the rest of the metadata stays with the author.
+// and its name, an Official or curator notice's source), and for a post Around you made, that it is one and its
+// topics, so its page draws it as its card does (the outlet named, the headline apart from the summary). Only the
+// server sets those keys (POST /api/posts, services/aroundYouService.js); the rest of the metadata stays with the
+// author.
 function sourceMetadata(post) {
-  const { source_url: url, source_name: name } = post?.post_metadata || {};
-  return url ? { source_url: url, ...(name ? { source_name: name } : {}) } : null;
+  const { source_url: url, source_name: name, around_you: around } = post?.post_metadata || {};
+  const story = around && typeof around === 'object'
+    ? { around_you: { section: around.section || null, topics: Array.isArray(around.topics) ? around.topics : [] } }
+    : null;
+  if (!url && !story) return null;
+  return { ...(url ? { source_url: url, ...(name ? { source_name: name } : {}) } : {}), ...(story || {}) };
 }
 
 // "Photo taken here": the author's own photo or video placed the post (set at posting, in post_metadata).
@@ -3843,8 +3849,21 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     }
     if (!newComment) throw new Error('Comment insert returned no row');
 
+    // An Around you story is posted by the curator account, which nobody reads: instead of its "commented on your
+    // post" notice, the people already in the story's thread hear that someone else replied
+    // (services/aroundYou/threadNotices.js). The parent reply's author gets the direct notice below.
+    const aroundYouThread = require('../services/aroundYou/threadNotices');
+    const aroundYouStory = aroundYouThread.isAroundYouPost(post);
+    if (aroundYouStory) {
+      commenterName().then((name) => aroundYouThread.replyCreated({
+        post, reply: newComment, replierName: name, skipUserIds: [parent?.user_id],
+      })).catch(err => {
+        logger.warn('Around you thread notice failed (non-blocking)', { error: err.message, postId });
+      });
+    }
+
     // Notify post owner of new comment (not on own post, and never across a block)
-    if (post.user_id !== userId) {
+    if (post.user_id !== userId && !aroundYouStory) {
       blockService.isBlocked(userId, post.user_id).then(blocked => blocked ? null : commenterName().then(name => {
         notificationService.createNotification({
           userId: post.user_id,
