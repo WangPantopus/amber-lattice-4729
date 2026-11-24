@@ -73,7 +73,7 @@ function planWhen(startsAt: string | null): string | null {
  * One line for each kind of common ground there is, in this order: the soonest plan you're both in, a Support Train you
  * both help on, people you both know, skills you share.
  */
-function linesFor(data: InCommon, viewerId: string, personId: string, firstName: string): Line[] {
+export function linesFor(data: InCommon, viewerId: string, personId: string, firstName: string): Line[] {
   const lines: Line[] = [];
   const plan = data.plans?.[0];
   if (plan) {
@@ -155,6 +155,47 @@ function linesFor(data: InCommon, viewerId: string, personId: string, firstName:
   return lines;
 }
 
+/** The common-ground rows (at most two), drawn from a GET /api/users/:id/in-common body; null when there is none. */
+export function YouAndRows({ data, viewerId, personId, firstName, className = 'rounded-2xl border border-app bg-surface overflow-hidden divide-y divide-app' }: {
+  data: InCommon;
+  viewerId: string;
+  personId: string;
+  firstName: string;
+  className?: string;
+}) {
+  const lines = linesFor(data, viewerId, personId, firstName).slice(0, MAX_LINES);
+  if (lines.length === 0) return null;
+  // Every line's text starts after the widest icon: an icon circle grows with the text size (rem), overlapping photos
+  // don't (px).
+  const photosWidth = Math.max(0, ...lines.map((line) => line.iconWidth ?? 0));
+  return (
+    <ul className={className}>
+      {lines.map((line) => {
+        const body = (
+          <>
+            <span aria-hidden="true" className="shrink-0 flex" style={{ width: `max(1.875rem, ${photosWidth}px)` }}>{line.icon}</span>
+            <span className="min-w-0 flex flex-col gap-0.5">
+              <span className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">{line.text}</span>
+              {line.detail ? (
+                <span className="text-[0.8125rem] leading-[1.125rem] text-app-muted">
+                  <span className="sr-only">, </span>
+                  {line.detail}
+                </span>
+              ) : null}
+            </span>
+          </>
+        );
+        const row = 'min-h-[3.75rem] px-4 py-3 flex items-center gap-3';
+        return (
+          <li key={line.key}>
+            {line.href ? <Link href={line.href} className={`${row} hover-bg-app`}>{body}</Link> : <div className={row}>{body}</div>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /**
  * "You and Rowan": real common ground with someone, at most two lines (a plan you're both going to, a Support Train you
  * both help on, people you both know, skills you share, in that order). Hidden until the server answers, and when there's nothing
@@ -168,41 +209,14 @@ export default function YouAndSection({ personId, viewerId, firstName, enabled }
     staleTime: 60 * 1000,
   });
   if (!enabled || query.status !== 'success' || !query.data) return null;
-  const lines = linesFor(query.data, viewerId, personId, firstName).slice(0, MAX_LINES);
-  if (lines.length === 0) return null;
-  // Every line's text starts after the widest icon: an icon circle grows with the text size (rem), overlapping photos
-  // don't (px).
-  const photosWidth = Math.max(0, ...lines.map((line) => line.iconWidth ?? 0));
+  if (linesFor(query.data, viewerId, personId, firstName).length === 0) return null;
 
   return (
     <section className="mt-7" aria-labelledby={`you-and-${personId}`}>
       <h2 id={`you-and-${personId}`} className="mb-2.5 text-[1.25rem] leading-[1.5625rem] font-bold text-app">
         You and {firstName}
       </h2>
-      <ul className="rounded-2xl border border-app bg-surface overflow-hidden divide-y divide-app">
-        {lines.map((line) => {
-          const body = (
-            <>
-              <span aria-hidden="true" className="shrink-0 flex" style={{ width: `max(1.875rem, ${photosWidth}px)` }}>{line.icon}</span>
-              <span className="min-w-0 flex flex-col gap-0.5">
-                <span className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">{line.text}</span>
-                {line.detail ? (
-                  <span className="text-[0.8125rem] leading-[1.125rem] text-app-muted">
-                    <span className="sr-only">, </span>
-                    {line.detail}
-                  </span>
-                ) : null}
-              </span>
-            </>
-          );
-          const row = 'min-h-[3.75rem] px-4 py-3 flex items-center gap-3';
-          return (
-            <li key={line.key}>
-              {line.href ? <Link href={line.href} className={`${row} hover-bg-app`}>{body}</Link> : <div className={row}>{body}</div>}
-            </li>
-          );
-        })}
-      </ul>
+      <YouAndRows data={query.data} viewerId={viewerId} personId={personId} firstName={firstName} />
     </section>
   );
 }

@@ -8,6 +8,7 @@ import { Camera, ChevronDown, ChevronLeft, Ellipsis, Eye, HandHeart, Lock, Messa
 import * as api from '@pantopus/api';
 import { buildUserProfileShareUrl, chosenUsername } from '@pantopus/utils';
 import type { UserProfile, User, GigListItem, Review, Post } from '@pantopus/types';
+import type { ProfilePage, ProfilePreviewView } from '@pantopus/api';
 import { getAuthToken } from '@pantopus/api';
 import BusinessPublicProfile from '@/components/business/BusinessPublicProfile';
 import { toast } from '@/components/ui/toast-store';
@@ -34,6 +35,8 @@ import UsernamePrompt, { markAskedForUsername, shouldAskForUsername } from '@/co
 import { fetchMe, useOwnLocalProfile } from '@/lib/me';
 import { queryKeys } from '@/lib/query-keys';
 import { removeUserFromFeedCaches } from '@/hooks/useFeedData';
+import SourcesProfile from '@/components/profile/sources/SourcesProfile';
+import { isProfilePage } from '@/components/profile/sources/contract';
 
 type RelationshipState = 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
 type ProfileTab = 'posts' | 'about' | 'work' | 'missions';
@@ -80,6 +83,9 @@ const POSTS_PAGE = 20;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Preview as on the profile with sources: today's audiences as the page's views (contract 1). */
+const PREVIEW_VIEW: Record<PreviewAudience, ProfilePreviewView> = { anyone: 'link', neighbors: 'member', connections: 'connection' };
+
 function normalizeProfileIdentifier(value: unknown): string {
   return String(value || '').trim().replace(/^@+/, '');
 }
@@ -97,14 +103,19 @@ interface PendingReviewStub {
 interface PublicProfileClientProps {
   username: string;
   initialProfile: PublicProfileData | null;
+  /**
+   * The profile with sources as a signed-out visitor gets it (the server's page, read while rendering), or null: the
+   * key is off, or the server answered anything but a page. Signed in, the page is read again for this viewer.
+   */
+  initialPage?: ProfilePage | null;
   /** /app/profile: your own profile as a place of its own in the app (no Back). */
   ownerHome?: boolean;
 }
 
-export default function PublicProfileClient({ username, initialProfile, ownerHome = false }: PublicProfileClientProps) {
+export default function PublicProfileClient({ username, initialProfile, initialPage = null, ownerHome = false }: PublicProfileClientProps) {
   // Next reuses this route's component. A different person must get fresh tab,
   // review, portfolio and dialog state, including while their requests are pending.
-  return <ProfileContent key={normalizeProfileIdentifier(username)} username={username} initialProfile={initialProfile} ownerHome={ownerHome} />;
+  return <ProfileContent key={normalizeProfileIdentifier(username)} username={username} initialProfile={initialProfile} initialPage={initialPage} ownerHome={ownerHome} />;
 }
 
 /** The name a profile read gives, as the header shows it. */
@@ -114,7 +125,7 @@ function readName(person: PublicProfileData | null | undefined): string | null {
   return person.firstName && person.lastName ? `${person.firstName} ${person.lastName}` : person.name || handle || null;
 }
 
-function ProfileContent({ username, initialProfile, ownerHome = false }: PublicProfileClientProps) {
+function ProfileContent({ username, initialProfile, initialPage = null, ownerHome = false }: PublicProfileClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const tabsId = useId();
@@ -168,6 +179,8 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     postsFailed: boolean;
     /** That audience can't open your profile at all (private, or "Who can find you"). */
     refused: boolean;
+    /** With the profile with sources: that audience's page (null when the server sent none). */
+    page?: ProfilePage | null;
   } | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -215,6 +228,12 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     setMounted(true);
     setCanGoBack(window.history.length > 1);
   }, []);
+  // The profile with sources (launch key profile_sources): the server's page for this viewer. `viewer` says whose read
+  // it is ('anon' signed out); a null page means the server answered anything but a page, and today's profile shows.
+  const [sources, setSources] = useState<{ viewer: string; page: ProfilePage | null } | null>(
+    () => (launchFeatures.profileSources ? { viewer: 'anon', page: isProfilePage(initialPage) ? initialPage : null } : null));
+  // Bumped when the viewer's standing changes (connected, disconnected, blocked): the page is read again.
+  const [sourcesRound, setSourcesRound] = useState(0);
 
   // Reviews state
   const [reviews, setReviews] = useState<Review[]>(() => kept.reviews?.reviews || []);
@@ -547,6 +566,32 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     }
   }, [currentUser, profile, loadRelationshipStatus]);
 
+  // Whose profile-with-sources page should show: 'anon' signed out (the page read while rendering), the signed-in
+  // account once it is read (with the round, so a change of standing reads again), null while that isn't known yet.
+  const sessionPresent = mounted && (Boolean(currentUser) || Boolean(getAuthToken()));
+  const sourcesViewer = !launchFeatures.profileSources ? null
+    : !mounted || !sessionPresent ? 'anon'
+      : viewerChecked ? `${currentUser?.id ?? 'session'}:${sourcesRound}` : null;
+  useEffect(() => {
+    if (!sourcesViewer) return;
+    if (sourcesViewer === 'anon') {
+      // Signed out (again): the page every visitor gets.
+      setSources((prev) => (prev?.viewer === 'anon' ? prev : { viewer: 'anon', page: isProfilePage(initialPage) ? initialPage : null }));
+      return;
+    }
+    const current = captureAction();
+    let live = true;
+    // Started inside a promise so any failure, even a missing read, falls back to today's profile.
+    Promise.resolve().then(() => api.profilePage.getPage(profileIdentifier)).then(
+      (page) => { if (live && current()) setSources({ viewer: sourcesViewer, page: isProfilePage(page) ? page : null }); },
+      // Switched off, an older server or a failed read: today's profile.
+      () => { if (live && current()) setSources({ viewer: sourcesViewer, page: null }); },
+    );
+    return () => { live = false; };
+  }, [sourcesViewer, profileIdentifier, initialPage, captureAction]);
+  const sourcesPending = launchFeatures.profileSources && (sourcesViewer === null || sources?.viewer !== sourcesViewer);
+  const shownSources = launchFeatures.profileSources && !sourcesPending ? sources?.page ?? null : null;
+
   // Your own profile: the name and photo neighbors see (your Local Profile) and, in Preview as, the audience's read.
   const ownerCandidate = Boolean(currentUser?.id && profile?.id && currentUser.id === profile.id);
   const ownLocalProfile = useOwnLocalProfile({ enabled: ownerCandidate });
@@ -559,6 +604,8 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   });
   const previewGeneration = useRef(0);
   const ownerId = ownerCandidate ? profile?.id : null;
+  // The owner's own page is the profile with sources: previews draw that audience's page.
+  const withSources = Boolean(shownSources);
   useEffect(() => {
     if (!previewAudience || !ownerId) return;
     const audience = previewAudience;
@@ -567,11 +614,19 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     setPreview(null);
     setPreviewFailed(false);
     void (async () => {
-      const [read, posts] = await Promise.allSettled([
+      const [read, posts, page] = await Promise.allSettled([
         api.users.getProfileById(ownerId, { as: audience }),
         api.posts.getUserPosts(ownerId, { limit: POSTS_PAGE, as: audience, include_reposts: true }),
+        // Your own page is the profile with sources: that audience's page, exactly as the server composes it.
+        withSources ? api.profilePage.getPage(ownerId, { as: PREVIEW_VIEW[audience] }) : Promise.resolve(null),
       ]);
       if (!current() || generation !== previewGeneration.current) return;
+      const audiencePage = page.status === 'fulfilled' && isProfilePage(page.value) ? page.value : null;
+      // Never today's page in place of the one visitors get.
+      if (withSources && !audiencePage && read.status === 'fulfilled') {
+        setPreviewFailed(true);
+        return;
+      }
       if (read.status === 'rejected') {
         const status = (read.reason as { statusCode?: number } | null)?.statusCode;
         if (status === 403) setPreview({ audience, profile: null, posts: [], postsFailed: false, refused: true });
@@ -584,9 +639,11 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
         posts: posts.status === 'fulfilled' && !posts.value.sign_in_required ? posts.value.posts || [] : [],
         postsFailed: posts.status === 'rejected',
         refused: false,
+        page: audiencePage,
       });
     })();
-  }, [previewAudience, ownerId, previewAttempt, captureAction]);
+  }, [previewAudience, ownerId, previewAttempt, captureAction, withSources]);
+
 
   // ── Action handlers ──
 
@@ -676,6 +733,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   // before asking again, including offline.
   const reloadAsNewAudience = async (targetId: string, current: () => boolean) => {
     postsReadGeneration.current++;
+    setSourcesRound((n) => n + 1);
     setUserPosts([]);
     setPostsNextCursor(null);
     setProfile(null);
@@ -730,6 +788,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       setConnectionState(accept ? 'connected' : 'none');
       forgetPerson(targetId);
       if (accept) {
+        setSourcesRound((n) => n + 1);
         // A connection sees more: read the profile and posts again as one (the new profile also rereads the
         // relationship, follow included).
         await queryClient.cancelQueries({ queryKey: queryKeys.personPosts(targetId) });
@@ -847,6 +906,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       setUserPosts([]);
       setPostsNextCursor(null);
       queryClient.removeQueries({ queryKey: queryKeys.personPosts(targetId) });
+      setSourcesRound((n) => n + 1);
       toast.success(`${fullName} blocked`);
     } catch (err: unknown) {
       if (!current()) return;
@@ -880,6 +940,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       forgetPerson(targetId);
       if (!current()) return;
       setBlockedByMe(false);
+      setSourcesRound((n) => n + 1);
       toast.success(`${fullName} unblocked`);
       await loadRelationshipStatus();
       loadUserPosts();
@@ -1019,6 +1080,18 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   // The public profile routes send `accountType`.
   if ((profile.accountType ?? profile.account_type) === 'business') {
     return <BusinessPublicProfile username={username} currentUser={currentUser} />;
+  }
+
+  // The profile with sources is read for this viewer before either page shows, so neither flashes.
+  if (sourcesPending) {
+    return (
+      <div className="flex items-center justify-center py-20" role="status">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto" aria-hidden="true"></div>
+          <p className="mt-4 text-app-secondary">Loading profile…</p>
+        </div>
+      </div>
+    );
   }
 
   // ── Derived state ──
@@ -1440,6 +1513,53 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     </section>
   );
 
+  // The profile with sources: the server's page for this viewer (or, in Preview as, that audience's page), with today's
+  // buttons, sheets and owner sections around it.
+  const sourcesPage = previewing ? (previewReady ? preview?.page ?? null : null) : shownSources;
+  const sourcesContent = sourcesPage ? (
+    <SourcesProfile
+      page={sourcesPage}
+      viewerId={previewing ? '' : String(currentUser?.id ?? '')}
+      actions={actions}
+      afterHeader={showOwnerOnly && ownerTips.length > 0 ? <OwnerTips accountId={profile.id} tips={ownerTips} /> : !previewing && pendingReview && !isOwnProfile ? (
+        // Today's Work tab offered the review you owe this person; the profile with sources keeps that way in.
+        <button
+          type="button"
+          onClick={() => router.push(`/app/gigs/${encodeURIComponent(pendingReview.gig_id)}/review`)}
+          className="rounded-[1.25rem] border border-app bg-surface px-4 py-3 min-h-[3rem] flex items-center gap-3 text-left hover-bg-app"
+        >
+          <PenLine aria-hidden="true" className="w-5 h-5 shrink-0 text-app-link" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm leading-5 font-semibold text-app">Review {firstName}</span>
+            <span className="block text-xs leading-4 text-app-muted [overflow-wrap:anywhere]">For {pendingReview.gig_title}</span>
+          </span>
+        </button>
+      ) : null}
+      afterPage={showOwnerOnly ? (
+        <div className="mt-7 flex flex-col gap-7 pb-4">
+          <MonthLine />
+          <AccountSection />
+        </div>
+      ) : null}
+      postsReadable={Boolean(mounted && viewerReady && signedIn && !anyoneView && !blocked)}
+      previewAs={previewing ? PREVIEW_VIEW[previewAudience!] : null}
+      signedOut={anyoneView}
+      onJoin={() => router.push(authPageHref('/register', profilePath))}
+      onReport={isOwnProfile && !previewing ? null : handleReport}
+      onDoor={(door) => {
+        // Doors (phase 3): a signed-out visitor signs in first; Send a card opens the card flow with them chosen.
+        if (!getAuthToken()) { router.push(signInHref); return; }
+        if (door.key === 'send_card' && cardPersonId && cardArrivals.isSuccess) {
+          router.push(sendOneBackPath({ userId: cardPersonId, name: fullName }));
+        }
+      }}
+      onConnect={() => {
+        if (!getAuthToken()) { router.push(signInHref); return; }
+        if (connectionKnown && connectionState === 'none') setConnectOpen(true);
+      }}
+    />
+  ) : null;
+
   // ── Render ──
 
   return (
@@ -1454,7 +1574,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       <div className="mx-auto w-full max-w-2xl lg:max-w-6xl px-5 lg:px-8 pt-2 pb-8">
         {topRow}
         {previewBanner}
-        {previewBody ?? (
+        {previewBody ?? sourcesContent ?? (
           // Phones: one column in the drawings' order. Desktop: who they are and how to say hi on the left, what
           // they share on the right.
           <div className="lg:grid lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] lg:gap-x-12 xl:gap-x-16 lg:items-start">
