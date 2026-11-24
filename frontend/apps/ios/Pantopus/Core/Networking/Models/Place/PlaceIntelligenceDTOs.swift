@@ -2170,12 +2170,15 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
     public let notChecked: [PlacePreviewNotChecked]?
     /// SPEC 1.7: the area's home value, property tax and price curve.
     public let money: PlacePreviewMoney?
+    /// SPEC 1.5: the flood cost band, whatever `money_lead` is; the first card of Risk & readiness.
+    public let floodCost: PlaceMoneyLead?
 
     private enum CodingKeys: String, CodingKey {
         case status, tier, region, message, place, aha, sections, free, locked, disclaimer
         case layout, glance, money
         case moneyLead = "money_lead"
         case notChecked = "not_checked"
+        case floodCost = "flood_cost"
     }
 
     public init(from decoder: Decoder) throws {
@@ -2197,6 +2200,7 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
         glance = container.lenient(LossyList<PlacePreviewGlanceRow>.self, forKey: .glance)?.items
         notChecked = try? container.decodeIfPresent([PlacePreviewNotChecked].self, forKey: .notChecked)
         money = try? container.decodeIfPresent(PlacePreviewMoney.self, forKey: .money)
+        floodCost = try? container.decodeIfPresent(PlaceMoneyLead.self, forKey: .floodCost)
     }
 }
 
@@ -2277,7 +2281,11 @@ public struct PlacePreviewMoney: Decodable, Sendable, Hashable {
     public struct Trend: Decodable, Sendable, Hashable {
         /// `county` or `zip`: where `lastChangePct` is from.
         public let scope: String?
+        /// "Clark County", or "ZIP 98607" where `scope` is `zip`.
         public let areaName: String?
+        /// The county the curve is drawn for, and its own last yearly change: the curve's labels are always the county's.
+        public let countyName: String?
+        public let countyLastChangePct: Double?
         public let year: Int?
         public let lastChangePct: Double?
         public let sinceYear: Int?
@@ -2289,6 +2297,8 @@ public struct PlacePreviewMoney: Decodable, Sendable, Hashable {
         private enum CodingKeys: String, CodingKey {
             case scope, year, years, source
             case areaName = "area_name"
+            case countyName = "county_name"
+            case countyLastChangePct = "county_last_change_pct"
             case lastChangePct = "last_change_pct"
             case sinceYear = "since_year"
             case sinceChangePct = "since_change_pct"
@@ -2299,6 +2309,8 @@ public struct PlacePreviewMoney: Decodable, Sendable, Hashable {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             scope = try container.decodeIfPresent(String.self, forKey: .scope)
             areaName = try container.decodeIfPresent(String.self, forKey: .areaName)
+            countyName = try container.decodeIfPresent(String.self, forKey: .countyName)
+            countyLastChangePct = try container.decodeIfPresent(Double.self, forKey: .countyLastChangePct)
             year = try container.decodeIfPresent(Int.self, forKey: .year)
             lastChangePct = try container.decodeIfPresent(Double.self, forKey: .lastChangePct)
             sinceYear = try container.decodeIfPresent(Int.self, forKey: .sinceYear)

@@ -284,7 +284,8 @@ struct PlacePreviewMoneyCard: View {
         return VStack(alignment: .leading, spacing: 4) {
             PriceCurve(points: trend.changeSinceFirstPct)
                 .frame(height: 64)
-                .accessibilityLabel([Self.curveCaption(trend), since, last].compactMap(\.self).joined(separator: ", "))
+                .accessibilityLabel([Self.curveCaption(trend), since, last, Self.zipLabel(trend)].compactMap(\.self)
+                    .joined(separator: ", "))
                 .accessibilityIdentifier("place.preview.money.curve")
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let first = trend.sinceYear ?? trend.years.first {
@@ -301,6 +302,13 @@ struct PlacePreviewMoneyCard: View {
             .font(.system(size: 12))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("place.preview.money.change")
+            if let zip = Self.zipLabel(trend) {
+                Text(zip)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Color.appTextMuted)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("place.preview.money.zip")
+            }
         }
     }
 
@@ -317,11 +325,23 @@ struct PlacePreviewMoneyCard: View {
 
     // MARK: Words (LOOKUPORDER WORDS.md, "The money card")
 
-    /// "Home prices across Clark County, FHFA price index", or "across ZIP 98607" where the last figure is the ZIP's.
+    private static func isZip(_ trend: PlacePreviewMoney.Trend) -> Bool {
+        trend.scope == "zip"
+    }
+
+    /// "Home prices across Clark County, FHFA price index": the curve is always the county's.
     static func curveCaption(_ trend: PlacePreviewMoney.Trend) -> String {
-        guard var area = trend.areaName, !area.isEmpty else { return "Home prices, FHFA price index" }
-        if trend.scope == "zip", !area.hasPrefix("ZIP") { area = "ZIP \(area)" }
-        return "Home prices across \(area), FHFA price index"
+        let county = trend.countyName ?? (isZip(trend) ? nil : trend.areaName)
+        guard let county, !county.isEmpty else { return "Home prices, FHFA price index" }
+        return "Home prices across \(county), FHFA price index"
+    }
+
+    /// "ZIP 98607: −2.7% in 2025", only where the ZIP has its own figure for the last year.
+    static func zipLabel(_ trend: PlacePreviewMoney.Trend) -> String? {
+        guard isZip(trend), var area = trend.areaName, !area.isEmpty, let pct = trend.lastChangePct,
+              let year = trend.year ?? trend.years.last else { return nil }
+        if !area.hasPrefix("ZIP") { area = "ZIP \(area)" }
+        return "\(area): \(signed(pct, digits: 1))% in \(year)"
     }
 
     /// "+148% since 2011".
@@ -331,9 +351,10 @@ struct PlacePreviewMoneyCard: View {
         return "\(signed(pct, digits: 0))% since \(year)"
     }
 
-    /// "+3.1% in 2025"; a fall reads "−2.0% in 2025".
+    /// The county's "+2.1% in 2025"; a fall reads "−2.0% in 2025", a flat year "0.0% in 2025".
     static func lastLabel(_ trend: PlacePreviewMoney.Trend) -> String? {
-        guard let pct = trend.lastChangePct, let year = trend.year ?? trend.years.last else { return nil }
+        guard let pct = trend.countyLastChangePct ?? (isZip(trend) ? nil : trend.lastChangePct),
+              let year = trend.year ?? trend.years.last else { return nil }
         return "\(signed(pct, digits: 1))% in \(year)"
     }
 

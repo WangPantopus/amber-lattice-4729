@@ -143,7 +143,7 @@ struct PlacePreviewContent: View {
         let firstGroup = order.firstIndex { $0.hasPrefix("group:") }
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(order.enumerated()), id: \.offset) { index, block in
-                self.block(block, ballot: ballot, drawsFree: index == firstGroup)
+                self.block(block, at: index, ballot: ballot, drawsFree: index == firstGroup)
             }
         }
         .sheet(item: $ballotGovernments) { sheet in
@@ -159,11 +159,11 @@ struct PlacePreviewContent: View {
 
     /// One block of the order; a block this build does not know, or one with nothing to draw, draws nothing.
     @ViewBuilder
-    private func block(_ name: String, ballot: (card: BallotSummary, asOf: String?)?, drawsFree: Bool) -> some View {
+    private func block(_ name: String, at index: Int, ballot: (card: BallotSummary, asOf: String?)?, drawsFree: Bool) -> some View {
         if name.hasPrefix("group:") {
             groupBlock(String(name.dropFirst("group:".count)), ballot: ballot, drawsFree: drawsFree)
         } else if name.hasPrefix("section:") {
-            soloSection(String(name.dropFirst("section:".count)))
+            soloSection(String(name.dropFirst("section:".count)), at: index, ballot: ballot)
         } else if name == "ballot" {
             if let ballot { ballotBlock(ballot) }
         } else if name == "locked" {
@@ -230,12 +230,9 @@ struct PlacePreviewContent: View {
     @ViewBuilder
     private func groupBlock(_ group: String, ballot: (card: BallotSummary, asOf: String?)?, drawsFree: Bool) -> some View {
         if let sections = preview.sections, !sections.isEmpty {
-            let solo = soloSectionIds
-            let items = sections.filter {
-                $0.group.rawValue == group && !solo.contains($0.id.rawValue) && !(ballot != nil && $0.id == .civicElection)
-            }
-            // A flood premium lead heads Risk & readiness (SPEC 1.5).
-            let lead = group == "risk_readiness" ? floodPremiumLead : nil
+            let items = groupItems(group, in: sections, ballot: ballot)
+            // The flood cost band heads Risk & readiness (SPEC 1.5).
+            let lead = group == "risk_readiness" ? floodCostLead : nil
             // Ballot, when the order does not name it, leads Civic (right under its label).
             let civicBallot = group == "civic" && !order.contains("ballot") ? ballot : nil
             if let label = Self.groupLabels[group], !items.isEmpty || lead != nil || civicBallot != nil {
@@ -252,17 +249,49 @@ struct PlacePreviewContent: View {
         }
     }
 
-    private var floodPremiumLead: PlaceMoneyLead? {
-        guard let lead = preview.moneyLead, lead.kind == .floodPremium, lead.isRenderable else { return nil }
+    /// A group's own cards: less the sections the order places on their own, and the election row the ballot replaces.
+    private func groupItems(_ group: String, in sections: [PlaceSectionEnvelope], ballot: (card: BallotSummary, asOf: String?)?)
+        -> [PlaceSectionEnvelope] {
+        let solo = soloSectionIds
+        return sections.filter {
+            $0.group.rawValue == group && !solo.contains($0.id.rawValue) && !(ballot != nil && $0.id == .civicElection)
+        }
+    }
+
+    /// `flood_cost`; from an older server with no money card, a flood premium `money_lead`.
+    private var floodCostLead: PlaceMoneyLead? {
+        if let cost = preview.floodCost, cost.isRenderable { return cost }
+        guard preview.money == nil, let lead = preview.moneyLead, lead.kind == .floodPremium, lead.isRenderable else { return nil }
         return lead
     }
 
-    /// A section the order places on its own ("Homes here", "Verified homes nearby"), under its group's label.
+    /// A section the order places on its own ("Homes here", "Verified homes nearby"), under its group's label
+    /// unless that label is already on the page above it.
     @ViewBuilder
-    private func soloSection(_ id: String) -> some View {
+    private func soloSection(_ id: String, at index: Int, ballot: (card: BallotSummary, asOf: String?)?) -> some View {
         if let env = preview.sections?.first(where: { $0.id.rawValue == id }) {
-            PlaceGroupLabel(text: Self.groupLabels[env.group.rawValue] ?? "").padding(.top, 18)
+            let group = env.group.rawValue
+            if let label = Self.groupLabels[group], !labelShown(group, before: index, ballot: ballot) {
+                PlaceGroupLabel(text: label).padding(.top, 18)
+            } else {
+                Color.clear.frame(height: 10)
+            }
             sectionCard(env)
+        }
+    }
+
+    /// Whether a block before `index` already drew `group`'s label.
+    private func labelShown(_ group: String, before index: Int, ballot: (card: BallotSummary, asOf: String?)?) -> Bool {
+        let sections = preview.sections ?? []
+        return order.prefix(index).contains { name in
+            if name == "group:\(group)" {
+                return !groupItems(group, in: sections, ballot: ballot).isEmpty
+                    || (group == "risk_readiness" && floodCostLead != nil)
+                    || (group == "civic" && ballot != nil && !order.contains("ballot"))
+            }
+            guard name.hasPrefix("section:") else { return false }
+            let id = name.dropFirst("section:".count)
+            return sections.contains { $0.id.rawValue == id && $0.group.rawValue == group }
         }
     }
 
