@@ -109,6 +109,9 @@ async function loadPage(req, lookup, { view, keyed = null } = {}) {
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).
     ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
     ctx.searchEngines = false;
+    // The person switched the city on for this one link: that decides, not "Who sees your city" (founder 9.2; the
+    // main link keeps both checks).
+    ctx.cityByPrivacy = true;
   }
   // No profile city: the verified home's city may stand in, only where the home part reaches the view too (compose).
   const home = (sources.homes || []).find((h) => h.city);
@@ -198,10 +201,15 @@ async function shareBody(req) {
   ]);
   const { ctx } = loaded;
   const content = partContent(ctx, loaded.record);
+  // A link for one purpose doesn't open while the profile is private (openFor's keyed check): say so to the owner, and
+  // no link reads as live meanwhile.
+  const linksOpen = (ctx.userData.profile_visibility || 'public') !== 'private';
   const linkFields = linksOn ? {
     links_enabled: ctx.linksEnabled,
+    links_open: linksOpen,
+    links_note: linksOpen ? null : 'Links for one purpose don\'t open while your profile is private.',
     links: linkRows.map((row) => links.serialize(row, {
-      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled, day: links.today(),
+      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled && linksOpen, day: links.today(),
     })),
   } : {};
   return {
@@ -233,19 +241,24 @@ async function putShare(req) {
 // The owner's switch for links and the name in their link (the handle others see).
 async function ownerLinkFields(req) {
   const [stored, found] = await Promise.all([readShareColumn(req.user.id), findPerson({ id: req.user.id })]);
-  return { linksEnabled: readShare(stored).links_enabled, username: await handleOthersSee(found.userData) };
+  return {
+    linksEnabled: readShare(stored).links_enabled,
+    // `live` also needs a profile that isn't private (a link doesn't open then).
+    linksOpen: (found.userData.profile_visibility || 'public') !== 'private',
+    username: await handleOthersSee(found.userData),
+  };
 }
 
 async function makeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.createLink(req.user.id, req.body, owner);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
 }
 
 async function changeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.updateLink(req.user.id, req.params.id, req.body);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
 }
 
 async function removeLink(req) {
