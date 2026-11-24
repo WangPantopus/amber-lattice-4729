@@ -286,16 +286,31 @@ export interface ProfileWorkRingsBlock extends BlockBase {
 export interface ProfileCirclePerson {
   user_id: string | null;
   name: string | null;
+  username?: string | null;
   portrait_url: string | null;
   did: string | null;
   ink: ProfileInk;
+  /** Pieces the two share that this viewer may open (p2.6). */
+  shared_pieces?: number | null;
+  /** A person, a business on Pantopus or a place typed as words (asked of profile-server); absent: a person. */
+  kind?: 'person' | 'business' | 'place' | string | null;
 }
+
+export interface ProfileCircleGroup { key: string; title: string; count: number; people: ProfileCirclePerson[] }
 
 export interface ProfileCircleBlock extends BlockBase {
   kind: 'circle';
   text?: string | null;
-  groups: Array<{ key: string; title: string; count: number; people: ProfileCirclePerson[] }>;
+  groups: ProfileCircleGroup[];
+  hired_by?: ProfileLine | null;
   link?: ProfileLink | null;
+}
+
+/** The work circle opened (board 9): everyone, by group, and how many households and businesses hired the person. */
+export interface ProfileCircleRead {
+  v: number;
+  groups: ProfileCircleGroup[];
+  hired_by: ProfileLine | null;
 }
 
 export interface ProfileOwnsBlock extends BlockBase {
@@ -709,4 +724,23 @@ export async function updateRole(id: string, fields: Partial<Omit<ProfileRoleFie
 
 export async function deleteRole(id: string): Promise<{ id: string; removed: boolean }> {
   return del<{ id: string; removed: boolean }>(`/api/profile-page/me/roles/${encodeURIComponent(id)}`);
+}
+
+// ── Phase 2: the work circle (board 9, CONTRACT p2.6; behind PROFILE_TIES) ──
+
+export async function getCircle(identifier: string, options?: { as?: ProfilePreviewView }): Promise<ProfileCircleRead> {
+  return get<ProfileCircleRead>(`${base(identifier)}/circle`, options?.as ? { as: options.as } : undefined);
+}
+
+/** The pieces the person and that account share, each only if this viewer can open it. */
+export async function getCirclePieces(identifier: string, userId: string, options?: { as?: ProfilePreviewView }): Promise<{ v: number; pieces: ProfilePiece[] }> {
+  return get<{ v: number; pieces: ProfilePiece[] }>(`${base(identifier)}/circle/${encodeURIComponent(userId)}`, options?.as ? { as: options.as } : undefined);
+}
+
+export async function getLinkCircle(username: string, key: string): Promise<ProfileCircleRead> {
+  return get<ProfileCircleRead>(`${linkBase(username, key)}/circle`);
+}
+
+export async function getLinkCirclePieces(username: string, key: string, userId: string): Promise<{ v: number; pieces: ProfilePiece[] }> {
+  return get<{ v: number; pieces: ProfilePiece[] }>(`${linkBase(username, key)}/circle/${encodeURIComponent(userId)}`);
 }

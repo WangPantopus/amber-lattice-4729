@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -18,6 +18,7 @@ import PieceView from './PieceView';
 import PieceEditor, { type PieceEditorStart } from './PieceEditor';
 import OwnerWork from './OwnerWork';
 import RoleEditor from './RoleEditor';
+import CircleView from './CircleView';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -252,6 +253,10 @@ export default function SourcesProfile({
   const [editing, setEditing] = useState<PieceEditorStart | null>(null);
   // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
   const [tiesOn, setTiesOn] = useState(false);
+  // The work circle opened (board 9), and whether this page put `?circle=1` in the history.
+  const [circle, setCircle] = useState<'loading' | 'failed' | ProfileCircleRead | null>(null);
+  const pushedCircle = useRef(false);
+  const circleRound = useRef(0);
   // A role or school being added (`role: null`) or changed.
   const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
   // Each new read of the page (after a change) reads the owner's offers again.
@@ -345,9 +350,59 @@ export default function SourcesProfile({
     if (pushedPiece.current) { pushedPiece.current = false; window.history.back(); return; }
     dropPieceAddress.current();
   }, []);
+  const loadCircle = useCallback((quiet = false) => {
+    const round = ++circleRound.current;
+    // Open from now on, so the address isn't followed into a second read.
+    circleOpen.current = true;
+    setCircle('loading');
+    const read = viaLink ? api.profilePage.getLinkCircle(viaLink.username, viaLink.key) : api.profilePage.getCircle(personId, previewAs ? { as: previewAs } : undefined);
+    Promise.resolve(read).then(
+      (value) => { if (round === circleRound.current && mountedRef.current) setCircle(value); },
+      () => {
+        if (round !== circleRound.current || !mountedRef.current) return;
+        // Opened from its address and it doesn't open (404, a failed read): the plain page, the address cleaned.
+        if (quiet) { dropCircleAddress(); return; }
+        setCircle('failed');
+      },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dropCircleAddress reads only refs and the address
+  }, [personId, previewAs, viaLink]);
+  const circleInAddress = () => new URLSearchParams(window.location.search).get('circle') === '1';
+  const circleAddress = (on: boolean) => {
+    const params = new URLSearchParams(window.location.search);
+    if (on) params.set('circle', '1'); else params.delete('circle');
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  };
+  const dropCircleAddress = () => {
+    circleRound.current += 1;
+    circleOpen.current = false;
+    setCircle(null);
+    pushedCircle.current = false;
+    if (circleInAddress()) window.history.replaceState(window.history.state, '', circleAddress(false));
+  };
+  const openCircle = useCallback(() => {
+    if (!circleInAddress()) {
+      window.history.pushState(window.history.state, '', circleAddress(true));
+      pushedCircle.current = true;
+    }
+    loadCircle();
+  }, [loadCircle]);
+  const closeCircle = () => {
+    if (pushedCircle.current) { pushedCircle.current = false; window.history.back(); return; }
+    dropCircleAddress();
+  };
+  const circleOpen = useRef(false);
+  if (circle !== null) circleOpen.current = true;
+  const readCirclePieces = useCallback((userId: string) => (viaLink
+    ? api.profilePage.getLinkCirclePieces(viaLink.username, viaLink.key, userId)
+    : api.profilePage.getCirclePieces(personId, userId, previewAs ? { as: previewAs } : undefined)), [personId, previewAs, viaLink]);
+
   const followAddress = useRef(() => {});
   const mountedRef = useRef(false);
   followAddress.current = () => {
+    // The circle's address (`?circle=1`), then a piece's.
+    if (circleInAddress()) { if (!circleOpen.current) loadCircle(true); } else if (circleOpen.current) { pushedCircle.current = false; circleRound.current += 1; circleOpen.current = false; setCircle(null); }
     const id = pieceInAddress();
     if (id) {
       // Opened from its address (a reload, a sent link, Forward): a piece this viewer may not see opens nothing.
@@ -420,9 +475,10 @@ export default function SourcesProfile({
         return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(back)}`) } : null;
       }
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
+      case 'circle': return { onClick: () => openCircle() };
       default: return null;
     }
-  }, [tabs, openTab, load, openPiece, header.username, personId, router, viaLink]);
+  }, [tabs, openTab, load, openPiece, openCircle, header.username, personId, router, viaLink]);
 
   const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
   const personTarget = useCallback(
@@ -617,6 +673,16 @@ export default function SourcesProfile({
         onChange={owner ? (piece) => setEditing({ kind: 'edit', piece }) : null}
         viewerId={viewerId}
         onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); onChanged?.(); }}
+      />
+      <CircleView
+        open={circle !== null}
+        state={circle}
+        onClose={closeCircle}
+        onRetry={() => loadCircle()}
+        firstName={firstName}
+        center={{ name, portraitUrl: header.portrait_url ?? null }}
+        readPieces={readCirclePieces}
+        target={target}
       />
       {owner ? (
         <PieceEditor
