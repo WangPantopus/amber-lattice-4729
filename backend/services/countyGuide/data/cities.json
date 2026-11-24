@@ -169,6 +169,33 @@
       "built": 1953,
       "value": 334100
     },
+    "1724582": {
+      "name": "Evanston",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Evanston Community Development, Building and Development Services",
+          "url": "https://www.cityofevanston.org/departments/community_development/building_development_services/index.php",
+          "line": "Handles construction permitting, building inspections and property maintenance code enforcement; permit applications received on or after October 1, 2025 must comply with the Illinois Stretch Energy Code.",
+          "q": "Where do I find building permits in Evanston?",
+          "a": "The City of Evanston's Building and Development Services Division, in the Community Development Department, handles construction permitting, building inspections and property maintenance code enforcement. Its permit desk takes walk-ins Tuesday to Friday, 8:30 a.m. to noon."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Evanston Community Development, Planning and Zoning",
+          "url": "https://www.cityofevanston.org/departments/community_development/planning_zoning/index.php",
+          "line": "Administers the Zoning Ordinance, Title 6 of the Evanston City Code, processes applications for zoning relief such as variations, and reviews building applications for construction permits for compliance.",
+          "q": "Where is Evanston's zoning?",
+          "a": "The City of Evanston's Planning and Zoning Division administers the Zoning Ordinance, Title 6 of the Evanston City Code. It reviews proposals and applications for compliance, processes applications for zoning relief such as variations, and provides zoning information on properties in the city."
+        }
+      ],
+      "built": 1953,
+      "value": 481200
+    },
     "2758000": {
       "name": "Saint Paul",
       "county": "27123",
@@ -195,6 +222,34 @@
       ],
       "built": 1952,
       "value": 294500
+    },
+    "2935000": {
+      "name": "Independence",
+      "county": "29095",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Independence Community Development, Building Inspections Division",
+          "url": "https://www.independencemo.gov/government/city-departments/community-development/building-inspections-division",
+          "line": "Issues building, plumbing and electrical permits and inspects all new residential and commercial construction that has a permit; permits are applied for, paid, printed and searched online.",
+          "q": "Where do I find building permits in Independence?",
+          "a": "The City of Independence's Building Inspections Division issues permits, including plumbing, electrical and construction permits, and inspects new residential and commercial construction that has applied for a permit. Its page links applying for a permit, requesting an inspection and searching a permit's status online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Independence Community Development, Development Services",
+          "url": "https://www.independencemo.gov/government/city-departments/community-development/development-services",
+          "line": "Planning and Zoning staff administer the Unified Development Ordinance, which holds the zoning and subdivision regulations, and process zoning applications for the Planning Commission and Board of Adjustment.",
+          "q": "Where is Independence's zoning?",
+          "a": "The City of Independence's Planning and Zoning staff, in Development Services, administer the Unified Development Ordinance, which holds the City's zoning and subdivision regulations. They process zoning and development applications for recommendations to the Planning Commission and the Board of Adjustment."
+        }
+      ],
+      "other_counties": true,
+      "built": 1967,
+      "value": 172900
     },
     "2938000": {
       "name": "Kansas City",
@@ -223,6 +278,34 @@
       ],
       "built": 1969,
       "value": 242900
+    },
+    "2941348": {
+      "name": "Lee's Summit",
+      "county": "29095",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lee's Summit, Development Services",
+          "url": "https://cityofls.net/development-services/construction/permits",
+          "line": "Building permits for residential, commercial and other projects are available online or in person on the first floor of City Hall; a permit may be obtained by a licensed contractor, or by a homeowner for their primary residence only.",
+          "q": "Where do I find building permits in Lee's Summit?",
+          "a": "The City of Lee's Summit's Development Services Department issues building permits online or in person on the first floor of City Hall. A licensed contractor can obtain a permit, and so can a homeowner for their primary residence only."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lee's Summit Development Services, Unified Development Ordinance",
+          "url": "https://cityofls.net/development-services/planning-development/design/unified-development-ordinance",
+          "line": "The Unified Development Ordinance holds the City's zoning and subdivision platting regulations; in effect since November 1, 2001, it has been amended numerous times, and each article is posted with the date of its latest amendment.",
+          "q": "Where is Lee's Summit's zoning?",
+          "a": "Lee's Summit's zoning is in its Unified Development Ordinance, which includes the zoning and subdivision platting regulations that control the development and use of land. It took effect on November 1, 2001, has been amended numerous times since, and each article is posted separately with the date of its latest amendment."
+        }
+      ],
+      "other_counties": true,
+      "built": 1994,
+      "value": 340900
     },
     "3231900": {
       "name": "Henderson",
@@ -607,6 +690,34 @@
       "built": 1997,
       "value": 348200
     },
+    "4826232": {
+      "name": "Flower Mound",
+      "county": "48121",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Town of Flower Mound, Building Inspections",
+          "url": "https://www.flowermound.gov/170/Building-Information-and-Permits",
+          "line": "Permits are required before new construction or any addition, alteration or repair of buildings, structures, plumbing, electrical or mechanical work; many application types can be submitted online, and all permit fees are non-refundable.",
+          "q": "Where do I find building permits in Flower Mound?",
+          "a": "The Town of Flower Mound's Building Inspections Division reviews permit applications. A permit is required before new construction or any addition, alteration or repair of a building or its plumbing, electrical or mechanical work, and many application types can be submitted online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Town of Flower Mound, Planning Services",
+          "url": "https://www.flowermound.gov/138/Planning-Services",
+          "line": "Administers the Town's codes for developing commercial and residential property through the planning and zoning process; staff help with land use, zoning, plats, site plans, specific use permits and SMARTGrowth requirements.",
+          "q": "Where is Flower Mound's zoning?",
+          "a": "The Town of Flower Mound's Planning Services administers the Town's codes and regulations for developing commercial and residential property through the planning and zoning process. Its staff help with land use, zoning, development plans, plats, site plans, specific use permits and SMARTGrowth requirements."
+        }
+      ],
+      "other_counties": true,
+      "built": 1997,
+      "value": 560200
+    },
     "4829000": {
       "name": "Garland",
       "county": "48113",
@@ -635,6 +746,34 @@
       "built": 1978,
       "value": 270800
     },
+    "4842508": {
+      "name": "Lewisville",
+      "county": "48121",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lewisville, Building Services",
+          "url": "https://www.cityoflewisville.com/for-business/building-services/building-permits",
+          "line": "Manages plan review, permitting and inspection of private construction under the City's ordinances and adopted Building Codes; permit and inspection requests go through MGO Connect, which needs an account.",
+          "q": "Where do I find building permits in Lewisville?",
+          "a": "The City of Lewisville's Building Services Division manages plan review, permitting and inspection of private construction. A home remodel needs a building permit from the City first, and permit and inspection requests go through MGO Connect, which needs an account."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lewisville, Planning Department",
+          "url": "https://www.cityoflewisville.com/city-hall/city-departments/planning",
+          "line": "Oversees land use planning and the daily work of development and zoning review, with the Planning and Zoning Commission and the Zoning Board of Adjustment; its page links the Unified Development Code and the City's interactive map.",
+          "q": "Where is Lewisville's zoning?",
+          "a": "The City of Lewisville's Planning Department oversees land use planning and the daily work of development and zoning review. It works with the Planning and Zoning Commission and the Zoning Board of Adjustment, and its page links the City's Unified Development Code and interactive map."
+        }
+      ],
+      "other_counties": true,
+      "built": 1997,
+      "value": 378500
+    },
     "4870808": {
       "name": "Sugar Land",
       "county": "48157",
@@ -662,6 +801,34 @@
       "built": 1994,
       "value": 430200
     },
+    "5303180": {
+      "name": "Auburn",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Auburn Community Development, Building Services",
+          "url": "https://www.auburnwa.gov/city_hall/community_development/building_services___permitting",
+          "line": "Checks plans, issues building permits and inspects permitted construction, additions and alterations for compliance with the Building Codes and Auburn City Code; the Permit Center answers questions by phone or email.",
+          "q": "Where do I find building permits in Auburn?",
+          "a": "The City of Auburn's Building Services division, in the Department of Community Development, checks plans, issues building permits and inspects permitted construction, additions and alterations. Questions go to the Permit Center by phone or email, with the site's parcel number or address."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Auburn Community Development, Planning Services",
+          "url": "https://www.auburnwa.gov/city_hall/community_development/zoning_land_use",
+          "line": "Administers the Zoning Code and reviews development projects for consistency with it; its page links the Auburn Zoning Map on the City's public GIS.",
+          "q": "Where is Auburn's zoning?",
+          "a": "The City of Auburn's Planning Services division administers the city's Zoning Code and reviews development projects for consistency with it. Its page links the Auburn Zoning Map on the City's public GIS."
+        }
+      ],
+      "other_counties": true,
+      "built": 1991,
+      "value": 547900
+    },
     "5305210": {
       "name": "Bellevue",
       "county": "53033",
@@ -688,6 +855,114 @@
       ],
       "built": 1982,
       "value": 1340300
+    },
+    "5323515": {
+      "name": "Federal Way",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Federal Way, Permit Center",
+          "url": "https://www.federalwaywa.gov/page/permit-center",
+          "line": "Staff at City Hall handle the application, review, issuance and inspection of land use and construction permits; applications that need review are submitted electronically through a requested upload link.",
+          "q": "Where do I find building permits in Federal Way?",
+          "a": "The City of Federal Way's Permit Center at City Hall handles the application, review, issuance and inspection of land use and construction permits. Applications that need review are submitted electronically, and records of a past or current project can be requested through the City's Public Records Request Center."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Federal Way, Planning Division",
+          "url": "https://www.federalwaywa.gov/page/planning-division",
+          "line": "Current Planning administers the zoning, subdivision, shoreline, environmental and critical area codes; Long Range Planning keeps the Federal Way Zoning Map and processes amendments to the Federal Way Revised Code, which holds the city's zoning.",
+          "q": "Where is Federal Way's zoning?",
+          "a": "The City of Federal Way's Planning Division administers the city's zoning code and processes amendments to the Federal Way Zoning Map. The zoning requirements are in the Federal Way Revised Code, and some projects, such as new multi-family developments, need a land-use permit before a building permit."
+        }
+      ],
+      "built": 1984,
+      "value": 552800
+    },
+    "5335940": {
+      "name": "Kirkland",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Kirkland, Development Services Center",
+          "url": "https://www.kirklandwa.gov/Government/Departments/Development-Services-Center",
+          "line": "Workgroups from Planning and Building, Public Works and Fire make up Development Services, on the upper floor of City Hall; its property search finds permit history, property tax and assessment records by address or parcel number.",
+          "q": "Where do I find building permits in Kirkland?",
+          "a": "The City of Kirkland's Development Services Center, on the upper floor of Kirkland City Hall, brings together development workgroups from the Planning and Building, Public Works and Fire departments. Its property search finds a Kirkland property's permit history, property tax and assessment records by address or parcel number."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Kirkland Planning and Building, Planning FAQs",
+          "url": "https://www.kirklandwa.gov/Government/Departments/Planning-and-Building/Planning-Frequently-Asked-Questions",
+          "line": "Zoning sets each property's development standards, such as setbacks and maximum height; a property's zone shows on the citywide Zoning Map, the Kirkland Maps GIS map and Property Search, and a rezone goes from the Planning Commission to the City Council.",
+          "q": "Where is Kirkland's zoning?",
+          "a": "The City of Kirkland's zoning regulations set the development standards, such as setbacks and maximum height, that apply to each property. A property's zone can be found on the citywide Zoning Map, on the Kirkland Maps GIS map or through Property Search, and the matching chapter of the Kirkland Zoning Code lists its permitted uses and standards."
+        }
+      ],
+      "built": 1984,
+      "value": 1115400
+    },
+    "5338038": {
+      "name": "Lakewood",
+      "county": "53053",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Lakewood Planning and Public Works, Permit Center",
+          "url": "https://cityoflakewood.us/permit-center/",
+          "line": "Permits are applied for and tracked in the Online Permit Center, and the Permit Search Portal looks up general permit information; the City is not a full-service agency, so sewer, water, electrical and fire safety permits come from outside agencies.",
+          "q": "Where do I find building permits in Lakewood?",
+          "a": "The City of Lakewood's Planning and Public Works Department takes permit applications through its Online Permit Center, and its Permit Search Portal looks up general information on permits. The City is not a full-service agency: sewer, water, electrical and fire safety permits, reviews and inspections are done by outside agencies."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Lakewood Planning and Public Works, Planning Division",
+          "url": "https://cityoflakewood.us/planning/",
+          "line": "Reviews land use permit applications against the Comprehensive Plan and the Land Use Development Regulations; the 2026 amendments to the Comprehensive Plan, Zoning Map and development regulations took effect October 21, 2026.",
+          "q": "Where is Lakewood's zoning?",
+          "a": "The City of Lakewood's Planning Division reviews land use permit applications for consistency with the City's Comprehensive Plan and Land Use Development Regulations, and coordinates their annual updates. Its 2026 amendments to the Comprehensive Plan, Zoning Map and development regulations took effect October 21, 2026."
+        }
+      ],
+      "built": 1975,
+      "value": 461200
+    },
+    "5357535": {
+      "name": "Redmond",
+      "county": "53033",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Redmond, Development Services Center",
+          "url": "https://www.redmond.gov/898/Development-Services",
+          "line": "Reviews and issues land use and construction permits, from simple same-day permits to complex projects; staff from Planning, Building, Civil and Fire Prevention answer questions and guide applications.",
+          "q": "Where do I find building permits in Redmond?",
+          "a": "The City of Redmond's Development Services Center reviews and issues land use and construction permits, from simple same-day permits to complex development projects. Its staff from Planning, Building, Civil and Fire Prevention answer questions and guide people through the application process."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Redmond Planning, Zoning District Consolidation",
+          "url": "https://www.redmond.gov/2106/Zoning-District-Consolidation",
+          "line": "Under the Redmond 2050 Comprehensive Plan the city went from 50 zones to 20; since January 1, 2025, two residential zones have replaced eleven earlier ones, and the page's table gives each earlier zone's current one.",
+          "q": "Where is Redmond's zoning?",
+          "a": "Redmond's zoning districts were rewritten under the Redmond 2050 Comprehensive Plan, going from 50 zones to 20; since January 1, 2025, two residential zones have replaced eleven earlier ones. The City's page has a table of each earlier zone and its current zone, an interactive map and the zoning map effective June 28, 2025."
+        }
+      ],
+      "built": 1993,
+      "value": 1167800
     },
     "5363000": {
       "name": "Seattle",
