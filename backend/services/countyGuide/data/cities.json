@@ -278,6 +278,33 @@
       "built": 1994,
       "value": 427900
     },
+    "3251800": {
+      "name": "North Las Vegas",
+      "county": "32003",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of North Las Vegas Development Services, Building Safety",
+          "url": "https://www.cityofnorthlasvegas.com/business/development-services/building-safety",
+          "line": "Reviews plans, issues permits and inspects work under the city's code; many permits come through the Citizen Self-Service portal, and for a new single-family home the permit becomes the certificate of occupancy after the final inspection.",
+          "q": "Where do I find building permits in North Las Vegas?",
+          "a": "The City of North Las Vegas's Building Safety Division reviews plans, issues building permits and inspects the work. Many permits and inspection requests go through its Citizen Self-Service portal, which needs an account."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of North Las Vegas, Planning and Zoning",
+          "url": "https://www.cityofnorthlasvegas.com/business/planning-and-zoning",
+          "line": "Current Planning reviews every development application, from land use proposals to building permits and home occupations; its page takes zoning verification letter requests.",
+          "q": "Where is North Las Vegas's zoning?",
+          "a": "The City of North Las Vegas's Planning and Zoning Division reviews every development application in the city, approving it or sending recommendations to the Planning Commission and City Council, and its page takes requests for zoning verification letters."
+        }
+      ],
+      "built": 2003,
+      "value": 404400
+    },
     "3722920": {
       "name": "Fayetteville",
       "county": "37051",
@@ -359,6 +386,33 @@
       ],
       "built": 1980,
       "value": 252900
+    },
+    "4023200": {
+      "name": "Edmond",
+      "county": "40109",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Edmond, Residential Building Permits",
+          "url": "https://www.edmondok.gov/1938/Residential-Building-Permits",
+          "line": "Sorts home projects into the City's permit types: a new house, townhouse or duplex, an accessory building of 200 square feet or more, an alteration, or an addition.",
+          "q": "Where do I find building permits in Edmond?",
+          "a": "The City of Edmond issues residential building permits, sorted by project: a new house, townhouse or duplex, an accessory building of 200 square feet or more, an alteration, or an addition. Accessory dwelling units have their own permit."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Edmond, Zoning",
+          "url": "https://www.edmondok.gov/1478/Zoning",
+          "line": "Rezoning follows the Edmond Plan, the City's comprehensive plan; a request that doesn't fit its land-use category first needs a plan amendment from the Planning Commission.",
+          "q": "Where is Edmond's zoning?",
+          "a": "The City of Edmond's zoning follows the Edmond Plan, its comprehensive plan. A rezoning request whose land use doesn't fit the plan's category first needs a comprehensive plan amendment approved by the Planning Commission."
+        }
+      ],
+      "built": 1993,
+      "value": 351400
     },
     "4055000": {
       "name": "Oklahoma City",
@@ -525,6 +579,33 @@
       ],
       "built": 1981,
       "value": 320700
+    },
+    "4819972": {
+      "name": "Denton",
+      "county": "48121",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Denton Building Safety, Residential Permits",
+          "url": "https://www.cityofdenton.com/622/Residential-Permits",
+          "line": "Permits applied for since June 1, 2022 must meet the 2021 International Building Codes; inspections are scheduled through the eTRAKiT portal, and no certificate of occupancy is issued for homes.",
+          "q": "Where do I find building permits in Denton?",
+          "a": "The City of Denton's Building Safety Division issues residential building permits; permits applied for since June 1, 2022 must meet the 2021 International Building Codes. Inspections are scheduled through its eTRAKiT portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Denton, Community Design and Zoning",
+          "url": "https://www.cityofdenton.com/1181/Community-Design-and-Zoning",
+          "line": "Every property in the city has a zoning designation regulating its uses, and the Denton Development Code sets design standards; a zoning change takes a public hearing before City Council.",
+          "q": "Where is Denton's zoning?",
+          "a": "Every property in the City of Denton has a zoning designation that regulates its uses, and the Denton Development Code sets the design standards for new development. A zoning change takes a public hearing before the City Council; the page links the City's zoning map."
+        }
+      ],
+      "built": 1997,
+      "value": 348200
     },
     "4829000": {
       "name": "Garland",
