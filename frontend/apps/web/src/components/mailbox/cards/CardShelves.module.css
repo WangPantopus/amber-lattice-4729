@@ -18,12 +18,11 @@
 }
 
 /* A row that scrolls sideways and settles on a card's leading edge; the next card always peeks in. */
-/* A row runs to the edges of what the page scrolls in (the screen at phone width; the flow's whole panel on a wider
-   screen), its first card in line with the column: --bleed-l and --bleed-r are the gaps on each side (16 px on a
-   phone), measured by the shelves. */
+/* A row runs to the edges of its page (the screen at phone width; the flow's wide page on a wider screen), through the
+   page's 16 px of padding, its first card in line with the headings. */
 .bleed {
-  margin-left: calc(-1 * var(--bleed-l, 16px));
-  margin-right: calc(-1 * var(--bleed-r, 16px));
+  margin-left: -16px;
+  margin-right: -16px;
 }
 
 .row {
@@ -33,8 +32,8 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
-  scroll-padding-inline: var(--bleed-l, 16px) var(--bleed-r, 16px);
-  padding: 4px var(--bleed-r, 16px) 8px var(--bleed-l, 16px);
+  scroll-padding-inline: 16px;
+  padding: 4px 16px 8px;
   scrollbar-width: none;
 }
 

@@ -23,7 +23,8 @@ import ErrorState from '@/components/ui/ErrorState';
 import SendCardRow from '@/components/mailbox/cards/SendCardRow';
 import SentList from '@/components/mailbox/sent/SentList';
 import { startCardRun } from '@/components/mailbox/cards/cardRun';
-import MailMantel from '@/components/mailbox/cards/MailMantel';
+import MailMantel, { mantelCards } from '@/components/mailbox/cards/MailMantel';
+import { MailboxRest, useMailWide } from '@/components/mailbox/MailboxToday';
 
 // ── Types ────────────────────────────────────────────────────
 type DrawerParam = MailboxDrawer;
@@ -73,6 +74,7 @@ export default function DrawerLayout({
 function SentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const selectedId = pathname.match(/\/mailbox\/sent\/([^/]+)/)?.[1];
+  const wide = useMailWide();
   return (
     <div className="md:flex md:h-full md:overflow-hidden">
       <div
@@ -86,7 +88,7 @@ function SentLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <div className={`md:flex-1 min-w-0 md:overflow-hidden ${selectedId ? '' : 'hidden md:block'}`}>
-        {children}
+        {wide && !selectedId ? <MailboxRest personal={false} line="Choose something you sent to see how it reached them." /> : children}
       </div>
     </div>
   );
@@ -180,6 +182,7 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
   }, [welcome, porchKey]);
   const ownAddress = homes?.find((home) => home.mail_access === 'open')?.address_line ?? null;
   const { deliveryOpening } = useMailboxContext();
+  const wide = useMailWide();
 
   // ── Infinite scroll ─────────────────────────────────────
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -249,6 +252,9 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
   }
 
   let slideIndex = 0;
+  const mantel = drawer === 'personal' && launchFeatures.cardTable && !homeId && mantelCards(allItems).length > 0
+    ? <MailMantel items={allItems} onOpen={handleItemClick} />
+    : null;
 
   // Phones scroll the page (the Mailbox layout); from md up the list and the
   // letter scroll side by side.
@@ -274,8 +280,8 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
         {/* Item list */}
         <div className="md:flex-1 md:overflow-y-auto">
           {/* The mantel (mail-cards-experience Part 7): this season's opened cards on a shelf, the first thing in your
-              own mail; it scrolls away with the list. */}
-          {drawer === 'personal' && launchFeatures.cardTable && !homeId ? <MailMantel items={allItems} onOpen={handleItemClick} /> : null}
+              own mail; it scrolls away with the list. A wide window gives it the pane beside the list. */}
+          {mantel && !wide ? mantel : null}
           {/* Christmas cards (holiday_cards): the way in, at the top of your own mail */}
           {drawer === 'personal' ? <SendCardRow /> : null}
           {!homeLocked ? lockedHomes.map((home) => <HomeLockedBox key={home.home_id} home={home} compact />) : null}
@@ -371,7 +377,8 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
           isItemView ? '' : 'hidden md:block'
         }`}
       >
-        {children}
+        {/* A wide window with no mail open: the mantel along the top, your mailbox and today's delivery under it. */}
+        {wide && !isItemView ? <MailboxRest personal={drawer === 'personal'} line="Choose a piece of mail to open it.">{mantel}</MailboxRest> : children}
       </div>
 
       {/* The welcome letter arrives on the table (design plan Part 10, launch key card_table): the cream envelope with
