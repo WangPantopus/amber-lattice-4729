@@ -4136,6 +4136,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenOwnership = { homeId ->
                             navController.navigate(ChildRoutes.homeOwnershipSecurity(homeId))
                         },
+                        onOpenRecord = { homeId -> navController.navigate(ChildRoutes.homeRecord(homeId)) },
                         onOpenPropertyDetails = { homeId ->
                             navController.navigate(ChildRoutes.propertyDetails(homeId))
                         },
@@ -7639,6 +7640,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             onSignIn = { navController.popBackStack() },
                             onCreateAccount = { navController.popBackStack() },
                             onSavePreview = { confirming = true },
+                            onSetUpHome = { address -> navController.navigate(ChildRoutes.addHomeAt(address)) },
                         )
                     } else {
                         // Its own host: the arrival step for the preview just kept, over this lookup only.
@@ -8494,6 +8496,7 @@ private fun PlaceTabRoot(
                         onCreateAccount = {},
                         onSavePreview = host::openArrival,
                         embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu, addressFocus),
+                        onSetUpHome = { address -> navController.navigate(ChildRoutes.addHomeAt(address)) },
                     )
                 }
         }
