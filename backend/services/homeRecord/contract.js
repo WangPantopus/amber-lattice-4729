@@ -61,7 +61,11 @@ function check(answer) {
     if (why) logger.warn('homeRecord.block_left_out', { kind: block?.kind || null, id: block?.id || null, why });
     return !why;
   });
-  return { ...answer, header: { ...answer.header, chip: isChip(answer.header.chip) ? answer.header.chip : null }, blocks };
+  // The buyer's row of actions (SPEC section 8): save, share, claim; a client skips an id it doesn't know.
+  const actions = Array.isArray(answer.actions)
+    ? answer.actions.filter((action) => ['save', 'share', 'claim'].includes(action?.id) && isLink(action))
+    : undefined;
+  return { ...answer, header: { ...answer.header, chip: isChip(answer.header.chip) ? answer.header.chip : null }, ...(actions ? { actions } : {}), blocks };
 }
 
 module.exports = { check, KINDS };

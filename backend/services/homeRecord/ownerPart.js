@@ -303,4 +303,44 @@ async function ownerBlocks({ row, copy, extras, above = null, open }) {
   ].filter(Boolean);
 }
 
-module.exports = { ownerBlocks, valueBlock, estimatePart };
+/**
+ * A buyer's systems block (SPEC section 8): ages from the year built only, never from what a household said. Permits
+ * will date a system here too once they are held.
+ */
+function buyerSystemsBlock(copy) {
+  const yearBuilt = positive(copy?.facts?.year_built);
+  if (!yearBuilt) return null;
+  const items = homeSystemsService.SYSTEM_DEFS.filter((def) => SYSTEMS_SHOWN.includes(def.key))
+    .map((def) => homeSystemsService.projectSystem(def, null, yearBuilt))
+    .filter((system) => system.age_years != null)
+    .map((system) => ({
+      title: SYSTEM_TITLES[system.key] || system.label,
+      right: `About ${system.age_years} ${system.age_years === 1 ? 'year' : 'years'} old`,
+      tone: SYSTEM_TONES[system.status] || 'low',
+      fill: Math.round(Math.max(0, Math.min(1, system.age_years / system.typical_life_high)) * 100) / 100,
+      line: `${system.source_label} \u00b7 typical life ${system.typical_life_low} to ${system.typical_life_high} years`,
+    }));
+  if (!items.length) return null;
+  return {
+    kind: 'bars', id: 'systems', title: 'What that says about the house', items,
+    note: 'From year built only. An owner may know more. Service life is the typical range, not a prediction.',
+  };
+}
+
+/**
+ * A signed-in buyer's opened county blocks (SPEC section 8, the public half), in the drawn order. Only for a county on
+ * `buyer_report`; the caller checks. Nothing the owner added: no exemptions, tax status, mortgage insurance or systems
+ * the household dated.
+ */
+function buyerCountyBlocks({ copy, extras, state }) {
+  if (!copy) return [];
+  return [
+    valueBlock(copy, extras.estimate) || valueCardBlock(copy, extras.estimate, extras.similar, state),
+    historyBlock(copy) || lastSaleBlock(copy, state),
+    taxBlock(copy),
+    similarBlock(copy, extras.similar),
+    buyerSystemsBlock(copy),
+  ];
+}
+
+module.exports = { ownerBlocks, buyerCountyBlocks, lotBlock, valueBlock, estimatePart };

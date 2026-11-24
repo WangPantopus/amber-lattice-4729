@@ -4,13 +4,16 @@
 // The server draws the page as a list of blocks (contract v1, docs/product/home-record/README.md); a client draws each
 // block and skips a kind it doesn't know, so later pieces arrive with a server release. Strings are final words.
 //
-//   GET /api/public/home-record?address=…   the `lookup` state, for anyone who looked up an address
+//   GET /api/public/home-record?address=…   `lookup` signed out, `buyer` signed in (the public half opened)
+//   GET /api/saved-places/:id/record         `buyer` for a saved address
 //   GET /api/homes/:id/record                `member` or `owner`, from the viewer's standing on the Home
 // ============================================================
 
 import { get } from '../client';
 
-export type HomeRecordState = 'lookup' | 'member' | 'owner';
+export type HomeRecordState = 'lookup' | 'buyer' | 'member' | 'owner';
+/** A buyer's row of actions under the header. A client skips an id it doesn't know. */
+export type HomeRecordAction = { id: 'save' | 'share' | 'claim' | string; label: string; url: string };
 export type HomeRecordChip = { tone: 'success' | 'warning' | 'neutral'; text: string };
 export type HomeRecordLink = { label: string; url: string };
 export type HomeRecordTone = 'low' | 'mid' | 'high';
@@ -88,6 +91,8 @@ export interface HomeRecord {
   v: number;
   state: HomeRecordState;
   header: { chip: HomeRecordChip | null; title: string; subtitle: string | null };
+  /** The buyer state only. */
+  actions?: HomeRecordAction[];
   /** In order. A kind this build doesn't know arrives as an object it skips. */
   blocks: Array<HomeRecordBlock | { kind: string; id: string }>;
   footer: string | null;
@@ -101,4 +106,9 @@ export async function getPublicHomeRecord(address: string): Promise<HomeRecord> 
 /** GET /api/homes/:id/record — the record for a person's Home (backend/routes/homeRecordPage.js). */
 export async function getHomeRecord(homeId: string): Promise<HomeRecord> {
   return get<HomeRecord>(`/api/homes/${encodeURIComponent(homeId)}/record`);
+}
+
+/** GET /api/saved-places/:id/record — a saved address's public record, the `buyer` state (backend/routes/savedPlaces.js). */
+export async function getSavedPlaceRecord(savedPlaceId: string): Promise<HomeRecord> {
+  return get<HomeRecord>(`/api/saved-places/${encodeURIComponent(savedPlaceId)}/record`);
 }
