@@ -5094,8 +5094,14 @@ router.get('/claim/:mailId', async (req, res) => {
     if (card) previewText = null;
     // A travelling card (card_travel): its envelope's postmarks and how far it came, towns and dates only (Part 7).
     const travel = card?.travel ? await cardTravel.linkView(mail.id).catch(() => null) : null;
-    // Counted signed out, so link-preview robots that read the page count too: a ceiling, not people.
-    if (card) void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas' } });
+    // Counted signed out, so a ceiling, not people. The web's /open page reads this twice per visit: once from its server
+    // (no Origin, Node's own user agent) to pick its share picture, which is also all a link-preview robot causes, and
+    // once from the browser. That first read is marked `web_server`, so the report can leave it out.
+    if (card) {
+      const webServer = !req.get('origin') && /^(node|undici)\b/i.test(String(req.get('user-agent') || ''));
+      void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas',
+        ...(webServer ? { web_server: true } : {}) } });
+    }
 
     return res.json({
       mail: {
