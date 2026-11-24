@@ -9,7 +9,7 @@
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
-  AlertTriangle, BarChart3, Bell, Check, EyeOff, FileText, History, Home, Image as ImageIcon, Landmark, Layers, Lock, Mail,
+  AlertTriangle, BarChart3, Bell, Bookmark, Check, EyeOff, KeyRound, Share2, FileText, History, Home, Image as ImageIcon, Landmark, Layers, Lock, Mail,
   Percent, ShieldCheck, Tag, TrendingUp, Wrench, type LucideIcon,
 } from 'lucide-react';
 import type * as api from '@pantopus/api';
@@ -434,8 +434,44 @@ function BlockView({ block, onAppLink }: { block: Record_['blocks'][number]; onA
   }
 }
 
-/** The whole record: header, blocks in order, footer. */
-export default function HomeRecordView({ record, onAppLink }: { record: Record_; onAppLink?: (url: string) => boolean }) {
+const ACTION_ICONS: Record<string, LucideIcon> = { save: Bookmark, share: Share2, claim: KeyRound };
+
+/**
+ * A buyer's actions under the header (save, share, claim). The page says what each does (`onAction`) and may replace a
+ * label after it ran ("Saved", "Link copied"). An id this build doesn't know is skipped.
+ */
+function ActionsRow({ actions, onAction, labels }: {
+  actions: api.homeRecord.HomeRecordAction[];
+  onAction: (action: api.homeRecord.HomeRecordAction) => void;
+  labels?: Record<string, { text: string; done?: boolean }>;
+}) {
+  const known = actions.filter((action) => ACTION_ICONS[action.id]);
+  if (!known.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="home-record-actions">
+      {known.map((action) => {
+        const Icon = ACTION_ICONS[action.id];
+        const shown = labels?.[action.id];
+        return (
+          <button key={action.id} type="button" onClick={() => onAction(action)} disabled={shown?.done}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-app-border bg-app-surface px-3.5 text-[13.5px] font-semibold text-app-text shadow-sm hover:bg-app-hover disabled:opacity-70"
+            data-testid={`home-record-action-${action.id}`}>
+            {shown?.done ? <Check className="h-4 w-4" aria-hidden="true" /> : <Icon className="h-4 w-4" aria-hidden="true" />}
+            {shown?.text ?? action.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The whole record: header, the buyer's actions, blocks in order, footer. */
+export default function HomeRecordView({ record, onAppLink, onAction, actionLabels }: {
+  record: Record_;
+  onAppLink?: (url: string) => boolean;
+  onAction?: (action: api.homeRecord.HomeRecordAction) => void;
+  actionLabels?: Record<string, { text: string; done?: boolean }>;
+}) {
   return (
     <article className="flex flex-col gap-3" data-testid="home-record" data-state={record.state}>
       <header className="mb-1 flex flex-col gap-2">
@@ -445,6 +481,7 @@ export default function HomeRecordView({ record, onAppLink }: { record: Record_;
         <h1 className="text-[28px] leading-8 font-bold -tracking-[0.02em] text-app-text">{record.header.title}</h1>
         {record.header.subtitle ? <p className="text-[15px] leading-[21px] text-app-text-secondary">{record.header.subtitle}</p> : null}
       </header>
+      {record.actions?.length && onAction ? <ActionsRow actions={record.actions} onAction={onAction} labels={actionLabels} /> : null}
       {record.blocks.map((block) => <BlockView key={`${block.kind}:${block.id}`} block={block} onAppLink={onAppLink} />)}
       {record.footer ? <p className="mx-1 mt-3 text-xs text-app-text-secondary">{record.footer}</p> : null}
     </article>

@@ -1,8 +1,9 @@
 'use client';
 
 // The lookup's record page: reads the looked-up address from the lookup's own device-local preview (by its opaque id)
-// and draws the server's `lookup` answer. Its promise buttons carry the same preview on: signed in, to Place, which
-// adds the Home at that address; signed out, to sign-up, which keeps it (the lookup's own continuation).
+// and draws the server's answer: `lookup` signed out, `buyer` signed in (the public half opened, SPEC section 8). Its
+// claim buttons carry the same preview on: signed in, to Place, which adds the Home at that address; signed out, to
+// sign-up, which keeps it. "Create a free account" and "Sign in" come back to this page.
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import * as api from '@pantopus/api';
 import HomeRecordView from '@/components/homeRecord/HomeRecordView';
+import { useBuyerActions } from '@/components/homeRecord/useBuyerActions';
 import { readPendingPlace } from '@/components/place/pendingPlace';
 import { isDailyLookupLimit, lookupLimitMessage } from '@/components/place/lookupLimit';
 import { authPageHref } from '@/lib/auth-utils';
@@ -22,11 +24,14 @@ function Record() {
   const router = useRouter();
   const previewId = useSearchParams().get('preview') || '';
   // Read on the device only, after the first render: storage doesn't exist on the server.
-  const [address, setAddress] = useState<string | null | undefined>(undefined);
-  useEffect(() => { setAddress(readPendingPlace(previewId)?.label ?? null); }, [previewId]);
+  const [draft, setDraft] = useState<ReturnType<typeof readPendingPlace> | undefined>(undefined);
+  useEffect(() => { setDraft(readPendingPlace(previewId)); }, [previewId]);
+  const address = draft === undefined ? undefined : draft?.label ?? null;
+  const signedIn = api.hasActiveSession();
 
   const record = useQuery({
-    queryKey: ['public-home-record', address],
+    // Signing in changes the answer (`lookup` to `buyer`), so the key names which.
+    queryKey: ['public-home-record', address, signedIn],
     queryFn: () => api.homeRecord.getPublicHomeRecord(address as string),
     enabled: typeof address === 'string',
     staleTime: 5 * 60_000,
@@ -34,11 +39,20 @@ function Record() {
   });
 
   const continueWith = (url: string) => {
+    // An account opens the public record here: sign-up and sign-in come back to this page.
+    const here = `/start/record?preview=${previewId}`;
+    if (url === '/auth/sign-up') { router.push(authPageHref('/register', here)); return true; }
+    if (url === '/auth/sign-in') { router.push(authPageHref('/login', here)); return true; }
     if (!LOOKUP_LINKS.has(url)) return false;
     const next = `/app/place?preview=${previewId}`;
-    router.push(api.hasActiveSession() ? next : authPageHref('/register', next));
+    router.push(signedIn ? next : authPageHref('/register', next));
     return true;
   };
+  const buyer = useBuyerActions({
+    record: record.data,
+    place: draft ? { label: draft.label, latitude: draft.latitude, longitude: draft.longitude, city: draft.city, state: draft.state } : null,
+    onClaim: (url) => { continueWith(url); },
+  });
 
   return (
     <main className="min-h-screen bg-app-bg">
@@ -47,7 +61,7 @@ function Record() {
           <button type="button" onClick={() => router.back()} aria-label="Back" className="-ml-3 flex h-11 w-11 items-center justify-center text-app-text">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <span className="text-[15px] font-semibold text-app-text-strong">This home&apos;s record</span>
+          <span className="text-[15px] font-semibold text-app-text-strong">{record.data?.state === 'buyer' ? 'This home\u2019s public record' : 'This home\u2019s record'}</span>
           <span className="w-8" />
         </div>
 
@@ -76,7 +90,8 @@ function Record() {
           </div>
         ) : null}
 
-        {record.data ? <HomeRecordView record={record.data} onAppLink={continueWith} /> : null}
+        {buyer.problem ? <p role="alert" className="mb-3 rounded-xl border border-app-border bg-app-surface px-4 py-3 text-sm text-app-text-secondary">{buyer.problem}</p> : null}
+        {record.data ? <HomeRecordView record={record.data} onAppLink={continueWith} onAction={buyer.onAction} actionLabels={buyer.labels} /> : null}
       </div>
     </main>
   );

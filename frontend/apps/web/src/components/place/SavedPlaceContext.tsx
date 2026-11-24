@@ -98,6 +98,7 @@ export default function SavedPlaceContext({ previewId, savedPlaceId, claimInRevi
         </label> : null}
         <p className="mt-3 text-sm text-app-text-secondary">Household tools and verification are a separate step. Your saved address does not give access to anyone else’s household.</p>
         <div className="mt-4 flex flex-wrap gap-4">
+          <button onClick={() => router.push(`/app/saved-places/${encodeURIComponent(active.id)}/record`)} className="font-semibold text-primary-700 dark:text-primary-300" data-testid="saved-place-record">See this home&apos;s public record</button>
           <button onClick={setup} className="font-semibold text-primary-700 dark:text-primary-300">Set up this home</button>
           <button disabled={removing} className="text-app-text-secondary disabled:opacity-50" onClick={async () => {
             setRemoving(true); setError('');
