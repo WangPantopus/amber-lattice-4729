@@ -63,6 +63,8 @@ const CITIES = [
   // November 24, 2026, seventeenth: Homestead and Doral (Miami-Dade County), FL; Chino Hills (San Bernardino County),
   // CA; Palatine (Cook County), IL.
   '1232275', '1217935', '0613214', '1757225',
+  // November 24, 2026, eighteenth: Des Plaines (Cook County), IL; Sanford (Seminole County), FL.
+  '1719642', '1263650',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.

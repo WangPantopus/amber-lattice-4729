@@ -303,6 +303,33 @@
       "built": 2005,
       "value": 362500
     },
+    "1263650": {
+      "name": "Sanford",
+      "county": "12117",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sanford Development Services, Building Division",
+          "url": "https://sanfordfl.gov/government/development-services/building-division/",
+          "line": "Issues building permits, performs field inspections and issues certificates of occupancy under the Florida Building Code; all building permitting is on the Citizenserve online portal, where permit status, fees and inspections are handled.",
+          "q": "Where do I find building permits in Sanford?",
+          "a": "The City of Sanford's Building Division issues building permits, performs field inspections and issues certificates of occupancy, enforcing the Florida Building Code, State Statutes and City Ordinances. All building permitting is on its Citizenserve online portal, where people can check permit status, pay fees and schedule inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sanford Development Services, Planning Division",
+          "url": "https://sanfordfl.gov/government/development-services/planning/",
+          "line": "Reviews zoning and subdivision applications and maintains the Comprehensive Plan, the Zoning Ordinances and the maps that set the rules for land use and development.",
+          "q": "Where is Sanford's zoning?",
+          "a": "The City of Sanford's Planning Division reviews zoning and subdivision applications and oversees applications for discretionary permits. It maintains the Comprehensive Plan, Zoning Ordinances and maps that provide the policy and regulatory bases for land use and development."
+        }
+      ],
+      "built": 1994,
+      "value": 309300
+    },
     "1264175": {
       "name": "Sarasota",
       "county": "12115",
@@ -411,6 +438,33 @@
       ],
       "built": 1953,
       "value": 334100
+    },
+    "1719642": {
+      "name": "Des Plaines",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Des Plaines Community and Economic Development, Building and Permits",
+          "url": "https://www.desplainesil.gov/Departments/Community-and-Economic-Development/Building-and-Permits",
+          "line": "Building permit applications and field work must comply with the City's building codes; on December 15, 2025 the City Council adopted the 2021 I-Codes and the 2020 National Electric Code.",
+          "q": "Where do I find building permits in Des Plaines?",
+          "a": "The City of Des Plaines requires permits for certain construction projects and conducts building permit and code enforcement inspections. On December 15, 2025, the City Council adopted the 2021 I-Codes, including the International Residential Code, and the 2020 National Electric Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Des Plaines Community and Economic Development, Planning and Zoning",
+          "url": "https://www.desplainesil.gov/Departments/Community-and-Economic-Development/Planning-and-Zoning",
+          "line": "Zoning sets the areas where different types of buildings are allowed, from houses and apartments to businesses, factories and schools; the page has sections on what a lot is zoned, what can be done on it and which regulations apply.",
+          "q": "Where is Des Plaines' zoning?",
+          "a": "In Des Plaines, zoning sets the areas where different types of buildings are allowed, such as houses, apartments, businesses, factories and schools. The City's Planning and Zoning page has sections on what a lot is zoned, what can be done on it and which regulations apply, and it takes zoning questions by email."
+        }
+      ],
+      "built": 1966,
+      "value": 335600
     },
     "1724582": {
       "name": "Evanston",
