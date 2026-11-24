@@ -105,8 +105,9 @@ async function openFor(req, found, { viewOverride, keyed = false, rows } = {}) {
   const [canOpen, personRows] = await Promise.all([
     (async () => {
       if (isOwner) return true;
-      // A link for one purpose: its key is the invitation, so search settings don't stop it; a private profile does.
-      if (keyed) return (userData.profile_visibility || 'public') !== 'private';
+      // A link for one purpose: its key is the invitation, whatever the profile's visibility, private included
+      // (founder, SPEC 9.11). It shows only that link's parts; blocks are refused by the caller (index.openByKey).
+      if (keyed) return true;
       if (preview) return (await previewProfileAccess(PREVIEW_AUDIENCE[preview], userData, localProfileRouteMatch)).canOpen;
       if (localProfileRouteMatch) return canAccessLegacyLocalProfileRoute(localProfileRouteMatch, viewerId, userData);
       return canAccessPublicUserProfile(viewerId, userData.id, userData.profile_visibility || 'public');
