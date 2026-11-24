@@ -283,3 +283,57 @@ export async function findCreatorAccounts(q: string): Promise<{ accounts: Creato
 export async function giveCreatorCode(userId: string, code: string): Promise<{ account: CreatorAccount; code: string; link: string }> {
   return post('/api/admin/creators', { user_id: userId, code });
 }
+
+// ── Funnel summary (platform admins) ───────────────────────────
+
+/** Book sizes (5, 20, 50) to how many; null when the books couldn't be read. */
+export type FunnelBookCounts = Record<string, number> | null;
+
+/** Christmas cards for a window or one UTC day. Counts only: nobody is listed. */
+export interface FunnelCardCounts {
+  senders: number;
+  cards_sent: number;
+  cards_per_sender: number | null;
+  by_via: { person: number; email: number; link: number };
+  by_stamp: { free: number; paid: number; none: number };
+  travels: number;
+  taken_back: number;
+  /** Link pages read signed out by a browser or an app (a ceiling: the same person can open it again). */
+  pages_seen: number;
+  /** The web page's own server reads: one per web visit, and one per link preview. Not in pages_seen. */
+  page_server_reads: number;
+  codes_sent: number;
+  claimed: number;
+  /** Claims by an account made after the card was sealed. */
+  joined: number;
+  replies: number;
+  /** Cards passed on, one person each. */
+  passed_on: number;
+  /** People who passed a card on. */
+  passers: number;
+  /** Joiners who sent a card of their own within 7 days of taking theirs. */
+  joiners_who_sent: number;
+  books: FunnelBookCounts;
+  refunded: FunnelBookCounts;
+  sales_cents: number | null;
+  /** Joiners who sent their own, per sender. */
+  loop: number | null;
+}
+
+export interface FunnelSummary {
+  days: number;
+  since: string;
+  rows: number;
+  truncated: boolean;
+  ladder: { previews: number; aha_views: number; shares: number; walls: number; registers: number; accounts: number };
+  rates: Record<string, number | null>;
+  events: Record<string, number>;
+  plans: { events: Record<string, number>; rates: Record<string, number | null> };
+  activation: { cohort_users: number; activated_users: number; matured_users: number; activated_matured_users: number;
+    pending_users: number; matured_rate: number | null; truncated: boolean };
+  cards: FunnelCardCounts & { days: (FunnelCardCounts & { day: string })[] };
+}
+
+export async function getFunnelSummary(days = 30): Promise<FunnelSummary> {
+  return get(`/api/admin/funnel/summary?days=${encodeURIComponent(String(days))}`);
+}
