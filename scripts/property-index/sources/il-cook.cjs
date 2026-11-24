@@ -25,6 +25,10 @@ const ADDRESS_COLUMNS = ['pin', 'prop_address_full', 'prop_address_city_name', '
 const UNIVERSE_COLUMNS = ['pin', 'class', 'township_name', 'cook_municipality_name', 'nbhd_code', 'tax_code', 'school_elementary_district_name', 'school_secondary_district_name', 'school_unified_district_name'];
 const VALUE_COLUMNS = ['pin', 'year', 'mailed_bldg', 'mailed_land', 'mailed_tot', 'certified_bldg', 'certified_land', 'certified_tot', 'board_bldg', 'board_land', 'board_tot'];
 const SALE_COLUMNS = ['pin', 'sale_date', 'sale_price', 'doc_no', 'deed_type', 'sale_type', 'mydec_deed_type', 'num_parcels_sale'];
+// The Assessor's short deed types written as the transfer declaration's column writes the same kind, so each kind reads one way
+// in recorded history ("Warranty" and "Warranty Deed" are both the Assessor's own names for one kind of document; nothing about a
+// home is inferred). No other kinds are joined: a special warranty deed stays one.
+const DEED_IN_FULL = { 'Quit claim': 'Quit Claim Deed', Warranty: 'Warranty Deed', Trustee: 'Trustee Deed', Executor: 'Executor Deed' };
 
 // The Assessor's class code dictionary.
 const CLASS_WORDS = {
@@ -186,7 +190,7 @@ async function* build({ work }) {
     if (date) {
       if (!first || date < first) first = date;
       if (!saleLines.has(row.pin)) saleLines.set(row.pin, []);
-      saleLines.get(row.pin).push({ date, land: sold, home: sold && row.sale_type !== 'LAND', price: positive(row.sale_price), state: nameOf(row.mydec_deed_type), assessor: nameOf(row.deed_type), document: word(row.doc_no), parcels: positive(row.num_parcels_sale) });
+      saleLines.get(row.pin).push({ date, land: sold, home: sold && row.sale_type !== 'LAND', price: positive(row.sale_price), state: nameOf(row.mydec_deed_type), assessor: nameOf(DEED_IN_FULL[word(row.deed_type)] || row.deed_type), document: word(row.doc_no), parcels: positive(row.num_parcels_sale) });
     }
     if (!sold) continue;
     later(landSales, row);
