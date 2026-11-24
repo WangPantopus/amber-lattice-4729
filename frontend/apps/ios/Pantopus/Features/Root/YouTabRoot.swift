@@ -153,6 +153,8 @@ public enum YouRoute: Hashable {
     /// T6.3f / P14 — Home dashboard for a specific home, reached from
     /// the My homes row tap inside the You stack.
     case homeDashboard(homeId: String)
+    /// The Home's record page, from the Home profile's "Your home's record".
+    case homeRecord(homeId: String)
     /// Property details from the Home dashboard's "Property details" row
     /// (the Hub stack's `.propertyDetails`), and its correction form.
     case propertyDetails(homeId: String)
@@ -668,7 +670,7 @@ public struct YouTabRoot: View {
     /// Back (lists, `.homeDashboard`, placeholders).
     static func drawsOwnHeader(_ route: YouRoute) -> Bool {
         switch route {
-        case .savePlace, .maintenanceDetail, .billDetail, .pollDetail, .calendarEventDetail, .emergencyItem,
+        case .homeRecord, .savePlace, .maintenanceDetail, .billDetail, .pollDetail, .calendarEventDetail, .emergencyItem,
              .documentDetail, .packageDetail, .helpCenter, .publicProfile, .pulsePost,
              .legalContent, .privacySettings, .dataExport, .legal, .settings, .paymentsSettings,
              .mailItemDetail, .gigDetail, .listingDetail, .businessProfile, .editBusinessPage,
@@ -830,6 +832,21 @@ public struct YouTabRoot: View {
             }
         }
         path.append(.myHomes)
+    }
+
+    /// An app link on a Home's record page opens its screen on this stack; any
+    /// other link goes through the app's link router.
+    @MainActor
+    private func openHomeRecordLink(_ link: String) {
+        switch HomeRecordLinkTarget.resolve(link) {
+        case let .record(homeId): path.append(.homeRecord(homeId: homeId))
+        case let .claimOwnership(homeId): path.append(.claimOwnership(homeId: homeId))
+        case let .verifyResidency(homeId): path.append(.verifyResidency(homeId: homeId))
+        case let .waitingRoom(homeId): path.append(.waitingRoom(homeId: homeId))
+        // A Home's record never sends the lookup's id-less steps; Add Home is their place.
+        case .addLookedUpHome: path.append(.addHome)
+        case let .other(other): DeepLinkRouter.shared.handle(path: other)
+        }
     }
 
     @MainActor
@@ -1895,7 +1912,8 @@ public struct YouTabRoot: View {
                 onSavePreview: {
                     if path.last == .savePlace { path.removeLast() }
                     path.append(.placeArrival)
-                }
+                },
+                onAddHome: { address in path.append(.addHomeAt(address: address)) }
             )
         case .placeArrival:
             PendingPlaceView(
@@ -2473,7 +2491,14 @@ public struct YouTabRoot: View {
                 onSendMail: { _ in
                     Task { @MainActor in path.append(.ceremonialMail) }
                 },
-                onOpenOwnership: { id in path.append(.homeOwners(homeId: id)) }
+                onOpenOwnership: { id in path.append(.homeOwners(homeId: id)) },
+                onOpenRecord: { id in path.append(.homeRecord(homeId: id)) }
+            )
+        case let .homeRecord(homeId):
+            HomeRecordView(
+                source: .home(homeId: homeId),
+                onBack: { pop() },
+                onOpenAppLink: { link in openHomeRecordLink(link) }
             )
         case let .homeTasks(homeId):
             HouseholdTasksListView(

@@ -73,6 +73,15 @@ final class DeepLinkRouter {
         case homeOwnersTransfer(id: String)
         /// `pantopus://homes/:id/verify-landlord` — opens A12.5 / A12.6.
         case verifyLandlord(id: String)
+        /// `pantopus://homes/:id/record` — the Home's record page ("Your
+        /// home's record"), the link a notification about the record carries.
+        case homeRecord(id: String)
+        /// `pantopus://homes/:id/claim-owner` — starts the owner claim for that
+        /// Home (the record page's "Verify you own this home").
+        case homeClaimOwnership(id: String)
+        /// `pantopus://homes/:id/verify-residency` — verify your address at that
+        /// Home (the record page's "Verify your address").
+        case homeVerifyResidency(id: String)
         /// `pantopus://homes/:id/verify-postcard` — opens the A12.7
         /// sibling status screen directly.
         /// `code` is the card's code from a scanned link's `#c=` fragment (FASTVERIFY), filled into the code field.
@@ -966,6 +975,12 @@ final class DeepLinkRouter {
         // Waiting Room, which offers both upload and verify-by-mail.
         if trailing.first == "claim-owner", trailing.dropFirst().first == "evidence" {
             return .waitingRoom(id: id)
+        }
+        // The home record page and its two steps (claim ownership, verify the address).
+        if trailing == ["record"] { return .homeRecord(id: id) }
+        if trailing == ["claim-owner"] { return .homeClaimOwnership(id: id) }
+        if trailing == ["verify-residency"] || trailing == ["verify_residency"] {
+            return .homeVerifyResidency(id: id)
         }
         if trailing.first == "verify-landlord" || trailing.first == "verify_landlord" {
             return .verifyLandlord(id: id)

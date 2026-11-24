@@ -1,0 +1,469 @@
+{
+  "v": 1,
+  "state": "owner",
+  "header": {
+    "chip": {
+      "tone": "success",
+      "text": "Confirmed owner"
+    },
+    "title": "1 Pantopus Way",
+    "subtitle": "Camas, WA 98607 · everything in its record"
+  },
+  "blocks": [
+    {
+      "kind": "value",
+      "id": "county_value",
+      "label": "County market value, 2026",
+      "value": "$612,400",
+      "chip": {
+        "tone": "neutral",
+        "text": "$24,100 more than 2025"
+      },
+      "bars": [
+        {
+          "year": "'18",
+          "amount": 398000
+        },
+        {
+          "year": "'19",
+          "amount": 421000
+        },
+        {
+          "year": "'20",
+          "amount": 446000
+        },
+        {
+          "year": "'21",
+          "amount": 468000
+        },
+        {
+          "year": "'22",
+          "amount": 512000
+        },
+        {
+          "year": "'23",
+          "amount": 561000
+        },
+        {
+          "year": "'24",
+          "amount": 574000
+        },
+        {
+          "year": "'25",
+          "amount": 588300
+        },
+        {
+          "year": "'26",
+          "amount": 612400
+        }
+      ],
+      "source": "Clark County Assessor's records · updated Nov 3, 2026",
+      "estimate": {
+        "label": "Pantopus estimate",
+        "text": "$598,000 to $655,000",
+        "low": 0.34,
+        "high": 0.72,
+        "mark": 0.5,
+        "note": "An estimate from county values and public sales near this home. Not an appraisal."
+      }
+    },
+    {
+      "kind": "photo_years",
+      "id": "lot_years",
+      "title": "Your lot through the years",
+      "count": "11 photos",
+      "photos": [
+        {
+          "year": "2011",
+          "label": "August 2011",
+          "image_url": "fixture://y2011.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2015",
+          "label": "July 2015",
+          "image_url": "fixture://y2015.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2019",
+          "label": "August 2019",
+          "image_url": "fixture://y2019.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2022",
+          "label": "July 2022",
+          "image_url": "fixture://y2022.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        }
+      ],
+      "note": "Federal aerial surveys. Seven more years are here: 2012, 2013, 2014, 2016, 2017, 2020 and 2023."
+    },
+    {
+      "kind": "timeline",
+      "id": "recorded_history",
+      "title": "Recorded history",
+      "items": [
+        {
+          "title": "Sale",
+          "right": "$489,000",
+          "strong": true,
+          "line": "Mar 12, 2021",
+          "mono": "Doc 5871234"
+        },
+        {
+          "title": "Quit claim deed",
+          "right": "No price",
+          "strong": false,
+          "line": "Aug 2, 2019",
+          "mono": "Doc 5642210"
+        },
+        {
+          "title": "Correction",
+          "right": "No price",
+          "strong": false,
+          "line": "Jan 22, 2018",
+          "mono": "Doc 5489031"
+        },
+        {
+          "title": "Sale",
+          "right": "$365,000",
+          "strong": true,
+          "line": "May 6, 2016",
+          "mono": "Doc 5301977"
+        }
+      ],
+      "note": "The county's lines for this home since 2016, when its table begins. No names are shown."
+    },
+    {
+      "kind": "notice",
+      "id": "record_changed",
+      "eyebrow": "Your record changed",
+      "title": "Living area now reads 2,140 sq ft",
+      "line": "It read 1,980 sq ft before. County record of Nov 3, 2026."
+    },
+    {
+      "kind": "rows",
+      "id": "permits",
+      "title": "Permits",
+      "lead": null,
+      "rows": [
+        {
+          "label": "Roof replacement",
+          "value": "Jun 2022",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Furnace replacement",
+          "value": "Oct 2020",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Deck",
+          "value": "Apr 2017",
+          "mono": false,
+          "chip": null
+        }
+      ],
+      "note": "From Clark County's permit records.",
+      "action": null
+    },
+    {
+      "kind": "bars",
+      "id": "systems",
+      "title": "What that says about the house",
+      "items": [
+        {
+          "title": "Roof",
+          "right": "4 years old",
+          "tone": "low",
+          "fill": 0.18,
+          "line": "From a permit record · typical life 20 to 25 years"
+        },
+        {
+          "title": "Heating",
+          "right": "6 years old",
+          "tone": "low",
+          "fill": 0.34,
+          "line": "From a permit record · typical life 15 to 20 years"
+        },
+        {
+          "title": "Water heater",
+          "right": "About 12 years old",
+          "tone": "mid",
+          "fill": 1,
+          "line": "Your household said 2014 · typical life 8 to 12 years"
+        },
+        {
+          "title": "Electrical panel",
+          "right": "About 28 years old",
+          "tone": "low",
+          "fill": 0.56,
+          "line": "Estimated from year built · typical life 40 to 60 years"
+        }
+      ],
+      "note": "Service life is the typical range, not a prediction."
+    },
+    {
+      "kind": "tiles",
+      "id": "ground",
+      "title": "Ground under your home",
+      "tiles": [
+        {
+          "label": "Elevation",
+          "value": "312 ft",
+          "line": "Above sea level"
+        },
+        {
+          "label": "Slope",
+          "value": "4%",
+          "line": "Nearly level"
+        },
+        {
+          "label": "Soil drains",
+          "value": "Well",
+          "line": "Hillsboro silt loam"
+        },
+        {
+          "label": "Wear on concrete",
+          "value": "Low",
+          "line": "On steel: moderate"
+        }
+      ],
+      "rows": [
+        {
+          "label": "Behind a levee",
+          "value": "No"
+        },
+        {
+          "label": "Dams upstream",
+          "value": "2 within 10 miles"
+        }
+      ],
+      "note": "U.S. Geological Survey, USDA soil survey and U.S. Army Corps of Engineers. The soil is mapped for the area, not tested at this home."
+    },
+    {
+      "kind": "rows",
+      "id": "recalls",
+      "title": "What is in the house",
+      "lead": "You told us these. We check them against federal recalls.",
+      "rows": [
+        {
+          "label": "Water heater · 2014",
+          "value": null,
+          "mono": false,
+          "chip": {
+            "tone": "neutral",
+            "text": "No recall"
+          }
+        },
+        {
+          "label": "Gas range · 2019",
+          "value": null,
+          "mono": false,
+          "chip": {
+            "tone": "warning",
+            "text": "Recalled Aug 2025"
+          }
+        },
+        {
+          "label": "Furnace · 2020",
+          "value": null,
+          "mono": false,
+          "chip": {
+            "tone": "neutral",
+            "text": "No recall"
+          }
+        }
+      ],
+      "note": "Consumer Product Safety Commission · checked Nov 22, 2026",
+      "action": {
+        "label": "See the range recall on the CPSC's site",
+        "url": "https://www.cpsc.gov/Recalls"
+      }
+    },
+    {
+      "kind": "rows",
+      "id": "lot_zoning",
+      "title": "Lot and zoning",
+      "lead": null,
+      "rows": [
+        {
+          "label": "Lot size",
+          "value": "0.19 acres · 8,276 sq ft",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Zoning",
+          "value": "R-7.5",
+          "mono": true,
+          "chip": null
+        }
+      ],
+      "note": null,
+      "action": {
+        "label": "Read what R-7.5 allows on Camas's page",
+        "url": "https://www.cityofcamas.us/"
+      }
+    },
+    {
+      "kind": "section_label",
+      "id": "protect_label",
+      "text": "Protect your home"
+    },
+    {
+      "kind": "card",
+      "id": "claims",
+      "title": "Insurance claims on this home",
+      "chip": {
+        "tone": "success",
+        "text": "2 in 7 years"
+      },
+      "lead": null,
+      "rows": [
+        {
+          "id": "c1",
+          "label": "Wind · Nov 2021",
+          "value": "$3,150 paid"
+        },
+        {
+          "id": "c2",
+          "label": "Water damage · Mar 2019",
+          "value": "$8,400 paid"
+        }
+      ],
+      "notes": [
+        "From the C.L.U.E. report you added on Nov 20, 2026. It lists claims by every owner of this home."
+      ],
+      "source": null,
+      "action": {
+        "label": "Request a new report, free each year",
+        "url": "https://consumer.risk.lexisnexis.com/"
+      }
+    },
+    {
+      "kind": "card",
+      "id": "recording_alerts",
+      "title": "Recording alerts",
+      "chip": null,
+      "lead": "Clark County's Auditor emails you when a document is recorded on your property. It is free, and you sign up with the county.",
+      "rows": [],
+      "notes": [],
+      "source": null,
+      "action": {
+        "label": "Sign up on the county's site",
+        "url": "https://edocs.clark.wa.gov/LandmarkWeb/FraudAlert"
+      }
+    },
+    {
+      "kind": "card",
+      "id": "exemptions",
+      "title": "Exemptions on file",
+      "chip": {
+        "tone": "warning",
+        "text": "None appears on file"
+      },
+      "lead": "The county's record shows no property tax exemption on this home. Washington's own page says who can apply for one.",
+      "rows": [],
+      "notes": [],
+      "source": null,
+      "action": {
+        "label": "See Washington's program",
+        "url": "https://dor.wa.gov/"
+      }
+    },
+    {
+      "kind": "card",
+      "id": "mortgage_insurance",
+      "title": "Mortgage insurance",
+      "chip": null,
+      "lead": "By law you can ask your servicer to drop mortgage insurance when the loan reaches 80% of the home's original value. It ends by itself at 78%.",
+      "rows": [
+        {
+          "id": "orig",
+          "label": "Original value, from your closing statement",
+          "value": "$489,000"
+        }
+      ],
+      "notes": [],
+      "source": null,
+      "action": {
+        "label": "Read the rule on the CFPB's page",
+        "url": "https://www.consumerfinance.gov/ask-cfpb/when-can-i-remove-private-mortgage-insurance-pmi-from-my-loan-en-202/"
+      }
+    }
+  ],
+  "footer": "Every line names the office it came from. This is your home's public record, not advice."
+}

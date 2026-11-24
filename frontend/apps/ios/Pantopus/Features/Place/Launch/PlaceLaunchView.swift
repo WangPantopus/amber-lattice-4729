@@ -91,11 +91,15 @@ struct PlaceLaunchView: View {
     /// previewed address for a private save instead of sign-in, and the
     /// leading action is Cancel. Mirrors Android's `onSavePreview`.
     var onSavePreview: (() -> Void)?
+    /// Signed in: Add Home at this address (the record page's steps, before the address is a Home).
+    var onAddHome: ((String) -> Void)?
     /// Set when this is the Place tab's root for someone with no Home and no
     /// saved address (signed in, so `onSavePreview` is set too).
     var embedded: PlaceLaunchEmbedding?
 
     @State private var viewModel = PlaceLaunchViewModel()
+    /// "This home's record" over the lookup result.
+    @State private var record: HomeRecordLookup?
     @FocusState private var addressFocused: Bool
 
     var body: some View {
@@ -119,7 +123,8 @@ struct PlaceLaunchView: View {
                     onCreateAccount: continuePreview,
                     onBack: viewModel.backToHero,
                     onRetry: viewModel.retryPreview,
-                    retrying: viewModel.isLoadingPreview
+                    retrying: viewModel.isLoadingPreview,
+                    onOpenRecord: viewModel.lookedUpAddress.map { address in { record = HomeRecordLookup(address: address) } }
                 )
             case let .region(message):
                 // Embedded there is nothing to go back to: the button looks up another address.
@@ -135,6 +140,7 @@ struct PlaceLaunchView: View {
         }
         // Half folded like a book, the funnel keeps to one page instead of running its buttons across the crease.
         .readableColumnBesideFold()
+        .homeRecordCover($record, onLink: openRecordLink)
         // The guidance reminder "Add your address" (Place's first-run root): its button puts the cursor in the box.
         .guidanceAction(.nextAddAddress, active: embedded != nil) {
             if case .hero = viewModel.step {
@@ -160,6 +166,13 @@ struct PlaceLaunchView: View {
         } else if viewModel.prepareForAuth() {
             onCreateAccount()
         }
+    }
+
+    /// A link on the record page, once it has closed. The lookup's own steps start with Add Home at
+    /// this address when signed in, and with the funnel's sign-up (which keeps the address) when not.
+    private func openRecordLink(_ link: String, address: String) {
+        guard HomeRecordLinkTarget.resolve(link) == .addLookedUpHome else { return DeepLinkRouter.shared.handle(path: link) }
+        if signedInEntry { onAddHome?(address) } else { continuePreview() }
     }
 
     private func browseBeacons() {
