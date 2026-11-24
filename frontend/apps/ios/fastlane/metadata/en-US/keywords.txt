@@ -1,1 +1,1 @@
-homeowner,household,chores,reminders,trash,recycling,flood,radon,wildfire,air quality,plans,mail
+property,details,buy,buying,management,safety,media,sharing,stories,mail,christmas,cards,plans,radon
