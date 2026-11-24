@@ -15,6 +15,10 @@
 //                 repeat hosts, auto-rule accepts, the same per plan kind
 //   plan_venues   plans and guests per public place a host chose from the
 //                 picker (Plan.place_ref), busiest first
+//   cards         Christmas cards (December card push): sent, taken back,
+//                 link pages seen, codes, claimed, joined, replies,
+//                 pass-ons, joiners who sent their own, stamp books sold,
+//                 and the loop number; for the window and per UTC day
 //
 // Rates are per DISTINCT visitor (anon_id) when the beacons carried one,
 // so a visitor who reloads five times is one preview. Event totals are
@@ -179,6 +183,128 @@ function summarizePlans(rows) {
     invited_by: invitedBy,
     by_kind: byKind,
   };
+}
+
+const CARD_EVENTS = Object.freeze(['card_sent', 'card_taken_back', 'card_page_seen', 'card_code_sent', 'card_claimed',
+  'card_reply_sent', 'card_passed_on']);
+const CARD_VIAS = Object.freeze(['person', 'email', 'link']);
+const BOOK_SIZES = Object.freeze([5, 20, 50]);
+
+function emptyCardCounts() {
+  return {
+    senders: new Set(), sent: 0, by_via: Object.fromEntries(CARD_VIAS.map((v) => [v, 0])), by_stamp: { free: 0, paid: 0, none: 0 },
+    travels: 0, taken_back: 0, pages_seen: 0, page_server_reads: 0, codes_sent: 0, claimed: 0, joined: 0, replies: 0, passed_on: 0,
+    passers: new Set(), joiners_who_sent: new Set(),
+    books: Object.fromEntries(BOOK_SIZES.map((n) => [n, 0])), refunded: Object.fromEntries(BOOK_SIZES.map((n) => [n, 0])), sales_cents: 0,
+  };
+}
+
+function finishCardCounts(c) {
+  const senders = c.senders.size;
+  const joinersWhoSent = c.joiners_who_sent.size;
+  return {
+    senders, cards_sent: c.sent, cards_per_sender: senders > 0 ? Math.round((c.sent / senders) * 100) / 100 : null,
+    by_via: c.by_via, by_stamp: c.by_stamp, travels: c.travels, taken_back: c.taken_back, pages_seen: c.pages_seen,
+    page_server_reads: c.page_server_reads,
+    codes_sent: c.codes_sent, claimed: c.claimed, joined: c.joined, replies: c.replies, passed_on: c.passed_on,
+    passers: c.passers.size, joiners_who_sent: joinersWhoSent, books: c.books, refunded: c.refunded, sales_cents: c.sales_cents,
+    loop: rate(joinersWhoSent, senders),
+  };
+}
+
+const utcDay = (value) => new Date(value).toISOString().slice(0, 10);
+
+/**
+ * Pure: the Christmas cards block, for the whole window and per UTC day (oldest first, every day of the window).
+ * Counts and distinct counts only; nobody is listed. `joined`: claims by an account made after the card was sealed.
+ * `joiners_who_sent`: those joiners who sent a card of their own within 7 days of taking theirs, counted on the day
+ * they took it. `loop`: joiners who sent their own per sender. Stamp books come from MailStampPurchase (bought in the
+ * window, refunds apart, at list price), as creatorLinks.salesReport reads them.
+ */
+function summarizeCards(rows, purchases = [], { since, now = Date.now(), prices = {} } = {}) {
+  const total = emptyCardCounts();
+  const days = new Map();
+  if (since) {
+    for (let t = Date.parse(utcDay(since)); t <= now; t += 86400000) days.set(utcDay(t), emptyCardCounts());
+  }
+  const dayOf = (at) => {
+    const key = utcDay(at);
+    if (!days.has(key)) days.set(key, emptyCardCounts());
+    return days.get(key);
+  };
+  const cardRows = (rows || []).filter((row) => CARD_EVENTS.includes(row.event_type) && Number.isFinite(Date.parse(row.created_at)));
+  const sentBy = new Map();
+  for (const row of cardRows) {
+    if (row.event_type === 'card_sent' && row.user_id) {
+      if (!sentBy.has(row.user_id)) sentBy.set(row.user_id, []);
+      sentBy.get(row.user_id).push(Date.parse(row.created_at));
+    }
+  }
+  for (const row of cardRows) {
+    const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+    for (const c of [total, dayOf(row.created_at)]) {
+      switch (row.event_type) {
+        case 'card_sent':
+          c.sent += 1;
+          if (row.user_id) c.senders.add(String(row.user_id));
+          if (CARD_VIAS.includes(meta.via)) c.by_via[meta.via] += 1;
+          c.by_stamp[['free', 'paid'].includes(meta.stamp) ? meta.stamp : 'none'] += 1;
+          if (meta.travels === true) c.travels += 1;
+          break;
+        case 'card_taken_back': c.taken_back += 1; break;
+        // The web page's own server read (meta.web_server) is apart: every web visit makes one, and so does a link preview.
+        case 'card_page_seen': if (meta.web_server === true) c.page_server_reads += 1; else c.pages_seen += 1; break;
+        case 'card_code_sent': c.codes_sent += 1; break;
+        case 'card_claimed': {
+          c.claimed += 1;
+          if (meta.new_account !== true) break;
+          c.joined += 1;
+          const at = Date.parse(row.created_at);
+          if (row.user_id && (sentBy.get(row.user_id) || []).some((t) => t >= at && t <= at + WEEK_MS)) {
+            c.joiners_who_sent.add(String(row.user_id));
+          }
+          break;
+        }
+        case 'card_reply_sent': c.replies += 1; break;
+        case 'card_passed_on':
+          c.passed_on += 1;
+          if (row.user_id) c.passers.add(String(row.user_id));
+          break;
+        default: break;
+      }
+    }
+  }
+  for (const p of purchases || []) {
+    if (!BOOK_SIZES.includes(p.credits) || !Number.isFinite(Date.parse(p.created_at))) continue;
+    for (const c of [total, dayOf(p.created_at)]) {
+      if (p.revoked) c.refunded[p.credits] += 1;
+      else {
+        c.books[p.credits] += 1;
+        c.sales_cents += prices[p.credits] || 0;
+      }
+    }
+  }
+  return {
+    ...finishCardCounts(total),
+    days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, c]) => ({ day, ...finishCardCounts(c) })),
+  };
+}
+
+/**
+ * The stamp books bought in the window (MailStampPurchase), for the cards block. A failed read leaves the books
+ * out (null) and the rest of the report standing.
+ */
+async function loadStampBooks(since, now) {
+  try {
+    const { BOOKS } = require('./mailStamps');
+    const read = await readPages(() => supabaseAdmin.from('MailStampPurchase').select('credits, revoked, created_at')
+      .gte('created_at', since).lte('created_at', new Date(now).toISOString())
+      .order('created_at', { ascending: false }).order('id'));
+    return { rows: read.rows, prices: Object.fromEntries(BOOKS.map((b) => [b.credits, b.price_cents])) };
+  } catch (err) {
+    logger.warn('funnelReport: stamp books unavailable', { error: err.message });
+    return null;
+  }
 }
 
 /**
@@ -426,14 +552,17 @@ async function loadFunnelSummary({ days = 30 } = {}) {
   const d = Math.min(365, Math.max(1, Number(days) || 30));
   const now = Date.now();
   const since = new Date(now - d * 86400000).toISOString();
-  const [events, activation, planVenues] = await Promise.all([
+  const [events, activation, planVenues, books] = await Promise.all([
     readPages(() => supabaseAdmin.from('FunnelEvent').select('event_type, anon_id, user_id, meta, created_at')
       .gte('created_at', since).lte('created_at', new Date(now).toISOString())
       .order('created_at', { ascending: false }).order('id')),
     loadActivation(since, now),
     loadPlanVenues(since, now),
+    loadStampBooks(since, now),
   ]);
-  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues };
+  const cards = summarizeCards(events.rows, books?.rows || [], { since, now, prices: books?.prices || {} });
+  if (!books) for (const block of [cards, ...cards.days]) Object.assign(block, { books: null, refunded: null, sales_cents: null });
+  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues, cards };
 }
 
-module.exports = { summarizeFunnel, summarizeActivation, summarizePlanVenues, loadFunnelSummary, MAX_ROWS, NO_ROUTE };
+module.exports = { summarizeFunnel, summarizeActivation, summarizePlanVenues, summarizeCards, loadFunnelSummary, MAX_ROWS, NO_ROUTE };
