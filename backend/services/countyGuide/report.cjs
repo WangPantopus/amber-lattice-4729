@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * The county pages' counts, per county, for the last N days (Pacific days):
+ * The county and city pages' counts, per page, for the last N days (Pacific days):
  *
  *   visits     page visits, from the pages' own beacon (visits.js), crawlers left out
  *   lookups    distinct browsers whose lookup preview was seen with the route county-page:<FIPS> (t0_preview_viewed)
@@ -15,12 +15,14 @@
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const places = require('./places');
+const cities = require('./cities');
 const { readDays } = require('./visits');
 
 const args = process.argv.slice(2);
 const days = Math.max(1, Math.min(90, Number(args[args.indexOf('--days') + 1]) || 30));
 const asJson = args.includes('--json');
-const ROUTE = /^county-page:(\d{5})$/;
+// A county page's route carries its FIPS, a city page's its place GEOID.
+const ROUTE = /^(?:county-page:(\d{5})|city-page:(\d{7}))$/;
 
 async function rows(query) {
   const all = [];
@@ -45,19 +47,24 @@ async function main() {
     for (const [fips, n] of Object.entries(counts)) row(fips).visits += n;
   }
 
-  const funnel = await rows(() => supabaseAdmin.from('FunnelEvent')
-    .select('event_type, anon_id, meta, created_at')
-    .in('event_type', ['t0_preview_viewed', 'register_started'])
-    .like('meta->>route', 'county-page:%')
-    .gte('created_at', since)
-    .order('created_at', { ascending: true }));
+  const funnel = [];
+  for (const pattern of ['county-page:%', 'city-page:%']) {
+    funnel.push(...await rows(() => supabaseAdmin.from('FunnelEvent')
+      .select('event_type, anon_id, meta, created_at')
+      .in('event_type', ['t0_preview_viewed', 'register_started'])
+      .like('meta->>route', pattern)
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })));
+  }
+  funnel.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
   const firstSeen = new Map();
   for (const event of funnel) {
     const match = ROUTE.exec(event.meta?.route || '');
     if (!match || !event.anon_id) continue;
-    const county = row(match[1]);
+    const page = match[1] || match[2];
+    const county = row(page);
     (event.event_type === 'register_started' ? county.signups : county.lookups).add(event.anon_id);
-    if (!firstSeen.has(event.anon_id)) firstSeen.set(event.anon_id, { fips: match[1], at: event.created_at });
+    if (!firstSeen.has(event.anon_id)) firstSeen.set(event.anon_id, { fips: page, at: event.created_at });
   }
 
   const anonIds = [...firstSeen.keys()];
@@ -75,10 +82,12 @@ async function main() {
 
   const report = [...byCounty.values()]
     .map((county) => {
+      // A county's FIPS, or a city's place GEOID.
       const place = places.countyByFips(county.fips);
+      const city = place ? null : cities.cityByGeoid(county.fips);
       return {
         fips: county.fips,
-        county: place ? `${place.name}, ${place.state.abbr}` : county.fips,
+        county: place ? `${place.name}, ${place.state.abbr}` : city ? `${city.name}, ${city.county.state.abbr} (city)` : county.fips,
         visits: county.visits,
         lookups: county.lookups.size,
         signups: county.signups.size,

@@ -3,7 +3,9 @@
 //   GET /api/public/county-guide                   every state and county page, for the sitemap and the index page
 //   GET /api/public/county-guide/:state            one state's page: its counties with a page
 //   GET /api/public/county-guide/:state/:county    one county's page (services/countyGuide)
-//   POST /api/public/county-guide/visits           a page's visit beacon: { fips }, counted per county and day
+//   GET /api/public/county-guide/:state/:county/:city    one city's page (services/countyGuide/cities.js)
+//   POST /api/public/county-guide/visits           a page's visit beacon: { fips } (a county's FIPS or a city's place
+//                                                  GEOID), counted per page and day
 //
 // No session is read and nothing is written per visit. The web builds each page from these answers and keeps it a
 // day, so a visitor's request never reaches here; caches in front may keep an answer an hour.
@@ -35,7 +37,7 @@ function cached(res) {
   res.set('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
 }
 
-// One visit to a county's page, from the page's own beacon: counted per county and day, nothing else kept
+// One visit to a county's or a city's page, from the page's own beacon: counted per page and day, nothing else kept
 // (services/countyGuide/visits.js). Always 204, as the funnel's beacons are.
 router.post('/visits', express.json({ limit: '1kb' }), (req, res) => {
   const fips = typeof req.body?.fips === 'string' ? req.body.fips : '';
@@ -52,6 +54,14 @@ router.get('/:state', (req, res) => {
   const state = String(req.params.state || '');
   const answer = SLUG.test(state) ? countyGuide.stateAnswer(state) : null;
   if (!answer) return res.status(404).json({ error: 'No page for this state' });
+  cached(res);
+  return res.json(answer);
+});
+
+router.get('/:state/:county/:city', (req, res) => {
+  const { state, county, city } = req.params;
+  const answer = [state, county, city].every((slug) => SLUG.test(String(slug || ''))) ? countyGuide.cityAnswer(state, county, city) : null;
+  if (!answer) return res.status(404).json({ error: 'No page for this city' });
   cached(res);
   return res.json(answer);
 });

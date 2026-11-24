@@ -1,8 +1,9 @@
-// The county page's parts after its offices (COUNTY-PAGES.md): what Pantopus holds, what the land is like, what owning
-// here involves and the homes in numbers. Each part shows only where the backend's answer holds it, and each figure
-// names its office and its date. Server-rendered, no script.
+// The county page's parts (COUNTY-PAGES.md): its offices' rows, what Pantopus holds, what the land is like, what owning
+// here involves, the homes in numbers and the questions people ask. The city pages use the rows, the homes and the
+// questions. Each part shows only where the backend's answer holds it, and each figure names its office and its date.
+// Server-rendered, no script.
 
-import { dateWords, dollars, type GuideCountyPage } from '../_lib/guide';
+import { dateWords, dollars, type GuideCountyPage, type GuideOffice, type GuideQuestion } from '../_lib/guide';
 import { linkClass } from './Chrome';
 
 export function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
@@ -20,6 +21,69 @@ function Source({ children }: { children: React.ReactNode }) {
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-2xl border border-app-border-subtle bg-app-surface px-4 py-3.5">{children}</div>;
+}
+
+/** An office's rows: what it holds, its own page, and the day it was read. */
+export function OfficeRows({ rows }: { rows: GuideOffice[] }) {
+  if (!rows.length) return null;
+  return (
+    <ul className="mt-2 divide-y divide-app-border-subtle rounded-2xl border border-app-border-subtle bg-app-surface">
+      {rows.map((row) => (
+        <li key={`${row.id}:${row.url}`} className="px-4 py-3.5">
+          <p className="font-semibold text-app-text dark:text-white">{row.title}</p>
+          {row.office ? <p className="text-sm text-app-text-secondary dark:text-app-text-muted">{row.office}</p> : null}
+          {row.line ? <p className="mt-1 text-sm text-app-text-secondary dark:text-app-text-muted">{row.line}</p> : null}
+          <a href={row.url} target="_blank" rel="noopener noreferrer nofollow" className={`mt-1 inline-block text-sm font-medium ${linkClass}`}>
+            {row.host || 'Open the office’s page'}
+          </a>
+          {row.from ? <p className="mt-1 text-xs text-app-text-muted">{row.from}</p> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+/** The questions people ask, each answered with the office that holds the answer. */
+export function Questions({ questions }: { questions: GuideQuestion[] }) {
+  if (!questions.length) return null;
+  return (
+    <Section id="questions" title="Questions people ask">
+      <div className="divide-y divide-app-border-subtle rounded-2xl border border-app-border-subtle bg-app-surface">
+        {questions.map((item) => (
+          <div key={item.id} className="px-4 py-3.5">
+            <h3 className="font-semibold text-app-text dark:text-white">{item.q}</h3>
+            <p className="mt-1 text-app-text-secondary dark:text-app-text-muted leading-relaxed">{item.a}</p>
+            {item.url ? (
+              <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className={`mt-1 inline-block text-sm ${linkClass}`}>
+                {hostOf(item.url) ?? 'Open the office’s page'}
+              </a>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/** The questions as FAQ structured data. */
+export function faqLd(questions: GuideQuestion[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: questions.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  };
 }
 
 const read = (iso: string | null | undefined) => (dateWords(iso) ? `, read ${dateWords(iso)}` : '');
@@ -192,7 +256,7 @@ export function Owning({ page }: { page: GuideCountyPage }) {
   );
 }
 
-export function Homes({ page }: { page: GuideCountyPage }) {
+export function Homes({ page }: { page: { homes?: GuideCountyPage['homes'] } }) {
   const homes = page.homes;
   if (!homes || (!homes.median_year_built && !homes.median_value)) return null;
   return (

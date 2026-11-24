@@ -15,6 +15,9 @@
  *
  * Each county keeps its Census name, the counties that border it (by FIPS) and the two survey medians. Puerto Rico's
  * municipios and the island areas are left out: the pages cover the 50 states and DC.
+ *
+ * The same two summary files also fill the medians of each city in data/cities.json (its place GEOID), which is
+ * otherwise read by hand and left as it is.
  */
 
 const fs = require('fs');
@@ -43,21 +46,28 @@ for (const line of lines('county_adjacency2025.txt').slice(1)) {
   }
 }
 
-// The summary file's estimate column; negative values are the Census's codes for "no estimate".
+const citiesFile = path.join(__dirname, 'data', 'cities.json');
+const cityData = fs.existsSync(citiesFile) ? JSON.parse(fs.readFileSync(citiesFile, 'utf8')) : null;
+const cities = cityData?.cities || {};
+
+// The summary file's estimate column; negative values are the Census's codes for "no estimate". Counties (summary
+// level 050) and the cities in data/cities.json (places, level 160).
 function readTable(file, key) {
   const rows = lines(file);
   const header = rows[0].split('|');
   const at = header.indexOf(`${key}_E001`);
   if (at < 0) throw new Error(`${file} has no ${key}_E001 column`);
+  const field = key === 'B25035' ? 'built' : 'value';
   let read = 0;
   for (const row of rows.slice(1)) {
     const cols = row.split('|');
-    const match = /^0500000US(\d{5})$/.exec(cols[0]);
-    if (!match || !counties[match[1]]) continue;
+    const match = /^(0500000|1600000)US(\d{5}|\d{7})$/.exec(cols[0]);
+    const target = match && (match[1] === '0500000' ? counties[match[2]] : cities[match[2]]);
+    if (!target) continue;
     const value = Number(cols[at]);
     if (Number.isFinite(value) && value > 0) {
-      counties[match[1]][key === 'B25035' ? 'built' : 'value'] = value;
-      read += 1;
+      target[field] = value;
+      if (match[1] === '0500000') read += 1;
     }
   }
   return read;
@@ -82,3 +92,8 @@ const target = path.join(__dirname, 'data', 'counties.json');
 fs.mkdirSync(path.dirname(target), { recursive: true });
 fs.writeFileSync(target, `${JSON.stringify(out)}\n`);
 console.log(`${Object.keys(counties).length} counties; median year built for ${built}, median value for ${value}; wrote ${target}`);
+if (cityData) {
+  fs.writeFileSync(citiesFile, `${JSON.stringify(cityData, null, 2)}\n`);
+  const filled = Object.values(cities).filter((city) => city.built || city.value).length;
+  console.log(`${Object.keys(cities).length} cities; medians for ${filled}; wrote ${citiesFile}`);
+}

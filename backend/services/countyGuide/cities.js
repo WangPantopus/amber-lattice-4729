@@ -1,0 +1,100 @@
+'use strict';
+
+/**
+ * City pages (/property-records/<state>/<county>/<city>): a city inside a county that has a page, with the city's own
+ * offices read by hand on the city's own site (data/cities.json) and the Census's figures for the city. A city page
+ * holds only what is the city's. The county's offices, hazards and records stay on the county page, which the city
+ * page links back to once. No Pantopus count below the county, ever.
+ *
+ * Released by CITIES below, a reviewed list like the counties' COUNTIES. A listed city without its building permits
+ * and zoning rows, or whose county has no page, has no page.
+ */
+
+const data = require('./data/cities.json');
+const places = require('./places');
+const { dateWords, host } = require('./offices');
+
+// Released cities, by Census place GEOID, in the order they went out.
+const CITIES = [
+  // November 23, 2026, first: Vancouver, Seattle and Tacoma, WA; Portland, OR; Tampa, FL; Dallas, TX; Saint Paul, MN;
+  // Riverside, CA.
+  '5374060', '5363000', '5370000', '4159000', '1271000', '4819000', '2758000', '0662000',
+];
+
+// The two rows a city needs, read on its own site, before it has a page.
+const REQUIRED = ['permits', 'zoning'];
+
+const released = new Set(CITIES);
+const httpsOnly = (url) => typeof url === 'string' && /^https:\/\//.test(url) && !url.includes('{');
+
+function rowsOf(entry) {
+  const read = dateWords(entry.read);
+  return (Array.isArray(entry.rows) ? entry.rows : [])
+    .filter((row) => row && row.id && row.title && row.office && httpsOnly(row.url))
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      office: row.office,
+      url: row.url,
+      host: host(row.url),
+      ...(row.line ? { line: row.line } : {}),
+      ...(row.q && row.a ? { q: row.q, a: row.a } : {}),
+      from: read ? `Read on the city's own site, ${read}.` : null,
+    }));
+}
+
+const median = (n) => (Number.isFinite(n) && n > 0 ? n : null);
+
+// Every city in the file, by GEOID, under the county its page sits in.
+const byGeoid = new Map();
+const byCounty = new Map();
+for (const [geoid, entry] of Object.entries(data.cities || {})) {
+  const county = places.countyByFips(entry?.county);
+  if (!/^\d{7}$/.test(geoid) || !county || geoid.slice(0, 2) !== county.state.fips || typeof entry.name !== 'string') continue;
+  const city = {
+    geoid,
+    name: entry.name,
+    slug: places.slugify(entry.name),
+    county,
+    otherCounties: entry.other_counties === true,
+    rows: rowsOf(entry),
+    built: median(entry.built),
+    value: median(entry.value),
+  };
+  if (!byCounty.has(county.fips)) byCounty.set(county.fips, new Map());
+  const inCounty = byCounty.get(county.fips);
+  if (inCounty.has(city.slug)) throw new Error(`Two city pages share ${county.state.slug}/${county.slug}/${city.slug}`);
+  inCounty.set(city.slug, city);
+  byGeoid.set(geoid, city);
+}
+
+/** Whether a city is listed for release and holds both rows it needs (its county's page is the caller's to check). */
+const ready = (city) => Boolean(city) && released.has(city.geoid)
+  && REQUIRED.every((id) => city.rows.some((row) => row.id === id));
+
+/** The released cities of a county, by name. */
+const citiesOf = (county) => [...(byCounty.get(county?.fips)?.values() || [])].filter(ready)
+  .sort((a, b) => a.name.localeCompare(b.name, 'en'));
+
+/** A released city by its county and slug, or null. */
+function city(county, slug) {
+  const found = byCounty.get(county?.fips)?.get(String(slug || '').toLowerCase());
+  return ready(found) ? found : null;
+}
+
+/** A released city by GEOID, or null. */
+const cityByGeoid = (geoid) => (ready(byGeoid.get(geoid)) ? byGeoid.get(geoid) : null);
+
+/** The Census's medians for a city, from the survey data/cities.json names, or null. */
+function homesOf(city) {
+  if (!city.built && !city.value) return null;
+  return {
+    median_year_built: city.built,
+    median_value: city.value,
+    survey: data.sources?.homes_survey || null,
+    source: 'U.S. Census Bureau, American Community Survey 5-year estimates',
+    url: 'https://data.census.gov/',
+  };
+}
+
+module.exports = { citiesOf, city, cityByGeoid, homesOf, CITIES };

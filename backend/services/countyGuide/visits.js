@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Visits to the county pages, counted per county per day: the one number the funnel's beacons can't give (they start
+ * Visits to the county and city pages, counted per page per day: the one number the funnel's beacons can't give (they start
  * at a lookup). The page sends one beacon per browser tab and county (routes/countyGuide.js POST /visits); search
  * engines' crawlers are not counted. Counts only: no address, account, IP or browser id is read or kept.
  *
@@ -28,9 +28,9 @@ let timer = null;
 
 const CRAWLER = /bot|crawl|spider|slurp|preview|facebookexternalhit|headless|lighthouse/i;
 
-/** Count one visit to a county's page, unless the visitor is a crawler. */
+/** Count one visit to a county's page (its FIPS) or a city's (its place GEOID), unless the visitor is a crawler. */
 function noteVisit(fips, userAgent) {
-  if (!/^\d{5}$/.test(String(fips || '')) || CRAWLER.test(String(userAgent || ''))) return false;
+  if (!/^(\d{5}|\d{7})$/.test(String(fips || '')) || CRAWLER.test(String(userAgent || ''))) return false;
   const day = dayOf();
   if (!days.has(day)) days.set(day, { counts: {}, dirty: false });
   const today = days.get(day);
