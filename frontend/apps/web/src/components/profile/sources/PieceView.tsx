@@ -1,19 +1,21 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { AppWindow, BookOpen, ChevronLeft, ChevronRight, Code2, FileText, Globe, Newspaper, Play, PlayCircle, User } from 'lucide-react';
+import { useId, useRef, useState, type ReactNode } from 'react';
+import { AppWindow, BookOpen, ChevronRight, Code2, FileText, Globe, Newspaper, Play, PlayCircle, User } from 'lucide-react';
 import type { ProfileAttachment, ProfileCredit, ProfileInk, ProfileLinkCard, ProfilePieceRead } from '@pantopus/api';
 import { HowLine, InkGlyph, InkLine, howText, inkOf, type Target, Opens } from './ink';
 import { card, overline } from './blocks';
 import Picture from './Picture';
+import Screen from './Screen';
 
 type PieceState = 'loading' | 'gone' | 'failed' | ProfilePieceRead;
-type Piece = ProfilePieceRead['piece'];
+export type Piece = ProfilePieceRead['piece'];
 
 const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'Owns' };
+/** Who sees a piece, in the owner's words, when it is narrower than anyone with the link. */
+export const AUDIENCE_WORD: Record<string, string> = { members: 'People on Pantopus', connections: 'Your connections' };
 
-/** The pictures and films a piece shows at its top: P2.2's attachments, else v1's `media` list, else its cover. */
+/** The photos and videos a piece shows at its top: P2.2's attachments, else v1's `media` list, else its cover. */
 function galleryOf(piece: Piece): ProfileAttachment[] {
   const listed = Array.isArray(piece.attachments) && piece.attachments.length > 0
     ? piece.attachments
@@ -69,12 +71,16 @@ function Card({ title, children, flush = false }: { title: string; children: Rea
   );
 }
 
-/** The gallery (board 8): one big picture or film with "1 of 6" and the counts, and a strip to choose from. */
-function Gallery({ items, counts, chosen, onChoose, title }: {
-  items: ProfileAttachment[]; counts: string | null; chosen: number; onChoose: (i: number) => void; title: string;
+/** The gallery (board 8): one big photo or video with "1 of 6" and the counts, and a strip to choose from. */
+function Gallery({ items: all, counts, chosen: chosenUrl, onChoose, title }: {
+  items: ProfileAttachment[]; counts: string | null; chosen: string | null; onChoose: (url: string) => void; title: string;
 }) {
+  // A photo that doesn't load leaves the gallery, so there is never an empty frame.
+  const [failed, setFailed] = useState<string[]>([]);
+  const items = all.filter((a) => !(a.kind === 'photo' && failed.includes(a.url)));
   if (items.length === 0) return null;
-  const item = items[Math.min(chosen, items.length - 1)];
+  const chosen = Math.max(0, items.findIndex((a) => a.url === chosenUrl));
+  const item = items[chosen];
   const pill = 'absolute bottom-2.5 inline-flex items-center min-h-6 px-2.5 rounded-full bg-gray-900/85 text-white text-xs leading-4 font-semibold';
   return (
     <div className="flex flex-col">
@@ -88,12 +94,12 @@ function Gallery({ items, counts, chosen, onChoose, title }: {
             playsInline
             preload="metadata"
             className="absolute inset-0 w-full h-full object-contain bg-black"
-            aria-label={item.title || `A film of ${title}`}
+            aria-label={item.title || `A video of ${title}`}
           />
         ) : (
-          <Picture src={item.url} alt={item.title || ''} className="absolute inset-0 w-full h-full object-cover" />
+          <Picture src={item.url} alt={item.title || ''} onFail={() => setFailed((list) => [...list, item.url])} className="absolute inset-0 w-full h-full object-cover" />
         )}
-        {items.length > 1 ? <span className={`${pill} left-2.5`}>{Math.min(chosen, items.length - 1) + 1} of {items.length}</span> : null}
+        {items.length > 1 ? <span className={`${pill} left-2.5`}>{chosen + 1} of {items.length}</span> : null}
         {counts && item.kind !== 'video' ? <span className={`${pill} right-2.5`}>{counts}</span> : null}
       </div>
       {items.length > 1 ? (
@@ -107,7 +113,7 @@ function Gallery({ items, counts, chosen, onChoose, title }: {
                 type="button"
                 aria-pressed={on}
                 aria-label={`${a.kind === 'video' ? 'Video' : 'Photo'} ${i + 1} of ${items.length}`}
-                onClick={() => onChoose(i)}
+                onClick={() => onChoose(a.url)}
                 className={`relative shrink-0 w-[3.75rem] h-[2.875rem] rounded-lg overflow-hidden bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'ring-2 ring-[rgb(var(--app-text))] ring-offset-2 ring-offset-[rgb(var(--app-surface))]' : ''}`}
               >
                 {thumb ? <Picture src={thumb} className="absolute inset-0 w-full h-full object-cover" /> : null}
@@ -219,7 +225,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
   target: (who: { user_id: string | null; username: string | null }) => Target | null; view: string;
 }) {
   const gallery = galleryOf(piece);
-  const [chosen, setChosen] = useState(0);
+  const [chosen, setChosen] = useState<string | null>(null);
   const galleryRef = useRef<HTMLDivElement>(null);
   const documents = documentsOf(piece);
   const videos = gallery.map((a, i) => ({ a, i })).filter(({ a }) => a.kind === 'video');
@@ -232,11 +238,11 @@ function PieceBody({ piece, firstName, owner, target, view }: {
     piece.kind && KIND_WORD[piece.kind] ? { text: KIND_WORD[piece.kind], tone: 'bg-app-business-bg text-app-business' } : null,
     piece.when ? { text: piece.when, tone: 'bg-app-surface-sunken text-app-secondary' } : null,
     piece.place ? { text: piece.place, tone: 'bg-app-surface-sunken text-app-secondary' } : null,
-    ...(view === 'owner' ? [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null].filter(Boolean).map((text) => ({ text: text!, tone: 'bg-app-surface-sunken text-app' })) : []),
+    ...(view === 'owner' ? [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null, AUDIENCE_WORD[piece.audience || ''] ?? null].filter(Boolean).map((text) => ({ text: text!, tone: 'bg-app-surface-sunken text-app' })) : []),
   ].filter(Boolean) as Array<{ text: string; tone: string }>;
   const ink = inkOf(piece.ink);
-  const showVideo = (i: number) => {
-    setChosen(i);
+  const showVideo = (url: string) => {
+    setChosen(url);
     galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -286,7 +292,7 @@ function PieceBody({ piece, firstName, owner, target, view }: {
             <ul className="flex flex-col">
               {videos.map(({ a, i }) => (
                 <li key={`v-${i}`}>
-                  <button type="button" onClick={() => showVideo(i)} className="w-full flex items-center gap-3 px-5 py-2.5 text-left hover-bg-app">
+                  <button type="button" onClick={() => showVideo(a.url)} className="w-full flex items-center gap-3 px-5 py-2.5 text-left hover-bg-app">
                     <span className="relative shrink-0 w-[4.5rem] h-12 rounded-lg overflow-hidden bg-gray-800">
                       {a.thumbnail_url ? <Picture src={a.thumbnail_url} className="absolute inset-0 w-full h-full object-cover" /> : null}
                       <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
@@ -348,39 +354,19 @@ function PieceBody({ piece, firstName, owner, target, view }: {
 }
 
 /**
- * One piece opened (board 8): full screen on a phone, a centred panel on a wider screen, with "Piece" and Back at the
- * top. Escape and Back close it; focus goes back where it was.
+ * One piece opened (board 8) as a screen of its own. The owner can change it from here (board 10).
  */
-export default function PieceView({ state, onClose, onRetry, firstName, owner, target }: {
+export default function PieceView({ state, onClose, onRetry, firstName, owner, target, onChange }: {
   state: PieceState | null;
   onClose: () => void;
   onRetry: () => void;
   firstName: string;
   owner: { name: string; portraitUrl: string | null };
   target: (who: { user_id: string | null; username: string | null }) => Target | null;
+  /** The owner's view: open this piece in the editor. */
+  onChange?: ((piece: Piece) => void) | null;
 }) {
-  const [mounted, setMounted] = useState(false);
-  const panel = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  const open = state !== null;
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
-    panel.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = overflow;
-      if (opener?.isConnected) opener.focus();
-    };
-  }, [open, onClose]);
-  if (!open || !mounted) return null;
-
-  let body: ReactNode;
+  let body: ReactNode = null;
   if (state === 'loading') {
     body = <div className="py-16 flex justify-center" role="status"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" aria-hidden="true" /><span className="sr-only">Loading</span></div>;
   } else if (state === 'gone') {
@@ -392,31 +378,22 @@ export default function PieceView({ state, onClose, onRetry, firstName, owner, t
         <button type="button" onClick={onRetry} className="mt-3 min-h-[2.75rem] px-4 rounded-xl border border-app-strong text-[0.9375rem] font-semibold text-app hover-bg-app">Try again</button>
       </div>
     );
-  } else {
-    body = state.piece ? <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} /> : null;
+  } else if (state && state.piece) {
+    body = <PieceBody key={state.piece.id} piece={state.piece} firstName={firstName} owner={owner} target={target} view={state.view} />;
   }
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] hidden sm:block" onClick={onClose} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-app sm:rounded-2xl sm:border sm:border-app shadow-2xl flex flex-col overflow-hidden outline-none"
-      >
-        <div className="shrink-0 h-12 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center px-1 bg-surface border-b border-app">
-          <button type="button" onClick={onClose} aria-label="Back" className="w-11 h-11 rounded-full flex items-center justify-center text-app hover-bg-app focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]">
-            <ChevronLeft aria-hidden="true" className="w-[1.625rem] h-[1.625rem]" strokeWidth={2.25} />
-          </button>
-          <h2 id={titleId} className="text-center text-[1.0625rem] font-semibold text-app">Piece</h2>
-          <span />
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
-      </div>
-    </div>,
-    document.body,
+  const editable = onChange && state && typeof state === 'object' && state.view === 'owner' && state.piece ? state.piece : null;
+  return (
+    <Screen
+      open={state !== null}
+      onClose={onClose}
+      title="Piece"
+      right={editable ? (
+        <button type="button" onClick={() => onChange!(editable)} className="min-h-[2.75rem] px-3 rounded-lg text-[0.9375rem] font-semibold text-app-link hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)]">
+          Change
+        </button>
+      ) : null}
+    >
+      {body}
+    </Screen>
   );
 }
