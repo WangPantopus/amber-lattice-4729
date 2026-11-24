@@ -41,9 +41,18 @@ const MAX_TITLE_LENGTH = 180;
 const MAX_PICTURES = 4;
 const MAX_PICTURE_LINK_LENGTH = 2048;
 
-// What a page can hold, in the order it shows. `hours` is how long an item stays after the fetcher first saw it.
+// What a page can hold, in the order it shows. `hours` is how long an item stays after the fetcher last saw it.
+// `sources`, when set, limits a category to rows from those sources (by type): Alerts' safety rows are the feeds job's
+// wildfires and federal notices and the Lambda's strong earthquakes, never its weather alerts, which At home shows.
 const SECTIONS = [
-  { id: 'alerts', title: 'Alerts', categories: ['earthquake'], hours: 24, max: 3 },
+  {
+    id: 'alerts',
+    title: 'Alerts',
+    categories: ['earthquake', 'safety'],
+    sources: { safety: ['wildfire', 'fema', 'usgs_earthquakes'] },
+    hours: 24,
+    max: 3,
+  },
   { id: 'headlines', title: 'Headlines', categories: ['local_news'], hours: 48, max: 8 },
   { id: 'events', title: 'Events', categories: ['event'], hours: 72, max: 5 },
   { id: 'around_town', title: 'Around town', categories: ['community_resource'], hours: 168, max: 4 },
@@ -147,6 +156,8 @@ function outletName(row, link, sourceNames) {
   if (type === 'seasonal') return 'Pantopus';
   if (type === 'on_this_day') return 'Wikipedia';
   if (type === 'usgs_earthquakes') return 'USGS';
+  if (type === 'wildfire') return 'National Interagency Fire Center';
+  if (type === 'fema') return 'FEMA';
   return sourceNames.get(row.source) || hostName(link) || null;
 }
 
@@ -162,6 +173,8 @@ function buildSections(rows, sourceNames, now = Date.now()) {
     const candidates = [];
     for (const row of rows) {
       if (!spec.categories.includes(row.category)) continue;
+      const onlyFrom = spec.sources?.[row.category];
+      if (onlyFrom && !onlyFrom.includes(String(row.source || '').split(':')[0])) continue;
       const seenAt = Date.parse(row.fetched_at);
       if (!Number.isFinite(seenAt) || now - seenAt > spec.hours * HOUR_MS) continue;
       const link = webLink(row.source_url);
@@ -171,9 +184,11 @@ function buildSections(rows, sourceNames, now = Date.now()) {
       const title = headline(row, source);
       if (!title || LEFT_OUT.test(title)) continue;
       const key = titleKey(title);
-      if (seen.has(key) || (link && seen.has(link))) continue;
+      // A story is one link; road projects share their state's traveler map, so they are told apart by title alone.
+      const linkKey = String(row.source || '').startsWith('roadwork:') ? null : link;
+      if (seen.has(key) || (linkKey && seen.has(linkKey))) continue;
       seen.add(key);
-      if (link) seen.add(link);
+      if (linkKey) seen.add(linkKey);
       candidates.push({ id: row.id, title, source, url: link, seen_at: new Date(seenAt).toISOString() });
     }
     // First what fits with each outlet held to its share, then the rest in order if there is room.
