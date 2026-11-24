@@ -597,9 +597,9 @@ export async function deletePiece(id: string): Promise<{ id: string; deleted: bo
   return del<{ id: string; deleted: boolean }>(`${ME_PIECES}/${encodeURIComponent(id)}`);
 }
 
-/** The line to put on a linked page to prove it's the owner's (P2.4). */
-export async function proveLink(pieceId: string, linkId: string): Promise<{ line: string; how: string }> {
-  return post<{ line: string; how: string }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/proof`, {});
+/** The line to put in a linked page's title or description to prove it's the owner's, and a meta tag for one's own site (P2.4, p2.4). */
+export async function proveLink(pieceId: string, linkId: string): Promise<{ line: string; how: string; meta?: string | null }> {
+  return post<{ line: string; how: string; meta?: string | null }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/proof`, {});
 }
 
 /** Reads the page for the line; Seen when it is there, else 409 PROOF_NOT_FOUND. */
