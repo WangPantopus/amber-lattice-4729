@@ -470,9 +470,7 @@ private fun ClosedGroupBlock(
                     color = PantopusColors.appText,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
-                block.chip?.takeIf { it.isNotBlank() }?.let {
-                    PlaceChip(PlaceChipModel(PlaceChipTone.NEUTRAL, it, icon = PantopusIcon.Lock))
-                }
+                block.chip?.takeIf { it.isNotBlank() }?.let { ClosedChip(it) }
             }
             block.items.orEmpty().forEach { item ->
                 HorizontalDivider(thickness = 1.dp, color = PantopusColors.appBorderSubtle)
@@ -510,6 +508,22 @@ private fun ClosedGroupBlock(
         }
     }
 }
+
+/**
+ * A closed group's chip, as drawn (`design/Main.dc.html`): what opens with a free account is sky and unlocked; what is
+ * the owner's alone ("For the owner", or any other words) is grey with the lock.
+ */
+@Composable
+private fun ClosedChip(text: String) {
+    if (text == FREE_WITH_ACCOUNT) {
+        PlaceChip(PlaceChipModel(PlaceChipTone.SKY, text))
+    } else {
+        PlaceChip(PlaceChipModel(PlaceChipTone.NEUTRAL, text, icon = PantopusIcon.Lock))
+    }
+}
+
+/** The server's words for a group a signed-in buyer opens (SPEC section 8). */
+private const val FREE_WITH_ACCOUNT = "Free with an account"
 
 @Composable
 private fun PromiseBlock(
