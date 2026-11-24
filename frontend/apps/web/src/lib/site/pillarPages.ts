@@ -9,4 +9,6 @@ export const PILLAR_PAGES: SitePage[] = [
   { path: '/today', label: 'Today' },
   { path: '/pulse', label: 'Pulse' },
   { path: '/moments', label: 'Moments' },
+  { path: '/mail', label: 'Mail' },
+  { path: '/plans', label: 'Plans' },
 ];
