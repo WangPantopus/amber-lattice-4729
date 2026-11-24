@@ -54,6 +54,9 @@ const CITIES = [
   // November 24, 2026, fourteenth: West Covina, Alhambra, Redondo Beach and El Monte (Los Angeles County), Hesperia (San
   // Bernardino County), CA; Arlington Heights (Cook County), IL.
   '0684200', '0600884', '0660018', '0622230', '0633434', '1702154',
+  // November 24, 2026, fifteenth: Santa Clarita (Los Angeles County), Jurupa Valley (Riverside County) and Rialto (San
+  // Bernardino County), CA.
+  '0669088', '0637692', '0660466',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
