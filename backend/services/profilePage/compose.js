@@ -4,7 +4,7 @@
  * that doesn't reach the view contributes no line, no month and no count (SPEC 4.2, 4.3).
  */
 
-const { reaches } = require('./parts');
+const { reaches, readShare } = require('./parts');
 
 const INK_LEVEL = { said: 1, signed: 2, seen: 3 };
 const LEVEL_INK = { 1: 'said', 2: 'signed', 3: 'seen' };
@@ -130,8 +130,90 @@ function safeUrl(url) {
 
 const KIND_WORD = { did: 'Did', built: 'Built', owns: 'Owns' };
 
-/** One UserPortfolio row as a Piece (CONTRACT P2.1), and the month it marks. Owner fields only for the owner. */
-function pieceOf(row, first, owner) {
+// ---------- credits (phase 2B, CONTRACT P2.5) ----------
+
+const ORDER = { signed: 0, said: 1, asked: 2, declined: 3 };
+
+// "Carpenter" → "carpenter"; "TV installer" stays as written.
+function lowerFirst(text) {
+  return /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
+}
+
+/** What a credited party did, for a party shown without a name ("A carpenter", "Someone who hired Maria"). */
+function didOf(credit, first) {
+  if (credit.relation === 'for') return `Someone who hired ${first}`;
+  const role = String(credit.role || '').trim();
+  if (role) return `${/^[aeiou]/i.test(role) ? 'An' : 'A'} ${lowerFirst(role)}`;
+  return { with: `Someone who worked with ${first}`, led: 'Someone who led it', learned_from: `Someone ${first} learned from` }[credit.relation]
+    || 'Someone on it';
+}
+
+function askedWords(at, now) {
+  if (!at) return 'Asked';
+  if (localDate(new Date(at), PACIFIC) === localDate(now, PACIFIC)) return 'Asked today';
+  return `Asked ${new Date(at).toLocaleDateString('en-US', { timeZone: PACIFIC, month: 'long', day: 'numeric' })}`;
+}
+
+/**
+ * One credit as this view sees it. Signed-in views name a signed person and a typed name; a page opened without
+ * signing in (the link view) names a signed person only if they allowed it, and a typed name never, each shown by
+ * what they did instead. The owner reads an ask as "Asked today" and a "Not me" as `did_not_confirm`.
+ */
+function creditOf(c, { view, first, now = new Date() }) {
+  const typed = !c.party_user_id;
+  const named = view !== 'link' || (!typed && c.name_on_links === true);
+  const shown = c.party_shown || {};
+  const did = didOf(c, first);
+  const party = named
+    ? { name: typed ? c.party_name : (shown.name || null), user_id: typed ? null : c.party_user_id,
+      username: typed ? null : (shown.username || null), portrait_url: typed ? null : (shown.avatar || null), typed, did }
+    : { name: null, user_id: null, username: null, portrait_url: null, typed, did };
+  let status = c.status;
+  let ink = 'said';
+  let how;
+  if (c.status === 'signed') {
+    ink = 'signed';
+    how = `Signed, ${monthLabel(monthOf(c.signed_at))}`;
+  } else if (c.status === 'said') how = `In ${first}'s words`;
+  else if (c.status === 'asked') how = view === 'owner' ? askedWords(c.asked_at, now) : 'Asked of you';
+  else {
+    status = 'did_not_confirm';
+    how = 'Did not confirm';
+  }
+  return { id: c.id, party, role: String(c.role || '').trim() || null, relation: c.relation || null, ink, how, status };
+}
+
+/**
+ * The credits on one piece that this view sees (sources.creditsFrom already left out what nobody may see): signed
+ * and typed for everyone, an ask for the owner and the one asked, "did not confirm" for the owner alone.
+ */
+function creditsFor(credits, pieceId, { view, viewerId = null, first, now = new Date() }) {
+  return (credits || [])
+    .filter((c) => String(c.piece_id) === String(pieceId))
+    .filter((c) => c.status === 'signed' || c.status === 'said'
+      || (c.status === 'asked' && (view === 'owner' || (viewerId && view !== 'link' && String(c.party_user_id) === String(viewerId))))
+      || (c.status === 'declined' && view === 'owner'))
+    .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || String(a.created_at).localeCompare(String(b.created_at)))
+    .map((c) => ({ raw: c, credit: creditOf(c, { view, first, now }) }));
+}
+
+/**
+ * Who signed, the one who hired first: "Dan R.", "Dan R. and Aiko M.", "Dan R. and 2 others", "someone who hired
+ * Maria and 2 others" (a party this view may not name, by what they did).
+ */
+function signedWords(signed) {
+  const ordered = [...signed.filter((c) => c.relation === 'for'), ...signed.filter((c) => c.relation !== 'for')];
+  const names = ordered.map((c) => c.party.name || (c.party.did[0].toLowerCase() + c.party.did.slice(1)));
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names[0]} and ${names.length - 1} others`;
+}
+
+/**
+ * One UserPortfolio row as a Piece (CONTRACT P2.1), and the month it marks. Owner fields only for the owner.
+ * `credits`: this view's credits on it (creditsFor); a signed one makes a piece without a job or plan Signed.
+ */
+function pieceOf(row, first, owner, credits = []) {
   const media = (row.media_urls || []).filter(Boolean);
   const files = (row.file_ids || []).length;
   const cards = Array.isArray(row.links) ? row.links.length : [row.external_url, row.github_url, row.demo_url].map(safeUrl).filter(Boolean).length;
@@ -139,6 +221,9 @@ function pieceOf(row, first, owner) {
   const from = monthOf(row.started_on);
   const month = to || from || monthOf(row.created_at);
   const seen = row.source_kind === 'gig' || row.source_kind === 'plan';
+  const signed = credits.map((c) => c.credit || c).filter((c) => c.status === 'signed');
+  const by = signed.length ? signedWords(signed) : null;
+  const sourceWords = row.source_kind === 'gig' ? 'A paid job on Pantopus' : 'A plan that took place on Pantopus';
   const piece = {
     id: row.id,
     title: row.title,
@@ -155,15 +240,36 @@ function pieceOf(row, first, owner) {
       documents: Math.max(0, files - media.length),
       links: cards,
     },
-    ink: seen ? 'seen' : 'said',
+    ink: seen ? 'seen' : (by ? 'signed' : 'said'),
     text: row.title,
-    how: seen ? (row.source_kind === 'gig' ? 'A paid job on Pantopus' : 'A plan that took place on Pantopus') : `In ${first}'s words`,
+    how: seen ? `${sourceWords}${by ? `, signed by ${by}` : ''}` : (by ? `Signed by ${by}` : `In ${first}'s words`),
     lane: 'work',
     pinned: row.is_featured === true,
     link: { kind: 'piece', id: row.id },
   };
   if (owner) Object.assign(piece, { audience: row.audience || 'anyone', draft: row.is_draft === true, hidden: row.is_visible === false });
   return { row, month, piece };
+}
+
+/**
+ * The "With <owner>" ties this viewer may see: all of them for the person and for the piece's owner; for any other
+ * signed-in viewer only where the owner's piece opens for them (a public or members-only profile they may find, no
+ * block either way, and the owner's Work part and the piece's "who sees it" both reaching them); none on a link view.
+ */
+function withTiesFor(ctx, list, view) {
+  if (view === 'link' || !(list || []).length) return [];
+  const viewerId = ctx.viewerId ? String(ctx.viewerId) : null;
+  return list.filter((t) => {
+    if (!t.piece?.title) return false;
+    if (view === 'owner' || (viewerId && String(t.owner_id) === viewerId)) return true;
+    const side = t.viewer_side || {};
+    if (side.blocked === true || (t.owner_visibility || 'public') === 'private') return false;
+    const findable = t.owner_search_visibility || 'everyone';
+    if (findable === 'nobody' || (findable === 'mutuals' && side.connected !== true)) return false;
+    const ownerView = side.household === true ? 'household' : (side.connected === true ? 'connection' : 'member');
+    return reaches(readShare(t.owner_share).parts, 'work', ownerView)
+      && reaches({ piece: t.piece.audience || 'anyone' }, 'piece', ownerView);
+  });
 }
 
 // ---------- the record: every line, its part and its months ----------
@@ -330,8 +436,28 @@ function buildRecord(ctx, sources, { now }) {
   // does (the Work part is checked by the composer); hidden and draft pieces come only for the owner (sources.js).
   // A caller that forgets the view gets the narrowest one, so it can only show less.
   const viewOf = ctx.view || 'link';
+  const creditsOf = (id) => creditsFor(sources.credits, id, { view: viewOf, viewerId: ctx.viewerId, first, now });
   const pieces = (sources.pieces || []).filter((row) => row.title && reaches({ piece: row.audience || 'anyone' }, 'piece', viewOf))
-    .map((row) => pieceOf(row, first, viewOf === 'owner'));
+    .map((row) => pieceOf(row, first, viewOf === 'owner', creditsOf(row.id)));
+  // "With <owner>" (phase 2B): a piece of someone else's that this person signed and shows on their Work, kept once
+  // (the owner's piece, never a copy), only where this viewer may open the owner's piece; Signed in this person's
+  // record. Never on a page opened without signing in: the owner never allowed their name there.
+  for (const t of withTiesFor(ctx, sources.withTies, viewOf)) {
+    const ownerName = t.owner_shown?.name || null;
+    const base = pieceOf(t.piece, firstWord(ownerName) || 'them', false);
+    const username = t.owner_shown?.username || null;
+    pieces.push({
+      row: t.piece,
+      month: base.month,
+      with: true,
+      piece: {
+        ...base.piece, ink: 'signed', how: ownerName ? `With ${ownerName}` : 'Signed together', pinned: false,
+        link: { kind: 'piece', id: t.piece.id, user_id: t.owner_id, username },
+        with: { name: ownerName, user_id: t.owner_id, username },
+        ...(viewOf === 'owner' ? { tie_id: t.id } : {}),
+      },
+    });
+  }
   for (const p of pieces) {
     if (p.row.is_draft || p.row.is_visible === false) continue;
     mark('work', [p.month], p.piece.ink, ['record_work', 'work']);
@@ -339,7 +465,8 @@ function buildRecord(ctx, sources, { now }) {
   }
   // Can do: every skill named on a piece this viewer can open (five a piece at most), and each skill the person
   // listed; a listed skill with no piece stays a Said line, as in phase 1.
-  const shown = pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
+  // Skills are the owner's words about their own pieces: a "With" piece adds none to this person's.
+  const shown = pieces.filter((p) => !p.with && !p.row.is_draft && p.row.is_visible !== false);
   const skillPieces = new Map();
   for (const p of shown) {
     for (const raw of (p.row.skills_used || []).slice(0, 5)) {
@@ -555,9 +682,10 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       work.push({ kind: 'can_do', id: 'can_do', title: 'Can do', subtitle: `Counted from ${ctx.firstName}'s pieces`, skills: record.skills });
     }
     // A piece's city only where the city part reaches this viewer (never an address).
-    const withPlace = (p) => ({ ...p.piece, place: cityOk && p.row.place_city ? [p.row.place_city, p.row.place_state].filter(Boolean).join(', ') : null });
+    // A "With" piece is someone else's: no city from it here.
+    const withPlace = (p) => ({ ...p.piece, place: !p.with && cityOk && p.row.place_city ? [p.row.place_city, p.row.place_state].filter(Boolean).join(', ') : null });
     const live = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
-    const pinned = live.filter((p) => p.row.is_featured).slice(0, 3);
+    const pinned = live.filter((p) => !p.with && p.row.is_featured).slice(0, 3);
     // The owner's list also carries their drafts and hidden pieces (marked); nobody else's does.
     // `all` is EVERY piece this viewer can open, pinned ones included (each carries `pinned`; the rows hold up to 80), so
     // a year's chip count equals its dots and its list (board 7); nothing is cut.
@@ -674,12 +802,16 @@ function composeMonth(ctx, record, month) {
  * GET …/piece/:id: one piece, opened (CONTRACT P2.2). Null when the Work part or the piece's own "who sees it" doesn't
  * reach the view. Never the job's address, price or poster: the job appears only as "a paid job, completed".
  */
-function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
+function composePiece(ctx, row, { attachments = [], reviews = [], credits = null, party = false, now = new Date() } = {}) {
   const view = ctx.view;
-  if (!reaches(ctx.parts, 'work', view) || !reaches({ piece: row.audience || 'anyone' }, 'piece', view)) return null;
+  // `party`: the viewer was asked to sign a credit on this piece, or signed one; they may open it whatever its "who sees
+  // it" (they were shown it when asked). Everyone else by the Work part and the piece's own setting.
+  if (!party && (!reaches(ctx.parts, 'work', view) || !reaches({ piece: row.audience || 'anyone' }, 'piece', view))) return null;
   const first = ctx.firstName;
   const owner = view === 'owner';
-  const { piece } = pieceOf(row, first, owner);
+  // `credits` null: PROFILE_TIES is off, and the answer has no `credits` key at all.
+  const shownCredits = credits ? creditsFor(credits, row.id, { view, viewerId: ctx.viewerId, first, now }) : [];
+  const { piece } = pieceOf(row, first, owner, shownCredits);
   const cityOk = reaches(ctx.parts, 'city', view) && ctx.cityByPrivacy;
   piece.place = cityOk && row.place_city ? [row.place_city, row.place_state].filter(Boolean).join(', ') : null;
   const description = String(row.description || '').trim();
@@ -688,6 +820,13 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
     howWeKnow.push(line('seen', 'A paid job, completed on Pantopus', row.source_at ? dayLabel(row.source_at) : 'Pantopus\'s own records', 'work', null));
   } else if (row.source_kind === 'plan') {
     howWeKnow.push(line('seen', 'A plan that took place on Pantopus', row.source_at ? dayLabel(row.source_at) : 'Pantopus\'s own records', 'work', null));
+  }
+  const RELATION_HOW = { with: `Worked with ${first}`, led: 'Led it', learned_from: `${first} learned from them`, for: `Hired ${first}` };
+  const signed = shownCredits.filter((c) => c.credit.status === 'signed');
+  for (const { credit } of signed) {
+    const who = credit.party.name || (credit.party.did[0].toLowerCase() + credit.party.did.slice(1));
+    howWeKnow.push(line('signed', `Signed by ${who}`, [credit.role || RELATION_HOW[credit.relation] || null,
+      credit.how.replace(/^Signed, /, '')].filter(Boolean).join(', '), 'work', null));
   }
   if (description) howWeKnow.push(line('said', `${first}'s own words`, 'Said', 'work', null));
   const linkView = view === 'link';
@@ -719,19 +858,45 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
       attachments,
       owner_role: String(row.owner_role || '').trim() || null,
       links: Array.isArray(row.links) ? row.links.map((c) => cardOf(c, first, owner)) : [],
+      ...(credits ? { credits: shownCredits.map((c) => c.credit) } : {}),
       written,
-      kept_once: null,
+      kept_once: keptOnce(first, signed),
       skills: (row.skills_used || []).filter(Boolean).slice(0, 5),
     },
   };
   if (owner) {
     const { howItWillShow } = require('./pieces');
-    answer.piece.how_it_will_show = howItWillShow(row, ctx.parts.work);
+    answer.piece.how_it_will_show = howItWillShow(row, ctx.parts.work, shownCredits.map((c) => c.credit));
   }
   return answer;
 }
 
-/** A link card as the piece read sends it (CONTRACT P2.4): words only, never the proof line, never a page picture. */
+/**
+ * "One piece, kept once. It shows on Maria's, Tom's and Aiko's Work." Only the names this view may read, of the
+ * people who signed and show it on their own Work; null when nobody else shows it, or no such name may show.
+ */
+function keptOnce(first, signed) {
+  const names = signed.filter(({ raw, credit }) => raw.show_on_party_work !== false && credit.party.name)
+    .map(({ credit }) => firstWord(credit.party.name)).filter(Boolean);
+  if (!names.length) return null;
+  const all = [first, ...names].map((n) => `${n}'s`);
+  return `One piece, kept once. It shows on ${all.length === 2 ? all.join(' and ') : `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`} Work.`;
+}
+
+// Pages anyone can edit can't be proven as one person's (design review of #4823): a line in their head proves
+// nothing about who made the page. CONTRACT P2.4.
+const OPEN_EDIT_HOSTS = /(^|\.)(wikipedia\.org|wikimedia\.org|wiktionary\.org|wikidata\.org|fandom\.com)$/i;
+
+function provable(card) {
+  let host = card.site || '';
+  try { host = new URL(card.url).hostname; } catch (_) { /* the kept site stands in */ }
+  return !OPEN_EDIT_HOSTS.test(String(host).replace(/\.$/, ''));
+}
+
+/**
+ * A link card as the piece read sends it (CONTRACT P2.4): words only, never the proof line, never a page picture.
+ * The owner's card also says whether the page can be proven theirs at all (`provable`).
+ */
 function cardOf(card, first, owner = false) {
   const pm = monthOf(card.proven_at);
   return {
@@ -739,6 +904,7 @@ function cardOf(card, first, owner = false) {
     description: card.description || null, picture_url: null,
     ink: card.proven_at ? 'seen' : 'said',
     how: card.proven_at ? `Proven ${first}'s, ${monthLabel(pm)}` : (owner ? 'Not proven yours yet' : `Not proven ${first}'s yet`),
+    ...(owner ? { provable: provable(card) } : {}),
   };
 }
 
@@ -747,6 +913,6 @@ function dayLabel(at) {
 }
 
 module.exports = {
-  pieceOf, cardOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, cardOf, provable, creditsFor, creditOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };

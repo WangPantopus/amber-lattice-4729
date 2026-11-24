@@ -11,7 +11,7 @@ const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require
 const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
-const { profileLinksEnabled } = require('../../utils/featureFlags');
+const { profileLinksEnabled, profileTiesEnabled } = require('../../utils/featureFlags');
 const { buildRecord, composePage, composeMonth, composePiece, partContent, firstWord } = require('./compose');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -132,9 +132,12 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     rowsRead,
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
-  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn, owner: opened.view === 'owner' });
+  // The viewer whose side the rows carry (none for a preview or a link): an ask shows to the one asked.
+  const viewerId = keyed ? null : rowsViewer;
+  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn, owner: opened.view === 'owner', viewerId });
   const inCommon = inCommonRead && !(rows.blocked_by_them || rows.blocked_by_viewer) ? inCommonRead : null;
   const ctx = contextFrom(opened, rows.share || null, found);
+  ctx.viewerId = viewerId;
   if (keyed) {
     // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).
@@ -184,16 +187,23 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   ]);
   const missing = () => new PageRefusal(404, 'PIECE_NOT_FOUND', 'That piece isn\'t here.');
   const ctx = contextFrom(opened, rows.share || null, found);
+  ctx.viewerId = viewing ? String(viewing) : null;
   if (keyed) ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
   // The owner may open their drafts and hidden pieces; nobody else's rows carry them (sources.js).
   const owner = ctx.view === 'owner';
   const candidates = owner ? [...(rows.pieces || []), ...(rows.owner_only_pieces || [])] : (rows.pieces || []);
   const row = candidates.find((r) => String(r.id) === String(pieceId));
   if (!row) throw missing();
-  const sources = await sourcesFrom(String(found.userData.id), rows, { pinned: false, owner });
+  const sources = await sourcesFrom(String(found.userData.id), rows, { pinned: false, owner, viewerId: ctx.viewerId });
+  // Someone asked to sign a credit on this piece, or who signed one, may open it (they were shown it when asked);
+  // sources.creditsFrom already left out a block either way and their own switch off.
+  const party = !owner && Boolean(ctx.viewerId) && sources.credits.some((c) => String(c.piece_id) === String(row.id)
+    && String(c.party_user_id) === ctx.viewerId && (c.status === 'asked' || c.status === 'signed'));
   const { attachmentsOf } = require('./pieces');
   const attachments = await attachmentsOf(row);
-  const answer = composePiece(ctx, row, { attachments, reviews: sources.reviews?.rows || [] });
+  const answer = composePiece(ctx, row, {
+    attachments, reviews: sources.reviews?.rows || [], credits: profileTiesEnabled() ? sources.credits : null, party,
+  });
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
 }
@@ -221,14 +231,23 @@ async function visitorFrom(loaded) {
     cityByPrivacy: ctx.cityLimit === 'anyone',
     relationship: 'none',
     canMessage: false,
+    viewerId: null,
   };
   // The visitor's own sources and record: the owner's carry drafts and hidden pieces, a visitor's never do.
   const visitorSources = await sourcesFrom(String(ctx.userData.id), rows, { pinned: false, owner: false });
   return composePage(visitorCtx, visitorSources, { record: buildRecord(visitorCtx, visitorSources, { now: new Date() }), inCommon: null });
 }
 
+// The share sheet's Work row (CONTRACT P2.5): "<shown> of your <total> pieces". `total` counts the pieces that are
+// finished and not hidden; `shown`, those whose own "who sees it" is anyone, so the row's setting decides the rest.
+function workPieces(sources) {
+  const live = (sources.pieces || []).filter((row) => row.title && !row.is_draft && row.is_visible !== false);
+  return { shown: live.filter((row) => (row.audience || 'anyone') === 'anyone').length, total: live.length };
+}
+
 async function shareBody(req) {
   const linksOn = profileLinksEnabled();
+  const tiesOn = profileTiesEnabled();
   const [loaded, linkRows] = await Promise.all([
     loadPage(req, { id: req.user.id }),
     linksOn ? links.listRows(req.user.id) : null,
@@ -255,13 +274,15 @@ async function shareBody(req) {
     search_engines: ctx.searchEngines,
     city_limit: ctx.cityLimit,
     visitor: await visitorFrom(loaded),
+    work_pieces: workPieces(loaded.sources),
+    ...(tiesOn ? { ties_enabled: readShare(loaded.rows.share).ties_enabled } : {}),
     ...linkFields,
   };
 }
 
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
-  const change = applyShareChange(readShare(stored), req.body, new Date(), { links: profileLinksEnabled() });
+  const change = applyShareChange(readShare(stored), req.body, new Date(), { links: profileLinksEnabled(), ties: profileTiesEnabled() });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);
   if (error) throw error;

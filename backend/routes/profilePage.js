@@ -10,6 +10,8 @@
  *   GET /api/profile-page/marks?ids=…            the ring an avatar wears, for up to 100 people
  *   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   links for one purpose (PROFILE_LINKS)
  *   GET /api/profile-page/:username/v/:key[/piece/:id | /month/:m]   a link for one purpose, opened by its key
+ *   POST | DELETE …/me/pieces/:id/credits[/:creditId], GET /me/asks, POST /me/asks/:id/sign | decline,
+ *   DELETE /me/ties/:id                         credits and signing (PROFILE_TIES; CONTRACT P2.5)
  */
 
 const express = require('express');
@@ -17,9 +19,10 @@ const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
-const { profileSourcesEnabled, profileLinksEnabled } = require('../utils/featureFlags');
+const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
 const pieces = require('../services/profilePage/pieces');
+const ties = require('../services/profilePage/ties');
 
 const router = express.Router();
 
@@ -34,7 +37,8 @@ function handle(label, run, status = 200) {
       res.set('Cache-Control', 'private, no-store');
       return res.status(status).json(await run(req));
     } catch (err) {
-      if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal) {
+      if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal
+        || err instanceof ties.TieRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -64,6 +68,20 @@ router.post('/me/pieces/:id/links/:linkId/proof', verifyToken, linkBudget,
 router.post('/me/pieces/:id/links/:linkId/check', verifyToken, linkBudget,
   handle('link-check', (req) => pieces.checkProof(String(req.user.id), req.params.id, req.params.linkId)));
 router.delete('/me/pieces/:id', verifyToken, handle('piece-delete', (req) => pieces.deletePiece(String(req.user.id), req.params.id)));
+
+// Credits, signing and "Asked of you" (CONTRACT P2.5), behind their own switch PROFILE_TIES.
+function tiesOn(req, res, next) {
+  if (profileTiesEnabled()) return next();
+  return res.status(404).json({ error: 'Not found', code: 'PROFILE_TIES_OFF' });
+}
+router.post('/me/pieces/:id/credits', verifyToken, tiesOn,
+  handle('credit-add', (req) => ties.addCredit(String(req.user.id), req.params.id, req.body), 201));
+router.delete('/me/pieces/:id/credits/:creditId', verifyToken, tiesOn,
+  handle('credit-remove', (req) => ties.removeCredit(String(req.user.id), req.params.id, req.params.creditId)));
+router.get('/me/asks', verifyToken, tiesOn, handle('asks', (req) => ties.listAsks(String(req.user.id))));
+router.post('/me/asks/:id/sign', verifyToken, tiesOn, handle('ask-sign', (req) => ties.signAsk(String(req.user.id), req.params.id, req.body)));
+router.post('/me/asks/:id/decline', verifyToken, tiesOn, handle('ask-decline', (req) => ties.declineAsk(String(req.user.id), req.params.id)));
+router.delete('/me/ties/:id', verifyToken, tiesOn, handle('tie-remove', (req) => ties.removeTie(String(req.user.id), req.params.id)));
 
 // Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.
 function linksOn(req, res, next) {

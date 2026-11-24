@@ -6,9 +6,9 @@
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
-const { readRows } = require('./sources');
+const { readRows, creditsFrom } = require('./sources');
 const { readShare, reaches } = require('./parts');
-const { pieceOf, monthLabel, localDate, PACIFIC } = require('./compose');
+const { pieceOf, creditsFor, provable, monthLabel, localDate, PACIFIC } = require('./compose');
 
 const TITLE_MAX = 60;
 const WORDS_MAX = 280;
@@ -119,6 +119,8 @@ const KIND_HOSTS = [
   ['article', /(^|\.)(medium\.com|substack\.com|nytimes\.com|theguardian\.com|washingtonpost\.com|npr\.org|bbc\.co\.uk|bbc\.com)$/],
 ];
 const linkInvalid = (message) => new PieceRefusal(400, 'LINK_INVALID', message);
+// A page anyone can edit (compose.provable's list) is never proven anyone's.
+const notProvable = () => new PieceRefusal(409, 'LINK_NOT_PROVABLE', 'This kind of page can\'t be proven as yours.');
 
 /** The link as kept: http(s) only, no credentials, tracking parts and the fragment cut. */
 function cleanLink(value) {
@@ -229,12 +231,30 @@ function firstNameOf(rows, fallback) {
   return String(name).trim().split(/\s+/)[0] || 'you';
 }
 
-/** What a piece will be on the page, worked out by the server (board 10's foot). */
-function howItWillShow(row, workSetting) {
+// "Dan R.", "Dan R. and Aiko M.", "Dan R., Aiko M. and Tom H."
+function namesList(names) {
+  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * What a piece will be on the page, worked out by the server (board 10's foot). `credits`: the owner's view of its
+ * credits (compose.creditOf); a "Not me" is never counted here.
+ */
+function howItWillShow(row, workSetting, credits = []) {
   const lines = [];
+  // The one who hired first, as the piece's own words name them.
+  const signed = [...credits.filter((c) => c.relation === 'for'), ...credits.filter((c) => c.relation !== 'for')]
+    .filter((c) => c.status === 'signed' && c.party.name).map((c) => c.party.name);
+  const asked = credits.filter((c) => c.status === 'asked' && c.party.name).map((c) => c.party.name);
   if (row.source_kind === 'gig') lines.push('Seen: it started from a paid job on Pantopus.');
   else if (row.source_kind === 'plan') lines.push('Seen: it started from a plan that took place on Pantopus.');
+  else if (signed.length) lines.push('Signed: someone on it signed it.');
   else lines.push('Said: your words, until someone on it signs or a link is proven yours.');
+  // A name may end in its own full stop ("Dan R."): no second one.
+  const stop = (text) => (text.endsWith('.') ? text : `${text}.`);
+  const who = [signed.length ? stop(`Signed by ${namesList(signed)}`) : null,
+    asked.length ? `${namesList(asked)} ${asked.length === 1 ? 'is' : 'are'} asked.` : null].filter(Boolean).join(' ');
+  if (who) lines.push(who);
   const unproven = (row.links || []).filter((c) => !c.proven_at).length;
   if (unproven) lines.push(`Said: ${unproven === 1 ? 'the link' : `${unproven} links`}, until proven yours.`);
   if (row.is_draft) lines.push('A draft: nobody else sees it yet.');
@@ -304,7 +324,11 @@ async function listMine(userId) {
   const first = firstNameOf(rows);
   const workSetting = readShare(rows.share).parts.work;
   const all = [...(rows.pieces || []), ...(rows.owner_only_pieces || [])];
-  const pieces = all.map((row) => ({ ...pieceOf(row, first, true).piece, how_it_will_show: howItWillShow(row, workSetting) }));
+  const credits = creditsFrom(rows, { owner: true });
+  const pieces = all.map((row) => {
+    const shown = creditsFor(credits, row.id, { view: 'owner', first });
+    return { ...pieceOf(row, first, true, shown).piece, how_it_will_show: howItWillShow(row, workSetting, shown.map((c) => c.credit)) };
+  });
   const live = all.filter((row) => !row.is_draft && row.is_visible !== false);
   const linkShown = (row) => reaches({ work: workSetting }, 'work', 'link') && reaches({ piece: row.audience || 'anyone' }, 'piece', 'link');
   return { pieces, offered: await offeredFor(userId, rows), counts: { shown_on_link: live.filter(linkShown).length, total: live.length } };
@@ -314,8 +338,10 @@ async function answerFor(userId, id) {
   const rows = await ownRows(userId);
   const row = [...(rows.pieces || []), ...(rows.owner_only_pieces || [])].find((r) => String(r.id) === String(id));
   if (!row) throw notFound();
-  const piece = pieceOf(row, firstNameOf(rows), true).piece;
-  return { ...piece, how_it_will_show: howItWillShow(row, readShare(rows.share).parts.work) };
+  const first = firstNameOf(rows);
+  const shown = creditsFor(creditsFrom(rows, { owner: true }), row.id, { view: 'owner', first });
+  const piece = pieceOf(row, first, true, shown).piece;
+  return { ...piece, how_it_will_show: howItWillShow(row, readShare(rows.share).parts.work, shown.map((c) => c.credit)) };
 }
 
 async function pinRoom(userId, exceptId) {
@@ -403,6 +429,7 @@ async function proofLine(userId, id, linkId) {
   const links = piece.links || [];
   const card = links.find((c) => c.id === linkId);
   if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
+  if (!provable(card)) throw notProvable();
   if (!card.proof_token) {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const bytes = require('crypto').randomBytes(8);
@@ -424,13 +451,14 @@ async function checkProof(userId, id, linkId) {
   const links = piece.links || [];
   const card = links.find((c) => c.id === linkId);
   if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
-  if (!card.proof_token) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Get your line first, then put it on the page.');
+  if (!provable(card)) throw notProvable();
+  if (!card.proof_token) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Get your line first, then put it in the page\'s title or description.');
   const { headCarries } = require('../../routes/linkPreview').linkCards;
   let found;
   try { found = await headCarries(card.url, card.proof_token, userId); } catch (_) {
     throw new PieceRefusal(409, 'LINK_UNREADABLE', 'That page can\'t be read right now. Try again later.');
   }
-  if (!found) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Your line isn\'t on the page yet.');
+  if (!found) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Your line isn\'t in the page\'s title or description yet.');
   card.proven_at = card.proven_at || new Date().toISOString();
   const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
   if (error) throw error;

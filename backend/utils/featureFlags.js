@@ -64,6 +64,18 @@ function profileLinksEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// Credits, roles and the work circle (founder approval of ProfileTie 2026-11-23, SPEC item 9.1; phase 2B), with their
+// own switch beneath PROFILE_SOURCES (rule 4.12). PROFILE_TIES is '1' (on) or '0' (off); unset, it is on for hosted
+// staging and off everywhere else. It needs PROFILE_SOURCES on too. Off, no credit, ask, tie role or circle leaves the
+// server and their routes answer 404 PROFILE_TIES_OFF.
+function profileTiesEnabled(env = process.env) {
+  if (!profileSourcesEnabled(env)) return false;
+  const value = String(env.PROFILE_TIES || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
 // account. The apps show nothing unless the profile's `guidance.enabled` is true (routes/users.js). GUIDANCE_CARDS is
 // '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else.
@@ -288,6 +300,7 @@ module.exports = {
   aroundYouSourceFinderEnabled,
   profileSourcesEnabled,
   profileLinksEnabled,
+  profileTiesEnabled,
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,
