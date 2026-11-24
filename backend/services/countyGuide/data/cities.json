@@ -33,6 +33,33 @@
       "built": 1983,
       "value": 293000
     },
+    "1202681": {
+      "name": "Aventura",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Aventura, Building Division",
+          "url": "https://www.cityofaventura.com/169/Building-Permits",
+          "line": "Issues building permits for new construction and renovations, reviewing applications for compliance with zoning codes and the Florida Building Code; inspections by qualified, licensed inspectors are required.",
+          "q": "Where do I find building permits in Aventura?",
+          "a": "The City of Aventura's Building Division issues building permits for new construction and renovations, reviewing applications for compliance with zoning codes and the Florida Building Code. Inspections by qualified, licensed inspectors are required, and the City notes it is against state law to do business with an unlicensed contractor."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Aventura, Planning and Zoning Division",
+          "url": "https://www.cityofaventura.com/207/Planning-Zoning",
+          "line": "Interprets land use regulations for City staff and landowners, maintains development records and plans, and issues recommendations on development petitions; the page links the Comprehensive Plan and the Future Land Use Map.",
+          "q": "Where is Aventura's zoning?",
+          "a": "The City of Aventura's Planning and Zoning Division interprets land use regulations for City staff and landowners, maintains development records and plans, and issues recommendations on requests for development petitions. Its page links the Comprehensive Plan and the Future Land Use Map."
+        }
+      ],
+      "built": 1989,
+      "value": 451100
+    },
     "1225175": {
       "name": "Gainesville",
       "county": "12001",
@@ -766,6 +793,33 @@
       ],
       "built": 1993,
       "value": 351400
+    },
+    "4048350": {
+      "name": "Midwest City",
+      "county": "40109",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Midwest City, Permits and Inspections",
+          "url": "https://www.midwestcityok.org/188/Permits-Inspections",
+          "line": "Residential and commercial permit applications go through the CityWorks public access portal; the plan reviewer checks construction codes, zoning and City ordinances, and a residential permit is typically reviewed within 3 to 5 days.",
+          "q": "Where do I find building permits in Midwest City?",
+          "a": "In Midwest City, completed permit applications and plans go to the Engineering and Construction Services Department, and the CityWorks portal takes residential and commercial permit submissions online. A residential permit is typically reviewed within 3 to 5 days, and commercial plan review usually takes up to 14 working days."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Midwest City Community Development, Planning and Zoning",
+          "url": "https://www.midwestcityok.org/466/Planning-Zoning",
+          "line": "Manages how land is used and developed: zoning controls what types of development are allowed in specific areas, and the team reviews applications for rezoning, minor variances and special permits.",
+          "q": "Where is Midwest City's zoning?",
+          "a": "Midwest City's Planning and Zoning component of the Community Development department manages how land in the city is used and developed. Zoning controls what types of development are allowed in specific areas, and the team reviews applications for rezoning, minor variances and special permits."
+        }
+      ],
+      "built": 1975,
+      "value": 164500
     },
     "4055000": {
       "name": "Oklahoma City",
@@ -2642,6 +2696,33 @@
       ],
       "built": 1982,
       "value": 487900
+    },
+    "0659962": {
+      "name": "Redlands",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Redlands Development Services, Building and Safety Division",
+          "url": "https://www.redlands.gov/building-safety-division/",
+          "line": "Plan-checks all proposed construction before building permits are issued and inspects new construction, additions, alterations and demolitions for structural, fire, energy and life safety requirements.",
+          "q": "Where do I find building permits in Redlands?",
+          "a": "The City of Redlands' Building and Safety Division regulates construction and occupancy of residential, commercial and industrial buildings. It plan-checks all proposed construction before building permits are issued, and inspects new construction, additions, alterations and demolitions."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Redlands Development Services, Zoning",
+          "url": "https://www.redlands.gov/zoning/",
+          "line": "Links the Interactive Online Zone Map, the zoning districts and the permitted and conditional uses; Ordinance No. 2985, amending Zoning Code provisions for residential and some commercial districts, took effect August 15, 2025.",
+          "q": "Where is Redlands' zoning?",
+          "a": "The City of Redlands' zoning page links its Interactive Online Zone Map, its zoning districts and the permitted and conditional uses. Ordinance No. 2985, amending several Zoning Code provisions for residential and some commercial districts, took effect on August 15, 2025."
+        }
+      ],
+      "built": 1976,
+      "value": 618900
     }
   }
 }

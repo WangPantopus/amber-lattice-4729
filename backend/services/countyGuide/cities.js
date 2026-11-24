@@ -57,6 +57,9 @@ const CITIES = [
   // November 24, 2026, fifteenth: Santa Clarita (Los Angeles County), Jurupa Valley (Riverside County) and Rialto (San
   // Bernardino County), CA.
   '0669088', '0637692', '0660466',
+  // November 24, 2026, sixteenth: Midwest City (Oklahoma County), OK; Aventura (Miami-Dade County), FL; Redlands (San
+  // Bernardino County), CA.
+  '4048350', '1202681', '0659962',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
