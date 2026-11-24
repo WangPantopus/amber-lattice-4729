@@ -3060,6 +3060,8 @@ router.get('/profile', verifyToken, async (req, res) => {
       guidance: guidanceFor(userData),
       // The house on Today (utils/featureFlags.js `todayHouseEnabled`): the apps treat a missing key as off.
       today_house: todayHouseEnabled(),
+      // A profile with sources (utils/featureFlags.js `profileSourcesEnabled`): the apps treat a missing key as off.
+      profile_sources: profileSourcesEnabled(),
     });
   } catch (err) {
     logger.error('Profile fetch error', { error: err.message, userId: req.user.id });
@@ -3073,7 +3075,7 @@ router.get('/profile', verifyToken, async (req, res) => {
 // { "<card id>": { "times": <int>, "last_at": "<ISO time>" } }, so a card closed on one app stays closed on the others.
 // The profile above carries `guidance` = { enabled, new_account, seen }; both routes below answer { guidance }.
 // (Required here, not at the top: scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up.)
-const { guidanceCardsEnabled, todayHouseEnabled } = require('../utils/featureFlags');
+const { guidanceCardsEnabled, todayHouseEnabled, profileSourcesEnabled } = require('../utils/featureFlags');
 const GUIDANCE_CARD_IDS = new Set([
   // First open of each screen.
   'welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments', 'tab_plans',
@@ -3971,6 +3973,12 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
   if (preview.refusal) return res.status(preview.refusal.status).json(preview.refusal.body);
   const audience = preview.audience;
   const previewed = audience ? { preview_as: audience } : {};
+  // SPEC rule 4.7 (services/profilePage/oldReads.js): a signed-out caller gets no more than the person's main link
+  // shows, once they saved its parts. Read beside everything else; settled here so a failure is never unhandled.
+  const linkRule = require('../services/profilePage/oldReads');
+  const linkParts = linkRule.appliesTo(req, audience)
+    ? linkRule.savedLinkParts(userData.id).then((parts) => ({ parts }), (error) => ({ error }))
+    : null;
 
   // A preview reads as someone who isn't the owner: signed out for `anyone`, a stand-in signed-in viewer otherwise.
   const viewerId = audience ? (audience === 'anyone' ? null : PREVIEW_VIEWER_ID) : (req.user?.id || null);
@@ -4041,6 +4049,10 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
     logger.warn('Could not fetch reviews', { error: reviewErr.message });
   }
 
+  // Rule 4.7's reviewer wording needs each review's job; read it beside the last batch, not after it.
+  const linkLimit = linkParts && linkParts.then(async (saved) => (saved.parts
+    ? { parts: saved.parts, roles: await linkRule.reviewRoles(userData.id, reviews, saved.parts) }
+    : saved)).catch((error) => ({ error }));
   const { profileContributions } = require('../services/profileContributions');
   const [residency, showArea, contributions] = await Promise.all([
     getPublicResidencySummary(userData.id, viewerId),
@@ -4048,7 +4060,7 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
     profileContributions(userData.id),
   ]);
 
-  return res.json({
+  const body = {
     id: publicUserData.id,
     username: publicUserData.username,
     usernameIsGenerated: isMadeUpUsername(publicUserData.username, publicUserData.email),
@@ -4092,7 +4104,13 @@ async function sendPublicProfile(req, res, userData, localProfileRouteMatch) {
     // Support Trains helped, plans hosted, Helpful marks (services/profileContributions.js); null if unreadable.
     contributions,
     ...previewed,
-  });
+  };
+  if (linkLimit) {
+    const saved = await linkLimit;
+    if (saved.error) throw saved.error;
+    if (saved.parts) return res.json(linkRule.limitPublicProfile(body, saved.parts, saved.roles));
+  }
+  return res.json(body);
 }
 
 /**
@@ -4495,6 +4513,11 @@ router.get('/:username', optionalAuth, async (req, res) => {
     if (preview.refusal) return res.status(preview.refusal.status).json(preview.refusal.body);
     const audience = preview.audience;
     const previewed = audience ? { preview_as: audience } : {};
+    // SPEC rule 4.7, as in sendPublicProfile.
+    const linkRule = require('../services/profilePage/oldReads');
+    const linkParts = linkRule.appliesTo(req, audience)
+      ? linkRule.savedLinkParts(userData.id).then((parts) => ({ parts }), (error) => ({ error }))
+      : null;
     const viewerId = audience ? (audience === 'anyone' ? null : PREVIEW_VIEWER_ID) : (req.user?.id || null);
     const profileVisibility = userData.profile_visibility || 'public';
     const previewAccess = audience ? await previewProfileAccess(audience, userData, null) : null;
@@ -4508,25 +4531,28 @@ router.get('/:username', optionalAuth, async (req, res) => {
       profileContributions(userData.id),
     ]);
 
-    res.json({
-      user: {
-        id: shownUser.id,
-        username: shownUser.username,
-        name: shownUser.name,
-        firstName: shownUser.first_name,
-        middleName: shownUser.middle_name,
-        lastName: shownUser.last_name,
-        bio: shownUser.bio,
-        prompts: serializeProfilePrompts(shownUser.profile_prompts),
-        city: showArea ? shownUser.city : null,
-        state: showArea ? shownUser.state : null,
-        profile_picture_url: shownUser.profile_picture_url,
-        memberSince: shownUser.created_at,
-        profile_visibility: profileVisibility,
-        contributions,
-      },
-      ...previewed,
-    });
+    let user = {
+      id: shownUser.id,
+      username: shownUser.username,
+      name: shownUser.name,
+      firstName: shownUser.first_name,
+      middleName: shownUser.middle_name,
+      lastName: shownUser.last_name,
+      bio: shownUser.bio,
+      prompts: serializeProfilePrompts(shownUser.profile_prompts),
+      city: showArea ? shownUser.city : null,
+      state: showArea ? shownUser.state : null,
+      profile_picture_url: shownUser.profile_picture_url,
+      memberSince: shownUser.created_at,
+      profile_visibility: profileVisibility,
+      contributions,
+    };
+    if (linkParts) {
+      const saved = await linkParts;
+      if (saved.error) throw saved.error;
+      if (saved.parts) user = linkRule.limitLegacyUser(user, saved.parts);
+    }
+    res.json({ user, ...previewed });
   } catch (err) {
     logger.error('Public profile fetch error', { error: err.message, errorCode: err.code || null, username: req.params.username });
     res.status(503).json(PROFILE_UNAVAILABLE_REPLY);
@@ -6884,5 +6910,19 @@ router.post(
     res.json({ success: true });
   }
 );
+
+// The profile page (services/profilePage) finds and opens people exactly as these reads do.
+router.profileReads = {
+  PUBLIC_USER_PROFILE_SELECT,
+  getLocalProfileByLegacyRouteHandle,
+  getLocalProfileByLegacyRouteId,
+  isNotAnIdError,
+  canAccessPublicUserProfile,
+  canAccessLegacyLocalProfileRoute,
+  applyLocalProfilePublicOverlay,
+  withLocalProfileNameForViewer,
+  canSeeProfileArea,
+  previewProfileAccess,
+};
 
 module.exports = router;
