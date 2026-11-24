@@ -18,12 +18,15 @@ public struct HomeRecord: Decodable, Sendable, Hashable {
     public let version: Int
     public let state: HomeRecordState
     public let header: HomeRecordHeader
+    /// A buyer's actions (save, share, claim), drawn as a row under the header.
+    /// An id this app does not know is dropped.
+    public let actions: [HomeRecordAction]
     public let blocks: [HomeRecordBlock]
     public let footer: String?
 
     private enum CodingKeys: String, CodingKey {
         case version = "v"
-        case state, header, blocks, footer
+        case state, header, actions, blocks, footer
     }
 
     public init(from decoder: Decoder) throws {
@@ -31,6 +34,8 @@ public struct HomeRecord: Decodable, Sendable, Hashable {
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
         state = try container.decodeIfPresent(HomeRecordState.self, forKey: .state) ?? .lookup
         header = try container.decode(HomeRecordHeader.self, forKey: .header)
+        let actions = (try? container.decodeIfPresent([LossyAction].self, forKey: .actions)) ?? []
+        self.actions = actions.compactMap(\.action)
         blocks = try container.decodeIfPresent([HomeRecordBlock].self, forKey: .blocks) ?? []
         footer = try container.decodeIfPresent(String.self, forKey: .footer)
     }
@@ -41,10 +46,36 @@ public struct HomeRecord: Decodable, Sendable, Hashable {
     }
 }
 
-/// Who is looking: anyone (`lookup`), a person of the Home who is not its
-/// confirmed owner (`member`), or the confirmed owner (`owner`).
+/// One action of a buyer's row, or nothing when it does not read.
+private struct LossyAction: Decodable {
+    let action: HomeRecordAction?
+
+    init(from decoder: Decoder) throws {
+        action = try? HomeRecordAction(from: decoder)
+    }
+}
+
+/// Who is looking: anyone signed out (`lookup`), a signed-in person who is not
+/// of this Home (`buyer`, the public half opened), a person of the Home who is
+/// not its confirmed owner (`member`), or the confirmed owner (`owner`).
 public enum HomeRecordState: String, Sendable, Hashable {
-    case lookup, member, owner
+    case lookup, buyer, member, owner
+}
+
+/// `save` this home, `share` this record, `claim` it ("Buying this home?").
+public struct HomeRecordAction: Decodable, Sendable, Hashable {
+    public enum Kind: String, Decodable, Sendable, Hashable {
+        case save, share, claim
+    }
+
+    public let kind: Kind
+    public let label: String
+    public let url: String
+
+    private enum CodingKeys: String, CodingKey {
+        case kind = "id"
+        case label, url
+    }
 }
 
 extension HomeRecordState: Decodable {

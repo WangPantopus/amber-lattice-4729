@@ -61,6 +61,12 @@ enum HomeRecordLinkTarget: Equatable {
     case waitingRoom(homeId: String)
     /// `/homes/claim-owner` and `/homes/verify-address` on a lookup.
     case addLookedUpHome
+    /// `/auth/sign-up`: the lookup's "Create a free account".
+    case signUp
+    /// `/auth/sign-in`: the lookup's "Sign in".
+    case signIn
+    /// `/saved-places/add`: a buyer's "Save this home".
+    case savePlace
     /// Anything else the app's link router opens.
     case other(path: String)
 
@@ -68,6 +74,7 @@ enum HomeRecordLinkTarget: Equatable {
         let bare = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
         var segments = bare.split(separator: "/").map(String.init)
         if segments.first == "app" { segments.removeFirst() }
+        if let account = accountTarget(segments) { return account }
         guard segments.first == "homes", segments.count >= 2 else { return .other(path: path) }
         if segments.count == 2, segments[1] == "claim-owner" || segments[1] == "verify-address" {
             return .addLookedUpHome
@@ -85,6 +92,16 @@ enum HomeRecordLinkTarget: Equatable {
         case "verify-residency": return .verifyResidency(homeId: homeId)
         case "waiting-room": return .waitingRoom(homeId: homeId)
         default: return .other(path: path)
+        }
+    }
+
+    /// The lookup's account steps and a buyer's save.
+    private static func accountTarget(_ segments: [String]) -> HomeRecordLinkTarget? {
+        switch segments {
+        case ["auth", "sign-up"], ["auth", "signup"]: .signUp
+        case ["auth", "sign-in"], ["auth", "login"]: .signIn
+        case ["saved-places", "add"]: .savePlace
+        default: nil
         }
     }
 }

@@ -370,7 +370,14 @@ struct HomeRecordClosedGroupBlock: View {
                     HomeRecordCardTitle(text: group.title, size: 15)
                     Spacer(minLength: 0)
                     if let chip = group.chip, !chip.isEmpty {
-                        PlaceChip(model: PlaceChipModel(tone: .neutral, text: chip, icon: .lock))
+                        // "For the owner" is closed until the owner verifies: grey, with a lock.
+                        // "Free with an account" opens with a sign-up: a plain sky label, as drawn.
+                        let ownersOnly = chip.localizedCaseInsensitiveContains("owner")
+                        PlaceChip(model: PlaceChipModel(
+                            tone: ownersOnly ? .neutral : .sky,
+                            text: chip,
+                            icon: ownersOnly ? .lock : nil
+                        ))
                     }
                 }
                 .frame(minHeight: 48)

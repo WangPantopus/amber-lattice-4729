@@ -1364,6 +1364,9 @@ public struct HubTabRoot: View {
         case let .waitingRoom(homeId): push(.waitingRoom(homeId: homeId))
         // A Home's record never sends the lookup's id-less steps; Add Home is their place.
         case .addLookedUpHome: push(.addHome)
+        // Signed in on a Home's stack: nothing to sign up for, and saving opens Save a place.
+        case .savePlace: push(.savePlace)
+        case .signUp, .signIn: break
         case let .other(other): router.handle(path: other)
         }
     }

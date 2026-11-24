@@ -845,6 +845,9 @@ public struct YouTabRoot: View {
         case let .waitingRoom(homeId): path.append(.waitingRoom(homeId: homeId))
         // A Home's record never sends the lookup's id-less steps; Add Home is their place.
         case .addLookedUpHome: path.append(.addHome)
+        // Signed in on a Home's stack: nothing to sign up for, and saving opens Save a place.
+        case .savePlace: path.append(.savePlace)
+        case .signUp, .signIn: break
         case let .other(other): DeepLinkRouter.shared.handle(path: other)
         }
     }
