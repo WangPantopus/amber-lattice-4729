@@ -483,7 +483,12 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     if (links.length) person.push({ kind: 'lines', id: 'links', title: 'Links', lines: links, more: null });
   }
   if (!linkView) {
+    // Moments: only when the person has a live Moment this viewer may see (index.momentsFor); the count is of those
+    // on the map, and only when there are some.
+    const moments = extras.moments;
     person.push({ kind: 'rows', id: 'rows', title: null, rows: [
+      ...(moments ? [{ key: 'moments', title: 'Moments', detail: moments.placed ? `${moments.placed} on the map` : null,
+        link: { kind: 'moments', user_id: ctx.userData.id } }] : []),
       { key: 'posts', title: 'Posts in Pulse', detail: null, link: { kind: 'posts', user_id: ctx.userData.id } },
     ] });
   }
