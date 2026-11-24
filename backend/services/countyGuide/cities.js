@@ -73,6 +73,10 @@ const CITIES = [
   // Burien (King County), WA; Gardena and Monterey Park (Los Angeles County), CA; Lake Elsinore (Riverside County), CA;
   // Coral Gables (Miami-Dade County), FL; DeSoto (Dallas County), TX; Mooresville (Iredell County), NC.
   '1751089', '2906652', '5361115', '5308850', '0628168', '0648914', '0639486', '1214250', '4820092', '3744220',
+  // November 24, 2026, twenty-first: Arcadia, Montebello and Diamond Bar (Los Angeles County), CA; Yucaipa (San
+  // Bernardino County), CA; Perris (Riverside County), CA; Venice (Sarasota County), FL; Sunny Isles Beach (Miami-Dade
+  // County), FL; Commerce City (Adams County), CO; Hoffman Estates and Glenview (Cook County), IL.
+  '0602462', '0648816', '0619192', '0687042', '0656700', '1273900', '1269555', '0816495', '1735411', '1729938',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
