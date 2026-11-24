@@ -5,7 +5,8 @@
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
-const { isConnected, shareHome, isUnpublishedBusiness, getRelationshipStatus, canMessageUser } = require('../../utils/visibilityPolicy');
+const { isUnpublishedBusiness } = require('../../utils/visibilityPolicy');
+const { relationshipStatus } = require('./sources');
 const { isMadeUpUsername, chosenUsernameOrNull } = require('../../utils/personalUsername');
 
 // Lazy: routes/users.js requires this folder for rule 4.7.
@@ -72,16 +73,6 @@ function previewFor(req, ownerId) {
   return as;
 }
 
-async function readPrivacy(userId) {
-  const { data, error } = await supabaseAdmin
-    .from('UserPrivacySettings')
-    .select('show_neighborhood, search_visibility')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (error) throw error;
-  return data || {};
-}
-
 /** "Who sees your city" as the widest view it allows: anyone | connections | none. */
 function cityLimit(settings) {
   const level = settings?.show_neighborhood || 'followers';
@@ -92,9 +83,12 @@ function cityLimit(settings) {
 
 /**
  * Opens the page for this request: the view, whether they may open it, the name others see and what the view needs
- * for its actions. Throws PageRefusal (403 PROFILE_PRIVATE when they may not open it).
+ * for its actions. Throws PageRefusal (403 PROFILE_PRIVATE when they may not open it). `rows` is the person's
+ * profile_page_rows entry (or a promise of it), read for this viewer (sources.readRows): their privacy settings,
+ * Local Profile, and the viewer's relationship row and shared home come from it, so none is a call of its own.
+ * Whether the viewer may open the page is decided by routes/users.js's own checks, unchanged.
  */
-async function openFor(req, found, { viewOverride, keyed = false } = {}) {
+async function openFor(req, found, { viewOverride, keyed = false, rows } = {}) {
   const { userData, localProfileRouteMatch } = found;
   const { PREVIEW_VIEWER_ID } = require('../../utils/profilePreview');
   const {
@@ -108,7 +102,7 @@ async function openFor(req, found, { viewOverride, keyed = false } = {}) {
   // The name others see, read as someone who isn't the owner (the owner's page shows that name too).
   const othersSee = isOwner ? PREVIEW_VIEWER_ID : viewerId;
 
-  const [canOpen, privacy, household, connected, relationship, canMessage, shown] = await Promise.all([
+  const [canOpen, personRows] = await Promise.all([
     (async () => {
       if (isOwner) return true;
       // A link for one purpose: its key is the invitation, so search settings don't stop it; a private profile does.
@@ -117,15 +111,22 @@ async function openFor(req, found, { viewOverride, keyed = false } = {}) {
       if (localProfileRouteMatch) return canAccessLegacyLocalProfileRoute(localProfileRouteMatch, viewerId, userData);
       return canAccessPublicUserProfile(viewerId, userData.id, userData.profile_visibility || 'public');
     })(),
-    readPrivacy(userData.id),
-    !preview && viewerId && !isOwner ? shareHome(viewerId, userData.id) : false,
-    !preview && viewerId && !isOwner ? isConnected(viewerId, userData.id) : false,
-    !preview && viewerId && !isOwner ? getRelationshipStatus(viewerId, userData.id, { forViewer: true }) : 'none',
-    !preview && viewerId && !isOwner ? canMessageUser(viewerId, userData.id) : false,
-    withLocalProfileNameForViewer(applyLocalProfilePublicOverlay(userData, localProfileRouteMatch), userData, othersSee,
-      localProfileRouteMatch),
+    rows,
   ]);
   if (!canOpen) throw new PageRefusal(403, 'PROFILE_PRIVATE', 'This profile is private');
+  if (!personRows) throw new Error('Profile rows missing');
+  // The name others see (the Local Profile row came with the rows; a person without one is read as before).
+  const shown = await withLocalProfileNameForViewer(applyLocalProfilePublicOverlay(userData, localProfileRouteMatch),
+    userData, othersSee, localProfileRouteMatch || personRows.local_profile || null);
+  const privacy = personRows.privacy || {};
+  const viewerSide = !preview && viewerId && !isOwner;
+  const household = viewerSide && personRows.shares_home === true;
+  // As visibilityPolicy reads them: isConnected and canMessageUser count a block either way, the Connect button only
+  // the viewer's own (getRelationshipStatus forViewer).
+  const status = viewerSide ? relationshipStatus(personRows.relationship, viewerId) : 'none';
+  const connected = status === 'connected';
+  const relationship = viewerSide ? relationshipStatus(personRows.relationship, viewerId, { forViewer: true }) : 'none';
+  const canMessage = viewerSide && status !== 'blocked' && (connected || household);
 
   let view;
   if (isOwner) view = 'owner';
@@ -162,4 +163,4 @@ async function handleOthersSee(userData) {
   return chosenUsernameOrNull(shown.username) || shown.username;
 }
 
-module.exports = { findPerson, openFor, PageRefusal, cityLimit, readPrivacy, handleOthersSee, PREVIEW_VIEWS };
+module.exports = { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee, PREVIEW_VIEWS };
