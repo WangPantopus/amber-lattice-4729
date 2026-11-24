@@ -342,7 +342,8 @@ function circleOf(ctx, record) {
     const k = `${group}|${key}`;
     const had = people.get(k);
     if (!had) people.set(k, { group, key, person: { ...person, ink }, order: people.size });
-    else if (ink === 'signed') had.person.ink = 'signed';
+    // The same party twice in a group (two roles at one business): the signed one's words stand.
+    else if (ink === 'signed' && had.person.ink !== 'signed') had.person = { ...person, ink };
     if (pieceId) {
       if (!shared.has(key)) shared.set(key, new Set());
       shared.get(key).add(String(pieceId));
@@ -356,7 +357,7 @@ function circleOf(ctx, record) {
       const group = SIGNED_GROUP[t.relation];
       if (!group) continue;
       const o = t.owner_shown || {};
-      add(group, `u:${t.owner_id}`, { name: o.name || null, user_id: t.owner_id, username: o.username || null,
+      add(group, `u:${t.owner_id}`, { kind: 'person', name: o.name || null, user_id: t.owner_id, username: o.username || null,
         portrait_url: o.avatar || null, did: String(t.piece.owner_role || '').trim() || `Worked with ${first}` }, 'signed', p.row.id);
       continue;
     }
@@ -365,14 +366,18 @@ function circleOf(ctx, record) {
       const group = OWN_GROUP[raw.relation];
       if (!group) continue;
       const key = raw.party_user_id ? `u:${raw.party_user_id}` : `t:${String(raw.party_name).toLowerCase()}`;
-      add(group, key, { name: credit.party.name, user_id: credit.party.user_id, username: credit.party.username,
+      // Credits name people only (a business is never credited on a piece), typed or on Pantopus.
+      add(group, key, { kind: 'person', name: credit.party.name, user_id: credit.party.user_id, username: credit.party.username,
         portrait_url: credit.party.portrait_url, did: credit.role || credit.party.did }, credit.ink, p.row.id);
     }
   }
   for (const r of record.roles || []) {
     if (r.relation !== 'learned' || r.status === 'did_not_confirm') continue;
     const key = r.where.user_id ? `u:${r.where.user_id}` : `r:${r.id}`;
-    add('learned_from', key, { name: r.where.name, user_id: r.where.user_id, username: r.where.username,
+    // A business on Pantopus is one only where this view may know it (named, or signed: "Signed by a business on
+    // Pantopus"); a typed place, or a business still asked and unnamed here, is a place.
+    const kind = !r.where.typed && (r.where.name || r.ink === 'signed') ? 'business' : 'place';
+    add('learned_from', key, { kind, name: r.where.name, user_id: r.where.user_id, username: r.where.username,
       portrait_url: r.where.picture_url, did: [r.title, yearsWords(r.from, r.to)].filter(Boolean).join(', '), place: true }, r.ink, null);
   }
   return CIRCLE_GROUPS.map(([key, title]) => {
