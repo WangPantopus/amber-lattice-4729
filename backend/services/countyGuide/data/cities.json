@@ -276,6 +276,33 @@
       "built": 1985,
       "value": 420400
     },
+    "1702154": {
+      "name": "Arlington Heights",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Arlington Heights, Building and Life Safety Department",
+          "url": "https://www.vah.com/government/departments/building___life_safety/index.php",
+          "line": "Permits go through the Village's Civic Access Portal, where submitters track their permit in real time, schedule inspections, upload documents and communicate with staff.",
+          "q": "Where do I find building permits in Arlington Heights?",
+          "a": "The Village of Arlington Heights' Building and Life Safety Department takes permits through its Civic Access Portal, where submitters can track a permit in real time, schedule inspections, upload documents and communicate with staff."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Arlington Heights, Planning and Community Development",
+          "url": "https://www.vah.com/government/departments/planning___community_development/index.php",
+          "line": "Provides planning, zoning, subdivision and design services and reviews proposed land uses and development projects; its page links the Zoning Code and the Zoning Map.",
+          "q": "Where is Arlington Heights' zoning?",
+          "a": "The Village of Arlington Heights' Planning and Community Development Department provides planning, zoning, subdivision and design services and reviews proposed land uses and development projects. Its page links the Village's Zoning Code and Zoning Map."
+        }
+      ],
+      "built": 1974,
+      "value": 414500
+    },
     "1714000": {
       "name": "Chicago",
       "county": "17031",
@@ -2399,6 +2426,141 @@
       ],
       "built": 1985,
       "value": 542000
+    },
+    "0684200": {
+      "name": "West Covina",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of West Covina, Building Division",
+          "url": "https://www.westcovina.gov/228/Building-Division",
+          "line": "Makes sure private development conforms to construction and safety standards under the California Building Codes, through plan review, permit issuance and inspection; forms are returned to the Building Division counter.",
+          "q": "Where do I find building permits in West Covina?",
+          "a": "The City of West Covina's Building Division makes sure all private development conforms to construction and safety standards under the California Building Codes, through plan review, permit issuance and field inspections. Its forms are printed, filled in and returned to the Building Division counter."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of West Covina Planning Division, Zoning",
+          "url": "https://www.westcovina.gov/242/Zoning",
+          "line": "The Zoning Code describes the zoning districts, land use classifications and regulations, development standards and environmental performance standards; the online code is updated after the City Council adopts an amendment.",
+          "q": "Where is West Covina's zoning?",
+          "a": "West Covina's Zoning Code describes the city's zoning districts and land use classifications, land use regulations, development standards and environmental performance standards. The online code is updated periodically after the City Council adopts an amendment, and the Planning Division can say whether there are recent changes."
+        }
+      ],
+      "built": 1967,
+      "value": 779800
+    },
+    "0600884": {
+      "name": "Alhambra",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Alhambra, Building Division",
+          "url": "https://www.alhambraca.gov/192/Building-Division",
+          "line": "Provides plan review and construction inspection to enforce minimum safety standards for all buildings; plan check and permit applications, and inspection requests, go through the City's Permit Portal.",
+          "q": "Where do I find building permits in Alhambra?",
+          "a": "The City of Alhambra's Building Division provides plan review and construction inspection, enforcing minimum safety standards for the design, construction, use and occupancy of all buildings. Building plan check and permit applications, and inspection requests, go through its Permit Portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Alhambra, Alhambra Zoning Code",
+          "url": "https://www.alhambraca.gov/733/Alhambra-Zoning-Code",
+          "line": "The City completed a comprehensive Zoning Code update, Code Alhambra; the page links the current Zoning Code and Zoning Map, and the latest updates took effect October 3, 2026.",
+          "q": "Where is Alhambra's zoning?",
+          "a": "Alhambra's Zoning Code was rewritten in a comprehensive update known as Code Alhambra, and the City's page links the current Zoning Code and Zoning Map. The City adopted further updates on June 22, 2026 and August 24, 2026, effective as of October 3, 2026."
+        }
+      ],
+      "built": 1960,
+      "value": 857800
+    },
+    "0660018": {
+      "name": "Redondo Beach",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Redondo Beach Community Development, Building and Safety Division",
+          "url": "https://www.redondo.org/departments/community_development/building_and_safety/index.php",
+          "line": "Its page links the online application portal, a search of building permits with inspection scheduling, and the division's forms and handouts; the counter is at 415 Diamond Street.",
+          "q": "Where do I find building permits in Redondo Beach?",
+          "a": "The City of Redondo Beach's Building and Safety Division takes applications through its online application portal, where building permits can also be searched and inspections scheduled. Its counter is at 415 Diamond Street."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Redondo Beach Community Development, Planning Division",
+          "url": "https://www.redondo.org/departments/community_development/planning/index.php",
+          "line": "Its page links the City's Zoning Ordinance, its zoning maps and the General Plan; the counter at 415 Diamond Street is open 7:30 am to 1:00 pm, by appointment after.",
+          "q": "Where is Redondo Beach's zoning?",
+          "a": "The City of Redondo Beach's Planning Division page links the City's Zoning Ordinance, its zoning maps and the General Plan. Its counter at 415 Diamond Street is open 7:30 am to 1:00 pm, and by appointment after 1:00 pm."
+        }
+      ],
+      "built": 1973,
+      "value": 1279200
+    },
+    "0633434": {
+      "name": "Hesperia",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Hesperia Development Services, Building and Safety",
+          "url": "https://www.hesperiaca.gov/92/Building-SafetyCommunity-Development",
+          "line": "Administers and enforces state building codes, local ordinances and construction standards, with building permit issuance, plan review and field inspections for residential, commercial and industrial projects.",
+          "q": "Where do I find building permits in Hesperia?",
+          "a": "The City of Hesperia's Building and Safety Division administers and enforces state building codes, local ordinances and construction standards. Its services include building permit issuance, plan review and field inspections for residential, commercial and industrial projects."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Hesperia Development Services, Planning",
+          "url": "https://www.hesperiaca.gov/415/Zoning",
+          "line": "Zoning divides the City into districts, such as residential, commercial, industrial and agricultural, and covers building height, lot size, parking and landscaping; the regulations are in the Development Code, and the Public Viewer shows a parcel's zone.",
+          "q": "Where is Hesperia's zoning?",
+          "a": "The City of Hesperia's zoning divides the city into districts, such as residential, commercial, industrial and agricultural, with rules on allowed uses, building height, lot size, parking and landscaping. The regulations are in the Development Code, and the City's Public Viewer shows which zone a property or parcel is in."
+        }
+      ],
+      "built": 1988,
+      "value": 409000
+    },
+    "0622230": {
+      "name": "El Monte",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of El Monte, Building and Safety",
+          "url": "https://www.elmonteca.gov/224/Building-Safety",
+          "line": "Implements the minimum building standards mandated by the State of California and is the main point of contact for plan review, permits, inspections and real estate inspections.",
+          "q": "Where do I find building permits in El Monte?",
+          "a": "The City of El Monte's Building Division implements the minimum building standards mandated by the State of California and is the main point of contact for plan review, permits, inspections and the real estate inspection process."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of El Monte, Planning Division",
+          "url": "https://www.elmonteca.gov/262/Planning",
+          "line": "Provides zoning and land-use information at the public counter, by telephone and online, applies the City's zoning regulations, and links the Interactive Zoning Map.",
+          "q": "Where is El Monte's zoning?",
+          "a": "The City of El Monte's Planning Division provides zoning and land-use information at its public counter, by telephone and online, and applies the City's zoning regulations. Its page links the City's Interactive Zoning Map."
+        }
+      ],
+      "built": 1965,
+      "value": 644000
     }
   }
 }
