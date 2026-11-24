@@ -18,6 +18,21 @@ export function pageSays(page: ProfilePage): string | null {
   return pageSaysLine(page)?.text ?? null;
 }
 
+/**
+ * A short fingerprint of what the link picture draws (name, headline, portrait, Says, rings), so its address changes
+ * whenever the picture does and link previews don't keep a part that was switched off.
+ */
+export function pictureVersion(page: ProfilePage): string {
+  const h = page.header;
+  const text = JSON.stringify([h.name, h.headline, h.portrait_url, pageSays(page), h.rings]);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 /** Keys of the old profile read that say who the person is, and nothing a part can switch off. */
 const WHO_KEYS = [
   'id', 'username', 'usernameIsGenerated', 'accountType', 'account_type', 'name', 'firstName', 'lastName',
