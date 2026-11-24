@@ -236,9 +236,10 @@ const settle = (label, read) => read.catch((err) => {
 
 /**
  * The owner's blocks, in the drawn order, with the open facts and the area's meters (`open`) after the house's own parts.
+ * `above`: the picture from above, where the drawn page has the lot through the years.
  * `extras`: the estimate and similar homes already read for this copy.
  */
-async function ownerBlocks({ row, copy, extras, open }) {
+async function ownerBlocks({ row, copy, extras, above = null, open }) {
   const state = stateCode(row.state);
   const [systems, exemptions] = await Promise.all([
     settle('systems', systemsBlock(row, copy)),
@@ -247,6 +248,8 @@ async function ownerBlocks({ row, copy, extras, open }) {
   const blocks = copy
     ? [
       valueBlock(copy, extras.estimate) || valueCardBlock(copy, extras.estimate, extras.similar, state),
+      // Where the drawn page has the lot through the years: the newest picture until those land.
+      above,
       // The recorded lines hold the last sale; without them, the last sale on its own.
       historyBlock(copy) || lastSaleBlock(copy, state),
       taxBlock(copy),
@@ -254,7 +257,7 @@ async function ownerBlocks({ row, copy, extras, open }) {
       systems,
       lotBlock(copy),
     ]
-    : [systems];
+    : [above, systems];
   const protect = [copy ? recordingAlerts.card(copy.jurisdiction) : null, exemptions].filter(Boolean);
   return [
     ...blocks,
