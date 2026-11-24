@@ -49,6 +49,9 @@ struct PreviewBar: View {
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Color.appText)
+        // A dark bar with white words in both appearances. In dark mode `appText` is near white, which left the white
+        // words on a white bar; the light appearance's colors are the bar's.
+        .environment(\.colorScheme, .light)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Previewing as the public. This is exactly what others see.")
         .accessibilityIdentifier("businessOwner.previewBar")

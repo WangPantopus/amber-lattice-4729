@@ -193,6 +193,9 @@ public struct BusinessOwnerView: View {
                 .padding(.vertical, Spacing.s3)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // White words on a dark capsule in both appearances, as `PreviewBar` (dark mode's `appText` is near
+                // white).
+                .environment(\.colorScheme, .light)
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, 140)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
