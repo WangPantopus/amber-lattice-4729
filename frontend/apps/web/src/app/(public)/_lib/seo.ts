@@ -1,12 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Search tags and structured data for the public reading pages ((public)/**): the pillar pages, and the topic pages
 // and guides that reuse this shell. Every page gets its own title, description, canonical link, robots line and share
-// card; its share picture comes from the opengraph-image.tsx and twitter-image.tsx beside its page.tsx (see
-// shareImage.tsx).
+// card. The tags come from the site's one helper, publicPageMetadata (src/lib/site/pageMetadata.ts), without its
+// picture: each page's share picture comes from the opengraph-image.tsx and twitter-image.tsx beside its page.tsx (see
+// shareImage.tsx), and Next uses those files only when the page's metadata names no picture of its own.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from 'next';
 import { IOS_APP_STORE_APP_ID } from '@pantopus/utils';
+import { publicPageMetadata } from '@/lib/site/pageMetadata';
 
 /** The address search engines are given for every page. */
 export const SITE_URL = 'https://pantopus.com';
@@ -20,17 +22,22 @@ export interface PageTags {
   description: string;
 }
 
-/** A public page's tags. `title.absolute` keeps a site-wide title template from adding "| Pantopus" twice. */
+const SUFFIX = ' | Pantopus';
+
+/**
+ * A public page's tags: publicPageMetadata's, with the title exactly as the page gives it (these titles already end
+ * "| Pantopus"), the page's language, and Safari's app banner as on the homepage. Its picture is left out on purpose:
+ * a picture named here would replace the page's own opengraph-image and twitter-image files.
+ */
 export function pageMetadata({ path, title, description }: PageTags): Metadata {
+  const tags = publicPageMetadata({ path, title: title.endsWith(SUFFIX) ? title.slice(0, -SUFFIX.length) : title, description });
+  const { images: _ogPicture, ...openGraph } = tags.openGraph ?? {};
+  const { images: _twitterPicture, ...twitter } = tags.twitter ?? {};
   return {
-    metadataBase: new URL(SITE_URL),
+    ...tags,
     title: { absolute: title },
-    description,
-    alternates: { canonical: path },
-    robots: { index: true, follow: true },
-    openGraph: { type: 'website', url: path, siteName: 'Pantopus', locale: 'en_US', title, description },
-    twitter: { card: 'summary_large_image', title, description },
-    // Safari on an iPhone offers the app in its own banner above the page, as on the homepage.
+    openGraph: { ...openGraph, locale: 'en_US', title },
+    twitter: { ...twitter, title },
     ...(IOS_APP_STORE_APP_ID ? { itunes: { appId: IOS_APP_STORE_APP_ID } } : {}),
   };
 }
