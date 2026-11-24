@@ -2561,6 +2561,87 @@
       ],
       "built": 1965,
       "value": 644000
+    },
+    "0669088": {
+      "name": "Santa Clarita",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Santa Clarita Community Development, Building and Safety Division",
+          "url": "https://santaclarita.gov/building-safety/",
+          "line": "Provides plan review and inspection; before a building is constructed, repaired or altered, the property owner is responsible for obtaining the necessary permits.",
+          "q": "Where do I find building permits in Santa Clarita?",
+          "a": "The City of Santa Clarita's Building and Safety Division provides plan review and inspection services. Before a building is constructed, repaired or altered, the property owner is responsible for obtaining the necessary permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Santa Clarita Community Development, Planning Division",
+          "url": "https://santaclarita.gov/planning/",
+          "line": "Reviews and approves entitlements and oversees zoning, land use and architectural elements; the Unified Development Code is Title 17 of the Santa Clarita Municipal Code, and the page links the City's web-based mapping tool and zoning map.",
+          "q": "Where is Santa Clarita's zoning?",
+          "a": "The City of Santa Clarita's Planning Division reviews and approves entitlements and oversees zoning, land use and architectural elements of local development. Its zoning rules are in the Unified Development Code, Title 17 of the Santa Clarita Municipal Code."
+        }
+      ],
+      "built": 1987,
+      "value": 784700
+    },
+    "0637692": {
+      "name": "Jurupa Valley",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Jurupa Valley, Building and Safety Department",
+          "url": "https://www.jurupavalley.org/165/Building-Safety",
+          "line": "Reviews construction plans before work begins and inspects the work through completion, enforcing the California Building Code, the City's Municipal Code and the electrical, mechanical and plumbing codes; it also keeps records of all projects in the City.",
+          "q": "Where do I find building permits in Jurupa Valley?",
+          "a": "The City of Jurupa Valley's Building and Safety Department provides plan checking and building inspection, enforcing the California Building Code, the City's Municipal Code and the electrical, mechanical and plumbing codes. It also maintains records of all projects within the City."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Jurupa Valley Planning Division, Current Planning and Development Review",
+          "url": "https://www.jurupavalley.org/336/Current-Planning-Development-Review",
+          "line": "Reviews proposed development for consistency with the General Plan, Zoning Code and development standards; projects may need approvals such as Site Development Permits, Conditional Use Permits, Tentative Maps or Variances.",
+          "q": "Where is Jurupa Valley's zoning?",
+          "a": "The City of Jurupa Valley's Planning Division reviews proposed development for consistency with the City's General Plan, Zoning Code and development standards. Depending on the project, approvals such as Site Development Permits, Conditional Use Permits, Tentative Maps or Variances may be required."
+        }
+      ],
+      "built": 1979,
+      "value": 574600
+    },
+    "0660466": {
+      "name": "Rialto",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Rialto, Building and Safety Division",
+          "url": "https://www.rialtoca.gov/192/Building-Safety-Division",
+          "line": "Makes sure construction follows the California Building Codes and City ordinances through plan review and inspection; applications go through the Online Permit Center, and every permit needs a signed Declaration Form with the signer's ID.",
+          "q": "Where do I find building permits in Rialto?",
+          "a": "The City of Rialto's Building and Safety Division makes sure construction follows the California Building Codes and City ordinances through plan review and inspection. It takes applications through its Online Permit Center, and every permit needs a signed Declaration Form with the ID of the person who signed it."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Rialto, Planning Division",
+          "url": "https://www.rialtoca.gov/265/Planning-Division",
+          "line": "Makes sure development of private property follows the City's adopted General Plan and applicable zoning regulations; its page holds planning applications, resources and documents.",
+          "q": "Where is Rialto's zoning?",
+          "a": "The City of Rialto's Planning Division works for the orderly and consistent development of private property and makes sure it follows the City's adopted General Plan and applicable Zoning regulations. Planning applications, resources and documents are on its page."
+        }
+      ],
+      "built": 1982,
+      "value": 487900
     }
   }
 }
