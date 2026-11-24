@@ -168,15 +168,11 @@ struct PlaceLaunchView: View {
         }
     }
 
-    /// A link on the record page, once it has closed. The lookup's own steps start with Add Home at this address
-    /// when signed in, and with the funnel's sign-up or sign-in (which keep the address) when not. "Save this home"
-    /// is the funnel's own save.
+    /// A record page link, once it has closed: the lookup's own steps (Add Home, sign-up, sign-in, save) keep the address.
     private func openRecordLink(_ link: String, address: String) {
         switch HomeRecordLinkTarget.resolve(link) {
         case .addLookedUpHome: if signedInEntry { onAddHome?(address) } else { continuePreview() }
-        case .savePlace: continuePreview()
-        // Signed in already: the record is the buyer's, and there is nothing to sign up or in for.
-        case .signUp: if !signedInEntry { continuePreview() }
+        case .savePlace, .signUp: continuePreview()
         case .signIn: if !signedInEntry, viewModel.prepareForAuth() { onSignIn() }
         default: DeepLinkRouter.shared.handle(path: link)
         }
