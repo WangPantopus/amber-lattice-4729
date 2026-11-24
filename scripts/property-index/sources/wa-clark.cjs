@@ -20,6 +20,10 @@ const FIPS = '53011';
 const ZIP_URL = 'https://gis.clark.wa.gov/openDataHub/PacsData/PACS_OpenData.zip';
 const TAXLOTS_URL = 'https://services2.arcgis.com/ylxwjFBdCPBzP16d/arcgis/rest/services/TaxlotsforPublicUse/FeatureServer/0';
 const SITUS_URL = 'https://services2.arcgis.com/ylxwjFBdCPBzP16d/arcgis/rest/services/SitusAddress/FeatureServer/0';
+// Building permits for every city in the county, and remodeling, mechanical, plumbing and the like for unincorporated Clark
+// County and the City of Vancouver, updated weekly (metadata 1004). Terms: the county's disclaimer, no license and no limit
+// on use (cost-and-rights.md). Its `name` column is the applicant's name and is never asked for.
+const PERMITS_URL = 'https://gis.clark.wa.gov/arcgisfed2/rest/services/MapCatalog/Permitting/MapServer/4';
 const TABLE = { delimiter: '|', quoted: false };
 const VALUE_YEARS_KEPT = 5;
 
@@ -404,6 +408,81 @@ async function readFacts(zip, records, today) {
   }
 }
 
+// Permits: a description the layer's rows carry this many times or more is one of the county's fixed words (its older
+// system's "Mechanical Permit", "Residential Addition/Alteration"). A row takes its own fixed word, or its code's commonest;
+// the newer system's rows carry the applicant's own free text, which is never shown. A business license review isn't the home's.
+const PERMIT_WORD_ROWS = 500;
+const PERMIT_CODES_LEFT_OUT = new Set(['BLR']);
+const PERMIT_NOT_ISSUED = /^(DEN|RVK)$|DENIED|VOID|WITHDR|REVOK|CANCEL/i;
+// Work the county records as finished: only these date a system.
+const PERMIT_DONE = new Set(['FNL', 'COMP', 'Closed', 'Closed - Approved']);
+// The systems Place's Home systems keeps (services/homeSystemsService.js), from the permit's own words.
+const PERMIT_SYSTEMS = [
+  // A whole roof only: a reroof, never a patio's or a shed's roof.
+  ['roof', 'Roof', (text, work) => work === 'REROOF' || /\bRE-?ROOF|ROOF REPLACE|REPLACE (THE )?ROOF|NEW ROOF\b|TEAR ?OFF/.test(text)],
+  ['water_heater', 'Water heater', (text) => /WATER HEATER/.test(text)],
+  ['hvac', 'Heating or cooling', (text) => /FURNACE|HEAT PUMP|AIR HANDLER|DUCTLESS|AIR CONDITION/.test(text)],
+  ['electrical_panel', 'Electrical panel', (text) => /ELECTRICAL PANEL|\bPANEL (CHANGE|UPGRADE|REPLACE)|SERVICE (CHANGE|UPGRADE)/.test(text)],
+];
+const PERMITS_KEPT = 30;
+const PERMITS_FROM = 'Clark County\u2019s and the City of Vancouver\u2019s permit records';
+
+/**
+ * Each account's permits (facts.js `permits`), newest first: when it was issued, the system it dates or the county's own word
+ * for its kind, the permit's number, and whether the county records the work as finished. Held off a live county's screens
+ * until its new_columns switch is on (lib/held.cjs). Counts only in the log.
+ */
+async function addPermits(dir, records, today) {
+  const rows = [];
+  const descriptions = new Map();
+  for await (const row of cachedLayer(path.join(dir, 'permits.jsonl'), PERMITS_URL, ['sn', 'caseno', 'CaseType', 'case_type', 'WorkType', 'status', 'issued'],
+    { where: 'sn > 0 AND issued IS NOT NULL' })) {
+    const code = String(row.case_type || '').trim();
+    const text = String(row.CaseType || '').trim();
+    if (code && text) descriptions.set(`${code}|${text}`, (descriptions.get(`${code}|${text}`) || 0) + 1);
+    if (records.has(String(row.sn))) rows.push(row);
+  }
+  // The word each code's rows carry most, where that many rows carry it.
+  const words = new Map();
+  for (const [key, count] of descriptions) {
+    const [code, text] = key.split('|');
+    if (count >= PERMIT_WORD_ROWS && count > (words.get(code)?.count || 0)) words.set(code, { text, count });
+  }
+  const byAccount = new Map();
+  let noWord = 0;
+  const latest = today.getTime() + 86400000;
+  for (const row of rows) {
+    const code = String(row.case_type || '').trim();
+    const issued = Number(row.issued);
+    if (PERMIT_CODES_LEFT_OUT.has(code) || PERMIT_NOT_ISSUED.test(String(row.status || '')) || !(issued > Date.UTC(1950, 0, 1)) || issued > latest) continue;
+    const text = String(row.CaseType || '').toUpperCase();
+    const system = PERMIT_SYSTEMS.find(([, , names]) => names(text, String(row.WorkType || '').trim()));
+    // The row's own words where they are one of its code's fixed words, else the code's commonest.
+    const fixed = descriptions.get(`${code}|${String(row.CaseType || '').trim()}`) >= PERMIT_WORD_ROWS;
+    const said = system ? system[1] : (fixed ? String(row.CaseType).trim() : words.get(code)?.text);
+    if (!said) {
+      noWord += 1;
+      continue;
+    }
+    const line = { issued: new Date(issued).toISOString().slice(0, 10), word: said };
+    if (system) line.system = system[0];
+    if (PERMIT_DONE.has(String(row.status || '').trim())) line.done = true;
+    const number = word(row.caseno);
+    if (number) line.number = number;
+    const id = String(row.sn);
+    if (!byAccount.has(id)) byAccount.set(id, []);
+    byAccount.get(id).push(line);
+  }
+  let systems = 0;
+  for (const [id, lines] of byAccount) {
+    lines.sort((a, b) => b.issued.localeCompare(a.issued) || String(a.number || '').localeCompare(String(b.number || '')));
+    systems += lines.some((line) => line.system && line.done) ? 1 : 0;
+    hold(records.get(id), 'permits', { from: PERMITS_FROM, lines: lines.slice(0, PERMITS_KEPT) });
+  }
+  log(`${FIPS}: permits for ${byAccount.size} accounts (${systems} with a finished roof, heating, water heater or panel permit); `
+    + `${noWord} permits with no fixed word for their kind left out; words for ${words.size} codes`);
+}
+
 function addressOf(row) {
   const address = parts({
     number: row.SitusHsNum, numberSuffix: row.SitusHsSub, pre: row.SitusStDir, name: row.SitusStName, suffix: row.SitusStType,
@@ -464,6 +543,12 @@ async function build({ work, today = new Date() }) {
   log(`accounts with an address: ${records.size}, without: ${noAddress}`);
 
   await readFacts(zip, records, today);
+  // A permits layer that can't be read leaves the release without permits: it never stops the county's publish.
+  try {
+    await addPermits(dir, records, today);
+  } catch (err) {
+    log(`${FIPS}: permits skipped: ${err.constructor === Error && !/JSON|Unexpected/.test(err.message) ? err.message : err.name}`);
+  }
 
   // The address list: a parcel's other street numbers, and the units of its buildings.
   const pointsByParcel = new Map();

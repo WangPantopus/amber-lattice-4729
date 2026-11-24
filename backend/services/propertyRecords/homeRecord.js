@@ -234,6 +234,37 @@ function storedCopy(home) {
   return copy.address_stamp === addressStamp(homeAddress(home)) ? copy : null;
 }
 
+// The systems a finished permit dates on Place (services/homeSystemsService.js, `permit` source).
+const PERMIT_SYSTEMS = new Set(['roof', 'hvac', 'water_heater', 'electrical_panel']);
+
+/**
+ * A copy's newest finished roof, heating, water heater or panel permit, where its county shows permits now (router.served),
+ * as that system's year on Place. recordSystem never lets a permit outrank the household's word or a completed job, and an
+ * older permit never replaces a newer one's year.
+ */
+async function permitSystems(homeId, copy) {
+  const lines = router.served(copy)?.facts?.permits?.lines;
+  if (!homeId || !Array.isArray(lines)) return;
+  const newest = new Map();
+  for (const line of lines) {
+    const year = Number(String(line?.issued || '').slice(0, 4));
+    if (!line?.done || !PERMIT_SYSTEMS.has(line.system) || !year || newest.get(line.system)?.year >= year) continue;
+    newest.set(line.system, { year, number: line.number || null });
+  }
+  if (!newest.size) return;
+  // eslint-disable-next-line global-require
+  const homeSystems = require('../homeSystemsService');
+  // eslint-disable-next-line global-require
+  const supabaseAdmin = require('../../config/supabaseAdmin');
+  const { data, error } = await supabaseAdmin.from('HomeSystem').select('system_key, installed_year, source').eq('home_id', homeId);
+  if (error) throw new Error(error.message);
+  for (const [systemKey, { year, number }] of newest) {
+    const held = (data || []).find((row) => row.system_key === systemKey);
+    if (held && (homeSystems.SOURCE_RANK[held.source] > homeSystems.SOURCE_RANK.permit || (held.source === 'permit' && held.installed_year >= year))) continue;
+    await homeSystems.recordSystem({ homeId, systemKey, installedYear: year, source: 'permit', sourceRef: number ? `permit:${number}` : 'permit' });
+  }
+}
+
 // True when the copy was written: the Home row's change tells its household's open screens to read again.
 // Only this key changes, on the row as it stands now: an entry the household made during the lookup stays.
 async function storeCopy(home, copy, superseded) {
@@ -247,6 +278,7 @@ async function storeCopy(home, copy, superseded) {
     });
     if (!nicheData) return false;
     home.niche_data = nicheData;
+    if (copy) permitSystems(home.id, copy).catch((err) => logger.info('property_records.permit_systems_later', { error: err.name }));
     return true;
   } catch (err) {
     logger.warn('property_records.store_failed', { error: err.message });
