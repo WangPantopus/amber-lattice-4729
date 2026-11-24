@@ -381,7 +381,7 @@ function NameStep({ letter, look, busy, onOpen }: {
 
 /**
  * After the name, for someone with no home yet: the card is already theirs, and adding their home address (the app's
- * own Add home page) is offered, never needed. Pantopus mail is digital only, so the words say so.
+ * own Add home page) is offered, never needed. It's for digital cards, mail and coupons only, never paper, and the words say so.
  */
 function HomeStep({ letter, look, letterHref }: {
   letter: LinkPageLetter;
@@ -392,8 +392,9 @@ function HomeStep({ letter, look, letterHref }: {
   return (
     <div className="flex w-full flex-col gap-2.5" data-testid="cardLinkHomeStep">
       <p className={look.line}>
-        Your {card ? 'card' : 'letter'} is in your Pantopus mailbox. If you like, add your home address too, so people
-        can send you digital cards and mail more easily later. It’s digital only: nothing comes by post.
+        Your {card ? 'card' : 'letter'} is in your Pantopus mailbox. If you like, add your home address too, so it’s
+        easier to get digital cards, digital mail and digital coupons here later. All of it is digital: nothing physical
+        is sent to your door.
       </p>
       <Link href={letterHref} className={look.primary} data-testid="cardLinkHomeSkip">{card ? 'Open your card' : 'Read the letter'}</Link>
       <Link href="/app/homes/new" className={look.secondary} data-testid="cardLinkHomeAdd">Add my home address</Link>
