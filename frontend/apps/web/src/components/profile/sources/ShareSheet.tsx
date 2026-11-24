@@ -143,6 +143,12 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
     void save('search_engines', { search_engines: on }, { ...share, search_engines: on });
   };
 
+  // "Let people name me on their work" (p2.5): only while the server's credits are on (`ties_enabled` is sent).
+  const setTies = (on: boolean) => {
+    if (!share) return;
+    void save('ties_enabled', { ties_enabled: on }, { ...share, ties_enabled: on });
+  };
+
   const url = share?.url || '';
   const copy = async () => {
     try {
@@ -239,6 +245,15 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
             </section>
           );
         })}
+        {typeof share.ties_enabled === 'boolean' ? (
+          <section className={`${card} overflow-hidden`}>
+            <Row
+              label="Let people name me on their work"
+              detail={share.ties_enabled ? 'People you work with can ask you to sign their pieces.' : 'Off: nobody can ask you, and pieces you signed stop showing.'}
+              control={<Switch on={share.ties_enabled} label="Let people name me on their work" disabled={saving !== null} onChange={setTies} />}
+            />
+          </section>
+        ) : null}
         <section className={`${card} overflow-hidden`}>
           <Row
             label="Let search engines list this page"

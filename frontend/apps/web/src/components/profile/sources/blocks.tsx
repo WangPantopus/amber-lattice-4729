@@ -405,7 +405,7 @@ function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext
           <span className={`block font-semibold text-app [overflow-wrap:anywhere] ${big ? 'text-[1.0625rem] leading-[1.4375rem]' : 'text-sm leading-5'}`}>{piece.title}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
             <InkGlyph ink={ink} inline />
-            <span className="[overflow-wrap:anywhere]">{[piece.with?.name ? `With ${piece.with.name}` : null, howText(ink, piece.how)].filter(Boolean).join(' · ')}</span>
+            <span className="[overflow-wrap:anywhere]">{[withWords(piece), howText(ink, piece.how)].filter(Boolean).join(' · ')}</span>
           </span>
         </span>
       </span>
@@ -419,6 +419,13 @@ const MONTH_WORDS = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 function pieceMonth(piece: ProfilePiece, dots: Map<string, string>): string | null {
   const month = [piece.to, piece.from, dots.get(piece.id)].find((v) => typeof v === 'string' && /^\d{4}-\d{2}/.test(v));
   return month ? month.slice(0, 7) : null;
+}
+
+/** "With Maria Kovács" for a piece signed on someone else's work, unless the server's how already says it. */
+function withWords(piece: ProfilePiece): string | null {
+  const name = piece.with?.name?.trim();
+  if (!name) return null;
+  return (piece.how || '').includes(name) ? null : `With ${name}`;
 }
 
 /** The owner's own flags on a piece only they see (P2.1). */
@@ -440,7 +447,7 @@ function PieceRow({ piece, ctx, month }: { piece: ProfilePiece; ctx: BlockContex
     ...flags,
     piece.kind ? KIND_WORD[piece.kind] : null,
     month !== undefined ? month : piece.when,
-    piece.with?.name ? `With ${piece.with.name}` : null,
+    withWords(piece),
     howText(ink, piece.how),
   ].filter(Boolean).join(' · ');
   return (

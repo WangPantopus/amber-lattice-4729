@@ -249,6 +249,8 @@ export default function SourcesProfile({
     return { headerLines: split.header, tabs: rest };
   }, [page, owner]);
   const [editing, setEditing] = useState<PieceEditorStart | null>(null);
+  // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
+  const [tiesOn, setTiesOn] = useState(false);
   // Each new read of the page (after a change) reads the owner's offers again.
   const [pageRound, setPageRound] = useState(0);
   useEffect(() => { setPageRound((n) => n + 1); }, [page]);
@@ -361,6 +363,15 @@ export default function SourcesProfile({
     window.addEventListener('popstate', onPop);
     return () => { mountedRef.current = false; window.removeEventListener('popstate', onPop); };
   }, []);
+  // `?tab=work` (the notification "asked you to sign" links there): open that tab on arrival, once.
+  const tabFromAddress = useRef(false);
+  useEffect(() => {
+    if (!ready || tabFromAddress.current) return;
+    const key = new URLSearchParams(window.location.search).get('tab');
+    if (!key) return;
+    // Opened and scrolled to, as a tap on the tab would (the arrival is for that tab).
+    if (tabs.some((tab) => tab.key === key)) { tabFromAddress.current = true; openTab(key); }
+  }, [ready, tabs, openTab]);
   // The address is followed once the page is this viewer's own (`ready`): a signed-in visit draws the visitor's page
   // for a moment first, and that page reads nothing.
   useEffect(() => {
@@ -377,7 +388,18 @@ export default function SourcesProfile({
       case 'tab': { const tab = value('tab'); return tab && tabs.some((t) => t.key === tab) ? { onClick: () => openTab(tab) } : null; }
       case 'record': return tabs.some((t) => t.key === 'record') ? { onClick: () => openTab('record') } : null;
       case 'month': { const month = value('month'); return month && /^\d{4}-\d{2}$/.test(month) ? { onClick: () => load({ kind: 'month', month }) } : null; }
-      case 'piece': { const id = value('id'); return id ? { onClick: () => openPiece(id) } : null; }
+      case 'piece': {
+        const id = value('id');
+        if (!id) return null;
+        // A piece signed on someone else's work ("With Maria Kovács") opens on its owner's page.
+        const who = value('username') ?? value('user_id');
+        const owner = value('user_id');
+        if (who && (owner ? owner !== personId : value('username') !== header.username)) {
+          const path = value('username') ? `/${encodeURIComponent(value('username')!)}` : `/u/${encodeURIComponent(owner!)}`;
+          return { href: `${path}?piece=${encodeURIComponent(id)}` };
+        }
+        return { onClick: () => openPiece(id) };
+      }
       case 'business': { const username = value('username'); return username ? { href: `/b/${encodeURIComponent(username)}` } : null; }
       case 'profile': { const who = value('username') ?? value('user_id'); return who ? { href: buildUserProfilePath(who) } : null; }
       case 'plan': { const id = value('id'); return id ? { href: buildPlanPath(id) } : null; }
@@ -397,7 +419,7 @@ export default function SourcesProfile({
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
       default: return null;
     }
-  }, [tabs, openTab, load, openPiece, header.username, router, viaLink]);
+  }, [tabs, openTab, load, openPiece, header.username, personId, router, viaLink]);
 
   const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
   const personTarget = useCallback(
@@ -536,7 +558,13 @@ export default function SourcesProfile({
               >
                 {tabs.length > 1 ? <h2 className="hidden print:block break-after-avoid text-lg font-bold text-app pt-2">{tab.title}</h2> : null}
                 {owner && tab.key === 'work' ? (
-                  <OwnerWork round={pageRound} onAdd={() => setEditing({ kind: 'new' })} onOffer={(offer) => setEditing({ kind: 'offer', offer })} />
+                  <OwnerWork
+                    round={pageRound}
+                    onAdd={() => setEditing({ kind: 'new' })}
+                    onOffer={(offer) => setEditing({ kind: 'offer', offer })}
+                    onTies={setTiesOn}
+                    onAnswered={() => onChanged?.()}
+                  />
                 ) : null}
                 <Blocks blocks={blocks} ctx={ctx} keyPrefix={tab.key} />
               </div>
@@ -582,6 +610,8 @@ export default function SourcesProfile({
         owner={{ name, portraitUrl: header.portrait_url ?? null }}
         target={personTarget}
         onChange={owner ? (piece) => setEditing({ kind: 'edit', piece }) : null}
+        viewerId={viewerId}
+        onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); onChanged?.(); }}
       />
       {owner ? (
         <PieceEditor
@@ -599,6 +629,7 @@ export default function SourcesProfile({
           }}
           skillsSuggested={skillsSuggested}
           pinnedCount={pinnedCount}
+          tiesOn={tiesOn}
         />
       ) : null}
     </div>

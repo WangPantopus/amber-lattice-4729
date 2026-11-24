@@ -212,6 +212,8 @@ export interface ProfilePiece extends ProfileLine {
   audience?: 'anyone' | 'members' | 'connections' | null;
   draft?: boolean | null;
   hidden?: boolean | null;
+  /** On the signer's own Work, a "With <owner>" piece: their tie, to take their name off (p2.5). */
+  tie_id?: string | null;
 }
 
 /** A link on a piece (P2.4): words only, never a picture from the page. */
@@ -225,6 +227,8 @@ export interface ProfileLinkCard {
   picture_url?: string | null;
   ink?: ProfileInk | null;
   how?: string | null;
+  /** The owner's card only: false for pages anyone can edit (wikis), which can't be proven (p2.5). */
+  provable?: boolean | null;
 }
 
 /** A person, business or typed name on a piece (P2.5). Others see only signed people and typed names. */
@@ -440,6 +444,8 @@ export interface ProfileShare {
   links?: ProfileShareLink[];
   /** Phase 2 (P2.5): the Work row's "<shown> of your <total> pieces". */
   work_pieces?: { shown: number; total: number } | null;
+  /** "Let people name me on their work"; absent while the server's PROFILE_TIES is off. */
+  ties_enabled?: boolean;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -528,7 +534,7 @@ export async function getShare(): Promise<ProfileShare> {
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
 }
 
@@ -605,4 +611,44 @@ export async function proveLink(pieceId: string, linkId: string): Promise<{ line
 /** Reads the page for the line; Seen when it is there, else 409 PROOF_NOT_FOUND. */
 export async function checkLink(pieceId: string, linkId: string): Promise<ProfileLinkCard> {
   return post<ProfileLinkCard>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/check`, {});
+}
+
+// ── Phase 2: credits, signing and "Asked of you" (CONTRACT P2.5, p2.5; behind PROFILE_TIES) ──
+
+/** Someone asked to sign: a credit on a piece, or a role. */
+export interface ProfileAsk {
+  id: string;
+  kind: 'credit' | 'role' | string;
+  from: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null };
+  piece: { id: string; title: string; kind: string | null; when: string | null; cover_url: string | null } | null;
+  role: string | null;
+  relation?: string | null;
+  asked_at: string;
+}
+
+/** Name a person (`user_id`: a connection, or the other party of the job or plan; they are asked) or type a name. */
+export async function addCredit(pieceId: string, body: { user_id?: string; name?: string; role: string | null; relation: 'with' | 'led' | 'learned_from' | 'for' }): Promise<ProfileCredit> {
+  return post<ProfileCredit>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/credits`, body);
+}
+
+export async function removeCredit(pieceId: string, creditId: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/credits/${encodeURIComponent(creditId)}`);
+}
+
+export async function getAsks(): Promise<{ asks: ProfileAsk[] }> {
+  return get<{ asks: ProfileAsk[] }>('/api/profile-page/me/asks');
+}
+
+export async function signAsk(id: string, body: { show_on_my_work: boolean; show_name_on_links: boolean }): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/sign`, body);
+}
+
+/** "Not me". */
+export async function declineAsk(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/decline`, {});
+}
+
+/** The signer takes their name off a piece (or a role). */
+export async function removeTie(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`);
 }
