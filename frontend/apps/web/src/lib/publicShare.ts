@@ -1,7 +1,7 @@
 import type { plans } from '@pantopus/api';
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import type { CardJourneyGoal, ProfilePage } from '@pantopus/api';
+import type { CardJourneyGoal } from '@pantopus/api';
 import { ANDROID_PLAY_STORE_URL, API_BASE_URL, APP_NAME, APP_WEB_URL, IOS_APP_STORE_APP_ID, IOS_APP_STORE_URL, chosenUsername } from '@pantopus/utils';
 
 const API_BASE = API_BASE_URL.replace(/\/+$/, '');
@@ -387,17 +387,6 @@ export const fetchPublicUser = cache(async (username: string): Promise<PublicFet
     data: legacyResult.data?.user ?? legacyResult.data ?? null,
     status: legacyResult.status,
   };
-});
-
-/**
- * The profile with sources as a signed-out visitor gets it (GET /api/profile-page/:username). Not cached, like the
- * profile read: a part switched off must leave the page, its title and its link picture at once. While the server's
- * PROFILE_SOURCES switch is off it answers 404 and the page is today's.
- */
-export const fetchPublicProfilePage = cache(async (username: string): Promise<PublicFetchResult<ProfilePage>> => {
-  const identifier = normalizePublicProfileIdentifier(username);
-  if (!identifier) return { data: null, status: 404 };
-  return fetchPublicJson<ProfilePage>(`/api/profile-page/${encodeURIComponent(identifier)}`, { noStore: true });
 });
 
 export const fetchPublicLocalProfile = cache(async (handle: string): Promise<PublicFetchResult<any>> => {

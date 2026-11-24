@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import {
   buildShareMetadata,
   displayNameForUser,
-  fetchPublicProfilePage,
   fetchPublicUser,
   normalizePublicProfileIdentifier,
   summarizeText,
 } from '@/lib/publicShare';
 import { launchFeatures } from '@/lib/featureFlags';
+import { fetchSignedOutProfilePage } from '@/lib/server/profilePage';
 import { isProfilePage } from '@/components/profile/sources/contract';
 import { pageSays, signedOutCopy } from '@/components/profile/sources/share';
 import { buildUserProfilePath, buildUserProfileShareUrl } from '@pantopus/utils';
@@ -17,7 +17,7 @@ import PublicProfileClient from './PublicProfileClient';
 async function signedOutPage(username: string) {
   if (!launchFeatures.profileSources) return null;
   try {
-    const result = await fetchPublicProfilePage(username);
+    const result = await fetchSignedOutProfilePage(username);
     return isProfilePage(result.data) ? result.data : null;
   } catch {
     // Any failure (no backend while building, an older server) draws today's page.
