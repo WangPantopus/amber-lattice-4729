@@ -7,6 +7,7 @@
  *   GET /api/profile-page/id/:id                 the page, by account id
  *   GET /api/profile-page/:username              the page, by the name in the person's link
  *   GET …/piece/:pieceId, …/month/:month         one piece, one month, under the same viewer rules
+ *   GET /api/profile-page/marks?ids=…            the ring an avatar wears, for up to 100 people
  */
 
 const express = require('express');
@@ -49,8 +50,13 @@ router.get('/id/:id/piece/:pieceId', optionalAuth,
 router.get('/id/:id/month/:month', optionalAuth,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
 
-// The avatar marks read (CONTRACT section 7) needs sign-in; it arrives in its own change and answers 404 until then.
-router.get('/marks', verifyToken, (req, res) => res.status(404).json({ error: 'Not found', code: 'MARKS_UNAVAILABLE' }));
+// The ring an avatar wears, for up to 100 people (CONTRACT section 7).
+router.get('/marks', verifyToken, handle('marks', (req) => {
+  const { marksFor, parseIds, MAX_IDS } = require('../services/profilePage/marks');
+  const ids = parseIds(req.query.ids);
+  if (!ids) throw new profilePage.PageRefusal(400, 'MARKS_INVALID', `Send ids as a list of at most ${MAX_IDS} account ids.`);
+  return marksFor(String(req.user.id), ids);
+}));
 
 // "me", "id" and "marks" are never usernames here.
 const RESERVED = new Set(['me', 'id', 'marks']);
