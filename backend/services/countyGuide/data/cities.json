@@ -304,6 +304,33 @@
       "built": 1953,
       "value": 481200
     },
+    "1770122": {
+      "name": "Skokie",
+      "county": "17031",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Village of Skokie Community Development, How to Apply for a Building Permit",
+          "url": "https://www.skokie.org/206/How-to-Apply-for-a-Building-Permit",
+          "line": "Permits are applied for online through the Village's permit portal; both the homeowner and the contractor sign the forms, and a residential addition or new residential building needs a plat of survey created within 18 months.",
+          "q": "Where do I find building permits in Skokie?",
+          "a": "The Village of Skokie takes building permit applications online through its permit portal. Both the homeowner and the contractor must sign the forms, and a residential addition or new residential building must include a plat of survey created within 18 months."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Village of Skokie Community Development, Zoning Ordinances",
+          "url": "https://www.skokie.org/265/Zoning-Ordinances",
+          "line": "The official Zoning Map shows how a property is zoned, and the Zoning Chapter of the Skokie Village Code sets building density, height, landscaping, parking and permitted uses; a special use is allowed only after public hearings.",
+          "q": "Where is Skokie's zoning?",
+          "a": "The Village of Skokie regulates land use through zoning: its official Zoning Map shows how a property is zoned, and the Zoning Chapter of the Skokie Village Code sets rules on building density, height, parking and permitted uses. A special use is allowed only after public hearings, with Plan Commission review and the Village Board of Trustees' approval."
+        }
+      ],
+      "built": 1959,
+      "value": 387200
+    },
     "2758000": {
       "name": "Saint Paul",
       "county": "27123",
@@ -577,6 +604,87 @@
       ],
       "built": 1980,
       "value": 252900
+    },
+    "3929106": {
+      "name": "Gahanna",
+      "county": "39049",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Gahanna, Division of Building",
+          "url": "https://www.gahanna.gov/229/Permitting",
+          "line": "Issues permits, reviews plans, inspects construction and enforces building regulations; since May 2024 permit applications and inspection requests go through OpenGov, and paper applications are no longer accepted.",
+          "q": "Where do I find building permits in Gahanna?",
+          "a": "The City of Gahanna's Division of Building issues permits, reviews plans, inspects construction work and enforces building regulations. Since May 2024 it processes permit applications and inspection requests online through OpenGov, and it no longer accepts paper applications."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Gahanna, Division of Zoning",
+          "url": "https://www.gahanna.gov/298/Zoning-Division",
+          "line": "Reviews projects under the Zoning Code: minor zoning permits, such as fence, shed and home occupation permits, may be approved by City staff, while variances and rezonings go through public hearings.",
+          "q": "Where is Gahanna's zoning?",
+          "a": "The City of Gahanna's Division of Zoning reviews projects and requests under the City's Zoning Code. Minor zoning permits, such as fence, shed and home occupation permits, may be approved by City staff, while conditional uses, variances and rezonings need review and approval by the Planning Commission and City Council, as applicable, through a public hearing."
+        }
+      ],
+      "built": 1985,
+      "value": 350900
+    },
+    "3932592": {
+      "name": "Grove City",
+      "county": "39049",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Grove City, Building and Zoning Division",
+          "url": "https://www.grovecityohio.gov/167/About-Building-Zoning",
+          "line": "Reviews building plans and issues permits for all construction, inspects new and existing buildings and oversees development in the City's floodplains; the building permit process must begin through the Building Division's online portal.",
+          "q": "Where do I find building permits in Grove City?",
+          "a": "The City of Grove City's Building and Zoning Division reviews building plans and issues permits for all construction, and inspects new and existing buildings. The building permit process must begin through the Building Division's online portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Grove City, Zoning Information",
+          "url": "https://www.grovecityohio.gov/254/Zoning-Information",
+          "line": "Each zoning district's requirements are in the Planning and Zoning Code, the zoning map shows the districts' boundaries, and the interactive Grove City Zoning Map checks the zoning of a specific property or parcel.",
+          "q": "Where is Grove City's zoning?",
+          "a": "Grove City's requirements for each zoning district are in its Planning and Zoning Code, and the zoning map shows each district's boundaries. The interactive Grove City Zoning Map checks the zoning of a specific property or parcel."
+        }
+      ],
+      "built": 1995,
+      "value": 310400
+    },
+    "3979002": {
+      "name": "Upper Arlington",
+      "county": "39049",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Upper Arlington, Building Division",
+          "url": "https://www.upperarlingtonoh.gov/237/Building",
+          "line": "Reviews residential and commercial construction plans, issues permits and registrations, and inspects buildings and mechanical systems under State of Ohio and City minimum building codes.",
+          "q": "Where do I find building permits in Upper Arlington?",
+          "a": "The City of Upper Arlington's Building Division reviews residential and commercial construction plans, issues permits and registrations, and provides onsite inspections, enforcing the State of Ohio's and the City's minimum building codes, including the Residential Code of Ohio."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Upper Arlington, Planning and Zoning Division",
+          "url": "https://www.upperarlingtonoh.gov/260/Planning-Zoning",
+          "line": "Makes sure home and business improvement projects meet the City's zoning requirements, mainly in use and location; the Unified Development Ordinance sets the standards for zoning districts, site design, land use and building requirements.",
+          "q": "Where is Upper Arlington's zoning?",
+          "a": "The City of Upper Arlington's Planning and Zoning Division checks that home and business improvement projects meet the City's zoning requirements, primarily in use and location. Its Unified Development Ordinance establishes the standards for zoning districts, site design, land use and building requirements."
+        }
+      ],
+      "built": 1959,
+      "value": 595600
     },
     "4023200": {
       "name": "Edmond",

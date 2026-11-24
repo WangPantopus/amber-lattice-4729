@@ -46,6 +46,8 @@ const CITIES = [
   // November 24, 2026, eleventh: Palmdale and Lancaster (Los Angeles County), Corona (Riverside County) and Chino (San
   // Bernardino County), CA.
   '0655156', '0640130', '0616350', '0613210',
+  // November 24, 2026, twelfth: Upper Arlington, Grove City and Gahanna (Franklin County), OH; Skokie (Cook County), IL.
+  '3979002', '3932592', '3929106', '1770122',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
