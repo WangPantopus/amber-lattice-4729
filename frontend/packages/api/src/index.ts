@@ -329,7 +329,7 @@ export type { BusinessSeat, SeatListItem, SeatDetail, MySeat, InviteDetails, Use
 // Place — address-led home intelligence (W1.1)
 // ============================================================
 export * as place from './endpoints/place';                        // Place — PlaceIntelligence dashboard + T0 preview
-export { getPlaceIntelligence, getPublicPlacePreview } from './endpoints/place';
+export { getPlaceIntelligence, getPublicPlacePreview, getPublicPlaceReading } from './endpoints/place';
 export type {
   PlacePreview,
   PlacePreviewStatus,
@@ -344,6 +344,7 @@ export type {
   PlacePreviewGlanceRow,
   PlacePreviewLayout,
   PlacePreviewMoney,
+  PlaceReading,
 } from './endpoints/place';
 
 // Address calendar — what recurs at this address (wedge Phase 2, D6)

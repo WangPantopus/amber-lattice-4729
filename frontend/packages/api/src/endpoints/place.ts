@@ -12,7 +12,7 @@
 // wants narrative copy; these wrappers carry the structured contract.
 // ============================================================
 
-import { get, put, RECORD_VOCABULARY } from '../client';
+import { get, post, put, RECORD_VOCABULARY } from '../client';
 import type {
   BallotTeaser,
   PlaceIntelligence,
@@ -242,6 +242,26 @@ export async function getPlaceIntelligence(
  */
 export async function getPublicPlacePreview(address: string): Promise<PlacePreview> {
   return get<PlacePreview>('/api/public/place', { address });
+}
+
+/** Pantopus AI's reading of a lookup (LOOKUPORDER SPEC 5): written from the page's public records only. */
+export interface PlaceReading {
+  /** Two or three sentences: what matters most here. */
+  matters: string;
+  /** At most three steps, each from the agency behind the fact. */
+  steps: { text: string; source: string }[];
+  /** What the page can't tell about this home. */
+  cannot_tell: string;
+  /** Exactly three questions, each with its answer. */
+  questions: { q: string; a: string }[];
+}
+
+/**
+ * The reading for an address this browser looked up in the last ten minutes. Any error (switched off, not looked
+ * up, the day's cap, a refused or broken answer) means there is no reading to show: the page hides its Ask row.
+ */
+export async function getPublicPlaceReading(address: string): Promise<{ reading: PlaceReading }> {
+  return post<{ reading: PlaceReading }>('/api/public/place/reading', { address });
 }
 
 /**

@@ -47,6 +47,7 @@ import {
   Landmark,
   House,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
@@ -58,6 +59,7 @@ import type {
   PlacePreviewMoney,
   PlacePreviewMoneyLead,
   PlacePreviewTone,
+  PlaceReading,
 } from '@pantopus/api';
 import type { PlaceBlockDensityData, PlaceSection } from '@pantopus/types';
 import { Group, SectionCard, LockedCard, DensityCard, PlaceHeader, TextButton, AhaCard } from '@/components/archetypes/place';
@@ -650,6 +652,129 @@ function LegacyFreeTiles({ preview, onWall, stack }: { preview: PlacePreview; on
   );
 }
 
+// ── Ask Pantopus (LOOKUPORDER SPEC 5.2) ─────────────────────
+// The row opens a panel in the column with Pantopus AI's reading of this
+// page's public records. The reading is asked for on the first tap; any
+// error (switched off, the day's cap, a refused or broken answer) means there
+// is nothing to show, and the row goes away. Never half a reading.
+export type AskReadingProps = {
+  /** The words this lookup was made with: the reading answers only for an address this browser just looked up. */
+  address: string;
+  /** Called once, the first time the panel opens (the t0_ask_opened beacon). */
+  onOpened?: () => void;
+  /** "Ask your own question. Free with an account." goes where the bar's button goes; absent when signed in. */
+  onAskOwn?: () => void;
+};
+
+function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'gone'>('idle');
+  const [reading, setReading] = useState<PlaceReading | null>(null);
+  const [shown, setShown] = useState<number | null>(null);
+  const opened = useRef(false);
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (!next) return;
+    if (!opened.current) {
+      opened.current = true;
+      onOpened?.();
+    }
+    if (state !== 'idle') return;
+    setState('loading');
+    try {
+      const res = await api.getPublicPlaceReading(address);
+      if (!res?.reading?.matters || !Array.isArray(res.reading.questions)) throw new Error('No reading');
+      setReading(res.reading);
+      setState('ready');
+    } catch {
+      setState('gone');
+    }
+  };
+
+  if (state === 'gone') return null;
+  return (
+    <section className="rounded-2xl border border-app-border bg-app-surface shadow-sm" data-testid="start-ask">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left hover:bg-app-hover"
+        data-testid="start-ask-row"
+      >
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-home-bg text-app-home">
+          <Sparkles size={18} strokeWidth={2} />
+        </span>
+        <span className="flex-1 text-[15px] font-semibold text-app-text">Ask Pantopus: what does this mean for me?</span>
+        <ChevronRight className={`h-5 w-5 shrink-0 text-app-text-muted transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="border-t border-app-border-subtle px-4 pb-4 pt-3" data-testid="start-ask-panel">
+          {state === 'loading' ? (
+            <div aria-busy="true" aria-live="polite" className="flex flex-col gap-2 py-1">
+              <ShimmerBlock className="h-4 w-11/12" />
+              <ShimmerBlock className="h-4 w-4/5" />
+              <ShimmerBlock className="h-4 w-2/3" />
+            </div>
+          ) : reading ? (
+            <div className="flex flex-col gap-4 text-[14px] leading-[21px] text-app-text">
+              <div>
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">What matters most here</h3>
+                <p className="mt-1.5">{reading.matters}</p>
+              </div>
+              {reading.steps.length ? (
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">What to do, in order</h3>
+                  <ol className="mt-1.5 flex flex-col gap-2">
+                    {reading.steps.map((step, i) => (
+                      <li key={i} className="flex gap-2.5">
+                        <span className="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-app-surface-sunken text-[12px] font-semibold text-app-text-secondary">{i + 1}</span>
+                        <span>
+                          {step.text}
+                          <span className="block text-[12px] text-app-text-muted">{step.source}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
+              <div>
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">What this page can&apos;t tell you</h3>
+                <p className="mt-1.5">{reading.cannot_tell}</p>
+              </div>
+              <ul className="divide-y divide-app-border-subtle rounded-xl border border-app-border">
+                {reading.questions.map((item, i) => (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => setShown(shown === i ? null : i)}
+                      aria-expanded={shown === i}
+                      className="flex w-full items-start justify-between gap-3 px-3.5 py-2.5 text-left font-medium hover:bg-app-hover"
+                    >
+                      {item.q}
+                      <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-app-text-muted transition-transform ${shown === i ? 'rotate-90' : ''}`} aria-hidden="true" />
+                    </button>
+                    {shown === i ? <p className="px-3.5 pb-3 text-app-text-secondary">{item.a}</p> : null}
+                  </li>
+                ))}
+              </ul>
+              {onAskOwn ? (
+                <button type="button" onClick={onAskOwn} className="self-start text-[14px] font-semibold text-primary-600 hover:text-primary-700">
+                  Ask your own question. Free with an account.
+                </button>
+              ) : null}
+              <p className="text-[12px] leading-[17px] text-app-text-muted">
+                Written by Pantopus AI from the public records on this page. It is not given your street address.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // The order a client draws when the server sends none (an older server): the
 // same list the server sends (LOOKUPORDER, SPEC 1.1).
 const BUILT_IN_ORDER = [
@@ -678,6 +803,8 @@ type PreviewBodyProps = {
   recordButton?: boolean;
   /** Called once when the closed group at the end comes into view. */
   onEndReached?: () => void;
+  /** The Ask row (LOOKUPORDER SPEC 5.2), where the server's order names it; absent where the page has no reading. */
+  ask?: AskReadingProps;
   /** v1 only: drawn right after the stand-out card (the funnel's dollar figure, as the phones order it). */
   afterAha?: ReactNode;
 };
@@ -714,7 +841,7 @@ function useReachedOnce(onReached?: () => void) {
 // nearby" as their own blocks, the closed group, what could not be checked,
 // and the privacy lines. A block the page doesn't know, or has nothing for, is
 // left out.
-function PreviewBodyV2({ preview, onWall, onRetry, retrying, stack = false, onRecord, recordButton = true, onEndReached }: Omit<PreviewBodyProps, 'layout'>) {
+function PreviewBodyV2({ preview, onWall, onRetry, retrying, stack = false, onRecord, recordButton = true, onEndReached, ask }: Omit<PreviewBodyProps, 'layout'>) {
   const sections: PlaceSection[] = preview.sections ?? [];
   const locked = preview.locked ?? [];
   const aha = preview.aha;
@@ -787,6 +914,8 @@ function PreviewBodyV2({ preview, onWall, onRetry, retrying, stack = false, onRe
       );
     } else if (block === 'record' && onRecord && recordButton) {
       blocks.push(<div key={block} className="mb-6"><RecordButton onClick={onRecord} /></div>);
+    } else if (block === 'ask' && ask) {
+      blocks.push(<div key={block} className="mb-6"><AskReading {...ask} /></div>);
     } else if (block.startsWith('group:')) {
       const g = block.slice('group:'.length);
       if (!isGroupId(g)) continue;
@@ -1431,6 +1560,11 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
                   retrying={previewQuery.isFetching}
                   onRecord={preview.status === 'ready' || preview.status === 'partial' ? openRecord : undefined}
                   onEndReached={onEndReached}
+                  ask={submitted && (preview.status === 'ready' || preview.status === 'partial') ? {
+                    address: submitted,
+                    onOpened: () => api.recordFunnelEvent('t0_ask_opened', { layout: side }),
+                    onAskOwn: liveSession ? undefined : goWall,
+                  } : undefined}
                   stack
                 />
               )}
