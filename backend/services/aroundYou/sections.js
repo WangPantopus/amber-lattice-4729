@@ -9,6 +9,7 @@
  */
 
 const { stateName } = require('../../utils/usState');
+const { roadAgency } = require('./feeds/roadwork');
 
 const HOUR_MS = 3_600_000;
 const MAX_TITLE_LENGTH = 180;
@@ -23,6 +24,13 @@ const CALENDAR_KEEP_HOURS = 3;
 // On watch shows when these sections hold this many rows or fewer between them.
 const QUIET_SECTIONS = ['alerts', 'roads', 'headlines', 'events'];
 const QUIET_AT_MOST = 2;
+// The feeds job's rows (services/aroundYou/feeds/): not news, so the news word lists never run on them ("Dead Horse
+// Fire", "Flu shot clinic"), and their own body line shows under the title as an outlet's summary does.
+const FEED_KINDS = new Set(['wildfire', 'fema', 'roadwork', 'ical']);
+const BODY_LINE_KINDS = new Set(['rss', 'wildfire', 'fema', 'roadwork']);
+// Rows that may share a link and still be different things: road projects share their state's map, a calendar's
+// events without their own page share the calendar's site.
+const OWN_LINK_KINDS = new Set(['roadwork', 'ical', 'wildfire']);
 
 const SECTIONS = [
   { id: 'alerts', title: 'Alerts', hours: 48, max: 4,
@@ -139,6 +147,7 @@ function outletName(row, link, source) {
   if (kind === 'usgs_earthquakes') return 'USGS';
   if (kind === 'wildfire') return 'National Interagency Fire Center';
   if (kind === 'fema') return 'FEMA';
+  if (kind === 'roadwork') return roadAgency(row.source);
   return source?.display_name || hostName(link) || null;
 }
 
@@ -193,15 +202,15 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
       if (!link && row.category !== 'seasonal') continue;
       const outlet = outletName(row, link, source);
       const title = headline(row, outlet);
-      if (!title || LEFT_OUT.test(title) || OPINION.test(title)) continue;
+      if (!title || (!FEED_KINDS.has(kind) && (LEFT_OUT.test(title) || OPINION.test(title)))) continue;
       if (spec.id === 'across_state' && !HOME_WORDS.test(title)) continue;
       const key = titleKey(title);
-      // A story is one link; road projects share their state's traveler map, so they are told apart by title alone.
-      const linkKey = kind === 'roadwork' ? null : link;
+      // A story is one link; road projects, fires and calendar events can share one, so they are told apart by title.
+      const linkKey = OWN_LINK_KINDS.has(kind) ? null : link;
       if (seen.has(key) || taken.has(key) || (linkKey && (seen.has(linkKey) || taken.has(linkKey)))) continue;
       taken.add(key);
       if (linkKey) taken.add(linkKey);
-      const summary = kind === 'rss' ? outletSummary(row, title) : null;
+      const summary = BODY_LINE_KINDS.has(kind) ? outletSummary(row, title) : null;
       const subscription = String(source?.access || '').toLowerCase() === 'subscription';
       const region = regionById.get(row.region);
       const ownTown = (words.get(row.region) || []).some((word) => word.test(title) || (summary && word.test(summary)));

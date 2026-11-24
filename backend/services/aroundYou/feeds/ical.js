@@ -37,22 +37,30 @@ function property(line) {
   return { name: name.toUpperCase(), params, value: line.slice(colon + 1) };
 }
 
-// A DTSTART as an instant, and whether it is a whole day.
-function startOf(prop, zone) {
-  const value = String(prop.value || '').trim();
-  if (prop.params.VALUE === 'DATE' || /^\d{8}$/.test(value)) {
-    const day = DateTime.fromFormat(value.slice(0, 8), 'yyyyMMdd', { zone });
-    return day.isValid ? { at: day.toMillis(), allDay: true } : null;
+// A date-time property (DTSTART, EXDATE value, RECURRENCE-ID) as a wall clock in its own zone: { wall (a luxon
+// DateTime in that zone), allDay, zone }. A TZID luxon does not know gives null, so the event is left out rather than
+// shown at a guessed hour.
+function wallTime(value, params, calendarZone) {
+  const text = String(value || '').trim();
+  if (params.VALUE === 'DATE' || /^\d{8}$/.test(text)) {
+    const wall = DateTime.fromFormat(text.slice(0, 8), 'yyyyMMdd', { zone: calendarZone });
+    return wall.isValid ? { wall, allDay: true, zone: calendarZone } : null;
   }
-  const utc = value.endsWith('Z');
-  const at = DateTime.fromFormat(value.replace(/Z$/, ''), "yyyyMMdd'T'HHmmss", {
-    zone: utc ? 'utc' : (prop.params.TZID || zone),
-  });
-  if (!at.isValid) {
-    const fallback = DateTime.fromFormat(value.replace(/Z$/, ''), "yyyyMMdd'T'HHmmss", { zone: utc ? 'utc' : zone });
-    return fallback.isValid ? { at: fallback.toMillis(), allDay: false } : null;
+  const zone = text.endsWith('Z') ? 'utc' : (params.TZID || calendarZone);
+  const wall = DateTime.fromFormat(text.replace(/Z$/, ''), "yyyyMMdd'T'HHmmss", { zone });
+  return wall.isValid ? { wall, allDay: false, zone } : null;
+}
+
+// Every instant (ms) a list of EXDATE / RECURRENCE-ID properties names.
+function instantsOf(props, calendarZone) {
+  const out = new Set();
+  for (const prop of props || []) {
+    for (const value of String(prop.value || '').split(',')) {
+      const time = wallTime(value, prop.params, calendarZone);
+      if (time) out.add(time.wall.toMillis());
+    }
   }
-  return { at: at.toMillis(), allDay: false };
+  return out;
 }
 
 function parseCalendar(text) {
@@ -60,7 +68,7 @@ function parseCalendar(text) {
   const calendar = { site: null, events: [] };
   let event = null;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { event = { raw: [] }; continue; }
+    if (line === 'BEGIN:VEVENT') { event = { exdates: [] }; continue; }
     if (line === 'END:VEVENT') { if (event) calendar.events.push(event); event = null; continue; }
     const prop = property(line);
     if (!prop) continue;
@@ -74,20 +82,49 @@ function parseCalendar(text) {
     else if (prop.name === 'UID') event.uid = prop.value.trim();
     else if (prop.name === 'STATUS') event.status = prop.value.trim().toUpperCase();
     else if (prop.name === 'RRULE') event.rrule = prop.value.trim();
-    else if (prop.name === 'RECURRENCE-ID') event.recurrence = prop.value.trim();
+    else if (prop.name === 'EXDATE') event.exdates.push(prop);
+    else if (prop.name === 'RECURRENCE-ID') event.recurrence = prop;
   }
   return calendar;
 }
 
-// Every start of an event within [now, now + 7 days].
-function occurrences(event, zone, now) {
-  const first = event.start && startOf(event.start, zone);
+// A wall clock as rrule's "floating" date (its UTC fields hold the local clock), and back.
+function floating(wall) {
+  return new Date(Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second));
+}
+function fromFloating(date, zone) {
+  return DateTime.fromObject({
+    year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate(),
+    hour: date.getUTCHours(), minute: date.getUTCMinutes(), second: date.getUTCSeconds(),
+  }, { zone });
+}
+
+// Every start of an event within [now, now + 7 days]. A repeating event is expanded in its own wall time (so the
+// weekday and the hour stay the calendar's across daylight time), minus its EXDATEs and the occurrences another event
+// with the same UID replaces (RECURRENCE-ID). A rule that cannot be expanded gives nothing: no event beats a wrong time.
+function occurrences(event, calendarZone, now, replaced = new Set()) {
+  const first = event.start && wallTime(event.start.value, event.start.params, calendarZone);
   if (!first) return [];
-  if (!event.rrule) return first.at >= now && first.at <= now + AHEAD_MS ? [first] : [];
+  const inWindow = (at) => at >= now && at <= now + AHEAD_MS;
+  if (!event.rrule) {
+    const at = first.wall.toMillis();
+    return inWindow(at) ? [{ at, allDay: first.allDay, zone: first.zone }] : [];
+  }
   try {
-    const rule = rrulestr(`RRULE:${event.rrule}`, { dtstart: new Date(first.at) });
-    return rule.between(new Date(now), new Date(now + AHEAD_MS), true).slice(0, MAX_PER_CALENDAR)
-      .map((at) => ({ at: at.getTime(), allDay: first.allDay }));
+    const rule = rrulestr(`RRULE:${event.rrule}`, { dtstart: floating(first.wall) });
+    const from = floating(DateTime.fromMillis(now - 24 * 3_600_000, { zone: first.zone }));
+    const to = floating(DateTime.fromMillis(now + AHEAD_MS + 24 * 3_600_000, { zone: first.zone }));
+    const skipped = instantsOf(event.exdates, calendarZone);
+    const out = [];
+    for (const date of rule.between(from, to, true)) {
+      const wall = fromFloating(date, first.zone);
+      if (!wall.isValid) return [];
+      const at = wall.toMillis();
+      if (!inWindow(at) || skipped.has(at) || replaced.has(at)) continue;
+      out.push({ at, allDay: first.allDay, zone: first.zone });
+      if (out.length >= MAX_PER_CALENDAR) break;
+    }
+    return out;
   } catch {
     return [];
   }
@@ -114,10 +151,18 @@ function calendarRows(region, source, text, now = Date.now()) {
   const site = secureLink(calendar.site) || (() => {
     try { return `${new URL(source.url).origin}/`; } catch { return null; }
   })();
+  // Occurrences of a series that another event (same UID, RECURRENCE-ID) replaces.
+  const replacedBy = new Map();
+  for (const event of calendar.events) {
+    if (!event.recurrence || !event.uid) continue;
+    if (!replacedBy.has(event.uid)) replacedBy.set(event.uid, new Set());
+    instantsOf([event.recurrence], zone).forEach((at) => replacedBy.get(event.uid).add(at));
+  }
   const found = [];
   for (const event of calendar.events) {
     if (!event.summary || event.status === 'CANCELLED') continue;
-    for (const occurrence of occurrences(event, zone, now)) {
+    const replaced = event.rrule && event.uid ? (replacedBy.get(event.uid) || new Set()) : new Set();
+    for (const occurrence of occurrences(event, zone, now, replaced)) {
       found.push({ event, ...occurrence });
     }
   }
@@ -131,14 +176,15 @@ function calendarRows(region, source, text, now = Date.now()) {
       return true;
     })
     .slice(0, MAX_PER_CALENDAR)
-    .map(({ event, at, allDay }) => {
+    .map(({ event, at, allDay, zone: eventZone }) => {
       const name = event.summary.length > MAX_TITLE ? `${event.summary.slice(0, MAX_TITLE - 1).trimEnd()}…` : event.summary;
       return {
         source: source.source_id,
         feedId: `${event.uid || event.summary}|${at}`,
         category: 'event',
         priority: 2,
-        title: `${name} · ${whenLabel(at, allDay, zone)}`,
+        rank: at,
+        title: `${name} · ${whenLabel(at, allDay, allDay ? eventZone : zone)}`,
         body: source.display_name ? `From ${source.display_name}.` : null,
         url: secureLink(event.url) || site,
       };
