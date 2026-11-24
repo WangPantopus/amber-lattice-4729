@@ -46,7 +46,7 @@ function recordedHistory(lines, { since }) {
 
 /**
  * A county's name for a kind of line as a screen says it: "Quit Claim Deed" and "QUIT CLAIM DEED" read "Quit claim deed".
- * Short all-capital words a county writes that way inside mixed case stay ("US Marshall Deed"). Null for a name that says
+ * Short all-capital words a county writes that way inside mixed case stay ("US Marshall Deed"), and so do initials ("U.S."). Null for a name that says
  * nothing ("Unknown", "Other", "N/A").
  */
 function countyWord(text) {
@@ -54,7 +54,7 @@ function countyWord(text) {
   if (!name || /^(unknown|other|none|n\/?a|misc\.?|miscellaneous)$/i.test(name)) return null;
   const mixed = /[a-z]/.test(name);
   const words = name.split(' ').map((word, i) => {
-    if (mixed && /^[A-Z]{2,4}$/.test(word)) return word;
+    if ((mixed && /^[A-Z]{2,4}$/.test(word)) || /^([A-Z]\.){2,}$/.test(word)) return word;
     const lower = word.toLowerCase();
     return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
   });
