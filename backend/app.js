@@ -485,6 +485,7 @@ app.use('/api/homes', require('./routes/residencyClaims')); // Scoped live resid
 app.use('/api/homes', require('./routes/fridgeCards'));   // 911-ready household cards (/:id/fridge-cards)
 app.use('/api/homes', require('./routes/mailboxCheck'));  // Mailbox reality check (/:id/mailbox-check)
 app.use('/api/homes', require('./routes/homeRecordWatch')); // Rate watch (/:id/record-watch)
+app.use('/api/homes', require('./routes/homeRecordPage')); // Home record page (/:id/record)
 app.use('/api/homes', require('./routes/blockFounders')); // Founding ranks + postcard invites (/:id/block-founders)
 app.use('/api/homes', require('./routes/realRent')); // Real Rent Benchmark contribution (/:id/rent-report)
 app.use('/api/homes', require('./routes/homeFastCheck')); // Faster home verification (/:id/verify-options, /:id/fast-check/*)

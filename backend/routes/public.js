@@ -19,6 +19,7 @@ const placeSectionAdapters = require('../services/placeSectionAdapters');
 const { encodeGeohash, encodeGeohash6 } = require('../utils/geohash');
 const { GeoCache } = require('../utils/geoCache');
 const placePreviewService = require('../services/placePreviewService');
+const homeRecordService = require('../services/homeRecord');
 const { withinBudget } = require('../services/placeIntelligenceService');
 const { foundingSlotsOpen } = require('../services/place/foundingWindow');
 const { recordFunnelEvent, CLIENT_POSTABLE_EVENT_TYPES } = require('../services/funnelEvents');
@@ -957,6 +958,55 @@ router.get('/place', optionalAuth, classifyPlaceLookup, placeLookupLimiter, shar
 });
 
 // ============================================================
+// GET /api/public/home-record?address=… — "This home's record" for a looked-up address
+//
+// The home record page's lookup state (services/homeRecord, ~/pantopus-home-record/SPEC.md): the same address
+// parameter, limits and privacy rules as GET /place above, which every client calls first. Its open facts are the
+// county record's fixed list (year built, size, lot, rooms, stories: never a value or anything for the owner), the
+// area's ratings come from the same location-keyed caches, and the rest of the record is named, closed, never sent.
+// A person's own repeat of an address within ten minutes costs no lookup, so opening the record from the lookup is free.
+// No database writes about the address, no trail of what was typed.
+// ============================================================
+router.get('/home-record', optionalAuth, classifyPlaceLookup, placeLookupLimiter, shareCardRenderLimiter, async (req, res) => {
+  const refund = () => {
+    if (!req.placeLookup.free) placeLookupLimiter.refund(req);
+  };
+  try {
+    res.set('Cache-Control', 'no-store');
+    const rawAddress = typeof req.query.address === 'string' ? req.query.address.trim() : '';
+    if (!rawAddress) {
+      refund();
+      return res.status(400).json({ error: 'An address query parameter is required.' });
+    }
+    if (rawAddress.length > 200) {
+      refund();
+      return res.status(400).json({ error: 'That address is too long.' });
+    }
+    const place = await geocodeUsAddress(rawAddress, { signedOut: !req.user });
+    if (!place.ok) {
+      if (place.reason === 'busy') {
+        refund();
+        return signedOutBudget.refuse(res, 'Address lookups are busy right now. Please try again in a few minutes.');
+      }
+      if (place.reason === 'lookup_failed') {
+        refund();
+        return res.status(503).json({ error: 'We couldn\u2019t look up that address right now. Please try again.' });
+      }
+      const unplaceable = place.reason !== 'outside_us';
+      return res.status(422).json({
+        status: unplaceable ? 'could_not_place' : 'unsupported_region',
+        error: unplaceable ? 'We could not find that address \u2014 try adding the city and state' : 'Home features are U.S.-only for now',
+      });
+    }
+    if (!req.placeLookup.shareCard) ownRecentLookups.set(ownLookupKey(req, rawAddress), true, GEO_TTL_MS);
+    return res.json(await homeRecordService.forLookup(place, { flood: fetchFloodCached }));
+  } catch (err) {
+    console.error('[public/home-record] Error:', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
 // ── GET /api/public/unlisted?address=… (Wave 4) ─────────────
 //
 // "Type your address to get it off the internet", for someone with no
@@ -1165,6 +1215,8 @@ module.exports = router;
 module.exports.geocodeUsAddress = geocodeUsAddress;
 // A saved address's preview (routes/savedPlaces.js) is the same preview.
 module.exports.placePreviewWithBallot = placePreviewWithBallot;
+// A Home's record page (routes/homeRecordPage.js) reads flood from the lookup's own cache.
+module.exports.fetchFloodCached = fetchFloodCached;
 // Test-only hook: reset the in-memory preview caches between cases, and the
 // daily lookup allowances, which are per process like them.
 module.exports.__clearPreviewCaches = () => {
