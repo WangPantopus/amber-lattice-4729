@@ -2548,6 +2548,246 @@
         "link",
         "identity"
       ]
+    },
+    {
+      "id": "everywhere-around-you",
+      "group": "everywhere",
+      "as": "host",
+      "say": "What's happening around here? Anything in the local news?",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_around_you"
+        ],
+        "noTools": [
+          "out_of_scope"
+        ]
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-around-road",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Is there any road work near me right now?",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_around_you"
+        ],
+        "noTools": [
+          "out_of_scope"
+        ]
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-trains-nearby",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Is there a Support Train near me that needs help?",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_support_trains_nearby"
+        ],
+        "noTools": [
+          "out_of_scope"
+        ]
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-trains-mine",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Which Support Trains am I part of or invited to?",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "list_user_support_trains"
+        ],
+        "noTools": [
+          "out_of_scope"
+        ]
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-cards-old-app",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Help me pick a Christmas card with snow on it.",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_cards"
+        ],
+        "linkContains": "pantopus://mailbox/cards",
+        "noDraft": true
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-moment-draft",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Post a Moment saying the farmers market is packed today, come on down.",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "draft_moment"
+        ],
+        "draft": "moment"
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity",
+        "moment",
+        "letter",
+        "christmas_card"
+      ]
+    },
+    {
+      "id": "everywhere-moment-old-app",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Post a Moment saying the farmers market is packed today.",
+      "expect": {
+        "noError": true,
+        "noTools": [
+          "draft_moment"
+        ],
+        "noDraft": true,
+        "textMatches": "Moments"
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity"
+      ]
+    },
+    {
+      "id": "everywhere-card-draft",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Send Priya a Christmas card about cookies, to arrive on Christmas morning.",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_recipients",
+          "find_cards",
+          "draft_christmas_card"
+        ],
+        "draft": "christmas_card"
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity",
+        "moment",
+        "letter",
+        "christmas_card"
+      ]
+    },
+    {
+      "id": "everywhere-letter-draft",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Write a letter to Alex thanking him for the fence quote and asking if he can start in January.",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_recipients",
+          "draft_letter"
+        ],
+        "draft": "letter"
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity",
+        "moment",
+        "letter",
+        "christmas_card"
+      ]
+    },
+    {
+      "id": "everywhere-letter-nobody",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Write a letter to Zebediah Quillfeather saying hello.",
+      "expect": {
+        "noError": true,
+        "tools": [
+          "find_recipients"
+        ],
+        "noTools": [
+          "draft_letter"
+        ],
+        "noDraft": true
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity",
+        "moment",
+        "letter",
+        "christmas_card"
+      ]
+    },
+    {
+      "id": "everywhere-letter-not-homework",
+      "group": "everywhere",
+      "as": "host",
+      "say": "Draft a letter to my senator about tax policy for my civics class.",
+      "expect": {
+        "noError": true,
+        "noTools": [
+          "draft_letter"
+        ],
+        "noDraft": true
+      },
+      "cards": [
+        "pickup_schedule",
+        "action",
+        "link",
+        "identity",
+        "moment",
+        "letter",
+        "christmas_card"
+      ]
     }
   ]
 }

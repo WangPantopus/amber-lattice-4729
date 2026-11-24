@@ -6054,3 +6054,6 @@ router.post('/campaigns', verifyToken, validate(createCampaignSchema), async (re
 });
 
 module.exports = router;
+// The card's own checks, for the assistant's card draft (services/ai/composeDrafts.js): the same look the card
+// screen asks before a card is sent.
+module.exports.checkCard = checkCard;

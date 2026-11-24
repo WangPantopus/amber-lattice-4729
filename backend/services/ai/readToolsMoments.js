@@ -36,6 +36,8 @@ const BOX_LAT = 0.015;
 const BOX_LNG = 0.02;
 // Connections whose profile-picture rings are read: the people route takes store.MAX_PEOPLE at a time.
 const MAX_CONNECTION_READS = 5;
+// Moments opened to look for words in (a search reads their text, which only an opened Moment has).
+const MAX_SEARCHED = 40;
 
 const OFF = { error: "Moments aren't available for this person yet." };
 
@@ -48,8 +50,9 @@ const momentReadToolDefinitions = [
       properties: {
         scope: { type: 'string', enum: ['mine', 'new', 'all', 'person'], description: '"mine" for their own, "new" for ones they haven\'t watched, "all" for everything they may see around them and from their connections, "person" for one person\'s.' },
         person_id: { type: ['string', 'null'], description: 'For "person": the person_id from find_moments, the screen or another read. Null otherwise.' },
+        query: { type: ['string', 'null'], maxLength: 80, description: 'For "new" and "all": words to look for in a Moment\'s caption, card text, place or poster\'s first name ("farmers market", "Maria"), or null for everything.' },
       },
-      required: ['scope', 'person_id'],
+      required: ['scope', 'person_id', 'query'],
       additionalProperties: false,
     },
   },
@@ -78,6 +81,9 @@ async function momentsOn(ctx) {
 function compact(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null && item !== undefined));
 }
+
+const wordsOf = (text) => String(text || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .split(/[^a-z0-9]+/).filter((word) => word.length > 1);
 
 /** The name the apps show for an author or a watcher (store.loadAuthors): a person's first name, a business's name. */
 function nameOf(author) {
@@ -271,10 +277,24 @@ async function findMine(ctx) {
 }
 
 /** What's around them and from their connections: everything ("all") or only what they haven't watched ("new"). */
-async function findAround(ctx, { onlyNew }) {
+async function findAround(ctx, { onlyNew, query = null }) {
   const { around, connectionsLeftOut, rings } = await ringsAround(ctx);
-  const found = momentsInRings(rings).filter((moment) => !onlyNew || !moment.seen);
-  const opened = await openForModel(found.slice(0, MAX_MOMENTS).map((moment) => moment.id), ctx);
+  let found = momentsInRings(rings).filter((moment) => !onlyNew || !moment.seen);
+  const asked = wordsOf(query);
+  let opened;
+  if (asked.length) {
+    // The words are in the Moments themselves: open the newest and keep the ones that have them all.
+    const read = await openForModel(found.slice(0, MAX_SEARCHED).map((moment) => moment.id), ctx);
+    const matched = read.filter((moment) => {
+      const have = wordsOf(`${moment.caption || ''} ${moment.text || ''} ${moment.no_location ? '' : moment.place_label || ''} ${nameOf(moment.author)}`);
+      return asked.every((word) => have.some((own) => own.startsWith(word)));
+    });
+    const kept = new Set(matched.map((moment) => moment.id));
+    found = found.filter((moment) => kept.has(moment.id));
+    opened = matched.slice(0, MAX_MOMENTS);
+  } else {
+    opened = await openForModel(found.slice(0, MAX_MOMENTS).map((moment) => moment.id), ctx);
+  }
   const people = new Set(found.map((moment) => moment.authorId).filter(Boolean));
   return compact({
     note: `${OTHERS_WORDS} Live Moments only, none of their own. Reading these doesn't count as watching${onlyNew ? ': the app still shows them as new' : ''}.`,
@@ -287,7 +307,8 @@ async function findAround(ctx, { onlyNew }) {
     connections_not_checked: connectionsLeftOut || null,
     empty: opened.length
       ? null
-      : (onlyNew ? "Nothing new: no live Moment around them or from their connections that they haven't watched." : 'No live Moments around them or from their connections right now.'),
+      : (asked.length ? 'No live Moment they can see has those words. Read again without a query to see what is there.'
+        : (onlyNew ? "Nothing new: no live Moment around them or from their connections that they haven't watched." : 'No live Moments around them or from their connections right now.')),
   });
 }
 
@@ -314,8 +335,8 @@ async function findPerson(args, ctx) {
 async function findMoments(args, ctx) {
   if (!(await momentsOn(ctx))) return OFF;
   if (args.scope === 'mine') return findMine(ctx);
-  if (args.scope === 'new') return findAround(ctx, { onlyNew: true });
-  if (args.scope === 'all') return findAround(ctx, { onlyNew: false });
+  if (args.scope === 'new') return findAround(ctx, { onlyNew: true, query: args.query });
+  if (args.scope === 'all') return findAround(ctx, { onlyNew: false, query: args.query });
   if (args.scope === 'person') return findPerson(args, ctx);
   return { error: 'Choose a scope: mine, new, all or person.' };
 }
