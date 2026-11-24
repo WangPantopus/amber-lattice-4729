@@ -8,7 +8,7 @@ const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { serializeProfilePrompts } = require('../../utils/profilePrompts');
 const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require('./person');
-const { readSources, bounded } = require('./sources');
+const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
 const { profileLinksEnabled } = require('../../utils/featureFlags');
@@ -35,15 +35,25 @@ async function readShareColumn(userId) {
   return data?.profile_share || null;
 }
 
-// "You and <name>" (services/profileInCommon.js), with the checks GET /api/users/:id/in-common makes beyond opening the
-// profile: a personal block either way. Content: a failure leaves the block out.
-async function readInCommon(viewerUser, targetId) {
-  return bounded('inCommon', targetId, async () => {
-    const blockService = require('../blockService');
-    const { inCommon } = require('../profileInCommon');
-    const [blocked, result] = await Promise.all([blockService.isBlocked(viewerUser.id, targetId), inCommon(viewerUser, targetId)]);
-    return blocked ? null : result;
-  });
+// "You and <name>" (services/profileInCommon.js). GET /api/users/:id/in-common also refuses a personal block either
+// way; that comes with the person's rows (blocked_by_them, blocked_by_viewer). Content: a failure leaves it out.
+function readInCommon(viewerUser, targetId) {
+  return bounded('inCommon', targetId, () => require('../profileInCommon').inCommon(viewerUser, targetId));
+}
+
+/** The person's rows for this viewer (sources.readRows), or throws. */
+async function personRows(userId, viewerId, options) {
+  const rows = (await readRows([userId], viewerId && String(viewerId) !== String(userId) ? viewerId : null, options))
+    .get(String(userId));
+  if (!rows) throw new Error('Profile rows missing');
+  return rows;
+}
+
+// A block either way between a signed-in viewer and the person, as the profile reads count one: Block in the app
+// (Relationship), a profile block of any scope, a personal block.
+function blockedEitherWay(rows, viewerId) {
+  return relationshipStatus(rows.relationship, viewerId) === 'blocked'
+    || (rows.profile_blocks || []).length > 0 || rows.blocked_by_them === true || rows.blocked_by_viewer === true;
 }
 
 function contextFrom(opened, stored, found) {
@@ -82,18 +92,26 @@ async function loadPage(req, lookup, { view, keyed = null } = {}) {
   const readsForSignedIn = Boolean(signedIn) && !keyed && !(previewing && (view || req.query?.as) === 'link');
   const wantsInCommon = Boolean(signedIn) && signedIn !== String(userId) && !previewing;
 
-  const [opened, stored, sources, inCommon] = await Promise.all([
-    openFor(req, found, { viewOverride: keyed ? 'link' : view, keyed: Boolean(keyed) }),
-    readShareColumn(userId),
-    readSources(userId, { pinned: readsForSignedIn, reviewerNames: readsForSignedIn }),
+  // One database call for the person's content, parts, privacy and Local Profile, and this viewer's side of things
+  // (a keyed link reads the caller's side only to refuse a block).
+  const rowsViewer = keyed ? signedIn : (previewing ? null : signedIn);
+  const rowsRead = personRows(userId, rowsViewer, { reviewers: readsForSignedIn });
+  const [opened, rows, inCommonRead] = await Promise.all([
+    openFor(req, found, { viewOverride: keyed ? 'link' : view, keyed: Boolean(keyed), rows: rowsRead }),
+    rowsRead,
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
-  const ctx = contextFrom(opened, stored, found);
+  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn });
+  const inCommon = inCommonRead && !(rows.blocked_by_them || rows.blocked_by_viewer) ? inCommonRead : null;
+  const ctx = contextFrom(opened, rows.share || null, found);
   if (keyed) {
     // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).
     ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
     ctx.searchEngines = false;
+    // The person switched the city on for this one link: that decides, not "Who sees your city" (founder 9.2; the
+    // main link keeps both checks).
+    ctx.cityByPrivacy = true;
   }
   // No profile city: the verified home's city may stand in, only where the home part reaches the view too (compose).
   const home = (sources.homes || []).find((h) => h.city);
@@ -102,7 +120,7 @@ async function loadPage(req, lookup, { view, keyed = null } = {}) {
     ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
-  return { ctx, sources, record, extras: { inCommon, record } };
+  return { ctx, sources, record, rows, extras: { inCommon, record } };
 }
 
 async function getPage(req, lookup) {
@@ -121,9 +139,11 @@ async function getMonth(req, lookup, month) {
 
 async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
-  const [opened, stored, pieceRead] = await Promise.all([
-    openFor(req, found, keyed ? { viewOverride: 'link', keyed: true } : {}),
-    readShareColumn(found.userData.id),
+  const viewing = keyed || req.query?.as !== undefined ? null : (req.user?.id || null);
+  const rowsRead = personRows(found.userData.id, viewing);
+  const [opened, rows, pieceRead] = await Promise.all([
+    openFor(req, found, keyed ? { viewOverride: 'link', keyed: true, rows: rowsRead } : { rows: rowsRead }),
+    rowsRead,
     supabaseAdmin.from('UserPortfolio')
       .select('id, user_id, title, description, portfolio_type, media_urls, thumbnail_url, file_ids, skills_used, '
         + 'external_url, github_url, demo_url, completed_at, created_at, is_visible')
@@ -138,7 +158,7 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
     throw pieceRead.error;
   }
   if (!pieceRead.data) throw missing();
-  const ctx = contextFrom(opened, stored, found);
+  const ctx = contextFrom(opened, rows.share || null, found);
   if (keyed) ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
   const answer = composePiece(ctx, pieceRead.data);
   if (!answer) throw missing();
@@ -149,10 +169,18 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
 
 /** The visitor's page, composed from the owner's reads as a signed-out caller would get it; null if they can't open it. */
 async function visitorFrom(loaded) {
-  const { previewProfileAccess } = require('../../routes/users').profileReads;
-  const { ctx } = loaded;
-  const access = await previewProfileAccess('anyone', ctx.userData, ctx.found.localProfileRouteMatch);
-  if (!access.canOpen) return null;
+  const { ctx, rows } = loaded;
+  // As routes/users.js previewProfileAccess('anyone') decides (a public profile that everyone can find), from the
+  // settings already read; a page found by its Local Profile asks that function, which reads its own.
+  let canOpen;
+  if (ctx.found.localProfileRouteMatch) {
+    const { previewProfileAccess } = require('../../routes/users').profileReads;
+    canOpen = (await previewProfileAccess('anyone', ctx.userData, ctx.found.localProfileRouteMatch)).canOpen;
+  } else {
+    const findable = rows.privacy?.search_visibility || 'everyone';
+    canOpen = (ctx.userData.profile_visibility || 'public') === 'public' && findable !== 'nobody' && findable !== 'mutuals';
+  }
+  if (!canOpen) return null;
   const visitorCtx = {
     ...ctx,
     view: 'link',
@@ -173,10 +201,15 @@ async function shareBody(req) {
   ]);
   const { ctx } = loaded;
   const content = partContent(ctx, loaded.record);
+  // A link for one purpose doesn't open while the profile is private (openFor's keyed check): say so to the owner, and
+  // no link reads as live meanwhile.
+  const linksOpen = (ctx.userData.profile_visibility || 'public') !== 'private';
   const linkFields = linksOn ? {
     links_enabled: ctx.linksEnabled,
+    links_open: linksOpen,
+    links_note: linksOpen ? null : 'Links for one purpose don\'t open while your profile is private.',
     links: linkRows.map((row) => links.serialize(row, {
-      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled, day: links.today(),
+      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled && linksOpen, day: links.today(),
     })),
   } : {};
   return {
@@ -208,19 +241,24 @@ async function putShare(req) {
 // The owner's switch for links and the name in their link (the handle others see).
 async function ownerLinkFields(req) {
   const [stored, found] = await Promise.all([readShareColumn(req.user.id), findPerson({ id: req.user.id })]);
-  return { linksEnabled: readShare(stored).links_enabled, username: await handleOthersSee(found.userData) };
+  return {
+    linksEnabled: readShare(stored).links_enabled,
+    // `live` also needs a profile that isn't private (a link doesn't open then).
+    linksOpen: (found.userData.profile_visibility || 'public') !== 'private',
+    username: await handleOthersSee(found.userData),
+  };
 }
 
 async function makeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.createLink(req.user.id, req.body, owner);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
 }
 
 async function changeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.updateLink(req.user.id, req.params.id, req.body);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
 }
 
 async function removeLink(req) {
@@ -243,17 +281,20 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
   if (String(found.userData.id) !== String(row.user_id)) throw links.NOT_FOUND();
   const signedIn = req.user?.id ? String(req.user.id) : null;
   const isOwner = signedIn === String(row.user_id);
-  const [stored, blocked] = await Promise.all([
-    readShareColumn(row.user_id),
-    signedIn && !isOwner ? blockedEitherWay(signedIn, row.user_id) : false,
-  ]);
-  if (blocked || !links.isLive(row, readShare(stored).links_enabled)) throw links.NOT_FOUND();
   let answer;
   try {
     if (what === 'piece') {
+      // The piece read keeps its own rows (no viewer side): check the link with the caller's side first.
+      const rows = await personRows(row.user_id, signedIn);
+      if ((signedIn && !isOwner && blockedEitherWay(rows, signedIn)) || !links.isLive(row, readShare(rows.share).links_enabled)) {
+        throw links.NOT_FOUND();
+      }
       answer = await getPiece(req, null, arg, { keyed: { found, row } });
     } else {
       const loaded = await loadPage(req, null, { keyed: { found, row } });
+      if ((signedIn && !isOwner && blockedEitherWay(loaded.rows, signedIn)) || !links.isLive(row, loaded.ctx.linksEnabled)) {
+        throw links.NOT_FOUND();
+      }
       if (what === 'month') {
         if (!MONTH_RE.test(String(arg || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
         answer = composeMonth(loaded.ctx, loaded.record, arg);
@@ -269,17 +310,6 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
   }
   if (!isOwner && what === 'page') links.countOpen(row.id);
   return answer;
-}
-
-// A block either way, as the profile reads count one: Block in the app, a profile block of any scope, a personal block.
-async function blockedEitherWay(viewerId, personId) {
-  const { isScopedBlocked } = require('../../utils/visibilityPolicy');
-  const blockService = require('../blockService');
-  const [scoped, personal] = await Promise.all([
-    isScopedBlocked(viewerId, personId, 'any'),
-    blockService.isBlocked(viewerId, personId),
-  ]);
-  return scoped || personal;
 }
 
 module.exports = {
