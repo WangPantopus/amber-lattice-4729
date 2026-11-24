@@ -314,13 +314,49 @@ async function loadStampBooks(since, now) {
  * Pure: summarize a window of FunnelEvent rows.
  * @param {Array<{event_type:string, anon_id?:string|null, user_id?:string|null, meta?:object}>} rows
  */
+function routeOf(row) {
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  return typeof meta.route === 'string' && meta.route.trim() ? meta.route.trim().slice(0, 64) : NO_ROUTE;
+}
+
+/**
+ * The server records a new account (t1_account_created) with the browser's anonymous id but not the code it arrived
+ * with. Such an account counts under the code that same anonymous id last carried on an earlier beacon in the window
+ * (the lookup, the wall, the sign-up form). No earlier coded beacon, or no anonymous id (a card joiner's code sign-in):
+ * it stays under (direct). Only the split by route changes; the overall ladder doesn't.
+ */
+function accountRouteFinder(rows) {
+  const coded = new Map();
+  for (const row of rows || []) {
+    if (row.event_type === 't1_account_created' || !row.anon_id) continue;
+    const route = routeOf(row);
+    if (route === NO_ROUTE) continue;
+    const anon = String(row.anon_id);
+    if (!coded.has(anon)) coded.set(anon, []);
+    coded.get(anon).push({ at: timestamp(row.created_at), route });
+  }
+  return (row) => {
+    if (row.event_type !== 't1_account_created' || !row.anon_id) return null;
+    const at = timestamp(row.created_at);
+    let best = null;
+    for (const beacon of coded.get(String(row.anon_id)) || []) {
+      // Undated rows (none come from the database) count as earlier.
+      if (Number.isFinite(at) && Number.isFinite(beacon.at) && beacon.at > at) continue;
+      const when = Number.isFinite(beacon.at) ? beacon.at : -Infinity;
+      if (!best || when >= best.when) best = { when, route: beacon.route };
+    }
+    return best ? best.route : null;
+  };
+}
+
 function summarizeFunnel(rows) {
   const all = emptyLadder();
   const routes = new Map();
+  const accountRoute = accountRouteFinder(rows);
   for (const row of rows || []) {
     ingest(all, row);
-    const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
-    const route = typeof meta.route === 'string' && meta.route.trim() ? meta.route.trim().slice(0, 64) : NO_ROUTE;
+    let route = routeOf(row);
+    if (route === NO_ROUTE) route = accountRoute(row) || NO_ROUTE;
     if (!routes.has(route)) routes.set(route, emptyLadder());
     ingest(routes.get(route), row);
   }
