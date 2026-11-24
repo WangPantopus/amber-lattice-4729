@@ -77,13 +77,31 @@ async function extrasWithin(copy, home) {
 
 // The picture from above, on the lookup's section budget: past it the page goes without, and the search keeps running
 // to fill the cache for the next look.
-function picture(point, copy) {
+function withinBudget(read, label) {
+  return placeIntelligenceService.withinBudget(read, placeIntelligenceService.sectionBudgetMs()).catch((err) => {
+    if (err?.message !== 'over budget') logger.info('homeRecord.reading_failed', { part: label, error: err?.message });
+    return null;
+  });
+}
+
+/**
+ * The picture from above for someone who isn't the owner, with how many survey years the owner's record holds (one
+ * search, kept in memory, answers both). `{ above, years }`.
+ */
+async function pictureForViewer(point, copy) {
+  if (!point) return { above: null, years: null };
+  const [above, years] = await Promise.all([
+    withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy), earlierYearsForOwner: true }), 'picture'),
+    withinBudget(aerial.yearsAt(point), 'years'),
+  ]);
+  return { above, years };
+}
+
+/** The owner's lot through the years, or the newest picture where fewer than two years cover the point. */
+async function pictureForOwner(point, copy) {
   if (!point) return null;
-  return placeIntelligenceService.withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), placeIntelligenceService.sectionBudgetMs())
-    .catch((err) => {
-      if (err?.message !== 'over budget') logger.info('homeRecord.picture_failed', { error: err?.message });
-      return null;
-    });
+  return (await withinBudget(aerial.photoYearsBlock(point), 'photo_years'))
+    || withinBudget(aerial.pictureBlock(point, { lotChip: open.lotChip(copy) }), 'picture');
 }
 
 function answer(state, header, blocks) {
@@ -100,15 +118,15 @@ async function forLookup(place, { flood }) {
     place.line ? recordForAddress(address) : null,
     open.readings({ lat: place.lat, lng: place.lng }, { flood }),
   ]);
-  const [extras, above] = await Promise.all([
+  const [extras, { above, years }] = await Promise.all([
     extrasWithin(copy, { address: place.line, address2: null, city: place.city, state: place.state, zipcode: place.zipcode }),
-    picture({ lat: place.lat, lng: place.lng }, copy),
+    pictureForViewer({ lat: place.lat, lng: place.lng }, copy),
   ]);
   return answer('lookup', { chip: open.foundChip(copy), title: place.line || subtitleOf(place) || 'This address', subtitle: place.line ? subtitleOf(place) : null }, [
     above,
     open.factsBlock(copy),
     open.metersBlock(read),
-    ...open.closedPart(open.closedItems(copy, extras), {
+    ...open.closedPart(open.closedItems(copy, { ...extras, years }), {
       // No Home yet, so no id: each app opens Add Home at the looked-up address when signed in, and the lookup's own
       // sign-up (which keeps the address) when signed out (~/pantopus-home-record/DECISIONS.md, 11-22).
       button: { label: 'Verify you own this home', url: '/homes/claim-owner' },
@@ -158,11 +176,14 @@ async function copyForHome(row) {
   }
 }
 
-async function openFor(row, flood) {
+async function openFor(row, flood, { owner = false } = {}) {
   const point = pointOf(row);
   const [copy, read] = await Promise.all([copyForHome(row), point ? open.readings(point, { flood }) : noReadings]);
-  const [extras, above] = await Promise.all([extrasWithin(copy, row), picture(point, copy)]);
-  return { copy, read, extras, above };
+  const [extras, pictured] = await Promise.all([
+    extrasWithin(copy, row),
+    owner ? pictureForOwner(point, copy).then((above) => ({ above, years: null })) : pictureForViewer(point, copy),
+  ]);
+  return { copy, read, extras: { ...extras, years: pictured.years }, above: pictured.above };
 }
 
 /**
@@ -180,7 +201,7 @@ async function forHome({ homeId, userId, flood }) {
     return authority.withCurrentAccess({ homeId, actorId: userId }, async (access) => {
       if (!access.isOwner) throw new HomeRecordError('HOME_RECORD_ACCESS_CHANGED', 409, 'Your access to this home changed. Please try again.');
       const row = await readRow(homeId);
-      const { copy, read, extras, above } = await openFor(row, flood);
+      const { copy, read, extras, above } = await openFor(row, flood, { owner: true });
       const place = subtitleOf(row);
       const blocks = await ownerBlocks({ row, copy, extras, above, open: [open.factsBlock(copy), open.metersBlock(read)] });
       return answer('owner', header(row, { tone: 'success', text: 'Confirmed owner' }, place ? `${place} · everything in its record` : null), blocks);

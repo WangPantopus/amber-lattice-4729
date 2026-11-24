@@ -18,6 +18,7 @@
 const { encodeGeohash, decodeGeohashBbox } = require('../../utils/geohash');
 const { GeoCache } = require('../../utils/geoCache');
 const logger = require('../../utils/logger');
+const { countWord } = require('./words');
 
 const STAC_URL = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
 const CROP_URL = 'https://planetarycomputer.microsoft.com/api/data/v1/item/bbox';
@@ -177,10 +178,12 @@ async function image(cell, itemId) {
  * lot's size from the open facts when the record gives it. Cuts the image behind the answer, so it is usually ready
  * when the screen asks. Null when no survey covers the point.
  */
-async function pictureBlock(point, { lotChip = null } = {}) {
+async function pictureBlock(point, { lotChip = null, earlierYearsForOwner = false } = {}) {
   const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
-  const [newest] = await surveys(cell);
+  const found = await surveys(cell);
+  const [newest] = found;
   if (!newest) return null;
+  const earlier = earlierYearsForOwner ? yearsOf(found).length - 1 : 0;
   image(cell, newest.id).catch((err) => logger.info('homeRecord.aerial_cut_later', { error: err.message }));
   return {
     kind: 'picture',
@@ -192,8 +195,45 @@ async function pictureBlock(point, { lotChip = null } = {}) {
     },
     street: { lat: Math.round(point.lat * 1e6) / 1e6, lng: Math.round(point.lng * 1e6) / 1e6 },
     // With no lot outline, the caption says where the home is: the frame is centered on its ~5 m map cell.
-    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. This home is at the middle.`,
+    caption: `Federal aerial survey by the U.S. Department of Agriculture, Farm Service Agency, ${monthYear(newest.date)}. This home is at the middle.${earlier > 0 ? ` ${countWord(earlier)} earlier ${earlier === 1 ? 'year is' : 'years are'} in the owner's record.` : ''}`,
   };
 }
 
-module.exports = { pictureBlock, image, surveys, frameOf, imagePath, CELL_PRECISION };
+/** One survey per year (the sharpest where two states' surveys overlap), oldest first. */
+function yearsOf(found) {
+  const byYear = new Map();
+  for (const survey of found) if (!byYear.has(survey.year)) byYear.set(survey.year, survey);
+  return [...byYear.values()].sort((a, b) => a.year - b.year);
+}
+
+/**
+ * How many survey years cover a home's point, for the closed item and the picture's caption: `{ count, first, last }`,
+ * or null with fewer than two. A count says nothing about the home itself.
+ */
+async function yearsAt(point) {
+  const years = yearsOf(await surveys(encodeGeohash(point.lat, point.lng, CELL_PRECISION)));
+  return years.length > 1 ? { count: years.length, first: years[0].year, last: years[years.length - 1].year } : null;
+}
+
+/**
+ * The owner's `photo_years` block: the block around the home in every survey year (newest last; the apps show it large
+ * and the rest as buttons). Each image is cut when a screen first asks for it; the newest is cut behind the answer.
+ * Null with fewer than two years (the USGS fallback serves one).
+ */
+async function photoYearsBlock(point) {
+  const cell = encodeGeohash(point.lat, point.lng, CELL_PRECISION);
+  const years = yearsOf(await surveys(cell));
+  if (years.length < 2) return null;
+  const newest = years[years.length - 1];
+  image(cell, newest.id).catch((err) => logger.info('homeRecord.aerial_cut_later', { error: err.message }));
+  return {
+    kind: 'photo_years',
+    id: 'lot_years',
+    title: 'Your lot through the years',
+    count: `${years.length} photos`,
+    photos: years.map((survey) => ({ year: String(survey.year), label: monthYear(survey.date), image_url: imagePath(cell, survey), outline: null })),
+    note: 'Federal aerial surveys by the U.S. Department of Agriculture, Farm Service Agency. This home is at the middle of each.',
+  };
+}
+
+module.exports = { pictureBlock, photoYearsBlock, yearsAt, image, surveys, frameOf, imagePath, CELL_PRECISION };
