@@ -48,6 +48,9 @@ const CITIES = [
   '0655156', '0640130', '0616350', '0613210',
   // November 24, 2026, twelfth: Upper Arlington, Grove City and Gahanna (Franklin County), OH; Skokie (Cook County), IL.
   '3979002', '3932592', '3929106', '1770122',
+  // November 24, 2026, thirteenth: Inglewood and Downey (Los Angeles County), Victorville (San Bernardino County) and
+  // Palm Desert (Riverside County), CA; Miami Gardens (Miami-Dade County), FL.
+  '0636546', '0619766', '0682590', '0655184', '1245060',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.

@@ -168,6 +168,33 @@
       "built": 1969,
       "value": 556700
     },
+    "1245060": {
+      "name": "Miami Gardens",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Miami Gardens, Building Services Department",
+          "url": "https://www.miamigardens-fl.gov/190/Building-Permits",
+          "line": "A one-stop shop for construction and development, with Building, Engineering, and Business Licensing and Housing Compliance divisions, enforcing the Florida Building Code and other rules on construction and land use.",
+          "q": "Where do I find building permits in Miami Gardens?",
+          "a": "The City of Miami Gardens' Building Services Department is a one-stop shop for construction and development in the city, enforcing the Florida Building Code and other regulations on construction and land use. It includes the Building, Engineering, and Business Licensing and Housing Compliance divisions."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Miami Gardens, Planning and Zoning",
+          "url": "https://www.miamigardens-fl.gov/216/Zoning-Development-Review",
+          "line": "The Zoning and Land Development Code is chapter 34 of the City's Code of Ordinances; a pre-application is required for all new development or redevelopment.",
+          "q": "Where is Miami Gardens' zoning?",
+          "a": "Miami Gardens' Zoning and Land Development Code is chapter 34 of the City's Code of Ordinances. A pre-application with the Planning and Zoning Department is required for all new development or redevelopment in the city."
+        }
+      ],
+      "built": 1970,
+      "value": 378500
+    },
     "1249675": {
       "name": "North Port",
       "county": "12115",
@@ -2264,6 +2291,114 @@
       ],
       "built": 1987,
       "value": 683400
+    },
+    "0636546": {
+      "name": "Inglewood",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Inglewood, Building Safety Division",
+          "url": "https://www.cityofinglewood.org/236/Building-Safety",
+          "line": "Enforces minimum building standards through plan review, permit issuance and inspections; since March 30, 2026 inspections are requested online through OpenGov, and plan check submittals and over-the-counter permits need a QLESS appointment.",
+          "q": "Where do I find building permits in Inglewood?",
+          "a": "The City of Inglewood's Building Safety Division enforces minimum building standards through plan review, permit issuance and inspections. Since March 30, 2026, all of its inspections are requested online through OpenGov, and plan check submittals and over-the-counter permits need an appointment through QLESS."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Inglewood Planning Division, Zoning Codes",
+          "url": "https://www.cityofinglewood.org/1869/Zoning-Codes",
+          "line": "Chapter 12 of the Inglewood Municipal Code holds the Planning and Zoning regulations, which describe the zoning districts, land use classifications and regulations, and development standards.",
+          "q": "Where is Inglewood's zoning?",
+          "a": "Inglewood's zoning is in Chapter 12 of the Inglewood Municipal Code, the Planning and Zoning regulations. They describe the city's zoning districts and land use classifications, land use regulations, development standards and environmental standards."
+        }
+      ],
+      "built": 1960,
+      "value": 792800
+    },
+    "0619766": {
+      "name": "Downey",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Downey Community Development, Building and Safety Division",
+          "url": "https://www.downeyca.org/our-city/departments/community-development/building-safety-division",
+          "line": "Responsible for building and safety standards for the design, construction, use and occupancy of all buildings in the City; applications and inspection requests are made online, and the counter is on the first floor of City Hall.",
+          "q": "Where do I find building permits in Downey?",
+          "a": "The City of Downey's Building and Safety Division is responsible for the building and safety standards for the design, construction, use and occupancy of all buildings and structures in the city. Application submittals and inspection requests are made online, and its counter is on the first floor of Downey City Hall, 11111 Brookshire Avenue."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Downey Community Development, Planning",
+          "url": "https://www.downeyca.org/our-city/departments/community-development/planning/zoning-code-map",
+          "line": "The Zoning Code describes the zoning districts, land use classifications and regulations, development standards and environmental performance standards; it is updated periodically, and the page links the online code.",
+          "q": "Where is Downey's zoning?",
+          "a": "Downey's Zoning Code describes the city's zoning districts and land use classifications, land use regulations, development standards and environmental performance standards. It is updated periodically, and the City's page links the online Zoning Code."
+        }
+      ],
+      "built": 1959,
+      "value": 796600
+    },
+    "0682590": {
+      "name": "Victorville",
+      "county": "06071",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Victorville, Building Division",
+          "url": "https://www.victorvilleca.gov/Government/City-Departments/Building",
+          "line": "Administers and enforces the building code for the construction, alteration, demolition, repair and use of buildings in the City; permits are applied for on the Self-Service Portal, and plans are reviewed and approved by the Development Department.",
+          "q": "Where do I find building permits in Victorville?",
+          "a": "The City of Victorville's Building Division administers and enforces the building code for the construction, alteration, demolition, repair and use of buildings in the City. Permits are applied for on its Self-Service Portal, and plans are reviewed and approved by the Development Department before the permit is issued."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Victorville Planning, Check Your Zoning",
+          "url": "https://www.victorvilleca.gov/Government/City-Departments/Planning/Check-Your-Zoning",
+          "line": "Every property in the City has a zone that sets its development regulations, such as allowed land use, maximum building height and minimum setbacks; the GIS Zoning Checker searches by parcel.",
+          "q": "Where is Victorville's zoning?",
+          "a": "The City of Victorville designates every property with a zone that determines its development regulations, including allowed land use, maximum building height and minimum property line setbacks. Its GIS Zoning Checker is an interactive map that searches by parcel, and the approved Zoning Map is posted as a PDF."
+        }
+      ],
+      "built": 1994,
+      "value": 385600
+    },
+    "0655184": {
+      "name": "Palm Desert",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Palm Desert, Building and Safety Division",
+          "url": "https://www.palmdesert.gov/build-develop/building-and-safety",
+          "line": "Reviews building plans, issues permits and conducts inspections so construction is consistent with state and local building codes; its plan review covers residential additions and alterations and commercial and industrial plans.",
+          "q": "Where do I find building permits in Palm Desert?",
+          "a": "The City of Palm Desert's Building and Safety Division reviews building plans, issues permits and conducts inspections, making sure construction is consistent with state and local building codes. Its plan review covers residential additions and alterations as well as commercial and industrial plans."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Palm Desert, Planning Department",
+          "url": "https://www.palmdesert.gov/build-develop/planning",
+          "line": "Manages land use, zoning and design review, supports property owners, architects and developers with their projects, and helps implement the City's long-range plans.",
+          "q": "Where is Palm Desert's zoning?",
+          "a": "The City of Palm Desert's Planning Department manages land use, zoning and design review, and supports property owners, architects and developers with their projects. It also helps implement the City's long-range plans."
+        }
+      ],
+      "built": 1985,
+      "value": 542000
     }
   }
 }
