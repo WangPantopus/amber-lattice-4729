@@ -66,6 +66,15 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   // Recorded atomically by pulse_record_helpful_mark, not by a client event.
   'pulse_helpful_marked',
   'pulse_follow',
+  // Christmas cards (December card push), all recorded by routes/mailbox.js, never posted by a browser or an app.
+  // Counts only: no name, address, note, or id of a card or of the person it went to.
+  'card_sent', //       user: the sender; meta via person | email | link, list_size, stamp free | paid | none, travels
+  'card_taken_back', // user: the sender; meta via
+  'card_page_seen', //  no user (a card's link page, signed out; link-preview robots count too); meta via, sealed
+  'card_code_sent', //  no user; meta via
+  'card_claimed', //    user: the claimer; meta via, new_account, after lt_1h | lt_1d | lt_7d | later
+  'card_reply_sent', // user: the replier
+  'card_passed_on', //  user: the passer; meta to 1 | 2 (the card's place), via
 ]);
 
 // Only these pilot events are accepted from an authenticated app. Delivery
