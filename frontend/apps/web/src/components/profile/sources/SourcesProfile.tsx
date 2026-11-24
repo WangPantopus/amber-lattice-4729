@@ -397,7 +397,7 @@ export default function SourcesProfile({
           photoUrl={header.portrait_url}
           seed={personId}
           // Moments open with this page's address to come back to; a link for one purpose keeps its key to itself.
-          wrapPortrait={viaLink ? undefined : (portrait) => <MomentAvatar id={personId} name={name}>{portrait}</MomentAvatar>}
+          wrapPortrait={viaLink ? undefined : (portrait) => <MomentAvatar id={personId} name={name} mark={false}>{portrait}</MomentAvatar>}
         />
       </div>
       <div className="px-5 pt-1.5 pb-4 flex flex-col items-center gap-0.5 text-center">
