@@ -299,7 +299,7 @@ struct ProfileRecordChart: View {
 // MARK: - The ring on an avatar (board 6)
 
 /// One ring hugging an avatar: thicker with years on record, dotted until something is seen. Drawn outside the
-/// circle, so the circle keeps its size and place.
+/// circle, in the room `ProfileMarkRoom` keeps for it, so the circle keeps its size and place.
 struct ProfileAvatarRing: View {
     let summary: ProfileMarkSummary
     /// The avatar's diameter: the board draws a 40 pt avatar.
@@ -309,6 +309,13 @@ struct ProfileAvatarRing: View {
     static func reach(_ summary: ProfileMarkSummary, diameter: CGFloat) -> CGFloat {
         let scale = max(0.6, diameter / 40)
         return gap(scale) + width(summary, scale: scale)
+    }
+
+    /// The furthest any ring reaches outside an avatar of this size (nine years and more on record): the room kept
+    /// around the avatar from its first frame, so nothing beside it moves when the ring comes in.
+    static func room(diameter: CGFloat) -> CGFloat {
+        let scale = max(0.6, diameter / 40)
+        return gap(scale) + max(1, 4 * scale)
     }
 
     private static func gap(_ scale: CGFloat) -> CGFloat {
