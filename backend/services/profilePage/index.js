@@ -237,15 +237,14 @@ async function shareBody(req) {
   ]);
   const { ctx } = loaded;
   const content = partContent(ctx, loaded.record);
-  // A link for one purpose doesn't open while the profile is private (openFor's keyed check): say so to the owner, and
-  // no link reads as live meanwhile.
-  const linksOpen = (ctx.userData.profile_visibility || 'public') !== 'private';
+  // A link for one purpose opens whatever the profile's visibility (founder, SPEC 9.11). Someone whose profile is
+  // private or for people on Pantopus only is told so plainly, so nobody shares a link without knowing it opens.
   const linkFields = linksOn ? {
     links_enabled: ctx.linksEnabled,
-    links_open: linksOpen,
-    links_note: linksOpen ? null : 'Links for one purpose don\'t open while your profile is private.',
+    links_open: true,
+    links_note: linksNote(ctx.userData.profile_visibility),
     links: linkRows.map((row) => links.serialize(row, {
-      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled && linksOpen, day: links.today(),
+      username: ctx.username, webBase: webBase(), linksEnabled: ctx.linksEnabled, day: links.today(),
     })),
   } : {};
   return {
@@ -274,13 +273,20 @@ async function putShare(req) {
 
 // ---------- links for one purpose ----------
 
+/** The share sheet's note about links for one purpose, by the profile's visibility (null for a public profile). */
+function linksNote(visibility) {
+  if (visibility === 'private') return 'Your profile is private. A link for one purpose still opens for anyone who has it.';
+  if (visibility === 'registered') {
+    return 'Your profile is for people on Pantopus. A link for one purpose still opens for anyone who has it.';
+  }
+  return null;
+}
+
 // The owner's switch for links and the name in their link (the handle others see).
 async function ownerLinkFields(req) {
   const [stored, found] = await Promise.all([readShareColumn(req.user.id), findPerson({ id: req.user.id })]);
   return {
     linksEnabled: readShare(stored).links_enabled,
-    // `live` also needs a profile that isn't private (a link doesn't open then).
-    linksOpen: (found.userData.profile_visibility || 'public') !== 'private',
     username: await handleOthersSee(found.userData),
   };
 }
@@ -288,13 +294,13 @@ async function ownerLinkFields(req) {
 async function makeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.createLink(req.user.id, req.body, owner);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
 }
 
 async function changeLink(req) {
   const owner = await ownerLinkFields(req);
   const row = await links.updateLink(req.user.id, req.params.id, req.body);
-  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled && owner.linksOpen, day: links.today() });
+  return links.serialize(row, { username: owner.username, webBase: webBase(), linksEnabled: owner.linksEnabled, day: links.today() });
 }
 
 async function removeLink(req) {
@@ -342,7 +348,8 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
       }
     }
   } catch (err) {
-    // A private profile behind a live key reads as a link that doesn't work, like every other closed key.
+    // A key never refuses for the profile's visibility (SPEC 9.11); should any refusal of the page come through, it
+    // reads as a link that doesn't work, like every other closed key.
     if (err instanceof PageRefusal && err.code === 'PROFILE_PRIVATE') throw links.NOT_FOUND();
     throw err;
   }
