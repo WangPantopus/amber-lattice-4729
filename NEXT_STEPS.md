@@ -1557,6 +1557,6 @@ Approved by you on November 24: every account starts with seven free stamps inst
 
 For the paid ad that sends people to the address lookup: give each ad its own link, `pantopus.com/start?r=ad-<name>` (or `/tax-check?r=ad-<name>`). The code starts with `ad-` and holds up to 64 characters; anything longer is cut at 64.
 
-- [ ] **Ad codes on the lookup** (the pull request for this section). A code starting with `ad-` is remembered like a card's code, but the page never says "From the card in your mailbox"; every other code behaves as before. Nothing reads or stores the click ids ad platforms add to a link (`fbclid`, `gclid`).
+- [ ] **Ad codes on the lookup** ([#4818](https://github.com/WangPantopus/skinny-pantopus/pull/4818)). A code starting with `ad-` is remembered like a card's code, but the page never says "From the card in your mailbox"; every other code behaves as before. Nothing reads or stores the click ids ad platforms add to a link (`fbclid`, `gclid`).
 - [ ] **Each ad's numbers** are on `/app/admin/funnel` (admins only), under "By source": lookups, aha cards, shares, walls, sign-ups started, accounts and the account rate for each code, most lookups first. "No code" is everyone who came without one.
 - [ ] **Not counted yet: accounts under their ad's code.** An account made after an ad lookup in the same browser shows under "No code", not under its ad, because the server records a new account with the browser's anonymous id but not the code. Until that is fixed, "Sign-ups started" is the last step counted per ad.
