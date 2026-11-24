@@ -11,10 +11,10 @@ import type {
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
 import { MomentAvatar } from '@/components/moments/MomentLinks';
-import { Block, HeaderLines, card, drawable, pieceInks, type BlockContext } from './blocks';
-import { InkGlyph, InkLine, howText, inkOf, type Target } from './ink';
+import { Blocks, HeaderLines, card, drawable, pieceInks, type BlockContext } from './blocks';
+import { InkGlyph, InkLine, howText, type Target } from './ink';
 import { RingMark, yearsText } from './RingArt';
-import Picture from './Picture';
+import PieceView from './PieceView';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -154,43 +154,6 @@ function OpenedSheet({ opened, onClose, onRetry }: { opened: Opened | null; onCl
       <div className="flex flex-col gap-3">
         {state.subtitle ? <p className="-mt-1 text-xs leading-4 text-app-muted">{state.subtitle}</p> : null}
         {(state.lines || []).filter((line) => line?.text).map((line, i) => <InkLine key={i} line={line} />)}
-      </div>
-    );
-  } else if (state && typeof state === 'object' && 'piece' in state && state.piece) {
-    const piece = state.piece;
-    const ink = inkOf(piece.ink);
-    title = piece.title || title;
-    const photos = (piece.media || []).filter((m) => m?.kind === 'photo' && (m.thumbnail_url || m.url));
-    body = (
-      <div className="flex flex-col gap-4">
-        {photos.length > 0 ? (
-          <ul className="grid grid-cols-2 gap-2">
-            {photos.map((m, i) => (
-              <li key={i} className={`relative overflow-hidden rounded-xl bg-app-surface-sunken ${i === 0 ? 'col-span-2 aspect-[3/2]' : 'aspect-square'}`}>
-                <Picture src={i === 0 ? m.url : m.thumbnail_url || m.url} className="absolute inset-0 w-full h-full object-cover" />
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="flex items-center gap-1.5 text-xs leading-4 text-app-muted"><InkGlyph ink={ink} inline />{howText(ink, piece.how)}</p>
-        {piece.description?.text ? <InkLine line={piece.description} /> : null}
-        {(piece.links || []).length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {piece.links.filter((l) => /^https?:\/\//i.test(l?.url || '')).map((l, i) => (
-              <li key={i}>
-                <a href={l.url} target="_blank" rel="noopener noreferrer nofollow" className="block rounded-xl border border-app px-3.5 py-2.5 hover-bg-app">
-                  <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{l.title || l.site || l.url}</span>
-                  {l.site ? <span className="block text-xs leading-4 text-app-muted">{l.site}</span> : null}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {(piece.skills || []).length > 0 ? (
-          <ul className="flex flex-wrap gap-2" aria-label="Skills used">
-            {piece.skills.map((skill) => <li key={skill} className="inline-flex items-center min-h-7 px-2.5 rounded-full bg-app-surface-sunken text-xs leading-4 font-semibold text-app-secondary">{skill}</li>)}
-          </ul>
-        ) : null}
       </div>
     );
   }
@@ -352,6 +315,12 @@ export default function SourcesProfile({
     }
   }, [tabs, openTab, load, header.username, router, viaLink]);
 
+  const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
+  const personTarget = useCallback(
+    (who: { user_id: string | null; username: string | null }) => target({ kind: 'profile', user_id: who.user_id, username: who.username } as ProfileLink),
+    [target],
+  );
+
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
     onDoor: onDoor ?? (() => {}),
@@ -482,7 +451,7 @@ export default function SourcesProfile({
                 inert={inert || undefined}
               >
                 {tabs.length > 1 ? <h2 className="hidden print:block break-after-avoid text-lg font-bold text-app pt-2">{tab.title}</h2> : null}
-                {blocks.map((block, i) => <Block key={`${tab.key}-${block.id ?? i}`} block={block} ctx={ctx} />)}
+                <Blocks blocks={blocks} ctx={ctx} keyPrefix={tab.key} />
               </div>
             );
           })}
@@ -514,9 +483,17 @@ export default function SourcesProfile({
       </div>
       <InksExplainer open={explainerOpen} onClose={() => setExplainerOpen(false)} firstName={firstName} />
       <OpenedSheet
-        opened={opened}
-        onClose={() => { openRound.current += 1; setOpened(null); }}
-        onRetry={() => { if (opened) load(opened.kind === 'month' ? { kind: 'month', month: opened.month } : { kind: 'piece', id: opened.id }); }}
+        opened={opened?.kind === 'month' ? opened : null}
+        onClose={closeOpened}
+        onRetry={() => { if (opened?.kind === 'month') load({ kind: 'month', month: opened.month }); }}
+      />
+      <PieceView
+        state={opened?.kind === 'piece' ? opened.state : null}
+        onClose={closeOpened}
+        onRetry={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); }}
+        firstName={firstName}
+        owner={{ name, portraitUrl: header.portrait_url ?? null }}
+        target={personTarget}
       />
     </div>
   );

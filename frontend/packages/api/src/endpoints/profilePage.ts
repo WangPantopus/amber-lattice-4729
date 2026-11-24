@@ -201,6 +201,60 @@ export interface ProfilePiece extends ProfileLine {
   when?: string | null;
   cover_url?: string | null;
   media?: { photos?: number; videos?: number; documents?: number; links?: number } | null;
+  /** Phase 2 (P2.1): the months it ran (`YYYY-MM`), city and state only (null unless the city part reaches the viewer). */
+  from?: string | null;
+  to?: string | null;
+  place?: string | null;
+  pinned?: boolean | null;
+  /** On someone else's Work: a piece they signed a credit on, kept once on its owner's page (P2.5). */
+  with?: { name: string | null; user_id: string | null; username: string | null } | null;
+  /** The owner's view only. */
+  audience?: 'anyone' | 'members' | 'connections' | null;
+  draft?: boolean | null;
+  hidden?: boolean | null;
+}
+
+/** A link on a piece (P2.4): words only, never a picture from the page. */
+export interface ProfileLinkCard {
+  id?: string | null;
+  url: string;
+  site: string | null;
+  kind?: 'site' | 'video' | 'code' | 'app' | 'article' | 'paper' | string | null;
+  title: string | null;
+  description?: string | null;
+  picture_url?: string | null;
+  ink?: ProfileInk | null;
+  how?: string | null;
+}
+
+/** A person, business or typed name on a piece (P2.5). Others see only signed people and typed names. */
+export interface ProfileCredit {
+  id: string;
+  party: {
+    name: string | null;
+    user_id: string | null;
+    username: string | null;
+    portrait_url: string | null;
+    typed?: boolean | null;
+    /** What to show when `name` is null ("A carpenter"). */
+    did?: string | null;
+  };
+  role: string | null;
+  relation?: 'with' | 'led' | 'learned_from' | 'for' | string | null;
+  ink: ProfileInk;
+  how: string | null;
+  /** The owner's view only: `asked`, `signed`, `did_not_confirm`. */
+  status?: string | null;
+}
+
+/** An attachment on a piece (P2.2). */
+export interface ProfileAttachment {
+  id?: string | null;
+  kind: 'photo' | 'video' | 'document' | string;
+  url: string;
+  thumbnail_url: string | null;
+  title?: string | null;
+  detail?: string | null;
 }
 
 export interface ProfilePiecesBlock extends BlockBase {
@@ -318,11 +372,23 @@ export interface ProfilePage {
 export interface ProfilePieceRead {
   v: number;
   view: ProfileView;
-  piece: ProfilePiece & {
+  piece: Omit<ProfilePiece, 'media'> & {
     description: ProfileLine | null;
-    media: Array<{ kind: 'photo' | 'video' | 'document' | string; url: string; thumbnail_url: string | null }>;
-    links: Array<{ url: string; title: string | null; site: string | null }>;
-    skills: string[];
+    /** v1: the piece's pictures and files. A phase 2 server may send the counts here instead; read both. */
+    media: ProfileAttachment[] | ProfilePiece['media'];
+    links: ProfileLinkCard[];
+    skills?: string[];
+    /** Phase 2 (P2.2). */
+    how_we_know?: ProfileLine[] | null;
+    shows_can?: string[] | null;
+    attachments?: ProfileAttachment[] | null;
+    /** Only with PROFILE_TIES on. */
+    credits?: ProfileCredit[] | null;
+    written?: Array<ProfileLine & { who?: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null; did: string | null } | null; when?: string | null }> | null;
+    kept_once?: string | null;
+    owner_role?: string | null;
+    /** The owner's view only. */
+    how_it_will_show?: string[] | null;
   };
 }
 

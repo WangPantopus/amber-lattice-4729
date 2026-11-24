@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ComponentType, type ReactNode } from 'react';
+import { useId, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeftRight, CalendarDays, ChevronRight, Hammer, Mail, MessageCircle, Users } from 'lucide-react';
 import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
@@ -319,6 +319,18 @@ function InkMeter({ inks, width }: { inks: Partial<Record<ProfileInk, number>>; 
   );
 }
 
+/** "4 Seen · 3 Signed · 2 Said": a meter's inks in words, every ink that counts. */
+function inkCounts(inks: Partial<Record<ProfileInk, number>>): string {
+  return (['seen', 'signed', 'said'] as const)
+    .filter((ink) => (inks[ink] ?? 0) > 0)
+    .map((ink) => `${inks[ink]} ${howText(ink)}`)
+    .join(' · ');
+}
+
+/**
+ * Board 7's Can do: the skill and its count on one row, the meter of its pieces by ink under it, and the inks written
+ * out under the meter. A skill with no pieces is the person's own word: serif, with its Said line beside it.
+ */
 function CanDoBlock({ block, ctx }: { block: ProfileCanDoBlock; ctx: BlockContext }) {
   const skills = (block.skills || []).filter((skill) => (skill?.name || skill?.text || '').trim());
   if (skills.length === 0) return null;
@@ -328,18 +340,28 @@ function CanDoBlock({ block, ctx }: { block: ProfileCanDoBlock; ctx: BlockContex
       <ul className="-my-1 divide-y divide-app-subtle">
         {skills.map((skill, i) => {
           const ink = inkOf(skill.ink);
+          const counted = skill.pieces > 0 && skill.inks ? inkCounts(skill.inks) : '';
           return (
             <li key={i} className="py-2.5 flex flex-col gap-1.5">
               <Opens target={ctx.target(skill.link)} className="min-w-0">
-                <div className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2.5 items-start">
-                  <InkGlyph ink={ink} />
-                  <div className="min-w-0">
+                {counted ? (
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span className="text-[1rem] leading-[1.375rem] font-semibold text-app [overflow-wrap:anywhere]">{skill.name || skill.text}</span>
+                    <span className="text-[0.8125rem] leading-[1.125rem] text-app-secondary">{skill.how || `${skill.pieces} ${skill.pieces === 1 ? 'piece' : 'pieces'}`}</span>
+                  </span>
+                ) : (
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                     <LineText ink={ink} className={ink === 'said' ? '' : 'font-semibold'}>{skill.name || skill.text}</LineText>
-                    <HowLine>{howText(ink, skill.how)}</HowLine>
-                  </div>
-                </div>
+                    <span className="inline-flex items-center gap-1.5 text-xs leading-4 text-app-muted"><InkGlyph ink={ink} inline />{howText(ink, skill.how)}</span>
+                  </span>
+                )}
               </Opens>
-              {skill.pieces > 0 && skill.inks ? <div className="pl-[1.625rem]"><InkMeter inks={skill.inks} width={(skill.pieces / most) * 100} /></div> : null}
+              {counted ? (
+                <>
+                  <InkMeter inks={skill.inks!} width={(skill.pieces / most) * 100} />
+                  <span className="text-xs leading-4 text-app-muted">{counted}</span>
+                </>
+              ) : null}
             </li>
           );
         })}
@@ -360,13 +382,15 @@ const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'O
 
 function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext; big: boolean }) {
   const ink = inkOf(piece.ink);
-  const tag = [piece.kind ? KIND_WORD[piece.kind] : null, piece.when].filter(Boolean).join(' · ');
+  // Board 7's cards say the year ("Built · 2026"); the list under the work line says the month.
+  const year = [piece.to, piece.from].find((v) => typeof v === 'string' && /^\d{4}/.test(v))?.slice(0, 4) ?? piece.when;
+  const tag = [...ownerFlags(piece), piece.kind ? KIND_WORD[piece.kind] : null, year].filter(Boolean).join(' · ');
   const media = mediaText(piece.media);
   return (
     <Opens target={ctx.target(piece.link)} className="rounded-2xl" label={undefined}>
       <span className="flex flex-col gap-2">
         {piece.cover_url ? (
-          <span className={`relative block w-full overflow-hidden rounded-2xl bg-app-surface-sunken ${big ? 'aspect-[3/2]' : 'aspect-[4/3]'}`}>
+          <span className={`relative block w-full overflow-hidden rounded-2xl bg-app-surface-sunken ${big ? 'aspect-[3/2] lg:aspect-[16/9]' : 'aspect-[4/3]'}`}>
             <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
             {tag ? <span className="absolute left-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{tag}</span> : null}
             {big && media ? <span className="absolute right-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{media}</span> : null}
@@ -376,11 +400,184 @@ function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext
           <span className={`block font-semibold text-app [overflow-wrap:anywhere] ${big ? 'text-[1.0625rem] leading-[1.4375rem]' : 'text-sm leading-5'}`}>{piece.title}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
             <InkGlyph ink={ink} inline />
-            <span className="[overflow-wrap:anywhere]">{[howText(ink, piece.how), piece.cover_url ? null : tag].filter(Boolean).join(' · ')}</span>
+            <span className="[overflow-wrap:anywhere]">{[piece.with?.name ? `With ${piece.with.name}` : null, howText(ink, piece.how), piece.cover_url ? null : tag].filter(Boolean).join(' · ')}</span>
           </span>
         </span>
       </span>
     </Opens>
+  );
+}
+
+const MONTH_WORDS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A piece's month (`YYYY-MM`): when it finished, else started, else its dot on the work line. */
+function pieceMonth(piece: ProfilePiece, dots: Map<string, string>): string | null {
+  const month = [piece.to, piece.from, dots.get(piece.id)].find((v) => typeof v === 'string' && /^\d{4}-\d{2}/.test(v));
+  return month ? month.slice(0, 7) : null;
+}
+
+/** The owner's own flags on a piece only they see (P2.1). */
+function ownerFlags(piece: ProfilePiece): string[] {
+  return [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null].filter(Boolean) as string[];
+}
+
+/**
+ * One piece in a list (board 7): its cover, title, and a line with its kind, its month (or `when`), and its ink with
+ * how Pantopus knows. A piece signed on someone else's work says whose it is ("With Maria K.").
+ */
+function PieceRow({ piece, ctx, month }: { piece: ProfilePiece; ctx: BlockContext; month?: string | null }) {
+  const ink = inkOf(piece.ink);
+  const target = ctx.target(piece.link);
+  const flags = ownerFlags(piece);
+  const meta = [
+    ...flags,
+    piece.kind ? KIND_WORD[piece.kind] : null,
+    month !== undefined ? month : piece.when,
+    piece.with?.name ? `With ${piece.with.name}` : null,
+    howText(ink, piece.how),
+  ].filter(Boolean).join(' · ');
+  return (
+    <Opens target={target} className={`${rowClass} !px-3`}>
+      <span className="flex w-full items-center gap-3">
+        {piece.cover_url ? (
+          <span className="relative block w-[3.25rem] h-[3.25rem] shrink-0 overflow-hidden rounded-[10px] bg-app-surface-sunken">
+            <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[0.9375rem] leading-5 font-semibold text-app [overflow-wrap:anywhere]">{piece.title}</span>
+          <span className="mt-0.5 flex items-start gap-1.5 text-xs leading-4 text-app-muted">
+            <InkGlyph ink={ink} inline />
+            <span className="[overflow-wrap:anywhere]">{meta}</span>
+          </span>
+        </span>
+        {target ? chevron : null}
+      </span>
+    </Opens>
+  );
+}
+
+const KIND_ORDER = ['did', 'built', 'owns'];
+
+/** Board 7's All / Did / Built: the server's `filters` when sent, else the kinds these pieces have (two or more). */
+function kindOptions(block: ProfilePiecesBlock | null, pieces: ProfilePiece[]): string[] {
+  const present = KIND_ORDER.filter((kind) => pieces.some((piece) => piece.kind === kind));
+  const sent = (block?.filters || []).filter((f) => f !== 'all' && present.includes(f));
+  const kinds = sent.length > 0 ? sent : present;
+  return kinds.length >= 2 ? ['all', ...kinds] : [];
+}
+
+function Segmented({ options, value, onChange, label }: { options: Array<{ key: string; label: string }>; value: string; onChange: (key: string) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="grid gap-1 p-1 rounded-xl bg-app-surface-sunken" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((option) => {
+        const on = option.key === value;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(option.key)}
+            className={`min-h-[2.5rem] px-2 rounded-[0.625rem] text-[0.9375rem] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'bg-surface text-app shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-app-secondary hover:text-app'}`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Board 7's work line: the work rings opened flat with a dot per piece, the years as chips (the newest chosen), the
+ * All / Did / Built switch and the pieces of the chosen year. Either half may come alone: the fan without a list, or
+ * the list (with its switch) without a fan.
+ */
+export function WorkLineBlock({ rings, list, ctx }: { rings: ProfileWorkRingsBlock | null; list: ProfilePiecesBlock | null; ctx: BlockContext }) {
+  const pieces = useMemo(() => (list?.pieces || []).filter((piece) => piece?.id && piece.title?.trim()), [list]);
+  const dated = useMemo(() => {
+    const dots = new Map((rings?.dots || []).filter((d) => d?.piece_id && d.month).map((d) => [d.piece_id, d.month]));
+    return pieces.map((piece) => ({ piece, month: pieceMonth(piece, dots) }));
+  }, [pieces, rings]);
+  // The years with a listed piece, newest first; pieces with no month at all get a chip of their own, last.
+  const years = useMemo(() => {
+    const counts = new Map<string, number>();
+    dated.forEach(({ month }) => { const y = month ? month.slice(0, 4) : 'none'; counts.set(y, (counts.get(y) ?? 0) + 1); });
+    // Each chip counts the pieces it lists, so the number under the tap is the number shown.
+    return [...counts.keys()].sort((a, b) => (a === 'none' ? 1 : b === 'none' ? -1 : Number(b) - Number(a)))
+      .map((year) => ({ year, pieces: counts.get(year)! }));
+  }, [dated]);
+  const chips = years.length > 1 || (years.length === 1 && years[0].year !== 'none');
+  const [year, setYear] = useState<string | null>(null);
+  const [kind, setKind] = useState('all');
+  const shownYear = chips ? (years.some((y) => y.year === year) ? year! : years[0]?.year ?? null) : null;
+  const ofYear = dated.filter(({ month }) => !shownYear || (shownYear === 'none' ? !month : month?.startsWith(shownYear)));
+  const kinds = kindOptions(list, ofYear.map(({ piece }) => piece));
+  const shownKind = kinds.includes(kind) ? kind : 'all';
+  const shown = ofYear.filter(({ piece }) => shownKind === 'all' || piece.kind === shownKind);
+  const fanDrawn = Boolean(rings && typeof rings.from === 'number' && Array.isArray(rings.months));
+  if (!fanDrawn && pieces.length === 0) return null;
+
+  const total = (rings?.years || []).reduce((sum, y) => sum + (y?.pieces > 0 ? y.pieces : 0), 0) || pieces.length;
+  let fan: ReactNode = null;
+  if (fanDrawn && rings) {
+    const dots: FanDot[] = (rings.dots || []).map((dot) => ({
+      month: dot.month,
+      ink: ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
+      pinned: ctx.pieces.get(dot.piece_id)?.pinned ?? false,
+    }));
+    const yearsWords = (rings.years || []).filter((y) => y.pieces > 0).map((y) => `${y.year}: ${y.pieces} ${y.pieces === 1 ? 'piece' : 'pieces'}`).join(', ');
+    const label = `${ctx.firstName}'s work rings opened flat: each band is a year from ${rings.from} at the centre to this year outside, months run left to right, and each dot is a piece.${yearsWords ? ` ${yearsWords}.` : ''}`;
+    fan = <WorkFan from={rings.from} now={rings.now} months={rings.months} dots={dots} label={label} />;
+  }
+  const aside = (
+    <span className="flex items-baseline gap-3">
+      {total > 0 ? <span className="text-xs leading-4 text-app-muted">{total} {total === 1 ? 'piece' : 'pieces'}</span> : null}
+      {!fanDrawn ? <MoreLink more={list?.more} ctx={ctx} /> : null}
+    </span>
+  );
+  return (
+    <Section title={(fanDrawn ? rings?.title : list?.title) || (fanDrawn ? 'Work' : 'All pieces')} className="!px-3" aside={aside}>
+      {fan}
+      {pieces.length > 0 ? (
+        <div className={`flex flex-col gap-3 ${fan ? 'mt-4' : ''}`}>
+          {chips ? (
+            <div role="group" aria-label="Years" className="-mx-3 px-3 flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+              {years.map((y) => {
+                const on = y.year === shownYear;
+                return (
+                  <button
+                    key={y.year}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setYear(y.year)}
+                    className={`shrink-0 min-h-[2.25rem] px-3.5 rounded-full text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'bg-[rgb(var(--app-text))] text-[rgb(var(--app-surface))]' : 'bg-app-surface-sunken text-app hover:text-app-strong'}`}
+                  >
+                    {y.year === 'none' ? 'No date' : y.year} · {y.pieces}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {kinds.length > 0 ? (
+            <Segmented
+              label="Kind of piece"
+              value={shownKind}
+              onChange={setKind}
+              options={kinds.map((key) => ({ key, label: key === 'all' ? 'All' : KIND_WORD[key] }))}
+            />
+          ) : null}
+          <ul className="-mx-3 divide-y divide-app-subtle" aria-live="polite">
+            {shown.map(({ piece, month }) => (
+              <li key={piece.id}>
+                <PieceRow piece={piece} ctx={ctx} month={shownYear && month ? MONTH_WORDS[Number(month.slice(5, 7)) - 1] ?? null : undefined} />
+              </li>
+            ))}
+          </ul>
+          {fanDrawn && list?.more ? <div className="px-1"><MoreLink more={list.more} ctx={ctx} /></div> : null}
+        </div>
+      ) : null}
+    </Section>
   );
 }
 
@@ -411,55 +608,11 @@ function PiecesBlock({ block, ctx }: { block: ProfilePiecesBlock; ctx: BlockCont
       </section>
     );
   }
-  return (
-    <Section title={block.title || 'Pieces'} aside={aside} padded={false}>
-      <ul className="divide-y divide-app-subtle px-1 pb-1">
-        {pieces.map((piece) => {
-          const ink = inkOf(piece.ink);
-          const tag = [piece.kind ? KIND_WORD[piece.kind] : null, piece.when].filter(Boolean).join(' · ');
-          return (
-            <li key={piece.id}>
-              <Opens target={ctx.target(piece.link)} className={`${rowClass} !px-3`}>
-                <span className="flex w-full items-center gap-3">
-                  {piece.cover_url ? (
-                    <span className="relative block w-[3.25rem] h-[3.25rem] shrink-0 overflow-hidden rounded-[10px] bg-app-surface-sunken">
-                      <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
-                    </span>
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{piece.title}</span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
-                      <InkGlyph ink={ink} inline />
-                      <span className="[overflow-wrap:anywhere]">{[howText(ink, piece.how), tag].filter(Boolean).join(' · ')}</span>
-                    </span>
-                  </span>
-                  {ctx.target(piece.link) ? chevron : null}
-                </span>
-              </Opens>
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
-  );
+  return <WorkLineBlock rings={null} list={block} ctx={ctx} />;
 }
 
 function WorkRingsBlock({ block, ctx }: { block: ProfileWorkRingsBlock; ctx: BlockContext }) {
-  if (typeof block.from !== 'number' || !Array.isArray(block.months)) return null;
-  const dots: FanDot[] = (block.dots || []).map((dot) => ({
-    month: dot.month,
-    ink: ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
-    pinned: ctx.pieces.get(dot.piece_id)?.pinned ?? false,
-  }));
-  const years = (block.years || []).filter((y) => y.pieces > 0);
-  const total = years.reduce((sum, y) => sum + y.pieces, 0);
-  const yearsWords = years.map((y) => `${y.year}: ${y.pieces} ${y.pieces === 1 ? 'piece' : 'pieces'}`).join(', ');
-  const label = `${ctx.firstName}'s work rings opened flat: each band is a year from ${block.from} at the centre to this year outside, months run left to right, and each dot is a piece.${yearsWords ? ` ${yearsWords}.` : ''}`;
-  return (
-    <Section title={block.title} className="!px-3" aside={total > 0 ? <span className="text-xs leading-4 text-app-muted">{total} {total === 1 ? 'piece' : 'pieces'}</span> : null}>
-      <WorkFan from={block.from} now={block.now} months={block.months} dots={dots} label={label} />
-    </Section>
-  );
+  return <WorkLineBlock rings={block} list={null} ctx={ctx} />;
 }
 
 function CircleBlock({ block }: { block: ProfileCircleBlock }) {
@@ -529,6 +682,25 @@ function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: B
 }
 
 /** One block, or nothing for a kind this page doesn't know (contract 0: skip it). */
+/**
+ * A tab's blocks in order. Board 7 draws the work rings and the list of every piece as one card, so a `work_rings`
+ * block followed by a list of pieces is drawn together.
+ */
+export function Blocks({ blocks, ctx, keyPrefix }: { blocks: ProfileBlock[]; ctx: BlockContext; keyPrefix: string }) {
+  const out: ReactNode[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    const next = blocks[i + 1] as ProfilePiecesBlock | undefined;
+    if (block.kind === 'work_rings' && next?.kind === 'pieces' && next.style !== 'pinned') {
+      out.push(<WorkLineBlock key={`${keyPrefix}-${block.id ?? i}`} rings={block as ProfileWorkRingsBlock} list={next} ctx={ctx} />);
+      i += 1;
+    } else {
+      out.push(<Block key={`${keyPrefix}-${block.id ?? i}`} block={block} ctx={ctx} />);
+    }
+  }
+  return <>{out}</>;
+}
+
 export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }) {
   switch (block?.kind) {
     case 'lines': return <LinesBlock block={block as ProfileLinesBlock} ctx={ctx} />;
