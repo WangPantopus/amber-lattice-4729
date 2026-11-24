@@ -359,6 +359,8 @@ private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
         toMonth = map.str("to")?.takeIf { MONTH_KEY.matches(it) },
         place = map.str("place"),
         pinned = map["pinned"] == true,
+        draft = map["draft"] == true,
+        hidden = map["hidden"] == true,
     )
 }
 

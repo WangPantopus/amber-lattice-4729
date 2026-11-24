@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -234,8 +235,10 @@ private fun WorkLineChart(
                     strokeWidth = unit,
                 )
             }
-            // "Jan" at the outer band's left foot; the first, a middle and this year at their bands' right feet.
-            val labelled = listOf(0, years.size / 2, years.lastIndex).distinct().filter { years.size > 1 || it == years.lastIndex }
+            // "Jan" at the outer band's left foot; the first, a middle and this year at their bands' right feet. At the
+            // largest text the middle one is left out, so no two labels run into each other.
+            val middle = if (profileLargeText()) null else years.size / 2
+            val labelled = listOfNotNull(0, middle, years.lastIndex).distinct().filter { years.size > 1 || it == years.lastIndex }
             Box(Modifier.fillMaxWidth().clearAndSetSemantics { }) {
                 val cx = widthPx / 2
                 Text("Jan", style = SourcesType.caption, modifier = Modifier.centredAt(cx - radius(years.lastIndex)))
@@ -407,6 +410,9 @@ private fun WorkLineRow(
                             piece.line.ink.word,
                             pieceKindWord(piece.kind),
                             if (byYear) piece.monthWord else piece.whenText,
+                            // Only the owner is sent these: the piece reaches nobody else yet.
+                            "Draft".takeIf { piece.draft },
+                            "Hidden".takeIf { piece.hidden },
                         ).joinToString(" · "),
                     style = SourcesType.caption,
                 )

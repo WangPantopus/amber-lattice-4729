@@ -46,6 +46,7 @@ import app.pantopus.android.ui.screens.profile.ProfileAvatar
 import app.pantopus.android.ui.screens.profile.ProfileInCommon
 import app.pantopus.android.ui.screens.profile.ProfilePrompt
 import app.pantopus.android.ui.screens.profile.inCommonLines
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -133,9 +134,24 @@ internal fun BlockTitle(
     onMore: (() -> Unit)? = null,
 ) {
     if (title == null && trailing == null && more == null) return
+    // At the largest text the note goes under the title, so neither is squeezed to a sliver.
+    if (profileLargeText() && title != null && trailing != null && more == null) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            SourcesOverline(title, color = color)
+            Text(trailing, style = SourcesType.caption)
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         title?.let { SourcesOverline(it, modifier = Modifier.weight(1f), color = color) } ?: Spacer(Modifier.weight(1f))
-        trailing?.let { Text(it, style = SourcesType.caption) }
+        trailing?.let {
+            Text(
+                it,
+                style = SourcesType.caption,
+                textAlign = TextAlign.End,
+                modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false),
+            )
+        }
         if (more != null) {
             Box(
                 modifier =
@@ -690,28 +706,38 @@ private fun CanDoCard(block: ProfileBlock.CanDo) {
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 if (skill.pieces > 0) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(skill.name, style = SourcesType.title, modifier = Modifier.weight(1f))
-                        Text(inkHow(skill.line.ink, skill.line.how), style = SourcesType.caption)
-                    }
+                    SkillNameAndInk(name = skill.name, how = inkHow(skill.line.ink, skill.line.how), style = SourcesType.title)
                     Box(Modifier.fillMaxWidth(skill.pieces.toFloat() / most)) {
                         InkMeter(ProfileSummary(years = 0, seenMonths = skill.seen, signedMonths = skill.signed, saidMonths = skill.said))
                     }
                 } else {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(
-                            skill.name,
-                            style = if (skill.line.ink == ProfileInk.Said) SourcesType.said else SourcesType.title,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(inkHow(skill.line.ink, skill.line.how), style = SourcesType.caption, textAlign = TextAlign.End)
-                    }
+                    SkillNameAndInk(
+                        name = skill.name,
+                        how = inkHow(skill.line.ink, skill.line.how),
+                        style = if (skill.line.ink == ProfileInk.Said) SourcesType.said else SourcesType.title,
+                    )
                 }
             }
+        }
+    }
+}
+
+/** A skill's name and its ink note: side by side, the note never wider than half; stacked at the largest text. */
+@Composable
+private fun SkillNameAndInk(
+    name: String,
+    how: String,
+    style: androidx.compose.ui.text.TextStyle,
+) {
+    if (profileLargeText()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(name, style = style)
+            Text(how, style = SourcesType.caption)
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(name, style = style, modifier = Modifier.weight(1f))
+            Text(how, style = SourcesType.caption, textAlign = TextAlign.End, modifier = Modifier.weight(1f, fill = false))
         }
     }
 }

@@ -202,6 +202,9 @@ data class WorkPiece(
     val toMonth: String? = null,
     val place: String? = null,
     val pinned: Boolean = false,
+    /** The owner's view only (P2.1): a draft or a hidden piece reaches nobody else. */
+    val draft: Boolean = false,
+    val hidden: Boolean = false,
 ) {
     /** The year the piece belongs to: its finished month, else its started month, else the year in its "when". */
     val year: Int?
