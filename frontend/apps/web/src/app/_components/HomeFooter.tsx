@@ -1,9 +1,32 @@
 import Link from 'next/link';
 import { PantopusMark } from '@/components/brand/PantopusMark';
+import { GUIDE_PAGES } from '@/lib/site/guidePages';
+import { PILLAR_PAGES } from '@/lib/site/pillarPages';
+import type { SitePage } from '@/lib/site/sitePage';
 import styles from './home.module.css';
 
-// Only pages that are live: nothing here links into a switched-off feature.
-const COLUMNS = [
+type FooterColumn = { head: string; links: { href: string; label: string }[] };
+
+// One column per group, in the order the pages are listed; pages without a group sit under `head`.
+function columnsFrom(pages: SitePage[], head: string): FooterColumn[] {
+  const columns: FooterColumn[] = [];
+  for (const page of pages) {
+    const name = page.group || head;
+    let column = columns.find((c) => c.head === name);
+    if (!column) {
+      column = { head: name, links: [] };
+      columns.push(column);
+    }
+    column.links.push({ href: page.path, label: page.label });
+  }
+  return columns;
+}
+
+// Only pages that are live: nothing here links into a switched-off feature. The pillar and guide pages come from
+// their lists in src/lib/site, so a page added there is linked here and listed in the sitemap at once.
+const COLUMNS: FooterColumn[] = [
+  ...columnsFrom(PILLAR_PAGES, 'Pantopus'),
+  ...columnsFrom(GUIDE_PAGES, 'Guides'),
   {
     head: 'Explore',
     links: [
