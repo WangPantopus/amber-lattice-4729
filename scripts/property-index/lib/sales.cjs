@@ -56,7 +56,7 @@ function countyWord(text) {
   const words = name.split(' ').map((word, i) => {
     if ((mixed && /^[A-Z]{2,4}$/.test(word)) || /^([A-Z]\.){2,}$/.test(word)) return word;
     const lower = word.toLowerCase();
-    return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    return i === 0 ? lower.replace(/[a-z]/, (letter) => letter.toUpperCase()) : lower;
   });
   return words.join(' ');
 }
