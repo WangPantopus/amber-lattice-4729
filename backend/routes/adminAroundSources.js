@@ -21,6 +21,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { aroundYouEnabled, aroundYouSourceFinderEnabled } = require('../utils/featureFlags');
 const finder = require('../services/aroundYou/sourceFinder');
+const { TOPIC_IDS } = require('../services/aroundYou/topics');
 
 const router = express.Router();
 
@@ -50,6 +51,8 @@ function sourceView(row) {
     proposed_by: row.proposed_by || null,
     access: row.access ?? null,
     keep_hours: row.keep_hours ?? null,
+    // What the source is about, when it is about one thing (services/aroundYou/topics.js); null: general news.
+    topic: row.topic ?? null,
     note: noteOf(row),
   };
 }
@@ -163,6 +166,9 @@ const approveSchema = Joi.object({
   access: Joi.string().valid('free', 'subscription').required(),
   keep_hours: Joi.number().integer().min(1).max(720).allow(null).default(null),
   display_name: Joi.string().trim().min(2).max(80).allow(null, ''),
+  // A source about one thing (a paper's sports feed, a school district's news): its stories carry the topic and stay
+  // off the first page's Headlines. Null: general news.
+  topic: Joi.string().valid(...TOPIC_IDS).allow(null).default(null),
 });
 
 router.post('/sources/:id/approve', validate(approveSchema), async (req, res) => {
@@ -183,6 +189,7 @@ router.post('/sources/:id/approve', validate(approveSchema), async (req, res) =>
     // Piece 2's columns, where they are there.
     if ('access' in row) update.access = req.body.access;
     if ('keep_hours' in row) update.keep_hours = req.body.keep_hours;
+    if ('topic' in row) update.topic = req.body.topic;
     const { data, error } = await supabaseAdmin.from('seeder_sources').update(update).eq('id', row.id).select('*').single();
     if (error) throw error;
     logger.info('Around you source approved', { region: row.region, source: row.source_id, reviewer: req.user.id });

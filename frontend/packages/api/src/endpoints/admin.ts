@@ -401,6 +401,8 @@ export interface AroundSource {
   proposed_by: 'finder' | 'hand' | null;
   access: 'free' | 'subscription' | null;
   keep_hours: number | null;
+  /** An Around you topic id when the source is about one thing; null or absent: general news. */
+  topic?: string | null;
   note: AroundSourceNote | null;
 }
 
@@ -452,7 +454,13 @@ export async function addAroundSource(region: string, body: { kind: string; name
 
 export async function approveAroundSource(
   id: string,
-  body: { access: 'free' | 'subscription'; keep_hours: number | null; display_name?: string | null },
+  body: {
+    access: 'free' | 'subscription';
+    keep_hours: number | null;
+    display_name?: string | null;
+    /** What the source is about when it is about one thing (an Around you topic id); null: general news. */
+    topic?: string | null;
+  },
 ): Promise<{ source: AroundSource }> {
   return post(`/api/admin/around-sources/sources/${encodeURIComponent(id)}/approve`, body);
 }
