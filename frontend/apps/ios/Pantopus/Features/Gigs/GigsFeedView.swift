@@ -272,6 +272,8 @@ public struct GigsFeedView: View {
             .padding(.vertical, Spacing.s2)
             .background(Theme.Color.appText.opacity(0.92))
             .clipShape(RoundedRectangle(cornerRadius: Radii.pill))
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .padding(.bottom, Spacing.s8)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .task(id: undo.id) {

@@ -581,6 +581,8 @@ private struct BookingMgmtSavedToast: View {
         .padding(.vertical, Spacing.s2)
         .background(Theme.Color.appText)
         .clipShape(RoundedRectangle(cornerRadius: Radii.pill, style: .continuous))
+        // Dark under white words in dark mode too (appText is near white there).
+        .environment(\.colorScheme, .light)
         .pantopusShadow(.lg)
         .accessibilityIdentifier("bookingPageManagement.savedToast")
     }

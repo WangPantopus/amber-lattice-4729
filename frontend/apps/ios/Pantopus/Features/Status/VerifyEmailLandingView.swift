@@ -357,6 +357,8 @@ private struct ResendToastView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(toast.isError ? Theme.Color.errorSolid : Theme.Color.appText)
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+        // Dark under white words in dark mode too (appText is near white there).
+        .environment(\.colorScheme, .light)
         .accessibilityIdentifier("verifyEmail.resendToast")
     }
 }

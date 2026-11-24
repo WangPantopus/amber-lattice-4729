@@ -4713,6 +4713,8 @@ private struct AttachmentTile: View {
                 ZStack {
                     Circle()
                         .fill(Theme.Color.appText.opacity(0.78))
+                        // Dark under white words in dark mode too (appText is near white there).
+                        .environment(\.colorScheme, .light)
                         .frame(width: 18, height: 18)
                     Icon(.x, size: 11, strokeWidth: 3, color: Theme.Color.appTextInverse)
                 }

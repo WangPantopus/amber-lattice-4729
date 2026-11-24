@@ -180,6 +180,8 @@ public struct BusinessProfileView: View {
                 .padding(.horizontal, Spacing.s4)
                 .padding(.vertical, Spacing.s3)
                 .background(Capsule().fill(Theme.Color.appText.opacity(0.95)))
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.horizontal, Spacing.s4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .task(id: undo) {

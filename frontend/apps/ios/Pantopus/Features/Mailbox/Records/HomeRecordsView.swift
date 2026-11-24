@@ -498,6 +498,8 @@ public struct HomeRecordsView: View {
                 .padding(.vertical, Spacing.s3)
                 .background(Theme.Color.appText.opacity(0.92))
                 .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 // Not stretched across an iPad window.
                 .mailPadBarWidth()
                 .padding(.horizontal, Spacing.s4)
@@ -511,6 +513,8 @@ public struct HomeRecordsView: View {
                     .padding(.vertical, Spacing.s2)
                     .background(Theme.Color.appText.opacity(0.9))
                     .clipShape(Capsule())
+                    // Dark under white words in dark mode too (appText is near white there).
+                    .environment(\.colorScheme, .light)
                     .accessibilityIdentifier("homeRecords_toast")
                     .task {
                         try? await Task.sleep(nanoseconds: 2_200_000_000)

@@ -240,6 +240,8 @@ public struct CommunityMailView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s10)
                 .accessibilityIdentifier("communityMail_toast")
                 .task {

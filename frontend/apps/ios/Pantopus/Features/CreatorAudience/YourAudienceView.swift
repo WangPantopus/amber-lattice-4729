@@ -611,6 +611,8 @@ public struct YourAudienceView: View {
                 .padding(.vertical, Spacing.s3)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -629,6 +631,8 @@ public struct YourAudienceView: View {
                 .padding(.vertical, Spacing.s3)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .task(id: toast) {
