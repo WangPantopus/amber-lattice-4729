@@ -79,13 +79,15 @@ What each switched-off feature will need:
 - Every figure on a public page names its source and its date.
 - New public words use neither "neighbor" nor "Neighborhood" (the founder, November 7 and 16).
 - Nothing switched off is made public to win a search.
+- Never redirect `www.pantopus.com`. The apps share links there (`https://www.pantopus.com/posts/<id>`) and both
+  claim it for app links, which a redirect on `/.well-known/` breaks (`next.config.js`, the `headers()` note). Both
+  hosts answer every page; each page's canonical link names `https://pantopus.com`, which is what search engines index.
 
 ## The founder's steps
 
 - Google Search Console: add `pantopus.com` as a Domain property (a DNS record), then submit
   `https://pantopus.com/sitemap.xml`. Bing Webmaster Tools: the same; it can import the site from Search Console.
   These two are the only place to see which pages are indexed and what people searched.
-- Vercel, Domains: make `www.pantopus.com` redirect to `pantopus.com`. Both answer every page today.
 - Promote `dev` to production. Nothing in `dev` reaches a search engine before that.
 - The App Store and Play listing text.
 
@@ -101,7 +103,6 @@ What each switched-off feature will need:
 Facts from the review, for whoever builds next. Remove a line when it is fixed.
 
 - Production has no sitemap: it is in `dev` and waits for a promotion.
-- `www.pantopus.com` and `pantopus.com` both answer.
 - `/start` and `/tax-check` hold about 120 words each before the lookup starts.
 - The Play listing describes posting tasks and paid services. The App Store text names neither Mail, Christmas
   cards, Moments nor property records. New text for both is in #4732, which waits for the founder.
