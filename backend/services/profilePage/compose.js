@@ -328,7 +328,8 @@ function buildRecord(ctx, sources, { now }) {
 
   // Work: pieces (SPEC phase 2A) and Can do counted from them. A piece reaches a viewer when its own "who sees it"
   // does (the Work part is checked by the composer); hidden and draft pieces come only for the owner (sources.js).
-  const viewOf = ctx.view || 'owner';
+  // A caller that forgets the view gets the narrowest one, so it can only show less.
+  const viewOf = ctx.view || 'link';
   const pieces = (sources.pieces || []).filter((row) => row.title && reaches({ piece: row.audience || 'anyone' }, 'piece', viewOf))
     .map((row) => pieceOf(row, first, viewOf === 'owner'));
   for (const p of pieces) {
@@ -558,9 +559,9 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     const live = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
     const pinned = live.filter((p) => p.row.is_featured).slice(0, 3);
     // The owner's list also carries their drafts and hidden pieces (marked); nobody else's does.
-    // `all` is every other piece this viewer can open (the rows hold up to 80), so the apps can filter by year and kind
-    // themselves; nothing is cut.
-    const rest = record.pieces.filter((p) => !pinned.includes(p));
+    // `all` is EVERY piece this viewer can open, pinned ones included (each carries `pinned`; the rows hold up to 80), so
+    // a year's chip count equals its dots and its list (board 7); nothing is cut.
+    const rest = record.pieces;
     const kindsHere = ['did', 'built', 'owns'].filter((k) => live.some((p) => p.piece.kind === k));
     const filters = kindsHere.length ? ['all', ...kindsHere] : null;
     if (pinned.length) {
@@ -690,8 +691,9 @@ function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
   }
   if (description) howWeKnow.push(line('said', `${first}'s own words`, 'Said', 'work', null));
   const linkView = view === 'link';
-  // What the person who hired them wrote about this job (the review on the piece's job), named by the v1.2 rules.
-  const written = row.source_gig_id ? reviews.filter((r) => String(r.gig_id) === String(row.source_gig_id)).map((review) => {
+  // What the person who hired them wrote about this job (the review on the piece's job), named by the v1.2 rules, and
+  // only where the `reviews` part reaches this viewer (rule 4.3; a link for one purpose's own parts included).
+  const written = row.source_gig_id && reaches(ctx.parts, 'reviews', view) ? reviews.filter((r) => String(r.gig_id) === String(row.source_gig_id)).map((review) => {
     const did = { hired: `hired ${first}`, worked_for: `did a job for ${first}` }[review.role] || `worked with ${first}`;
     const rm = monthOf(review.created_at);
     const named = !linkView && review.reviewer_name;
