@@ -79,7 +79,7 @@ const SEISMIC = { A: [1, 'Very low'], B: [2, 'Low'], C: [3, 'Moderate'], D: [4, 
 const AQI = { good: 1, moderate: 2, unhealthy_sensitive: 3, unhealthy: 4, very_unhealthy: 5, hazardous: 5 };
 
 // A no-break space keeps a code with its word ("Zone X", "Category D") on one line in every app at phone width.
-const NBSP = ' ';
+const NBSP = '\u00a0';
 
 function floodRow(flood) {
   if (!flood?.flood_zone) return null;
