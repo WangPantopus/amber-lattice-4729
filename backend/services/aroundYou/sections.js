@@ -60,7 +60,7 @@ const LEFT_OUT = new RegExp(`\\b(${[
   'republican', 'republicans', 'gop', 'maga', 'trump', 'biden',
 ].join('|')})\\b`, 'i');
 // Letters and opinion pieces are not news about the place.
-const OPINION = /^\s*(letters?|opinion|commentary|editorial|column)\s*:/i;
+const OPINION = /^\s*(letters?|opinion|commentary|editorial|column|poll)\s*:/i;
 // Across <State>: only a state outlet's stories about what touches a home. A word list, no model; phrases rather than
 // bare words that also mean something else ("fires an agency head", "graduation rates").
 const HOME_WORDS = new RegExp(`\\b(${[
@@ -247,11 +247,12 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     }
     // Events: soonest first (a calendar row carries its start in scheduled_for); others keep the order they came in.
     if (spec.id === 'events') candidates.sort((a, b) => (a._starts - b._starts) || (a._order - b._order));
-    // First what fits with each outlet held to its share, then the rest in order if there is room. In Headlines each
-    // of the nearest region's outlets gets an equal share first, so a weekly paper's story is not pushed off by a
-    // daily's newer ones while it is still within its keep window.
+    // First what fits with each outlet held to its share, then the rest in order if there is room. In Headlines and
+    // Events each of the nearest region's outlets (calendars) gets an equal share first, so a weekly paper's story is
+    // not pushed off by a daily's newer ones, nor a small calendar's event by a library's many.
     let share = MAX_PER_OUTLET;
-    if (spec.id === 'headlines') {
+    const fair = spec.id === 'headlines' || spec.id === 'events';
+    if (fair) {
       const nearOutlets = new Set(candidates.filter((item) => item._region === 0).map((item) => item._outlet));
       if (nearOutlets.size) share = Math.min(MAX_PER_OUTLET, Math.max(1, Math.ceil(spec.max / nearOutlets.size)));
     }
@@ -260,7 +261,7 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
     const held = [];
     for (const item of candidates) {
       const count = perOutlet.get(item._outlet) || 0;
-      const firstPass = spec.id !== 'headlines' || item._region === 0;
+      const firstPass = !fair || item._region === 0;
       if (firstPass && count < share && items.length < spec.max) {
         perOutlet.set(item._outlet, count + 1);
         items.push(item);
@@ -269,6 +270,7 @@ function buildSections(rows, sources, regions = [], now = Date.now()) {
       }
     }
     items.push(...held.slice(0, Math.max(spec.max - items.length, 0)));
+    if (spec.id === 'events') items.sort((a, b) => (a._starts - b._starts) || (a._order - b._order));
     for (const item of items) {
       seen.add(item._key);
       if (item._link) seen.add(item._link);
