@@ -6,6 +6,33 @@
     "homes_survey": "2020-2024"
   },
   "cities": {
+    "1200950": {
+      "name": "Altamonte Springs",
+      "county": "12117",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Altamonte Springs, Building and Fire Safety Department",
+          "url": "https://www.altamonte.org/1013/Apply-for-Permits-Schedule-Inspections",
+          "line": "Licensed contractors obtain specific permits, check permit status and schedule inspections through the Civic Access portal; permits online are limited to those needing no plan review or attached to a building permit already reviewed and issued.",
+          "q": "Where do I find building permits in Altamonte Springs?",
+          "a": "In Altamonte Springs, permits and inspections are handled by the City's Building and Fire Safety Department. Licensed contractors can obtain specific permits, check their status and schedule inspections through the Civic Access portal, limited to permits that need no plan review or belong to a building permit already reviewed and issued."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Altamonte Springs, Planning and Development Division",
+          "url": "https://www.altamonte.org/409/Planning-Development",
+          "line": "Administers the City's Land Development Code and implements City Plan 2030, the comprehensive plan; rezonings, conditional uses and variances need a pre-application conference with division staff.",
+          "q": "Where is Altamonte Springs' zoning?",
+          "a": "The City of Altamonte Springs' Planning and Development Division administers the City's Land Development Code and implements City Plan 2030, its comprehensive plan. Rezonings, conditional uses and variances require a pre-application conference with division staff."
+        }
+      ],
+      "built": 1983,
+      "value": 293000
+    },
     "1225175": {
       "name": "Gainesville",
       "county": "12001",
@@ -32,6 +59,33 @@
       ],
       "built": 1983,
       "value": 247500
+    },
+    "1230000": {
+      "name": "Hialeah",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Hialeah, Building Department",
+          "url": "https://www.hialeahfl.gov/154/Building-Department",
+          "line": "Enforces the Florida Building Code and Miami-Dade County regulations: reviews permit applications, issues permits, inspects, issues certificates of completion and occupancy, keeps records of building plans and manages flood and elevation certificates.",
+          "q": "Where do I find building permits in Hialeah?",
+          "a": "The City of Hialeah's Building Department reviews building permit applications, issues permits and conducts inspections under the Florida Building Code and Miami-Dade County regulations. It also keeps records of building plans and blueprints and manages flood and elevation certificates."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Hialeah, Planning and Zoning Division",
+          "url": "https://www.hialeahfl.gov/182/Planning-Zoning",
+          "line": "Zoning regulations, including zoning maps, land use designations and rules on permitted uses and building dimensions, govern land use; the division handles variances, rezoning and special use permits, and a Zoning Verification Letter confirms information about a specific property.",
+          "q": "Where is Hialeah's zoning?",
+          "a": "The City of Hialeah's Planning and Zoning Division sets the zoning regulations that govern land use, including zoning maps, land use designations and rules on permitted uses and building dimensions. It manages requests for variances, rezoning and special use permits, and a Zoning Verification Letter confirms information about a specific property."
+        }
+      ],
+      "built": 1975,
+      "value": 392000
     },
     "1236950": {
       "name": "Kissimmee",
@@ -86,6 +140,60 @@
       ],
       "built": 1979,
       "value": 518100
+    },
+    "1245025": {
+      "name": "Miami Beach",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Miami Beach, Building Department",
+          "url": "https://www.miamibeachfl.gov/city-hall/building/",
+          "line": "Supervises and regulates construction under the Florida Building Code and the City's Code of Ordinances; its page covers the permitting process, permitting checklists, applying for a permit, inspections and building recertification.",
+          "q": "Where do I find building permits in Miami Beach?",
+          "a": "The City of Miami Beach's Building Department regulates construction under the Florida Building Code and the City's Code of Ordinances. Its page covers the permitting process, permitting checklists, applying for a permit, inspections and building recertification."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Miami Beach, Planning Department",
+          "url": "https://www.miamibeachfl.gov/city-hall/planning/",
+          "line": "Prepares, administers and maintains the City's comprehensive plans and the Land Development Regulations of the City Code, which the page calls the zoning code; the page links administrative zoning interpretations and the City's maps and guidelines.",
+          "q": "Where is Miami Beach's zoning?",
+          "a": "The City of Miami Beach's Planning Department prepares, administers and maintains the City's comprehensive plans and the Land Development Regulations of the City Code, its zoning code. Its page links the regulations, administrative zoning interpretations and the City's maps and guidelines."
+        }
+      ],
+      "built": 1969,
+      "value": 556700
+    },
+    "1249675": {
+      "name": "North Port",
+      "county": "12115",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of North Port Development Services, Permitting",
+          "url": "https://www.northportfl.gov/Building-Planning/Permitting",
+          "line": "Permits are applied for through the Accela Citizen Application, where an account brings real-time updates; Florida's CS/CS/HB 803, effective July 1, 2026, adds two building permit exemptions for single-family residences.",
+          "q": "Where do I find building permits in North Port?",
+          "a": "The City of North Port takes permit applications through the Accela Citizen Application, an online portal where contractors, residents and businesses create an account, apply for permits and get real-time updates from Development Services. Since July 1, 2026, a state law, CS/CS/HB 803, gives single-family residences two new building permit exemptions."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of North Port Development Services, Planning and Zoning Division",
+          "url": "https://www.northportfl.gov/Building-Planning/Planning-Zoning",
+          "line": "Handles current and long-range planning, review and permitting of land development for compliance with the Unified Land Development Code; its office is on the first floor of City Hall.",
+          "q": "Where is North Port's zoning?",
+          "a": "The City of North Port's Planning and Zoning Division handles planning, review and permitting of land development for compliance with the Unified Land Development Code. Its page links the City Code, City Charter and ULDC, the Comprehensive Plan and the City's map portal."
+        }
+      ],
+      "built": 2005,
+      "value": 362500
     },
     "1264175": {
       "name": "Sarasota",
@@ -1101,6 +1209,33 @@
       "built": 1988,
       "value": 462400
     },
+    "5525950": {
+      "name": "Fitchburg",
+      "county": "55025",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Fitchburg, Building Inspection",
+          "url": "https://www.fitchburgwi.gov/136/Building-Inspection",
+          "line": "Every building permit is applied for through the City's OpenGov portal; inspectors review plans and inspect work under the 2021 IBC, the 2017 NEC and the 2016 UDC state codes for one- and two-family homes.",
+          "q": "Where do I find building permits in Fitchburg?",
+          "a": "The City of Fitchburg's Building Inspection Department reviews plans and performs inspections, enforcing the 2021 IBC, the 2017 NEC and the 2016 UDC state codes for one- and two-family homes. Building permits of every type are applied for through its OpenGov portal."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Fitchburg, Planning and Zoning",
+          "url": "https://www.fitchburgwi.gov/206/Planning-Zoning",
+          "line": "Reviews all development proposals and administers the City's zoning, land division, sign and historic preservation ordinances, along with the Comprehensive Plan.",
+          "q": "Where is Fitchburg's zoning?",
+          "a": "The City of Fitchburg's Planning and Zoning Department reviews all development proposals and administers the City's zoning, land division and other land regulation ordinances. It also updates and administers the Comprehensive Plan."
+        }
+      ],
+      "built": 1996,
+      "value": 417200
+    },
     "5548000": {
       "name": "Madison",
       "county": "55025",
@@ -1127,6 +1262,87 @@
       ],
       "built": 1980,
       "value": 372900
+    },
+    "5578600": {
+      "name": "Sun Prairie",
+      "county": "55025",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sun Prairie, Building Inspection",
+          "url": "https://www.cityofsunprairie.com/222/Building-Permit",
+          "line": "Issues single-source permits, so new construction, additions and alterations carry one permit rather than separate building, electrical, plumbing and heating permits; applications go through the OpenGov portal.",
+          "q": "Where do I find building permits in Sun Prairie?",
+          "a": "The City of Sun Prairie issues single-source permits: one permit covers the building, electrical, plumbing and heating work of new construction, an addition or an alteration. Applications go through its OpenGov portal, and passing final inspections is the only way to close a permit."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sun Prairie Planning Department, Zoning and Development",
+          "url": "https://www.cityofsunprairie.com/423/Zoning-Development",
+          "line": "The Planning Department oversees most development applications, from minor site plans to major projects; the page links the Sun Prairie Zoning Interactive GIS Map and the zoning application forms, from variances to rezoning.",
+          "q": "Where is Sun Prairie's zoning?",
+          "a": "The City of Sun Prairie's Planning Department oversees most development applications filed with the city. Its Zoning and Development page links the Sun Prairie Zoning Interactive GIS Map and the zoning application forms, including variances and zoning map amendments."
+        }
+      ],
+      "built": 1999,
+      "value": 365700
+    },
+    "5584675": {
+      "name": "Wauwatosa",
+      "county": "55079",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Wauwatosa Development, Building and Safety",
+          "url": "https://wauwatosa.gov/departments/development/building-safety/",
+          "line": "Issues permits and inspects construction for compliance with minimum life and health safety standards; its frequently asked questions include whether a re-roof, new siding, a shed, a fence or a kitchen remodel needs a permit.",
+          "q": "Where do I find building permits in Wauwatosa?",
+          "a": "The City of Wauwatosa's Building and Safety division issues permits and inspects construction for compliance with minimum standards for life and health safety. Its frequently asked questions include whether common home projects, from a re-roof or new siding to a shed, a fence or a kitchen remodel, need a permit."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Wauwatosa Development, Planning and Zoning",
+          "url": "https://wauwatosa.gov/departments/development/planning-zoning/",
+          "line": "Manages the Zoning Code; its zoning map shows the zoning and allowable uses of every property, and a Zoning Verification Letter costs $175 and is typically completed within two weeks.",
+          "q": "Where is Wauwatosa's zoning?",
+          "a": "The City of Wauwatosa's Planning and Zoning Division manages the Zoning Code and processes zoning permits and Board of Zoning Appeals applications. Its zoning map shows the zoning and allowable uses of every property in the city, and a Zoning Verification Letter costs $175 and is typically completed within two weeks."
+        }
+      ],
+      "built": 1954,
+      "value": 339000
+    },
+    "5585300": {
+      "name": "West Allis",
+      "county": "55079",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of West Allis, Code Enforcement Department",
+          "url": "https://www.westalliswi.gov/o/cwa/page/do-i-need-a-permit",
+          "line": "Most home projects need a building permit and many need electrical or plumbing permits; the homeowner living at the property, or a contractor with the two State dwelling contractor certifications, may apply, and Wisconsin law requires disclosing unpermitted work when a one- or two-family home is sold.",
+          "q": "Where do I find building permits in West Allis?",
+          "a": "In West Allis, most residential building projects need a building permit, and many also need electrical or plumbing permits. The homeowner who lives at the property, or a contractor holding the State's Dwelling Contractor and Dwelling Contractor Qualifier certifications, may apply, and Wisconsin law requires disclosing work done without permits when a single- or two-family home is sold."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of West Allis, Planning and Zoning",
+          "url": "https://www.westalliswi.gov/page/planning-zoning",
+          "line": "The City's zoning code determines what can be built where, and the page points to the code and the zoning map online; the department handles rezonings and land use map amendments, and formal zoning verification letters are requested online.",
+          "q": "Where is West Allis's zoning?",
+          "a": "West Allis's zoning code determines what can be built where, and the City's Planning and Zoning page points to the code and the zoning map online. The department handles rezonings and land use map amendments, and formal zoning verification letters are requested through the City's online Planning Application."
+        }
+      ],
+      "built": 1956,
+      "value": 203800
     },
     "0662000": {
       "name": "Riverside",
