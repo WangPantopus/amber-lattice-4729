@@ -17,7 +17,7 @@ const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IDS = 100;
 const LANE_PART = { home: 'record_home', work: 'record_work', others: 'record_others' };
 
-/** Parse `ids=a,b,c` into unique account ids, or null when it isn't a list of at most 100 ids. */
+/** Parse `ids=a,b,c` into unique ids (account or Local Profile ids), or null when it isn't a list of at most 100 ids. */
 function parseIds(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
   const ids = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
@@ -49,17 +49,21 @@ function viewFor(rows, viewerId) {
 async function marksFor(viewerId, ids) {
   // One database call for everyone: their rows, oldest first (the mark wants the first month), with this viewer's side.
   const byId = await readRows(ids, viewerId, { oldestFirst: true, rowLimit: 200 });
+  // An id may be a Local Profile's (a post names its author that way): find its person by that, and answer with the
+  // id that was asked, so no account id leaves the server.
+  const byLocal = new Map();
+  for (const [accountId, rows] of byId) if (rows.local_profile?.id) byLocal.set(String(rows.local_profile.id), [accountId, rows]);
   const now = new Date();
   const marks = [];
   for (const id of ids) {
-    const rows = byId.get(String(id));
+    const [accountId, rows] = byId.has(String(id)) ? [String(id), byId.get(String(id))] : (byLocal.get(String(id)) || []);
     if (!rows || rows.account_type === 'business' || rows.account_type === 'curator') continue;
-    const view = String(id) === String(viewerId) ? 'owner' : viewFor(rows, viewerId);
+    const view = accountId === String(viewerId) ? 'owner' : viewFor(rows, viewerId);
     if (!view) continue;
     const { parts } = readShare(rows.share);
     const on = (part) => reaches(parts, part, view);
-    const sources = await sourcesFrom(id, rows, { pinned: false });
-    const record = buildRecord({ firstName: 'them', userData: { id } }, sources, { now });
+    const sources = await sourcesFrom(accountId, rows, { pinned: false });
+    const record = buildRecord({ firstName: 'them', userData: { id: accountId } }, sources, { now });
     const months = record.months.filter((m) => on(LANE_PART[m.lane]) && m.parts.every(on));
     if (!months.length) continue;
     marks.push({

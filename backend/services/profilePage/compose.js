@@ -162,6 +162,10 @@ function buildRecord(ctx, sources, { now }) {
     if (i === 0) entries.push({ id: 'key_home', parts: ['record_home'], place: 'key', make, cityAware: true, rank: 0 });
     mark('home', monthsBetween(vm, nowMonth), 'seen', ['record_home']);
     if (vm) events.push({ month: vm, parts: ['record_home'], make, cityAware: true });
+    // Every later month it lights shows it too, so a lit month never opens empty (rule 4.3).
+    const since = (withCity) => line('seen', withCity && cityLabel ? `Home verified in ${cityLabel}` : 'Home verified',
+      `Since ${monthLabel(vm)}`, 'home', { kind: 'month', month: vm });
+    for (const m of monthsBetween(vm, nowMonth).slice(1)) events.push({ month: m, parts: ['record_home'], make: since, cityAware: true });
   });
 
   // A business they own (seen): Record's Work lines, the first tab's key lines and Work's Owns.
@@ -174,6 +178,8 @@ function buildRecord(ctx, sources, { now }) {
     if (i === 0) entries.push({ id: 'key_biz', parts: ['record_work'], place: 'key', line: ln, rank: 2 });
     mark('work', monthsBetween(sm, nowMonth), 'seen', ['record_work']);
     if (sm) events.push({ month: sm, parts: ['record_work'], line: line('seen', `Began ${biz.name}`, 'A verified business on Pantopus', 'work', ln.link) });
+    const owning = line('seen', `Owns ${biz.name}`, `Since ${monthLabel(sm)}`, 'work', ln.link);
+    for (const m of monthsBetween(sm, nowMonth).slice(1)) events.push({ month: m, parts: ['record_work'], line: owning });
   });
 
   // Paid jobs completed (seen).
@@ -322,6 +328,7 @@ function buildRecord(ctx, sources, { now }) {
     else how = n ? plural(n, 'piece', 'pieces') : `In ${first}'s words, no pieces yet`;
     const sm = skill.is_verified ? (vm || monthOf(skill.created_at)) : monthOf(skill.created_at);
     mark('work', [sm], ink, ['record_work', 'work']);
+    if (sm) events.push({ month: sm, parts: ['work'], line: line(ink, name, how, 'work', null) });
     return line(ink, name, how, 'work', null, { name, pieces: n, inks: { seen: 0, signed: 0, said: n } });
   }).filter((s) => s.name);
 

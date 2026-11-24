@@ -70,7 +70,7 @@ router.get('/id/:id/month/:month', publicRead,
 router.get('/marks', verifyToken, handle('marks', (req) => {
   const { marksFor, parseIds, MAX_IDS } = require('../services/profilePage/marks');
   const ids = parseIds(req.query.ids);
-  if (!ids) throw new profilePage.PageRefusal(400, 'MARKS_INVALID', `Send ids as a list of at most ${MAX_IDS} account ids.`);
+  if (!ids) throw new profilePage.PageRefusal(400, 'MARKS_INVALID', `Send ids as a list of at most ${MAX_IDS} account or Local Profile ids.`);
   return marksFor(String(req.user.id), ids);
 }));
 
