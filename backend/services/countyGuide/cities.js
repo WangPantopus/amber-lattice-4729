@@ -19,6 +19,9 @@ const CITIES = [
   // November 23, 2026, first: Vancouver, Seattle and Tacoma, WA; Portland, OR; Tampa, FL; Dallas, TX; Saint Paul, MN;
   // Riverside, CA.
   '5374060', '5363000', '5370000', '4159000', '1271000', '4819000', '2758000', '0662000',
+  // November 23, 2026, second: Stockton and Santa Rosa, CA; Gainesville and Kissimmee, FL; Boulder, CO; Fayetteville,
+  // NC; Reading, PA; Bellevue, WA; Canton, OH; Gresham, OR.
+  '0675000', '0670098', '1225175', '1236950', '0807850', '3722920', '4263624', '5305210', '3912000', '4131250',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
