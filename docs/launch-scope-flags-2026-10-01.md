@@ -70,6 +70,10 @@ then switch the backend and the web ([NEXT_STEPS](../NEXT_STEPS.md#christmas-car
 table goes the other way round: switch `card_table` on the backend, the worker and the web together, then release app
 builds that carry it, because the phones' share links open the web's card pages and sending by link needs the backend.
 
+Search is part of switching a feature on (the founder, November 23, 2026). Before its key goes on in production, do
+its search checklist in the [search guide](seo/README.md#when-a-feature-is-switched-on): its own public page, which
+of its pages search engines may read, the sitemap, links from the homepage, and new store listing text.
+
 Tests run with every feature on (`backend/jest.config.js`, `frontend/apps/web/tests/setup.ts`, and
 `LaunchFeatures.overrideForTesting` in the native unit tests), so the kept code stays covered.
 
