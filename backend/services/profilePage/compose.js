@@ -378,7 +378,7 @@ function partContent(ctx, record) {
     says: Boolean(String(ctx.shown.bio || '').trim()),
     prompts: ctx.prompts.length > 0,
     shelf: false,
-    city: Boolean(ctx.placeLabel),
+    city: Boolean(ctx.placeLabel || ctx.homePlaceLabel),
     work: record.pieces.length > 0 || record.skills.length > 0 || has('owns'),
     known_for: false,
     record_work: has('record_work'),
@@ -395,7 +395,10 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   const on = (part) => reaches(parts, part, view);
   const record = extras.record || buildRecord(ctx, sources, { now });
   const linkView = view === 'link';
-  const cityShown = Boolean(ctx.placeLabel) && on('city') && ctx.cityByPrivacy;
+  const homeStandsIn = !ctx.placeLabel && ctx.homePlaceLabel && on('record_home');
+  const placeLabel = ctx.placeLabel || (homeStandsIn ? ctx.homePlaceLabel : null);
+  const placeState = ctx.placeLabel ? ctx.placeState : (homeStandsIn ? ctx.homePlaceState : null);
+  const cityShown = Boolean(placeLabel) && on('city') && ctx.cityByPrivacy;
   const cityOk = on('city') && ctx.cityByPrivacy;
   const visible = (entry) => entry.parts.every(on);
   const lineOf = (entry) => {
@@ -415,9 +418,9 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   // Header place.
   let place = null;
   if (cityShown) {
-    const tz = STATE_TZ[String(ctx.placeState || '').toUpperCase()] || null;
+    const tz = STATE_TZ[String(placeState || '').toUpperCase()] || null;
     const clock = tz ? localClock(now, tz) : { time: null, sky: null };
-    place = { label: ctx.placeLabel, tz, time: clock.time, sky: clock.sky };
+    place = { label: placeLabel, tz, time: clock.time, sky: clock.sky };
   }
 
   const header = {

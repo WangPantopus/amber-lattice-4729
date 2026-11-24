@@ -81,12 +81,11 @@ async function loadPage(req, lookup, { view } = {}) {
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
   const ctx = contextFrom(opened, stored, found);
-  if (!ctx.placeLabel) {
-    const home = (sources.homes || []).find((h) => h.city);
-    if (home) {
-      ctx.placeLabel = [home.city, home.state].filter(Boolean).join(', ');
-      ctx.placeState = home.state;
-    }
+  // No profile city: the verified home's city may stand in, only where the home part reaches the view too (compose).
+  const home = (sources.homes || []).find((h) => h.city);
+  if (home) {
+    ctx.homePlaceLabel = [home.city, home.state].filter(Boolean).join(', ');
+    ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
   return { ctx, sources, record, extras: { inCommon, record } };
