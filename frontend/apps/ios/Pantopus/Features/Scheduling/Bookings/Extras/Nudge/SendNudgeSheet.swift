@@ -197,6 +197,8 @@ struct SendNudgeSheet: View {
         .padding(.vertical, Spacing.s3)
         .background(Theme.Color.appText)
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg + 1, style: .continuous))
+        // Dark under white words in dark mode too (appText is near white there).
+        .environment(\.colorScheme, .light)
         .shadow(color: Theme.Color.appText.opacity(0.3), radius: 12, y: 8)
     }
 }

@@ -344,6 +344,8 @@ private struct EditFab: View {
             Icon(icon, size: diameter * 0.5, color: Theme.Color.appTextInverse)
                 .frame(width: diameter, height: diameter)
                 .background(Theme.Color.appText.opacity(0.55), in: Circle())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .overlay(
                     Circle().stroke(Theme.Color.appTextInverse.opacity(0.9), lineWidth: 1.5)
                 )

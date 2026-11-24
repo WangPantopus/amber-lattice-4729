@@ -77,6 +77,8 @@ public struct EditBusinessBannerLogoEditor: View {
                                 .padding(Spacing.s2)
                                 .background(Theme.Color.appText.opacity(0.6))
                                 .clipShape(Circle())
+                                // Dark under white words in dark mode too (appText is near white there).
+                                .environment(\.colorScheme, .light)
                         }
                     }
             }
@@ -170,6 +172,8 @@ public struct EditBusinessBannerLogoEditor: View {
             .padding(.vertical, 6)
             .background(Theme.Color.appText.opacity(0.7))
             .clipShape(Capsule())
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .padding(.horizontal, Spacing.s2)
             .padding(.top, Spacing.s2)
             .accessibilityIdentifier("editBusinessPage.changeBanner")

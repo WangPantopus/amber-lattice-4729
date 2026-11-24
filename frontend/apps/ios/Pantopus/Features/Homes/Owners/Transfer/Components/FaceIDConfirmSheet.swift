@@ -125,6 +125,8 @@ public struct FaceIDConfirmSheet: View {
                     .shadow(color: Theme.Color.appText.opacity(0.25), radius: 10, y: 6)
                 Icon(.scanFace, size: 28, color: Theme.Color.appTextInverse)
             }
+            // Dark under the white face in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             Text("Final confirmation")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)

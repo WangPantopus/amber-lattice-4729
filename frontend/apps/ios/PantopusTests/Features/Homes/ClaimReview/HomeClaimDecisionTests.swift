@@ -79,8 +79,9 @@ final class HomeClaimDecisionTests: XCTestCase {
         XCTAssertFalse(value)
     }
 
+    /// Up to 5 seconds: a loaded CI simulator can take well over half a second to start the request.
     private func waitFor(_ condition: () -> Bool) async {
-        for _ in 0..<100 {
+        for _ in 0..<1000 {
             if condition() { return }
             try? await Task.sleep(nanoseconds: 5_000_000)
         }

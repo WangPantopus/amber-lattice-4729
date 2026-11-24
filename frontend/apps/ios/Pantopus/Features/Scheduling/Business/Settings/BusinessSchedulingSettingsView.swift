@@ -312,6 +312,8 @@ struct BusinessSchedulingSettingsView: View {
                 .padding(.vertical, 10)
                 .background(Theme.Color.appText)
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .pantopusShadow(.lg)
                 .padding(.top, Spacing.s3)
                 .transition(.move(edge: .top).combined(with: .opacity))

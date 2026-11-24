@@ -858,6 +858,8 @@ public struct ManageTrainView: View {
                 .padding(.horizontal, Spacing.s4)
                 .padding(.vertical, Spacing.s2)
                 .background(Capsule().fill(Theme.Color.appText))
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, Spacing.s12)
                 .task(id: toast) {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)

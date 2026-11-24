@@ -30,7 +30,8 @@ public struct BookingPagePreviewView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Color.appBg.ignoresSafeArea())
-        .background(Theme.Color.appText.ignoresSafeArea(edges: .top))
+        // The strip under the status bar matches the preview bar: dark in both appearances.
+        .background(Theme.Color.appText.environment(\.colorScheme, .light).ignoresSafeArea(edges: .top))
         .toolbar(.hidden, for: .navigationBar)
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .task { await viewModel.load() }
@@ -123,6 +124,8 @@ private struct BookingPreviewBar: View {
         .padding(.vertical, Spacing.s3)
         .frame(maxWidth: .infinity)
         .background(Theme.Color.appText)
+        // Dark under white words in dark mode too (appText is near white there).
+        .environment(\.colorScheme, .light)
     }
 }
 
