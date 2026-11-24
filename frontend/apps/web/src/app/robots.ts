@@ -22,5 +22,9 @@ export default function robots(): MetadataRoute.Robots {
   ) {
     return { rules: { userAgent: '*', disallow: '/' } };
   }
-  return { rules: { userAgent: '*', allow: '/', disallow: PRIVATE_PATHS } };
+  return {
+    rules: { userAgent: '*', allow: '/', disallow: PRIVATE_PATHS },
+    // The public pages, county pages included (sitemap.ts), at the address their canonical links use.
+    sitemap: 'https://pantopus.com/sitemap.xml',
+  };
 }

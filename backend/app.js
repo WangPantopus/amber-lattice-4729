@@ -446,6 +446,9 @@ app.use('/api', (req, res, next) => dbTiming.resume(req.dbLedger, next));
 app.use('/api/public', require('./routes/postcardReport'));
 app.use('/api/public', require('./routes/schedulingPublic'));
 
+// County pages' answers (public, the same for everyone; their own limiter), before the generic public router.
+app.use('/api/public/county-guide', require('./routes/countyGuide'));
+
 // Public preview endpoints (no auth, rate-limited by IP)
 app.use('/api/public', previewLimiter, require('./routes/public'));
 
