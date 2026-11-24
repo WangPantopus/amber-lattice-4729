@@ -269,7 +269,7 @@ internal fun ProfileShareSheet(
                                 Column(Modifier.sourcesCard()) {
                                     ShareSwitchRow(
                                         title = "Let search engines list this page",
-                                        note = null,
+                                        note = "On unless you switch it off. Links for one purpose are never listed.",
                                         on = share.searchEngines,
                                         enabled = "search_engines" !in s.saving,
                                         tag = "profileSources.share.search_engines",
