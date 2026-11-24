@@ -33,6 +33,8 @@ const COLUMNS: FooterColumn[] = [
     head: 'Explore',
     links: [
       { href: '/start', label: 'See your place' },
+      { href: '/property-records', label: 'Property records' },
+      { href: '/tax-check', label: 'Property tax check' },
       { href: '/#how-it-works', label: 'How it works' },
       { href: '/#plans', label: 'Plans' },
       { href: '/login', label: 'Sign in' },
