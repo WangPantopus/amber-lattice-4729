@@ -391,7 +391,8 @@ export function getApiBaseUrl(): string {
  */
 export function fetchAuthHeaders(method = 'GET'): Record<string, string> {
   if (_isWeb) {
-    const headers: Record<string, string> = { 'x-token-transport': 'cookie' };
+    // Which build is asking, as every other request says (the assistant's chat stream uses these headers too).
+    const headers: Record<string, string> = { 'x-token-transport': 'cookie', 'X-Client-Platform': WEB_BUILD };
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
       const csrf = getCookie('pantopus_csrf');
       if (csrf) headers['x-csrf-token'] = csrf;

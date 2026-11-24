@@ -489,6 +489,8 @@ function buildUserContent({ message, photos, unreadable, timeZone, askedFrom, co
  */
 async function streamChat({
   userId, conversationId, message, coarseLocation, images, cards, context: screen, sessionScope, user, signal,
+  // The app that is asking: 'web', 'ios', 'android' or null when it doesn't say (routes/ai.js).
+  client: clientKind = null,
 }, sseWriter) {
   const startTime = Date.now();
 
@@ -590,10 +592,14 @@ async function streamChat({
     : 'available. Use find_games for listed times; never guess a fixture.'}` : null;
   // Moments is a per-person tab too: people without it hear that it isn't theirs yet, not a guess.
   const momentsLine = momentsEnabled ? null : "- Moments: not available to them yet; don't offer or describe it.";
+  // The guide describes the phones first; someone on the web hears where things are on the web.
+  const webLine = clientKind === 'web'
+    ? '- They are using the web app, not a phone. It has no tab bar and no side menu: everything is in the sidebar on the left (on a narrow window, the bar along the bottom). When you say where something is, say where it is on the web ("in the sidebar"), and never tell them to open the side menu or tap a tab.'
+    : null;
   const context = {
     timeZone: homeContext.timeZone,
-    text: homeContext.text || screenText || memoryText || sportsLine
-      ? [homeContext.text || `${CONTEXT_HEADER}:`, plansLine, momentsLine, sportsLine, screenText, memoryText].filter(Boolean).join('\n')
+    text: homeContext.text || screenText || memoryText || sportsLine || webLine
+      ? [homeContext.text || `${CONTEXT_HEADER}:`, plansLine, momentsLine, sportsLine, webLine, screenText, memoryText].filter(Boolean).join('\n')
       : null,
   };
   const toolContext = {
