@@ -709,7 +709,7 @@ function partContent(ctx, record) {
   return {
     says: Boolean(String(ctx.shown.bio || '').trim()),
     prompts: ctx.prompts.length > 0,
-    shelf: false,
+    shelf: (ctx.shelf || []).length > 0,
     city: Boolean(ctx.placeLabel || ctx.homePlaceLabel),
     work: record.pieces.length > 0 || record.skills.length > 0 || has('owns'),
     known_for: false,
@@ -796,6 +796,14 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
         action: ctx.relationship === 'none' ? { kind: 'connect' } : null,
       });
     }
+  }
+  // The shelf (phase 3C): the owner always (to add to it), others where the `shelf` part reaches them.
+  const shelf = ctx.shelf || [];
+  if (view === 'owner' || (shelf.length && on('shelf'))) {
+    person.push({
+      kind: 'shelf', id: 'shelf', title: `On ${ctx.firstName}'s shelf`,
+      objects: shelf.map((o) => ({ id: o.id, picture_url: o.picture_url, caption: o.caption, ink: 'said' })),
+    });
   }
   if (ctx.prompts.length && on('prompts')) {
     person.push({
