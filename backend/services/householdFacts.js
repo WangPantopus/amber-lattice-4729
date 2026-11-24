@@ -40,7 +40,7 @@ const SCHEMA = 1;
 const MAX_HISTORY = 9;
 const HOUSEHOLD_TAG = 'From your household';
 const UNIT_HOME_TYPES = new Set(['apartment', 'condo', 'studio']);
-const SECTION_ORDER = ['unit', 'building', 'construction', 'utilities', 'parking', 'lot', 'records', 'assessment', 'sale', 'history'];
+const SECTION_ORDER = ['unit', 'building', 'construction', 'utilities', 'parking', 'lot', 'records', 'assessment', 'sale', 'history', 'permits'];
 const EDIT_GROUPS = ['unit', 'building', 'construction', 'utilities', 'parking', 'lot'];
 const GROUP_TITLES = {
   unit: 'Your unit', building: 'Building', construction: 'Construction', utilities: 'Heating, cooling & utilities', parking: 'Parking', lot: 'Lot',

@@ -572,6 +572,32 @@ function historySection(history, many) {
   return section;
 }
 
+// A home's permits may name this many (the release keeps no more: scripts/property-index/sources/wa-clark.cjs).
+const MOST_PERMIT_ROWS = 30;
+
+/**
+ * Permits (facts.js `permits`, a confirmed owner's only): one row per permit, newest first, the system it dates or the
+ * county's word for its kind, and the month it was issued; its number under the value. Never an applicant's words.
+ */
+function permitsSection(permits) {
+  const section = new Section('permits', RECORD_SECTIONS.find(([key]) => key === 'permits')[1]);
+  const lines = Array.isArray(permits?.lines) ? permits.lines.slice(0, MOST_PERMIT_ROWS) : [];
+  lines.forEach((line, index) => {
+    const date = dateLabel(line?.issued);
+    const label = cleanText(line?.word);
+    if (!date || !label) return;
+    const [month, , year] = date.split(' ');
+    const number = format('code', line.number);
+    section.rows.push({ id: `permits_${index}`, label: sentenceCase(label), value: `${month} ${year}`, mono: false,
+      ...(number ? { tag: `Permit ${number}` } : {}) });
+  });
+  if (section.rows.length) {
+    const from = cleanText(permits.from);
+    section.note = `${from ? `From ${from}.` : 'From the county\u2019s permit records.'} Other cities in the county list only their new buildings here.`;
+  }
+  return section;
+}
+
 function estimateSection(estimate) {
   const section = new Section('value', 'Value');
   for (const row of estimateRows(estimate)) section.add(row.id, row.label, row.value, true);
@@ -697,6 +723,7 @@ function serializePropertyRecord(copy, estimate = null) {
     if (many) sale.note = COVERS_MORE_NOTE;
     sections.push(assessment, sale);
     if (facts.recorded_history) sections.push(historySection(facts.recorded_history, many));
+    if (facts.permits) sections.push(permitsSection(facts.permits));
   }
   if (estimate) sections.push(estimateSection(estimate));
 

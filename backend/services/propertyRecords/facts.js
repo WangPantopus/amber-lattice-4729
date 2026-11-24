@@ -129,6 +129,12 @@ const FACTS = {
   // held under new_columns, so a live county's pages show it once the founder names the county (router.js).
   // Value-type: never in a lookup's open facts; a buyer's public record shows it only where the county is on buyer_report.
   recorded_history: { section: 'history', format: 'none', scope: 'unit', value: true },
+  // Permits on the home's account, newest first: { from, lines: [{ issued, word, system?, done?, number? }] }, `word` the
+  // system it dates or the county's own fixed word for its kind, never an applicant's text or name. A finished roof,
+  // heating, water heater or panel permit dates that system on Place (homeRecord.js permitSystems). Only ever held under
+  // new_columns (scripts/property-index/sources/wa-clark.cjs addPermits). Value-type for who sees it: the confirmed owner,
+  // and a buyer's public record where the county is on buyer_report.
+  permits: { section: 'permits', format: 'none', scope: 'unit', value: true },
 };
 
 const SECTIONS = [
@@ -141,6 +147,7 @@ const SECTIONS = [
   ['assessment', 'Assessment & taxes'],
   ['sale', 'Last sale'],
   ['history', 'Recorded history'],
+  ['permits', 'Permits'],
 ];
 
 module.exports = { FACTS, SECTIONS };
