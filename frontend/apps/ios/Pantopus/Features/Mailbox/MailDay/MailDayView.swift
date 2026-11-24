@@ -492,15 +492,7 @@ public struct MailDayView: View {
                             )
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
-                            .background {
-                                // The picked sound stays dark under its white word in dark mode too (appText is
-                                // near white there).
-                                if active {
-                                    Theme.Color.appText.environment(\.colorScheme, .light)
-                                } else {
-                                    Theme.Color.appSurfaceSunken
-                                }
-                            }
+                            .background(active ? Theme.Color.appText : Theme.Color.appSurfaceSunken)
                             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
                     }
                     .buttonStyle(.plain)
