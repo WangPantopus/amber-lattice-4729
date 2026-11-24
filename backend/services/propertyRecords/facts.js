@@ -119,6 +119,13 @@ const FACTS = {
   sale_document: { section: 'sale', label: 'Document number', format: 'code', scope: 'unit', value: true },
   // How many homes share this sale's deed, where several do (scripts/property-index/lib/shared-deeds.cjs): its price is the deed's.
   sale_parcels: { section: 'sale', format: 'none', scope: 'unit', value: true },
+
+  // Recorded history: every line the county's sales table holds for this home, the sales and the lines that aren't one (a
+  // quit claim, a gift, a correction, part of an interest, a boundary change...), newest first, each in the county's own
+  // words, with its date, its price where it is a sale, and its document number. Never a name. { since: 'YYYY', lines:
+  // [{ date, sale, word, price?, document?, parcels? }] } (scripts/property-index/lib/sales.cjs recordedHistory). Only ever
+  // held under new_columns, so a live county's pages show it once the founder names the county (router.js).
+  recorded_history: { section: 'history', format: 'none', scope: 'unit', value: true, owner: true },
 };
 
 const SECTIONS = [
@@ -130,6 +137,7 @@ const SECTIONS = [
   ['records', 'Parcel & records'],
   ['assessment', 'Assessment & taxes'],
   ['sale', 'Last sale'],
+  ['history', 'Recorded history'],
 ];
 
 module.exports = { FACTS, SECTIONS };

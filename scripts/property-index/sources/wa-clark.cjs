@@ -12,6 +12,8 @@ const { parse, parts, zip5, unitKey } = require('../../../backend/services/prope
 const { resolve } = require('../../../backend/services/propertyRecords/identity');
 const { download, zipTable, cachedLayer } = require('../lib/tables.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
+const { hold } = require('../lib/held.cjs');
+const { historyLine, recordedHistory } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '53011';
@@ -113,6 +115,27 @@ const STORY_LINES = new Map([['MAIN', 1], ['SECOND', 2], ['THIRD', 3]]);
 const NOT_A_SALE = new Set(['EASEMENT', '$1000 SALE OR LESS', 'QUIT CLAIM DEED', 'PARTIAL INTEREST', 'SEGREGATION', 'GIFT', 'CORPORATE TRANSFER', 'TIMBER']);
 // The sales table starts here, so only the map layer can say an older sale.
 const SALES_TABLE_STARTS = '2016-01-01';
+// Recorded history (facts.js): the Assessor's reasons are Washington's ratio-study transaction types (WAC 458-53-080), so a
+// line takes the state's words for its reason. Reasons that only say why a sale left the study (other, exempt, ratio, a sale
+// of $1,000 or less) don't say what the line is: a sale is then just a sale, and any other line takes its deed type's reason.
+const REASON_WORDS = new Map([
+  ['QUIT CLAIM DEED', 'Quit claim deed'], ['GIFT', 'Gift deed'], ['CORRECTION DEED', 'Correction deed'],
+  ['SEGREGATION', 'Segregation'], ['EASEMENT', 'Easement or right of way'], ['PARTIAL INTEREST', 'Partial interest'],
+  ['TIMBER', 'Timber or forest land'], ['CORPORATE TRANSFER', 'Transfer within a corporation'], ['ESTATE SALE', 'Estate sale'],
+  ['FAMILY SALE', 'Family sale'], ['NEW CONSTRUCTION', 'New construction'], ['SHERIFF', 'Sheriff\u2019s sale'],
+  ['DEFAULT', 'Default'], ['FORCED SALES', 'Forced sale'], ['FULFILLMENT', 'Fulfillment of contract'], ['OPEN SPACE', 'Open space'],
+  ['TAX DEED', 'Tax deed'], ['PLOTTAGE', 'Plottage'], ['NEW PLAT', 'New plat'], ['TRADE', 'Trade'], ['LEASE', 'Lease'],
+  ['S.A.C. OR P.A.C.', 'Assignment of contract'],
+]);
+// A deed type's reason: the one most of that type's lines carry in the county's own table (at least 60% of them in the file
+// of Nov 17, 2026: D-QCD 92% quit claim, BLA 86% segregation, D-CORR 61% correction...). A type whose lines carry no one
+// reason (a statutory warranty deed, a death certificate, an affidavit) has no word, and its unpriced lines are left out.
+const DEED_REASONS = new Map([
+  ['D-QCD', 'QUIT CLAIM DEED'], ['D-PREP', 'ESTATE SALE'], ['D-EXEC', 'ESTATE SALE'], ['BLA', 'SEGREGATION'], ['D-TRST', 'DEFAULT'],
+  ['FCONT', 'DEFAULT'], ['EAS', 'EASEMENT'], ['RELEAS', 'EASEMENT'], ['D-SHRF', 'SHERIFF'], ['CERTSL', 'SHERIFF'],
+  ['D-FF', 'FULFILLMENT'], ['D-LFOR', 'FORCED SALES'], ['D-TREAS', 'TAX DEED'], ['D-GIFT', 'GIFT'], ['D-CORR', 'CORRECTION DEED'],
+  ['PASSGN', 'S.A.C. OR P.A.C.'],
+]);
 const PARKING_WORDS = new Map([
   ['ATTACHED GARAGE', 'Attached garage'], ['BUILT-IN GARAGE', 'Built-in garage'], ['DETACHED GARAGE', 'Detached garage'],
   ['BASEMENT GARAGE', 'Basement garage'], ['MH ATTACHED GARAGE', 'Attached garage'], ['CARPORT', 'Carport'], ['MH CARPORT', 'Carport'],
@@ -344,12 +367,36 @@ async function readFacts(zip, records, today) {
   }
 
   const sales = new Map();
-  for await (const row of zipTable(zip, 'PropSalesInfoOnlyVw.txt', ['prop_id', 'SalePrice', 'SaleDate', 'deed_num', 'sl_ratio_desc'], TABLE)) {
-    if (!records.has(row.prop_id) || !positive(row.SalePrice) || NOT_A_SALE.has(row.sl_ratio_desc)) continue;
+  // Every line, for recorded history, and how many accounts each deed (change of owner) covers.
+  const lines = new Map();
+  const accounts = new Map();
+  for await (const row of zipTable(zip, 'PropSalesInfoOnlyVw.txt', ['prop_id', 'chg_of_owner_id', 'SalePrice', 'SaleDate', 'deed_num', 'sl_ratio_desc', 'deed_type_cd'], TABLE)) {
+    accounts.set(row.chg_of_owner_id, (accounts.get(row.chg_of_owner_id) || 0) + 1);
+    if (!records.has(row.prop_id)) continue;
     const date = dateOnly(row.SaleDate);
+    const sale = Boolean(positive(row.SalePrice)) && !NOT_A_SALE.has(row.sl_ratio_desc);
+    if (!lines.has(row.prop_id)) lines.set(row.prop_id, []);
+    lines.get(row.prop_id).push({ date, sale, row });
+    if (!sale) continue;
     const held = sales.get(row.prop_id);
     if (date && (!held || date > held.date)) sales.set(row.prop_id, { date, row });
   }
+  const leftOut = {};
+  let withHistory = 0;
+  for (const [id, list] of lines) {
+    const history = recordedHistory(list.map(({ date, sale, row }) => {
+      const type = String(row.deed_type_cd || '').trim();
+      const said = REASON_WORDS.get(row.sl_ratio_desc) || (sale ? null : REASON_WORDS.get(DEED_REASONS.get(type)));
+      const line = historyLine({ date, sale, word: said, price: positive(row.SalePrice), document: word(row.deed_num), parcels: accounts.get(row.chg_of_owner_id) });
+      if (!line) leftOut[type || '-'] = (leftOut[type || '-'] || 0) + 1;
+      return line;
+    }), { since: SALES_TABLE_STARTS.slice(0, 4) });
+    if (!history) continue;
+    // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+    hold(records.get(id), 'recorded_history', history);
+    withHistory += 1;
+  }
+  log(`${FIPS}: recorded history for ${withHistory} accounts; lines with no word for what they are, left out, by deed type: ${Object.entries(leftOut).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([type, n]) => `${type} ${n}`).join(', ') || 'none'}`);
   for (const [id, { date, row }] of sales) {
     const { facts } = records.get(id);
     facts.sale_date = date;
