@@ -14,6 +14,7 @@ const TITLE_MAX = 60;
 const WORDS_MAX = 280;
 const SKILLS_MAX = 5;
 const ATTACH_MAX = 12;
+const PASTE_CEILING_MS = 8000;
 const PIN_MAX = 3;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const KINDS = ['did', 'built', 'owns'];
@@ -21,7 +22,7 @@ const AUDIENCES = ['anyone', 'members', 'connections'];
 const PAID_STATUSES = ['captured_hold', 'succeeded', 'transfer_pending', 'transfer_scheduled', 'transferred', 'paid'];
 const FILE_TYPES = ['portfolio_image', 'portfolio_video', 'portfolio_document'];
 const FIELDS = ['title', 'kind', 'from', 'to', 'city', 'state', 'description', 'skills', 'audience', 'pinned', 'hidden', 'draft',
-  'started_from', 'attachments', 'role'];
+  'started_from', 'attachments', 'role', 'links'];
 
 class PieceRefusal extends Error {
   constructor(status, code, message) {
@@ -107,6 +108,68 @@ async function columnsFrom(userId, body, { create }) {
   return out;
 }
 
+// ---------- link cards (CONTRACT P2.4) ----------
+
+const TRACKING = /^(utm_[a-z]+|ref|ref_src|ref_url|fbclid|gclid|dclid|yclid|msclkid|igshid|si|mc_cid|mc_eid|spm|_hsenc|_hsmi|mkt_tok|s_cid)$/i;
+const KIND_HOSTS = [
+  ['video', /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|loom\.com)$/],
+  ['code', /(^|\.)(github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|npmjs\.com)$/],
+  ['app', /(^|\.)(apps\.apple\.com|play\.google\.com|chromewebstore\.google\.com)$/],
+  ['paper', /(^|\.)(doi\.org|arxiv\.org|scholar\.google\.com|researchgate\.net|ssrn\.com|pubmed\.ncbi\.nlm\.nih\.gov|jstor\.org)$/],
+  ['article', /(^|\.)(medium\.com|substack\.com|nytimes\.com|theguardian\.com|washingtonpost\.com|npr\.org|bbc\.co\.uk|bbc\.com)$/],
+];
+const linkInvalid = (message) => new PieceRefusal(400, 'LINK_INVALID', message);
+
+/** The link as kept: http(s) only, no credentials, tracking parts and the fragment cut. */
+function cleanLink(value) {
+  const { parsePublicUrl } = require('../../routes/linkPreview').linkCards;
+  if (typeof value !== 'string' || !value.trim()) throw linkInvalid('Paste a link to a page.');
+  let url;
+  try { url = parsePublicUrl(value.trim()); } catch (_) { throw linkInvalid('That link can\'t be read. Paste a link to a public page.'); }
+  for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key);
+  url.hash = '';
+  return url.href;
+}
+
+function kindOf(host) {
+  const found = KIND_HOSTS.find(([, re]) => re.test(host));
+  return found ? found[0] : 'site';
+}
+
+/**
+ * A piece's links as cards. A link already on the piece keeps its card (and its proof); a new one is read once now,
+ * on paste, through linkPreview's guarded fetch (words only). A page that can't be read keeps a plain card.
+ */
+async function linkCards(userId, links, existing) {
+  if (!Array.isArray(links)) throw linkInvalid('Links are a list of { "url" }.');
+  const crypto = require('crypto');
+  const { previewFor } = require('../../routes/linkPreview').linkCards;
+  const byUrl = new Map((existing || []).map((card) => [card.url, card]));
+  const urls = [];
+  for (const item of links) {
+    const url = cleanLink(item && typeof item === 'object' ? item.url : null);
+    if (!urls.includes(url)) urls.push(url);
+  }
+  // New links are read side by side, under linkPreview's own per-person slots, with one ceiling for the whole save;
+  // a link that doesn't answer in time keeps a plain card.
+  const deadline = new Promise((resolve) => { const t = setTimeout(() => resolve(null), PASTE_CEILING_MS); t.unref?.(); });
+  const words = await Promise.all(urls.map((url) => (byUrl.has(url) ? null
+    : Promise.race([previewFor(url, userId).catch(() => null), deadline]))));
+  return urls.map((url, i) => {
+    if (byUrl.has(url)) return byUrl.get(url);
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return { id: crypto.randomUUID(), url, site: host, kind: kindOf(host), title: words[i]?.title || null,
+      description: words[i]?.description || null, proof_token: null, proven_at: null };
+  });
+}
+
+/** The twelve in all: files and link cards together. */
+function checkTwelve(fileIds, links) {
+  if ((fileIds || []).length + (links || []).length > ATTACH_MAX) {
+    throw new PieceRefusal(409, 'PIECE_ATTACHMENT_LIMIT', `A piece holds ${ATTACH_MAX} attachments at most, files and links together.`);
+  }
+}
+
 // A paid job the person did that is completed and paid, or a plan they hosted that took place, not yet a piece.
 async function sourceColumns(userId, from) {
   if (from === null) return {};
@@ -172,6 +235,8 @@ function howItWillShow(row, workSetting) {
   if (row.source_kind === 'gig') lines.push('Seen: it started from a paid job on Pantopus.');
   else if (row.source_kind === 'plan') lines.push('Seen: it started from a plan that took place on Pantopus.');
   else lines.push('Said: your words, until someone on it signs or a link is proven yours.');
+  const unproven = (row.links || []).filter((c) => !c.proven_at).length;
+  if (unproven) lines.push(`Said: ${unproven === 1 ? 'the link' : `${unproven} links`}, until proven yours.`);
   if (row.is_draft) lines.push('A draft: nobody else sees it yet.');
   else if (row.is_visible === false) lines.push('Hidden: nobody else sees it.');
   else {
@@ -263,7 +328,10 @@ async function pinRoom(userId, exceptId) {
 }
 
 async function createPiece(userId, body) {
-  const columns = await columnsFrom(userId, body, { create: true });
+  const { links, ...rest } = body || {};
+  const columns = await columnsFrom(userId, rest, { create: true });
+  if (links !== undefined) columns.links = await linkCards(userId, links, []);
+  checkTwelve(columns.file_ids, columns.links);
   if (columns.is_featured) await pinRoom(userId, null);
   const { data, error } = await supabaseAdmin.from('UserPortfolio')
     .insert({ user_id: userId, portfolio_type: 'project', is_visible: true, ...columns }).select('id').single();
@@ -292,7 +360,7 @@ async function dropUnheldFiles(userId, fileIds) {
 }
 
 async function ownPiece(userId, id) {
-  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids').eq('id', id).eq('user_id', userId).maybeSingle();
+  const { data, error } = await supabaseAdmin.from('UserPortfolio').select('id, is_featured, file_ids, links').eq('id', id).eq('user_id', userId).maybeSingle();
   if (error) {
     if (error.code === '22P02') throw notFound();
     throw error;
@@ -303,7 +371,10 @@ async function ownPiece(userId, id) {
 
 async function updatePiece(userId, id, body) {
   const before = await ownPiece(userId, id);
-  const columns = await columnsFrom(userId, body, { create: false });
+  const { links, ...rest } = body || {};
+  const columns = await columnsFrom(userId, rest, { create: false });
+  if (links !== undefined) columns.links = await linkCards(userId, links, before.links || []);
+  checkTwelve(columns.file_ids ?? before.file_ids, columns.links ?? before.links);
   if (columns.is_featured === true) await pinRoom(userId, id);
   if (Object.keys(columns).length) {
     const { error } = await supabaseAdmin.from('UserPortfolio').update({ ...columns, updated_at: new Date().toISOString() })
@@ -324,6 +395,47 @@ async function deletePiece(userId, id) {
   if (error) throw error;
   await dropUnheldFiles(userId, before.file_ids);
   return { id, deleted: true };
+}
+
+/** POST /me/pieces/:id/links/:linkId/proof: the short line to put on the page (made once, kept). */
+async function proofLine(userId, id, linkId) {
+  const piece = await ownPiece(userId, id);
+  const links = piece.links || [];
+  const card = links.find((c) => c.id === linkId);
+  if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
+  if (!card.proof_token) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = require('crypto').randomBytes(8);
+    const token = [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
+    card.proof_token = `${token.slice(0, 4)}-${token.slice(4)}`;
+    const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+  return {
+    line: `pantopus-proof: ${card.proof_token}`,
+    meta: `<meta name="pantopus-proof" content="${card.proof_token}">`,
+    how: 'Put this line in the page\'s title or description, then check. On your own site, a meta tag works. A line in comments doesn\'t count.',
+  };
+}
+
+/** POST …/check: reads the page through the same guarded fetch; Seen once the line is there. */
+async function checkProof(userId, id, linkId) {
+  const piece = await ownPiece(userId, id);
+  const links = piece.links || [];
+  const card = links.find((c) => c.id === linkId);
+  if (!card) throw new PieceRefusal(404, 'PIECE_NOT_FOUND', 'That link isn\'t on this piece.');
+  if (!card.proof_token) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Get your line first, then put it on the page.');
+  const { headCarries } = require('../../routes/linkPreview').linkCards;
+  let found;
+  try { found = await headCarries(card.url, card.proof_token, userId); } catch (_) {
+    throw new PieceRefusal(409, 'LINK_UNREADABLE', 'That page can\'t be read right now. Try again later.');
+  }
+  if (!found) throw new PieceRefusal(409, 'PROOF_NOT_FOUND', 'Your line isn\'t on the page yet.');
+  card.proven_at = card.proven_at || new Date().toISOString();
+  const { error } = await supabaseAdmin.from('UserPortfolio').update({ links }).eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+  const rows = await ownRows(userId);
+  return require('./compose').cardOf(card, firstNameOf(rows), true);
 }
 
 /** POST /me/pieces/preview: how a piece with these fields would show; nothing saved. */
@@ -351,27 +463,25 @@ async function saveWork(userId, body) {
  * Today's public portfolio grid (GET /api/files/portfolio/:userId, which the released apps draw, signed in or not)
  * never shows more than the person's pieces do: a file held by a piece that doesn't reach everyone (hidden, a draft,
  * members- or connections-only) is left out, and once the person saved a Work part that doesn't reach anyone, every
- * file a piece holds is. Files no piece holds are listed as before. A failed read leaves out every piece's files.
+ * file a piece holds is. Files no piece holds are listed as before. Cost: no read when the grid is empty, otherwise
+ * one read (the person's pieces with their saved parts beside them). A failed read throws, and the route answers 500
+ * with no files, as its own failed read does.
  */
 async function publicGridFilter(userId, files) {
   if (!Array.isArray(files) || !files.length) return files;
-  const [pieces, owner] = await Promise.all([
-    supabaseAdmin.from('UserPortfolio').select('file_ids, is_visible, is_draft, audience').eq('user_id', userId),
-    supabaseAdmin.from('User').select('profile_share').eq('id', userId).maybeSingle(),
-  ]);
+  const pieces = await supabaseAdmin.from('UserPortfolio')
+    .select('file_ids, is_visible, is_draft, audience, owner:user_id ( profile_share )')
+    .eq('user_id', userId).not('file_ids', 'is', null);
   if (pieces.error) throw pieces.error;
-  const rows = pieces.data || [];
-  if (!rows.some((r) => (r.file_ids || []).length)) return files;
-  const share = owner.error ? { saved: true, parts: { work: 'members' } } : readShare(owner.data?.profile_share);
+  const listed = new Set(files.map((f) => String(f.id)));
+  const rows = (pieces.data || []).filter((r) => (r.file_ids || []).some((id) => listed.has(String(id))));
+  if (!rows.length) return files;
+  const share = readShare(rows[0].owner?.profile_share);
   const workOpen = !share.saved || reaches(share.parts, 'work', 'link');
-  const held = new Set();
   const closed = new Set();
   for (const r of rows) {
     const open = workOpen && r.is_visible !== false && r.is_draft !== true && (r.audience || 'anyone') === 'anyone';
-    for (const id of r.file_ids || []) {
-      held.add(String(id));
-      if (!open) closed.add(String(id));
-    }
+    if (!open) for (const id of r.file_ids || []) closed.add(String(id));
   }
   return files.filter((f) => !closed.has(String(f.id)));
 }
@@ -399,6 +509,6 @@ async function attachmentsOf(row) {
 }
 
 module.exports = {
-  PieceRefusal, listMine, saveWork, publicGridFilter, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
+  PieceRefusal, listMine, saveWork, publicGridFilter, proofLine, checkProof, createPiece, updatePiece, deletePiece, previewPiece, attachmentsOf, howItWillShow, monthLabel,
   localDate,
 };
