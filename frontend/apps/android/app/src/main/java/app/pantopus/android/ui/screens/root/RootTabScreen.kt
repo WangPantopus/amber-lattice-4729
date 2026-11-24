@@ -444,6 +444,8 @@ import app.pantopus.android.ui.screens.profile.OwnerNavigation
 import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_USER_ID_KEY
 import app.pantopus.android.ui.screens.profile.PublicProfileScreen
 import app.pantopus.android.ui.screens.profile.professional.ProfessionalProfileScreen
+import app.pantopus.android.ui.screens.profile.sources.ProfileMarksHolder
+import app.pantopus.android.ui.screens.profile.sources.rememberProfileMarksEntry
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimDetailScreen
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimsScreen
 import app.pantopus.android.ui.screens.saved_places.SavedPlacesScreen
@@ -2712,6 +2714,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         }
     SideEffect { MomentRingsHolder.current = if (momentsOn) momentRings else null }
     DisposableEffect(Unit) { onDispose { MomentRingsHolder.current = null } }
+    // The profile with sources: a picture of a person also wears the outer ring of their mark (board 6).
+    if (LaunchFeatures.profileSources) {
+        val profileMarks = rememberProfileMarksEntry()
+        SideEffect { ProfileMarksHolder.current = profileMarks }
+        DisposableEffect(Unit) { onDispose { ProfileMarksHolder.current = null } }
+    }
     // The Place tab's root sits at the bottom of the stack for the whole session. Its host holds the session's
     // current home, which the homes sheet, links and Add Home set, so they reach it from here.
     val placeRootEntry =

@@ -551,7 +551,7 @@ private fun GuestRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
             ) {
-                PlanAvatar(name = name, seed = person.userId, avatarUrl = person.avatarUrl)
+                PlanAvatar(name = name, seed = person.userId, avatarUrl = person.avatarUrl, userId = person.userId)
                 Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
                     Text(
                         text = title,
