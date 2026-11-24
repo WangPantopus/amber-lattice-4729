@@ -17,6 +17,16 @@ function isHomeSale(price, ...words) {
 // A home's recorded history keeps its newest lines, so one parcel a developer split into hundreds can't fill a page.
 const MOST_LINES = 30;
 
+// A line whose name is a record of a person rather than of the home never shows, in any county (design session's review,
+// Nov 23): a death certificate or affidavit of death (an affidavit confirming a transfer on death, of heirship, of a successor
+// trustee or of a life estate's end is one), a divorce or dissolution decree, a guardianship or conservatorship, a
+// bankruptcy, a name change, a power of attorney, a marriage record. A deed that moves the home stays even when its name says why: a personal representative's, guardian's, sheriff's,
+// trustee's or tax deed, an estate sale, a transfer on death deed.
+const PERSON_RECORD = /DEATH CERT|CERTIFICATE OF DEATH|AFFIDAVIT OF DEATH|DEATH AFFIDAVIT|AFFIDAVIT OF (TOD|TRANSFER ON DEATH)|(TOD|TRANSFER ON DEATH) (AFFIDAVIT|CONFIRMATION)|HEIRSHIP|SUCCESSOR TRUSTEE|TERMINATION OF LIFE ESTATE|DIVORCE|DISSOLUTION|GUARDIANSHIP|CONSERVATORSHIP|BANKRUPT|NAME CHANGE|CHANGE OF NAME|POWER OF ATTORNEY|\bMARRIAGE\b/i;
+
+/** Whether a county's name for a line is a record of a person rather than of the home (PERSON_RECORD). */
+const isPersonRecord = (name) => PERSON_RECORD.test(String(name ?? ''));
+
 /**
  * One line of a county's sales table as recorded history (facts.js `recorded_history`), or null when it has no date or no word
  * for what it is. `sale`: this home changing hands at that price, by the connector's own rule for its last sale, so the
@@ -26,7 +36,8 @@ const MOST_LINES = 30;
  */
 function historyLine({ date, sale, word = null, price = null, document = null, parcels = null }) {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : null;
-  if (!day || (!sale && !word)) return null;
+  // Connectors check the county's own name first and count what the rule leaves out; this holds for any that don't.
+  if (!day || (!sale && !word) || isPersonRecord(word)) return null;
   const line = { date: day, sale: Boolean(sale), word: word || null };
   if (sale && Number(price) > 0) line.price = Number(price);
   const number = String(document ?? '').trim();
@@ -44,4 +55,21 @@ function recordedHistory(lines, { since }) {
   return kept.length ? { since: String(since), lines: kept.slice(0, MOST_LINES) } : null;
 }
 
-module.exports = { isHomeSale, TOKEN_PRICE, NOT_A_SALE, historyLine, recordedHistory };
+/**
+ * A county's name for a kind of line as a screen says it: "Quit Claim Deed" and "QUIT CLAIM DEED" read "Quit claim deed".
+ * Short all-capital words a county writes that way inside mixed case stay ("US Marshall Deed"), and so do initials ("U.S."). Null for a name that says
+ * nothing ("Unknown", "Other", "N/A").
+ */
+function countyWord(text) {
+  const name = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!name || /^(unknown|other|none|n\/?a|not available|misc\.?|miscellaneous)$/i.test(name)) return null;
+  const mixed = /[a-z]/.test(name);
+  const words = name.split(' ').map((word, i) => {
+    if ((mixed && /^[A-Z]{2,4}$/.test(word)) || /^([A-Z]\.){2,}$/.test(word)) return word;
+    const lower = word.toLowerCase();
+    return i === 0 ? lower.replace(/[a-z]/, (letter) => letter.toUpperCase()) : lower;
+  });
+  return words.join(' ');
+}
+
+module.exports = { isHomeSale, TOKEN_PRICE, NOT_A_SALE, historyLine, recordedHistory, countyWord, isPersonRecord };
