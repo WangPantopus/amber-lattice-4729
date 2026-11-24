@@ -110,6 +110,7 @@ import app.pantopus.android.data.api.services.PrivacyApi
 import app.pantopus.android.data.api.services.PrivacyHandshakeApi
 import app.pantopus.android.data.api.services.ProfessionalApi
 import app.pantopus.android.data.api.services.ProfileInsightsApi
+import app.pantopus.android.data.api.services.ProfilePageApi
 import app.pantopus.android.data.api.services.PulseApi
 import app.pantopus.android.data.api.services.RealRentApi
 import app.pantopus.android.data.api.services.RecordWatchApi
@@ -824,6 +825,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideMomentsApi(retrofit: Retrofit): MomentsApi = retrofit.create(MomentsApi::class.java)
+
+    /** The profile with sources: `/api/profile-page` (the page, the share parts, the avatar marks). */
+    @Provides
+    @Singleton
+    fun provideProfilePageApi(retrofit: Retrofit): ProfilePageApi = retrofit.create(ProfilePageApi::class.java)
 
     /** Pulse's own routes (`/api/pulse/…`): the asker's keep-open and close (S7). */
     @Provides

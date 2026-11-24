@@ -251,7 +251,7 @@ private fun InvitePersonRow(
                 .testTag("planInvitePerson.${person.userId}")
                 .toggleable(value = chosen, role = Role.Checkbox, onValueChange = { onToggle() }),
     ) {
-        PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl)
+        PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl, userId = person.userId)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = person.displayName,

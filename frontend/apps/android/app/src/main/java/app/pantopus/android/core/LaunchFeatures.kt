@@ -73,6 +73,14 @@ enum class LaunchFeature(
      * their photo and greeting for their reader with it off.
      */
     HOLIDAY_CARD_MEMORIES("holiday_card_memories"),
+
+    /**
+     * 15. The profile with sources (founder decision, 2026-11-23; SPEC phase 1): a person's profile drawn from the
+     * server's blocks (`GET /api/profile-page`), the Record tab with the full rings, the outer ring on avatars and the
+     * share sheet with parts. Beside the backend's `PROFILE_SOURCES` switch: while the server answers 404 the app keeps
+     * today's profile. Off, every screen is exactly today's.
+     */
+    PROFILE_SOURCES("profile_sources"),
 }
 
 /**
@@ -106,6 +114,7 @@ object LaunchFeatures {
     val holidayCards: Boolean get() = isEnabled(LaunchFeature.HOLIDAY_CARDS)
     val cardTable: Boolean get() = isEnabled(LaunchFeature.CARD_TABLE) && mailbox && holidayCards
     val holidayCardMemories: Boolean get() = isEnabled(LaunchFeature.HOLIDAY_CARD_MEMORIES) && mailbox
+    val profileSources: Boolean get() = isEnabled(LaunchFeature.PROFILE_SOURCES)
 
     /** Parses a comma-separated key list ("all" enables every feature). */
     fun parse(raw: String?): Set<LaunchFeature> {
