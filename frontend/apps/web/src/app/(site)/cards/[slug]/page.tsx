@@ -12,8 +12,9 @@ import { notFound } from 'next/navigation';
 import { APP_WEB_URL } from '@pantopus/utils';
 import { tableEdge } from '@/components/mailbox/cards/cardArt';
 import { PublicCardPage, PublicCardsTrouble } from '@/components/mailbox/cards/PublicCards';
-import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, shareRefFrom, storePlatform } from '@/lib/publicShare';
+import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
+import { cardLd, cardsJsonLd, collectionOf } from '../_lib/structuredData';
 
 // Rendered on every request. A build or a first visit that met the server with
 // cards off (or down) would otherwise be saved as a fixed "not found" page, and
@@ -27,7 +28,9 @@ type CardPageProps = {
 
 async function designFor(slug: string) {
   const { data, status } = await fetchPublicCardDesigns();
-  return { design: data?.designs.find((candidate) => candidate.slug === slug) ?? null, year: data?.year ?? new Date().getFullYear(), status };
+  const design = data?.designs.find((candidate) => candidate.slug === slug) ?? null;
+  const collection = data && design ? collectionOf(design, data.collections ?? []) : null;
+  return { design, collection, shelves: data ? publicShelvesOn(data) : false, year: data?.year ?? new Date().getFullYear(), status };
 }
 
 export async function generateMetadata({ params }: CardPageProps): Promise<Metadata> {
@@ -59,7 +62,7 @@ export async function generateViewport({ params }: CardPageProps): Promise<Viewp
 
 export default async function OneCardPage({ params, searchParams }: CardPageProps) {
   const { slug } = await params;
-  const { design, year, status } = await designFor(slug);
+  const { design, collection, shelves, year, status } = await designFor(slug);
   if (!design) {
     // Not one of the cards, or the feature is off (the server says 404). Anything else: the server didn't answer.
     if (status === 200 || status === 404) notFound();
@@ -67,7 +70,13 @@ export default async function OneCardPage({ params, searchParams }: CardPageProp
   }
   const inviteCode = shareRefFrom((await searchParams).ref);
   const store = await phoneStore(`/app/mailbox/cards?design=${encodeURIComponent(design.id)}`, inviteCode);
-  return <PublicCardPage design={design} year={year} inviteCode={inviteCode} store={store} />;
+  return (
+    <>
+      <PublicCardPage design={design} year={year} inviteCode={inviteCode} store={store} />
+      {/* For search engines, what this card is (data only; nothing drawn). */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: cardsJsonLd(cardLd({ design, collection, shelves })) }} />
+    </>
+  );
 }
 
 /**

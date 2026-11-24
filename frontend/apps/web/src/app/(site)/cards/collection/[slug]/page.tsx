@@ -15,6 +15,7 @@ import { APP_WEB_URL } from '@pantopus/utils';
 import { PublicCardsTrouble, PublicCollectionPage } from '@/components/mailbox/cards/PublicCards';
 import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
+import { cardListLd, cardsInPageOrder, cardsJsonLd } from '../../_lib/structuredData';
 
 // Rendered on every request, as /cards is: the switch lives on the server.
 export const dynamic = 'force-dynamic';
@@ -62,7 +63,19 @@ export default async function CollectionPage({ params, searchParams }: Collectio
   }
   const inviteCode = shareRefFrom((await searchParams).ref);
   const store = await phoneStore('/app/mailbox/cards', inviteCode);
-  return <PublicCollectionPage collection={collection} designs={data?.designs ?? []} inviteCode={inviteCode} store={store} />;
+  const designs = cardsInPageOrder(data?.designs ?? [], [collection], true);
+  return (
+    <>
+      <PublicCollectionPage collection={collection} designs={data?.designs ?? []} inviteCode={inviteCode} store={store} />
+      {/* For search engines, the collection's cards in its order (data only; nothing drawn). */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: cardsJsonLd(cardListLd({ name: `${collection.name}: Christmas cards on Pantopus`, path: `/cards/collection/${collection.slug}`, designs })),
+        }}
+      />
+    </>
+  );
 }
 
 /**
