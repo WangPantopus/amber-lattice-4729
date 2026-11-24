@@ -751,14 +751,16 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
   // Deep links (Wedge v2 D5): `?r=<route>` from an EDDM card or invite
   // postcard is remembered for every funnel beacon; `?address=` (a share
   // card, a postcard QR) resolves the first suggestion and shows the
-  // preview straight away.
+  // preview straight away. A paid ad's code starts with `ad-`: it is
+  // remembered the same way, but the visitor didn't get a card, so no
+  // "From the card in your mailbox".
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const route = params.get('r') || params.get('route');
     if (route) {
       api.rememberFunnelRoute(route);
-      setFromCard(true);
+      if (!/^ad-/i.test(route.trim())) setFromCard(true);
     } else if (topic === 'tax') {
       // No card or ad code on the link: sign-ups from this page still count apart from /start's.
       api.rememberFunnelRoute('tax-check');

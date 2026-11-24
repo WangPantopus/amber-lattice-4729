@@ -197,6 +197,39 @@ export default function AdminFunnelPage() {
                         ['Accounts', `${num(summary.ladder.accounts)} · ${pct(summary.rates.account)}`],
                       ]}
                     />
+                    <section data-testid="admin-funnel-sources">
+                      <h2 className="text-base font-semibold text-app-text">By source</h2>
+                      <p className="text-sm text-app-text-secondary mt-1">
+                        The ladder for each code a visitor arrived with (<code>?r=</code> on a card, a postcard or an ad link;
+                        ad codes start with <code>ad-</code>), most lookups first.
+                      </p>
+                      <div className="mt-3 overflow-x-auto rounded-xl border border-app-border">
+                        <table className="w-full text-sm whitespace-nowrap">
+                          <thead>
+                            <tr className="text-xs text-app-text-muted border-b border-app-border">
+                              <th className="text-left font-normal px-3 py-2 sticky left-0 bg-app-surface">Source</th>
+                              {['Lookups', 'Aha cards', 'Shares', 'Walls', 'Sign-ups started', 'Accounts', 'Account rate'].map((h) => (
+                                <th key={h} className="text-right font-normal px-3 py-2">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(summary.by_route || []).map((r) => (
+                              <tr key={r.route} className="border-b border-app-border last:border-0 text-app-text" data-testid={`admin-funnel-source.${r.route}`}>
+                                <td className="px-3 py-2 sticky left-0 bg-app-surface">{r.route === '(direct)' ? 'No code' : r.route}</td>
+                                {[num(r.ladder.previews), num(r.ladder.aha_views), num(r.ladder.shares), num(r.ladder.walls),
+                                  num(r.ladder.registers), num(r.ladder.accounts), pct(r.rates.account)].map((v, i) => (
+                                  <td key={i} className="text-right px-3 py-2">{v}</td>
+                                ))}
+                              </tr>
+                            ))}
+                            {(summary.by_route || []).length === 0 && (
+                              <tr><td colSpan={8} className="px-3 py-4 text-center text-app-text-muted">No lookups in this window.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
                     <KeyValues
                       title="Plans"
                       testId="admin-funnel-plans"
