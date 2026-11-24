@@ -407,6 +407,7 @@ export type {
 
 // Place — home record watch, rate-watch half (Wave 2b)
 export * as recordWatch from './endpoints/recordWatch';
+export * as homeRecord from './endpoints/homeRecord';                  // Home record page (/api/public/home-record, /api/homes/:id/record)
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 
 // Place — Block Founders growth mechanic (Wave 3)

@@ -30,6 +30,7 @@ import UnifiedFAB from '@/components/UnifiedFAB';
 import { QuickCreateIcons } from '@/lib/icons';
 import { launchFeatures } from '@/lib/featureFlags';
 import VerificationCenter from '@/components/home/VerificationCenter';
+import HomeRecordEntry from '@/components/homeRecord/HomeRecordEntry';
 import VendorsTab from '@/components/home/VendorsTab';
 import { HomePermissionsProvider, useHomePermissions } from '@/components/home/useHomePermissions';
 
@@ -151,7 +152,13 @@ function HomeDashboardContent() {
   }
 
   if (!permissionsLoading && needsVerification) {
-    return <VerificationCenter homeId={homeId} onRefresh={async () => { await Promise.all([data.refresh(), reloadPermissions()]); }} />;
+    return (
+      <>
+        {/* A person still verifying here can open the home's record too: the server shows them its open part. */}
+        <div className="mx-auto max-w-lg px-4 pt-6"><HomeRecordEntry homeId={homeId} /></div>
+        <VerificationCenter homeId={homeId} onRefresh={async () => { await Promise.all([data.refresh(), reloadPermissions()]); }} />
+      </>
+    );
   }
 
   // Unmount private panels, deferred summaries and local edits whenever authority retires.
@@ -507,6 +514,9 @@ function HomeDashboardReady({ homeId, data, issueDraft, settingsDraft, guestPass
         activeTab={tab}
         onTabChange={setHighLevelTab}
       />
+
+      {/* The home's record (its own page): the server decides what each person here sees. */}
+      {tab === 'dashboard' && <HomeRecordEntry homeId={homeId} className="mb-4" />}
 
       {/* Tab Content */}
       {tab === 'dashboard' && (
