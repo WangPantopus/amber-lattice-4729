@@ -323,6 +323,10 @@ function roleOf(r, { view, first, now = new Date() }) {
           picture_url: typed ? null : (biz.picture_url || null), typed }
         : { name: null, user_id: null, username: null, picture_url: null, typed },
       status,
+      // An active owner of the business that signed reads its choice, to change it or take the signature off
+      // (PATCH / DELETE /me/ties/:id with this line's id). Nobody else, never on a link view.
+      ...(signed && view !== 'link' && view !== 'owner' && r.viewer_owns === true
+        ? { mine: { show_name_on_links: r.name_on_links === true } } : {}),
     });
 }
 
