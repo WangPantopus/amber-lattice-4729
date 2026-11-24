@@ -156,6 +156,63 @@
         }
       ]
     },
+    "08014": {
+      "read": "2026-11-23",
+      "property_search_office": "City and County of Broomfield Assessor, Property Records Search",
+      "property_search_url": "https://egov.broomfield.org/assessor/web/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "City and County of Broomfield Clerk and Recorder, Recording",
+          "url": "https://www.broomfield.org/470/Recording",
+          "line": "Records, images and keeps the documents of permanent public record, real estate transactions among them.",
+          "q": "Where are deeds recorded in Broomfield?",
+          "a": "The Recording Division of the City and County of Broomfield's Clerk and Recorder records, images and keeps the documents of permanent public record, real estate transactions among them, and gives access to them."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "City and County of Broomfield Treasurer",
+          "url": "https://www.broomfield.org/375/Treasurer",
+          "line": "Collects property tax; its online portal searches tax records, prints notices and takes payments.",
+          "q": "Where do I pay property tax in Broomfield?",
+          "a": "The City and County of Broomfield's Treasurer collects property tax. Its online portal searches property tax records, prints tax notices and takes payments."
+        }
+      ]
+    },
+    "08077": {
+      "read": "2026-11-23",
+      "property_search_office": "Mesa County Assessor, Real Property Public Information Retrieval",
+      "property_search_url": "https://emap.mesacounty.us/assessor_lookup/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Mesa County Clerk and Recorder, Recording Department",
+          "url": "https://www.mesacounty.us/departments-and-services/clerk-and-recorder/recording",
+          "line": "Records and keeps the county's land title documents and loans on real estate; its recorded documents can be searched online.",
+          "q": "Where are deeds recorded in Mesa County?",
+          "a": "The Recording Department of the Mesa County Clerk and Recorder records and keeps the county's land title documents and loans on real estate. Its recorded documents can be searched online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Mesa County Treasurer",
+          "url": "https://www.mesacounty.us/departments-and-services/treasurer/pay-property-taxes",
+          "line": "Collects property tax, paid in two halves or all at once; tax statements and receipts can be viewed online.",
+          "q": "Where do I pay property tax in Mesa County?",
+          "a": "The Mesa County Treasurer collects property tax, paid in two halves or all at once. Its page pays taxes online and shows a property's tax statements and receipts."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Mesa County Clerk and Recorder",
+          "url": "https://www.mesacounty.us/departments-and-services/clerk-and-recorder/recording/fraud-alert-land-records",
+          "line": "Emails a subscriber every time a land records document is recorded with a name they asked for."
+        }
+      ]
+    },
     "12001": {
       "read": "2026-11-23",
       "property_search_office": "Alachua County Property Appraiser, Property Search",
@@ -218,6 +275,38 @@
           "office": "Hillsborough County Clerk of Court & Comptroller",
           "url": "https://hillsclerk.com/property-fraud-alert",
           "line": "Alerts a subscriber when a document is recorded in the county under a person's or business's name they chose. The Clerk charges no fee for it."
+        }
+      ]
+    },
+    "12085": {
+      "read": "2026-11-23",
+      "property_search_office": "Martin County Property Appraiser, Property Appraiser Data",
+      "property_search_url": "https://pa.martin.fl.us/app/search/real-property",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Martin County Clerk & Comptroller, Records Search",
+          "url": "https://www.martinclerk.com/335/Records-Search",
+          "line": "The Clerk's online search portals, its Official Records among them.",
+          "q": "Where are deeds recorded in Martin County?",
+          "a": "The Martin County Clerk & Comptroller records deeds into the county's Official Records. Its Records Search page opens the online search of the Official Records and says how to ask for a search."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Martin County Tax Collector",
+          "url": "https://martintaxcollector.com/property-tax/",
+          "line": "Mails the tax notice and collects real estate taxes, paid in arrears for the calendar year; the Property Appraiser sets values.",
+          "q": "Where do I pay property tax in Martin County?",
+          "a": "The Martin County Tax Collector mails the tax notice and collects real estate taxes, which are paid in arrears for the calendar year. The Property Appraiser sets the values the taxes are figured from."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alerts",
+          "office": "Martin County Clerk & Comptroller",
+          "url": "https://www.martinclerk.com/161/Online-Services-and-Alerts",
+          "line": "Alerts a subscriber any time a document is recorded using a name they listed to monitor."
         }
       ]
     },
@@ -286,6 +375,31 @@
         }
       ]
     },
+    "19193": {
+      "read": "2026-11-23",
+      "property_search_office": "Woodbury County and Sioux City Assessors, Property Search",
+      "property_search_url": "https://beacon.schneidercorp.com/Application.aspx?AppID=10&LayerID=108&PageTypeID=2&PageID=204",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Woodbury County Auditor & Recorder",
+          "url": "https://www.woodburycountyiowa.gov/recorder/",
+          "line": "Records the county's real estate documents; its page lists its recording fees and land records services.",
+          "q": "Where are deeds recorded in Woodbury County?",
+          "a": "The Woodbury County Auditor & Recorder records the county's real estate documents. Its page lists its land records services and recording fees."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Woodbury County Treasurer",
+          "url": "https://www.woodburycountyiowa.gov/treasurer/",
+          "line": "Collects property tax; its page links to paying it online.",
+          "q": "Where do I pay property tax in Woodbury County?",
+          "a": "The Woodbury County Treasurer collects property tax. Its page links to paying it online. Homes in Sioux City are assessed by the Sioux City Assessor, and the rest of the county by the County Assessor."
+        }
+      ]
+    },
     "27123": {
       "read": "2026-11-23",
       "property_search_office": "Ramsey County Property Tax, Records & Election Services, property lookup",
@@ -308,6 +422,70 @@
           "line": "Its property lookup shows a parcel's values and tax, and pays the tax.",
           "q": "Where do I pay property tax in Ramsey County?",
           "a": "Ramsey County's Property Tax, Records & Election Services: its property lookup finds a parcel and pays its property tax."
+        }
+      ]
+    },
+    "27139": {
+      "read": "2026-11-23",
+      "property_search_office": "Scott County Property & Taxation Services, Search for Property Information",
+      "property_search_url": "https://www.scottcountymn.gov/385/Search-for-Property-Information",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Scott County Land Records",
+          "url": "https://www.scottcountymn.gov/302/Land-Records",
+          "line": "Records and keeps the documents of real estate transactions in the county, deeds and mortgages most of all; its documents can be searched online.",
+          "q": "Where are deeds recorded in Scott County?",
+          "a": "Scott County Land Records records and keeps the documents of real estate transactions in the county, deeds and mortgages most of all. Its page searches documents, plats and liens online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Scott County Property & Taxation Services, Pay Property Tax",
+          "url": "https://www.scottcountymn.gov/383/Pay-Property-Tax",
+          "line": "Property tax deadlines, the ways to pay, and payment online.",
+          "q": "Where do I pay property tax in Scott County?",
+          "a": "Scott County Property & Taxation Services collects property tax. Its Pay Property Tax page gives the deadlines and the ways to pay, and takes payments online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Watch Alert",
+          "office": "Scott County Land Records",
+          "url": "https://www.scottcountymn.gov/302/Land-Records",
+          "line": "Notifies a property owner when a document with their name on it is recorded in the Recorder's Office."
+        }
+      ]
+    },
+    "37031": {
+      "read": "2026-11-23",
+      "property_search_office": "Carteret County Tax Administration, online tax records",
+      "property_search_url": "https://carteretcountytax.com/taxes",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Carteret County Register of Deeds",
+          "url": "https://www.carteretcountync.gov/162/Register-of-Deeds",
+          "line": "Legal custodian of the county's land records: records, indexes and images them for the public to view and copy.",
+          "q": "Where are deeds recorded in Carteret County?",
+          "a": "The Carteret County Register of Deeds is the legal custodian of the county's land records. It records, indexes and images them into permanent records that the public can view and copy."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Carteret County Tax Administration",
+          "url": "https://www.carteretcountync.gov/154/Tax-Office",
+          "line": "Appraises, assesses, bills and collects property tax; its page links to paying a tax bill online.",
+          "q": "Where do I pay property tax in Carteret County?",
+          "a": "Carteret County Tax Administration appraises, assesses, bills and collects taxes on property in the county. Its page links to paying a tax bill online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording Notification Service",
+          "office": "Carteret County Register of Deeds",
+          "url": "https://www.carteretcountync.gov/1135/Recording-Notification-Service",
+          "line": "The Register of Deeds' email alert when a document is recorded under a name a subscriber monitors."
         }
       ]
     },
@@ -376,6 +554,63 @@
         }
       ]
     },
+    "37109": {
+      "read": "2026-11-23",
+      "property_search_office": "Lincoln County Tax Department, GIS tax parcel viewer",
+      "property_search_url": "https://arcgisserver.lincolncountync.gov/taxparcelviewer/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Lincoln County Register of Deeds",
+          "url": "https://lincolnrod.com/",
+          "line": "Custodian of the county's real estate documents: deeds, deeds of trust, plats and maps; its records can be searched online.",
+          "q": "Where are deeds recorded in Lincoln County?",
+          "a": "The Lincoln County Register of Deeds is the custodian of the county's real estate documents and records its deeds, deeds of trust, plats and maps. Its records can be searched online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Lincoln County Tax Department",
+          "url": "https://www.lincolncountync.gov/73/Tax-Department",
+          "line": "Lists and appraises all property for taxation and collects the tax; taxes can be paid online.",
+          "q": "Where do I pay property tax in Lincoln County?",
+          "a": "The Lincoln County Tax Department lists and appraises property for taxation and collects property tax. The county's online payments page pays taxes online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Fraud Detection Notification Service",
+          "office": "Lincoln County Register of Deeds",
+          "url": "https://fraudalertme.com/lincolnncnw/frauddetection.asp",
+          "line": "Emails a subscriber when a document recorded with the Register of Deeds matches a name they monitor; a vendor runs it for the office."
+        }
+      ]
+    },
+    "37163": {
+      "read": "2026-11-23",
+      "property_search_office": "Sampson County Tax Department, Property Assessment Website",
+      "property_search_url": "https://www.sampsoncountync.gov/My-Property/GIS-Maps-Property-Records/Property-Tax-Assessment-Records",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Sampson County Register of Deeds, remote access site",
+          "url": "https://www.sampsoncountync.gov/My-Property/GIS-Maps-Property-Records/Register-of-Deeds-Remote-Access-Site",
+          "line": "The Register of Deeds' online search of its land records, opened after acknowledging its disclaimer.",
+          "q": "Where are deeds recorded in Sampson County?",
+          "a": "The Sampson County Register of Deeds records the county's land records. Its remote access site searches them online after a person acknowledges its disclaimer."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Sampson County Tax Administration",
+          "url": "https://www.sampsoncountync.gov/Government/Departments-A-Z/Tax-Administration",
+          "line": "Administers property taxation and collects the tax; its page links to paying taxes online and to the property record search.",
+          "q": "Where do I pay property tax in Sampson County?",
+          "a": "Sampson County Tax Administration administers property taxation and collects property tax. Its page links to paying taxes online and to the property record search."
+        }
+      ]
+    },
     "39041": {
       "read": "2026-11-23",
       "property_search_office": "Delaware County Auditor, GIS Property Search",
@@ -405,6 +640,70 @@
           "office": "Delaware County Recorder",
           "url": "https://recorder.co.delaware.oh.us/resources/property-fraud/",
           "line": "Emails a subscriber when a document bearing their registered name is recorded after they sign up; a vendor runs it for the Recorder."
+        }
+      ]
+    },
+    "39045": {
+      "read": "2026-11-23",
+      "property_search_office": "Fairfield County Auditor, Real Estate & GIS Search",
+      "property_search_url": "https://auditorrealestate.fairfieldcountyohio.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Fairfield County Recorder",
+          "url": "https://www.co.fairfield.oh.us/Recorder/",
+          "line": "Deed records from 1800 on; documents from 1980 on can be searched online.",
+          "q": "Where are deeds recorded in Fairfield County?",
+          "a": "The Fairfield County Recorder keeps the county's land records, with deed records from 1800. Its online document search holds recorded documents from 1980 on."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Fairfield County Treasurer",
+          "url": "https://www.co.fairfield.oh.us/TREASURER/",
+          "line": "Collects real estate tax in two halves a year; its page links to paying online and to a property tax search.",
+          "q": "Where do I pay property tax in Fairfield County?",
+          "a": "The Fairfield County Treasurer collects real estate tax, due in two halves a year. Its page links to paying online, to a property tax search and to a monthly prepayment plan."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Fairfield County Recorder",
+          "url": "https://www.co.fairfield.oh.us/Recorder/",
+          "line": "The Recorder's alert service, run by its records vendor; the office charges no fee for it."
+        }
+      ]
+    },
+    "39057": {
+      "read": "2026-11-23",
+      "property_search_office": "Greene County Auditor, Property Search",
+      "property_search_url": "https://auditor.greenecountyohio.gov/Search/Name",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Greene County Recorder",
+          "url": "https://www.greenecountyohio.gov/473/Recorder",
+          "line": "Records the county's real estate documents; its document search is online.",
+          "q": "Where are deeds recorded in Greene County?",
+          "a": "The Greene County Recorder records the county's deeds and other real estate documents. Its document search is online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Greene County Treasurer",
+          "url": "https://www.greenecountyohio.gov/505/Treasurer",
+          "line": "Real estate tax bills can be viewed, printed and paid online; paying online carries a convenience fee.",
+          "q": "Where do I pay property tax in Greene County?",
+          "a": "The Greene County Treasurer collects real estate tax. Its page explains viewing, printing and paying a tax bill online; paying online carries a convenience fee."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert",
+          "office": "Greene County Recorder",
+          "url": "https://www.greenecountyohio.gov/1560/Property-Fraud-Alert-Notification",
+          "line": "Emails a subscriber any time their name is used in a real property filing in the county; the office charges no fee for it."
         }
       ]
     },
@@ -633,6 +932,31 @@
       "property_search_office": "Harris Central Appraisal District, Property Search",
       "property_search_url": "https://search.hcad.org/"
     },
+    "48251": {
+      "read": "2026-11-23",
+      "property_search_office": "Central Appraisal District of Johnson County, Property Search",
+      "property_search_url": "https://johnsoncad.com/property-search/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Johnson County Clerk, Real Property Records",
+          "url": "https://www.johnsoncountytx.org/government/county-clerk/land-records-vitals/real-property",
+          "line": "Records deeds, liens, releases and plats at its Cleburne office, in person, by mail or electronically.",
+          "q": "Where are deeds recorded in Johnson County?",
+          "a": "The Johnson County Clerk records deeds, liens, releases and plats among the county's Official Public Records, at its office in the Historic Courthouse in Cleburne. Documents can be recorded in person, by mail or electronically."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Johnson County Tax Office",
+          "url": "https://johnsoncounty.propertytaxpayments.net/",
+          "line": "Searches and takes payment of property tax bills online.",
+          "q": "Where do I pay property tax in Johnson County?",
+          "a": "The Johnson County Tax Office collects property tax. Its site searches a property's tax bill and takes payment online."
+        }
+      ]
+    },
     "51041": {
       "read": "2026-11-23",
       "property_search_office": "Chesterfield County Real Estate Assessor, Real Estate Assessment Data",
@@ -680,6 +1004,38 @@
           "line": "Real estate tax bills can be viewed and paid online; paying online carries a service fee.",
           "q": "Where do I pay property tax in Henrico County?",
           "a": "Henrico County's Department of Finance bills real estate tax. Its online tax bills page shows a bill and takes payment, with a service fee for paying online."
+        }
+      ]
+    },
+    "51161": {
+      "read": "2026-11-23",
+      "property_search_office": "Roanoke County Real Estate Valuation, WebPro Real Estate Data",
+      "property_search_url": "https://www.roanokecountyva.gov/1100/Real-Estate-Data",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Roanoke County Circuit Court Clerk, Land Records",
+          "url": "https://www.roanokecountyva.gov/425/Real-Estate-Records",
+          "line": "Records deeds, deeds of trust, plats and easements; its indexes can be searched through the state courts' secure remote access.",
+          "q": "Where are deeds recorded in Roanoke County?",
+          "a": "The Roanoke County Circuit Court Clerk's Office records deeds, deeds of trust, plats, easements and other land records. Its indexes can be searched online through the Supreme Court of Virginia's secure remote access system."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Roanoke County Treasurer",
+          "url": "https://www.roanokecountyva.gov/92/Treasurers-Office",
+          "line": "Bills and collects real estate tax; bills can be viewed and paid online.",
+          "q": "Where do I pay property tax in Roanoke County?",
+          "a": "The Roanoke County Treasurer bills and collects real estate tax. Its pages show tax dates and bills, and take payments online."
+        },
+        {
+          "id": "recording_alert",
+          "title": "VADeed Alert",
+          "office": "Roanoke County Circuit Court Clerk",
+          "url": "https://www.roanokecountyva.gov/3173/VADeed-Alert",
+          "line": "Emails a subscriber whenever a document matching their name, business name or parcel number is recorded; the office charges no fee for it."
         }
       ]
     },
