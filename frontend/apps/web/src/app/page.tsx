@@ -18,6 +18,7 @@ import { IBM_Plex_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { IOS_APP_STORE_APP_ID } from '@pantopus/utils';
 import { PantopusMark } from '@/components/brand/PantopusMark';
+import { jsonLd, siteLd } from '@/lib/site/jsonLd';
 import HomeStage from './_components/HomeStage';
 import HomeHero from './_components/HomeHero';
 import LevelOne, { Dive } from './_components/HomeLevelOne';
@@ -54,16 +55,18 @@ const serif = localFont({
 // differently and the hero moved when the font landed. A Courier New face with Plex Mono's advance stands in.
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--home-mono', display: 'swap', adjustFontFallback: false });
 
-const TITLE = 'Pantopus · Real life, connected';
+// The words people type first; "Real life, connected" stays the first line of the description and on the page.
+const TITLE = 'Pantopus: the social network that starts at a real home';
 const SHARE_TITLE = 'Real people. Real places. Right now.';
 const DESCRIPTION =
-  'Pantopus is one app for the place where your life actually happens. Every account starts at a real home, so the people, the mail and the news around you are real.';
+  "Real life, connected. A social network that starts at a real home: free property records for any U.S. address, your household's day, mail, plans and stories.";
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://pantopus.com'),
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: '/' },
+  robots: { index: true, follow: true },
   openGraph: {
     type: 'website',
     url: '/',
@@ -94,6 +97,7 @@ export default function HomePage() {
   return (
     <div className={`${styles.page} ${serif.variable} ${mono.variable}`}>
       <IconSprite />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(siteLd(DESCRIPTION)) }} />
       <HomeStage />
 
       <nav className={styles.nav} data-nav="" aria-label="Main">

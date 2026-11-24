@@ -1,14 +1,15 @@
 'use strict';
 // Adams County, Colorado: the county's open data under Creative Commons Attribution 4.0, so the county is credited. Four tables
 // joined on the parcel identification number; owner, grantor and grantee columns are never asked for. Actual value is Colorado's
-// market value on its reappraisal date.
+// market value on its reappraisal date. Its sales, with their reception numbers, are each home's recorded history.
 
 const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit, streetParts, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const FIPS = '08001';
@@ -117,9 +118,26 @@ async function* build({ work }) {
   const values = new Map();
   for await (const row of cached(path.join(dir, 'values.jsonl.gz'), () => layerRows(VALUES, VALUE_COLUMNS))) values.set(row.PIN, row);
   const sales = new Map();
+  // Every sale line, for recorded history (facts.js): the county publishes no names for its deed codes (deedtype; its Assessor
+  // Data Descriptions say only "The type of deed"), so only sales show, each with its reception number; a line that isn't a
+  // sale has no word for what it is and is left out.
+  const saleLines = new Map();
+  let first = null;
+  let notSale = 0;
   for await (const row of cached(path.join(dir, 'sales.jsonl.gz'), () => layerRows(SALES, SALE_COLUMNS))) {
+    const date = isoDate(row.saledt);
+    if (date && (!first || date < first)) first = date;
     // A quit claim moves no home at a price.
-    if (!isHomeSale(positive(row.salep)) || String(row.deedtype ?? '').trim() === 'QC') continue;
+    if (!isHomeSale(positive(row.salep)) || String(row.deedtype ?? '').trim() === 'QC') {
+      // Not this home's sale by the connector's rule (a token price, a quit claim): it has no word for what it is, so it is left out.
+      if (date) notSale += 1;
+      continue;
+    }
+    const line = historyLine({ date, sale: true, price: positive(row.salep), document: word(row.recptno) });
+    if (line) {
+      if (!saleLines.has(row.pin)) saleLines.set(row.pin, []);
+      saleLines.get(row.pin).push(line);
+    }
     const was = sales.get(row.pin);
     if (!was || Number(row.saledt) > Number(was.saledt)) sales.set(row.pin, row);
   }
@@ -131,10 +149,14 @@ async function* build({ work }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = recordedHistory(saleLines.get(row.PIN) || [], { since: (first || '').slice(0, 4) });
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
   log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number; ${buildings.size} buildings, ${values.size} values, ${sales.size} sales`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} parcels since ${(first || '').slice(0, 4)}; lines that aren't a sale, left out: ${notSale}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'CO', name: COUNTY, publisher: 'Adams County', dataset: 'parcels and property tables, open data (CC BY 4.0)', method: 'county', source: 'co-adams', as_of: asOf, stale_after_days: 60, records,

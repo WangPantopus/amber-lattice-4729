@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,8 @@ import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.ballot.BallotGovernmentsSheet
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
 import app.pantopus.android.ui.screens.ballot.BallotSeasonBlock
+import app.pantopus.android.ui.screens.homes.record.HomeRecordEntry
+import app.pantopus.android.ui.screens.homes.record.HomeRecordOverLookup
 import app.pantopus.android.ui.screens.place.PlaceDetailGroup
 import app.pantopus.android.ui.screens.place.PlaceRootBar
 import app.pantopus.android.ui.screens.place.PlaceSectionView
@@ -93,6 +96,8 @@ fun PlaceLaunchScreen(
     viewModel: PlaceLaunchViewModel = hiltViewModel(),
     onSavePreview: (() -> Unit)? = null,
     embedded: PlaceLaunchEmbedding? = null,
+    /** Signed in: Add Home at an address, for the home record's "Verify you own this home". Signed out it's sign-up. */
+    onSetUpHome: ((String) -> Unit)? = null,
 ) {
     val step by viewModel.step.collectAsStateWithLifecycle()
     val retrying by viewModel.loadingPreview.collectAsStateWithLifecycle()
@@ -124,22 +129,27 @@ fun PlaceLaunchScreen(
             LaunchStep.Hero -> Hero(viewModel, onSignIn, browse, signedInEntry = onSavePreview != null, embedded = embedded)
             is LaunchStep.Preview ->
                 Box(modifier = Modifier.statusBarsPaddingIf(embedded == null)) {
-                    PreviewBody(
-                        current.preview,
-                        {
-                            // Embedded, Cancel returns to the address field (there is nothing under it).
-                            if (embedded != null) {
-                                viewModel.backToHero()
-                            } else if (onSavePreview != null || viewModel.prepareForAuth()) {
-                                onSignIn()
-                            }
-                        },
-                        continuePreview,
-                        onBack = viewModel::backToHero,
-                        onRetry = viewModel::retryPreview,
-                        retrying = retrying,
-                        signedInEntry = onSavePreview != null,
-                    )
+                    // Signed out, the record's "Sign in" keeps the address as the lookup's own Sign in does.
+                    val signIn = { if (viewModel.prepareForAuth()) onSignIn() }
+                    WithHomeRecord(current.address, HomeRecordLinks(onSetUpHome, continuePreview, signIn)) { openRecord ->
+                        PreviewBody(
+                            current.preview,
+                            {
+                                // Embedded, Cancel returns to the address field (there is nothing under it).
+                                if (embedded != null) {
+                                    viewModel.backToHero()
+                                } else if (onSavePreview != null || viewModel.prepareForAuth()) {
+                                    onSignIn()
+                                }
+                            },
+                            continuePreview,
+                            onBack = viewModel::backToHero,
+                            onRetry = viewModel::retryPreview,
+                            retrying = retrying,
+                            signedInEntry = onSavePreview != null,
+                            onOpenRecord = openRecord,
+                        )
+                    }
                 }
             is LaunchStep.Region ->
                 Box(modifier = Modifier.statusBarsPaddingIf(embedded == null)) {
@@ -154,6 +164,47 @@ fun PlaceLaunchScreen(
                 }
         }
     }
+}
+
+/**
+ * Where the record's app links go from a lookup, which has no Home yet. [onSetUpHome] is Add Home at an address (signed
+ * in only); [continuePreview] is the lookup's own Continue: sign-up that keeps the address when signed out, saving the
+ * address when signed in; [signIn] is the lookup's own Sign in.
+ */
+private class HomeRecordLinks(
+    val onSetUpHome: ((String) -> Unit)?,
+    val continuePreview: () -> Unit,
+    val signIn: () -> Unit,
+)
+
+/**
+ * The lookup result, or the home record page over it once "See this home's full record" is tapped (Back closes it).
+ * The record's id-less claim and verify links add this address (signed in) or take the lookup's sign-up (signed out);
+ * a buyer's "Save this home" saves it as the lookup's Continue does.
+ */
+@Composable
+private fun WithHomeRecord(
+    address: String,
+    links: HomeRecordLinks,
+    result: @Composable (openRecord: () -> Unit) -> Unit,
+) {
+    var recordOpen by rememberSaveable(address) { mutableStateOf(false) }
+    if (!recordOpen) {
+        result { recordOpen = true }
+        return
+    }
+    HomeRecordOverLookup(
+        address = address,
+        onClose = { recordOpen = false },
+        onAppLink = { path ->
+            when (path.removePrefix("/app").substringBefore('?')) {
+                "/homes/claim-owner", "/homes/verify-address" -> links.onSetUpHome?.invoke(address) ?: links.continuePreview()
+                "/auth/sign-up", "/saved-places/add" -> links.continuePreview()
+                "/auth/sign-in" -> links.signIn()
+                else -> app.pantopus.android.core.routing.DeepLinkRouter.handle(path)
+            }
+        },
+    )
 }
 
 /** The signed-out screens pad the status bar themselves; embedded in the signed-in tabs, the tabs' Scaffold does it. */
@@ -458,7 +509,7 @@ private fun AddressField(
 }
 
 @Composable
-@Suppress("LongMethod")
+@Suppress("LongMethod", "LongParameterList")
 private fun PreviewBody(
     preview: PlacePreview,
     onSignIn: () -> Unit,
@@ -467,6 +518,7 @@ private fun PreviewBody(
     onRetry: () -> Unit,
     retrying: Boolean,
     signedInEntry: Boolean,
+    onOpenRecord: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -529,6 +581,13 @@ private fun PreviewBody(
                         color = PantopusColors.appText,
                     )
                 }
+                HomeRecordEntry(
+                    title = "See this home’s full record",
+                    line = "A few facts now. The rest is free for its owner.",
+                    onClick = onOpenRecord,
+                    testTag = "place.preview.record",
+                    modifier = Modifier.padding(top = 10.dp),
+                )
                 PlacePreviewFindings(preview, onFollowUp = onCreateAccount, onRetry = onRetry, retrying = retrying)
                 preview.locked?.takeIf { it.isNotEmpty() }?.let { locked ->
                     PlaceGroupLabel(text = "More with a free account", modifier = Modifier.padding(top = 18.dp))

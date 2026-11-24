@@ -432,6 +432,8 @@ public struct MailTaskView: View {
                 .padding(.vertical, Spacing.s2)
                 .background(Theme.Color.appText.opacity(0.9))
                 .clipShape(Capsule())
+                // Dark under white words in dark mode too (appText is near white there).
+                .environment(\.colorScheme, .light)
                 .padding(.bottom, 120)
                 .transition(.opacity)
                 .task {

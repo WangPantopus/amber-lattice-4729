@@ -30,6 +30,28 @@ function aroundYouEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md): GET /api/profile-page/*
+// composes a person's page for each viewer, the person chooses what their link shows, and the old profile reads follow
+// those choices for signed-out callers (rule 4.7). PROFILE_SOURCES is '1' (on) or '0' (off); unset, it is on for
+// hosted staging and off everywhere else. Off, every profile read is exactly as before.
+function profileSourcesEnabled(env = process.env) {
+  const value = String(env.PROFILE_SOURCES || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
+// Links for one purpose (founder approval 2026-11-23, SPEC item 9.1), the first feature with its own switch beneath
+// PROFILE_SOURCES (rule 4.12). PROFILE_LINKS is '1' (on) or '0' (off); unset, it is on for hosted staging and off
+// everywhere else. It needs PROFILE_SOURCES on too.
+function profileLinksEnabled(env = process.env) {
+  if (!profileSourcesEnabled(env)) return false;
+  const value = String(env.PROFILE_LINKS || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
 // account. The apps show nothing unless the profile's `guidance.enabled` is true (routes/users.js). GUIDANCE_CARDS is
 // '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else.
@@ -251,6 +273,8 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 
 module.exports = {
   aroundYouEnabled,
+  profileSourcesEnabled,
+  profileLinksEnabled,
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,

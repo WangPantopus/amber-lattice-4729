@@ -13,6 +13,7 @@ import { PublicCardsPage, PublicCardsTrouble, PublicShelvesPage } from '@/compon
 import CardsGoal from '@/components/mailbox/cards/CardsGoal';
 import { cardsStoreLink, fetchCardJourneyGoal, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
+import { cardListLd, cardsInPageOrder, cardsJsonLd } from './_lib/structuredData';
 
 // Rendered on every request. A build or a first visit that met the server with
 // cards off (or down) would otherwise be saved as a fixed "not found" page, and
@@ -44,13 +45,33 @@ export default async function AllCardsPage({ searchParams }: { searchParams: Pro
   // The shared goal (travelling card Part 8): only while the travelling card is on (404 otherwise), the server answers,
   // and at least one card is travelling (an empty map and "0 of 50 states" say nothing on the day it's switched on).
   const goalShown = goal.data && goal.data.travelling > 0 ? <CardsGoal goal={goal.data} /> : null;
+  const shelves = publicShelvesOn(data);
+  // For search engines, every card the page shows, in its order (data only; nothing drawn).
+  const list = (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: cardsJsonLd(cardListLd({ name: TITLE, path: '/cards', designs: cardsInPageOrder(data.designs, data.collections ?? [], shelves) })),
+      }}
+    />
+  );
   // The shelves (server key card_shelves, card shelves SPEC Part D); without them, today's page.
-  if (publicShelvesOn(data)) {
-    return <PublicShelvesPage designs={data.designs} collections={data.collections ?? []} opening={data.opening ?? null} inviteCode={inviteCode} store={store}
-      freeCards={data.free_cards ?? null} goal={goalShown} />;
+  if (shelves) {
+    return (
+      <>
+        <PublicShelvesPage designs={data.designs} collections={data.collections ?? []} opening={data.opening ?? null} inviteCode={inviteCode} store={store}
+          freeCards={data.free_cards ?? null} goal={goalShown} />
+        {list}
+      </>
+    );
   }
-  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null}
-    goal={goalShown} />;
+  return (
+    <>
+      <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null}
+        goal={goalShown} />
+      {list}
+    </>
+  );
 }
 
 /**

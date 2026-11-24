@@ -1,15 +1,43 @@
 import Link from 'next/link';
 import { PantopusMark } from '@/components/brand/PantopusMark';
+import { GUIDE_PAGES } from '@/lib/site/guidePages';
+import { PILLAR_PAGES } from '@/lib/site/pillarPages';
+import type { SitePage } from '@/lib/site/sitePage';
 import styles from './home.module.css';
 
-// Only pages that are live: nothing here links into a switched-off feature.
-const COLUMNS = [
+type FooterColumn = { head: string; links: { href: string; label: string }[] };
+
+// One column per group, in the order the pages are listed; pages without a group sit under `head`.
+function columnsFrom(pages: SitePage[], head: string): FooterColumn[] {
+  const columns: FooterColumn[] = [];
+  for (const page of pages) {
+    const name = page.group || head;
+    let column = columns.find((c) => c.head === name);
+    if (!column) {
+      column = { head: name, links: [] };
+      columns.push(column);
+    }
+    column.links.push({ href: page.path, label: page.label });
+  }
+  return columns;
+}
+
+// Only pages that are live: nothing here links into a switched-off feature. Other public pages draw this footer too,
+// so the homepage's sections are linked as /#<section>: it scrolls on the homepage and opens it elsewhere.
+// The pillar and guide pages come from their lists in src/lib/site, so a page added there is linked here and listed
+// in the sitemap at once.
+const COLUMNS: FooterColumn[] = [
+  ...columnsFrom(PILLAR_PAGES, 'Pantopus'),
+  ...columnsFrom(GUIDE_PAGES, 'Guides'),
   {
     head: 'Explore',
     links: [
       { href: '/start', label: 'See your place' },
-      { href: '#how-it-works', label: 'How it works' },
-      { href: '#plans', label: 'Plans' },
+      { href: '/property-records', label: 'Property records' },
+      { href: '/tax-check', label: 'Property tax check' },
+      { href: '/#how-it-works', label: 'How it works' },
+      // The homepage's Plans section, until Plans has its own page in the Pantopus column.
+      ...(PILLAR_PAGES.some((page) => page.path === '/plans') ? [] : [{ href: '/#plans', label: 'Plans' }]),
       { href: '/login', label: 'Sign in' },
     ],
   },
@@ -36,10 +64,10 @@ export default function HomeFooter() {
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
         <div className={styles.footerBrand}>
-          <a className={styles.brand} href="#top">
+          <Link className={styles.brand} href="/#top">
             <PantopusMark size={22} variant="reverse" />
             Pantopus
-          </a>
+          </Link>
           <span>Real life, connected.</span>
           <span>© 2026 Pantopus, Inc.</span>
         </div>
@@ -47,13 +75,9 @@ export default function HomeFooter() {
           {COLUMNS.map((col) => (
             <div key={col.head} className={styles.footerCol}>
               <span className={styles.footerHead}>{col.head}</span>
-              {col.links.map((l) =>
-                l.href.startsWith('#') ? (
-                  <a key={l.href} href={l.href}>{l.label}</a>
-                ) : (
-                  <Link key={l.href} href={l.href}>{l.label}</Link>
-                ),
-              )}
+              {col.links.map((l) => (
+                <Link key={l.href} href={l.href}>{l.label}</Link>
+              ))}
             </div>
           ))}
         </nav>

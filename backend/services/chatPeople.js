@@ -178,6 +178,8 @@ function listedPerson(user, { people, areas }) {
 }
 
 module.exports = {
+  // The naming rule on rows already read (services/profilePage reads them in one database call).
+  chatPeopleFrom,
   loadChatPeople,
   loadChatPeopleAndNames,
   chatPersonRow,

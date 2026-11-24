@@ -62,6 +62,7 @@ import app.pantopus.android.data.api.services.HomeOwnershipSecurityApi
 import app.pantopus.android.data.api.services.HomePetsApi
 import app.pantopus.android.data.api.services.HomePrivacyApi
 import app.pantopus.android.data.api.services.HomePrivateEvidenceApi
+import app.pantopus.android.data.api.services.HomeRecordApi
 import app.pantopus.android.data.api.services.HomeSettingsApi
 import app.pantopus.android.data.api.services.HomeTaskMediaApi
 import app.pantopus.android.data.api.services.HomeTasksApi
@@ -640,6 +641,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun providePlaceApi(retrofit: Retrofit): PlaceApi = retrofit.create(PlaceApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideHomeRecordApi(retrofit: Retrofit): HomeRecordApi = retrofit.create(HomeRecordApi::class.java)
 
     @Provides
     @Singleton

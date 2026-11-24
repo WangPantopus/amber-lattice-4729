@@ -48,7 +48,8 @@ async function rpc(name, args) {
 async function balance(user) {
   return rpc("mail_stamp_balance", { p_user: user });
 }
-// The latest stamp moves for the Stamps wallet, newest first: the free three, books, cards sent, stamps returned,
+// The latest stamp moves for the Stamps wallet, newest first: the free seven (one welcome row, or for an account made
+// before November 24 its first three and then four more, both kind "welcome"), books, cards sent, stamps returned,
 // refunded books and a free one for someone who joined (rewardJoin, kind "join"). Only kinds and counts; who a card went to stays in Sent.
 async function history(user, limit = 30) {
   const { data, error } = await db
@@ -79,9 +80,9 @@ async function usedTotal(user) {
   const [sent, returned] = await Promise.all([count("send"), count("return")]);
   return Math.max(0, sent - returned);
 }
-// The free stamps every account starts with (the database's welcome row, mail_stamp_balance). The public card pages
-// say so (GET /api/mailbox/cards/designs).
-const FREE_CARDS = 3;
+// The free stamps every account starts with (the database's welcome rows, mail_stamp_balance): seven since November 24,
+// 2026. The public card pages say so (GET /api/mailbox/cards/designs).
+const FREE_CARDS = 7;
 // A free stamp for the sender whose card brought someone in: the person it went to (by email or by link) made their
 // account after it was sealed, and now has the card. One for each new person, ever (the ledger's unique event key),
 // in the free bucket, while cards can still be sent. Every card costs its sender a stamp, so this gives back at most

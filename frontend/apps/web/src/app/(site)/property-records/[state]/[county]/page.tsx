@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Breadcrumb, SiteFooter, SiteNav, linkClass } from '../../_components/Chrome';
 import CountyLookup from '../../_components/CountyLookup';
-import { Holds, Homes, Land, Owning, Section } from '../../_components/CountyParts';
-import { SITE_URL, countyPage, countyPath, jsonLd, statePath, type GuideCountyPage } from '../../_lib/guide';
+import { Holds, Homes, Land, OfficeRows, Owning, Questions, Section, faqLd } from '../../_components/CountyParts';
+import { SITE_URL, cityPath, countyPage, countyPath, jsonLd, statePath, type GuideCountyPage } from '../../_lib/guide';
 
 export const revalidate = 86400;
 export const dynamicParams = true;
@@ -24,12 +24,17 @@ export function generateStaticParams() {
 
 type Params = { params: Promise<{ state: string; county: string }> };
 
+// Where the county and the state are one place (the District of Columbia), its name is said once.
+const oneplace = (page: GuideCountyPage) => page.county.name === page.state.name;
+
 function words(page: GuideCountyPage) {
   const { county, state } = page;
-  const title = `${county.name}, ${state.abbr} property records`;
+  const title = oneplace(page) ? `${county.name} property records` : `${county.name}, ${state.abbr} property records`;
   const description = page.town_records
     ? `Where the towns of ${county.in_name}, ${state.name}, keep their property records, and what public records say about homes there, with every source named.`
-    : `${county.name}, ${state.name}: the ${state.unit}'s own property offices and what public records say about homes there, with every source named.`;
+    : oneplace(page)
+      ? `${county.name}: its own property offices and what public records say about homes there, with every source named.`
+      : `${county.name}, ${state.name}: the ${state.unit}'s own property offices and what public records say about homes there, with every source named.`;
   return { title, description };
 }
 
@@ -60,21 +65,7 @@ function Offices({ page }: { page: GuideCountyPage }) {
           In {page.state.name}, each city and town keeps its own property records.
         </p>
       ) : null}
-      {rows.length ? (
-        <ul className="mt-2 divide-y divide-app-border-subtle rounded-2xl border border-app-border-subtle bg-app-surface">
-          {rows.map((row) => (
-            <li key={`${row.id}:${row.url}`} className="px-4 py-3.5">
-              <p className="font-semibold text-app-text dark:text-white">{row.title}</p>
-              {row.office ? <p className="text-sm text-app-text-secondary dark:text-app-text-muted">{row.office}</p> : null}
-              {row.line ? <p className="mt-1 text-sm text-app-text-secondary dark:text-app-text-muted">{row.line}</p> : null}
-              <a href={row.url} target="_blank" rel="noopener noreferrer nofollow" className={`mt-1 inline-block text-sm font-medium ${linkClass}`}>
-                {row.host || 'Open the office’s page'}
-              </a>
-              {row.from ? <p className="mt-1 text-xs text-app-text-muted">{row.from}</p> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <OfficeRows rows={rows} />
       {towns.length ? (
         <>
           <h3 className="mt-5 font-semibold text-app-text dark:text-white">Each town&apos;s property cards</h3>
@@ -92,31 +83,23 @@ function Offices({ page }: { page: GuideCountyPage }) {
   );
 }
 
-function hostOf(url: string): string | null {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return null;
-  }
-}
-
-function Questions({ page }: { page: GuideCountyPage }) {
-  if (!page.questions.length) return null;
+/** The county's cities that have a page of their own: their permit and zoning offices. */
+function Cities({ page }: { page: GuideCountyPage }) {
+  if (!page.cities?.length) return null;
   return (
-    <Section id="questions" title="Questions people ask">
-      <div className="divide-y divide-app-border-subtle rounded-2xl border border-app-border-subtle bg-app-surface">
-        {page.questions.map((item) => (
-          <div key={item.id} className="px-4 py-3.5">
-            <h3 className="font-semibold text-app-text dark:text-white">{item.q}</h3>
-            <p className="mt-1 text-app-text-secondary dark:text-app-text-muted leading-relaxed">{item.a}</p>
-            {item.url ? (
-              <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className={`mt-1 inline-block text-sm ${linkClass}`}>
-                {hostOf(item.url) ?? 'Open the office’s page'}
-              </a>
-            ) : null}
-          </div>
+    <Section id="cities" title={`Cities in ${page.county.in_name}`}>
+      <p className="text-app-text-secondary dark:text-app-text-muted leading-relaxed">
+        Building permits and zoning are a city&apos;s own. These cities&apos; offices were read on their own sites.
+      </p>
+      <ul className="mt-3 flex flex-wrap gap-2">
+        {page.cities.map((city) => (
+          <li key={city.slug}>
+            <Link href={cityPath(page.state.slug, page.county.slug, city.slug)} className="inline-flex rounded-full border border-app-border-subtle px-3 py-1.5 text-sm font-medium text-app-text dark:text-white hover:border-primary-300">
+              {city.name}
+            </Link>
+          </li>
         ))}
-      </div>
+      </ul>
     </Section>
   );
 }
@@ -142,18 +125,6 @@ function NextTo({ page }: { page: GuideCountyPage }) {
   );
 }
 
-function faqLd(page: GuideCountyPage) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: page.questions.map((item) => ({
-      '@type': 'Question',
-      name: item.q,
-      acceptedAnswer: { '@type': 'Answer', text: item.a },
-    })),
-  };
-}
-
 export default async function CountyPage({ params }: Params) {
   const { state, county } = await params;
   const page = await countyPage(state, county);
@@ -176,7 +147,7 @@ export default async function CountyPage({ params }: Params) {
         <p className="mt-3 text-base sm:text-lg text-app-text-secondary dark:text-app-text-muted leading-relaxed">
           {page.town_records
             ? `Where the towns of ${page.county.in_name}, ${page.state.name}, keep their property records, and what public records say about homes there.`
-            : `${page.county.name}'s own offices, and what public records say about homes in ${page.county.in_name}, ${page.state.name}.`}
+            : `${page.county.name}'s own offices, and what public records say about homes in ${oneplace(page) ? page.county.in_name : `${page.county.in_name}, ${page.state.name}`}.`}
         </p>
         <CountyLookup fips={page.county.fips} inName={page.county.in_name} />
         <Offices page={page} />
@@ -184,10 +155,11 @@ export default async function CountyPage({ params }: Params) {
         <Land page={page} />
         <Owning page={page} />
         <Homes page={page} />
-        <Questions page={page} />
+        <Questions questions={page.questions} />
+        <Cities page={page} />
         <NextTo page={page} />
         {page.questions.length ? (
-          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(faqLd(page)) }} />
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(faqLd(page.questions)) }} />
         ) : null}
       </main>
       <SiteFooter />

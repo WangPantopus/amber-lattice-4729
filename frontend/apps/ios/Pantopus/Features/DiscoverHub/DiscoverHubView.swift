@@ -393,7 +393,15 @@ private struct DiscoverEntityChipRow: View {
                         }
                         .padding(.horizontal, Spacing.s3)
                         .frame(height: 28)
-                        .background(active ? Theme.Color.appText : Theme.Color.appSurface)
+                        .background {
+                            // The picked filter stays dark under its white words in dark mode too (appText is near
+                            // white there).
+                            if active {
+                                Theme.Color.appText.environment(\.colorScheme, .light)
+                            } else {
+                                Theme.Color.appSurface
+                            }
+                        }
                         .overlay(Capsule().stroke(active ? .clear : Theme.Color.appBorder, lineWidth: 1))
                         .clipShape(Capsule())
                     }

@@ -1,0 +1,566 @@
+{
+  "v": 1,
+  "state": "buyer",
+  "header": {
+    "chip": {
+      "tone": "neutral",
+      "text": "Public record"
+    },
+    "title": "1 Pantopus Way",
+    "subtitle": "Camas, WA 98607 · free with your account"
+  },
+  "actions": [
+    {
+      "id": "save",
+      "label": "Save this home",
+      "url": "/saved-places/add"
+    },
+    {
+      "id": "share",
+      "label": "Share",
+      "url": "/share/home-record"
+    },
+    {
+      "id": "claim",
+      "label": "Buying this home?",
+      "url": "/homes/claim-owner"
+    }
+  ],
+  "blocks": [
+    {
+      "kind": "picture",
+      "id": "picture",
+      "above": {
+        "image_url": "fixture://y2022.jpg",
+        "outline": [
+          [
+            0.527,
+            0.441
+          ],
+          [
+            0.662,
+            0.441
+          ],
+          [
+            0.662,
+            0.656
+          ],
+          [
+            0.527,
+            0.656
+          ]
+        ],
+        "chips": [
+          {
+            "at": "bl",
+            "text": "Lot · 0.19 acres"
+          },
+          {
+            "at": "br",
+            "text": "2022"
+          }
+        ]
+      },
+      "street": null,
+      "caption": "Federal aerial survey, July 2022. Lot from Clark County's parcel map. Ten earlier years are in the owner's record."
+    },
+    {
+      "kind": "facts",
+      "id": "facts",
+      "tiles": [
+        {
+          "label": "Built",
+          "value": "1998",
+          "unit": null
+        },
+        {
+          "label": "Living area",
+          "value": "2,140",
+          "unit": "sq ft"
+        },
+        {
+          "label": "Lot",
+          "value": "0.19",
+          "unit": "acres"
+        }
+      ],
+      "line": "House · 4 bedrooms · 2.5 bathrooms · 2 stories",
+      "source": "Clark County Assessor's records · updated Nov 3, 2026"
+    },
+    {
+      "kind": "value",
+      "id": "county_value",
+      "label": "County market value, 2026",
+      "value": "$612,400",
+      "chip": {
+        "tone": "neutral",
+        "text": "$24,100 more than 2025"
+      },
+      "bars": [
+        {
+          "year": "'18",
+          "amount": 398000
+        },
+        {
+          "year": "'19",
+          "amount": 421000
+        },
+        {
+          "year": "'20",
+          "amount": 446000
+        },
+        {
+          "year": "'21",
+          "amount": 468000
+        },
+        {
+          "year": "'22",
+          "amount": 512000
+        },
+        {
+          "year": "'23",
+          "amount": 561000
+        },
+        {
+          "year": "'24",
+          "amount": 574000
+        },
+        {
+          "year": "'25",
+          "amount": 588300
+        },
+        {
+          "year": "'26",
+          "amount": 612400
+        }
+      ],
+      "source": "Clark County Assessor's records · updated Nov 3, 2026",
+      "estimate": {
+        "label": "Pantopus estimate",
+        "text": "$598,000 to $655,000",
+        "low": 0.34,
+        "high": 0.72,
+        "mark": 0.5,
+        "note": "An estimate from county values and public sales near this home. Not an appraisal."
+      }
+    },
+    {
+      "kind": "photo_years",
+      "id": "lot_years",
+      "title": "Your lot through the years",
+      "count": "11 photos",
+      "photos": [
+        {
+          "year": "2011",
+          "label": "August 2011",
+          "image_url": "fixture://y2011.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2015",
+          "label": "July 2015",
+          "image_url": "fixture://y2015.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2019",
+          "label": "August 2019",
+          "image_url": "fixture://y2019.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        },
+        {
+          "year": "2022",
+          "label": "July 2022",
+          "image_url": "fixture://y2022.jpg",
+          "outline": [
+            [
+              0.527,
+              0.441
+            ],
+            [
+              0.662,
+              0.441
+            ],
+            [
+              0.662,
+              0.656
+            ],
+            [
+              0.527,
+              0.656
+            ]
+          ]
+        }
+      ],
+      "note": "Federal aerial surveys. Seven more years are here: 2012, 2013, 2014, 2016, 2017, 2020 and 2023."
+    },
+    {
+      "kind": "timeline",
+      "id": "recorded_history",
+      "title": "Recorded history",
+      "items": [
+        {
+          "title": "Sale",
+          "right": "$489,000",
+          "strong": true,
+          "line": "Mar 12, 2021",
+          "mono": "Doc 5871234"
+        },
+        {
+          "title": "Quit claim deed",
+          "right": "No price",
+          "strong": false,
+          "line": "Aug 2, 2019",
+          "mono": "Doc 5642210"
+        },
+        {
+          "title": "Correction",
+          "right": "No price",
+          "strong": false,
+          "line": "Jan 22, 2018",
+          "mono": "Doc 5489031"
+        },
+        {
+          "title": "Sale",
+          "right": "$365,000",
+          "strong": true,
+          "line": "May 6, 2016",
+          "mono": "Doc 5301977"
+        }
+      ],
+      "note": "The county's lines for this home since 2016, when its table begins. No names are shown."
+    },
+    {
+      "kind": "rows",
+      "id": "permits",
+      "title": "Permits",
+      "lead": null,
+      "rows": [
+        {
+          "label": "Roof replacement",
+          "value": "Jun 2022",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Furnace replacement",
+          "value": "Oct 2020",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Deck",
+          "value": "Apr 2017",
+          "mono": false,
+          "chip": null
+        }
+      ],
+      "note": "From Clark County's permit records.",
+      "action": null
+    },
+    {
+      "kind": "bars",
+      "id": "systems",
+      "title": "What that says about the house",
+      "items": [
+        {
+          "title": "Roof",
+          "right": "4 years old",
+          "tone": "low",
+          "fill": 0.18,
+          "line": "From a permit record · typical life 20 to 25 years"
+        },
+        {
+          "title": "Heating",
+          "right": "6 years old",
+          "tone": "low",
+          "fill": 0.34,
+          "line": "From a permit record · typical life 15 to 20 years"
+        },
+        {
+          "title": "Water heater",
+          "right": "About 28 years old",
+          "tone": "mid",
+          "fill": 1,
+          "line": "Estimated from year built · typical life 8 to 12 years"
+        },
+        {
+          "title": "Electrical panel",
+          "right": "About 28 years old",
+          "tone": "low",
+          "fill": 0.56,
+          "line": "Estimated from year built · typical life 40 to 60 years"
+        }
+      ],
+      "note": "Service life is the typical range, not a prediction."
+    },
+    {
+      "kind": "tiles",
+      "id": "ground",
+      "title": "Ground under your home",
+      "tiles": [
+        {
+          "label": "Elevation",
+          "value": "312 ft",
+          "line": "Above sea level"
+        },
+        {
+          "label": "Slope",
+          "value": "4%",
+          "line": "Nearly level"
+        },
+        {
+          "label": "Soil drains",
+          "value": "Well",
+          "line": "Hillsboro silt loam"
+        },
+        {
+          "label": "Wear on concrete",
+          "value": "Low",
+          "line": "On steel: moderate"
+        }
+      ],
+      "rows": [
+        {
+          "label": "Behind a levee",
+          "value": "No"
+        },
+        {
+          "label": "Dams upstream",
+          "value": "2 within 10 miles"
+        }
+      ],
+      "note": "U.S. Geological Survey, USDA soil survey and U.S. Army Corps of Engineers. The soil is mapped for the area, not tested at this home."
+    },
+    {
+      "kind": "rows",
+      "id": "lot_zoning",
+      "title": "Lot and zoning",
+      "lead": null,
+      "rows": [
+        {
+          "label": "Lot size",
+          "value": "0.19 acres · 8,276 sq ft",
+          "mono": false,
+          "chip": null
+        },
+        {
+          "label": "Zoning",
+          "value": "R-7.5",
+          "mono": true,
+          "chip": null
+        }
+      ],
+      "note": null,
+      "action": {
+        "label": "Read what R-7.5 allows on Camas's page",
+        "url": "https://www.cityofcamas.us/"
+      }
+    },
+    {
+      "kind": "meters",
+      "id": "around",
+      "title": "Around this address",
+      "groups": [
+        {
+          "title": "Weather",
+          "rows": [
+            {
+              "label": "Hail",
+              "level": 2,
+              "tone": "low",
+              "word": "Low"
+            },
+            {
+              "label": "Strong wind",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            },
+            {
+              "label": "Tornado",
+              "level": 1,
+              "tone": "low",
+              "word": "Very low"
+            },
+            {
+              "label": "Winter weather",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            }
+          ]
+        },
+        {
+          "title": "Ground and fire",
+          "rows": [
+            {
+              "label": "Flood",
+              "level": 1,
+              "tone": "low",
+              "word": "Minimal · Zone X"
+            },
+            {
+              "label": "Wildfire",
+              "level": 2,
+              "tone": "low",
+              "word": "Low"
+            },
+            {
+              "label": "Earthquake",
+              "level": 4,
+              "tone": "high",
+              "word": "High"
+            },
+            {
+              "label": "Landslide",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            }
+          ]
+        },
+        {
+          "title": "Air, noise and water",
+          "rows": [
+            {
+              "label": "Noise",
+              "level": 1,
+              "tone": "low",
+              "word": "Quiet · 48 dB"
+            },
+            {
+              "label": "Air today",
+              "level": 1,
+              "tone": "low",
+              "word": "Good"
+            },
+            {
+              "label": "PFAS in water",
+              "level": 1,
+              "tone": "low",
+              "word": "None found"
+            }
+          ]
+        }
+      ],
+      "note": "Ratings for the area, not a test of this home. FEMA, U.S. Geological Survey, U.S. Forest Service, EPA and U.S. Department of Transportation."
+    },
+    {
+      "kind": "closed_group",
+      "id": "closed_owner",
+      "title": "Only the owner sees",
+      "chip": "For the owner",
+      "items": [
+        {
+          "icon": "file",
+          "title": "Insurance claims on this home",
+          "line": "The owner's own yearly report"
+        },
+        {
+          "icon": "alert",
+          "title": "Recalls on what is in the house",
+          "line": "What the household said is in it"
+        },
+        {
+          "icon": "shield",
+          "title": "Exemptions on file",
+          "line": "Tax exemptions on this home"
+        },
+        {
+          "icon": "bell",
+          "title": "Changes to the record",
+          "line": "Notices when the county's record moves"
+        },
+        {
+          "icon": "percent",
+          "title": "Mortgage insurance and documents",
+          "line": "Everything the owner added"
+        }
+      ]
+    },
+    {
+      "kind": "promise",
+      "id": "buying",
+      "title": "Buying this home?",
+      "body": "When you close, claim it here. The public record becomes yours, and the owner's half opens for you.",
+      "steps": [
+        {
+          "title": "Show your closing statement",
+          "line": "The document you are handed at closing."
+        },
+        {
+          "title": "Confirm it's you",
+          "line": "A photo of your ID and a selfie."
+        },
+        {
+          "title": "We check it, usually within hours",
+          "line": "Then this home's whole record is yours."
+        }
+      ],
+      "button": {
+        "label": "Claim this home",
+        "url": "/homes/claim-owner"
+      },
+      "alt": null
+    },
+    {
+      "kind": "note",
+      "id": "privacy",
+      "icon": "eye_off",
+      "text": "These are public records. No owner's name is shown, and nothing an owner added is here."
+    }
+  ],
+  "footer": "Public records for this address, free with your account. What an owner adds stays theirs."
+}

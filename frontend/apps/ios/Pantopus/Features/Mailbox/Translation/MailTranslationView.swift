@@ -418,6 +418,8 @@ private struct ToastBanner: View {
             .padding(.vertical, Spacing.s2)
             .background(Theme.Color.appText.opacity(0.9))
             .clipShape(RoundedRectangle(cornerRadius: Radii.pill))
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .accessibilityLabel(message)
     }
 }

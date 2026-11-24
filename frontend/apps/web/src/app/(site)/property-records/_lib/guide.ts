@@ -20,6 +20,7 @@ export type GuideIndex = {
   v: 1;
   states: (GuideState & { counties: number; live: number })[];
   counties: { state: string; slug: string }[];
+  cities?: { state: string; county: string; slug: string }[];
 };
 
 export type GuideStatePage = {
@@ -64,9 +65,35 @@ export type GuideCountyPage = {
   flood_cost?: { median: number; p25: number | null; p75: number | null; months: number; read: string | null; source: string; notice: string } | null;
   exemption?: { label: string; filing: string; note: string; source_name: string; source_url: string; read: string } | null;
   appeal?: { note: string; source: { name: string; url: string }; read: string } | null;
-  homes?: { median_year_built: number | null; median_value: number | null; survey: string; source: string; url: string } | null;
+  // `*_open`: the median falls in the survey's open-ended lowest ('below') or highest ('above') interval, and the
+  // number is that interval's edge ("1939 or earlier"), not a year or value of its own.
+  homes?: {
+    median_year_built: number | null;
+    median_year_built_open?: 'below' | 'above' | null;
+    median_value: number | null;
+    median_value_open?: 'below' | 'above' | null;
+    survey: string;
+    source: string;
+    url: string;
+  } | null;
   questions: GuideQuestion[];
+  /** The county's cities that have a page. */
+  cities?: { slug: string; name: string }[];
   near: { slug: string; name: string; state_slug: string; state_abbr: string }[];
+};
+
+/** A city's page: only the city's own offices (read on its own site) and the Census's figures; the rest is its county's. */
+export type GuideCityPage = {
+  v: 1;
+  built: string;
+  state: GuideState;
+  county: GuideCountyPage['county'];
+  city: { geoid: string; slug: string; name: string; other_counties: boolean };
+  offices: { rows: GuideOffice[] };
+  homes?: GuideCountyPage['homes'];
+  questions: GuideQuestion[];
+  /** The county's other cities that have a page. */
+  others: { slug: string; name: string }[];
 };
 
 /** "$522,900". */
@@ -92,8 +119,12 @@ export const statePage = cache((state: string) => (SLUG.test(state) ? get<GuideS
 export const countyPage = cache((state: string, county: string) =>
   SLUG.test(state) && SLUG.test(county) ? get<GuideCountyPage>(`/${state}/${county}`) : Promise.resolve(null));
 
+export const cityPage = cache((state: string, county: string, city: string) =>
+  SLUG.test(state) && SLUG.test(county) && SLUG.test(city) ? get<GuideCityPage>(`/${state}/${county}/${city}`) : Promise.resolve(null));
+
 export const statePath = (state: string) => `/property-records/${state}`;
 export const countyPath = (state: string, county: string) => `/property-records/${state}/${county}`;
+export const cityPath = (state: string, county: string, city: string) => `/property-records/${state}/${county}/${city}`;
 
 /** "November 17, 2026" from "2026-11-17". */
 export function dateWords(iso: string | null | undefined): string | null {

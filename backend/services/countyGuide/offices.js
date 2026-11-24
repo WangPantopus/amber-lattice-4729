@@ -19,6 +19,17 @@ const letters = (text) => String(text || '').toLowerCase().replace(/[^a-z]/g, ''
 
 // Sites in the directory that are no county's office: a private, paid property search.
 const NOT_AN_OFFICE = new Set(['digitalcourthouse.com']);
+
+// Vendors that run searches, tax payments and recording alerts for offices on the vendors' own sites. A link read by
+// hand on one of these is shown only where data/offices.json writes down the office's own page that sends people to it
+// (`via`, or `property_search_via` for the property search), so the page says what is true and the claim can be
+// checked. The list is a backstop: any link that is not on the office's own site carries its `via` in the file.
+const VENDOR_HOSTS = [
+  'schneidercorp.com', 'publicaccessnow.com', 'actdatascout.com', 'ncpropertynotification.org', 'fraudalertme.com',
+  'propertytaxpayments.net', 'county-taxes.net', 'county-taxes.com', 'kofiletech.us', 'fidlar.com', 'publicsearch.us',
+  'propertyfraudalert.com', 'accela.com', 'myrelayview.com', 'cotthosting.com', 'landex.com', 'paymentus.com',
+  'tylerhost.net', 'spatialest.com', 'uslandrecords.com', 'arcgis.com',
+];
 const SHORTHAND = { 'Property Valuation': 'Property Valuation Administrator' };
 
 function dateWords(iso) {
@@ -83,10 +94,23 @@ function officeName(county, link) {
 
 /**
  * Whether links taken from NETR Online's directory show on the pages. Its terms say nothing about reusing its
- * listings (docs/research/provider-replacement/cost-and-rights.md), so showing them on public pages is the founder's
- * call: off unless COUNTY_GUIDE_DIRECTORY_LINKS is '1' (a rig or staging may set it for checks).
+ * listings (docs/research/provider-replacement/cost-and-rights.md), and the founder decided on November 23 to keep
+ * them off the public pages. Off unless COUNTY_GUIDE_DIRECTORY_LINKS is '1', for a rig's checks only.
  */
 const directoryLinksOn = () => (process.env.COUNTY_GUIDE_DIRECTORY_LINKS || '').trim() === '1';
+
+const onVendorHost = (url) => {
+  const at = host(url);
+  return Boolean(at) && VENDOR_HOSTS.some((vendor) => at === vendor || at.endsWith(`.${vendor}`));
+};
+
+/** Whether a link read by hand can be shown: on the office's own site, or with the office's page that sends people to it. */
+const showable = (url, via) => httpsOnly(url) && (!onVendorHost(url) || httpsOnly(via));
+
+/** The line under a link read by hand: where it was read, in words that are true for where it is. */
+const readLine = (via, read) => (httpsOnly(via)
+  ? `The office's own site (${host(via)}) sends people here; read ${read}.`
+  : `Read on the office's own site, ${read}.`);
 
 /** The property search row, or null where the table's link can't be shown. */
 function propertySearch(county) {
@@ -95,8 +119,10 @@ function propertySearch(county) {
   const entry = handRead.counties?.[county.fips];
   const named = typeof entry?.property_search_office === 'string' && entry.property_search_office ? entry.property_search_office : null;
   const url = named && httpsOnly(entry.property_search_url) ? entry.property_search_url : link.url;
+  const via = named ? entry.property_search_via : null;
   if (TOWN_ELSEWHERE.has(county.fips) || !httpsOnly(url) || NOT_AN_OFFICE.has(host(url))) return null;
   if (!named && link.src === 'netr' && !directoryLinksOn()) return null;
+  if (named && !showable(url, via)) return null;
   const read = named ? dateWords(entry.read) : null;
   const city = named ? null : cityOnly(county, link);
   return {
@@ -106,14 +132,19 @@ function propertySearch(county) {
     url,
     host: host(url),
     ...(city ? { line: 'Covers homes in that city or township only.', city_only: true } : {}),
-    from: read ? `Read on the office's own site, ${read}.` : FROM[link.src] || null,
+    from: read ? readLine(via, read) : FROM[link.src] || null,
   };
 }
 
-/** Whether every office row on a county's page was read by hand on the office's own site (no directory row). */
+/**
+ * Whether every office row on a county's page was read by hand (no directory row), its property search among them:
+ * on the office's own site, or on a vendor's that the office's own page sends people to.
+ */
 function allReadByHand(county) {
   const entry = handRead.counties?.[county.fips];
-  return Boolean(entry?.property_search_office && Array.isArray(entry.rows) && entry.rows.length);
+  if (!entry?.property_search_office || !Array.isArray(entry.rows) || !entry.rows.length) return false;
+  const url = httpsOnly(entry.property_search_url) ? entry.property_search_url : county.link?.url;
+  return showable(url, entry.property_search_via);
 }
 
 /**
@@ -142,7 +173,7 @@ function readByHand(county) {
   const entry = handRead.counties?.[county.fips];
   if (!entry || !Array.isArray(entry.rows)) return [];
   const read = dateWords(entry.read);
-  return entry.rows.filter((row) => httpsOnly(row.url) && row.title && row.office).map((row) => ({
+  return entry.rows.filter((row) => showable(row.url, row.via) && row.title && row.office).map((row) => ({
     id: row.id,
     title: row.title,
     office: row.office,
@@ -151,7 +182,7 @@ function readByHand(county) {
     ...(row.line ? { line: row.line } : {}),
     // The question this office answers, as read on its site (questions.js).
     ...(row.q && row.a ? { q: row.q, a: row.a } : {}),
-    from: read ? `Read on the office's own site, ${read}.` : null,
+    from: read ? readLine(row.via, read) : null,
   }));
 }
 

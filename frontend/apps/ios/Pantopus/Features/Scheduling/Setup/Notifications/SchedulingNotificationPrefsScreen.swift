@@ -476,6 +476,8 @@ struct NotifCategoryCard<Content: View>: View {
                     .rotationEffect(.degrees(45))
                     .offset(x: -14, y: 4)
             }
+            // Dark under white words in dark mode too (appText is near white there).
+            .environment(\.colorScheme, .light)
             .pantopusShadow(.lg)
             .accessibilityIdentifier("notifSmsTooltip")
             .accessibilityHidden(true)

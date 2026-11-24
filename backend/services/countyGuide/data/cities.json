@@ -1,0 +1,909 @@
+{
+  "v": 1,
+  "note": "Cities with a page, by Census place GEOID (state FIPS + place code). Each row was read by hand on the city's own site on the day `read` names; only https links to the city's own pages, never a page for one parcel. A city needs a `permits` and a `zoning` row. `county` is the county the city's page sits under (most of the city is in it; `other_counties` says parts of the city are in other counties). `built` and `value` are the Census's medians for the city, filled by build-data.cjs.",
+  "sources": {
+    "homes": "U.S. Census Bureau, American Community Survey 2020-2024 5-year estimates, tables B25035 (median year structure built) and B25077 (median value, owner-occupied housing units), place geography",
+    "homes_survey": "2020-2024"
+  },
+  "cities": {
+    "1225175": {
+      "name": "Gainesville",
+      "county": "12001",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Gainesville Building Division",
+          "url": "https://www.gainesvillefl.gov/Government-Pages/Government/Departments/Sustainable-Development/Building-Division/Building-Application-Process",
+          "line": "Takes permit applications online through PermitGNV, by email, by mail or in person; its PermitGNV portal also shows existing permits.",
+          "q": "Where do I find building permits in Gainesville?",
+          "a": "The City of Gainesville's Building Division issues building permits. Applications go in online through PermitGNV, by email, by mail or in person, and the PermitGNV portal also shows existing permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Gainesville Planning Division",
+          "url": "https://www.gainesvillefl.gov/Government-Pages/Government/Departments/Sustainable-Development/Planning-Division",
+          "line": "Holds each development to the city's Comprehensive Plan and Land Development Regulations; a Planner of the Day answers planning questions.",
+          "q": "Where is Gainesville's zoning?",
+          "a": "The City of Gainesville's Planning Division applies the city's Comprehensive Plan and Land Development Regulations to each development, and its Planner of the Day answers planning questions."
+        }
+      ],
+      "built": 1983,
+      "value": 247500
+    },
+    "1236950": {
+      "name": "Kissimmee",
+      "county": "12097",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Kissimmee Building Division, Permits & Inspections",
+          "url": "https://www.kissimmee.gov/Business-Development/Permits-Inspections",
+          "line": "Most home projects still need a permit under Florida's rules that took effect July 1, 2026, and the City must be told first even when one isn't needed; the Building Division works under the Florida Building Code.",
+          "q": "Where do I find building permits in Kissimmee?",
+          "a": "The City of Kissimmee's Building Division issues building permits under the Florida Building Code. Under Florida's rules that took effect July 1, 2026, most home projects still need a permit, and the City must be told first even when one isn't needed."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Kissimmee, Planning & Zoning",
+          "url": "https://www.kissimmee.gov/Business-Development/Development/Planning-Zoning",
+          "line": "Finds a property's zoning category online; the Development Code sets the use and design rules, and use and plan reviews are applied for here.",
+          "q": "Where is Kissimmee's zoning?",
+          "a": "The City of Kissimmee's Planning & Zoning pages find a property's zoning category online. The city's Development Code sets the use and design rules for development, and use and plan reviews are applied for there."
+        }
+      ],
+      "built": 1992,
+      "value": 304400
+    },
+    "1245000": {
+      "name": "Miami",
+      "county": "12086",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Miami, Permits & Construction",
+          "url": "https://www.miami.gov/Permits-Construction",
+          "line": "Permits go through the City's digital systems, iBuild and ePlan; its pages also search a property's permit history and schedule inspections.",
+          "q": "Where do I find building permits in Miami?",
+          "a": "The City of Miami issues building permits through its digital permitting systems, iBuild and ePlan. Its Permits & Construction pages also search a property's permit history and schedule building inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Miami Office of Zoning",
+          "url": "https://www.miami.gov/My-Government/Departments/Zoning",
+          "line": "Interprets and administers the Miami 21 Zoning Ordinance; its pages find a property's zoning category and issue zoning verification letters and waivers.",
+          "q": "Where is Miami's zoning?",
+          "a": "The City of Miami's Office of Zoning interprets and administers the city's zoning ordinance, Miami 21. Its pages find a property's zoning category and handle zoning verification letters, waivers and special permits."
+        }
+      ],
+      "built": 1979,
+      "value": 518100
+    },
+    "1264175": {
+      "name": "Sarasota",
+      "county": "12115",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sarasota Development Services, Building & Permitting",
+          "url": "https://www.sarasotafl.gov/Department-Pages/Development-Services/Building-Permitting",
+          "line": "Reviews building plans and inspects every building project in the City for code compliance; permits are submitted and inspections requested online.",
+          "q": "Where do I find building permits in Sarasota?",
+          "a": "The City of Sarasota's Building & Permitting division reviews building plans and inspects every building project in the City. Permits are submitted and inspections requested online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sarasota Planning Department",
+          "url": "https://www.sarasotafl.gov/Department-Pages/Planning",
+          "line": "Its Long-Range Planning Division keeps the Sarasota City Plan, the comprehensive plan, and the City Zoning Code.",
+          "q": "Where is Sarasota's zoning?",
+          "a": "The City of Sarasota's Planning Department keeps the City Zoning Code; its Long-Range Planning Division develops and maintains the code and the Sarasota City Plan."
+        }
+      ],
+      "built": 1976,
+      "value": 463000
+    },
+    "1271000": {
+      "name": "Tampa",
+      "county": "12057",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Tampa, Construction Services",
+          "url": "https://www.tampa.gov/construction-services",
+          "line": "Issues every building permit and inspection for development inside the city.",
+          "q": "Where do I find building permits in Tampa?",
+          "a": "The City of Tampa's Construction Services Division reviews plans, issues building permits and inspects construction for property inside the city."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Tampa, Zoning Maps",
+          "url": "https://www.tampa.gov/development-coordination/zoning/maps",
+          "line": "An interactive map of zoning districts inside the city limits; the zoning code is Chapter 27 of the city code.",
+          "q": "Where is Tampa's zoning?",
+          "a": "The City of Tampa's zoning maps show the zoning district of each property inside the city limits, by address. The zoning code itself is Chapter 27 of the City of Tampa Code."
+        }
+      ],
+      "built": 1985,
+      "value": 420400
+    },
+    "1714000": {
+      "name": "Chicago",
+      "county": "17031",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Chicago Department of Buildings, Permits",
+          "url": "https://www.chicago.gov/city/en/depts/bldgs/provdrs/permits.html",
+          "line": "A permit is required before most construction, demolition and repair work; the Department's Guide to Permits covers small and mid-sized projects for homeowners.",
+          "q": "Where do I find building permits in Chicago?",
+          "a": "The City of Chicago's Department of Buildings issues building permits; one is required before most construction, demolition and repair work. Its Guide to Permits covers small and mid-sized projects for homeowners, and its site checks a permit application's status."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Chicago Department of Planning and Development, Zoning Ordinance Administration",
+          "url": "https://www.chicago.gov/city/en/depts/dcd/provdrs/admin.html",
+          "line": "Reviews building permit applications for compliance with the Chicago Zoning Ordinance, with plan examiners at City Hall.",
+          "q": "Where is Chicago's zoning?",
+          "a": "The Zoning Ordinance Administration Division of Chicago's Department of Planning and Development reviews building permit applications for compliance with the Chicago Zoning Ordinance, with plan examiners at City Hall."
+        }
+      ],
+      "built": 1953,
+      "value": 334100
+    },
+    "2758000": {
+      "name": "Saint Paul",
+      "county": "27123",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Saint Paul Safety and Inspections, Building Permits & Inspections",
+          "url": "https://www.stpaul.gov/departments/safety-inspections/building-and-construction/construction-permits-and-inspections/building-permits-inspections",
+          "line": "Needed to build, add to or change a one- or two-family home or any other building in the city.",
+          "q": "Where do I find building permits in Saint Paul?",
+          "a": "The City of Saint Paul's Department of Safety and Inspections issues building permits in the city, for building, adding to or changing a home or any other building."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Saint Paul Safety and Inspections, Zoning Permits and Land Uses",
+          "url": "https://www.stpaul.gov/departments/safety-inspections/building-and-construction/zoning-permits-land-uses",
+          "line": "Zoning approval comes before a building permit; design standards are in chapter 63 of the city's zoning code.",
+          "q": "Where is Saint Paul's zoning?",
+          "a": "The City of Saint Paul's Department of Safety and Inspections reviews zoning, which a building permit, a license or a change of use needs first. The city's design standards are in chapter 63 of the Saint Paul Zoning Code."
+        }
+      ],
+      "built": 1952,
+      "value": 294500
+    },
+    "2938000": {
+      "name": "Kansas City",
+      "county": "29095",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Kansas City City Planning and Development, Permits Division",
+          "url": "https://www.kcmo.gov/city-hall/departments/city-planning-development/permits-division",
+          "line": "Takes construction permit applications through CompassKC, from submittal to issuance; permit technicians see walk-in applicants on City Hall's 5th floor on weekdays.",
+          "q": "Where do I find building permits in Kansas City?",
+          "a": "The Permits Division of Kansas City's City Planning and Development Department processes construction permits from application to issuance. Applications go in online through CompassKC, and permit technicians see walk-in applicants on City Hall's 5th floor on weekdays."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Kansas City City Planning and Development, Zoning Verification",
+          "url": "https://www.kcmo.gov/city-hall/departments/city-planning-development/zoning-verification",
+          "line": "A property's zoning can be looked up on the City's Parcel Viewer map, or confirmed by the Permits Division by phone, email or a zoning compliance letter.",
+          "q": "Where is Kansas City's zoning?",
+          "a": "Kansas City's City Planning and Development Department shows a property's zoning on the City's online Parcel Viewer map, and its Permits Division confirms it by phone, by email or with a zoning compliance letter."
+        }
+      ],
+      "built": 1969,
+      "value": 242900
+    },
+    "3231900": {
+      "name": "Henderson",
+      "county": "32003",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Henderson Building and Fire Safety, Permits",
+          "url": "https://www.cityofhenderson.com/government/departments/building-and-fire-safety/permits",
+          "line": "Its page leads to permit applications and checklists, a permit fee estimator, plan review status and building inspections.",
+          "q": "Where do I find building permits in Henderson?",
+          "a": "The City of Henderson's Building and Fire Safety department issues building permits. Its permits page leads to the applications and checklists, a permit fee estimator, plan review status and scheduling building inspections."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Henderson Community Development and Services, Planning Services",
+          "url": "https://www.cityofhenderson.com/government/departments/community-development-and-services/divisions/planning-services",
+          "line": "Takes development applications from concept to final approval, makes recommendations to the Planning Commission and City Council, and answers questions about zoning.",
+          "q": "Where is Henderson's zoning?",
+          "a": "The City of Henderson's Planning Services division handles development applications from concept to final approval, makes recommendations to the Planning Commission and City Council, and answers questions about zoning."
+        }
+      ],
+      "built": 2001,
+      "value": 484900
+    },
+    "3240000": {
+      "name": "Las Vegas",
+      "county": "32003",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Las Vegas Building & Safety, Building & Offsite Permits",
+          "url": "https://www.lasvegasnevada.gov/Business/Permits-Licenses/Building-Permits",
+          "line": "For property within city limits; zoning, design review or variances may come first, and a year-round amnesty program lets homeowners disclose unpermitted work without penalty fees.",
+          "q": "Where do I find building permits in Las Vegas?",
+          "a": "The City of Las Vegas's Building & Safety division issues building permits for property within city limits. Zoning, design review or variances may come first, and a year-round amnesty program lets homeowners disclose work done without a permit without penalties on the plan review and permit fees."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Las Vegas, Planning & Zoning",
+          "url": "https://www.lasvegasnevada.gov/Business/Planning-Zoning",
+          "line": "The city's unified development code holds its zoning, subdivision and design standards; planning applications go in through CLV EPLAN.",
+          "q": "Where is Las Vegas's zoning?",
+          "a": "The City of Las Vegas's Planning & Zoning department keeps the city's zoning code, the unified development code with its subdivision, design and landscaping standards, and takes planning applications through CLV EPLAN."
+        }
+      ],
+      "built": 1994,
+      "value": 427900
+    },
+    "3722920": {
+      "name": "Fayetteville",
+      "county": "37051",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Fayetteville Development Services, Permitting & Inspections",
+          "url": "https://www.fayettevillenc.gov/City-Departments/Development-Services/Permitting-Inspections",
+          "line": "Issues permits, reviews plans and inspects buildings under the North Carolina building codes; its public portals hold permit records, plans and inspection reports by address.",
+          "q": "Where do I find building permits in Fayetteville?",
+          "a": "The City of Fayetteville's Permitting & Inspections divisions issue building permits, review plans and inspect buildings in the city. Permit records, plans and inspection reports for an address are in its E-Development portal, for projects submitted after 2021, and its Fayworx portal, for records from 2015 to 2021."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Fayetteville Development Services, Planning & Zoning",
+          "url": "https://www.fayettevillenc.gov/City-Departments/Development-Services/Planning-Zoning",
+          "line": "Reviews and approves land development under the city's Unified Development Ordinance and handles variance requests and historic districts.",
+          "q": "Where is Fayetteville's zoning?",
+          "a": "The City of Fayetteville's Planning & Zoning Division reviews and approves land development under the city's Unified Development Ordinance, and handles variance requests and its historic districts."
+        }
+      ],
+      "built": 1984,
+      "value": 188000
+    },
+    "3912000": {
+      "name": "Canton",
+      "county": "39151",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Canton Building / Code Enforcement, Permits / Licenses / Inspections",
+          "url": "https://www.cantonohio.gov/166/Permits-Licenses-Inspections",
+          "line": "Its online portal takes permit applications, schedules inspections and searches permits made since October 1, 2025; older permits are looked up by phone.",
+          "q": "Where do I find building permits in Canton?",
+          "a": "The City of Canton's Building / Code Enforcement office issues building permits. Its online portal takes applications, schedules inspections and searches permits made since October 1, 2025; older permits are looked up by calling the office."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Canton, Zoning",
+          "url": "https://www.cantonohio.gov/168/Zoning",
+          "line": "A zoning permit comes before any new building, addition, deck, fence, shed, pool or sign; the office also says where uses are allowed and runs the Zoning Board of Appeals.",
+          "q": "Where is Canton's zoning?",
+          "a": "The City of Canton's zoning office issues the zoning permit needed before any new building, addition, deck, fence, shed, pool or sign, says what uses are allowed where, and runs the Zoning Board of Appeals for variances."
+        }
+      ],
+      "built": 1947,
+      "value": 97800
+    },
+    "3918000": {
+      "name": "Columbus",
+      "county": "39049",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Columbus Department of Building and Zoning Services, Get or Track a Building Permit",
+          "url": "https://www.columbus.gov/Business-Development/Get-a-Permit/Get-or-Track-a-Building-Permit",
+          "line": "An application and any plans are routed to the departments that must review them, and the permit is issued once each review approves; the Citizen Access Portal tracks it.",
+          "q": "Where do I find building permits in Columbus?",
+          "a": "The City of Columbus's Department of Building and Zoning Services issues building permits. An application and any plans go to the departments that must review them, the permit is issued once each review approves, and the Citizen Access Portal tracks the application."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Columbus Department of Building and Zoning Services, Zoning",
+          "url": "https://www.columbus.gov/Business-Development/Building-Zoning-Services/Zoning",
+          "line": "Zoning sets setbacks, building heights, lot sizes and coverage, parking and the land uses allowed; the page leads to residential zoning clearance, the zoning map and the zoning code.",
+          "q": "Where is Columbus's zoning?",
+          "a": "The City of Columbus's Department of Building and Zoning Services administers zoning, which sets setbacks, building heights, lot sizes and coverage, parking and the land uses allowed on a property. Its page leads to residential zoning clearance, the zoning map and the zoning code."
+        }
+      ],
+      "built": 1980,
+      "value": 252900
+    },
+    "4055000": {
+      "name": "Oklahoma City",
+      "county": "40109",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Oklahoma City Development Services, Building & Trade Permits",
+          "url": "https://www.okc.gov/Services/Permits/Building-Trade-Permits",
+          "line": "A permit is required to construct, alter, repair, enlarge, move or demolish any primary or accessory structure; residential permits are applied for online or at the Business Center at 420 W. Main St.",
+          "q": "Where do I find building permits in Oklahoma City?",
+          "a": "The City of Oklahoma City's Development Services issues building permits, required to construct, alter, repair, enlarge, move or demolish any primary or accessory structure. Residential permits are applied for online or at the Business Center at 420 W. Main St."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Oklahoma City, Subdivision & Zoning",
+          "url": "https://www.okc.gov/Infrastructure-Development/Development-Planning/Subdivision-Zoning",
+          "line": "Zoning sets how land may be used and the development standards for all property in the city; the Planning Commission recommends zoning changes and the City Council approves them.",
+          "q": "Where is Oklahoma City's zoning?",
+          "a": "Oklahoma City's zoning sets how land may be used and the development standards for all property in the city. The Planning Commission makes recommendations on zoning changes, and the City Council has final approval."
+        }
+      ],
+      "built": 1982,
+      "value": 231300
+    },
+    "4131250": {
+      "name": "Gresham",
+      "county": "41051",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Gresham, Building Permits and Inspections",
+          "url": "https://www.greshamoregon.gov/services/building-permits-and-inspections/",
+          "line": "Needed to build, enlarge, alter, repair or move a building or change its electrical, gas, mechanical or plumbing systems; services are at City Hall, and permit and land use records can be looked up.",
+          "q": "Where do I find building permits in Gresham?",
+          "a": "The City of Gresham issues building permits for building, enlarging, altering, repairing or moving a building and for its electrical, gas, mechanical and plumbing systems. Permit services are at Gresham City Hall, and permit and land use records can be looked up online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Gresham Urban Design and Planning, Planner on Duty",
+          "url": "https://www.greshamoregon.gov/urban-design-and-planning/planner-on-duty/",
+          "line": "The interactive zoning map shows zoning designations and earlier permits; the Planner on Duty answers site-specific questions by email, phone or at City Hall.",
+          "q": "Where is Gresham's zoning?",
+          "a": "The City of Gresham's interactive zoning map shows a property's zoning designation and earlier permits, and the Planner on Duty answers site-specific planning questions by email, by phone or at City Hall."
+        }
+      ],
+      "built": 1981,
+      "value": 458700
+    },
+    "4159000": {
+      "name": "Portland",
+      "county": "41051",
+      "other_counties": true,
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Portland Permitting & Development, public records",
+          "url": "https://www.portland.gov/ppd/public-records",
+          "line": "Building permit, land use review and code enforcement records for private property; many are online.",
+          "q": "Where do I find building permits in Portland?",
+          "a": "Portland Permitting & Development issues building permits in the city and keeps its building permit, land use review and code enforcement records. Its public records page says which are online and how to ask for the rest."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Portland Permitting & Development, Zoning and Land Use",
+          "url": "https://www.portland.gov/ppd/zoning-land-use",
+          "line": "The city's zoning code, its zoning maps and answers to common zoning questions.",
+          "q": "Where is Portland's zoning?",
+          "a": "Portland Permitting & Development's Zoning and Land Use pages hold the city's zoning code, its zoning maps and answers to common zoning questions."
+        }
+      ],
+      "built": 1966,
+      "value": 581500
+    },
+    "4261000": {
+      "name": "Pittsburgh",
+      "county": "42003",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Pittsburgh Department of Permits, Licenses, and Inspections (PLI), Permitting",
+          "url": "https://www.pittsburghpa.gov/Business-Development/Permits-Licenses-and-Inspections/Permitting",
+          "line": "Issues a separate permit for each type of work and system: building, demolition, land operations, signs, electrical and more; its page lists work that needs no permit.",
+          "q": "Where do I find building permits in Pittsburgh?",
+          "a": "The City of Pittsburgh's Department of Permits, Licenses, and Inspections issues building permits, with a separate permit for each type of work and each system, such as building, demolition, electrical and mechanical. Its page also lists work that needs no permit."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Pittsburgh Department of City Planning, Zoning & Development Review",
+          "url": "https://www.pittsburghpa.gov/Business-Development/City-Planning/Zoning",
+          "line": "Administers the City's Zoning Code and is the first stop for most construction permits; it reviews renovations, additions and new construction and keeps the zoning map.",
+          "q": "Where is Pittsburgh's zoning?",
+          "a": "The Zoning & Development Review Division of Pittsburgh's Department of City Planning administers the City's Zoning Code and is the first stop for most construction permits, reviewing renovations, additions and new construction. Its page links the zoning map and the code."
+        }
+      ],
+      "built": 1942,
+      "value": 205800
+    },
+    "4263624": {
+      "name": "Reading",
+      "county": "42011",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Reading, Building and Trades Codes Enforcement",
+          "url": "https://www.readingpa.gov/building-and-trades-codes-enforcement",
+          "line": "Issues permits for new construction, alterations, renovations and repairs in the building, electrical, mechanical and plumbing trades, reviews plans and inspects the work.",
+          "q": "Where do I find building permits in Reading?",
+          "a": "The City of Reading's Building and Trades division issues permits for new construction, alterations, renovations and repairs, reviews building plans and inspects construction in the city, under Pennsylvania's Uniform Construction Code."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Reading, Zoning and Planning",
+          "url": "https://www.readingpa.gov/zoning-and-planning",
+          "line": "Interprets and enforces the Zoning Ordinance; a zoning permit is needed before building, moving or expanding a structure, and its zoning map shows each area's classification.",
+          "q": "Where is Reading's zoning?",
+          "a": "The City of Reading's Zoning and Planning office interprets and enforces the Zoning Ordinance and keeps the zoning map. A zoning permit is needed before building, moving or expanding a structure."
+        }
+      ],
+      "built": 1939,
+      "value": 121300,
+      "built_open": "below"
+    },
+    "4819000": {
+      "name": "Dallas",
+      "county": "48113",
+      "other_counties": true,
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Dallas Planning & Development, Permitting & Inspections",
+          "url": "https://dallascityhall.com/departments/sustainabledevelopment/Pages/permits-inspections.aspx",
+          "line": "The city's building permits and inspections, with its forms, fees and certificates of occupancy.",
+          "q": "Where do I find building permits in Dallas?",
+          "a": "The City of Dallas Planning & Development Department issues building permits and inspects construction in the city. Its Permitting & Inspections page holds its forms, fees and certificates of occupancy."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Dallas, Zoning Map",
+          "url": "https://developmentweb.dallascityhall.com/publiczoningweb/",
+          "line": "The city's interactive zoning map; the city notes it is not a surveyor's data.",
+          "q": "Where is Dallas's zoning?",
+          "a": "The City of Dallas's interactive zoning map shows the zoning of each property in the city. The city notes the map is not data certified by a land surveyor."
+        }
+      ],
+      "built": 1981,
+      "value": 320700
+    },
+    "4829000": {
+      "name": "Garland",
+      "county": "48113",
+      "read": "2026-11-24",
+      "other_counties": true,
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Garland Development & Permitting Center, Residential Building & Construction Permits",
+          "url": "https://www.garlandtx.gov/3344/Residential-Building-Construction-Permit",
+          "line": "Lists the City's permit application for each kind of home project, from additions, re-roofing and foundation repair to fences, pools and a new house.",
+          "q": "Where do I find building permits in Garland?",
+          "a": "The City of Garland's Development & Permitting Center issues building permits. Its residential permits page has the application for each kind of home project, from additions, re-roofing and foundation repair to fences, pools and a new house."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Garland, Zoning",
+          "url": "https://www.garlandtx.gov/3316/Zoning",
+          "line": "Each zoning district sets the uses allowed and limits such as height, density and setbacks; zoning requests go to public hearings before the Plan Commission and City Council.",
+          "q": "Where is Garland's zoning?",
+          "a": "The City of Garland divides the city into zoning districts, each setting the uses allowed and limits such as height, density and setbacks. Zoning requests go to public hearings before the Plan Commission and the City Council, which decides them."
+        }
+      ],
+      "built": 1978,
+      "value": 270800
+    },
+    "4870808": {
+      "name": "Sugar Land",
+      "county": "48157",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Sugar Land, Permits & Inspections",
+          "url": "https://www.sugarlandtx.gov/2362/Permits-Inspections",
+          "line": "Takes permit applications and payments and schedules inspections; applications submitted on or after January 21, 2026 must meet the 2024 International Code Council codes.",
+          "q": "Where do I find building permits in Sugar Land?",
+          "a": "The City of Sugar Land issues building permits and schedules inspections. Permit applications submitted on or after January 21, 2026 must meet the 2024 International Code Council codes the City adopted."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Sugar Land, Planning",
+          "url": "https://www.sugarlandtx.gov/112/Planning",
+          "line": "The Interactive Zoning Map gives a property's zoning designation, and the Development Code guides requests to alter or develop property.",
+          "q": "Where is Sugar Land's zoning?",
+          "a": "The City of Sugar Land's Planning page leads to the Interactive Zoning Map, which gives a property's zoning designation, and to the Development Code that guides requests to alter or develop property."
+        }
+      ],
+      "built": 1994,
+      "value": 430200
+    },
+    "5305210": {
+      "name": "Bellevue",
+      "county": "53033",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Bellevue Development Services, Permits",
+          "url": "https://bellevuewa.gov/city-government/departments/development/permits",
+          "line": "Reviews plans and issues permits for construction and land uses, from residential building to demolition, grading and trade permits; the process runs from application through plan review to inspections.",
+          "q": "Where do I find building permits in Bellevue?",
+          "a": "The City of Bellevue's Development Services reviews plans and issues permits for construction projects and land uses in the city, including residential building, demolition, grading, electrical, mechanical and plumbing permits."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Bellevue Development Services, Zoning Requirements",
+          "url": "https://bellevuewa.gov/city-government/departments/development/zoning-and-land-use/zoning-requirements",
+          "line": "The Land Use Code sets zoning designations, dimensional limits such as height and setbacks, and design standards; the city advises checking a property's zoning and allowed uses before buying.",
+          "q": "Where is Bellevue's zoning?",
+          "a": "Bellevue's Land Use Code, administered by Development Services, sets zoning designations, dimensional limits such as building height and setbacks, and design standards. The city advises finding out what a property is zoned and what uses are allowed before buying it."
+        }
+      ],
+      "built": 1982,
+      "value": 1340300
+    },
+    "5363000": {
+      "name": "Seattle",
+      "county": "53033",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "Seattle Department of Construction and Inspections, Research a Project, Permit, or Property",
+          "url": "https://www.seattle.gov/construction-and-inspections/resources/research-a-project",
+          "line": "How to find a property's permit history, older permits and site records, gathered on one page.",
+          "q": "Where do I find building permits in Seattle?",
+          "a": "The Seattle Department of Construction and Inspections issues building permits in the city. Its Research a Project, Permit, or Property page says where to find a property's permit history and site records."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Seattle Department of Construction and Inspections, Zoning",
+          "url": "https://www.seattle.gov/construction-and-inspections/codes/codes-we-enforce-(a-z)/zoning",
+          "line": "Zoning districts are adopted by ordinance and shown on the city's official land use map.",
+          "q": "Where is Seattle's zoning?",
+          "a": "Seattle's Zoning Code sets how land is used and developed in the city. Its zoning districts are adopted by ordinance and shown on the city's official land use map; the Department of Construction and Inspections explains them."
+        }
+      ],
+      "built": 1976,
+      "value": 938600
+    },
+    "5370000": {
+      "name": "Tacoma",
+      "county": "53053",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Tacoma Planning and Development Services, Tacoma Permits",
+          "url": "https://www.tacomapermits.org/",
+          "line": "The city's permit office; its Tacoma Permits system submits and searches permits online.",
+          "q": "Where do I find building permits in Tacoma?",
+          "a": "The City of Tacoma's Planning and Development Services issues building permits in the city. Its Tacoma Permits site submits and searches permits online."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Tacoma Planning and Development Services, Zoning",
+          "url": "https://tacoma.gov/government/departments/planning-and-development-services/zoning/",
+          "line": "Zoning is set in Chapter 13.06 of the Tacoma Municipal Code; the city's tMap shows a property's zoning by address or parcel.",
+          "q": "Where is Tacoma's zoning?",
+          "a": "Tacoma's zoning is set in Chapter 13.06 of the Tacoma Municipal Code. The city's interactive map, tMap, shows a property's zoning district by address or parcel number."
+        }
+      ],
+      "built": 1967,
+      "value": 479600
+    },
+    "5374060": {
+      "name": "Vancouver",
+      "county": "53011",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Vancouver, Residential Building Permits",
+          "url": "https://www.cityofvancouver.us/business/building-construction/residential-building-permits/",
+          "line": "Needed to build, add to, alter, repair or demolish a home; one to six homes on a lot go through this permit.",
+          "q": "Where do I find building permits in Vancouver?",
+          "a": "The City of Vancouver issues building permits for homes inside the city: building, adding to, altering, repairing or demolishing one. Its residential building permits page explains them and links to its online permit center."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Vancouver, Planning, Development and Zoning",
+          "url": "https://www.cityofvancouver.us/business/planning-development-and-zoning/",
+          "line": "The city's updated Comprehensive Plan, zoning map and zoning code took effect on July 31, 2026.",
+          "q": "Where is Vancouver's zoning?",
+          "a": "The City of Vancouver's planning, development and zoning pages hold its zoning. Its updated Comprehensive Plan, zoning map and zoning code took effect on July 31, 2026."
+        }
+      ],
+      "built": 1988,
+      "value": 462400
+    },
+    "5548000": {
+      "name": "Madison",
+      "county": "55025",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Madison Development Services Center, Permits",
+          "url": "https://www.cityofmadison.com/development-services-center/permits",
+          "line": "Its chart says, project by project, whether a permit is needed and whom to call: Zoning, Building Inspection or Fire; an address's permit record comes through a public records request.",
+          "q": "Where do I find building permits in Madison?",
+          "a": "The City of Madison's Development Services Center issues building permits. Its chart says, project by project, whether a permit is needed and whether to contact Zoning, Building Inspection or Fire; an address's permit record is requested through the City's public records request center."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Madison Building Inspection, Zoning & Signs",
+          "url": "https://www.cityofmadison.com/dpced/building-inspection/zoning-signs",
+          "line": "Each zoning district sets how a property can be used, building setbacks and on-site parking; the page links the zoning map and code, and the Zoning Counter meets by appointment.",
+          "q": "Where is Madison's zoning?",
+          "a": "The City of Madison's Building Inspection division administers the Zoning Code; each district sets how a property can be used, its building setbacks and its required parking. The page links the zoning map and code, and the Zoning Counter meets by appointment."
+        }
+      ],
+      "built": 1980,
+      "value": 372900
+    },
+    "0662000": {
+      "name": "Riverside",
+      "county": "06065",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Riverside Building & Safety, Permits",
+          "url": "https://www.riversideca.gov/cedd/building-safety/building-safety-services/permits",
+          "line": "Construction in the city needs a building permit; the city keeps permits as public records.",
+          "q": "Where do I find building permits in Riverside?",
+          "a": "The City of Riverside's Building & Safety Division issues building permits for construction in the city and keeps them as public records."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Riverside Planning, Zoning Code and Regulations",
+          "url": "https://www.riversideca.gov/cedd/planning/zoning-code-and-regulations",
+          "line": "The city's zoning is Title 19 of the Riverside Municipal Code, with its permitted uses table.",
+          "q": "Where is Riverside's zoning?",
+          "a": "The City of Riverside's zoning is Title 19 of the Riverside Municipal Code. The Planning Division's page links to it and to the table of uses each zone permits."
+        }
+      ],
+      "built": 1976,
+      "value": 584800
+    },
+    "0675000": {
+      "name": "Stockton",
+      "county": "06077",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Stockton Building & Life Safety",
+          "url": "https://www.stocktonca.gov/business/building___life_safety/index.php",
+          "line": "Takes, reviews and issues permit applications for work within city limits and inspects construction, plumbing, electrical and mechanical work.",
+          "q": "Where do I find building permits in Stockton?",
+          "a": "The City of Stockton's Building & Life Safety division takes and issues permit applications for work within city limits, reviews the plans and inspects the work on site."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Stockton Planning & Engineering, Zoning",
+          "url": "https://www.stocktonca.gov/business/planning___engineering/zoning/index.php",
+          "line": "The Zoning Map divides the city into zones that set land uses and standards such as height, lot coverage, parking and setbacks; a rezoning goes before the Planning Commission and the City Council.",
+          "q": "Where is Stockton's zoning?",
+          "a": "The City of Stockton's Zoning Map divides the city into zones that set what land can be used for and standards such as height, lot coverage, parking and setbacks. A rezoning takes a Planning Application and public hearings before the Planning Commission and the City Council."
+        }
+      ],
+      "built": 1980,
+      "value": 440900
+    },
+    "0670098": {
+      "name": "Santa Rosa",
+      "county": "06097",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Santa Rosa, Building Permits",
+          "url": "https://www.srcity.org/265/Building-Permits",
+          "line": "Needed to build, enlarge, alter, repair, move or demolish a building, or to change its electrical, gas, mechanical or plumbing systems, unless the California Building Code exempts the work.",
+          "q": "Where do I find building permits in Santa Rosa?",
+          "a": "The City of Santa Rosa issues building permits for work on buildings and their electrical, gas, mechanical and plumbing systems in the city, unless the California Building Code exempts the work. Meetings with a permit technician are by appointment."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Santa Rosa, Find Your Zoning District",
+          "url": "https://www.srcity.org/1263/Find-Your-Zoning-District",
+          "line": "The City's GIS map gives a parcel's zoning code, which leads to the land use and permit requirements for its district.",
+          "q": "Where is Santa Rosa's zoning?",
+          "a": "The City of Santa Rosa's GIS map shows the zoning code for an address; the code leads to the land uses and permit requirements of that zoning district."
+        }
+      ],
+      "built": 1980,
+      "value": 713900
+    },
+    "0807850": {
+      "name": "Boulder",
+      "county": "08013",
+      "read": "2026-11-23",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Boulder, Building Permits and Inspections",
+          "url": "https://bouldercolorado.gov/services/building-permits-and-inspections",
+          "line": "Building, altering, enlarging, moving, repairing, removing or replacing any building or structure takes a permit; applications go in through the city's Customer Self-Service Portal, and the page links a search of previous permits.",
+          "q": "Where do I find building permits in Boulder?",
+          "a": "The City of Boulder issues building permits; building, altering, enlarging, repairing or removing any building or structure takes one. Applications go in through the city's Customer Self-Service Portal, and the city's page links a search of previous permits and property information."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Boulder, Zoning",
+          "url": "https://bouldercolorado.gov/services/zoning",
+          "line": "Each zoning district combines three modules of the zoning code: use, form (setbacks, coverage, height) and intensity (lot size, open space, density).",
+          "q": "Where is Boulder's zoning?",
+          "a": "The City of Boulder's zoning districts regulate the uses and development of each property. Each district combines three parts of the zoning code: use, form (setbacks, building coverage, height) and intensity (lot size, open space, density)."
+        }
+      ],
+      "built": 1977,
+      "value": 1039500
+    },
+    "0644000": {
+      "name": "Los Angeles",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Los Angeles Department of Building and Safety (LADBS), Plan Review & Permitting",
+          "url": "https://dbs.lacity.gov/services/plan-review-permitting",
+          "line": "A permit from LADBS is required for any construction, alteration or repair of buildings on private property in the city; simple projects get express permits online, larger ones go through plan check.",
+          "q": "Where do I find building permits in Los Angeles?",
+          "a": "The City of Los Angeles Department of Building and Safety (LADBS) issues building permits; one is required for any construction, alteration or repair of buildings on private property in the city. Simple projects get express permits online, and larger ones go through plan check."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "Los Angeles City Planning, Zoning Search (ZIMAS)",
+          "url": "https://planning.lacity.gov/zoning/zoning-search",
+          "line": "ZIMAS, City Planning's map, looks up a property's zoning and land use designations and its planning case and building permit history, by address, parcel number and more.",
+          "q": "Where is Los Angeles's zoning?",
+          "a": "Los Angeles City Planning's ZIMAS map looks up a property's zoning and land use designations, along with its planning cases and building permit history, by address, parcel number and other ways."
+        }
+      ],
+      "built": 1965,
+      "value": 921200
+    },
+    "0643000": {
+      "name": "Long Beach",
+      "county": "06037",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Long Beach Community Development, Building and Safety Bureau",
+          "url": "https://www.longbeach.gov/lbcd/building/permit-center/building-permits/",
+          "line": "Most residential, commercial and industrial construction, including alterations, replacements and repairs, needs a permit and inspections; historic districts and coastal zones may add requirements.",
+          "q": "Where do I find building permits in Long Beach?",
+          "a": "The City of Long Beach's Building and Safety Bureau issues building permits; most construction, alteration, replacement and repair work needs one, with inspections. Historic districts and coastal zones may add requirements."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Long Beach Planning Bureau, Zoning Maps",
+          "url": "https://www.longbeach.gov/lbcd/planning/current/maps/zoning/",
+          "line": "The citywide and GIS zoning maps show a property's zoning district, which leads to its permitted uses and development standards.",
+          "q": "Where is Long Beach's zoning?",
+          "a": "The City of Long Beach's Planning Bureau publishes citywide and GIS zoning maps that show a property's zoning district, and the district's page gives its permitted uses and development standards."
+        }
+      ],
+      "built": 1959,
+      "value": 806600
+    },
+    "0649270": {
+      "name": "Moreno Valley",
+      "county": "06065",
+      "read": "2026-11-24",
+      "rows": [
+        {
+          "id": "permits",
+          "title": "Building permits",
+          "office": "City of Moreno Valley Community Development, Building and Safety Division",
+          "url": "https://moval.org/cdd/department/divisions-building-safety.html",
+          "line": "Issues permits and provides plan check and inspections under the city's and the State's building codes; submittals after December 31, 2025 must meet the codes in effect January 1, 2026.",
+          "q": "Where do I find building permits in Moreno Valley?",
+          "a": "The City of Moreno Valley's Building and Safety Division issues building permits and provides plan check and inspections under the city's and the State's building codes."
+        },
+        {
+          "id": "zoning",
+          "title": "Zoning",
+          "office": "City of Moreno Valley Community Development, 2040 General Plan and zoning",
+          "url": "https://moval.org/cdd/documents/general-plan-adopted.html",
+          "line": "The adopted zoning documents: the zoning map, the zoning atlas pages, the overlay maps and the permitted uses table, beside the 2040 General Plan's land use map.",
+          "q": "Where is Moreno Valley's zoning?",
+          "a": "The City of Moreno Valley's Community Development Department publishes its adopted zoning documents, including the zoning map, the zoning atlas pages and the permitted uses table, beside the 2040 General Plan's land use map."
+        }
+      ],
+      "built": 1988,
+      "value": 503700
+    }
+  }
+}

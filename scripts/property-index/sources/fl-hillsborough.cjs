@@ -14,7 +14,8 @@ const { USER_AGENT } = require('../lib/tables.cjs');
 const { year, zipCode, realUnit, streetParts, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -132,17 +133,33 @@ async function readFiles(dir) {
   const subdivisions = new Map();
   for await (const row of dbfRows(subdivisionFile.zip, 'SUBDIVISIONS.dbf', ['SUBCODE', 'LEGAL1'])) if (word(row.LEGAL1)) subdivisions.set(String(row.SUBCODE).trim(), word(row.LEGAL1));
   const sales = new Map();
+  // Every sale line, for recorded history (facts.js): the Appraiser publishes no names for its deed codes (S_TYPE; its
+  // documentation names none), so only sales show, each with its Official Records book and page; a line that isn't a sale
+  // has no word for what it is and is left out.
+  const saleLines = new Map();
+  let first = null;
   for await (const row of dbfRows(salesFile.zip, 'allsales.dbf', ['FOLIO', 'S_DATE', 'QU', 'REA_CD', 'S_AMT', 'S_TYPE', 'OR_BK', 'OR_PG'])) {
     const sold = /^(\d{4})(\d{2})(\d{2})$/.exec(String(row.S_DATE ?? '').trim());
     const price = positive(row.S_AMT);
-    if (!sold || !isHomeSale(price) || NOT_A_DEED_OF_SALE.has(String(row.S_TYPE).trim()) || NOT_THIS_SALE.has(String(row.REA_CD).trim())) continue;
+    const isSale = Boolean(sold) && isHomeSale(price) && !NOT_A_DEED_OF_SALE.has(String(row.S_TYPE).trim()) && !NOT_THIS_SALE.has(String(row.REA_CD).trim());
+    if (sold) {
+      const day = `${sold[1]}-${sold[2]}-${sold[3]}`;
+      if (!first || day < first) first = day;
+      const line = historyLine({ date: day, sale: isSale, price, document: word(row.OR_BK) && word(row.OR_PG) ? `${word(row.OR_BK)}-${word(row.OR_PG)}` : null });
+      if (line) {
+        const key = String(row.FOLIO).trim();
+        if (!saleLines.has(key)) saleLines.set(key, []);
+        saleLines.get(key).push(line);
+      }
+    }
+    if (!isSale) continue;
     const date = `${sold[1]}-${sold[2]}-${sold[3]}`;
     const folio = String(row.FOLIO).trim();
     const held = sales.get(folio);
     if (!held || held.date < date) sales.set(folio, { date, price, document: word(row.OR_BK) && word(row.OR_PG) ? `${word(row.OR_BK)}-${word(row.OR_PG)}` : null });
   }
   log(`${gross.size} gross areas, ${subdivisions.size} subdivisions, ${sales.size} folios with a sale of the home (sales file of ${salesFile.asOf})`);
-  return { gross, subdivisions, sales, salesAsOf: salesFile.asOf || '0000' };
+  return { gross, subdivisions, sales, saleLines, since: (first || '').slice(0, 4), salesAsOf: salesFile.asOf || '0000' };
 }
 
 async function* build({ work }) {
@@ -157,10 +174,13 @@ async function* build({ work }) {
     if (!record) noAddress += 1;
     else if (!seen.has(record.id)) {
       seen.add(record.id);
+      // Read since the county went live: held off its screens until its new_columns switch is on (lib/held.cjs).
+      const history = recordedHistory(files.saleLines.get(String(record.facts.parcel_number)) || [], { since: files.since });
+      if (history) hold(record, 'recorded_history', history);
       records.push(record);
     }
   }
-  log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number`);
+  log(`${COUNTY}: ${records.length} parcels, ${noAddress} without a street number, ${records.filter((record) => record.held?.new_columns?.recorded_history).length} with recorded history since ${files.since}`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
     fips: FIPS, state: 'FL', name: COUNTY, publisher: 'Hillsborough County Property Appraiser', dataset: 'parcel file', method: 'county', source: 'fl-hillsborough', as_of: asOf, stale_after_days: 450, records,

@@ -297,6 +297,8 @@ const BEARER_CODE_PATH = /^(\/api\/public\/(?:fridge-cards|residency-claims|resi
 // and abuse control is unaffected — the mount-level previewLimiter rate
 // limits per IP without reading this log.
 const NO_CALLER_ID_PATH = /^\/api\/public\/unlisted$/i;
+// A link for one purpose (routes/profilePage.js): its key is its only credential, so the log keeps ":key".
+const PROFILE_LINK_KEY_PATH = /^(\/api\/profile-page\/[^/]+\/v)\/[^/]+/i;
 // Which build is asking, as its X-Client-Platform header says: ios-2.0.7, android-2.0.9, web-1a2b3c4d. A bare
 // "android" is a build from before November 2026. It counts how many old builds remain
 // (scripts/client-build-report.js) and is logged only in this shape.
@@ -306,7 +308,7 @@ const clientBuild = (req) => {
   return CLIENT_BUILD.test(build || '') ? build : undefined;
 };
 app.use((req, res, next) => {
-  const path = req.path.replace(BEARER_CODE_PATH, '$1/:code');
+  const path = req.path.replace(BEARER_CODE_PATH, '$1/:code').replace(PROFILE_LINK_KEY_PATH, '$1/:key');
   logger.info(`${req.method} ${path}`, NO_CALLER_ID_PATH.test(req.path)
     ? {}
     : { ip: req.ip, userAgent: req.get('user-agent'), client: clientBuild(req) });
@@ -498,6 +500,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/pulse', require('./routes/pulse'));  // Pulse (docs/product/pulse-build/02-contract.md)
 app.use('/api/plans', require('./routes/plans'));  // Nearby Plans (404 while the `plans` flag is off)
 app.use('/api/moments', require('./routes/moments'));  // Moments (404 MOMENTS_UNAVAILABLE while the `moments` flag is off)
+app.use('/api/profile-page', require('./routes/profilePage'));  // A profile with sources (404 PROFILE_SOURCES_OFF while PROFILE_SOURCES is off)
 app.use('/api/sports', require('./routes/sports'));  // Sports topic lane (active events)
 app.use('/api/files', fileRoutes);
 app.use('/api/chat', chatRoutes);

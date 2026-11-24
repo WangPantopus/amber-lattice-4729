@@ -37,6 +37,9 @@ final class PlaceLaunchViewModel {
     }
 
     private var selected: GeoSuggestion?
+    /// The address the showing preview was looked up with: the record page
+    /// asks for the same one.
+    private(set) var lookedUpAddress: String?
     var errorMessage: String?
 
     private let api: APIClient
@@ -111,6 +114,7 @@ final class PlaceLaunchViewModel {
                 guard !Task.isCancelled else { return }
                 switch preview.status {
                 case .ready, .partial:
+                    lookedUpAddress = address
                     step = .preview(preview)
                 case .unsupportedRegion:
                     step = .region(message: preview.message ?? "Home features are coming to your region.")

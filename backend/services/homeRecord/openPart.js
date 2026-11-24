@@ -78,13 +78,16 @@ const row = (label, level, word) => ({ label, level, tone: toneOf(level), word }
 const SEISMIC = { A: [1, 'Very low'], B: [2, 'Low'], C: [3, 'Moderate'], D: [4, 'High'], E: [5, 'Very high'] };
 const AQI = { good: 1, moderate: 2, unhealthy_sensitive: 3, unhealthy: 4, very_unhealthy: 5, hazardous: 5 };
 
+// A no-break space keeps a code with its word ("Zone X", "Category D") on one line in every app at phone width.
+const NBSP = '\u00a0';
+
 function floodRow(flood) {
   if (!flood?.flood_zone) return null;
   const zone = String(flood.flood_zone);
   const risk = placeIntelligenceService.floodRiskLevel(zone);
-  if (risk === 'high') return row('Flood', 5, `High · Zone ${zone}`);
-  if (risk === 'moderate') return row('Flood', 3, `Moderate · Zone ${zone}`);
-  return row('Flood', 1, `Minimal · Zone ${zone}`);
+  if (risk === 'high') return row('Flood', 5, `High · Zone${NBSP}${zone}`);
+  if (risk === 'moderate') return row('Flood', 3, `Moderate · Zone${NBSP}${zone}`);
+  return row('Flood', 1, `Minimal · Zone${NBSP}${zone}`);
 }
 
 const dataOf = (envelopes, id) => {
@@ -94,7 +97,7 @@ const dataOf = (envelopes, id) => {
 
 function seismicRow(envelopes) {
   const sdc = String(dataOf(envelopes, 'seismic')?.design_category || '').toUpperCase();
-  return SEISMIC[sdc] ? row('Earthquake', SEISMIC[sdc][0], `${SEISMIC[sdc][1]} · Category ${sdc}`) : null;
+  return SEISMIC[sdc] ? row('Earthquake', SEISMIC[sdc][0], `${SEISMIC[sdc][1]} · Category${NBSP}${sdc}`) : null;
 }
 
 function wildfireRow(envelopes) {
