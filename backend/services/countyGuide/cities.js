@@ -41,6 +41,8 @@ const CITIES = [
   // November 24, 2026, ninth: Hialeah and Miami Beach (Miami-Dade County), Altamonte Springs and North Port, FL; Sun
   // Prairie and Fitchburg (Dane County), West Allis and Wauwatosa (Milwaukee County), WI.
   '1230000', '1245025', '1200950', '1249675', '5578600', '5525950', '5585300', '5584675',
+  // November 24, 2026, tenth: Thornton and Longmont, CO; Missouri City, TX.
+  '0877290', '0845970', '4848804',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
