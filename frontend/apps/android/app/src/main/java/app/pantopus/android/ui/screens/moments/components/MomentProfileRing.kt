@@ -15,7 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.ui.screens.moments.MomentRingsHolder
 import app.pantopus.android.ui.screens.profile.sources.ProfileMarksHolder
-import app.pantopus.android.ui.screens.profile.sources.markRingMaxWidth
+import app.pantopus.android.ui.screens.profile.sources.markRingWidthDp
 import app.pantopus.android.ui.screens.profile.sources.markRingWidthPx
 import app.pantopus.android.ui.screens.profile.sources.profileMarkRing
 import kotlinx.coroutines.delay
@@ -87,21 +87,40 @@ fun Modifier.momentsRing(
     }
 
 /**
- * How far [momentsRing] may draw beyond a picture [size] across while the profile with sources is on: the mark's
- * widest ring and, while Moments is on, the Moments ring beyond it. A card whose picture sits at the card's inset keeps
- * this much room beside the picture, so both rings clear the card's edge by that same inset. Zero while the profile with
- * sources is off, so those screens stay as they were.
+ * The picture's size that lets [momentsRing]'s rings fit inside [footprint], the place the whole picture has without
+ * them. While the profile with sources is on and the person has a mark or a Moments ring, the picture shrinks by the
+ * rings' reach so the outer ring takes that place, and the card around it keeps its size, padding and text. Otherwise
+ * (the switch off, no person, no ring) the picture keeps [footprint].
  */
 @Composable
-fun momentsRingReach(
-    size: Dp,
+fun momentsRingFit(
+    userId: String?,
+    footprint: Dp,
     stroke: Dp = 2.dp,
     gap: Dp = 2.dp,
 ): Dp {
-    if (ProfileMarksHolder.current == null) return 0.dp
-    val moments = if (MomentRingsHolder.current != null) MARK_TO_MOMENTS + stroke else 0.dp
-    return gap + markRingMaxWidth(size) + moments
+    val markEntry = ProfileMarksHolder.current
+    if (markEntry == null || userId.isNullOrBlank()) return footprint
+    val mark = markEntry.marks.collectAsStateWithLifecycle().value[userId]
+    val hasRing =
+        MomentRingsHolder.current
+            ?.rings
+            ?.collectAsStateWithLifecycle()
+            ?.value
+            ?.get(userId)
+            ?.withoutEnded() != null
+    if (mark == null && !hasRing) return footprint
+    val moments = if (hasRing) (if (mark != null) MARK_TO_MOMENTS else 0.dp) + stroke else 0.dp
+    // The mark narrows with the picture it surrounds, so settle the size in a few steps (each moves a fifth as far).
+    var picture = footprint
+    repeat(FIT_STEPS) {
+        val markWidth = mark?.let { markRingWidthDp(it, picture) } ?: 0.dp
+        picture = footprint - (gap + markWidth + moments) * 2
+    }
+    return picture
 }
+
+private const val FIT_STEPS = 5
 
 /** The ring without the Moments that have ended since it was read; null when nothing is left. */
 private fun MomentRingDto.withoutEnded(): MomentRingDto? {

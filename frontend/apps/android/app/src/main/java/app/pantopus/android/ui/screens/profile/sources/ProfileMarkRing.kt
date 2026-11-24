@@ -71,12 +71,9 @@ internal fun markRingWidth(
     return when {
         years < 1f -> 1f
         years < 5f -> 2.5f
-        else -> MARK_WIDEST
+        else -> 4f
     }
 }
-
-/** The widest the ring can be on a picture [size] across (five years and more), for room kept beside the picture. */
-internal fun markRingMaxWidth(size: Dp): Dp = (MARK_WIDEST * (size.value / MARK_AVATAR_DP).coerceIn(0.5f, 1.2f)).dp
 
 /** The ring's drawn width in pixels for [mark] on a picture [sizePx] across (it narrows on pictures under 40 dp). */
 internal fun markRingWidthPx(
@@ -88,8 +85,13 @@ internal fun markRingWidthPx(
     return (if (mark.seen) markRingWidth(mark.since) else 1.5f) * scale * density
 }
 
+/** The ring's width for [mark] on a picture [size] across, as [markRingWidthPx] draws it. */
+internal fun markRingWidthDp(
+    mark: ProfileMark,
+    size: Dp,
+): Dp = markRingWidthPx(mark, size.value, 1f).dp
+
 private const val MARK_AVATAR_DP = 40f
-private const val MARK_WIDEST = 4f
 
 /**
  * The outer ring of a person's mark around their picture (board 6): thicker with years on record, dotted until
