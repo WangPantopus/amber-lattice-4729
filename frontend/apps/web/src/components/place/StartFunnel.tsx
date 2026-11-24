@@ -46,6 +46,7 @@ import {
   Vote,
   Landmark,
   House,
+  ChevronRight,
 } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { PlacePreview, PlacePreviewLockedSection, PlacePreviewMoneyLead } from '@pantopus/api';
@@ -878,6 +879,25 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
   };
   const goWall = () => continueWithPreview('/register');
 
+  // The record page reads the address from the lookup's own device-local preview, by its opaque id: never in a URL.
+  // It asks with the words this lookup used, so it costs no second lookup.
+  const openRecord = () => {
+    if (!submitted) return;
+    const place = previewQuery.data?.place;
+    const previewId = stashPendingPlace({
+      label: submitted,
+      latitude: selected?.latitude ?? null,
+      longitude: selected?.longitude ?? null,
+      city: place?.city ?? null,
+      state: place?.state ?? null,
+    });
+    if (!previewId) {
+      setContinuationError('Your browser could not keep this preview. Allow site storage and try again.');
+      return;
+    }
+    router.push(`/start/record?preview=${previewId}`);
+  };
+
   const submit = () => {
     const address = selected?.label ?? fallbackAddress;
     if (address) setSubmitted(address);
@@ -955,6 +975,17 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
                   </button>
                 }
               />
+              {preview.status === 'ready' || preview.status === 'partial' ? (
+                <button
+                  type="button"
+                  onClick={openRecord}
+                  className="mt-4 flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl bg-primary-600 px-4 py-3 text-left text-[15px] font-semibold text-white shadow-sm hover:bg-primary-700"
+                  data-testid="start-home-record"
+                >
+                  See this home&apos;s full record
+                  <ChevronRight className="h-5 w-5 shrink-0" aria-hidden="true" />
+                </button>
+              ) : null}
               <div className="mt-4">
                 {/* The dollar figure leads when there is a real one;
                     otherwise the original hero carries the page exactly
