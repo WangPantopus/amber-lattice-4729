@@ -103,6 +103,7 @@ async function* build({ work }) {
   // for what it is and is left out.
   const saleLines = new Map();
   let first = null;
+  let notSale = 0;
   const dayOf = (sale) => {
     const monthDay = String(sale.SALE_MONTHDAY ?? '').padStart(4, '0');
     return isoDate(`${sale.SALE_YEAR}-${monthDay.slice(0, 2)}-${monthDay.slice(2)}`);
@@ -111,7 +112,11 @@ async function* build({ work }) {
     const date = dayOf(row);
     if (date && (!first || date < first)) first = date;
     // A quit claim moves no home at a price.
-    if (!isHomeSale(positive(row.SALE_PRICE)) || String(row.INSTRUMENT ?? '').trim() === 'QC') continue;
+    if (!isHomeSale(positive(row.SALE_PRICE)) || String(row.INSTRUMENT ?? '').trim() === 'QC') {
+      // Not this home's sale by the connector's rule (a token price, a quit claim): it has no word for what it is, so it is left out.
+      if (date) notSale += 1;
+      continue;
+    }
     const line = historyLine({ date, sale: true, price: positive(row.SALE_PRICE), document: word(row.RECEPTION_NUM) });
     if (line) {
       if (!saleLines.has(parcelKey(row.PARID))) saleLines.set(parcelKey(row.PARID), []);
@@ -138,7 +143,7 @@ async function* build({ work }) {
     }
   }
   log(`${COUNTY}: ${records.length} homes, ${noAddress} without a street number, ${sales.size} sales`);
-  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} homes since ${(first || '').slice(0, 4)}`);
+  log(`${COUNTY}: recorded history (sales only) for ${records.filter((record) => record.held?.new_columns?.recorded_history).length} homes since ${(first || '').slice(0, 4)}; lines that aren't a sale, left out: ${notSale}`);
   // Until November 2026 no home found its sale (the parcel numbers above), so Denver's pages never showed a last sale: it waits
   // with recorded history for the county's new_columns switch (lib/held.cjs).
   holdFacts(records, ['sale_price', 'sale_date', 'sale_document']);
