@@ -65,6 +65,31 @@ const CITIES = [
   '1232275', '1217935', '0613214', '1757225',
   // November 24, 2026, eighteenth: Des Plaines (Cook County), IL; Sanford (Seminole County), FL.
   '1719642', '1263650',
+  // November 24, 2026, nineteenth: Indio and La Quinta (Riverside County), CA; Hawthorne, Whittier, Bellflower and
+  // South Gate (Los Angeles County), CA; Oak Park, Cicero and Oak Lawn (Cook County), IL; North Miami (Miami-Dade
+  // County), FL.
+  '0636448', '0640354', '0632548', '0685292', '0604982', '0673080', '1754885', '1714351', '1754820', '1249450',
+  // November 24, 2026, twentieth: Mount Prospect (Cook County), IL; Blue Springs (Jackson County), MO; Sammamish and
+  // Burien (King County), WA; Gardena and Monterey Park (Los Angeles County), CA; Lake Elsinore (Riverside County), CA;
+  // Coral Gables (Miami-Dade County), FL; DeSoto (Dallas County), TX; Mooresville (Iredell County), NC.
+  '1751089', '2906652', '5361115', '5308850', '0628168', '0648914', '0639486', '1214250', '4820092', '3744220',
+  // November 24, 2026, twenty-first: Arcadia, Montebello and Diamond Bar (Los Angeles County), CA; Yucaipa (San
+  // Bernardino County), CA; Perris (Riverside County), CA; Venice (Sarasota County), FL; Sunny Isles Beach (Miami-Dade
+  // County), FL; Commerce City (Adams County), CO; Hoffman Estates and Glenview (Cook County), IL.
+  '0602462', '0648816', '0619192', '0687042', '0656700', '1273900', '1269555', '0816495', '1735411', '1729938',
+  // November 24, 2026, twenty-second: Glendora, Baldwin Park, Culver City and Covina (Los Angeles County), CA; Eastvale
+  // (Riverside County), CA; Rohnert Park (Sonoma County), CA; The Colony (Denton County), TX; Bremerton (Kitsap
+  // County) and Puyallup (Pierce County), WA; Lancaster (Fairfield County), OH.
+  '0630014', '0603666', '0617568', '0616742', '0621230', '0662546', '4872530', '5307695', '5356695', '3941720',
+  // November 24, 2026, twenty-third: Pico Rivera and Rancho Palos Verdes (Los Angeles County), Beaumont (Riverside
+  // County) and Highland (San Bernardino County), CA; North Miami Beach (Miami-Dade County), FL; Farmers Branch (Dallas
+  // County) and Little Elm (Denton County), TX; Delaware (Delaware County) and Fairborn (Greene County), OH; Maplewood
+  // (Ramsey County), MN.
+  '0656924', '0659514', '0604758', '0633588', '1249475', '4825452', '4843012', '3921434', '3925914', '2740382',
+  // November 24, 2026, twenty-fourth: Cerritos, Beverly Hills, Lynwood and Huntington Park (Los Angeles County) and San
+  // Jacinto (Riverside County), CA; Roseville (Ramsey County) and Shakopee (Scott County), MN; Winter Springs (Seminole
+  // County) and Cutler Bay (Miami-Dade County), FL; Stow (Summit County), OH.
+  '0612552', '0606308', '0644574', '0636056', '0667112', '2755852', '2759350', '1278325', '1215968', '3974944',
 ];
 
 // The two rows a city needs, read on its own site, before it has a page.
