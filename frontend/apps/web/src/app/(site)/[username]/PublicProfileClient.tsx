@@ -1598,6 +1598,7 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       onJoin={() => router.push(authPageHref('/register', profilePath))}
       onReport={isOwnProfile && !previewing ? null : handleReport}
       onChanged={isOwnProfile && !previewing ? refreshSources : null}
+      onReread={previewing ? null : refreshSources}
       ready={mounted}
       onDoor={(door) => {
         // Doors (phase 3): a signed-out visitor signs in first; Send a card opens the card flow with them chosen.

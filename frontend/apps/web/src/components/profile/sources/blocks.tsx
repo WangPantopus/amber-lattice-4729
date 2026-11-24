@@ -8,6 +8,8 @@ import type {
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
   ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
+import * as api from '@pantopus/api';
+import { extractApiError } from '@/lib/auth-utils';
 import PinnedPostsRow from '@/components/profile/public/PinnedPostsRow';
 import { YouAndRows, linesFor } from '@/components/profile/public/YouAndSection';
 import { promptText } from '@/lib/profilePrompts';
@@ -38,6 +40,8 @@ export interface BlockContext {
   pieces: Map<string, { ink: ProfileInk; pinned: boolean }>;
   /** The owner: change one of their roles ("Worked and learned"). */
   onEditRole?: ((role: ProfileRoleLine) => void) | null;
+  /** A signed-in viewer changed a tie of their own on this page (a business's name off a role): read it again. */
+  onReread?: (() => void) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -128,6 +132,61 @@ function Writer({ line, ctx }: { line: ProfileBadgeLine; ctx: BlockContext }) {
   );
 }
 
+/**
+ * A business's owner reading a role their business signed (p2.11 `mine`): the business's name on pages opened by a
+ * link, changed here, or its signature taken off the role.
+ */
+function BusinessSignature({ role, firstName, onChanged }: { role: ProfileRoleLine; firstName: string; onChanged: () => void }) {
+  const business = role.where?.name?.trim() || 'the business';
+  const [onLinks, setOnLinks] = useState(Boolean(role.mine?.show_name_on_links));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const save = async (checked: boolean) => {
+    setBusy(true); setNote(null);
+    try {
+      const saved = await api.profilePage.updateTie(role.id, { show_name_on_links: checked });
+      setOnLinks(saved.show_name_on_links);
+      setNote('Saved.');
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t save that. Try again.'));
+    }
+    setBusy(false);
+  };
+  const off = async () => {
+    if (!window.confirm(`Take the name ${business} off ${firstName}’s role? The role stays in ${firstName}’s own words, without the name ${business}.`)) return;
+    setBusy(true); setNote(null);
+    try {
+      await api.profilePage.removeTie(role.id);
+      onChanged();
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t take the name off. Try again.'));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-2 rounded-xl bg-app-surface-sunken px-3.5 pt-2 pb-0.5 flex flex-col gap-0.5">
+      <label className="flex items-start gap-3 min-h-[2.75rem] py-1 cursor-pointer">
+        <input type="checkbox" checked={onLinks} disabled={busy} onChange={(e) => save(e.target.checked)} className="mt-0.5 w-5 h-5 shrink-0 accent-[color:var(--color-link)]" />
+        <span className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
+          Show the name {business} on pages opened by a link
+          <span className="block text-xs leading-4 text-app-muted">Off: those pages say “a business on Pantopus”.</span>
+        </span>
+      </label>
+      <button type="button" disabled={busy} onClick={off} aria-label={`Take the name ${business} off this role`} className="self-start min-h-[2.75rem] -ml-1 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline disabled:opacity-60">
+        {busy ? 'Working…' : 'Take the name off'}
+      </button>
+      {note ? <p role="status" className="pb-1 text-xs leading-4 text-app-secondary">{note}</p> : null}
+    </div>
+  );
+}
+
+/** The business-owner controls under a role line, where the server marks the viewer's business as its signer. */
+function signatureFor(line: unknown, ctx: BlockContext): ReactNode {
+  const role = line as unknown as ProfileRoleLine;
+  if (!role.mine || !role.id || ctx.inert || !ctx.viewerId) return null;
+  return <BusinessSignature key={role.id} role={role} firstName={ctx.firstName} onChanged={ctx.onReread ?? (() => {})} />;
+}
+
 function LinesBlock({ block, ctx }: { block: ProfileLinesBlock | ProfileOwnsBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => typeof line?.text === 'string' && line.text.trim());
   if (lines.length === 0) return null;
@@ -157,7 +216,9 @@ function LinesBlock({ block, ctx }: { block: ProfileLinesBlock | ProfileOwnsBloc
   return (
     <Section title={block.title} titleClass={lane ? LANE_TITLE[lane] : ''} aside={'more' in block ? <MoreLink more={block.more} ctx={ctx} /> : null}>
       <div className="flex flex-col gap-3">
-        {lines.map((line, i) => <InkLine key={i} line={line} target={ctx.target(line.link)} lead={<Badge badge={line.badge} />} after={<Writer line={line} ctx={ctx} />} />)}
+        {lines.map((line, i) => (
+          <InkLine key={i} line={line} target={ctx.target(line.link)} lead={<Badge badge={line.badge} />} after={<><Writer line={line} ctx={ctx} />{signatureFor(line, ctx)}</>} />
+        ))}
       </div>
     </Section>
   );

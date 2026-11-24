@@ -702,6 +702,11 @@ export interface ProfileRoleLine extends ProfileLine {
   to: string | null;
   where: { name: string | null; user_id: string | null; username: string | null; picture_url: string | null; typed: boolean | null } | null;
   status?: string | null;
+  /**
+   * Only for a viewer who owns the business that signed this role (p2.11): its name on pages opened by a link. The
+   * line's `id` is the tie, for `updateTie` and `removeTie`.
+   */
+  mine?: { show_name_on_links: boolean } | null;
 }
 
 export interface ProfileRoleFields {
