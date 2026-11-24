@@ -33,6 +33,9 @@ const COUNTIES = [
   '53033', '53057', '41051', '06065', '06077', '12057', '48113', '48201', '48157', '27123',
   // November 23, 2026, third: Summit, OH; Sonoma and Solano, CA; Berks, PA; Osceola, FL.
   '39153', '06097', '06095', '42011', '12097',
+  // November 23, 2026, fourth: Stark and Delaware, OH; Chesterfield and Henrico, VA; Cumberland and Iredell, NC;
+  // Boulder, CO; Alachua and St. Johns, FL; Cumberland, PA.
+  '39151', '39041', '51041', '51087', '37051', '37097', '08013', '12001', '12109', '42041',
 ];
 
 // COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
