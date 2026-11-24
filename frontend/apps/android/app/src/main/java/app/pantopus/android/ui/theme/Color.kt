@@ -855,4 +855,15 @@ object PantopusColors {
     val momentMarksEdgeDark = Color(0x73000000)
     val momentMarksEdgeLight = Color(0xB3FFFFFF)
     val momentMarksShadow = Color(0x99000000)
+
+    // The home record page (drawn screens `~/pantopus-home-record/design`, Nov 22 2026).
+
+    /** Behind a photo from above while it loads, and where it has none. */
+    val recordPhotoBg = Color(0xFF1F2937)
+
+    /** The dimming outside the lot's outline on a photo from above, drawn at 34%. */
+    val recordPhotoScrim = Color(0xFF020617)
+
+    /** The newest year's bar of the county value chart; earlier years are [primary200]. */
+    val recordBarCurrent = Color(0xFF0284C7)
 }
