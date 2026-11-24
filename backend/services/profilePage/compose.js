@@ -196,8 +196,8 @@ function buildRecord(ctx, sources, { now }) {
     const em = monthOf(cert.expiry_date);
     let ln;
     if (cert.is_verified) {
-      const by = cert.issuing_organization ? `Checked with ${cert.issuing_organization}` : 'Checked';
-      ln = line('signed', cert.certification_name, em ? `${by}, good through ${monthLabel(em)}` : by, 'work', null);
+      // Nothing records who checked a certification or with whom, so the line says only that Pantopus verified it.
+      ln = line('signed', cert.certification_name, em ? `Verified by Pantopus, good through ${monthLabel(em)}` : 'Verified by Pantopus', 'work', null);
     } else {
       const bits = [cert.certification_name, cert.issuing_organization, im ? im.slice(0, 4) : null].filter(Boolean);
       ln = line('said', `${bits.join(', ')}.`, `In ${first}'s words`, 'work', null);

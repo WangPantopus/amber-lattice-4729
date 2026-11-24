@@ -51,7 +51,7 @@ function parseIds(raw) {
 async function readPeople(ids) {
   const withShare = await supabaseAdmin.from('User').select('id, account_type, profile_visibility, profile_share').in('id', ids);
   if (!withShare.error) return rows(withShare);
-  if (withShare.error.code !== '42703' && !/profile_share/.test(withShare.error.message || '')) throw withShare.error;
+  if (withShare.error.code !== '42703') throw withShare.error;
   return rows(await supabaseAdmin.from('User').select('id, account_type, profile_visibility').in('id', ids));
 }
 

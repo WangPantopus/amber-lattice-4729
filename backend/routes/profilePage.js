@@ -13,6 +13,7 @@
 const express = require('express');
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
+const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 const { profileSourcesEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
@@ -39,15 +40,19 @@ function handle(label, run) {
   };
 }
 
+// Signed-out reads (the page is listed by search engines) share the public previews' budget: 60 a minute per visitor
+// (middleware/rateLimiter.js previewLimiter; the web's server forwards the visitor's address with EDGE_PROXY_SECRET).
+const publicRead = [optionalAuth, (req, res, next) => (req.user ? next() : previewLimiter(req, res, next))];
+
 // The owner's own share settings (before /:username, so "me" is never read as a username).
 router.get('/me/share', verifyToken, handle('share', (req) => profilePage.shareBody(req)));
 router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.putShare(req)));
 
 // By account id.
-router.get('/id/:id', optionalAuth, handle('page-id', (req) => profilePage.getPage(req, { id: req.params.id })));
-router.get('/id/:id/piece/:pieceId', optionalAuth,
+router.get('/id/:id', publicRead, handle('page-id', (req) => profilePage.getPage(req, { id: req.params.id })));
+router.get('/id/:id/piece/:pieceId', publicRead,
   handle('piece-id', (req) => profilePage.getPiece(req, { id: req.params.id }, req.params.pieceId)));
-router.get('/id/:id/month/:month', optionalAuth,
+router.get('/id/:id/month/:month', publicRead,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
 
 // The ring an avatar wears, for up to 100 people (CONTRACT section 7).
@@ -67,10 +72,10 @@ function byUsername(req) {
   return { username: req.params.username };
 }
 
-router.get('/:username', optionalAuth, handle('page', (req) => profilePage.getPage(req, byUsername(req))));
-router.get('/:username/piece/:pieceId', optionalAuth,
+router.get('/:username', publicRead, handle('page', (req) => profilePage.getPage(req, byUsername(req))));
+router.get('/:username/piece/:pieceId', publicRead,
   handle('piece', (req) => profilePage.getPiece(req, byUsername(req), req.params.pieceId)));
-router.get('/:username/month/:month', optionalAuth,
+router.get('/:username/month/:month', publicRead,
   handle('month', (req) => profilePage.getMonth(req, byUsername(req), req.params.month)));
 
 module.exports = router;
