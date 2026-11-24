@@ -19,6 +19,7 @@ const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 const { profileSourcesEnabled, profileLinksEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
+const pieces = require('../services/profilePage/pieces');
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ function handle(label, run, status = 200) {
       res.set('Cache-Control', 'private, no-store');
       return res.status(status).json(await run(req));
     } catch (err) {
-      if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal) {
+      if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -49,6 +50,13 @@ const publicRead = [optionalAuth, (req, res, next) => (req.user ? next() : previ
 // The owner's own share settings (before /:username, so "me" is never read as a username).
 router.get('/me/share', verifyToken, handle('share', (req) => profilePage.shareBody(req)));
 router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.putShare(req)));
+
+// The owner's pieces (CONTRACT "Phase 2: Work", P2.3).
+router.get('/me/pieces', verifyToken, handle('pieces', (req) => pieces.listMine(String(req.user.id))));
+router.post('/me/pieces/preview', verifyToken, handle('piece-preview', (req) => pieces.previewPiece(String(req.user.id), req.body)));
+router.post('/me/pieces', verifyToken, handle('piece-make', (req) => pieces.createPiece(String(req.user.id), req.body), 201));
+router.patch('/me/pieces/:id', verifyToken, handle('piece-change', (req) => pieces.updatePiece(String(req.user.id), req.params.id, req.body)));
+router.delete('/me/pieces/:id', verifyToken, handle('piece-delete', (req) => pieces.deletePiece(String(req.user.id), req.params.id)));
 
 // Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.
 function linksOn(req, res, next) {

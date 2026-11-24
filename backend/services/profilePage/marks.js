@@ -63,7 +63,7 @@ async function marksFor(viewerId, ids) {
     const { parts } = readShare(rows.share);
     const on = (part) => reaches(parts, part, view);
     const sources = await sourcesFrom(accountId, rows, { pinned: false });
-    const record = buildRecord({ firstName: 'them', userData: { id: accountId } }, sources, { now });
+    const record = buildRecord({ firstName: 'them', userData: { id: accountId }, view, parts }, sources, { now });
     const months = record.months.filter((m) => on(LANE_PART[m.lane]) && m.parts.every(on));
     if (!months.length) continue;
     marks.push({

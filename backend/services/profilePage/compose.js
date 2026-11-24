@@ -126,6 +126,45 @@ function safeUrl(url) {
   return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
 }
 
+// ---------- a piece ----------
+
+const KIND_WORD = { did: 'Did', built: 'Built', owns: 'Owns' };
+
+/** One UserPortfolio row as a Piece (CONTRACT P2.1), and the month it marks. Owner fields only for the owner. */
+function pieceOf(row, first, owner) {
+  const media = (row.media_urls || []).filter(Boolean);
+  const files = (row.file_ids || []).length;
+  const cards = Array.isArray(row.links) ? row.links.length : [row.external_url, row.github_url, row.demo_url].map(safeUrl).filter(Boolean).length;
+  const to = row.source_at ? monthOf(row.source_at) : monthOf(row.completed_at);
+  const from = monthOf(row.started_on);
+  const month = to || from || monthOf(row.created_at);
+  const seen = row.source_kind === 'gig' || row.source_kind === 'plan';
+  const piece = {
+    id: row.id,
+    title: row.title,
+    kind: KIND_WORD[row.piece_kind] ? row.piece_kind : null,
+    when: monthLabel(to || from),
+    from,
+    to,
+    place: null, // set by the composer where the city part reaches the viewer
+    cover_url: safeUrl(row.thumbnail_url) || safeUrl(media.find((u) => IMAGE_EXT.test(u))) || null,
+    media: {
+      photos: media.filter((u) => IMAGE_EXT.test(u)).length,
+      videos: media.filter((u) => VIDEO_EXT.test(u)).length,
+      documents: files,
+      links: cards,
+    },
+    ink: seen ? 'seen' : 'said',
+    text: row.title,
+    how: seen ? (row.source_kind === 'gig' ? 'A paid job on Pantopus' : 'A plan that took place on Pantopus') : `In ${first}'s words`,
+    lane: 'work',
+    pinned: row.is_featured === true,
+    link: { kind: 'piece', id: row.id },
+  };
+  if (owner) Object.assign(piece, { audience: row.audience || 'anyone', draft: row.is_draft === true, hidden: row.is_visible === false });
+  return { row, month, piece };
+}
+
 // ---------- the record: every line, its part and its months ----------
 
 /**
@@ -286,51 +325,58 @@ function buildRecord(ctx, sources, { now }) {
     }
   }
 
-  // Work: pieces (said in phase 1) and skills counted from them.
-  const pieces = (sources.pieces || []).map((row) => {
-    const media = (row.media_urls || []).filter(Boolean);
-    const links = [row.external_url, row.github_url, row.demo_url].map(safeUrl).filter(Boolean);
-    const pm = monthOf(row.completed_at) || monthOf(row.created_at);
-    return {
-      row,
-      month: pm,
-      piece: {
-        id: row.id,
-        title: row.title,
-        kind: null,
-        when: pm ? pm.slice(0, 4) : null,
-        cover_url: safeUrl(row.thumbnail_url) || safeUrl(media.find((u) => IMAGE_EXT.test(u))) || null,
-        media: {
-          photos: media.filter((u) => IMAGE_EXT.test(u)).length,
-          videos: media.filter((u) => VIDEO_EXT.test(u)).length,
-          documents: (row.file_ids || []).length,
-          links: links.length,
-        },
-        ink: 'said',
-        text: row.title,
-        how: `In ${first}'s words`,
-        lane: 'work',
-        link: { kind: 'piece', id: row.id },
-      },
-    };
-  }).filter((p) => p.row.title);
+  // Work: pieces (SPEC phase 2A) and Can do counted from them. A piece reaches a viewer when its own "who sees it"
+  // does (the Work part is checked by the composer); hidden and draft pieces come only for the owner (sources.js).
+  const viewOf = ctx.view || 'owner';
+  const pieces = (sources.pieces || []).filter((row) => row.title && reaches({ piece: row.audience || 'anyone' }, 'piece', viewOf))
+    .map((row) => pieceOf(row, first, viewOf === 'owner'));
   for (const p of pieces) {
-    mark('work', [p.month], 'said', ['record_work', 'work']);
-    if (p.month) events.push({ month: p.month, parts: ['work'], line: { ...line('said', p.piece.title, `In ${first}'s words`, 'work', p.piece.link) } });
+    if (p.row.is_draft || p.row.is_visible === false) continue;
+    mark('work', [p.month], p.piece.ink, ['record_work', 'work']);
+    if (p.month) events.push({ month: p.month, parts: ['work'], line: line(p.piece.ink, p.piece.title, p.piece.how, 'work', p.piece.link) });
   }
-  const skills = (sources.skills || []).map((skill) => {
-    const name = String(skill.skill_name || '').trim();
-    const n = pieces.filter((p) => (p.row.skills_used || []).some((s) => String(s).trim().toLowerCase() === name.toLowerCase())).length;
-    const vm = monthOf(skill.verified_at);
-    const ink = skill.is_verified ? 'signed' : 'said';
+  // Can do: every skill named on a piece this viewer can open (five a piece at most), and each skill the person
+  // listed; a listed skill with no piece stays a Said line, as in phase 1.
+  const shown = pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
+  const skillPieces = new Map();
+  for (const p of shown) {
+    for (const raw of (p.row.skills_used || []).slice(0, 5)) {
+      const name = String(raw || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!skillPieces.has(key)) skillPieces.set(key, { name, pieces: [] });
+      skillPieces.get(key).pieces.push(p);
+    }
+  }
+  const listed = new Map((sources.skills || []).map((skill) => [String(skill.skill_name || '').trim().toLowerCase(), skill]));
+  const names = [...new Set([...listed.keys(), ...skillPieces.keys()])].filter(Boolean);
+  const skills = names.map((key) => {
+    const skill = listed.get(key);
+    const fromPieces = skillPieces.get(key)?.pieces || [];
+    const name = skill ? String(skill.skill_name).trim() : skillPieces.get(key).name;
+    const n = fromPieces.length;
+    const inks = { seen: 0, signed: 0, said: 0 };
+    for (const p of fromPieces) inks[p.piece.ink] += 1;
+    const vm = monthOf(skill?.verified_at);
+    // A skill's line takes the weakest ink it depends on: confirmed (Signed) only when someone confirmed it.
+    const ink = skill?.is_verified ? 'signed' : (n && inks.said === 0 && inks.signed === 0 ? 'seen' : (n && inks.said === 0 ? 'signed' : 'said'));
     let how;
-    if (skill.is_verified) how = `Confirmed${vm ? ` ${monthLabel(vm)}` : ''}${n ? `, ${plural(n, 'piece', 'pieces')}` : ''}`;
+    if (skill?.is_verified) how = `Confirmed${vm ? ` ${monthLabel(vm)}` : ''}${n ? `, ${plural(n, 'piece', 'pieces')}` : ''}`;
     else how = n ? plural(n, 'piece', 'pieces') : `In ${first}'s words, no pieces yet`;
-    const sm = skill.is_verified ? (vm || monthOf(skill.created_at)) : monthOf(skill.created_at);
-    mark('work', [sm], ink, ['record_work', 'work']);
-    if (sm) events.push({ month: sm, parts: ['work'], line: line(ink, name, how, 'work', null) });
-    return line(ink, name, how, 'work', null, { name, pieces: n, inks: { seen: 0, signed: 0, said: n } });
-  }).filter((s) => s.name);
+    if (skill) {
+      const sm = skill.is_verified ? (vm || monthOf(skill.created_at)) : monthOf(skill.created_at);
+      mark('work', [sm], skill.is_verified ? 'signed' : 'said', ['record_work', 'work']);
+      if (sm) events.push({ month: sm, parts: ['work'], line: line(skill.is_verified ? 'signed' : 'said', name, how, 'work', null) });
+    }
+    return line(ink, name, how, 'work', null, { name, pieces: n, inks });
+  }).sort((a, b) => b.pieces - a.pieces);
+
+  // "Tools she brings": one Said line on Owns.
+  const tools = String(sources.tools || '').trim();
+  if (tools) {
+    entries.push({ id: 'owns_tools', parts: ['work'], place: 'owns', order: 2,
+      line: line('said', `Tools: ${tools}`, `In ${first}'s words`, 'work', null, { badge: null }) });
+  }
 
   return { entries, months, events, pieces, skills };
 }
@@ -506,28 +552,32 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     if (record.skills.length) {
       work.push({ kind: 'can_do', id: 'can_do', title: 'Can do', subtitle: `Counted from ${ctx.firstName}'s pieces`, skills: record.skills });
     }
-    const pinned = record.pieces.filter((p) => p.row.is_featured).slice(0, 3);
-    const rest = record.pieces.filter((p) => !pinned.includes(p)).slice(0, 30);
+    // A piece's city only where the city part reaches this viewer (never an address).
+    const withPlace = (p) => ({ ...p.piece, place: cityOk && p.row.place_city ? [p.row.place_city, p.row.place_state].filter(Boolean).join(', ') : null });
+    const live = record.pieces.filter((p) => !p.row.is_draft && p.row.is_visible !== false);
+    const pinned = live.filter((p) => p.row.is_featured).slice(0, 3);
+    // The owner's list also carries their drafts and hidden pieces (marked); nobody else's does.
+    const rest = record.pieces.filter((p) => !pinned.includes(p)).slice(0, 40);
     if (pinned.length) {
       work.push({ kind: 'pieces', id: 'pinned', title: `Pinned by ${ctx.firstName}`, style: 'pinned', subtitle: `${pinned.length} of 3`,
-        pieces: pinned.map((p) => p.piece), filters: null, more: null });
+        pieces: pinned.map(withPlace), filters: null, more: null });
     }
     // The work line of this tab: its pieces and skills (the `work` part), whether or not record_work is on.
     const workMonths = record.months.filter((m) => m.lane === 'work' && m.parts.includes('work'));
-    if (record.pieces.length) {
+    if (live.length) {
       const wr = ringsFor(workMonths, now);
       const perYear = {};
-      for (const p of record.pieces) if (p.month) perYear[p.month.slice(0, 4)] = (perYear[p.month.slice(0, 4)] || 0) + 1;
+      for (const p of live) if (p.month) perYear[p.month.slice(0, 4)] = (perYear[p.month.slice(0, 4)] || 0) + 1;
       work.push({
         kind: 'work_rings', id: 'work_rings', title: `${plural(wr.summary.years, 'year', 'years')} of work`,
         from: wr.from, now: nowDate, months: wr.strings.work,
-        dots: record.pieces.filter((p) => p.month).map((p) => ({ piece_id: p.row.id, month: p.month })),
+        dots: live.filter((p) => p.month).map((p) => ({ piece_id: p.row.id, month: p.month })),
         years: Object.entries(perYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, n]) => ({ year: Number(year), pieces: n })),
       });
     }
     if (rest.length) {
       work.push({ kind: 'pieces', id: 'all', title: pinned.length ? 'All pieces' : 'Pieces', style: 'list', subtitle: null,
-        pieces: rest.map((p) => p.piece), filters: null, more: null });
+        pieces: rest.map(withPlace), filters: null, more: null });
     }
     const owns = shownEntries('owns');
     if (owns.length) work.push({ kind: 'owns', id: 'owns', title: 'Owns', lines: owns });
@@ -614,42 +664,68 @@ function composeMonth(ctx, record, month) {
   };
 }
 
-/** GET …/piece/:id: one piece, opened. Null when the work part doesn't reach the view. */
-function composePiece(ctx, row) {
-  if (!reaches(ctx.parts, 'work', ctx.view)) return null;
+/**
+ * GET …/piece/:id: one piece, opened (CONTRACT P2.2). Null when the Work part or the piece's own "who sees it" doesn't
+ * reach the view. Never the job's address, price or poster: the job appears only as "a paid job, completed".
+ */
+function composePiece(ctx, row, { attachments = [], reviews = [] } = {}) {
+  const view = ctx.view;
+  if (!reaches(ctx.parts, 'work', view) || !reaches({ piece: row.audience || 'anyone' }, 'piece', view)) return null;
   const first = ctx.firstName;
-  const media = (row.media_urls || []).map(safeUrl).filter(Boolean);
-  const pm = monthOf(row.completed_at) || monthOf(row.created_at);
-  const links = [row.external_url, row.demo_url, row.github_url].map(safeUrl).filter(Boolean)
-    .map((url) => ({ url, title: null, site: hostOf(url) }));
+  const owner = view === 'owner';
+  const { piece } = pieceOf(row, first, owner);
+  const cityOk = reaches(ctx.parts, 'city', view) && ctx.cityByPrivacy;
+  piece.place = cityOk && row.place_city ? [row.place_city, row.place_state].filter(Boolean).join(', ') : null;
   const description = String(row.description || '').trim();
-  return {
+  const howWeKnow = [];
+  if (row.source_kind === 'gig') {
+    howWeKnow.push(line('seen', 'A paid job, completed on Pantopus', row.source_at ? dayLabel(row.source_at) : 'Pantopus\'s own records', 'work', null));
+  } else if (row.source_kind === 'plan') {
+    howWeKnow.push(line('seen', 'A plan that took place on Pantopus', row.source_at ? dayLabel(row.source_at) : 'Pantopus\'s own records', 'work', null));
+  }
+  if (description) howWeKnow.push(line('said', `${first}'s own words`, 'Said', 'work', null));
+  const linkView = view === 'link';
+  // What the person who hired them wrote about this job (the review on the piece's job), named by the v1.2 rules.
+  const written = row.source_gig_id ? reviews.filter((r) => String(r.gig_id) === String(row.source_gig_id)).map((review) => {
+    const did = { hired: `hired ${first}`, worked_for: `did a job for ${first}` }[review.role] || `worked with ${first}`;
+    const rm = monthOf(review.created_at);
+    const named = !linkView && review.reviewer_name;
+    return line('signed', String(review.comment).trim().slice(0, 500), `Written by ${named ? review.reviewer_name : `someone who ${did}`}${rm ? `, ${monthLabel(rm)}` : ''}`,
+      'work', null, {
+        who: named ? { name: review.reviewer_name, user_id: review.reviewer_id, username: review.reviewer_username, portrait_url: review.reviewer_avatar, did }
+          : { name: null, user_id: null, username: null, portrait_url: null, did: `Someone who ${did}` },
+        when: rm ? monthLabel(rm) : null,
+      });
+  }) : [];
+  const answer = {
     v: 1,
-    view: ctx.view,
+    view,
     piece: {
-      id: row.id,
-      title: row.title,
-      kind: null,
-      when: pm ? pm.slice(0, 4) : null,
-      cover_url: safeUrl(row.thumbnail_url) || media.find((u) => IMAGE_EXT.test(u)) || null,
-      media: media.map((url) => ({
-        kind: VIDEO_EXT.test(url) ? 'video' : (IMAGE_EXT.test(url) ? 'photo' : 'document'),
-        url,
-        thumbnail_url: IMAGE_EXT.test(url) ? url : null,
-      })),
-      ink: 'said',
-      text: row.title,
-      how: `In ${first}'s words`,
-      lane: 'work',
+      ...piece,
       link: null,
       description: description ? line('said', description, `In ${first}'s words`, 'work', null) : null,
-      links,
-      skills: (row.skills_used || []).filter(Boolean),
+      how_we_know: howWeKnow,
+      shows_can: (row.skills_used || []).filter(Boolean).slice(0, 5),
+      media: piece.media,
+      attachments,
+      links: [],
+      written,
+      kept_once: null,
+      skills: (row.skills_used || []).filter(Boolean).slice(0, 5),
     },
   };
+  if (owner) {
+    const { howItWillShow } = require('./pieces');
+    answer.piece.how_it_will_show = howItWillShow(row, ctx.parts.work);
+  }
+  return answer;
+}
+
+function dayLabel(at) {
+  return new Date(at).toLocaleDateString('en-US', { timeZone: PACIFIC, month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 module.exports = {
-  buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, buildRecord, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };
