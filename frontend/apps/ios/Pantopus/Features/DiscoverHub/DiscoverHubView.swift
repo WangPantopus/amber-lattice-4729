@@ -83,6 +83,8 @@ struct DiscoverHubMagazineContentView: View {
                 .accessibilityIdentifier("discoverHubMapPreview")
                 topPill
                     .padding(.horizontal, Spacing.s3)
+                    // On an iPad the pill runs the window's width, Back in its top-left corner.
+                    .topBarSpansWindow()
                     .padding(.top, max(proxy.safeAreaInsets.top, Spacing.s2))
                 expandMapButton
                     .padding(.trailing, Spacing.s3)

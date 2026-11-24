@@ -489,6 +489,8 @@ struct ProfessionalProfileSkeleton: View {
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
             }
+            // On an iPad the bar's stand-in runs the window's width, as FormShell's bar does.
+            .topBarSpansWindow()
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     Shimmer(height: 96, cornerRadius: Radii.lg)

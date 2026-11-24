@@ -320,17 +320,22 @@ struct HomeDashboardView: View {
                         overview: {
                             if let brandNew {
                                 BrandNewHomeSection(brandNew: brandNew) { handleQuickAction($0) }
+                            } else if WideLayout.isPad {
+                                // On an iPad the home's intelligence cards and its overview sit side by side where
+                                // the page holds two columns; one column, in this order, where it doesn't.
+                                WideColumns {
+                                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                                        homeIntelligenceStack
+                                    }
+                                    .placeColumn(.leading, order: 0)
+                                    overviewSection(content)
+                                        .padding(.top, Spacing.s4)
+                                        .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                                }
                             } else {
                                 VStack(alignment: .leading, spacing: Spacing.s4) {
                                     homeIntelligenceStack
-                                    HomeOverviewSection(
-                                        content: content,
-                                        onOpenEmergency: { if viewModel.can("sensitive.view") { onOpenEmergency?(homeId) } },
-                                        onOpenIssues: viewModel.can("maintenance.view")
-                                            ? onOpenIssues.map { openIssues in { openIssues(homeId) } } : nil,
-                                        canViewActivity: viewModel.shows("security.manage"),
-                                        canViewEmergency: viewModel.shows("sensitive.view")
-                                    )
+                                    overviewSection(content)
                                 }
                             }
                         }
@@ -358,6 +363,17 @@ struct HomeDashboardView: View {
                 currentUserEmail: currentUserEmail
             ) { showsInviteOwner = false }
         }
+    }
+
+    private func overviewSection(_ content: HomeDashboardContent) -> some View {
+        HomeOverviewSection(
+            content: content,
+            onOpenEmergency: { if viewModel.can("sensitive.view") { onOpenEmergency?(homeId) } },
+            onOpenIssues: viewModel.can("maintenance.view")
+                ? onOpenIssues.map { openIssues in { openIssues(homeId) } } : nil,
+            canViewActivity: viewModel.shows("security.manage"),
+            canViewEmergency: viewModel.shows("sensitive.view")
+        )
     }
 
     /// H1 — health-score ring + seasonal checklist + property value +

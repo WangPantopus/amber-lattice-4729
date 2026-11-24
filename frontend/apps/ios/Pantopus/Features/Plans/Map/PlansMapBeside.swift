@@ -30,9 +30,11 @@ struct PlansMapBeside: View {
     var body: some View {
         GeometryReader { geo in
             let insets = geo.safeAreaInsets
-            // The map runs under the status bar, the side tab bar and the home indicator.
+            // The map runs under the status bar, the side tab bar and the home indicator. Its leading edge is the
+            // list's: the list beside it sets that inset, and the map widens as the list slides away
+            // (`PlansListStowing`). Never under the list, which would cover Apple's Maps mark and Legal link.
             let mapSize = CGSize(
-                width: geo.size.width + insets.leading + insets.trailing,
+                width: geo.size.width + insets.trailing,
                 height: geo.size.height + insets.top + insets.bottom
             )
             let window = openMap(size: geo.size, insets: insets)
@@ -46,7 +48,7 @@ struct PlansMapBeside: View {
                     onCluster: { zoom(to: $0, window: window, mapSize: mapSize) },
                     onBackground: {}
                 )
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: [.top, .bottom, .trailing])
                 if viewModel.phase == .ready, !viewModel.isEmpty {
                     PlansLocateButton(viewModel: viewModel)
                         .padding(.top, Spacing.s1)
@@ -69,9 +71,9 @@ struct PlansMapBeside: View {
     }
 
     /// The map clear of "Show my location" and the edges, in the map's own coordinates (it starts under the
-    /// status bar and runs under the side tab bar). A pin's head stands about 44 pt above its point.
+    /// status bar, at the list's edge, and runs under the side tab bar). A pin's head stands about 44 pt above its point.
     private func openMap(size: CGSize, insets: EdgeInsets) -> CGRect {
-        CGRect(x: insets.leading + 32, y: insets.top + 72, width: size.width - 64, height: size.height - 72 - 32)
+        CGRect(x: 32, y: insets.top + 72, width: size.width - 64, height: size.height - 72 - 32)
     }
 
     /// A map made again for the same plans (an unfold, a turn) opens where the last one was left, at its zoom; with

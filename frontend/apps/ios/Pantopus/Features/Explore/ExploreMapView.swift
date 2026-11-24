@@ -52,6 +52,7 @@ public struct ExploreMapView: View {
             let sheetHeight = max(120, totalHeight * viewModel.sheetStop.heightFraction + dragTranslation) + bottomInset
             ZStack(alignment: .top) {
                 mapLayer
+                    .mapFillsPadWindow()
                 // The stack already starts below the status bar; adding the inset again put these
                 // controls a status bar's height lower than designed, over more of the map.
                 floatingPill
@@ -291,6 +292,9 @@ public struct ExploreMapView: View {
         .clipShape(Capsule())
         .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 14)
+        // On an iPad the pill runs the window's width over the map: Back in its top-left corner, Saved and Filter in
+        // its top-right.
+        .topBarSpansWindow()
         .accessibilityIdentifier("exploreFloatingPill")
     }
 

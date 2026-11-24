@@ -40,6 +40,8 @@ struct SetupTopBar: View {
         .frame(height: 56)
         .background(Theme.Color.appSurface)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.Color.appBorder).frame(height: 1) }
+        // On an iPad the bar runs the window's width: Back or Close in its top-left corner, the action in its top-right.
+        .topBarSpansWindow()
     }
 
     @ViewBuilder private var leadingControl: some View {

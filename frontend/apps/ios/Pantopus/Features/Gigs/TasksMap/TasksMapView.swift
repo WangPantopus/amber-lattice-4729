@@ -111,13 +111,18 @@ public struct TasksMapView: View {
     private var topChrome: some View {
         VStack(spacing: Spacing.s2) {
             titlePill
+                .padding(.horizontal, 14)
+                // On an iPad the pill runs the window's width over the map, its margin kept: Back in its top-left
+                // corner, Filters in its top-right.
+                .topBarSpansWindow()
             categoryChipStrip
+                .padding(.horizontal, 14)
             if viewModel.showsSearchThisArea {
                 searchThisAreaPill
+                    .padding(.horizontal, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 14)
         .animation(.easeInOut(duration: 0.2), value: viewModel.showsSearchThisArea)
     }
 

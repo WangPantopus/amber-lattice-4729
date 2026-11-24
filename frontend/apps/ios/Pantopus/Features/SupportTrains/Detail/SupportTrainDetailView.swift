@@ -70,13 +70,28 @@ public struct SupportTrainDetailView: View {
     @State private var pendingEarlyDelivery: SlotRowContent?
     /// Sections whose "See all N" was tapped.
     @State private var expandedSections: Set<String> = []
+    /// The screen's width, for the iPad's two panes (`twoPanes`).
+    @State private var screenWidth: CGFloat = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// An iPad window wide enough for two phone-wide columns (founder, 2026-11-23: "take advantage of the iPad
+    /// screen"): the train itself (who it's for, the train, Good to know, the calendar) in a side pane with its Sign
+    /// up, beside the updates and dates. Phones, the iPhone Duo, narrow iPad windows and the accessibility text sizes
+    /// keep the one column.
+    private var twoPanes: Bool {
+        WideLayout.splits(width: screenWidth, dynamicTypeSize: dynamicTypeSize)
+    }
 
     public var body: some View {
         VStack(spacing: Spacing.s0) {
             topBar
+                .topBarSpansWindow()
             content
         }
         .background(Theme.Color.appBg)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
+        // On an iPad window that holds both panes the screen takes the window's whole width.
+        .wideColumnsScreen()
         .accessibilityIdentifier("supportTrainDetail")
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .onDisappear { viewModel.suspend() }
@@ -162,6 +177,8 @@ public struct SupportTrainDetailView: View {
             },
             onClose: { viewModel.dismissReserve() }
         )
+        // A card sized to the step in the middle of an iPad window; a full sheet on a phone, as before.
+        .presentationDetentsFittingContentOnIPad([.large])
     }
 
     @ViewBuilder
@@ -195,107 +212,230 @@ public struct SupportTrainDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func loadedBody(_ content: SupportTrainDetailContent) -> some View {
-        VStack(spacing: Spacing.s0) {
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: Spacing.s0) {
-                    if let banner = content.celebrationBanner {
-                        CelebrationBanner(content: banner)
-                            .padding(.top, Spacing.s3)
-                            .padding(.bottom, Spacing.s1)
-                    }
+        if twoPanes {
+            twoPaneBody(content)
+        } else {
+            VStack(spacing: Spacing.s0) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(alignment: .leading, spacing: Spacing.s0) {
+                        bannerSection(content)
+                        recipientSection(content)
+                        trainSection(content)
+                        helperDetailsSection(content)
 
-                    overline("For")
-                    // The last details stay on screen while they are checked again (B5); only the exact
-                    // address and instructions wait for the fresh read.
-                    RecipientCard(content: content.recipient)
-                    if !viewModel.recipientDetailsAvailable {
-                        HStack(spacing: Spacing.s2) {
-                            Text("Checking for the latest details…")
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(Theme.Color.appTextSecondary)
-                            Spacer(minLength: Spacing.s2)
-                            Button("Refresh") { Task { await viewModel.refresh() } }
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .accessibilityIdentifier("supportTrainRetryDetails")
+                        if !content.updates.isEmpty {
+                            updatesSection(content.updates)
                         }
-                        .padding(.top, Spacing.s2)
+
+                        calendarSection(content)
+
+                        if content.viewerRole == .recipient {
+                            recipientDeliveries
+                        }
+
+                        slotSections(content, columns: 1)
+                        addressSection(content)
+                        chatAndHostSection(content)
+
+                        Spacer().frame(height: Spacing.s3)
                     }
+                    .padding(.horizontal, Spacing.s4)
+                    .padding(.bottom, Spacing.s6)
+                }
+                .background(Theme.Color.appBg)
+                .refreshable { await viewModel.refresh() }
 
-                    overline("The train")
-                    TypeDatesCard(content: content.typeDates)
+                if content.typeDates.slotsTotal > 0, hasDock(content.dock) {
+                    dock(content.dock)
+                }
+            }
+        }
+    }
 
-                    if !content.helperDetails.isEmpty {
-                        overline("Good to know")
-                        helperDetailsCard(content.helperDetails)
+    /// The iPad's two panes: the train itself in a side pane with its Sign up (or Manage) under it, so the main
+    /// action stays in reach however far the dates scroll; the updates, dates, address and host beside it, in a
+    /// comfortable width, the dates two across where the pane holds two rows. Each pane scrolls on its own.
+    private func twoPaneBody(_ content: SupportTrainDetailContent) -> some View {
+        let panes = DetailPanes(width: screenWidth)
+        return HStack(alignment: .top, spacing: Spacing.s0) {
+            VStack(spacing: Spacing.s0) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        bannerSection(content)
+                        recipientSection(content)
+                        trainSection(content)
+                        helperDetailsSection(content)
+                        calendarSection(content)
                     }
+                    .padding(.horizontal, Spacing.s5)
+                    .padding(.bottom, Spacing.s6)
+                }
+                .refreshable { await viewModel.refresh() }
 
+                if content.typeDates.slotsTotal > 0, hasDock(content.dock) {
+                    dock(content.dock)
+                }
+            }
+            .frame(width: panes.leading)
+
+            Rectangle()
+                .fill(Theme.Color.appBorderSubtle)
+                .frame(width: 1)
+                .accessibilityHidden(true)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: Spacing.s0) {
                     if !content.updates.isEmpty {
                         updatesSection(content.updates)
                     }
-
-                    overline("Slot calendar")
-                    calendarCard(days: content.calendarDays)
 
                     if content.viewerRole == .recipient {
                         recipientDeliveries
                     }
 
-                    ForEach(content.sections) { section in
-                        let expanded = expandedSections.contains(section.id)
-                        overline(
-                            section.overline,
-                            action: section.actionLabel.map { expanded ? "Show fewer" : $0 }
-                        ) { toggleSection(section.id) }
-                        VStack(spacing: Spacing.s2) {
-                            ForEach(expanded ? section.rows + section.moreRows : section.rows) { row in
-                                VStack(spacing: Spacing.s2) {
-                                    SlotRow(
-                                        content: row,
-                                        onSignUp: signUpAction(for: row),
-                                        onEdit: editAction(for: row),
-                                        showsSignUp: content.viewerRole != .recipient
-                                    )
-                                    commitmentActions(for: row, content: content)
-                                }
-                            }
-                        }
-                    }
-
-                    if let address = content.exactAddress {
-                        overline("Delivery address")
-                        exactAddressCard(address, instructions: content.deliveryInstructions)
-                    } else if content.viewerRole != .viewer, content.viewerRole != .recipient {
-                        // Organizers and helpers coordinate delivery; recipients don't head out.
-                        overline("Delivery address")
-                        Text(content.viewerRole.isOrganizer
-                            ? "No delivery address is available for this train. Coordinate delivery details with your helpers."
-                            : "Delivery details aren't available yet. Contact the organizer before heading out.")
-                            .pantopusTextStyle(.body)
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                            .accessibilityIdentifier("supportTrainAddressUnavailable")
-                    }
-
-                    if let openChat = openChatAction(content) {
-                        GroupChatRow(onOpen: openChat)
-                            .padding(.top, Spacing.s3)
-                    }
-
-                    HostedByRow(content: content.hostedBy, onMessageHost: messageHostAction(content), onOpenProfile: hostProfile(content))
-                        .padding(.top, Spacing.s3)
+                    slotSections(content, columns: panes.slotColumns)
+                    addressSection(content)
+                    chatAndHostSection(content)
 
                     Spacer().frame(height: Spacing.s3)
                 }
-                .padding(.horizontal, Spacing.s4)
+                .frame(maxWidth: DetailPanes.trailingContentWidth)
+                .padding(.horizontal, Spacing.s6)
                 .padding(.bottom, Spacing.s6)
+                .frame(maxWidth: .infinity)
             }
-            .background(Theme.Color.appBg)
             .refreshable { await viewModel.refresh() }
+        }
+        .background(Theme.Color.appBg)
+    }
 
-            if content.typeDates.slotsTotal > 0, hasDock(content.dock) {
-                dock(content.dock)
+    // MARK: - Sections (one column, or the iPad's two panes)
+
+    @ViewBuilder
+    private func bannerSection(_ content: SupportTrainDetailContent) -> some View {
+        if let banner = content.celebrationBanner {
+            CelebrationBanner(content: banner)
+                .padding(.top, Spacing.s3)
+                .padding(.bottom, Spacing.s1)
+        }
+    }
+
+    @ViewBuilder
+    private func recipientSection(_ content: SupportTrainDetailContent) -> some View {
+        overline("For")
+        // The last details stay on screen while they are checked again (B5); only the exact
+        // address and instructions wait for the fresh read.
+        RecipientCard(content: content.recipient)
+        if !viewModel.recipientDetailsAvailable {
+            HStack(spacing: Spacing.s2) {
+                Text("Checking for the latest details…")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                Spacer(minLength: Spacing.s2)
+                Button("Refresh") { Task { await viewModel.refresh() } }
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .accessibilityIdentifier("supportTrainRetryDetails")
+            }
+            .padding(.top, Spacing.s2)
+        }
+    }
+
+    @ViewBuilder
+    private func trainSection(_ content: SupportTrainDetailContent) -> some View {
+        overline("The train")
+        TypeDatesCard(content: content.typeDates)
+    }
+
+    @ViewBuilder
+    private func helperDetailsSection(_ content: SupportTrainDetailContent) -> some View {
+        if !content.helperDetails.isEmpty {
+            overline("Good to know")
+            helperDetailsCard(content.helperDetails)
+        }
+    }
+
+    @ViewBuilder
+    private func calendarSection(_ content: SupportTrainDetailContent) -> some View {
+        overline("Slot calendar")
+        calendarCard(days: content.calendarDays)
+    }
+
+    /// The row stacks; `columns` 2 lays each section's rows two across (the iPad's wide pane).
+    private func slotSections(_ content: SupportTrainDetailContent, columns: Int) -> some View {
+        ForEach(content.sections) { section in
+            let expanded = expandedSections.contains(section.id)
+            overline(
+                section.overline,
+                action: section.actionLabel.map { expanded ? "Show fewer" : $0 }
+            ) { toggleSection(section.id) }
+            slotRows(expanded ? section.rows + section.moreRows : section.rows, content: content, columns: columns)
+        }
+    }
+
+    @ViewBuilder
+    private func slotRows(_ rows: [SlotRowContent], content: SupportTrainDetailContent, columns: Int) -> some View {
+        if columns > 1 {
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: Spacing.s3, alignment: .top),
+                    count: columns
+                ),
+                alignment: .leading,
+                spacing: Spacing.s2
+            ) {
+                ForEach(rows) { row in
+                    slotRowStack(row, content: content)
+                }
+            }
+        } else {
+            VStack(spacing: Spacing.s2) {
+                ForEach(rows) { row in
+                    slotRowStack(row, content: content)
+                }
             }
         }
+    }
+
+    private func slotRowStack(_ row: SlotRowContent, content: SupportTrainDetailContent) -> some View {
+        VStack(spacing: Spacing.s2) {
+            SlotRow(
+                content: row,
+                onSignUp: signUpAction(for: row),
+                onEdit: editAction(for: row),
+                showsSignUp: content.viewerRole != .recipient
+            )
+            commitmentActions(for: row, content: content)
+        }
+    }
+
+    @ViewBuilder
+    private func addressSection(_ content: SupportTrainDetailContent) -> some View {
+        if let address = content.exactAddress {
+            overline("Delivery address")
+            exactAddressCard(address, instructions: content.deliveryInstructions)
+        } else if content.viewerRole != .viewer, content.viewerRole != .recipient {
+            // Organizers and helpers coordinate delivery; recipients don't head out.
+            overline("Delivery address")
+            Text(content.viewerRole.isOrganizer
+                ? "No delivery address is available for this train. Coordinate delivery details with your helpers."
+                : "Delivery details aren't available yet. Contact the organizer before heading out.")
+                .pantopusTextStyle(.body)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .accessibilityIdentifier("supportTrainAddressUnavailable")
+        }
+    }
+
+    @ViewBuilder
+    private func chatAndHostSection(_ content: SupportTrainDetailContent) -> some View {
+        if let openChat = openChatAction(content) {
+            GroupChatRow(onOpen: openChat)
+                .padding(.top, Spacing.s3)
+        }
+
+        HostedByRow(content: content.hostedBy, onMessageHost: messageHostAction(content), onOpenProfile: hostProfile(content))
+            .padding(.top, Spacing.s3)
     }
 
     /// Organizers see Manage; the flag also comes from the loaded train, so a
@@ -564,29 +704,7 @@ public struct SupportTrainDetailView: View {
     }
 
     private func helperDetailsCard(_ lines: [SupportTrainDetailContent.HelperDetailLine]) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            ForEach(lines) { line in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(line.label)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                    Text(line.value)
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(Theme.Color.appText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-            }
-        }
-        .padding(Spacing.s3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
-                .stroke(Theme.Color.appBorder, lineWidth: 1)
-        )
-        .accessibilityIdentifier("supportTrainHelperDetails")
+        HelperDetailsCard(lines: lines)
     }
 
     private func editAction(for row: SlotRowContent) -> (@MainActor () -> Void)? {
@@ -686,7 +804,44 @@ public struct SupportTrainDetailView: View {
         .background(Theme.Color.appBg)
     }
 
+    @ViewBuilder
     private var loadingShell: some View {
+        if twoPanes {
+            twoPaneLoadingShell
+        } else {
+            oneColumnLoadingShell
+        }
+    }
+
+    /// The loading shapes in the iPad's two panes, where the loaded train will be.
+    private var twoPaneLoadingShell: some View {
+        HStack(alignment: .top, spacing: Spacing.s0) {
+            VStack(alignment: .leading, spacing: Spacing.s3) {
+                Shimmer(height: 100, cornerRadius: Radii.lg).padding(.top, Spacing.s3)
+                Shimmer(height: 130, cornerRadius: Radii.lg)
+                Shimmer(height: 240, cornerRadius: Radii.lg)
+                Spacer(minLength: Spacing.s0)
+            }
+            .padding(.horizontal, Spacing.s5)
+            .frame(width: DetailPanes(width: screenWidth).leading)
+            Rectangle()
+                .fill(Theme.Color.appBorderSubtle)
+                .frame(width: 1)
+            VStack(alignment: .leading, spacing: Spacing.s3) {
+                Shimmer(height: 64, cornerRadius: Radii.lg).padding(.top, Spacing.s3)
+                Shimmer(height: 64, cornerRadius: Radii.lg)
+                Shimmer(height: 64, cornerRadius: Radii.lg)
+                Spacer(minLength: Spacing.s0)
+            }
+            .frame(maxWidth: DetailPanes.trailingContentWidth)
+            .padding(.horizontal, Spacing.s6)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Theme.Color.appBg)
+        .accessibilityIdentifier("supportTrainDetailLoading")
+    }
+
+    private var oneColumnLoadingShell: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 Shimmer(height: 100, cornerRadius: Radii.lg).padding(.top, Spacing.s3)
@@ -795,6 +950,29 @@ public struct SupportTrainDetailView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+    }
+}
+
+// MARK: - iPad panes
+
+/// The widths of the detail's two panes on an iPad window (`SupportTrainDetailView.twoPanes`).
+private struct DetailPanes {
+    /// The updates and dates keep a comfortable width in a big window, centered in their pane.
+    static let trailingContentWidth: CGFloat = 760
+    /// The side pane: about a third of the window, from a phone's width (it holds the 7-day calendar) to 440.
+    private static let leadingRange: ClosedRange<CGFloat> = 360...440
+    /// The narrowest pane that holds the dates two across, each about a phone row's width.
+    private static let twoRowsWidth: CGFloat = 680
+
+    let leading: CGFloat
+    /// Dates per line in the wide pane.
+    let slotColumns: Int
+
+    init(width: CGFloat) {
+        let leading = min(max((width * 0.36).rounded(.down), Self.leadingRange.lowerBound), Self.leadingRange.upperBound)
+        self.leading = leading
+        let trailing = min(Self.trailingContentWidth, width - leading - 1 - 2 * Spacing.s6)
+        slotColumns = trailing >= Self.twoRowsWidth ? 2 : 1
     }
 }
 

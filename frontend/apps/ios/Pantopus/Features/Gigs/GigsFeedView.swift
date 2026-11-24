@@ -317,6 +317,8 @@ public struct GigsFeedView: View {
         .padding(.horizontal, Spacing.s4)
         .padding(.vertical, Spacing.s2)
         .background(Theme.Color.appBg)
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the map switch in its top-right.
+        .topBarSpansWindow()
     }
 
     // MARK: - Search

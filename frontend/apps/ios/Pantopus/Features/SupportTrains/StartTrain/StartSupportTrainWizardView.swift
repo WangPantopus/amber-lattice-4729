@@ -30,12 +30,22 @@ public struct StartSupportTrainWizardView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             WizardShell(model: viewModel, identity: .warm) {
-                stepBody
-                if let error = viewModel.launchError {
-                    StartSupportTrainErrorBanner(message: error)
-                        .id(launchErrorID)
+                if WideLayout.isPad {
+                    // An iPad window: the step's form beside the train's page as helpers will see it, filled in
+                    // live; a narrow window keeps the phone's one column.
+                    StartTrainWideStep(showsPreview: viewModel.step != .success) {
+                        stepBody
+                        launchErrorBanner
+                    } preview: {
+                        StartTrainPreviewPanel(viewModel: viewModel)
+                    }
+                } else {
+                    stepBody
+                    launchErrorBanner
                 }
             }
+            // On an iPad window wide enough for the form and the preview, the wizard takes the window's whole width.
+            .wideColumnsScreen()
             // The error sits under the review's last section. Bring it into view and read it
             // out, so a failed launch doesn't look like nothing happened.
             .onChange(of: viewModel.launchError) { _, error in
@@ -53,6 +63,14 @@ public struct StartSupportTrainWizardView: View {
     }
 
     private let launchErrorID = "startSupportTrainLaunchError"
+
+    @ViewBuilder
+    private var launchErrorBanner: some View {
+        if let error = viewModel.launchError {
+            StartSupportTrainErrorBanner(message: error)
+                .id(launchErrorID)
+        }
+    }
 
     @ViewBuilder
     private var stepBody: some View {

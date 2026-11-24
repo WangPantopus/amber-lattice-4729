@@ -105,7 +105,9 @@ public struct WizardShell<Content: View>: View {
 
     private func stickyCTA(chrome: WizardChrome) -> some View {
         VStack(spacing: Spacing.s0) {
-            Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
+            // On an iPad the bar's line runs the window's width, as its band does; the buttons keep a button's width,
+            // centered.
+            Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1).topBarSpansWindow()
             if let hint = chrome.footerHint {
                 HStack(spacing: Spacing.s1) {
                     Icon(.hourglass, size: 12, color: Theme.Color.appTextSecondary)
@@ -149,6 +151,7 @@ public struct WizardShell<Content: View>: View {
                 }
                 .accessibilityIdentifier(chrome.primaryCTAIdentifier)
             }
+            .padBottomActionWidth()
             // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
             .besideFold()
             .padding(Spacing.s4)
@@ -235,6 +238,8 @@ private struct WizardTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: X or Back in its top-left corner, the step count in its top-right.
+        .topBarSpansWindow()
     }
 
     private var leadingIcon: PantopusIcon {

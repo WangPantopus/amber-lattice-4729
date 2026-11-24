@@ -16,6 +16,8 @@ final class SupportTrainWhereModel {
     struct HomeChoice: Identifiable, Hashable {
         let id: String
         let label: String
+        /// "Vancouver, WA": all of the home that people who aren't helping see.
+        var place: String?
     }
 
     /// The homes the organizer belongs to (the server accepts only those).
@@ -31,7 +33,11 @@ final class SupportTrainWhereModel {
         guard homes.isEmpty, let response = try? await HomesStoreReads.myHomes().value else { return }
         homes = response.sharedHomes.map { home in
             let line = [home.home.address, home.home.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
-            return HomeChoice(id: home.id, label: line.isEmpty ? (home.home.name ?? "My home") : line)
+            return HomeChoice(
+                id: home.id,
+                label: line.isEmpty ? (home.home.name ?? "My home") : line,
+                place: Self.place(city: home.home.city, state: home.home.state)
+            )
         }
     }
 
@@ -79,6 +85,20 @@ final class SupportTrainWhereModel {
         if let selectedHomeId { return homes.first { $0.id == selectedHomeId }?.label }
         guard let picked else { return nil }
         return [picked.address, picked.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    /// The city of the choice ("Vancouver, WA"), as the train's page shows it to people who aren't helping; nil until
+    /// one is picked. The Start wizard's iPad preview reads it.
+    var place: String? {
+        if let selectedHomeId { return homes.first { $0.id == selectedHomeId }?.place }
+        guard let picked else { return nil }
+        return Self.place(city: picked.city, state: picked.state)
+    }
+
+    /// "City, ST", either alone, or nil.
+    private static func place(city: String?, state: String?) -> String? {
+        let parts = [city, state].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 }
 

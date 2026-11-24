@@ -144,20 +144,30 @@ private extension PaymentsView {
     private func loadedFrame(_ loaded: PaymentsLoaded) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s0) {
-                if let balance = loaded.balance {
-                    balanceHero(balance)
-                        .padding(.horizontal, Spacing.s3)
-                        .padding(.top, 14)
+                // On a wide iPad: the balance, payment methods and payouts beside earnings and activity.
+                PadSectionStack {
+                    if let balance = loaded.balance {
+                        balanceHero(balance)
+                            .padding(.horizontal, Spacing.s3)
+                            .padding(.top, 14)
+                            .padSectionColumn(.leading, order: 0)
+                    }
+                    methodsSection(loaded.methods)
+                        .padSectionColumn(.leading, order: 1)
+                    payoutsSection(loaded.payouts)
+                        .padSectionColumn(.leading, order: 2)
+                    if let earnings = loaded.earnings {
+                        earningsSection(earnings)
+                            .padSectionColumn(.trailing, order: 3)
+                    }
+                    activitySection(loaded.activity)
+                        .padSectionColumn(.trailing, order: 4)
+                    if loaded.canCloseAccount {
+                        destructiveCard
+                            .padSectionColumn(.trailing, order: 5)
+                    }
                 }
-                methodsSection(loaded.methods)
-                payoutsSection(loaded.payouts)
-                if let earnings = loaded.earnings {
-                    earningsSection(earnings)
-                }
-                activitySection(loaded.activity)
-                if loaded.canCloseAccount {
-                    destructiveCard
-                }
+                .padWideMargins()
                 Text(loaded.footerCaption)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.Color.appTextMuted)
@@ -173,6 +183,7 @@ private extension PaymentsView {
         .refreshable { await viewModel.refresh() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("paymentsContent")
+        .padSectionScreen()
     }
 
     private func balanceHero(_ balance: PaymentsBalance) -> some View {

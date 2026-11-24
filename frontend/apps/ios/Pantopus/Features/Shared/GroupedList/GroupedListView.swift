@@ -79,6 +79,8 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width, Back in its top-left corner.
+        .topBarSpansWindow()
     }
 
     @ViewBuilder private var content: some View {
@@ -132,53 +134,11 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
 
     private func loadedFrame(_ groups: [GroupedListGroup]) -> some View {
         ScrollView {
-            VStack(spacing: Spacing.s0) {
-                if let headerView {
-                    headerView
-                        .padding(.horizontal, Spacing.s3)
-                        .padding(.top, Spacing.s3)
-                        .accessibilityIdentifier("groupedListHeader")
-                }
-                if let banner = dataSource.banner {
-                    bannerView(banner)
-                        .padding(.horizontal, Spacing.s3)
-                        .padding(.top, Spacing.s3)
-                        .accessibilityIdentifier("groupedListBanner")
-                }
-                ForEach(groups) { group in
-                    let destructiveRows = group.rows.filter(\.destructive)
-                    let regularRows = group.rows.filter { !$0.destructive }
-                    if !regularRows.isEmpty || group.fuzz != nil {
-                        groupCard(group, rows: regularRows)
-                    }
-                    ForEach(destructiveRows) { row in
-                        VStack(spacing: Spacing.s0) {
-                            renderRow(row, isLastInCard: true)
-                        }
-                        .background(Theme.Color.appSurface)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
-                                .stroke(Theme.Color.appBorder, lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-                        .padding(.horizontal, Spacing.s3)
-                        .padding(.top, 18)
-                        .accessibilityIdentifier("groupedListDestructive_\(row.id)")
-                    }
-                }
-                if let footer = dataSource.footerCaption {
-                    Text(footer)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Theme.Color.appTextMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Spacing.s4)
-                        .padding(.top, 18)
-                        .padding(.bottom, Spacing.s1)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("groupedListFooter")
-                }
+            if WideLayout.isPad, groups.count > 1 {
+                padLoadedStack(groups)
+            } else {
+                phoneLoadedStack(groups)
             }
-            .padding(.bottom, Spacing.s6)
         }
         // The data source is the source of truth the moment it emits a
         // new projection: confirmed mutations re-emit the same value
@@ -186,6 +146,133 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
         // value, which has to win over the optimistic override.
         .onChange(of: groups) { _, _ in optimisticOverrides.removeAll() }
         .accessibilityIdentifier("groupedListContent")
+        // On an iPad window wide enough, the groups are in two columns and the screen takes the window's width.
+        .modifier(GroupedListWidens(active: WideLayout.isPad && groups.count > 1))
+    }
+
+    /// The groups in one column, as on a phone (and in a narrow iPad window or with one group).
+    private func phoneLoadedStack(_ groups: [GroupedListGroup]) -> some View {
+        VStack(spacing: Spacing.s0) {
+            if let headerView {
+                headerView
+                    .padding(.horizontal, Spacing.s3)
+                    .padding(.top, Spacing.s3)
+                    .accessibilityIdentifier("groupedListHeader")
+            }
+            if let banner = dataSource.banner {
+                bannerView(banner)
+                    .padding(.horizontal, Spacing.s3)
+                    .padding(.top, Spacing.s3)
+                    .accessibilityIdentifier("groupedListBanner")
+            }
+            ForEach(groups) { group in
+                let destructiveRows = group.rows.filter(\.destructive)
+                let regularRows = group.rows.filter { !$0.destructive }
+                if !regularRows.isEmpty || group.fuzz != nil {
+                    groupCard(group, rows: regularRows)
+                }
+                ForEach(destructiveRows) { row in
+                    destructiveCard(row)
+                }
+            }
+            footerView
+        }
+        .padding(.bottom, Spacing.s6)
+    }
+
+    /// iPad: the groups in two columns where the window holds them (`WideColumns`), the first groups in the leading
+    /// column and the rest in the trailing one, split so the columns come out about the same height; one column in
+    /// the written order in a narrow window.
+    private func padLoadedStack(_ groups: [GroupedListGroup]) -> some View {
+        let leadingCount = Self.leadingGroupCount(groups, extraLeading: (headerView == nil ? 0 : 3) + (dataSource.banner == nil ? 0 : 2))
+        return VStack(spacing: Spacing.s0) {
+            WideColumns {
+                if let headerView {
+                    headerView
+                        .padding(.horizontal, Spacing.s3)
+                        .padding(.top, Spacing.s3)
+                        .accessibilityIdentifier("groupedListHeader")
+                        .placeColumn(.leading, order: 0)
+                }
+                if let banner = dataSource.banner {
+                    bannerView(banner)
+                        .padding(.horizontal, Spacing.s3)
+                        .padding(.top, Spacing.s3)
+                        .accessibilityIdentifier("groupedListBanner")
+                        .placeColumn(.leading, order: 1)
+                }
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                    groupSection(group)
+                        .placeColumn(index < leadingCount ? .leading : .trailing, order: index + 2)
+                }
+            }
+            .wideColumnsMargins(Spacing.s0)
+            footerView
+        }
+        .padding(.bottom, Spacing.s6)
+    }
+
+    /// One group with its overline, helper and destructive rows, as one piece for a column.
+    private func groupSection(_ group: GroupedListGroup) -> some View {
+        let destructiveRows = group.rows.filter(\.destructive)
+        let regularRows = group.rows.filter { !$0.destructive }
+        return VStack(spacing: Spacing.s0) {
+            if !regularRows.isEmpty || group.fuzz != nil {
+                groupCard(group, rows: regularRows)
+            }
+            ForEach(destructiveRows) { row in
+                destructiveCard(row)
+            }
+        }
+    }
+
+    /// How many of the groups go in the leading column: the split that leaves the two columns closest in rows.
+    private static func leadingGroupCount(_ groups: [GroupedListGroup], extraLeading: Int) -> Int {
+        let weights = groups.map { group in
+            (group.fuzz == nil ? group.rows.count : 4) + (group.overline == nil ? 0 : 1) + (group.helper == nil ? 0 : 1)
+        }
+        let total = weights.reduce(extraLeading, +)
+        var best = 1
+        var bestGap = Int.max
+        var leading = extraLeading
+        for count in 1..<max(2, groups.count) {
+            leading += weights[count - 1]
+            let gap = abs(leading - (total - leading))
+            if gap < bestGap {
+                best = count
+                bestGap = gap
+            }
+        }
+        return best
+    }
+
+    private func destructiveCard(_ row: GroupedListRow) -> some View {
+        VStack(spacing: Spacing.s0) {
+            renderRow(row, isLastInCard: true)
+        }
+        .background(Theme.Color.appSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
+                .stroke(Theme.Color.appBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+        .padding(.horizontal, Spacing.s3)
+        .padding(.top, 18)
+        .accessibilityIdentifier("groupedListDestructive_\(row.id)")
+    }
+
+    @ViewBuilder private var footerView: some View {
+        if let footer = dataSource.footerCaption {
+            Text(footer)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.Color.appTextMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, 18)
+                .padding(.bottom, Spacing.s1)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("groupedListFooter")
+        }
     }
 
     @ViewBuilder
@@ -653,6 +740,73 @@ private extension View {
     func opensOnChip(_ selected: String) -> some View {
         ScrollViewReader { scroller in
             self.onAppear { scroller.scrollTo(selected) }
+        }
+    }
+}
+
+/// A grouped list with its groups in two columns on an iPad: the reading column leaves it the window's width where
+/// two columns fit (`wideColumnsScreen()`). Elsewhere the screen keeps the column.
+private struct GroupedListWidens: ViewModifier {
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        if active {
+            content.wideColumnsScreen()
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - iPad: a screen of sections in two columns
+
+extension View {
+    /// The column this section goes in on an iPad window wide enough for two (`WideColumns`, through
+    /// `PadSectionStack`); a phone and the iPhone Duo keep their one column untouched.
+    @MainActor @ViewBuilder
+    func padSectionColumn(_ column: PlaceColumn, order: Int, trimsTop: CGFloat = 0) -> some View {
+        if WideLayout.isPad {
+            placeColumn(column, order: order, trimsTop: trimsTop)
+        } else {
+            self
+        }
+    }
+
+    /// The margins around `PadSectionStack`'s two columns on an iPad; none in one column (the sections carry their
+    /// own), and a phone keeps its layout untouched.
+    @MainActor @ViewBuilder
+    func padWideMargins() -> some View {
+        if WideLayout.isPad {
+            wideColumnsMargins(Spacing.s0)
+        } else {
+            self
+        }
+    }
+
+    /// On an iPad, the reading column leaves this screen of `PadSectionStack` sections the window's width where two
+    /// columns fit; elsewhere nothing changes.
+    @MainActor @ViewBuilder
+    func padSectionScreen() -> some View {
+        if WideLayout.isPad {
+            wideColumnsScreen()
+        } else {
+            self
+        }
+    }
+}
+
+/// A screen's sections: on an iPad in `WideColumns` (two columns where the window holds them, else one in the written
+/// order), on a phone and the iPhone Duo in the one stack they had. Each section names its column with
+/// `padSectionColumn(_:order:)`.
+struct PadSectionStack<Content: View>: View {
+    var alignment: HorizontalAlignment = .leading
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if WideLayout.isPad {
+            WideColumns(content: content)
+        } else {
+            VStack(alignment: alignment, spacing: Spacing.s0, content: content)
         }
     }
 }

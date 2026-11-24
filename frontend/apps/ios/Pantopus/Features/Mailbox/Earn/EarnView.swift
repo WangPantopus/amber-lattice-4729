@@ -63,6 +63,8 @@ public struct EarnView: View {
         VStack(spacing: Spacing.s0) {
             EarnTopBar(onBack: onBack, onHelp: onHelp)
             EarnTabStrip(selected: $selectedTab)
+                // Under the top bar, across an iPad window as it is.
+                .topBarSpansWindow()
             switch selectedTab {
             case .offers:
                 EarnOffersTab(viewModel: offersViewModel)
@@ -71,6 +73,11 @@ public struct EarnView: View {
             }
         }
         .background(Theme.Color.appBg)
+        // The earnings dashboard lays its sections in two columns across an iPad window wide enough; the offers
+        // keep the reading column.
+        .readableColumnWidens(
+            from: WideLayout.isPad && selectedTab == .earnings ? WideLayout.minimumScreenWidth : .infinity
+        )
         .accessibilityIdentifier("earn")
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         // The earnings dashboard only pays for its fetch once the user
@@ -113,7 +120,70 @@ public struct EarnView: View {
 
     // MARK: - Populated
 
+    @ViewBuilder
     private func populatedScroll(_ content: EarnContent) -> some View {
+        if WideLayout.isPad {
+            populatedColumns(content)
+        } else {
+            populatedList(content)
+        }
+    }
+
+    /// On an iPad: the balance, the goal and the ways to earn in one column, the earnings, payout and taxes in the
+    /// other, where the window holds two (one column, in this order, where it doesn't).
+    private func populatedColumns(_ content: EarnContent) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                WideColumns {
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        heroSection(content)
+                        if let weeklyGoal = content.weeklyGoal {
+                            WeeklyGoalCard(goal: weeklyGoal)
+                                .padding(.top, Spacing.s3)
+                        }
+                        waysToEarnSection(content.waysToEarn)
+                    }
+                    .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        section(overline: "Recent earnings") {
+                            if content.earnings.isEmpty {
+                                EarnLockedRow(
+                                    title: "No mail offer earnings",
+                                    subcopy: "Task earnings go to your wallet in Payments.",
+                                    identifier: "earnEarningsLockedRow"
+                                )
+                            } else {
+                                EarnEarningsList(items: content.earnings)
+                            }
+                        }
+                        if let payoutMethod = content.payoutMethod, let autoCashOut = content.autoCashOut {
+                            section(overline: "Payout settings") {
+                                EarnPayoutSettingsCard(
+                                    method: payoutMethod,
+                                    autoCashOut: autoCashOut,
+                                    onManage: onManagePayout
+                                )
+                            }
+                        }
+                        if let taxDocs = content.taxDocs {
+                            section(overline: "Taxes") {
+                                EarnTaxDocsRow(docs: taxDocs, onTap: onOpenTaxDocs)
+                            }
+                        }
+                    }
+                    // Its overline level with the top of the balance.
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+                Spacer().frame(height: 96)
+            }
+            .wideColumnsMargins(Spacing.s4)
+            .padding(.top, Spacing.s3)
+            .padding(.bottom, Spacing.s2)
+        }
+        .background(Theme.Color.appBg)
+    }
+
+    private func populatedList(_ content: EarnContent) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.s0) {
                 heroSection(content)
@@ -194,7 +264,54 @@ public struct EarnView: View {
 
     // MARK: - Empty (new earner)
 
+    @ViewBuilder
     private func emptyScroll(_ waysToEarn: [EarnWayToEarn]) -> some View {
+        if WideLayout.isPad {
+            emptyColumns(waysToEarn)
+        } else {
+            emptyList(waysToEarn)
+        }
+    }
+
+    /// On an iPad: the ways to earn in one column, the earnings, payout and taxes in the other, where the window holds
+    /// two.
+    private func emptyColumns(_ waysToEarn: [EarnWayToEarn]) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.s0) {
+                WideColumns {
+                    waysToEarnSection(waysToEarn)
+                        .placeColumn(.leading, order: 0, trimsTop: Spacing.s4)
+                    VStack(alignment: .leading, spacing: Spacing.s0) {
+                        section(overline: "Recent earnings") {
+                            EarnLockedRow(
+                                title: "No earnings yet",
+                                subcopy: "Task earnings go to your wallet in Payments.",
+                                identifier: "earnEarningsLockedRow"
+                            )
+                        }
+                        section(overline: "Payout settings") {
+                            EarnPayoutNudge(onAddBank: onAddBank)
+                        }
+                        section(overline: "Taxes") {
+                            EarnLockedRow(
+                                title: "Tax documents",
+                                subcopy: "Tax documents aren't available in the app yet.",
+                                identifier: "earnTaxDocsLockedRow"
+                            )
+                        }
+                    }
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+                Spacer().frame(height: 116)
+            }
+            .wideColumnsMargins(Spacing.s4)
+            .padding(.top, Spacing.s3)
+            .padding(.bottom, Spacing.s2)
+        }
+        .background(Theme.Color.appBg)
+    }
+
+    private func emptyList(_ waysToEarn: [EarnWayToEarn]) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.s0) {
                 waysToEarnSection(waysToEarn)
@@ -300,6 +417,8 @@ public struct EarnView: View {
             )
             .frame(height: 28)
             content()
+                // Not stretched across an iPad window.
+                .mailPadBarWidth()
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s5)
                 .padding(.top, Spacing.s2)
@@ -375,6 +494,7 @@ private struct EarnTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorder).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 }
 

@@ -79,13 +79,36 @@ public struct ManageTrainView: View {
     /// The reminder card's frame on screen as of its latest height change: its editor grows
     /// a line at a time while the organizer types.
     @State private var nudgeSectionFrame: CGRect = .zero
+    /// The screen's width, for the iPad's two columns (`sendsInline`, the close card).
+    @State private var screenWidth: CGFloat = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The sections are in two columns on an iPad window (`WideColumns`): Send update then sits under its message,
+    /// in the left column, rather than in a bar across the whole window.
+    private var sendsInline: Bool {
+        WideLayout.splits(width: screenWidth, dynamicTypeSize: dynamicTypeSize)
+    }
+
+    /// Close support train opens as a card in the middle of an iPad window rather than a sheet across its bottom.
+    private var closesInCard: Bool {
+        WideLayout.isPad && screenWidth >= Self.closeCardWindow
+    }
+
+    /// The narrowest iPad window that shows Close as a card; narrower windows keep the phone's bottom sheet.
+    private static let closeCardWindow: CGFloat = 600
+    /// The close card's width.
+    private static let closeCardWidth: CGFloat = 540
 
     public var body: some View {
         VStack(spacing: Spacing.s0) {
             topBar
+                .topBarSpansWindow()
             content
         }
         .background(Theme.Color.appBg)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
+        // On an iPad window that holds two columns the screen takes the window's whole width.
+        .wideColumnsScreen()
         .onDisappear { viewModel.suspend() }
         .refreshesOnStoreChange(
             affects: { $0.names(topic: ScreenTopic.supportTrain(viewModel.supportTrainId)) },
@@ -106,6 +129,8 @@ public struct ManageTrainView: View {
                 onSave: { edited in Task { await viewModel.saveSlot(edited) } },
                 onCancel: { viewModel.dismissSlotEditor() }
             )
+            // A card sized to the form in the middle of an iPad window; a full sheet on a phone, as before.
+            .presentationDetentsFittingContentOnIPad([.large])
             .interactiveDismissDisabled(viewModel.isSubmitting)
             .alert("Something went wrong", isPresented: Binding(
                 get: { viewModel.actionError != nil },
@@ -251,15 +276,35 @@ public struct ManageTrainView: View {
 
     private var loadingBody: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.s4) {
-                Shimmer(height: 60, cornerRadius: Radii.lg)
-                Shimmer(height: 84, cornerRadius: Radii.lg)
-                Shimmer(height: 96, cornerRadius: Radii.lg)
-                Shimmer(height: 140, cornerRadius: Radii.lg)
-                Shimmer(height: 180, cornerRadius: Radii.lg)
+            if WideLayout.isPad {
+                // The loading shapes where the sections will be: two columns on a wide iPad window.
+                WideColumns {
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        Shimmer(height: 60, cornerRadius: Radii.lg)
+                        Shimmer(height: 84, cornerRadius: Radii.lg)
+                        Shimmer(height: 96, cornerRadius: Radii.lg)
+                    }
+                    .placeColumn(.leading, order: 0)
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        Shimmer(height: 140, cornerRadius: Radii.lg)
+                        Shimmer(height: 180, cornerRadius: Radii.lg)
+                    }
+                    .padding(.top, Spacing.s4)
+                    .placeColumn(.trailing, order: 1, trimsTop: Spacing.s4)
+                }
+                .wideColumnsMargins(Spacing.s4)
+                .padding(.vertical, Spacing.s4)
+            } else {
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    Shimmer(height: 60, cornerRadius: Radii.lg)
+                    Shimmer(height: 84, cornerRadius: Radii.lg)
+                    Shimmer(height: 96, cornerRadius: Radii.lg)
+                    Shimmer(height: 140, cornerRadius: Radii.lg)
+                    Shimmer(height: 180, cornerRadius: Radii.lg)
+                }
+                .padding(.horizontal, Spacing.s4)
+                .padding(.vertical, Spacing.s4)
             }
-            .padding(.horizontal, Spacing.s4)
-            .padding(.vertical, Spacing.s4)
         }
         .accessibilityIdentifier("manageTrainLoading")
     }
@@ -296,145 +341,33 @@ public struct ManageTrainView: View {
 
     private func loadedBody(_ content: ManageTrainContent) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.s4) {
-                TrainContextStrip(
-                    title: content.title,
-                    dateRangeLabel: content.dateRangeLabel,
-                    isActive: content.isActive,
-                    statusLabel: content.status.isEmpty ? "Unavailable" : content.status.capitalized
-                )
-
-                if viewModel.helpersFailed {
-                    VStack(alignment: .leading, spacing: Spacing.s2) {
-                        Text("Organizer details need to be checked again.")
-                            .font(.system(size: 13.5))
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                        Button("Retry organizer details") { Task { await viewModel.refresh() } }
-                            .accessibilityIdentifier("manageTrainRetryDetails")
-                    }
+            if WideLayout.isPad {
+                twoColumnSections(content)
+            } else {
+                VStack(alignment: .leading, spacing: Spacing.s4) {
+                    contextSection(content)
+                    statsSection(content)
+                    slotFillSection(content)
+                    sendUpdateSection(content)
+                    organizeSection(content)
+                    setupSection(content)
+                    organizerControls(content)
+                    windDownSection(content)
+                    lifecycleSection(content)
                 }
-
-                StatCellRow(cells: [
-                    StatCellContent(id: "slots", value: content.slotFillValue, label: "Slots", tone: .success),
-                    StatCellContent(id: "helpers", value: content.helpersValue, label: "Helpers", tone: .neutral),
-                    StatCellContent(id: "left", value: content.daysLeftValue, label: "Left", tone: .neutral),
-                    StatCellContent(id: "drop", value: content.dropoutValue, label: "Dropout", tone: .warn)
-                ])
-
-                SlotPreview(
-                    filled: content.slotsFilled,
-                    dropout: content.slotsDropout,
-                    open: content.slotsOpen,
-                    total: content.slotsTotal,
-                    caption: content.slotFillCaption
-                )
-
-                sectionOverline("Send an update")
-                SendUpdateForm(
-                    chips: content.audienceChips,
-                    message: $viewModel.draftMessage,
-                    selectedAudienceId: $viewModel.selectedAudienceId,
-                    pushToPhones: $viewModel.pushToPhones,
-                    counterLabel: viewModel.characterCounterLabel,
-                    isOverLimit: false
-                )
-
-                sectionOverline("Organize")
-                OrganizeSection(rows: content.organizeRows.filter { handler(forOrganizeRow: $0.id) != nil }) { row in
-                    handler(forOrganizeRow: row.id)?(content.trainId)
-                }
-
-                sectionOverline("The train")
-                ManageTrainSetupSection(
-                    addressLabel: viewModel.deliveryAddressLabel,
-                    sharingMode: viewModel.sharingMode,
-                    invites: viewModel.inviteRows,
-                    // Only the primary and co-organizers may change these; a recipient_delegate is refused (403).
-                    canEdit: content.viewerRole.isOrganizer && !viewModel.isRecipientDelegate
-                        && !["completed", "archived"].contains(content.status),
-                    isBusy: viewModel.isSubmitting,
-                    onEditAddress: { showAddressSheet = true },
-                    onChooseAudience: { mode in
-                        if mode == "private_link", viewModel.sharingMode != mode {
-                            confirmNearby = true
-                        } else {
-                            Task { await viewModel.updateSharingMode(mode) }
-                        }
-                    },
-                    onInvite: { showInvitePicker = true }
-                )
-                .sheet(isPresented: $showAddressSheet) {
-                    ManageTrainAddressSheet(
-                        isBusy: viewModel.isSubmitting,
-                        onSave: { await viewModel.updateDeliveryLocation($0) },
-                        onClose: { showAddressSheet = false }
-                    )
-                }
-                .sheet(isPresented: $showInvitePicker) { invitePicker }
-
-                organizerControls(content)
-
-                // Only the primary organizer closes a live train (A11).
-                if viewModel.canCloseTrain {
-                    sectionOverline("Wind down")
-                    WindDownSection(row: content.closeRow) {
-                        viewModel.showCloseSheet()
-                    }
-                }
-
-                // A recipient_delegate can't publish, pause, resume or end the train (the server refuses them).
-                if !viewModel.isRecipientDelegate {
-                    ManageLifecycleSection(
-                        status: content.status,
-                        viewerRole: content.viewerRole,
-                        isBusy: viewModel.isSubmitting,
-                        onPublish: { Task { await viewModel.publishTrain() } },
-                        onPause: { Task { await viewModel.pauseTrain() } },
-                        onResume: { Task { await viewModel.resumeTrain() } },
-                        onUnpublish: {
-                            viewModel.requestConfirm(
-                                ManageDestructiveConfirm(
-                                    kind: .unpublishTrain,
-                                    title: "Unpublish this train?",
-                                    message: "\(content.title) goes back to a draft, and the link stops working until you publish again.",
-                                    confirmLabel: "Unpublish"
-                                )
-                            )
-                        },
-                        onArchive: {
-                            viewModel.requestConfirm(
-                                ManageDestructiveConfirm(
-                                    kind: .archiveTrain,
-                                    title: "Archive this train?",
-                                    message: "\(content.title) moves out of your active list.",
-                                    confirmLabel: "Archive"
-                                )
-                            )
-                        },
-                        onDelete: {
-                            viewModel.requestConfirm(
-                                ManageDestructiveConfirm(
-                                    kind: .deleteTrain,
-                                    title: "Delete \(content.title)?",
-                                    message: "This permanently deletes the train, its dates, updates and invites.",
-                                    confirmLabel: "Delete"
-                                )
-                            )
-                        }
-                    )
-                }
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s4)
+                .padding(.bottom, Spacing.s4)
             }
-            .padding(.horizontal, Spacing.s4)
-            .padding(.top, Spacing.s4)
-            .padding(.bottom, Spacing.s4)
         }
         .scrollDismissesKeyboard(.interactively)
         // Weakly: the keyboard's AutoFill can keep a field below, and this action with it, after the screen closes.
         .refreshable { [weak viewModel] in await viewModel?.refresh() }
         .safeAreaInset(edge: .bottom, spacing: Spacing.s0) {
             // The bar sends the update message. It steps aside while a card's own field has the
-            // keyboard: riding the keyboard, it covered that card's buttons.
-            if focusedCardField == nil {
+            // keyboard: riding the keyboard, it covered that card's buttons. In two columns Send
+            // update is under the message instead.
+            if focusedCardField == nil, !sendsInline {
                 stickyCTA(content: content)
             }
         }
@@ -442,11 +375,234 @@ public struct ManageTrainView: View {
         .modifier(ManageReminderKeyboardReveal(isEditing: focusedCardField == .reminder, sectionFrame: nudgeSectionFrame))
     }
 
+    /// The sections on an iPad (founder, 2026-11-23: "take advantage of the iPad screen"): where the window holds two
+    /// phone-wide columns, the train at a glance and what goes out to helpers on the left (status, counts, slot fill,
+    /// Send an update, Organize, reminders), and its setup, dates, people and wind-down on the right. A narrow window
+    /// or an accessibility text size keeps the one column, in the phone's order.
+    private func twoColumnSections(_ content: ManageTrainContent) -> some View {
+        WideColumns {
+            wideSection { contextSection(content) }
+                .placeColumn(.leading, order: 0)
+            wideSection { statsSection(content) }
+                .placeColumn(.leading, order: 1)
+            wideSection { slotFillSection(content) }
+                .placeColumn(.leading, order: 2)
+            wideSection { sendUpdateSection(content, sendsInline: sendsInline) }
+                .placeColumn(.leading, order: 3)
+            wideSection { organizeSection(content) }
+                .placeColumn(.leading, order: 4)
+            wideSection { setupSection(content) }
+                .placeColumn(.trailing, order: 5)
+            wideSection { datesSection(content) }
+                .placeColumn(.trailing, order: 6)
+            wideSection { helpersSection(content) }
+                .placeColumn(.trailing, order: 7)
+            wideSection { organizersSection(content) }
+                .placeColumn(.trailing, order: 8)
+            if !viewModel.isRecipientDelegate {
+                wideSection { nudgeSection(content) }
+                    .placeColumn(.leading, order: 9)
+            }
+            if LaunchFeatures.giftFunds, !viewModel.isRecipientDelegate {
+                wideSection { fundSection(content) }
+                    .placeColumn(.trailing, order: 10)
+            }
+            if viewModel.canCloseTrain {
+                wideSection { windDownSection(content) }
+                    .placeColumn(.trailing, order: 11)
+            }
+            if !viewModel.isRecipientDelegate {
+                wideSection { lifecycleSection(content) }
+                    .placeColumn(.trailing, order: 12)
+            }
+        }
+        .wideColumnsMargins(Spacing.s4)
+        .padding(.bottom, Spacing.s4)
+    }
+
+    /// One section of the columns: its parts `Spacing.s4` apart and `Spacing.s4` below what is above it (the top bar,
+    /// or the section above), as in the phone's stack.
+    private func wideSection<Parts: View>(@ViewBuilder _ parts: () -> Parts) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s4) {
+            parts()
+        }
+        .padding(.top, Spacing.s4)
+    }
+
+    // MARK: - Sections
+
+    @ViewBuilder
+    private func contextSection(_ content: ManageTrainContent) -> some View {
+        TrainContextStrip(
+            title: content.title,
+            dateRangeLabel: content.dateRangeLabel,
+            isActive: content.isActive,
+            statusLabel: content.status.isEmpty ? "Unavailable" : content.status.capitalized
+        )
+
+        if viewModel.helpersFailed {
+            VStack(alignment: .leading, spacing: Spacing.s2) {
+                Text("Organizer details need to be checked again.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                Button("Retry organizer details") { Task { await viewModel.refresh() } }
+                    .accessibilityIdentifier("manageTrainRetryDetails")
+            }
+        }
+    }
+
+    private func statsSection(_ content: ManageTrainContent) -> some View {
+        StatCellRow(cells: [
+            StatCellContent(id: "slots", value: content.slotFillValue, label: "Slots", tone: .success),
+            StatCellContent(id: "helpers", value: content.helpersValue, label: "Helpers", tone: .neutral),
+            StatCellContent(id: "left", value: content.daysLeftValue, label: "Left", tone: .neutral),
+            StatCellContent(id: "drop", value: content.dropoutValue, label: "Dropout", tone: .warn)
+        ])
+    }
+
+    private func slotFillSection(_ content: ManageTrainContent) -> some View {
+        SlotPreview(
+            filled: content.slotsFilled,
+            dropout: content.slotsDropout,
+            open: content.slotsOpen,
+            total: content.slotsTotal,
+            caption: content.slotFillCaption
+        )
+    }
+
+    /// `sendsInline`: Send update under the message (the iPad's two columns) instead of the bar along the bottom.
+    @ViewBuilder
+    private func sendUpdateSection(_ content: ManageTrainContent, sendsInline: Bool = false) -> some View {
+        sectionOverline("Send an update")
+        SendUpdateForm(
+            chips: content.audienceChips,
+            message: $viewModel.draftMessage,
+            selectedAudienceId: $viewModel.selectedAudienceId,
+            pushToPhones: $viewModel.pushToPhones,
+            counterLabel: viewModel.characterCounterLabel,
+            isOverLimit: false
+        )
+        if sendsInline {
+            sendUpdateButton
+        }
+    }
+
+    @ViewBuilder
+    private func organizeSection(_ content: ManageTrainContent) -> some View {
+        sectionOverline("Organize")
+        OrganizeSection(rows: content.organizeRows.filter { handler(forOrganizeRow: $0.id) != nil }) { row in
+            handler(forOrganizeRow: row.id)?(content.trainId)
+        }
+    }
+
+    @ViewBuilder
+    private func setupSection(_ content: ManageTrainContent) -> some View {
+        sectionOverline("The train")
+        ManageTrainSetupSection(
+            addressLabel: viewModel.deliveryAddressLabel,
+            sharingMode: viewModel.sharingMode,
+            invites: viewModel.inviteRows,
+            // Only the primary and co-organizers may change these; a recipient_delegate is refused (403).
+            canEdit: content.viewerRole.isOrganizer && !viewModel.isRecipientDelegate
+                && !["completed", "archived"].contains(content.status),
+            isBusy: viewModel.isSubmitting,
+            onEditAddress: { showAddressSheet = true },
+            onChooseAudience: { mode in
+                if mode == "private_link", viewModel.sharingMode != mode {
+                    confirmNearby = true
+                } else {
+                    Task { await viewModel.updateSharingMode(mode) }
+                }
+            },
+            onInvite: { showInvitePicker = true }
+        )
+        .sheet(isPresented: $showAddressSheet) {
+            ManageTrainAddressSheet(
+                isBusy: viewModel.isSubmitting,
+                onSave: { await viewModel.updateDeliveryLocation($0) },
+                onClose: { showAddressSheet = false }
+            )
+        }
+        .sheet(isPresented: $showInvitePicker) { invitePicker }
+    }
+
+    @ViewBuilder
+    private func windDownSection(_ content: ManageTrainContent) -> some View {
+        // Only the primary organizer closes a live train (A11).
+        if viewModel.canCloseTrain {
+            sectionOverline("Wind down")
+            WindDownSection(row: content.closeRow) {
+                viewModel.showCloseSheet()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lifecycleSection(_ content: ManageTrainContent) -> some View {
+        // A recipient_delegate can't publish, pause, resume or end the train (the server refuses them).
+        if !viewModel.isRecipientDelegate {
+            ManageLifecycleSection(
+                status: content.status,
+                viewerRole: content.viewerRole,
+                isBusy: viewModel.isSubmitting,
+                onPublish: { Task { await viewModel.publishTrain() } },
+                onPause: { Task { await viewModel.pauseTrain() } },
+                onResume: { Task { await viewModel.resumeTrain() } },
+                onUnpublish: {
+                    viewModel.requestConfirm(
+                        ManageDestructiveConfirm(
+                            kind: .unpublishTrain,
+                            title: "Unpublish this train?",
+                            message: "\(content.title) goes back to a draft, and the link stops working until you publish again.",
+                            confirmLabel: "Unpublish"
+                        )
+                    )
+                },
+                onArchive: {
+                    viewModel.requestConfirm(
+                        ManageDestructiveConfirm(
+                            kind: .archiveTrain,
+                            title: "Archive this train?",
+                            message: "\(content.title) moves out of your active list.",
+                            confirmLabel: "Archive"
+                        )
+                    )
+                },
+                onDelete: {
+                    viewModel.requestConfirm(
+                        ManageDestructiveConfirm(
+                            kind: .deleteTrain,
+                            title: "Delete \(content.title)?",
+                            message: "This permanently deletes the train, its dates, updates and invites.",
+                            confirmLabel: "Delete"
+                        )
+                    )
+                }
+            )
+        }
+    }
+
     /// S1 — dates / helpers / co-organizers / nudge / gift fund. Every
     /// block is gated on the viewer's organizer tier so no one sees a
     /// control the backend would 403.
     @ViewBuilder
     private func organizerControls(_ content: ManageTrainContent) -> some View {
+        datesSection(content)
+        helpersSection(content)
+        organizersSection(content)
+
+        // Reminders and the fund are the primary and co-organizers' (the server refuses a recipient_delegate).
+        if !viewModel.isRecipientDelegate {
+            nudgeSection(content)
+        }
+
+        // Launch cut #9: no app takes a contribution yet.
+        if LaunchFeatures.giftFunds, !viewModel.isRecipientDelegate {
+            fundSection(content)
+        }
+    }
+
+    private func datesSection(_: ManageTrainContent) -> some View {
         ManageDatesSection(
             rows: viewModel.slotRows,
             isBusy: viewModel.isSubmitting,
@@ -464,7 +620,9 @@ public struct ManageTrainView: View {
             },
             readOnly: viewModel.isRecipientDelegate
         )
+    }
 
+    private func helpersSection(_: ManageTrainContent) -> some View {
         ManageHelpersSection(
             rows: viewModel.helperRows,
             failed: viewModel.helpersFailed,
@@ -487,7 +645,9 @@ public struct ManageTrainView: View {
             },
             readOnly: viewModel.isRecipientDelegate
         )
+    }
 
+    private func organizersSection(_ content: ManageTrainContent) -> some View {
         ManageOrganizersSection(
             rows: viewModel.organizerRows,
             canEdit: content.viewerRole == .primaryOrganizer,
@@ -514,51 +674,49 @@ public struct ManageTrainView: View {
             },
             content: { organizerPicker }
         )
+    }
 
-        // Reminders and the fund are the primary and co-organizers' (the server refuses a recipient_delegate).
-        if !viewModel.isRecipientDelegate {
-            ManageNudgeSection(
-                openSlotCount: content.slotsOpen,
-                hasDates: !viewModel.slotRows.isEmpty,
-                draft: viewModel.nudgeDraft,
-                draftNote: viewModel.nudgeDraftNote,
-                isBusy: viewModel.isSubmitting,
-                onDraft: { Task { await viewModel.draftNudge() } },
-                onEditDraft: { viewModel.nudgeDraft = $0 },
-                onSend: { Task { await viewModel.sendNudge() } },
-                onDiscard: { viewModel.discardNudge() }
-            )
-            .id(ManageReminderKeyboardReveal.nudgeSectionID)
-            .focused($focusedCardField, equals: .reminder)
-            // Kept only when the height changes: scrolling moves the frame on every frame.
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                if frame.height != nudgeSectionFrame.height { nudgeSectionFrame = frame }
-            }
+    private func nudgeSection(_ content: ManageTrainContent) -> some View {
+        ManageNudgeSection(
+            openSlotCount: content.slotsOpen,
+            hasDates: !viewModel.slotRows.isEmpty,
+            draft: viewModel.nudgeDraft,
+            draftNote: viewModel.nudgeDraftNote,
+            isBusy: viewModel.isSubmitting,
+            onDraft: { Task { await viewModel.draftNudge() } },
+            onEditDraft: { viewModel.nudgeDraft = $0 },
+            onSend: { Task { await viewModel.sendNudge() } },
+            onDiscard: { viewModel.discardNudge() }
+        )
+        .id(ManageReminderKeyboardReveal.nudgeSectionID)
+        .focused($focusedCardField, equals: .reminder)
+        // Kept only when the height changes: scrolling moves the frame on every frame.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            if frame.height != nudgeSectionFrame.height { nudgeSectionFrame = frame }
         }
+    }
 
-        // Launch cut #9: no app takes a contribution yet.
-        if LaunchFeatures.giftFunds, !viewModel.isRecipientDelegate {
-            ManageFundSection(
-                fund: viewModel.fund,
-                canDisable: content.viewerRole == .primaryOrganizer,
-                isBusy: viewModel.isSubmitting,
-                goalDollars: $fundGoalDollars,
-                onEnable: {
-                    Task { await viewModel.enableFund(goalDollars: Int(fundGoalDollars)) }
-                },
-                onDisable: {
-                    viewModel.requestConfirm(
-                        ManageDestructiveConfirm(
-                            kind: .disableFund,
-                            title: "Disable the gift fund?",
-                            message: "People won't be able to chip in money any more.",
-                            confirmLabel: "Disable"
-                        )
+    private func fundSection(_ content: ManageTrainContent) -> some View {
+        ManageFundSection(
+            fund: viewModel.fund,
+            canDisable: content.viewerRole == .primaryOrganizer,
+            isBusy: viewModel.isSubmitting,
+            goalDollars: $fundGoalDollars,
+            onEnable: {
+                Task { await viewModel.enableFund(goalDollars: Int(fundGoalDollars)) }
+            },
+            onDisable: {
+                viewModel.requestConfirm(
+                    ManageDestructiveConfirm(
+                        kind: .disableFund,
+                        title: "Disable the gift fund?",
+                        message: "People won't be able to chip in money any more.",
+                        confirmLabel: "Disable"
                     )
-                }
-            )
-            .focused($focusedCardField, equals: .fundGoal)
-        }
+                )
+            }
+        )
+        .focused($focusedCardField, equals: .fundGoal)
     }
 
     /// The host's handler for an Organize row, or nil when it isn't wired.
@@ -583,6 +741,27 @@ public struct ManageTrainView: View {
     // MARK: - Sticky CTA
 
     private func stickyCTA(content _: ManageTrainContent) -> some View {
+        sendUpdateButtonBody
+            .padding(.horizontal, Spacing.s4)
+            .padding(.vertical, Spacing.s3)
+            .background(
+                Theme.Color.appSurface
+                    .opacity(0.96)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
+                    }
+            )
+            .accessibilityIdentifier("manageTrainSendUpdateCTA")
+    }
+
+    /// Send update under its message, in the iPad's left column (`sendsInline`); the bar along the bottom is hidden
+    /// then, so the identifier is still one button's.
+    private var sendUpdateButton: some View {
+        sendUpdateButtonBody
+            .accessibilityIdentifier("manageTrainSendUpdateCTA")
+    }
+
+    private var sendUpdateButtonBody: some View {
         Button {
             Task { await viewModel.sendUpdate() }
         } label: {
@@ -600,16 +779,6 @@ public struct ManageTrainView: View {
         }
         .buttonStyle(.plain)
         .disabled(!viewModel.canSendUpdate)
-        .padding(.horizontal, Spacing.s4)
-        .padding(.vertical, Spacing.s3)
-        .background(
-            Theme.Color.appSurface
-                .opacity(0.96)
-                .overlay(alignment: .top) {
-                    Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
-                }
-        )
-        .accessibilityIdentifier("manageTrainSendUpdateCTA")
     }
 
     // MARK: - Overlays
@@ -620,41 +789,61 @@ public struct ManageTrainView: View {
         case .hidden, .closed:
             EmptyView()
         case .closing:
-            if case let .loaded(content) = viewModel.state {
+            if case let .loaded(content) = viewModel.state, closesInCard {
+                // An iPad window: a card in the middle of the screen, as the app's other iPad sheets are.
+                ZStack {
+                    Color.black.opacity(0.45)
+                        .ignoresSafeArea()
+                        .onTapGesture { viewModel.hideCloseSheet() }
+                        .accessibilityIdentifier("manageTrainCloseSheetScrim")
+                    closeTrainSheet(content)
+                        .frame(maxWidth: Self.closeCardWidth)
+                        .clipShape(RoundedRectangle(cornerRadius: Radii.xl2, style: .continuous))
+                        .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
+                        .padding(Spacing.s6)
+                        .transition(.scale(scale: 0.96).combined(with: .opacity))
+                }
+                .transition(.opacity)
+                .accessibilityIdentifier("manageTrainCloseSheetContainer")
+            } else if case let .loaded(content) = viewModel.state {
                 ZStack(alignment: .bottom) {
                     Color.black.opacity(0.45)
                         .ignoresSafeArea()
                         .onTapGesture { viewModel.hideCloseSheet() }
                         .accessibilityIdentifier("manageTrainCloseSheetScrim")
-                    CloseTrainSheet(
-                        content: CloseTrainSheetContent(
-                            daysEarlyLabel: content.close.daysEarlyLabel,
-                            mealsDelivered: viewModel.deliveredMeals.map(String.init) ?? "—",
-                            neighborsHelped: content.close.neighborsHelped,
-                            coverageDays: content.close.coverageDays,
-                            recipientQuote: content.close.recipientQuote
-                        ),
-                        thankYouNote: $viewModel.thankYouNote,
-                        thankYouSent: viewModel.thankYouSent,
-                        onCancel: { viewModel.hideCloseSheet() },
-                        onConfirm: { Task { await viewModel.confirmClose() } }
-                    )
-                    .disabled(viewModel.isSubmitting)
-                    .clipShape(
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: Radii.xl2,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: Radii.xl2
+                    closeTrainSheet(content)
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: Radii.xl2,
+                                bottomLeadingRadius: 0,
+                                bottomTrailingRadius: 0,
+                                topTrailingRadius: Radii.xl2
+                            )
                         )
-                    )
-                    .shadow(color: .black.opacity(0.18), radius: 16, y: -12)
-                    .transition(.move(edge: .bottom))
+                        .shadow(color: .black.opacity(0.18), radius: 16, y: -12)
+                        .transition(.move(edge: .bottom))
                 }
                 .transition(.opacity)
                 .accessibilityIdentifier("manageTrainCloseSheetContainer")
             }
         }
+    }
+
+    private func closeTrainSheet(_ content: ManageTrainContent) -> some View {
+        CloseTrainSheet(
+            content: CloseTrainSheetContent(
+                daysEarlyLabel: content.close.daysEarlyLabel,
+                mealsDelivered: viewModel.deliveredMeals.map(String.init) ?? "—",
+                neighborsHelped: content.close.neighborsHelped,
+                coverageDays: content.close.coverageDays,
+                recipientQuote: content.close.recipientQuote
+            ),
+            thankYouNote: $viewModel.thankYouNote,
+            thankYouSent: viewModel.thankYouSent,
+            onCancel: { viewModel.hideCloseSheet() },
+            onConfirm: { Task { await viewModel.confirmClose() } }
+        )
+        .disabled(viewModel.isSubmitting)
     }
 
     @ViewBuilder

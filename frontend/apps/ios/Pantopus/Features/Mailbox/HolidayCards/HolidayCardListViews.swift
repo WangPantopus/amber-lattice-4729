@@ -95,11 +95,31 @@ struct HolidayCardListLookStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s6) {
             if let preview = look.look, let first = viewModel.listFirst {
-                HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: first, preview: preview)
+                if WideLayout.isPad {
+                    // On an iPad the lines and the end go at the foot of the first card's second column when it has two.
+                    HolidayCardLookStep(
+                        viewModel: viewModel,
+                        cards: cards,
+                        design: design,
+                        recipient: first,
+                        preview: preview,
+                        end: AnyView(VStack(alignment: .leading, spacing: Spacing.s6) { lines }.padding(.top, Spacing.s6))
+                    )
+                } else {
+                    HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: first, preview: preview)
+                    lines
+                }
+            } else {
+                lines
             }
-            HolidayCardListLines(viewModel: viewModel, lines: look.recipients)
-            end
         }
+    }
+
+    /// Every card's line, then the end of the page.
+    @ViewBuilder
+    private var lines: some View {
+        HolidayCardListLines(viewModel: viewModel, lines: look.recipients)
+        end
     }
 
     /// The end of the page, scrolling with it (experience plan 5.2): until when each card can be taken back, and what

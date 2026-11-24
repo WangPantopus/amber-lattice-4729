@@ -68,6 +68,9 @@ public struct MailboxRootView: View {
                         MailboxPieceList(viewModel: viewModel)
                             .padding(.bottom, Spacing.s6)
                     }
+                    // Where an iPad shows the Mailbox alone across a big window (pushed from Place, the largest text
+                    // sizes), its mail keeps about a large phone's width, centered, instead of pieces the window's width.
+                    .mailPadFormWidth()
                 }
                 // Scrolling puts the Vault search's keyboard away.
                 .scrollDismissesKeyboard(.immediately)
@@ -178,6 +181,8 @@ public struct MailboxRootView: View {
         .padding(.horizontal, Spacing.s2)
         .padding(.top, Spacing.s3)
         .padding(.bottom, Spacing.s1)
+        // On an iPad the bar runs the window's width: ☰ in its top-left corner, search and "…" in its top-right.
+        .topBarSpansWindow()
     }
 
     /// Stamps, vacation hold, mail tasks and Home records. No scanning and no

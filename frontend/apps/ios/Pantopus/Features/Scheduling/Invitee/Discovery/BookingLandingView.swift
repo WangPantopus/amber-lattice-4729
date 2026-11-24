@@ -334,6 +334,9 @@ struct BookingLandingView: View {
         .accessibilityLabel("Back")
         .padding(.leading, Spacing.s4)
         .padding(.top, Spacing.s2)
+        // On an iPad Back sits in the window's top-left corner rather than at the reading column's edge.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .topBarSpansWindow()
     }
 
     private func card() -> some View {

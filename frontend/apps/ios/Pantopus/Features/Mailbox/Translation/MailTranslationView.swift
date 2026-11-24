@@ -69,7 +69,44 @@ public struct MailTranslationView: View {
         .pantopusAnimation(.componentState, value: viewModel.toast)
     }
 
+    /// On an iPad page wide enough the letter (side by side or on paper) keeps the main column, and Pantopus's read,
+    /// the notes, the sender and the actions sit in a panel beside it.
     private func loaded(_ content: MailTranslationContent) -> some View {
+        MailPadPanelPage { panelWidth in
+            ScrollView {
+                HStack(alignment: .top, spacing: WideLayout.gap) {
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        TranslationHeaderRow(categoryLabel: content.categoryLabel, time: content.timeLabel)
+                        if content.confirmed {
+                            TranslationConfirmBanner(stamp: content.confirmedStamp)
+                        }
+                        LanguageBadge(languages: content.languages, confirmed: content.confirmed)
+                        TranslationViewToggle(active: content.viewMode) { viewModel.selectViewMode($0) }
+                        body(for: content)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: Spacing.s4) {
+                        actions(for: content)
+                        AIElfStripView(content: elfContent(content.elf))
+                            .accessibilityIdentifier("translation_elf")
+                        if !content.glossary.isEmpty {
+                            TranslatorNotes(notes: content.glossary)
+                        }
+                        TranslationSenderCard(sender: content.sender)
+                    }
+                    .frame(width: panelWidth)
+                }
+                .padding(.horizontal, WideLayout.margin)
+                .padding(.top, Spacing.s3)
+                .padding(.bottom, Spacing.s16)
+            }
+            .background(Theme.Color.appBg)
+        } narrow: {
+            phoneLoaded(content)
+        }
+    }
+
+    private func phoneLoaded(_ content: MailTranslationContent) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 TranslationHeaderRow(categoryLabel: content.categoryLabel, time: content.timeLabel)
@@ -240,6 +277,7 @@ private struct TranslationNav: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        .topBarSpansWindow()
     }
 
     private func navIconButton(_ icon: PantopusIcon, label: String, action: @escaping () -> Void) -> some View {

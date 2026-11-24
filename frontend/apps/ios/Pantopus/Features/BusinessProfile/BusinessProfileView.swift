@@ -861,6 +861,8 @@ private struct FloatingControls: View {
         }
         .padding(.horizontal, Spacing.s3)
         .padding(.top, Spacing.s2)
+        // On an iPad the controls run the window's width: Back in its top-left corner, Share and More in its top-right.
+        .topBarSpansWindow()
     }
 
     private func control(_ icon: PantopusIcon, label: String, action: @escaping @MainActor () -> Void) -> some View {

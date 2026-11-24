@@ -36,15 +36,17 @@ struct MailSentPieceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
             header
-            ScrollView {
-                content
-                    .frame(maxWidth: 560)
-                    .padding(.horizontal, Spacing.s4)
-                    .padding(.top, Spacing.s1)
-                    .padding(.bottom, Spacing.s8)
-                    .frame(maxWidth: .infinity)
+            // On an iPad page wide enough the card keeps the main column and what can be done with it, its trail
+            // and Take it back sit in a panel beside it.
+            MailPadPanelPage { panelWidth in
+                if case let .loaded(piece) = viewModel.state {
+                    paneled(piece, panelWidth: panelWidth)
+                } else {
+                    oneColumn
+                }
+            } narrow: {
+                oneColumn
             }
-            .refreshable { await viewModel.load() }
         }
         .background(Theme.Color.appBg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
@@ -62,6 +64,39 @@ struct MailSentPieceView: View {
         ))
     }
 
+    private var oneColumn: some View {
+        ScrollView {
+            content
+                .frame(maxWidth: 560)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s1)
+                .padding(.bottom, Spacing.s8)
+                .frame(maxWidth: .infinity)
+        }
+        .refreshable { await viewModel.load() }
+    }
+
+    private func paneled(_ piece: MailSentPiece, panelWidth: CGFloat) -> some View {
+        ScrollView {
+            HStack(alignment: .top, spacing: WideLayout.gap) {
+                VStack(alignment: .leading, spacing: 18) {
+                    pieceItself(piece)
+                }
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: 18) {
+                    pieceAside(piece)
+                }
+                .padding(.top, Spacing.s1)
+                .frame(width: panelWidth)
+            }
+            .padding(.horizontal, WideLayout.margin)
+            .padding(.top, Spacing.s1)
+            .padding(.bottom, Spacing.s8)
+        }
+        .refreshable { await viewModel.load() }
+    }
+
     /// After "Take your card back?": gone from Sent, and back to it.
     private func confirmTakeBack() {
         Task {
@@ -75,6 +110,8 @@ struct MailSentPieceView: View {
     private var header: some View {
         if showsBack {
             MailSentBackButton(onBack: onBack)
+                // On an iPad, in the window's top-left corner.
+                .topBarSpansWindow()
         } else {
             Color.clear.frame(height: Spacing.s4)
         }
@@ -117,12 +154,21 @@ struct MailSentPieceView: View {
     }
 
     private func loaded(_ piece: MailSentPiece) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            pieceItself(piece)
+            pieceAside(piece)
+        }
+    }
+
+    /// Who it's to, the envelope as it lies in their Mailbox and what you sent.
+    @ViewBuilder
+    private func pieceItself(_ piece: MailSentPiece) -> some View {
         let first = MailSentWords.recipientFirst(piece)
         let envelope = MailPieceModel.sent(piece)
         let delivered = piece.status == .delivered || piece.status == .claimed
         let waiting = piece.byLink ? "Once someone opens your link" : (piece.byEmail ? "Once they claim it" : "Addressed to \(first)")
         let mailbox = delivered ? "In \(HolidayCardWords.possessive(first)) Mailbox" : waiting
-        return VStack(alignment: .leading, spacing: 18) {
+        Group {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: piece.byLink && piece.status != .claimed
                     ? "Your card by link"
@@ -158,6 +204,14 @@ struct MailSentPieceView: View {
             } else {
                 section("The card you sent") { theCard(piece, envelope: envelope) }
             }
+        }
+    }
+
+    /// What can be done with it, its trail and Take it back: after it on a phone, beside it on an iPad.
+    @ViewBuilder
+    private func pieceAside(_ piece: MailSentPiece) -> some View {
+        let envelope = MailPieceModel.sent(piece)
+        Group {
             if LaunchFeatures.cardTable, !piece.isLetter {
                 let content = CardTableContent(sent: piece, from: envelope.from, mailedOn: envelope.postmarkDate)
                 VStack(spacing: 10) {

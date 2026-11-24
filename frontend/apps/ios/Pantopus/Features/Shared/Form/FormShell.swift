@@ -289,6 +289,8 @@ private struct FormTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: X or Back in its top-left corner, the action in its top-right.
+        .topBarSpansWindow()
     }
 }
 
@@ -325,17 +327,34 @@ private struct FormBottomCTA: View {
         }
         .background(isEnabled ? Theme.Color.primarySolid : Theme.Color.appBorderStrong)
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+        // On an iPad the button keeps a button's width, centered, however wide the screen.
+        .padBottomActionWidth()
         // Half folded like a book, on one side of the iPhone Duo's fold; the bar itself stays full width.
         .besideFold()
         .padding(.horizontal, Spacing.s4)
         .padding(.vertical, Spacing.s3)
+        // On an iPad the bar's line runs the window's width, as its band does.
         .background(Theme.Color.appSurface)
         .overlay(alignment: .top) {
-            Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
+            Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1).topBarSpansWindow()
         }
         .disabled(!isEnabled)
         .accessibilityLabel(label)
         .accessibilityIdentifier("formBottomCommitButton")
+    }
+}
+
+extension View {
+    /// A bottom action row (Continue, Save, Send) on an iPad: no wider than 560 pt and centered, so it stays a button
+    /// rather than a banner across a wide window, with the screen around it as before. Phones and the iPhone Duo keep
+    /// the full-width row.
+    @MainActor @ViewBuilder
+    func padBottomActionWidth() -> some View {
+        if WideLayout.isPad {
+            frame(maxWidth: 560).frame(maxWidth: .infinity)
+        } else {
+            self
+        }
     }
 }
 

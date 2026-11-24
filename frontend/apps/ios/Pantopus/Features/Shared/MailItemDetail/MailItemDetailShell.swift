@@ -31,10 +31,44 @@
 //  used by ≥ 2 variants; for now the AI elf strip and attachments row
 //  meet that bar (used by all 4 detail variants per the design files).
 //
+//  On an iPad page wide enough (founder, 2026-11-23: "take advantage of the
+//  iPad screen"), the piece keeps the page's main column (hero and body) and
+//  the rest sits in a side panel beside it, as an inspector does: the
+//  actions first, then Pantopus's read, the key facts, the attachments and
+//  the sender. The panel stays put while the piece scrolls, so the actions
+//  are always at hand, as the pinned shelf keeps them on a phone, without a
+//  shelf stretched across the page. Phones, the iPhone Duo, narrow panes and
+//  the largest text sizes keep the one column with the pinned shelf.
+//
 
 import SwiftUI
 
 // swiftlint:disable file_length multiple_closures_with_trailing_closure
+
+/// How a mail page uses an iPad page wide enough for a side panel (`MailItemDetailShell`).
+public enum MailItemWideLayout: Sendable {
+    /// The hero and body in the main column; the actions, Pantopus's read, key facts, attachments and sender in the
+    /// panel beside them.
+    case panel
+    /// A letter that gets the page: the letter in the main column, its envelope (the hero) and its actions in the
+    /// panel. The actions slot shows only there; elsewhere the page draws them at the end of the letter, hidden while
+    /// the panel is up (`mailItemSidePanel`).
+    case letterBeside
+    /// One column, as on a phone: a booklet laid open as two pages takes the page's whole width.
+    case oneColumn
+}
+
+private struct MailItemSidePanelKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The mail page shows its side panel (an iPad page wide enough): set by `MailItemDetailShell` on its slots.
+    var mailItemSidePanel: Bool {
+        get { self[MailItemSidePanelKey.self] }
+        set { self[MailItemSidePanelKey.self] = newValue }
+    }
+}
 
 /// Archetype shell. Generic over five View slots so concrete screens can
 /// drop in arbitrary hero / key-facts / body / sender / actions designs
@@ -56,6 +90,8 @@ public struct MailItemDetailShell<
     private let attachments: AttachmentsRowContent?
     private let senderContent: Sender
     private let actionsContent: Actions
+    private let wideLayout: MailItemWideLayout
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Measured height of the sticky actions shelf; the scroll content leaves at least this much room below the last
     /// card so it can scroll clear of the shelf.
     @State private var actionsShelfHeight: CGFloat = 0
@@ -66,6 +102,7 @@ public struct MailItemDetailShell<
         topBar: MailTopBarConfig,
         aiElf: AIElfStripContent? = nil,
         attachments: AttachmentsRowContent? = nil,
+        wideLayout: MailItemWideLayout = .panel,
         @ViewBuilder hero: () -> Hero,
         @ViewBuilder keyFacts: () -> KeyFacts = { EmptyView() },
         @ViewBuilder body: () -> Body = { EmptyView() },
@@ -75,6 +112,7 @@ public struct MailItemDetailShell<
         self.topBar = topBar
         self.aiElf = aiElf
         self.attachments = attachments
+        self.wideLayout = wideLayout
         heroContent = hero()
         keyFactsContent = keyFacts()
         bodyContent = body()
@@ -83,6 +121,22 @@ public struct MailItemDetailShell<
     }
 
     public var body: some View {
+        if WideLayout.isPad {
+            // Read in layout, so the first pass already picks one column or the panel.
+            GeometryReader { proxy in
+                if showsSidePanel(width: proxy.size.width) {
+                    paneled(width: proxy.size.width)
+                } else {
+                    oneColumn
+                }
+            }
+        } else {
+            oneColumn
+        }
+    }
+
+    /// The page as on a phone: one column, the actions pinned at the bottom.
+    private var oneColumn: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: Spacing.s0) {
                 MailItemDetailTopBar(config: topBar)
@@ -120,15 +174,105 @@ public struct MailItemDetailShell<
                     MailItemReadingArea(size: scrollSize, coveredBottom: actionsShelfHeight)
                 )
             }
-            actionsShelf
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height
-                } action: { height in
-                    actionsShelfHeight = height
-                }
+            // A letter that gets the page draws its actions at its end instead (`MailItemWideLayout.letterBeside`).
+            if wideLayout != .letterBeside {
+                actionsShelf
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        actionsShelfHeight = height
+                    }
+            }
         }
         .background(Theme.Color.appBg)
         .accessibilityIdentifier("mailItemDetailShell")
+    }
+
+    // MARK: - iPad side panel
+
+    /// The narrowest page that holds the piece's column beside the panel.
+    private static var sidePanelMinimumWidth: CGFloat {
+        760
+    }
+
+    /// The panel's width, its margins included: a phone's content width, a little more on a big page.
+    private static func panelWidth(in width: CGFloat) -> CGFloat {
+        width >= 1000 ? 380 : 340
+    }
+
+    /// Whether the page lays the piece beside the panel: an iPad page wide enough, short of the largest text sizes,
+    /// with something for the panel.
+    private func showsSidePanel(width: CGFloat) -> Bool {
+        guard wideLayout != .oneColumn, !dynamicTypeSize.isAccessibilitySize,
+              width >= Self.sidePanelMinimumWidth else { return false }
+        return wideLayout == .letterBeside || Actions.self != EmptyView.self || aiElf != nil || attachments != nil
+            || KeyFacts.self != EmptyView.self || Sender.self != EmptyView.self
+    }
+
+    /// The piece in the main column and the panel beside it, each scrolling on its own.
+    private func paneled(width: CGFloat) -> some View {
+        VStack(spacing: Spacing.s0) {
+            MailItemDetailTopBar(config: topBar)
+            HStack(alignment: .top, spacing: Spacing.s0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.s3) {
+                        if wideLayout != .letterBeside {
+                            heroSection
+                        }
+                        bodySection
+                    }
+                    .padding(.leading, WideLayout.margin)
+                    .padding(.top, Spacing.s3)
+                    .padding(.bottom, Spacing.s10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .onGeometryChange(for: CGSize.self) { proxy in
+                    proxy.size
+                } action: { size in
+                    scrollSize = size
+                }
+                .environment(\.mailItemReadingArea, MailItemReadingArea(size: scrollSize, coveredBottom: 0))
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.s3) {
+                        if wideLayout == .letterBeside {
+                            heroSection
+                        }
+                        if Actions.self != EmptyView.self {
+                            actionsContent
+                                .accessibilityElement(children: .contain)
+                                .accessibilityIdentifier("mailItemDetail_actions")
+                        }
+                        if let aiElf {
+                            AIElfStripView(content: aiElf)
+                                .accessibilityIdentifier("mailItemDetail_aiElf")
+                        }
+                        keyFactsSection
+                        if let attachments {
+                            AttachmentsRowView(content: attachments)
+                                .accessibilityIdentifier("mailItemDetail_attachments")
+                        }
+                        senderSection
+                    }
+                    .padding(.horizontal, WideLayout.margin)
+                    .padding(.top, Spacing.s3)
+                    .padding(.bottom, Spacing.s10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(width: Self.panelWidth(in: width))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("mailItemDetail_sidePanel")
+            }
+            .environment(\.mailItemSidePanel, true)
+        }
+        .background(Theme.Color.appBg)
+        .accessibilityIdentifier("mailItemDetailShell")
+    }
+
+    private var heroSection: some View {
+        heroContent
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("mailItemDetail_hero")
     }
 
     /// SwiftUI's @ViewBuilder doesn't have a clean way to ask "is this
@@ -156,6 +300,8 @@ public struct MailItemDetailShell<
         actionsContent
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("mailItemDetail_actions")
+            // Not stretched across an iPad window where the page keeps one column.
+            .mailPadBarWidth(MailPadLayout.formWidth)
             .padding(.horizontal, Spacing.s4)
             .padding(.bottom, Spacing.s4)
             .padding(.top, Spacing.s3)
@@ -182,7 +328,7 @@ public struct MailItemDetailShell<
     /// doesn't cover content: the shelf's measured height (a tall shelf
     /// used to hide the sender card), or a small gap when there's no shelf.
     private var actionsBottomInset: CGFloat {
-        Actions.self == EmptyView.self ? Spacing.s4 : max(Spacing.s16, actionsShelfHeight)
+        Actions.self == EmptyView.self || wideLayout == .letterBeside ? Spacing.s4 : max(Spacing.s16, actionsShelfHeight)
     }
 }
 
@@ -204,6 +350,7 @@ public extension MailItemDetailShell
             topBar: topBar,
             aiElf: aiElf,
             attachments: attachments,
+            wideLayout: .panel,
             hero: hero,
             keyFacts: { EmptyView() },
             body: { EmptyView() },
@@ -238,6 +385,8 @@ public struct MailItemDetailTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1)
         }
+        // On an iPad the bar runs the window's width: Back in its top-left corner, the buttons in its top-right.
+        .topBarSpansWindow()
         .accessibilityIdentifier("mailItemDetail_topBar")
     }
 

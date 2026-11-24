@@ -69,6 +69,8 @@ struct PlacePreviewBody: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        // On an iPad the header runs the window's width: Back in its top-left corner, Sign in in its top-right.
+        .topBarSpansWindow()
     }
 
     private var previewHero: some View {
@@ -417,6 +419,8 @@ struct PlaceComingRegionBody: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            // On an iPad Back sits in the window's top-left corner.
+            .topBarSpansWindow()
 
             Spacer(minLength: 0)
             VStack(spacing: 16) {

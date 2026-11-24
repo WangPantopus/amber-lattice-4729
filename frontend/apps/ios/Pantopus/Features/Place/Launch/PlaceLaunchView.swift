@@ -195,6 +195,8 @@ struct PlaceLaunchView: View {
                     MessagesButton(accessibilityIdentifier: "place.chat")
                 }
                 .padding(.horizontal, Spacing.s1)
+                // On an iPad the row runs the window's width: the menu in its top-left corner.
+                .topBarSpansWindow()
             } else {
                 HStack(spacing: 10) {
                     brandLockup
@@ -207,6 +209,8 @@ struct PlaceLaunchView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, Spacing.s2)
+                // On an iPad the row runs the window's width: the brand in its top-left corner, Sign in in its top-right.
+                .topBarSpansWindow()
             }
 
             ScrollView(showsIndicators: false) {
