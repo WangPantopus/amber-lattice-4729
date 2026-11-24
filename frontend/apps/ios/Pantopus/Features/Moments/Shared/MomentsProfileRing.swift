@@ -51,8 +51,6 @@ struct MomentsProfileRing: ViewModifier {
     /// This circle's own stage, for a circle on a screen that is itself shown over the app (your own profile, a
     /// sheet): the tabs' stage can't show a viewer over that.
     @State private var own = MomentsRingStage()
-    /// The circle's size, for the room the mark's ring takes beside it.
-    @State private var diameter: CGFloat = 0
     @Environment(\.momentsRingStage) private var tabsStage
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.momentsRingsPlay) private var plays
@@ -63,8 +61,21 @@ struct MomentsProfileRing: ViewModifier {
         let ring = people.ring(for: userId)
         let marks = ProfileMarks.shared
         let mark = profileMark ? marks.mark(for: userId) : nil
+        // Board 6 counts the mark's ring as part of the avatar: the circle keeps its size, and the room for the ring is
+        // kept beside it from the first frame, so nothing moves when the ring comes in.
+        ProfileMarkRoom(keeps: profileMark && marks.keepsRoom(for: userId)) {
+            ringed(content, ring: ring, mark: mark, people: people, marks: marks)
+        }
+    }
+
+    private func ringed(
+        _ content: Content,
+        ring: MomentRingDTO?,
+        mark: ProfileMarkSummary?,
+        people: MomentsPeopleRings,
+        marks: ProfileMarks
+    ) -> some View {
         content
-            .onGeometryChange(for: CGFloat.self) { min($0.size.width, $0.size.height) } action: { diameter = $0 }
             .overlay {
                 if let mark {
                     GeometryReader { proxy in
@@ -109,9 +120,6 @@ struct MomentsProfileRing: ViewModifier {
                 }
             }
             .showsMomentsRingViewer(on: own)
-            // Board 6 counts the mark's ring as part of the avatar: the circle keeps its size, and what sits beside it
-            // moves over by the ring. Without a mark, nothing moves.
-            .padding(mark.map { ProfileAvatarRing.reach($0, diameter: diameter) } ?? 0)
     }
 
     private func momentsStroke(_ ring: MomentRingDTO, outside: CGFloat) -> some View {
