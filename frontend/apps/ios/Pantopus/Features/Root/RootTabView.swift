@@ -487,7 +487,7 @@ public struct RootTabView: View {
              .homeDetail, .homeDashboard, .homeTask, .homeMemberRequests, .homeResidency,
              .homeMembers, .homeOwners, .homeClaimReview,
              .homeOwnersTransfer,
-             .verifyLandlord, .postcardVerification,
+             .verifyLandlord, .postcardVerification, .homeRecord, .homeClaimOwnership, .homeVerifyResidency,
              .notifications, .createBusiness, .businessProfile, .businessPage,
              .editBusinessPage,
              .wallet, .paymentsSettings, .securityDevices, .notificationSettings, .assistantMemory, .assistantRules,

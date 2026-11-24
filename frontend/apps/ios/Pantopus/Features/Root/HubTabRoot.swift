@@ -45,6 +45,9 @@ public enum HubRoute: Hashable {
     /// to track their postcard later.
     case postcardVerification(homeId: String)
     case homeDashboard(homeId: String)
+    /// The Home's record page ("Your home's record"), from the Home profile or
+    /// the `/homes/:id/record` link.
+    case homeRecord(homeId: String)
     /// Pets sub-screen for a specific home (T5.2.1).
     case homePets(homeId: String)
     /// Emergency info sub-screen for a specific home (T6.4b / P17).
@@ -1130,7 +1133,7 @@ public struct HubTabRoot: View {
     /// Back, title and settings in one row (founder request 2026-11-07).
     static func drawsOwnHeader(_ route: HubRoute) -> Bool {
         switch route {
-        case .homeDashboard, .savePlace, .maintenanceDetail, .billDetail, .pollDetail, .calendarEventDetail, .emergencyItem,
+        case .homeDashboard, .homeRecord, .savePlace, .maintenanceDetail, .billDetail, .pollDetail, .calendarEventDetail, .emergencyItem,
              .documentDetail, .packageDetail, .homePhotos, .trustedNeighbors, .propertyDetails,
              .helpCenter, .publicProfile, .homeSettings, .homeSecurity, .homeOwnershipSecurity,
              .homeNotifications, .privacySettings, .notificationSettings, .assistantMemory, .assistantRules, .dataExport, .blockedUsers,
@@ -1350,6 +1353,21 @@ public struct HubTabRoot: View {
         )
     }
 
+    /// An app link on a Home's record page opens its screen on this stack; any
+    /// other link goes through the app's link router.
+    @MainActor
+    private func openHomeRecordLink(_ link: String, push: @MainActor (HubRoute) -> Void) {
+        switch HomeRecordLinkTarget.resolve(link) {
+        case let .record(homeId): push(.homeRecord(homeId: homeId))
+        case let .claimOwnership(homeId): push(.claimOwnership(homeId: homeId))
+        case let .verifyResidency(homeId): push(.verifyResidency(homeId: homeId))
+        case let .waitingRoom(homeId): push(.waitingRoom(homeId: homeId))
+        // A Home's record never sends the lookup's id-less steps; Add Home is their place.
+        case .addLookedUpHome: push(.addHome)
+        case let .other(other): router.handle(path: other)
+        }
+    }
+
     private func consumeAddHomeRequestIfNeeded() {
         guard mode == .hub, navigationReady, rootTabs.selected == .place, addHomeRequest != nil else { return }
         addHomeRequest = nil
@@ -1418,6 +1436,15 @@ public struct HubTabRoot: View {
             _ = router.consume()
         case let .verifyLandlord(id):
             path.append(.verifyLandlord(homeId: id))
+            _ = router.consume()
+        case let .homeRecord(id):
+            path.append(.homeRecord(homeId: id))
+            _ = router.consume()
+        case let .homeClaimOwnership(id):
+            path.append(.claimOwnership(homeId: id))
+            _ = router.consume()
+        case let .homeVerifyResidency(id):
+            path.append(.verifyResidency(homeId: id))
             _ = router.consume()
         case let .homeResidency(id):
             path.append(.residencyStatus(homeId: id))
@@ -1693,6 +1720,7 @@ public struct HubTabRoot: View {
                 onSignIn: {},
                 onCreateAccount: {},
                 onSavePreview: { path.append(.placeArrival) },
+                onAddHome: { address in path.append(.addHomeAt(address: address)) },
                 embedded: PlaceLaunchEmbedding(
                     unreadCount: placeUnreadCount,
                     onOpenNotifications: { path.append(.notifications) },
@@ -2053,7 +2081,16 @@ public struct HubTabRoot: View {
                 },
                 onOpenOwnership: { id in
                     Task { @MainActor in push(.homeOwnershipSecurity(homeId: id)) }
+                },
+                onOpenRecord: { id in
+                    Task { @MainActor in push(.homeRecord(homeId: id)) }
                 }
+            )
+        case let .homeRecord(homeId):
+            HomeRecordView(
+                source: .home(homeId: homeId),
+                onBack: { Task { @MainActor in pop() } },
+                onOpenAppLink: { link in Task { @MainActor in openHomeRecordLink(link, push: push) } }
             )
         case let .homeMaintenance(homeId):
             MaintenanceListView(
@@ -3699,7 +3736,8 @@ public struct HubTabRoot: View {
                 onSavePreview: {
                     if path.last == .savePlace { path.removeLast() }
                     path.append(.placeArrival)
-                }
+                },
+                onAddHome: { address in path.append(.addHomeAt(address: address)) }
             )
         case .savedPlaces:
             SavedPlacesView(

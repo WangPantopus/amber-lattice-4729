@@ -24,6 +24,8 @@ struct PlacePreviewBody: View {
     var onBack: () -> Void
     var onRetry: () -> Void
     var retrying: Bool
+    /// "See this home's full record": the record page for this address.
+    var onOpenRecord: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +33,14 @@ struct PlacePreviewBody: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     previewHero
+                    if let onOpenRecord {
+                        HomeRecordEntryButton(
+                            title: "See this home's full record",
+                            line: "What the county and federal records show"
+                        ) { onOpenRecord() }
+                            .padding(.top, 10)
+                            .accessibilityIdentifier("place.preview.record")
+                    }
                     PlacePreviewContent(preview: preview, onAction: onCreateAccount, onRetry: onRetry, retrying: retrying)
                 }
                 .padding(.horizontal, 16)

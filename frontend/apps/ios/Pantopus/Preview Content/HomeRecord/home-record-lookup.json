@@ -1,0 +1,315 @@
+{
+  "v": 1,
+  "state": "lookup",
+  "header": {
+    "chip": {
+      "tone": "success",
+      "text": "Found in Clark County's records"
+    },
+    "title": "1 Pantopus Way",
+    "subtitle": "Camas, WA 98607"
+  },
+  "blocks": [
+    {
+      "kind": "picture",
+      "id": "picture",
+      "above": {
+        "image_url": "fixture://y2022.jpg",
+        "outline": [
+          [
+            0.527,
+            0.441
+          ],
+          [
+            0.662,
+            0.441
+          ],
+          [
+            0.662,
+            0.656
+          ],
+          [
+            0.527,
+            0.656
+          ]
+        ],
+        "chips": [
+          {
+            "at": "bl",
+            "text": "Lot · 0.19 acres"
+          },
+          {
+            "at": "br",
+            "text": "2022"
+          }
+        ]
+      },
+      "street": {
+        "lat": 45.5869,
+        "lng": -122.3998
+      },
+      "caption": "Federal aerial survey, July 2022. Lot from Clark County's parcel map. Ten earlier years are in the owner's record."
+    },
+    {
+      "kind": "facts",
+      "id": "facts",
+      "tiles": [
+        {
+          "label": "Built",
+          "value": "1998",
+          "unit": null
+        },
+        {
+          "label": "Living area",
+          "value": "2,140",
+          "unit": "sq ft"
+        },
+        {
+          "label": "Lot",
+          "value": "0.19",
+          "unit": "acres"
+        }
+      ],
+      "line": "House · 4 bedrooms · 2.5 bathrooms · 2 stories",
+      "source": "Clark County Assessor's records · updated Nov 3, 2026"
+    },
+    {
+      "kind": "meters",
+      "id": "around",
+      "title": "Around this address",
+      "groups": [
+        {
+          "title": "Weather",
+          "rows": [
+            {
+              "label": "Hail",
+              "level": 2,
+              "tone": "low",
+              "word": "Low"
+            },
+            {
+              "label": "Strong wind",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            },
+            {
+              "label": "Tornado",
+              "level": 1,
+              "tone": "low",
+              "word": "Very low"
+            },
+            {
+              "label": "Winter weather",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            }
+          ]
+        },
+        {
+          "title": "Ground and fire",
+          "rows": [
+            {
+              "label": "Flood",
+              "level": 1,
+              "tone": "low",
+              "word": "Minimal · Zone X"
+            },
+            {
+              "label": "Wildfire",
+              "level": 2,
+              "tone": "low",
+              "word": "Low"
+            },
+            {
+              "label": "Earthquake",
+              "level": 4,
+              "tone": "high",
+              "word": "High"
+            },
+            {
+              "label": "Landslide",
+              "level": 3,
+              "tone": "mid",
+              "word": "Moderate"
+            }
+          ]
+        },
+        {
+          "title": "Air, noise and water",
+          "rows": [
+            {
+              "label": "Noise",
+              "level": 1,
+              "tone": "low",
+              "word": "Quiet · 48 dB"
+            },
+            {
+              "label": "Air today",
+              "level": 1,
+              "tone": "low",
+              "word": "Good"
+            },
+            {
+              "label": "PFAS in water",
+              "level": 1,
+              "tone": "low",
+              "word": "None found"
+            }
+          ]
+        }
+      ],
+      "note": "Ratings for the area, not a test of this home. FEMA, U.S. Geological Survey, U.S. Forest Service, EPA and U.S. Department of Transportation."
+    },
+    {
+      "kind": "intro",
+      "id": "more",
+      "title": "There is more in this home's record",
+      "body": "Fifteen more parts are ready. They belong to the owner, and they are free."
+    },
+    {
+      "kind": "closed_group",
+      "id": "closed_money",
+      "title": "Ownership and money",
+      "chip": "For the owner",
+      "items": [
+        {
+          "icon": "history",
+          "title": "Recorded history",
+          "line": "Deeds, transfers and corrections since 2016"
+        },
+        {
+          "icon": "trend",
+          "title": "County value, year by year",
+          "line": "9 years on record"
+        },
+        {
+          "icon": "tag",
+          "title": "Last sale",
+          "line": "Price, date and document number"
+        },
+        {
+          "icon": "bank",
+          "title": "Property tax, year by year",
+          "line": "9 years on record"
+        },
+        {
+          "icon": "bars",
+          "title": "Estimate and similar homes",
+          "line": "Beside 6 homes on this street"
+        },
+        {
+          "icon": "shield",
+          "title": "Exemptions on file",
+          "line": "Whether a homestead exemption is on this home"
+        }
+      ]
+    },
+    {
+      "kind": "closed_group",
+      "id": "closed_changes",
+      "title": "Changes over time",
+      "chip": "For the owner",
+      "items": [
+        {
+          "icon": "image",
+          "title": "Your lot through the years",
+          "line": "11 photos from above, 2011 to 2023"
+        },
+        {
+          "icon": "wrench",
+          "title": "Permits",
+          "line": "3 on record, with dates"
+        },
+        {
+          "icon": "bell",
+          "title": "Changes to the record",
+          "line": "We tell you when the county's record moves"
+        }
+      ]
+    },
+    {
+      "kind": "closed_group",
+      "id": "closed_house",
+      "title": "The house and the ground",
+      "chip": "For the owner",
+      "items": [
+        {
+          "icon": "layers",
+          "title": "Ground under your home",
+          "line": "Soil, slope, elevation, levees and dams"
+        },
+        {
+          "icon": "home",
+          "title": "Roof, heating, water heater, panel",
+          "line": "Ages against their typical service life"
+        },
+        {
+          "icon": "alert",
+          "title": "Recalls on what is in the house",
+          "line": "Checked against federal recalls"
+        }
+      ]
+    },
+    {
+      "kind": "closed_group",
+      "id": "closed_protect",
+      "title": "Protect it",
+      "chip": "For the owner",
+      "items": [
+        {
+          "icon": "file",
+          "title": "Insurance claims on this home",
+          "line": "Seven years, every owner. Your free yearly report"
+        },
+        {
+          "icon": "mail",
+          "title": "Recording alerts",
+          "line": "The county emails you when a document is recorded"
+        },
+        {
+          "icon": "percent",
+          "title": "Mortgage insurance",
+          "line": "When the law lets you ask to drop it"
+        }
+      ]
+    },
+    {
+      "kind": "promise",
+      "id": "promise",
+      "title": "Yours for proving it's your home",
+      "body": "No payment, no card, no subscription. Show that you own this home and the whole record opens.",
+      "steps": [
+        {
+          "title": "Show one document",
+          "line": "A deed, a closing statement or a property tax bill."
+        },
+        {
+          "title": "Confirm it's you",
+          "line": "A photo of your ID and a selfie."
+        },
+        {
+          "title": "We check it, usually within hours",
+          "line": "Then every part above opens, and stays open."
+        }
+      ],
+      "button": {
+        "label": "Verify you own this home",
+        "url": "/homes/claim-owner"
+      },
+      "alt": {
+        "lead": "Renting, or living here with family?",
+        "label": "Verify your address",
+        "url": "/homes/verify-address"
+      }
+    },
+    {
+      "kind": "note",
+      "id": "privacy",
+      "icon": "eye_off",
+      "text": "Only the confirmed owner sees those parts. People who look up this address never do, and no owner's name is shown to anyone."
+    }
+  ],
+  "footer": "A free look at what is public about this address. Nothing here is advice, and nothing is for sale."
+}
