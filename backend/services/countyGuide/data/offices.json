@@ -2,6 +2,38 @@
   "v": 1,
   "note": "Rows read by hand on each office's own site, by county FIPS. `read` is the day they were read. Only https links to the office's own pages; never a page for one parcel. `property_search_office` and `property_search_url` name the property search as an office's own page gives it (that county's page then shows no directory link). `q` and `a` are the question a row answers, in what the office's page says. A link on a vendor's site rather than the office's own carries `via` (`property_search_via` for the property search): the office's own page that sends people to it, so the claim can be checked; without it the link is not shown.",
   "counties": {
+    "06037": {
+      "read": "2026-11-23",
+      "property_search_office": "Los Angeles County Assessor, Assessor Portal",
+      "property_search_url": "https://portal.assessor.lacounty.gov/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Los Angeles County Registrar-Recorder/County Clerk, real estate records",
+          "url": "https://www.lavote.gov/home/recorder/real-estate-records/viewing-real-estate-records",
+          "line": "Keeps the county's real estate records since 1851; they are viewed at its Norwalk headquarters, not online.",
+          "q": "Where are deeds recorded in Los Angeles County?",
+          "a": "The Los Angeles County Registrar-Recorder/County Clerk records and keeps the county's real estate records, since 1851. The office gives no online access to them; they are viewed at its Norwalk headquarters, indexed by name and year."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Los Angeles County Treasurer and Tax Collector",
+          "url": "https://ttc.lacounty.gov/pay-your-property-taxes/",
+          "line": "Pays a secured property tax bill online; its site also shows a property's payment history.",
+          "q": "Where do I pay property tax in Los Angeles County?",
+          "a": "The Los Angeles County Treasurer and Tax Collector collects property tax. Its site pays a tax bill online and shows a property's payment history."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Homeowner Notification Program",
+          "office": "Los Angeles County Registrar-Recorder/County Clerk",
+          "url": "https://www.lavote.gov/home/recorder/property-document-recording/homeowner-notification-program",
+          "line": "Mails a homeowner copies of documents recorded against the home: changes of ownership, loans, notices of default or sale; email alerts after signing up."
+        }
+      ]
+    },
     "06065": {
       "read": "2026-11-23",
       "property_search_office": "Riverside County Assessor-County Clerk-Recorder, Property Information & Maps",
@@ -310,6 +342,38 @@
         }
       ]
     },
+    "12086": {
+      "read": "2026-11-23",
+      "property_search_office": "Miami-Dade Property Appraiser, Property Search",
+      "property_search_url": "https://apps.miamidadepa.gov/propertysearch/",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Miami-Dade Clerk of the Court and Comptroller, Official Records",
+          "url": "https://www.miamidadeclerk.gov/clerk/official-records.page",
+          "line": "The county's recorder: records deeds, mortgages, liens and plats, and collects the fees and taxes due on recording.",
+          "q": "Where are deeds recorded in Miami-Dade County?",
+          "a": "The Clerk of the Court and Comptroller of Miami-Dade County is the official recorder: its County Recorder's Office records deeds, mortgages, liens and plats into the Official Records, and collects the fees and taxes due on recording."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Miami-Dade County Office of the Tax Collector",
+          "url": "https://www.mdctaxcollector.gov/services/real-estate-tax-payments",
+          "line": "Collects real estate taxes, paid online, in person or by mail.",
+          "q": "Where do I pay property tax in Miami-Dade County?",
+          "a": "The Miami-Dade County Office of the Tax Collector collects real estate taxes. They can be paid online, in person or by mail."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Miami-Dade Clerk of the Court and Comptroller",
+          "url": "https://www.miamidadeclerk.gov/clerk/property-fraud.page",
+          "line": "Email alerts about documents recorded on a property, beside the mailed courtesy notices the Clerk has sent since 2005."
+        }
+      ]
+    },
     "12097": {
       "read": "2026-11-23",
       "property_search_office": "Osceola County Property Appraiser, property search",
@@ -372,6 +436,38 @@
           "office": "St. Johns County Clerk of the Circuit Court and Comptroller",
           "url": "https://apps.stjohnsclerk.com/Landmark/FraudAlert",
           "line": "Emails a subscriber each time an Official Record is recorded with a name they asked for; the office charges no fee for it."
+        }
+      ]
+    },
+    "17031": {
+      "read": "2026-11-23",
+      "property_search_office": "Cook County Assessor's Office, Address Search",
+      "property_search_url": "https://www.cookcountyassessoril.gov/address-search",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Cook County Clerk, Recordings",
+          "url": "https://www.cookcountyclerkil.gov/recordings/search-recordings",
+          "line": "Searches the county's recorded land records by address, PIN, grantor or grantee.",
+          "q": "Where are deeds recorded in Cook County?",
+          "a": "The Cook County Clerk's Recordings division keeps the county's recorded land records. Its search finds them by address, PIN, grantor, grantee and other indexed details."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Cook County Treasurer, Your Property Tax Overview",
+          "url": "https://www.cookcountytreasurer.com/yourpropertytaxoverviewsearch.aspx",
+          "line": "On one page: pay, see whether a refund is available and download a copy of the tax bill.",
+          "q": "Where do I pay property tax in Cook County?",
+          "a": "The Cook County Treasurer collects property tax. Its Your Property Tax Overview page takes a payment, shows whether a refund is available and gives a copy of the tax bill."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Fraud Alert",
+          "office": "Cook County Clerk, Property Fraud Unit",
+          "url": "https://www.cookcountyclerkil.gov/recordings/property-fraud-unit",
+          "line": "Calls or emails a subscriber any time a document is recorded against their property; the office charges no fee for it."
         }
       ]
     },
@@ -455,6 +551,38 @@
           "office": "Scott County Land Records",
           "url": "https://www.scottcountymn.gov/302/Land-Records",
           "line": "Notifies a property owner when a document with their name on it is recorded in the Recorder's Office."
+        }
+      ]
+    },
+    "32003": {
+      "read": "2026-11-23",
+      "property_search_office": "Clark County Assessor, parcel search by location address",
+      "property_search_url": "https://maps.clarkcountynv.gov/assessor/AssessorParcelDetail/site.aspx",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Clark County Recorder",
+          "url": "https://www.clarkcountynv.gov/government/elected_officials/county_recorder/index.php",
+          "line": "Records the county's real property documents; its records search is online.",
+          "q": "Where are deeds recorded in Clark County?",
+          "a": "The Clark County Recorder records the county's deeds and other real property documents. Its records can be searched online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Clark County Treasurer, Real Property Tax Payment Options",
+          "url": "https://www.clarkcountynv.gov/government/elected_officials/county_treasurer/real-property-tax-payment-options",
+          "line": "Takes real property tax online, by phone, by mail, through a bank's online bill pay, at a drop box or in person at the County Government Center; card payments carry a third-party service fee.",
+          "q": "Where do I pay property tax in Clark County?",
+          "a": "The Clark County Treasurer collects real property tax. It takes payment online, by phone, by mail, through a bank's online bill pay, at a drop box or in person at the County Government Center in Las Vegas."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Recording Notification Service",
+          "office": "Clark County Recorder",
+          "url": "https://www.clarkcountynv.gov/government/elected_officials/county_recorder/recording-notification-service",
+          "line": "Emails a subscriber when a document is recorded under the name variations or parcel numbers they list; the office notes it may not catch every document."
         }
       ]
     },
@@ -675,6 +803,38 @@
           "office": "Fairfield County Recorder",
           "url": "https://www.co.fairfield.oh.us/Recorder/",
           "line": "The Recorder's alert service, run by its records vendor; the office charges no fee for it."
+        }
+      ]
+    },
+    "39049": {
+      "read": "2026-11-23",
+      "property_search_office": "Franklin County Auditor, Property Search",
+      "property_search_url": "https://auditor.franklincountyohio.gov/Real-Estate/Property-Search",
+      "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Franklin County Recorder, Public Records Search",
+          "url": "https://www.franklincountyohio.gov/Agency-Directory/Recorder/Real-Estate/Public-Records-Search",
+          "line": "Keeps the county's deeds, mortgages, releases, liens and plats; its records can be searched online.",
+          "q": "Where are deeds recorded in Franklin County?",
+          "a": "The Franklin County Recorder keeps the county's deeds, mortgages, releases, liens, plats and other real estate documents. Its public records search is online."
+        },
+        {
+          "id": "treasurer",
+          "title": "Property tax",
+          "office": "Franklin County Treasurer, Payments",
+          "url": "https://treasurer.franklincountyohio.gov/Payments",
+          "line": "The ways to pay real estate taxes, online among them.",
+          "q": "Where do I pay property tax in Franklin County?",
+          "a": "The Franklin County Treasurer collects real estate taxes. Its Payments page gives the ways to pay, online among them."
+        },
+        {
+          "id": "recording_alert",
+          "title": "Property Alert",
+          "office": "Franklin County Recorder",
+          "url": "https://www.franklincountyohio.gov/Agency-Directory/Recorder/Real-Estate/Property-Alert",
+          "line": "Alerts a user when a document is recorded at the Recorder's office with an individual or business name they set up."
         }
       ]
     },
@@ -1262,7 +1422,18 @@
     },
     "53071": {
       "read": "2026-11-23",
+      "property_search_office": "Walla Walla County Assessor, Property Search",
+      "property_search_url": "https://propertysearch.co.walla-walla.wa.us/PropertyAccess/propertysearch.aspx?cid=0",
       "rows": [
+        {
+          "id": "recorder",
+          "title": "Deeds and recorded documents",
+          "office": "Walla Walla County Auditor, Recording",
+          "url": "https://www.wwcowa.gov/government/auditor/recording.php",
+          "line": "Records the county's documents; its page searches recorded documents and lists the recording fees and requirements.",
+          "q": "Where are deeds recorded in Walla Walla County?",
+          "a": "The Walla Walla County Auditor's recording office records the county's deeds and other documents. Its page searches recorded documents and lists the recording fees and requirements."
+        },
         {
           "id": "treasurer",
           "title": "Property tax",
