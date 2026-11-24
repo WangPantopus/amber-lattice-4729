@@ -9,7 +9,7 @@ import {
 import { launchFeatures } from '@/lib/featureFlags';
 import { fetchSignedOutProfilePage } from '@/lib/server/profilePage';
 import { isProfilePage } from '@/components/profile/sources/contract';
-import { pageSays, signedOutCopy } from '@/components/profile/sources/share';
+import { pageSays, pictureVersion, signedOutCopy } from '@/components/profile/sources/share';
 import { buildUserProfilePath, buildUserProfileShareUrl } from '@pantopus/utils';
 import PublicProfileClient from './PublicProfileClient';
 
@@ -59,7 +59,8 @@ export async function generateMetadata({
         description: summarizeText(says ?? '', 160, `${name} on Pantopus.`),
         path,
         appArgument,
-        images: page.header.portrait_url ? [page.header.portrait_url] : null,
+        // The portrait in its rings, the name, and Says only while it reaches anyone (/api/og/profile).
+        images: [`/api/og/profile?u=${encodeURIComponent(page.header.username || normalizedUsername)}&v=${pictureVersion(page)}`],
       }),
       robots: page.listed === true ? undefined : { index: false, follow: false },
     };

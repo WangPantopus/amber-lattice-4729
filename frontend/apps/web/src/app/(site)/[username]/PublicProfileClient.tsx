@@ -37,6 +37,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { removeUserFromFeedCaches } from '@/hooks/useFeedData';
 import SourcesProfile from '@/components/profile/sources/SourcesProfile';
 import { isProfilePage } from '@/components/profile/sources/contract';
+import ShareSheet from '@/components/profile/sources/ShareSheet';
 
 type RelationshipState = 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
 type ProfileTab = 'posts' | 'about' | 'work' | 'missions';
@@ -216,6 +217,9 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
   const [shareCopied, setShareCopied] = useState(false);
   // Sharing your own profile while its link still has the made-up username asks once for a real one.
   const [usernamePromptOpen, setUsernamePromptOpen] = useState(false);
+  // The profile with sources: the owner's share sheet (board 21), and "Save as PDF" printing the visitor's page.
+  const [shareSheetOpen, setShareSheetOpen] = useState(false);
+  const [printWhenReady, setPrintWhenReady] = useState(false);
   // The session is readable only in the browser, so the server and the first frame draw the header alone; the
   // actions and posts follow once it is known (signed out never flashes for someone signed in, or the reverse).
   const [mounted, setMounted] = useState(false);
@@ -644,6 +648,15 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     })();
   }, [previewAudience, ownerId, previewAttempt, captureAction, withSources]);
 
+  // "Save as PDF": once the visitor's page is drawn, print it (the print style keeps only the page).
+  const visitorPageShown = Boolean(previewAudience === 'anyone' && preview?.audience === 'anyone' && preview.page);
+  useEffect(() => {
+    if (!printWhenReady || !visitorPageShown) return;
+    setPrintWhenReady(false);
+    // Not cleared on the re-render this flag change causes: the page has a moment to finish drawing, then prints.
+    window.setTimeout(() => window.print(), 300);
+  }, [printWhenReady, visitorPageShown]);
+
 
   // ── Action handlers ──
 
@@ -1012,6 +1025,12 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
 
   const handleShare = async () => {
     const ownProfile = Boolean(currentUser && profile && currentUser.id === profile.id);
+    if (ownProfile && withSources) {
+      // A made-up username is never shared: choose one first, then the share sheet opens.
+      if (currentUser?.usernameIsGenerated) setUsernamePromptOpen(true);
+      else setShareSheetOpen(true);
+      return;
+    }
     if (ownProfile && shouldAskForUsername(currentUser)) {
       markAskedForUsername(String(currentUser!.id));
       setUsernamePromptOpen(true);
@@ -1333,6 +1352,12 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
           Preview as
           <ChevronDown aria-hidden="true" className="w-[0.9375rem] h-[0.9375rem] shrink-0" strokeWidth={2.5} />
         </button>
+        {withSources ? (
+          <button type="button" onClick={() => void handleShare()} aria-haspopup="dialog" className={secondaryButton}>
+            <Share aria-hidden="true" className="w-[1.1875rem] h-[1.1875rem] shrink-0" strokeWidth={2.25} />
+            Share
+          </button>
+        ) : null}
       </div>
     );
   } else if (anyoneView) {
@@ -1661,19 +1686,38 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
         onFollow={followFromSheet}
       />
 
+      {withSources && showOwnerOnly && shownSources ? (
+        <ShareSheet
+          open={shareSheetOpen}
+          onClose={() => setShareSheetOpen(false)}
+          name={shownSources.header.name}
+          seed={String(profile.id)}
+          photoUrl={shownSources.header.portrait_url}
+          rings={shownSources.header.rings}
+          onSeeAsVisitor={() => { setShareSheetOpen(false); startPreview('anyone'); }}
+          onSaveAsPdf={() => { setShareSheetOpen(false); setPrintWhenReady(true); startPreview('anyone'); }}
+        />
+      ) : null}
+
       {usernamePromptOpen && currentUser && (
         <UsernamePrompt
           open
           currentUsername={currentUser.username}
+          required={withSources}
           onShareAsIs={() => {
             setUsernamePromptOpen(false);
-            void shareProfileLink(username);
+            if (!withSources) void shareProfileLink(username);
           }}
           onSaved={(saved) => {
             setUsernamePromptOpen(false);
             setCurrentUser((prev) => (prev ? { ...prev, ...saved } : saved));
             // The old address no longer opens this profile.
             router.replace(`/u/${encodeURIComponent(saved.username)}`);
+            if (withSources) {
+              toast.success(`Your username is @${saved.username}.`);
+              setShareSheetOpen(true);
+              return;
+            }
             void shareProfileLink(saved.username).then((shared) => {
               // Sharing right after the dialog can be refused; the new link is still worth knowing.
               if (shared) toast.success(`Your username is @${saved.username}.`);
