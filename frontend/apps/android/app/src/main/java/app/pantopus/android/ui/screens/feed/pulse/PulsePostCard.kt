@@ -290,27 +290,7 @@ fun PulsePostCard(
                 onDismissSeeded = onDismissSeeded,
                 onOpenAuthor = onOpenAuthor,
             )
-            if (content.story != null) {
-                StoryText(content.story, postId = content.id)
-            } else if (!content.title.isNullOrEmpty()) {
-                Text(
-                    text = content.title,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = PantopusColors.appText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (content.story == null && content.body.isNotEmpty()) {
-                Text(
-                    text = postLinkedText(content.body),
-                    fontSize = 12.5.sp,
-                    color = PantopusColors.appTextStrong,
-                    maxLines = if (!content.title.isNullOrEmpty()) 2 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            CardText(content)
             content.source?.let { source -> PostSourceLink(source, testTag = "pulsePostSource_${content.id}") }
             // An Event's when and where, under its text (as on the web card).
             content.event?.let { event ->
@@ -356,9 +336,7 @@ fun PulsePostCard(
                     onToggleRepost = onToggleRepost,
                     onReply = onReply,
                 )
-                content.conversation?.let { talk ->
-                    ConversationPreview(talk, replyCount = content.commentCount, postId = content.id, onOpen = onReply)
-                }
+                ConversationPreview(content, onOpen = onReply)
                 if (content.likePending || content.savePending) {
                     Text(
                         "Pending",
@@ -474,6 +452,34 @@ private fun OutletAvatar() {
     }
 }
 
+/** The card's words: a story's headline and summary, or a post's title (one line) and text. */
+@Composable
+private fun CardText(content: PulsePostCardContent) {
+    if (content.story != null) {
+        StoryText(content.story, postId = content.id)
+        return
+    }
+    if (!content.title.isNullOrEmpty()) {
+        Text(
+            text = content.title,
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PantopusColors.appText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (content.body.isNotEmpty()) {
+        Text(
+            text = postLinkedText(content.body),
+            fontSize = 12.5.sp,
+            color = PantopusColors.appTextStrong,
+            maxLines = if (!content.title.isNullOrEmpty()) 2 else 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 /** A story's headline, set apart from the outlet's own summary under it. */
 @Composable
 private fun StoryText(
@@ -507,13 +513,13 @@ private fun StoryText(
  */
 @Composable
 private fun ConversationPreview(
-    talk: PulseConversationPreview,
-    replyCount: Int,
-    postId: String,
+    content: PulsePostCardContent,
     onOpen: (() -> Unit)?,
 ) {
+    val talk = content.conversation ?: return
+    val postId = content.id
     val shape = RoundedCornerShape(Radii.md)
-    val line = if (replyCount > 1) "${talk.latestName} · $replyCount replies" else "${talk.latestName} replied"
+    val line = if (content.commentCount > 1) "${talk.latestName} · ${content.commentCount} replies" else "${talk.latestName} replied"
     Row(
         modifier =
             Modifier
@@ -861,29 +867,38 @@ private fun ReactionStrip(
                 }
             }
         }
-        Row(
-            modifier =
-                if (onReply != null) {
-                    Modifier.clickable(role = Role.Button, onClick = onReply).testTag("pulsePostReply_${content.id}")
-                } else {
-                    Modifier
-                },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
-        ) {
-            PantopusIconImage(
-                icon = PantopusIcon.MessageCircle,
-                contentDescription = null,
-                size = Radii.lg,
-                tint = PantopusColors.appTextSecondary,
-            )
-            Text(
-                text = if (content.commentCount > 0) "Reply ${content.commentCount}" else "Reply",
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Medium,
-                color = PantopusColors.appTextSecondary,
-            )
-        }
+        ReplyLabel(content, onReply)
+    }
+}
+
+/** "Reply 3": how many replied. With [onReply] a tap opens the post to reply; without, it is part of the card's tap. */
+@Composable
+private fun ReplyLabel(
+    content: PulsePostCardContent,
+    onReply: (() -> Unit)?,
+) {
+    Row(
+        modifier =
+            if (onReply != null) {
+                Modifier.clickable(role = Role.Button, onClick = onReply).testTag("pulsePostReply_${content.id}")
+            } else {
+                Modifier
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.MessageCircle,
+            contentDescription = null,
+            size = Radii.lg,
+            tint = PantopusColors.appTextSecondary,
+        )
+        Text(
+            text = if (content.commentCount > 0) "Reply ${content.commentCount}" else "Reply",
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Medium,
+            color = PantopusColors.appTextSecondary,
+        )
     }
 }
 
@@ -1103,7 +1118,8 @@ private fun quotedA11yPart(quoted: PulseQuotedCard): String =
 private fun buildA11yLabel(content: PulsePostCardContent): String {
     val parts = mutableListOf<String>()
     content.repostedBy?.let { parts.add(it) }
-    parts.add(content.authorName)
+    // A story is read by the outlet that published it, as it is drawn.
+    parts.add(content.story?.outlet ?: content.authorName)
     if (content.likePending || content.savePending) parts.add("Pending")
     if (content.chipLabel.isNotEmpty()) parts.add(content.chipLabel)
     if (content.isCurator) parts.add("Pantopus curator")

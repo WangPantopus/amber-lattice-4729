@@ -92,8 +92,7 @@ internal fun pulseCardContent(
         authorAvatarUrl = post.creator?.photoUrl,
         meta = metaString(post, topic),
         intent = intent,
-        // A story's chip says its topic ("Sports"), where it has one.
-        chipLabel = aroundTopicTitle(post.aroundYou) ?: intent.chipLabelFor(post.lostFoundType),
+        chipLabel = pulseChipLabel(post, intent),
         story = story,
         conversation = pulseConversation(post.conversation),
         isVisitor = showsVisitorBadge(post),
@@ -248,6 +247,12 @@ private val AROUND_TOPIC_TITLES =
         "business" to "Business",
         "safety" to "Roads & safety",
     )
+
+/** The chip's word: a story's topic ("Sports") where it has one, else the post kind's. */
+private fun pulseChipLabel(
+    post: FeedPost,
+    intent: PulseIntent,
+): String = aroundTopicTitle(post.aroundYou) ?: intent.chipLabelFor(post.lostFoundType)
 
 /** The first of a story's topics this build knows, by the chip's name; null when it has none. */
 internal fun aroundTopicTitle(facts: AroundYouStoryFacts?): String? = facts?.topics?.firstNotNullOfOrNull { AROUND_TOPIC_TITLES[it] }

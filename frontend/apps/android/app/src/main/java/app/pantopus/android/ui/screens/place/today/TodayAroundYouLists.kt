@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
@@ -63,15 +65,6 @@ import java.util.Locale
  * the web's `components/hub/AroundYou.tsx`.
  */
 
-/** What the page needs of the lists behind it: the chosen one as far as it was read, and what the taps do. */
-internal data class AroundYouListsUi(
-    val state: AroundYouLists.State,
-    val onSelect: (String) -> Unit,
-    val onMore: () -> Unit,
-    /** "Reply" and the reply preview on a card: its post page with the reply box ready to type in. */
-    val onReply: (String) -> Unit,
-)
-
 /** A run of a list's cards under one day's heading ("" for a list without days). */
 private data class DayGroup(
     val day: String,
@@ -104,6 +97,14 @@ internal fun AroundYouPostsList(
         if (!offered && state.id != AroundYouLists.ALL) lists?.onSelect?.invoke(AroundYouLists.ALL)
     }
     val all = selected == AroundYouLists.ALL
+    // Another chip is another list: it starts at its top, under the chips.
+    var showing by remember { mutableStateOf(selected) }
+    LaunchedEffect(selected) {
+        if (showing != selected) {
+            showing = selected
+            listState.scrollToItem(0)
+        }
+    }
     val byId = remember(cards) { cards.associateBy { it.id } }
     val sections =
         remember(page, byId) {
@@ -118,10 +119,9 @@ internal fun AroundYouPostsList(
     val groups =
         remember(state.posts, byId, shown, selected, nowMs / DAY_MS) {
             val out = mutableListOf<DayGroup>()
-            for (post in state.posts) {
-                // Under All the first page's own posts are above already.
-                if (all && post.id in shown) continue
-                val card = byId[post.id] ?: continue
+            // Under All the first page's own posts are above already.
+            for (post in state.posts.filter { it.id in byId && !(all && it.id in shown) }) {
+                val card = byId.getValue(post.id)
                 val day = if (dated) aroundDayLabel(post.createdAt, nowMs) else ""
                 val last = out.lastOrNull()
                 if (last != null && last.day == day) {
@@ -141,8 +141,8 @@ internal fun AroundYouPostsList(
             (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 1 - ROWS_BEFORE_END
         }
     }
-    LaunchedEffect(nearEnd, selected, state.pages, state.loading, state.failed, canAsk) {
-        if (canAsk && nearEnd && state.hasMore && !state.loading && !state.failed) lists?.onMore?.invoke()
+    LaunchedEffect(nearEnd, selected, state.pages, state.canReadMore, canAsk) {
+        if (canAsk && nearEnd && state.canReadMore) lists?.onMore?.invoke()
     }
     val draw: @Composable (PulsePostCardContent) -> Unit = { card ->
         val going = { actions.onReact(card.id) }
@@ -180,7 +180,7 @@ internal fun AroundYouPostsList(
         if (all) {
             sections.forEach { (id, title, sectionCards) ->
                 item(key = "section_$id") { ListHeading(title, Modifier.testTag("aroundYouSection_$id")) }
-                items(sectionCards, key = { "page_${it.id}" }) { card -> draw(card) }
+                items(sectionCards, key = { "page_${id}_${it.id}" }) { card -> draw(card) }
             }
         }
         groups.forEachIndexed { index, group ->

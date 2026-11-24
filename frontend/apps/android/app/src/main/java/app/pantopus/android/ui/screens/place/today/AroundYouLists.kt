@@ -5,9 +5,12 @@ import app.pantopus.android.data.api.models.feed.FeedConversationPerson
 import app.pantopus.android.data.api.models.feed.FeedConversationReply
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.posts.PostDetailDto
-import app.pantopus.android.data.api.models.saved_places.AroundYouListPageDto
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.auth.AuthRepository
+import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.saved_places.AroundYouPlace
+import app.pantopus.android.data.saved_places.AroundYouRepository
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,14 +21,16 @@ import kotlinx.coroutines.launch
  * Around you's lists behind the first page (founder, 2026-11-24): the chip that is chosen and its list, read a page
  * at a time for as long as the server says there is more. Under [ALL] the list is every earlier story, read only once
  * the first page's end nears; any other chip's list is read when the chip is picked. Another place starts at [ALL]
- * with nothing read. [onPosts] says the list's posts changed (a page arrived, a post took what was done on its page),
- * with the revision the cards were at when the read began, so a tap made meanwhile keeps its value.
+ * with nothing read. The list's posts are cards of [cards] too, after the first page's ([pagePosts]): whenever either
+ * changes they are shown again ([showCards]), with the revision the cards were at when the read began, so a tap made
+ * meanwhile keeps its value.
  */
 internal class AroundYouLists(
     private val scope: CoroutineScope,
-    private val read: suspend (AroundYouPlace, String, String?) -> NetworkResult<AroundYouListPageDto>,
-    private val revision: () -> Int,
-    private val onPosts: (readRevision: Int) -> Unit,
+    private val aroundYou: AroundYouRepository,
+    private val postsRepository: PostsRepository,
+    private val cards: () -> ProfilePostCards?,
+    private val pagePosts: () -> List<FeedPost>,
 ) {
     /** The chosen list, as far as it has been read. */
     data class State(
@@ -41,12 +46,42 @@ internal class AroundYouLists(
     ) {
         /** There may be more to read: nothing was read yet, or the last page named a next one. */
         val hasMore: Boolean get() = pages == 0 || next != null
+
+        /** A next page may be asked for by itself: there is one, no read is out, and the last one didn't fail. */
+        val canReadMore: Boolean get() = hasMore && !loading && !failed
     }
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var place: AroundYouPlace? = null
+
+    /** The post whose page was opened last: coming back, its card in the list takes what was done there. */
+    private var openedPostId: String? = null
+
+    private fun revision(): Int = cards()?.actionRevision ?: 0
+
+    /** The first page's posts, then the list's, as cards. */
+    fun showCards(readRevision: Int) {
+        cards()?.show(pagePosts() + _state.value.posts, readRevision)
+    }
+
+    /** A card was tapped: its post (the first page's or the list's), to open its page from at once. */
+    fun opened(postId: String): FeedPost? {
+        openedPostId = postId
+        return (pagePosts() + _state.value.posts).firstOrNull { it.id == postId }
+    }
+
+    /**
+     * Back from a post's page. The first page is read again by Today, as before; a post of the list (which is not
+     * read again, so the place in it stays) takes its page's counts, reaction and latest reply from one read of it.
+     */
+    fun backFromPost() {
+        val postId = openedPostId ?: return
+        openedPostId = null
+        if (_state.value.posts.none { it.id == postId }) return
+        scope.launch { postsRepository.detailStored(postId, force = true).data?.post?.let(::take) }
+    }
 
     /** Told apart from an older read's answer: a new place, chip or refresh drops what is still on its way. */
     private var generation = 0
@@ -74,7 +109,7 @@ internal class AroundYouLists(
         val startedAt = revision()
         _state.value = now.copy(loading = true, failed = false)
         scope.launch {
-            val result = read(at, now.id, now.next)
+            val result = aroundYou.readList(at, now.id, now.next)
             if (mine != generation) return@launch
             val before = _state.value
             _state.value =
@@ -89,7 +124,7 @@ internal class AroundYouLists(
                         )
                     is NetworkResult.Failure -> before.copy(loading = false, failed = true)
                 }
-            if (result is NetworkResult.Success) onPosts(startedAt)
+            if (result is NetworkResult.Success) showCards(startedAt)
         }
     }
 
@@ -104,32 +139,29 @@ internal class AroundYouLists(
         val startedAt = revision()
         _state.value = now.copy(loading = true, failed = false)
         scope.launch {
-            val result = read(at, now.id, null)
+            val result = aroundYou.readList(at, now.id, null)
             if (mine != generation) return@launch
             _state.value =
                 when (result) {
                     is NetworkResult.Success -> State(id = now.id, posts = result.data.posts, next = result.data.next, pages = 1)
                     is NetworkResult.Failure -> _state.value.copy(loading = false, failed = true)
                 }
-            if (result is NetworkResult.Success) onPosts(startedAt)
+            if (result is NetworkResult.Success) showCards(startedAt)
         }
     }
 
-    /** Whether the list holds this post (the first page's posts are the page's own). */
-    fun holds(postId: String): Boolean = _state.value.posts.any { it.id == postId }
-
     /** A post of the list as its own page now has it (its counts, the viewer's reaction, the latest reply). */
-    fun take(detail: PostDetailDto) {
+    private fun take(post: PostDetailDto) {
         val now = _state.value
-        if (now.posts.none { it.id == detail.id }) return
-        _state.value = now.copy(posts = now.posts.map { if (it.id == detail.id) it.after(detail) else it })
-        onPosts(revision())
+        if (now.posts.none { it.id == post.id }) return
+        _state.value = now.copy(posts = now.posts.map { if (it.id == post.id) it.after(post) else it })
+        showCards(revision())
     }
 
     private fun start(id: String) {
         generation += 1
         _state.value = State(id = id)
-        onPosts(revision())
+        showCards(revision())
     }
 
     companion object {
@@ -139,6 +171,33 @@ internal class AroundYouLists(
         const val EVENTS = "events"
     }
 }
+
+/** What the page needs of the lists behind it: the chosen one as far as it was read, and what the taps do. */
+internal data class AroundYouListsUi(
+    val state: AroundYouLists.State,
+    val onSelect: (String) -> Unit,
+    val onMore: () -> Unit,
+    /** "Reply" and the reply preview on a card: its post page with the reply box ready to type in. */
+    val onReply: (String) -> Unit,
+)
+
+/**
+ * Around you's headlines as Pulse cards (each is a post by the Pantopus curator account), with what the viewer's taps
+ * did to them: the profile's card controller, so the same taps, endpoints and menus, without a profile's colours.
+ */
+internal fun aroundYouCards(
+    scope: CoroutineScope,
+    posts: PostsRepository,
+    auth: AuthRepository,
+    onToast: (String) -> Unit,
+): ProfilePostCards =
+    ProfilePostCards(
+        scope = scope,
+        posts = posts,
+        viewerId = { (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id },
+        onToast = onToast,
+        profileColors = false,
+    )
 
 private const val PREVIEW_PEOPLE = 3
 private const val PREVIEW_LENGTH = 140

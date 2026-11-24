@@ -249,7 +249,9 @@ fun TodayTabScreen(
     val pullAll = {
         viewModel.pull()
         needsYou.pull()
-        viewModel.pullAround(aroundPlace)
+        viewModel.readAround(aroundPlace)
+        // The open Around you list (a chip's, or the earlier stories) is read again with it.
+        viewModel.aroundLists?.refresh()
     }
     // Pull to refresh, like iOS's Today tab (`.refreshable`): it always reads now, with the pull indicator
     // over the content instead of placeholders. The indicator shows only for a pull, not the first load.
