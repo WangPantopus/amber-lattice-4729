@@ -16,7 +16,12 @@ const { isLive } = require('./holds');
 
 // Released states, by postal code, in the order they went out. Live counties have pages whatever this says.
 const BATCHES = [];
-const released = new Set(BATCHES.flat());
+// COUNTY_GUIDE_STATES (postal codes, comma-separated) adds states for a rig's or staging's checks; production follows
+// BATCHES alone, so a release is a reviewed change here.
+const released = new Set([
+  ...BATCHES.flat(),
+  ...String(process.env.COUNTY_GUIDE_STATES || '').split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)),
+]);
 
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
 const answers = new Map();
