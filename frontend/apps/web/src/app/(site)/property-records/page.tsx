@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // /property-records: every state with county pages, the way in for search engines and people.
-// Static, rebuilt about daily from the backend's list (backend/services/countyGuide).
+// Rendered per request from the backend's list, which the fetch keeps a day (backend/services/countyGuide), so a visit
+// costs the backend nothing. Not prerendered at build: a build has no backend to ask, and a page with no params would
+// otherwise be built then, and kept a day as built.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from 'next';
@@ -9,7 +11,7 @@ import { notFound } from 'next/navigation';
 import { Breadcrumb, SiteFooter, SiteNav } from './_components/Chrome';
 import { SITE_URL, guideIndex, statePath } from './_lib/guide';
 
-export const revalidate = 86400;
+export const dynamic = 'force-dynamic';
 
 const TITLE = 'Property records by state and county';
 const DESCRIPTION =
