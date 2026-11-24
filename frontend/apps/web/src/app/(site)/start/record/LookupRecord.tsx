@@ -39,8 +39,8 @@ function Record() {
   });
 
   const continueWith = (url: string) => {
-    // An account opens the public record here: sign-up and sign-in come back to this page.
-    const here = `/start/record?preview=${previewId}`;
+    // An account opens the public record: sign-up and sign-in come back to the same record inside the app.
+    const here = `/app/place/record?preview=${previewId}`;
     if (url === '/auth/sign-up') { router.push(authPageHref('/register', here)); return true; }
     if (url === '/auth/sign-in') { router.push(authPageHref('/login', here)); return true; }
     if (!LOOKUP_LINKS.has(url)) return false;

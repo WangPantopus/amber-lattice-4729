@@ -40,10 +40,11 @@ export function useBuyerActions({ record, place, onClaim }: {
       const url = action.url.startsWith('/') ? `${window.location.origin}${action.url}` : action.url;
       try {
         if (typeof navigator.share === 'function') await navigator.share({ title: record?.header.title, url });
-        else { await navigator.clipboard.writeText(url); mark('share', 'Link copied'); }
+        else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(url); mark('share', 'Link copied'); }
+        else setProblem(`Copy this link to share it: ${url}`);
       } catch (err) {
-        // Closing the share sheet isn't a failure.
-        if ((err as { name?: string } | null)?.name !== 'AbortError') setProblem('The link could not be shared. Try again.');
+        // Closing the share sheet isn't a failure. Where neither sharing nor copying is allowed, the link is shown to copy.
+        if ((err as { name?: string } | null)?.name !== 'AbortError') setProblem(`Copy this link to share it: ${url}`);
       }
       return;
     }
