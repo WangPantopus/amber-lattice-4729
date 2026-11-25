@@ -156,7 +156,76 @@ async function notificationBlockFilter(userId, blockedRead) {
   return (query) => query.or(`metadata->>user_id.is.null,metadata->>user_id.not.in.(${ids})`);
 }
 
+// ── Blocking a note's sender ──────────────────────────────────────────────────────────────────────────────────────
+// "Block this sender" on a note to an address stops that sender's notes (routes/neighborMessages.js) and nothing else.
+// It is a "PostMute" row of its own kind, never a "UserBlock" row: everything that reads "UserBlock" (feeds, replies,
+// chats, follows, Moments, listings, mail and cards in the database) would hide or refuse the sender under their own
+// name, and the person who blocked could tell from that who sent the note. Only the note flow and the blocked list
+// read these rows; muted_entity_id holds the sender's account id and is never shown ("Anonymous sender").
+const NOTE_SENDER_BLOCK = 'note_sender_block';
+
+/** Which of these two people blocked the other as a note's sender: a Set of their ids, empty when neither did. */
+async function noteSenderBlockers(userId1, userId2) {
+  if (!userId1 || !userId2 || String(userId1) === String(userId2)) return new Set();
+  const { data, error } = await supabaseAdmin
+    .from('PostMute')
+    .select('user_id')
+    .eq('muted_entity_type', NOTE_SENDER_BLOCK)
+    .or(
+      `and(user_id.eq.${userId1},muted_entity_id.eq.${userId2}),` +
+      `and(user_id.eq.${userId2},muted_entity_id.eq.${userId1})`
+    );
+  if (error || !Array.isArray(data)) {
+    logger.warn('blockService.noteSenderBlockers unavailable', { error: error?.message });
+    throw blockCheckUnavailable();
+  }
+  return new Set(data.map((row) => String(row.user_id)));
+}
+
+/** Records that blockerId blocked senderId as a note's sender. A repeat is the same block. */
+async function blockNoteSender(blockerId, senderId) {
+  // "PostMute" is unique on an expression an upsert can't name: read first, and a request that loses the race
+  // (23505) is the same block.
+  const { data: existing, error: readError } = await supabaseAdmin
+    .from('PostMute')
+    .select('id')
+    .eq('user_id', blockerId)
+    .eq('muted_entity_type', NOTE_SENDER_BLOCK)
+    .eq('muted_entity_id', String(senderId))
+    .limit(1);
+  if (readError) throw readError;
+  if (existing?.length) return;
+  const { error } = await supabaseAdmin
+    .from('PostMute')
+    .insert({ user_id: blockerId, muted_entity_type: NOTE_SENDER_BLOCK, muted_entity_id: String(senderId) });
+  if (error && error.code !== '23505') throw error;
+}
+
+/** This person's blocks of note senders, newest first: [{ id, created_at }] (never who was blocked). */
+async function noteSenderBlocksOf(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('PostMute')
+    .select('id, created_at')
+    .eq('user_id', userId)
+    .eq('muted_entity_type', NOTE_SENDER_BLOCK)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+/** Undoes one of this person's note-sender blocks by its row id (the blocked list's `anonymous:<id>` handle). */
+async function unblockNoteSender(userId, blockId) {
+  const { error } = await supabaseAdmin
+    .from('PostMute')
+    .delete()
+    .eq('id', blockId)
+    .eq('user_id', userId)
+    .eq('muted_entity_type', NOTE_SENDER_BLOCK);
+  if (error) throw error;
+}
+
 module.exports = {
   isBlocked, hasBlocked, blockedUserIds, blockedIdsFromRows, notificationBlockFilter, invalidateBlockCache,
   blockCheckUnavailable, removeFollowsBetween,
+  NOTE_SENDER_BLOCK, noteSenderBlockers, blockNoteSender, noteSenderBlocksOf, unblockNoteSender,
 };

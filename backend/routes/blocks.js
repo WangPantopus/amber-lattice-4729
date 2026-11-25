@@ -5,7 +5,9 @@ const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
 const verifyToken = require('../middleware/verifyToken');
 const logger = require('../utils/logger');
-const { invalidateBlockCache, removeFollowsBetween } = require('../services/blockService');
+const {
+  invalidateBlockCache, removeFollowsBetween, noteSenderBlocksOf, unblockNoteSender,
+} = require('../services/blockService');
 const { invalidateFilterCache } = require('../services/feedService');
 const marketplaceService = require('../services/marketplace/marketplaceService');
 const { writeIdentityAuditLog } = require('../utils/identityAudit');
@@ -153,7 +155,11 @@ router.delete('/:userId/block', verifyToken, async (req, res) => {
         .eq('reason', 'neighbor_message')
         .maybeSingle();
       if (lookupError) throw lookupError;
-      if (!anonymousBlock) return res.json({ success: true });
+      // A block of a note's sender (blockService.blockNoteSender); a UserBlock row is one an older server wrote.
+      if (!anonymousBlock) {
+        await unblockNoteSender(blockerId, blockId);
+        return res.json({ success: true });
+      }
       blockedId = anonymousBlock.blocked_user_id;
     }
 
@@ -200,11 +206,14 @@ router.get('/blocked', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const { data, error } = await supabaseAdmin
-      .from('UserBlock')
-      .select('id, blocked_user_id, reason, created_at, blocked_user:blocked_user_id(id, username, name, first_name, last_name, profile_picture_url)')
-      .eq('blocker_user_id', userId)
-      .order('created_at', { ascending: false });
+    const [{ data, error }, noteSenderBlocks] = await Promise.all([
+      supabaseAdmin
+        .from('UserBlock')
+        .select('id, blocked_user_id, reason, created_at, blocked_user:blocked_user_id(id, username, name, first_name, last_name, profile_picture_url)')
+        .eq('blocker_user_id', userId)
+        .order('created_at', { ascending: false }),
+      noteSenderBlocksOf(userId),
+    ]);
 
     if (error) {
       logger.error('Error fetching blocked users', { error: error.message, userId });
@@ -216,7 +225,12 @@ router.get('/blocked', verifyToken, async (req, res) => {
     const people = await loadChatPeople((data || [])
       .filter((b) => b.reason !== 'neighbor_message')
       .map((b) => b.blocked_user_id));
-    const blocks = (data || []).map((b) => ({ ...b, blocked_user: chatPersonRow(b.blocked_user, people) }));
+    // Blocks of a note's sender (blockService.blockNoteSender) list as the older servers' UserBlock rows did, newest
+    // first among the rest; the sender is never read for them.
+    const blocks = [
+      ...(data || []).map((b) => ({ ...b, blocked_user: chatPersonRow(b.blocked_user, people) })),
+      ...noteSenderBlocks.map((b) => ({ id: b.id, reason: 'neighbor_message', created_at: b.created_at })),
+    ].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
 
     // Blocked made-up names, by the name that was blocked: unblocking uses its id as any other row's.
     const blockedPenNames = (await penName.present.hiddenList(userId)).filter((row) => row.blocked).map((row) => ({
