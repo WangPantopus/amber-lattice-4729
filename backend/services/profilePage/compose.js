@@ -866,11 +866,15 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     const write = w && w.sharesRecord && !ctx.blockedEitherWay && !hasLive && readShare(ctx.share || null).known_for_enabled
       ? { text: `Write a line about ${ctx.firstName}`, left_this_year: Math.max(0, KNOWN_FOR_YEAR - w.linesThisYear), of: KNOWN_FOR_YEAR,
         link: { kind: 'known_for_write' } } : null;
-    if (kLines.length || write) {
+    // `known_for` is a v1 block kind that released apps may draw: it is sent only with lines in it. With none, a
+    // writer's offer comes as its own new kind, `known_for_write`, which older apps skip (design session, 2026-11-25).
+    if (kLines.length) {
       person.push({
         kind: 'known_for', id: 'known_for', title: 'Known for', lines: kLines.slice(0, 2),
         more: kLines.length > 2 ? { text: `All ${kLines.length} lines`, link: { kind: 'known_for' } } : null, write,
       });
+    } else if (write) {
+      person.push({ kind: 'known_for_write', id: 'known_for_write', title: 'Known for', ...write });
     }
   }
   if (extras.inCommon && ['member', 'connection', 'household'].includes(view)) {
