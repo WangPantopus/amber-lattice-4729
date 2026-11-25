@@ -43,6 +43,8 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.screens.place.components.placeCard
 import app.pantopus.android.ui.screens.place.launch.PlacePreviewFindings
+import app.pantopus.android.ui.screens.place.launch.PreviewJumps
+import app.pantopus.android.ui.screens.place.launch.rememberPreviewJumps
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -85,6 +87,8 @@ fun SavedPlaceRootScreen(
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val refreshNotice by viewModel.refreshNotice.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    // A glance line takes the list to its card (LOOKUPORDER 1.2).
+    val jumps = rememberPreviewJumps(listState)
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
 
     var pulled by remember { mutableStateOf(false) }
@@ -97,7 +101,7 @@ fun SavedPlaceRootScreen(
         },
         modifier = modifier.fillMaxSize().background(PantopusColors.appBg).testTag(SAVED_PLACE_ROOT_TAG),
     ) {
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().then(jumps.viewport())) {
             item {
                 PlaceDashboardHeader(
                     label = place.label,
@@ -123,6 +127,7 @@ fun SavedPlaceRootScreen(
                     onSetUpHome = onSetUpHome,
                     onRetry = viewModel::refresh,
                     onOpenDetail = onOpenDetail,
+                    jumps = jumps,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -197,6 +202,7 @@ private fun SavedPlacePublicPreview(
     onSetUpHome: () -> Unit,
     onRetry: () -> Unit,
     onOpenDetail: ((PlaceDetailGroup) -> Unit)?,
+    jumps: PreviewJumps,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -234,6 +240,7 @@ private fun SavedPlacePublicPreview(
                         onRetry = onRetry,
                         retrying = retrying,
                         modifier = modifier,
+                        jumps = jumps,
                     )
             }
         }
