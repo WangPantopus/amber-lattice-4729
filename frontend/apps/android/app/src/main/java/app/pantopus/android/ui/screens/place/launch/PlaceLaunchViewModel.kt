@@ -6,6 +6,7 @@ import app.pantopus.android.core.routing.PlacePendingStore
 import app.pantopus.android.data.api.models.geo.GeoSuggestion
 import app.pantopus.android.data.api.models.place.PlacePreview
 import app.pantopus.android.data.api.models.place.PlacePreviewStatus
+import app.pantopus.android.data.api.models.place.PlaceReading
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.place.PlaceRepository
@@ -48,6 +49,11 @@ class PlaceLaunchViewModel
         private val _error = MutableStateFlow<String?>(null)
         val error: StateFlow<String?> = _error.asStateFlow()
         private var lookupJob: Job? = null
+
+        /** Pantopus AI's reading of the preview on screen (LOOKUPORDER 5.2); null until the Ask row is tapped. */
+        private val _reading = MutableStateFlow<PlaceReadingState?>(null)
+        val reading: StateFlow<PlaceReadingState?> = _reading.asStateFlow()
+        private var readingJob: Job? = null
         private var autocompleteJob: Job? = null
         private val entryUserId = (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
@@ -71,6 +77,7 @@ class PlaceLaunchViewModel
 
         private fun startOver() {
             lookupJob?.cancel()
+            clearReading()
             autocompleteJob?.cancel()
             selected = null
             _query.value = ""
@@ -122,6 +129,7 @@ class PlaceLaunchViewModel
 
         fun loadPreview(address: String) {
             lookupJob?.cancel()
+            clearReading()
             _error.value = null
             _loadingPreview.value = true
             lookupJob =
@@ -188,8 +196,33 @@ class PlaceLaunchViewModel
             return true
         }
 
+        /**
+         * The Ask row was tapped: the reading of the address as it was looked up. A reading in hand is kept; one
+         * that failed is asked for again only on the next tap (no retry loop), and the row stays either way.
+         */
+        fun openReading(
+            address: String,
+            ticket: String?,
+        ) {
+            val current = _reading.value
+            if (current is PlaceReadingState.Ready || current == PlaceReadingState.Loading) return
+            _reading.value = PlaceReadingState.Loading
+            readingJob =
+                viewModelScope.launch {
+                    val r = repo.publicReading(address, ticket)
+                    val reading = (r as? NetworkResult.Success)?.data?.reading?.takeIf { it.isComplete }
+                    _reading.value = if (reading != null) PlaceReadingState.Ready(reading) else PlaceReadingState.Failed
+                }
+        }
+
+        private fun clearReading() {
+            readingJob?.cancel()
+            _reading.value = null
+        }
+
         fun backToHero() {
             lookupJob?.cancel()
+            clearReading()
             _loadingPreview.value = false
             PlacePendingStore.clear()
             _step.value = LaunchStep.Hero
@@ -214,4 +247,13 @@ sealed interface LaunchStep {
     data class Preview(val preview: PlacePreview, val address: String) : LaunchStep
 
     data class Region(val message: String) : LaunchStep
+}
+
+/** The reading sheet's states: being written, written, or not available now (one sentence, no retry loop). */
+sealed interface PlaceReadingState {
+    data object Loading : PlaceReadingState
+
+    data class Ready(val reading: PlaceReading) : PlaceReadingState
+
+    data object Failed : PlaceReadingState
 }

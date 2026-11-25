@@ -8509,6 +8509,7 @@ private fun PlaceTabRoot(
                         onLookUpAddress = { navController.navigate(ChildRoutes.SAVE_PLACE) },
                         onOpenDetail = { navController.navigate(ChildRoutes.savedPlaceDetail(current.place.id, it.slug)) },
                         scrollToTop = scrollToTop,
+                        onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                     )
                 }
             HomeLanding.FirstRun ->

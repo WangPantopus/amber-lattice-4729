@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.place.launch
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -100,6 +101,7 @@ import app.pantopus.android.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 @Composable
+@Suppress("LongMethod")
 fun PlaceLaunchScreen(
     onSignIn: () -> Unit,
     onCreateAccount: () -> Unit,
@@ -111,6 +113,7 @@ fun PlaceLaunchScreen(
 ) {
     val step by viewModel.step.collectAsStateWithLifecycle()
     val retrying by viewModel.loadingPreview.collectAsStateWithLifecycle()
+    val reading by viewModel.reading.collectAsStateWithLifecycle()
     val browse = {
         if (embedded != null) {
             // The tab's root has nothing under it: back to the address field.
@@ -141,6 +144,19 @@ fun PlaceLaunchScreen(
                 Box(modifier = Modifier.statusBarsPaddingIf(embedded == null)) {
                     // Signed out, the record's "Sign in" keeps the address as the lookup's own Sign in does.
                     val signIn = { if (viewModel.prepareForAuth()) onSignIn() }
+                    // Ask Pantopus (LOOKUPORDER 5.2): the reading of this lookup, in a sheet over it.
+                    var readingOpen by rememberSaveable(current.address) { mutableStateOf(false) }
+                    val openReading = {
+                        readingOpen = true
+                        viewModel.openReading(current.address, current.preview.readingTicket)
+                    }
+                    PreviewReadingSheet(
+                        open = readingOpen,
+                        state = reading,
+                        // Signed out, "Ask your own question" goes where the bar's button goes.
+                        onSignUp = continuePreview.takeIf { onSavePreview == null },
+                        onDismiss = { readingOpen = false },
+                    )
                     WithHomeRecord(current.address, HomeRecordLinks(onSetUpHome, continuePreview, signIn)) { openRecord ->
                         PreviewBody(
                             current.preview,
@@ -158,6 +174,7 @@ fun PlaceLaunchScreen(
                             retrying = retrying,
                             signedInEntry = onSavePreview != null,
                             onOpenRecord = openRecord,
+                            onAsk = openReading,
                         )
                     }
                 }
@@ -532,6 +549,7 @@ private fun PreviewBody(
     retrying: Boolean,
     signedInEntry: Boolean,
     onOpenRecord: () -> Unit,
+    onAsk: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -575,7 +593,8 @@ private fun PreviewBody(
                     modifier = Modifier.clickable(onClick = onSignIn),
                 )
             }
-            val scroll = rememberScrollState()
+            // Each answer starts at the top of the page, a new lookup and a Try again alike.
+            val scroll = remember(preview) { ScrollState(0) }
             val jumps = rememberPreviewJumps(scroll)
             Column(modifier = Modifier.fillMaxSize().then(jumps.viewport()).verticalScroll(scroll)) {
                 // On a tablet or an unfolded phone the page keeps a readable column in the middle.
@@ -597,6 +616,7 @@ private fun PreviewBody(
                         jumps = jumps,
                         onOpenRecord = onOpenRecord,
                         onUnlock = onCreateAccount,
+                        onAsk = onAsk,
                     )
                     // Room for the bar over the page's end, which grows with the text size.
                     Spacer(modifier = Modifier.height(FOOTER_ROOM))
@@ -947,7 +967,7 @@ private const val JUMP_MARGIN_DP = 12
 
 /**
  * What's public about an address, in the server's order (LOOKUPORDER 1.1): the stand-out card, the glance, the money
- * card, the record button, the groups and the cards named on their own, the closed group and the could-not-check
+ * card, the record button, the Ask row ([onAsk]), the groups and the cards named on their own, the closed group and the could-not-check
  * line. A block this app does not know, or one with nothing to draw, is skipped. The launch preview shows it under its
  * address; the Place tab's saved-address root under its next-step card, without the record button or the closed
  * group ([onOpenRecord] and [onUnlock] null there). The aha follow-up and the sections' claim and verify buttons call
@@ -965,6 +985,7 @@ internal fun PlacePreviewFindings(
     jumps: PreviewJumps? = null,
     onOpenRecord: (() -> Unit)? = null,
     onUnlock: (() -> Unit)? = null,
+    onAsk: (() -> Unit)? = null,
 ) {
     val sections = preview.sections.orEmpty()
     // Ballot P0 (ballot_p0): the "Your ballot" block in place of the election card. The server places it: where the
@@ -1112,7 +1133,8 @@ internal fun PlacePreviewFindings(
                             preview.notChecked?.takeIf { it.isNotEmpty() }?.let {
                                 PreviewNotCheckedLine(it, Modifier.padding(top = 18.dp))
                             }
-                        // "ask" waits for the reading route; "privacy": the phones draw no privacy lines here.
+                        block == "ask" -> onAsk?.let { PreviewAskRow(it, Modifier.padding(top = 10.dp)) }
+                        // "privacy": the phones draw no privacy lines on the result.
                         else -> Unit
                     }
                 }

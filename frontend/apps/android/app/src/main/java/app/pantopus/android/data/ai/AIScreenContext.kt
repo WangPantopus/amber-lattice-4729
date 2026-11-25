@@ -17,6 +17,8 @@ data class AIScreenContext(
     val homeId: String? = null,
     /** A Place detail page's slug (`today`, `your-home`, `risk`, `block`, `money`, `civic`). */
     val section: String? = null,
+    /** An address the person saved without a Home: the server reads that saved place's public facts (LOOKUPORDER 5.3). */
+    val savedPlaceId: String? = null,
     val label: String,
     val starters: List<String> = emptyList(),
 ) {
@@ -26,6 +28,7 @@ data class AIScreenContext(
             id?.let { put("id", it) }
             homeId?.let { put("home_id", it) }
             section?.let { put("section", it) }
+            savedPlaceId?.let { put("saved_place_id", it) }
         }
 
     /** The assistant thread's route argument. */
@@ -43,6 +46,7 @@ data class AIScreenContext(
                 id = json.textOrNull("id"),
                 homeId = json.textOrNull("home_id"),
                 section = json.textOrNull("section"),
+                savedPlaceId = json.textOrNull("saved_place_id"),
                 label = json.textOrNull("label") ?: surface,
                 starters = (0 until (starters?.length() ?: 0)).mapNotNull { starters?.optString(it)?.takeIf(String::isNotBlank) },
             )
@@ -69,6 +73,15 @@ data class AIScreenContext(
                 section = section,
                 label = label,
                 starters = listOf("What does this mean for us?", "What should we do this season?", "Remind us…"),
+            )
+
+        /** Place for an address saved without a Home (LOOKUPORDER 5.3), as iOS asks it. */
+        fun savedPlace(id: String): AIScreenContext =
+            AIScreenContext(
+                surface = "place",
+                savedPlaceId = id,
+                label = "Your Place",
+                starters = listOf("What does this mean for me?", "What should I do this season?", "Remind me…"),
             )
 
         /** The Nearby feed. */
