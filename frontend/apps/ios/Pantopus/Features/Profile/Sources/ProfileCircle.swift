@@ -2,75 +2,13 @@
 //  ProfileCircle.swift
 //  Pantopus
 //
-//  The work circle (boards 7 and 9; CONTRACT P2.6, p2.8). On Work: faces, the server's sentence and the three groups
-//  counted, with "Open the circle". Opened: the person in the middle, those they taught or led above, those they work
-//  beside on either side, those they learned from below; a solid line is a tie both sides confirmed, a dotted one a
-//  name typed and not confirmed. Choosing someone shows the pieces the two share. "Hired by" closes it.
+//  The work circle opened (board 9; CONTRACT P2.6, p2.8); its card on Work is ProfileCircleCard.swift. The person in
+//  the middle, those they taught or led above, those they work beside on either side, those they learned from below;
+//  a solid line is a tie both sides confirmed, a dotted one a name typed and not confirmed. Choosing someone shows
+//  the pieces the two share. "Hired by" closes it. At the largest text sizes each group is a list instead.
 //
 
 import SwiftUI
-
-// MARK: - The card on Work (board 7)
-
-struct ProfileCircleCard: View {
-    let title: String?
-    let circle: ProfileCircleDTO
-    let onOpen: () -> Void
-
-    private static let order = ["learned_from", "works_beside", "taught_or_led"]
-
-    private var faces: [ProfileCirclePersonDTO] {
-        Array(circle.groups.flatMap(\.people).prefix(5))
-    }
-
-    var body: some View {
-        ProfileBlockCard {
-            HStack(alignment: .firstTextBaseline) {
-                ProfileBlockTitle(title: title ?? "Work circle")
-                Spacer(minLength: Spacing.s2)
-                if circle.opens {
-                    Button("Open the circle", action: onOpen)
-                        .scaledFont(14, weight: .semibold)
-                        .foregroundStyle(Theme.Color.primary600)
-                        .frame(minHeight: 44)
-                }
-            }
-            HStack(spacing: Spacing.s3) {
-                HStack(spacing: -10) {
-                    ForEach(Array(faces.enumerated()), id: \.offset) { _, person in
-                        ProfileCircleFace(person: person, size: 34)
-                    }
-                }
-                .accessibilityHidden(true)
-                if let text = circle.text {
-                    Text(text)
-                        .scaledFont(14)
-                        .foregroundStyle(Theme.Color.appText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(.vertical, Spacing.s2)
-            HStack(spacing: Spacing.s2) {
-                ForEach(Self.order, id: \.self) { key in
-                    if let group = circle.group(key) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: String(group.count)).scaledFont(20, weight: .bold).foregroundStyle(Theme.Color.appText)
-                            Text(group.title)
-                                .scaledFont(12)
-                                .foregroundStyle(Theme.Color.appTextSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Spacing.s3)
-                        .background(Theme.Color.appSurfaceSunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
 
 // MARK: - A face
 
@@ -180,7 +118,12 @@ struct ProfileCircleScreen: View {
                     .foregroundStyle(Theme.Color.appTextStrong)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            diagram(circle)
+            // At the largest sizes the drawing can't hold its names: each group becomes a list instead.
+            if typeSize.isAccessibilitySize {
+                list(circle)
+            } else {
+                diagram(circle)
+            }
             if let person = model.circleChosen {
                 shared(with: person)
             }
@@ -409,5 +352,60 @@ struct ProfileCircleScreen: View {
                 ProgressView().frame(maxWidth: .infinity).padding(Spacing.s3)
             }
         }
+    }
+}
+
+// MARK: - The circle as lists (the largest text sizes)
+
+extension ProfileCircleScreen {
+    /// The groups as lists, for the largest text sizes: a face, the name, what they did and the ink in words.
+    func list(_ circle: ProfileCircleDTO) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s4) {
+            ForEach(["taught_or_led", "works_beside", "learned_from"], id: \.self) { key in
+                if let group = circle.group(key), !group.people.isEmpty {
+                    section(group.title) {
+                        VStack(alignment: .leading, spacing: Spacing.s2) {
+                            ForEach(Array(group.people.enumerated()), id: \.offset) { _, person in
+                                listRow(person)
+                            }
+                            if group.count > group.people.count {
+                                Text("\(group.count - group.people.count) more")
+                                    .scaledFont(13)
+                                    .foregroundStyle(Theme.Color.appTextSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func listRow(_ person: ProfileCirclePersonDTO) -> some View {
+        Button { Task { await model.choose(person) } } label: {
+            HStack(alignment: .top, spacing: Spacing.s3) {
+                ProfileCircleFace(person: person, size: 44, chosen: model.circleChosen == person)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(person.name ?? person.did ?? "Someone")
+                        .scaledFont(15, weight: .semibold)
+                        .foregroundStyle(Theme.Color.appText)
+                    if person.name != nil, let did = person.did {
+                        Text(did).scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
+                    }
+                    HStack(spacing: 5) {
+                        ProfileInkGlyph(ink: person.ink == "signed" ? .signed : .said, size: 9)
+                        Text(person.ink == "signed" ? "Signed" : "Said")
+                            .scaledFont(13)
+                            .foregroundStyle(Theme.Color.appTextSecondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken(person))
+        .accessibilityHint("Shows the pieces you share")
+        .accessibilityAddTraits(model.circleChosen == person ? [.isButton, .isSelected] : .isButton)
     }
 }
