@@ -72,7 +72,8 @@ async function momentsFor(req, ctx, rows) {
  * What a person's app can't show yet (CONTRACT "# On by default, and what a phone can't show yet"): on their own page
  * only, for each thing waiting for them whose part their app did not name in X-Pantopus-Profile-Parts, a `notice` that
  * opens the web screen for it. No header (a 2.1.5 app) means none. Asks to sign and role asks need one read, made only
- * when the app leaves `credits` or `roles` out; lines waiting for "Show it" come with the page's own rows.
+ * when the app leaves `credits` or `roles` out; lines waiting for "Show it" and cards not yet written back come with
+ * the page's own rows.
  */
 const PARTS_HEADER = 'x-pantopus-profile-parts';
 async function noticesFor(req, ctx, sources = {}) {
@@ -97,6 +98,11 @@ async function noticesFor(req, ctx, sources = {}) {
   if (!named.has('known_for')) {
     for (const t of (sources.knownFor || []).filter((line) => line.status === 'asked')) {
       out.push({ id: `notice_${t.id}`, text: `${t.party_shown?.name || 'Someone'} wrote a line about you. Open it on ${site}.`, url: ctx.shareUrl });
+    }
+  }
+  if (!named.has('doors')) {
+    for (const c of (ctx.cards || []).filter((card) => !card.written_back)) {
+      out.push({ id: `notice_${c.id}`, text: `${c.from?.name || 'Someone'} left you their card. Open it on ${site}.`, url: ctx.shareUrl });
     }
   }
   return out.map((n) => ({ kind: 'notice', id: n.id, text: n.text, link: { kind: 'url', url: n.url, site } }));
@@ -176,9 +182,8 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
   ctx.viewerId = viewerId;
   ctx.shelf = require('./shelf').objectsOf(rows.shelf);
   ctx.share = rows.share || null;
-  // Doors and cards (phase 3B), none of it while PROFILE_DOORS is off.
-  ctx.doorsOn = profileDoorsEnabled();
-  if (ctx.doorsOn) {
+  // Doors and cards (phase 3B; no switch of their own: off only with the whole page, PROFILE_SOURCES=0).
+  {
     const doors = require('./doors');
     const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
     ctx.doors = doors.storedDoors(rows.doors);
@@ -369,6 +374,7 @@ async function shareBody(req) {
     work_pieces: workPieces(loaded.sources),
     ...(tiesOn ? { ties_enabled: readShare(loaded.rows.share).ties_enabled } : {}),
     ...(profileKnownForEnabled() ? { known_for_enabled: readShare(loaded.rows.share).known_for_enabled } : {}),
+    cards_enabled: readShare(loaded.rows.share).cards_enabled,
     ...linkFields,
   };
 }
@@ -376,7 +382,7 @@ async function shareBody(req) {
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
   const change = applyShareChange(readShare(stored), req.body, new Date(), {
-    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(),
+    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(), doors: true,
   });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);

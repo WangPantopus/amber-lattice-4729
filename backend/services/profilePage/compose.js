@@ -878,7 +878,7 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     }
   }
   // Cards left for the person (phase 3B): theirs alone, a new block kind, only while there are cards.
-  if (view === 'owner' && ctx.doorsOn && (ctx.cards || []).length) {
+  if (view === 'owner' && (ctx.cards || []).length) {
     person.unshift({ kind: 'cards', id: 'cards_for_you', title: 'Cards left for you', cards: ctx.cards });
   }
   if (extras.inCommon && ['member', 'connection', 'household'].includes(view)) {
@@ -889,7 +889,7 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   }
   // Doors and Leave your card (phase 3B), as a NEW block kind (`open_doors`): a released app may draw the v1 `doors`
   // kind and the server can't tell an app's age, so older apps skip these. Only doors this viewer may use today.
-  if (ctx.doorsOn && on('doors')) {
+  if (on('doors')) {
     const { doorText } = require('./doors');
     const signedIn = !linkView && view !== 'owner';
     const doors = (ctx.doors || []).filter((d) => {

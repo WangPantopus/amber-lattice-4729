@@ -21,7 +21,7 @@ const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
-const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled, profileDoorsEnabled } = require('../utils/featureFlags');
+const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
 const pieces = require('../services/profilePage/pieces');
 const ties = require('../services/profilePage/ties');
@@ -104,16 +104,12 @@ router.post('/me/known-for/:id/hide', verifyToken, knownForOn,
   handle('known-for-hide', (req) => knownFor.setStatus(String(req.user.id), req.params.id, 'declined')));
 router.put('/me/known-for/on-top', verifyToken, knownForOn, handle('known-for-top', (req) => knownFor.setOnTop(String(req.user.id), req.body)));
 router.delete('/me/lines-written/:id', verifyToken, knownForOn, handle('known-for-take-back', (req) => knownFor.takeBack(String(req.user.id), req.params.id)));
-// Doors and Leave your card (CONTRACT P3.3), behind their own switch PROFILE_DOORS.
-function doorsOn(req, res, next) {
-  if (profileDoorsEnabled()) return next();
-  return res.status(404).json({ error: 'Not found', code: 'PROFILE_DOORS_OFF' });
-}
-router.get('/me/doors', verifyToken, doorsOn, handle('doors', (req) => doorsService.getDoors(String(req.user.id))));
-router.put('/me/doors', verifyToken, doorsOn, handle('doors-save', (req) => doorsService.putDoors(String(req.user.id), req.body)));
-router.get('/me/cards', verifyToken, doorsOn, handle('cards', (req) => doorsService.listCards(String(req.user.id))));
-router.post('/me/cards/:id/write-back', verifyToken, doorsOn, handle('card-write-back', (req) => doorsService.writeBack(String(req.user.id), req.params.id)));
-router.delete('/me/cards/:id', verifyToken, doorsOn, handle('card-remove', (req) => doorsService.removeCard(String(req.user.id), req.params.id)));
+// Doors and Leave your card (CONTRACT P3.3): no switch of their own.
+router.get('/me/doors', verifyToken, handle('doors', (req) => doorsService.getDoors(String(req.user.id))));
+router.put('/me/doors', verifyToken, handle('doors-save', (req) => doorsService.putDoors(String(req.user.id), req.body)));
+router.get('/me/cards', verifyToken, handle('cards', (req) => doorsService.listCards(String(req.user.id))));
+router.post('/me/cards/:id/write-back', verifyToken, handle('card-write-back', (req) => doorsService.writeBack(String(req.user.id), req.params.id)));
+router.delete('/me/cards/:id', verifyToken, handle('card-remove', (req) => doorsService.removeCard(String(req.user.id), req.params.id)));
 router.post('/me/roles', verifyToken, tiesOn, handle('role-add', (req) => ties.addRole(String(req.user.id), req.body), 201));
 router.patch('/me/roles/:id', verifyToken, tiesOn, handle('role-change', (req) => ties.updateRole(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/roles/:id', verifyToken, tiesOn, handle('role-remove', (req) => ties.removeRole(String(req.user.id), req.params.id)));
@@ -180,7 +176,7 @@ router.get('/:username/known-for/write', verifyToken, knownForOn, handle('known-
 router.post('/:username/known-for', verifyToken, knownForOn, handle('known-for-write', async (req) => {
   return knownFor.writeLine(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
 }, 201));
-router.post('/:username/card', verifyToken, doorsOn, handle('card-leave', async (req) => {
+router.post('/:username/card', verifyToken, handle('card-leave', async (req) => {
   return doorsService.leaveCard(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
 }, 201));
 router.get('/:username/circle', publicRead, tiesOn, handle('circle', (req) => profilePage.getCircle(req, byUsername(req))));

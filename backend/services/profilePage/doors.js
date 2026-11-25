@@ -1,5 +1,5 @@
 /**
- * Doors and "Leave your card" (~/pantopus-profile-sources/CONTRACT.md P3.3; SPEC "Phase 3", 3B), behind PROFILE_DOORS.
+ * Doors and "Leave your card" (~/pantopus-profile-sources/CONTRACT.md P3.3; SPEC "Phase 3", 3B). No switch of their own.
  *
  * Doors are the person's own setting (`User.profile_doors`: at most five `{ key, end, open_to }`). A door builds
  * nothing new: hire, ask, borrow and invite open today's conversation with the person, the door's sentence in the
