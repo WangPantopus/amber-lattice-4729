@@ -117,15 +117,30 @@ public final class PulsePostDetailViewModel {
     /// The comment box has the keyboard. A new screen for this post after a fold or a turn gives it back. Not
     /// observed.
     @ObservationIgnored var isComposing = false {
-        didSet { if oldValue, !isComposing { composingEndedAt = Date() } }
+        didSet {
+            if oldValue, !isComposing { composingEndedAt = Date() }
+            if isComposing { replyAskedAt = nil }
+        }
     }
+
+    /// A card's Reply opened the post (`openedToReply`): the screen made next gives the comment box the keyboard.
+    @ObservationIgnored private var replyAskedAt: Date?
+    /// How long after Reply a new screen still opens on the comment box: long enough for a slow push.
+    private static let replyWindow: TimeInterval = 8
 
     /// When the comment box last lost the keyboard: closing the iPhone Duo, or half folding it upright, takes the
     /// keyboard away a moment before the screen is rebuilt.
     @ObservationIgnored private var composingEndedAt: Date?
     /// A screen made now gives the comment box the keyboard: it has it, or had it until a moment ago.
     var returnsToComposer: Bool {
-        isComposing || composingEndedAt.map { Date().timeIntervalSince($0) < PulseScreenRebuilds.window } ?? false
+        if let replyAskedAt, Date().timeIntervalSince(replyAskedAt) < Self.replyWindow { return true }
+        return isComposing || composingEndedAt.map { Date().timeIntervalSince($0) < PulseScreenRebuilds.window } ?? false
+    }
+
+    /// The post is being opened to reply (a card's Reply, or its reply preview): its screen opens with the comment
+    /// box ready to type in.
+    func openedToReply() {
+        replyAskedAt = Date()
     }
 
     /// A rebuilt screen is still giving the comment box the keyboard back: a screen made in the next moment (a second

@@ -189,6 +189,9 @@ public struct BodyReactionsBody: View {
     /// Shown in place of the composer when nobody can reply (a post a
     /// moderator removed); nil keeps the composer and the empty-thread prompts.
     private let repliesClosedNote: String?
+    /// What the reply box says while it is empty and no reply is being answered (an Around you story asks what
+    /// the reader thinks); nil keeps the usual words.
+    private let composerPrompt: String?
 
     public init(
         body: String,
@@ -220,8 +223,10 @@ public struct BodyReactionsBody: View {
         aboveReactions: AnyView? = nil,
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
+        composerPrompt: String? = nil,
         onCommentAvatarTap: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        self.composerPrompt = composerPrompt
         self.aboveReactions = aboveReactions
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
@@ -488,6 +493,7 @@ private extension BodyReactionsBody {
 
     var composerPlaceholder: String {
         if let replyingToName { return "Reply to \(replyingToName)..." }
+        if let composerPrompt { return composerPrompt }
         return threadIsEmpty ? "Be the first to reply..." : "Add a comment"
     }
 }

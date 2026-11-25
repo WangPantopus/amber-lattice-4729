@@ -17,6 +17,11 @@
 //  open post the page right of it (`TodayAroundYouColumns`); open and
 //  upright the list and the post are a centered column of a phone's reading
 //  width, not rows and pictures stretched across the screen.
+//  Topics and scrolling back (founder, 2026-11-24): a row of chips over the
+//  page, each a list that keeps loading as its end nears, and under All the
+//  sections are followed by every earlier story (`TodayAroundYouLists.swift`).
+//  A card's Reply, and the reply preview under a card people replied to, open
+//  the post with its reply box ready to type in.
 //  Parity twin of Android's `TodayAroundYou.kt`.
 //
 
@@ -51,13 +56,25 @@ struct TodayAroundYouPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, Spacing.s5)
                     }
-                    ForEach(page.sections) { section in
-                        if page.hasPosts {
-                            postSection(section)
-                        } else {
-                            sectionCard(section)
-                                .padding(.horizontal, Spacing.s4)
+                    // The chips: which list shows. None from a server before the lists, or for a place with one.
+                    if model.lists.count > 1 {
+                        TodayAroundYouChips(lists: model.lists, active: model.list) { list in
+                            model.select(list: list)
                         }
+                    }
+                    if model.list == AroundYouListDTO.all {
+                        ForEach(page.sections) { section in
+                            if page.hasPosts {
+                                postSection(section)
+                            } else {
+                                sectionCard(section)
+                                    .padding(.horizontal, Spacing.s4)
+                            }
+                        }
+                    }
+                    // The list behind the first page: the earlier stories under All, or the chosen chip's own.
+                    if !model.lists.isEmpty {
+                        listBody
                     }
                 }
                 .padding(.top, Spacing.s2)
@@ -119,9 +136,14 @@ struct TodayAroundYouPage: View {
         .accessibilityIdentifier("aroundYouPanel")
     }
 
-    /// Opens a card's post: pushed over the list, or in the page beside it.
-    private func open(_ postId: String) {
-        model.open(postId: postId)
+    /// Opens a card's post: pushed over the list, or in the page beside it. `toReply` (the card's Reply, its reply
+    /// preview) opens it with the reply box ready to type in.
+    private func open(_ postId: String, toReply: Bool = false) {
+        if toReply {
+            model.openToReply(postId: postId)
+        } else {
+            model.open(postId: postId)
+        }
         if postBeside {
             model.postMoved(beside: true)
         } else {
@@ -185,11 +207,46 @@ struct TodayAroundYouPage: View {
     @ViewBuilder
     private func postSection(_ section: AroundYouSectionDTO) -> some View {
         let ids = Set((section.posts ?? []).map(\.id))
-        let cards = model.cards.cards.filter { ids.contains($0.id) }
+        cardGroup(
+            heading: section.title,
+            cards: model.cards.cards.filter { ids.contains($0.id) },
+            identifier: "aroundYouSection_\(section.id)"
+        )
+    }
+
+    /// The open list's stories under the day each was first seen, then the list's foot, which asks for the next
+    /// page as it nears the screen.
+    @ViewBuilder private var listBody: some View {
+        let posts = model.shownListPosts
+        let cards = Dictionary(model.cards.cards.map { ($0.id, $0) }) { first, _ in first }
+        ForEach(AroundYouDayGroup.groups(of: posts, list: model.list)) { group in
+            cardGroup(
+                heading: group.heading,
+                cards: group.postIds.compactMap { cards[$0] },
+                identifier: "aroundYouListPosts_\(model.list)"
+            )
+        }
+        TodayAroundYouListFoot(
+            list: model.list,
+            state: model.listState,
+            isEmpty: posts.isEmpty,
+            ranLong: model.listRanLong,
+            onNear: { model.listEndNeared() },
+            onRetry: { model.retryList() }
+        )
+        // Made anew after each read, so a foot that is still near asks for the page after.
+        .id(model.listFoot)
+    }
+
+    /// Cards under a heading, full-width rows as in Pulse; nothing when there are no cards.
+    @ViewBuilder
+    private func cardGroup(heading: String?, cards: [PulsePostCardContent], identifier: String) -> some View {
         if !cards.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s2) {
-                sectionHeading(section.title)
-                    .padding(.horizontal, Spacing.s5)
+                if let heading {
+                    sectionHeading(heading)
+                        .padding(.horizontal, Spacing.s5)
+                }
                 LazyVStack(spacing: Spacing.s0) {
                     ForEach(cards) { card in
                         pulseCard(card)
@@ -213,7 +270,7 @@ struct TodayAroundYouPage: View {
                 }
             }
             .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("aroundYouSection_\(section.id)")
+            .accessibilityIdentifier(identifier)
         }
     }
 
@@ -234,6 +291,8 @@ struct TodayAroundYouPage: View {
         // ↻ opens the Repost chooser, as on every Pulse card: "Repost", or "Repost with your words".
         let repost: @MainActor () -> Void = { cards.openRepostChooser(postId: postId) }
         let rsvp: (@MainActor () -> Void)? = card.attendees == nil ? nil : going
+        // Reply, and the reply preview: the post opens with its reply box ready to type in.
+        let reply: @MainActor () -> Void = { open(postId, toReply: true) }
         return PulsePostCard(
             content: card,
             onTap: { open(postId) },
@@ -247,15 +306,20 @@ struct TodayAroundYouPage: View {
                 target: Binding(get: { cards.repostChooser }, set: { cards.repostChooser = $0 }),
                 onToggle: { postId in Task { await cards.toggleRepost(postId: postId) } },
                 onQuote: { postId in cards.beginQuote(postId: postId) }
-            )
+            ),
+            onReply: reply
         )
     }
 
     private struct OpenedPost: Identifiable, Hashable {
         let id: String
     }
+}
 
-    private func sectionCard(_ section: AroundYouSectionDTO) -> some View {
+/// The first build's rows, for a server from before the posts (an extension, so the page's own type stays within
+/// SwiftLint's length).
+private extension TodayAroundYouPage {
+    func sectionCard(_ section: AroundYouSectionDTO) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             sectionHeading(section.title)
                 .padding(.horizontal, Spacing.s1)
@@ -277,7 +341,7 @@ struct TodayAroundYouPage: View {
     }
 
     @ViewBuilder
-    private func row(_ item: AroundYouItemDTO) -> some View {
+    func row(_ item: AroundYouItemDTO) -> some View {
         if let link = item.url.flatMap(URL.init(string:)), ["https", "http"].contains(link.scheme?.lowercased() ?? "") {
             Button {
                 opened = OpenedStory(url: link)
@@ -304,7 +368,7 @@ struct TodayAroundYouPage: View {
         }
     }
 
-    private func rowText(_ item: AroundYouItemDTO, timed: Bool) -> some View {
+    func rowText(_ item: AroundYouItemDTO, timed: Bool) -> some View {
         let meta = [item.source, timed ? TodayAroundYouModel.seenAgo(item.seenAt) : nil]
             .compactMap { $0 }
             .joined(separator: " · ")
@@ -323,7 +387,7 @@ struct TodayAroundYouPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private struct OpenedStory: Identifiable {
+    struct OpenedStory: Identifiable {
         let url: URL
         var id: String {
             url.absoluteString
