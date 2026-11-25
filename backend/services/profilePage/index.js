@@ -61,8 +61,13 @@ async function momentsFor(req, ctx, rows) {
     connected: new Set(ctx.preview === 'connection' || (!ctx.preview && ctx.relationship === 'connected') ? [personId] : []),
   };
   const reported = new Set((ctx.preview ? [] : rows.reported_moments || []).map(String));
-  const shown = rows.moments.filter((row) => store.momentState(row) === 'live' && store.canSee(row, seeCtx)
-    && !reported.has(String(row.id)));
+  const live = rows.moments.filter((row) => store.momentState(row) === 'live' && store.canSee(row, seeCtx));
+  // The rows' reports reach back four days, as long as an app's Moment lasts; a longer one (the seed-the-map tool's)
+  // reads the viewer's reports as far back as Moments themselves do. Only then: it costs a read.
+  if (!ctx.preview && viewerId !== personId && live.some((row) => store.storedHours(row) > store.MAX_HOURS)) {
+    for (const id of await store.reportedIds(viewerId)) reported.add(String(id));
+  }
+  const shown = live.filter((row) => !reported.has(String(row.id)));
   if (!shown.length) return null;
   return { count: shown.length, placed: shown.filter((row) => store.displayedPoint(row).latitude != null).length };
 }
