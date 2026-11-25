@@ -16,7 +16,7 @@
 // show today's profile.
 // ============================================================
 
-import { del, get, patch, post, put } from '../client';
+import { del, get, patch, post, put, uploadFile } from '../client';
 import type { UserInCommon } from './users';
 
 export type ProfileInk = 'seen' | 'signed' | 'said';
@@ -171,9 +171,18 @@ export interface ProfileNoticeBlock extends BlockBase {
   link?: ProfileLink | null;
 }
 
+/** One thing on the shelf (P3.1): its `id` is its picture's file id. */
+export interface ProfileShelfObject {
+  id: string;
+  picture_url: string;
+  caption: string | null;
+  ink?: ProfileInk | null;
+}
+
+/** At most five, in the person's order. Sent only when it holds objects, for the owner too (P3.1, after review). */
 export interface ProfileShelfBlock extends BlockBase {
   kind: 'shelf';
-  objects: Array<{ id: string; picture_url: string; caption: string | null }>;
+  objects: ProfileShelfObject[];
 }
 
 /** Get to know: said lines with the prompt's catalog key (skip a key the app doesn't know). */
@@ -759,4 +768,20 @@ export async function getLinkCircle(username: string, key: string): Promise<Prof
 
 export async function getLinkCirclePieces(username: string, key: string, userId: string): Promise<{ v: number; pieces: ProfilePiece[] }> {
   return get<{ v: number; pieces: ProfilePiece[] }>(`${linkBase(username, key)}/circle/${encodeURIComponent(userId)}`);
+}
+
+// ── Phase 3: the shelf (board 1, CONTRACT P3.1; under PROFILE_SOURCES, the `shelf` part) ──
+
+/** A shelf picture through today's upload and its checks (kept as a kind the portfolio grid never lists). */
+export async function uploadShelfPicture(file: File): Promise<{ file: { id: string; url: string } }> {
+  return uploadFile<{ file: { id: string; url: string } }>('/api/files/upload', file, { file_type: 'profile_shelf', visibility: 'public' });
+}
+
+export async function getMyShelf(): Promise<{ objects: ProfileShelfObject[] }> {
+  return get<{ objects: ProfileShelfObject[] }>('/api/profile-page/me/shelf');
+}
+
+/** The whole shelf in order: reorder by sending the new order, remove by leaving out. At most five. */
+export async function saveShelf(objects: Array<{ file_id: string; caption: string }>): Promise<{ objects: ProfileShelfObject[] }> {
+  return put<{ objects: ProfileShelfObject[] }>('/api/profile-page/me/shelf', { objects });
 }

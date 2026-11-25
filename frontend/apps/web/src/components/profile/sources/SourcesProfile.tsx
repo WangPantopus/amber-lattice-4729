@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead, ProfileShelfBlock,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -18,6 +18,7 @@ import PieceView from './PieceView';
 import PieceEditor, { type PieceEditorStart } from './PieceEditor';
 import OwnerWork from './OwnerWork';
 import RoleEditor from './RoleEditor';
+import ShelfEditor from './ShelfEditor';
 import CircleView from './CircleView';
 
 const SKIES: Record<string, string> = {
@@ -81,6 +82,17 @@ function splitHeaderLines(tab: ProfilePageTab | undefined) {
   }
   if (at < 0) return { header: null, rest: blocks };
   return { header: blocks[at] as ProfileLinesBlock, rest: blocks.filter((_, i) => i !== at) };
+}
+
+/**
+ * The owner's first tab with a shelf to add to when the server sent none (it sends one only with objects): an empty
+ * `shelf` block where the server would put it (before Get to know, pinned posts, With others and the rows).
+ */
+function withOwnShelf(blocks: ProfilePageTab['blocks'], firstName: string): ProfilePageTab['blocks'] {
+  if (blocks.some((block) => block?.kind === 'shelf')) return blocks;
+  const shelf = { kind: 'shelf', id: 'shelf', title: `On ${firstName}'s shelf`, objects: [] } as ProfileShelfBlock;
+  const at = blocks.findIndex((block) => ['prompts', 'pinned_posts', 'rows'].includes(block?.kind) || block?.id === 'with_others');
+  return at < 0 ? [...blocks, shelf] : [...blocks.slice(0, at), shelf, ...blocks.slice(at)];
 }
 
 function SummaryWell({ summary, onOpenRecord }: { summary: ProfilePageSummary; onOpenRecord: (() => void) | null }) {
@@ -254,10 +266,12 @@ export default function SourcesProfile({
   const { headerLines, tabs } = useMemo(() => {
     const all = drawnTabs(page);
     const split = splitHeaderLines(all[0]);
-    const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: split.rest } : tab)).filter((tab) => tab.blocks.length > 0);
+    // The owner's own first tab always offers a shelf: the server sends one only when it holds something (P3.1).
+    const firstBlocks = owner ? withOwnShelf(split.rest, firstName) : split.rest;
+    const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: firstBlocks } : tab)).filter((tab) => tab.blocks.length > 0);
     if (owner && !rest.some((tab) => tab.key === 'work')) rest.splice(Math.min(1, rest.length), 0, { key: 'work', title: 'Work', blocks: [] });
     return { headerLines: split.header, tabs: rest };
-  }, [page, owner]);
+  }, [page, owner, firstName]);
   const [editing, setEditing] = useState<PieceEditorStart | null>(null);
   // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
   const [tiesOn, setTiesOn] = useState(false);
@@ -267,6 +281,8 @@ export default function SourcesProfile({
   const circleRound = useRef(0);
   // A role or school being added (`role: null`) or changed.
   const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
+  // The owner's shelf open to change (P3.1).
+  const [shelfEdit, setShelfEdit] = useState(false);
   // Each new read of the page (after a change) reads the owner's offers again.
   // The first page is read with round 0 already, so only a later read of the page counts.
   const [pageRound, setPageRound] = useState(0);
@@ -503,6 +519,7 @@ export default function SourcesProfile({
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
     onEditRole: owner ? (role: ProfileRoleLine) => setRoleEdit({ role }) : null,
+    onEditShelf: owner ? () => setShelfEdit(true) : null,
     onReread: inert ? null : onReread ?? onChanged,
     onDoor: onDoor ?? (() => {}),
     onConnect: onConnect ?? (() => {}),
@@ -724,6 +741,12 @@ export default function SourcesProfile({
           role={roleEdit?.role ?? null}
           onClose={() => setRoleEdit(null)}
           onSaved={() => { setRoleEdit(null); onChanged?.(); }}
+        />
+      ) : null}
+      {owner && shelfEdit ? (
+        <ShelfEditor
+          onClose={() => setShelfEdit(false)}
+          onSaved={() => { setShelfEdit(false); onChanged?.(); }}
         />
       ) : null}
     </div>
