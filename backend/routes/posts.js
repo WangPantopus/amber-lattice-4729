@@ -4744,3 +4744,5 @@ router.post('/seeded/:factId/dismiss', verifyToken, async (req, res) => {
 module.exports = router;
 // The business post route (businesses.js) gives the same answer.
 module.exports.BUSINESS_CANNOT_POST_ERROR = BUSINESS_CANNOT_POST_ERROR;
+// scripts/seedmap.js knows a post it made again by the id its retry key gives.
+module.exports.commandPostId = commandPostId;
