@@ -187,6 +187,8 @@ fun BodyReactionsBody(
     onCommentReply: ((PostCommentRow) -> Unit)? = null,
     onCommentLike: ((PostCommentRow) -> Unit)? = null,
     onCommentDelete: ((PostCommentRow) -> Unit)? = null,
+    /** "Report" under someone else's reply, under any name; null hides it. */
+    onCommentReport: ((PostCommentRow) -> Unit)? = null,
     /**
      * Optional card rendered between the reaction bar and the comment
      * composer. Pulse post detail passes the "Nearby Providers" card here;
@@ -365,6 +367,7 @@ fun BodyReactionsBody(
                         onReply = onCommentReply?.let { handler -> { handler(row) } },
                         onToggleLike = onCommentLike?.let { handler -> { handler(row) } },
                         onDelete = if (row.isOwn) onCommentDelete?.let { handler -> { handler(row) } } else null,
+                        onReport = if (row.isOwn) null else onCommentReport?.let { handler -> { handler(row) } },
                     )
                 }
                 if (hiddenReplyCount > 0 && onShowMoreReplies != null) {
@@ -701,6 +704,7 @@ private fun CommentRow(
     onReply: (() -> Unit)? = null,
     onToggleLike: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onReport: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -834,6 +838,24 @@ private fun CommentRow(
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = PantopusColors.error,
+                        )
+                    }
+                }
+                if (onReport != null) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("pulsePostDetail-commentReport-${row.id}")
+                                .clickable(onClick = onReport)
+                                .semantics { contentDescription = "Report ${row.authorName}'s reply" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Report",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PantopusColors.appTextSecondary,
                         )
                     }
                 }

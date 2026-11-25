@@ -304,6 +304,17 @@ interface PostsApi {
         @Body body: PostReportRequest,
     ): PostActionAckResponse
 
+    /**
+     * `POST /api/posts/:postId/comments/:commentId/report` — reports someone else's reply with a post's reasons; one
+     * report per person per reply, a retry answers the same.
+     */
+    @POST("api/posts/{postId}/comments/{commentId}/report")
+    suspend fun reportComment(
+        @Path("postId") postId: String,
+        @Path("commentId") commentId: String,
+        @Body body: PostReportRequest,
+    ): PostActionAckResponse
+
     /** `POST /api/posts/:id/save` — toggles the bookmark. Route `backend/routes/posts.js:3294`. */
     @POST("api/posts/{id}/save")
     suspend fun toggleSave(
