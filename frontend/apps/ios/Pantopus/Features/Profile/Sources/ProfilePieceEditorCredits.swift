@@ -10,10 +10,17 @@ import Foundation
 // MARK: - Who was on it (P2.5)
 
 extension ProfilePieceEditorModel {
-    /// Names a person (who gets one notification and is asked to sign) or a typed name. A piece not saved yet is
-    /// saved as a draft first. True when it was added.
+    /// Asking a person needs the piece on Work: nobody is asked about a draft (the server refuses).
+    var asksNeedWork: Bool {
+        pieceId == nil || isDraft
+    }
+
+    /// Names a person (who gets one notification and is asked to sign) or a typed name. A person is asked only about
+    /// a piece on Work, so a new piece or a draft goes on Work first; a typed name can sit on a draft. True when added.
     func addCredit(userId: String?, name: String?, role: String, relation: String) async -> Bool {
-        if pieceId == nil {
+        if userId != nil, asksNeedWork {
+            guard await save(draft: false) else { return false }
+        } else if pieceId == nil {
             guard await save(draft: true) else { return false }
         }
         guard let pieceId else { return false }

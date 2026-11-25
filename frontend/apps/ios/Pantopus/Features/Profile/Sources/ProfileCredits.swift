@@ -15,6 +15,8 @@ struct ProfileWhoWasOnIt: View {
     let piece: ProfilePieceReadDTO.Piece
     let ownerName: String
     let ownerPortrait: URL?
+    /// The piece is this page's person's ("This profile"); else it is another's, one this person signed ("Their piece").
+    var onThisProfile = true
     var onOpenPerson: ((ProfileCreditDTO.Party) -> Void)?
     var onChanged: (() -> Void)?
 
@@ -93,7 +95,7 @@ struct ProfileWhoWasOnIt: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text("This profile").scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
+            Text(onThisProfile ? "This profile" : "Their piece").scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
         }
         .padding(.horizontal, Spacing.s4)
         .padding(.vertical, Spacing.s3)
@@ -111,7 +113,7 @@ struct ProfileWhoWasOnIt: View {
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).scaledFont(15, weight: .semibold).foregroundStyle(Theme.Color.appText)
-                if let role = credit.role ?? ProfileCreditWords.relation(credit.relation) {
+                if let role = credit.role ?? ProfileCreditWords.relation(credit.relation, owner: ownerName) {
                     Text(role).scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
                 }
             }
@@ -134,12 +136,14 @@ struct ProfileWhoWasOnIt: View {
 
 /// The words for a credit's relation, when it has no role of its own.
 enum ProfileCreditWords {
-    static func relation(_ relation: String?) -> String? {
+    /// "Hired Maria", "Someone Maria led", "Taught Maria" (the server's words for these relations).
+    static func relation(_ relation: String?, owner: String) -> String? {
+        let first = owner.split(separator: " ").first.map(String.init) ?? owner
         switch relation {
-        case "led": "Led on this"
-        case "learned_from": "Taught on this"
-        case "for": "Hired for it"
-        default: nil
+        case "led": return "Someone \(first) led"
+        case "learned_from": return "Taught \(first)"
+        case "for": return "Hired \(first)"
+        default: return nil
         }
     }
 

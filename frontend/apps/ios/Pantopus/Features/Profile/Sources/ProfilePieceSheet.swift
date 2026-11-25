@@ -109,6 +109,7 @@ struct ProfilePieceSheet: View {
                         piece: piece,
                         ownerName: ownerName,
                         ownerPortrait: model.openedPieceOwner == nil ? model.content?.header.portraitURL : nil,
+                        onThisProfile: model.openedPieceOwner == nil,
                         onOpenPerson: onOpenLink.map { open in
                             { party in open(.profile(userId: party.userId, username: party.username)) }
                         }

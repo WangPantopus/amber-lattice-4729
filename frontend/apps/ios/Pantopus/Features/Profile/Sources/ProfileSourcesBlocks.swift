@@ -421,7 +421,7 @@ struct ProfilePromptsBlock: View {
                             }
                         }
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(item.question): \(item.prompt.answer). \(source.ink.word)")
+                        .accessibilityLabel("\(item.question): " + ProfileSourceLine.spokenJoin(item.prompt.answer, source.ink.word))
                     }
                     if sameSource, let first = shown.first {
                         Text(first.prompt.line.sourceLine(at: 0).source)

@@ -64,7 +64,7 @@ struct ProfileEditorCredits: View {
                 Text(credit.party.name ?? credit.party.did ?? "Someone")
                     .scaledFont(15, weight: .semibold)
                     .foregroundStyle(Theme.Color.appText)
-                if let role = credit.role ?? ProfileCreditWords.relation(credit.relation) {
+                if let role = credit.role ?? ProfileCreditWords.relation(credit.relation, owner: "you") {
                     Text(role).scaledFont(13).foregroundStyle(Theme.Color.appTextSecondary)
                 }
             }
@@ -255,6 +255,8 @@ struct ProfileCreditAdder: View {
             }
             Text(pick.userId == nil
                 ? "A typed name shows as Said. On a page opened by a link it shows as what they did, never the name."
+                : model.asksNeedWork
+                ? "The piece goes on your Work, then \(pick.name) gets one notification and signs if it's right."
                 : "\(pick.name) gets one notification and signs if it's right. Until then only you and they see it.")
                 .scaledFont(13)
                 .foregroundStyle(Theme.Color.appTextSecondary)
@@ -262,7 +264,10 @@ struct ProfileCreditAdder: View {
             if let problem {
                 Text(problem).scaledFont(14).foregroundStyle(Theme.Color.error).fixedSize(horizontal: false, vertical: true)
             }
-            PrimaryButton(title: pick.userId == nil ? "Add their name" : "Ask them to sign", isLoading: working) {
+            PrimaryButton(
+                title: pick.userId == nil ? "Add their name" : model.asksNeedWork ? "Add to Work and ask them" : "Ask them to sign",
+                isLoading: working
+            ) {
                 working = true
                 defer { working = false }
                 problem = nil

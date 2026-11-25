@@ -113,6 +113,8 @@ final class ProfilePageModel {
     private(set) var openedPieceOwner: String?
     /// That person's name, for the first row of "Who was on it".
     private(set) var openedPieceOwnerName: String?
+    /// A link named the tab (`?tab=work`): the page scrolls to the tabs once it is drawn.
+    var scrollsToTabs = false
     @ObservationIgnored private var piecesObserver: ProfileObserverToken?
 
     private let identifier: String
@@ -166,6 +168,7 @@ final class ProfilePageModel {
             if previewAs == nil, let tab = ProfileOpenTab.take(for: [identifier, page.header.userId, page.header.username]),
                content.tabs.contains(where: { $0.key == tab }) {
                 selectedTab = tab
+                scrollsToTabs = true
             }
             if content.isOwner, previewAs == nil {
                 async let pieces: ProfileMyPiecesDTO? = try? await client.request(ProfilePageEndpoints.myPieces())

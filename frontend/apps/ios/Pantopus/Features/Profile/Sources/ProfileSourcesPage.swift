@@ -125,6 +125,12 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
                 .refreshable {
                     if let onRefresh { await Task { await onRefresh() }.value }
                 }
+                .task(id: model.scrollsToTabs) {
+                    guard model.scrollsToTabs else { return }
+                    model.scrollsToTabs = false
+                    await Task.yield()
+                    scroller.scrollTo(Self.tabsAnchor, anchor: .top)
+                }
             }
         }
         .background(Theme.Color.appBg)
