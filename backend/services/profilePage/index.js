@@ -16,6 +16,7 @@ const { buildRecord, composePage, composeMonth, composePiece, composeCircle, com
 const { reaches } = require('./parts');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+const localDay = (at) => require('./compose').localDate(new Date(at), require('./compose').PACIFIC);
 
 function webBase() {
   const url = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
@@ -175,6 +176,16 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
   ctx.viewerId = viewerId;
   ctx.shelf = require('./shelf').objectsOf(rows.shelf);
   ctx.share = rows.share || null;
+  // Doors and cards (phase 3B), none of it while PROFILE_DOORS is off.
+  ctx.doorsOn = profileDoorsEnabled();
+  if (ctx.doorsOn) {
+    const doors = require('./doors');
+    const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
+    ctx.doors = doors.storedDoors(rows.doors);
+    ctx.cards = opened.view === 'owner' ? doors.cardsFrom(rows) : [];
+    ctx.viewerCardAt = rows.viewer_card_at ? localDay(rows.viewer_card_at) : null;
+    ctx.canSendCard = isLaunchFeatureEnabled('mailbox') && isLaunchFeatureEnabled('holiday_cards');
+  }
   // A block either way between a signed-in viewer and the person: no "Write a line", no doors, no card.
   ctx.blockedEitherWay = Boolean(viewerId) && String(viewerId) !== String(userId) && blockedEitherWay(rows, viewerId);
   if (keyed) {

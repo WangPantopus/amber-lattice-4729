@@ -787,7 +787,7 @@ function partContent(ctx, record) {
     record_home: has('record_home'),
     record_others: has('others'),
     met: false,
-    doors: false,
+    doors: (ctx.doors || []).length > 0,
     reviews: has('reviews'),
   };
 }
@@ -877,10 +877,40 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       person.push({ kind: 'known_for_write', id: 'known_for_write', title: 'Known for', ...write });
     }
   }
+  // Cards left for the person (phase 3B): theirs alone, a new block kind, only while there are cards.
+  if (view === 'owner' && ctx.doorsOn && (ctx.cards || []).length) {
+    person.unshift({ kind: 'cards', id: 'cards_for_you', title: 'Cards left for you', cards: ctx.cards });
+  }
   if (extras.inCommon && ['member', 'connection', 'household'].includes(view)) {
     const ic = extras.inCommon;
     if (ic.connections?.count > 0 || ic.plans?.length || ic.support_trains?.length || ic.skills?.length) {
       person.push({ kind: 'in_common', id: 'in_common', title: `You and ${ctx.firstName}`, ...ic });
+    }
+  }
+  // Doors and Leave your card (phase 3B), as a NEW block kind (`open_doors`): a released app may draw the v1 `doors`
+  // kind and the server can't tell an app's age, so older apps skip these. Only doors this viewer may use today.
+  if (ctx.doorsOn && on('doors')) {
+    const { doorText } = require('./doors');
+    const signedIn = !linkView && view !== 'owner';
+    const doors = (ctx.doors || []).filter((d) => {
+      if (view === 'owner') return true;
+      if (ctx.blockedEitherWay) return false;
+      if (d.open_to === 'connections' && !['connection', 'household'].includes(view)) return false;
+      return d.key !== 'send_card' || (ctx.canSendCard && !linkView);
+    }).map((d) => {
+      const text = doorText(d, ctx.firstName);
+      let link = null;
+      if (signedIn) {
+        link = d.key === 'send_card' ? { kind: 'send_card', user_id: ctx.userData.id, name: ctx.displayName }
+          : { kind: 'message', user_id: ctx.userData.id, text };
+      }
+      return { key: d.key, text, open_to: d.open_to, note: d.open_to === 'connections' ? 'Open to connections' : null, link };
+    });
+    const leaveCard = signedIn && !ctx.blockedEitherWay && readShare(ctx.share || null).cards_enabled
+      ? { text: 'Leave your card', note: `${ctx.firstName} sees that you stopped by. Nothing else is sent.`, left_at: ctx.viewerCardAt || null } : null;
+    if (doors.length || leaveCard) {
+      person.push({ kind: 'open_doors', id: 'doors', title: `Doors ${ctx.firstName} keeps open`, doors, leave_card: leaveCard,
+        sign_in_note: linkView && doors.length ? 'Sign in or join to use a door.' : null });
     }
   }
   if (view === 'member') {
