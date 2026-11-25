@@ -7,7 +7,10 @@
 //  instead", how long (1h · 6h · 24h · 48h), who sees it (Everyone nearby ·
 //  My connections), the caption, and Post. At your own home the amber note
 //  says so first. On the iPhone Duo the stage takes the Duo's layouts
-//  (`MomentsPostStage+Duo.swift`).
+//  (`MomentsPostStage+Duo.swift`). On the phone the sheet over a photo or a
+//  video pulls down to show the picture as it will post, and back up
+//  (`MomentsPostStage+Lower.swift`); a tap on the small map opens it full
+//  screen (`MomentsPostFullMap.swift`).
 //
 
 import AVFoundation
@@ -20,7 +23,10 @@ struct MomentsPostStage: View {
     @State var player: AVPlayer?
     /// How tall the pills are (one row or two): the closed Duo's sheet starts below them.
     @State var pillsHeight: CGFloat = 40
+    /// The phone's sheet pulled down to show the picture (`+Lower`).
+    @State var lowering = MomentsPostLowering()
     @Environment(\.momentsDuoScreen) var duo
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         Group {
@@ -44,20 +50,43 @@ struct MomentsPostStage: View {
                 .padding(.top, 2)
             VStack(spacing: 0) {
                 Spacer(minLength: 120)
-                // The sheet is as tall as what's in it, up to the room there is (less with the keyboard up).
-                MomentsPostSheet(model: model, onPosted: onPosted)
-                    .layoutPriority(1)
+                // The sheet is as tall as what's in it, up to the room there is (less with the keyboard up). Over a
+                // photo or a video it pulls down to show the picture and back up; it moves by an offset (`+Lower`).
+                MomentsPostSheetPosition(lowering: lowers ? lowering : nil) {
+                    MomentsPostSheet(model: model, onPosted: onPosted)
+                }
+                .layoutPriority(1)
             }
             .ignoresSafeArea(.container, edges: .bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The home indicator's strip, never the keyboard's: a view that runs under the keyboard reads the screen's own.
+        .background {
+            Color.clear
+                .ignoresSafeArea(.keyboard)
+                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { lowering.measured(bottomInset: $0) }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .onChange(of: reduceMotion, initial: true) { _, reduce in lowering.reduceMotion = reduce }
+        .environment(\.momentsPostLowering, lowers ? lowering : nil)
         // Behind the screen, never part of its layout: a photo that fills the screen is larger than
         // the screen, and as a sibling it pushed Retake under the clock and the sheet under the keyboard.
         .background {
             Color.black
-                .overlay { backdrop }
+                .overlay { undimmedBackdrop }
+                // A view of its own, so a drag frame redraws the dimming and not the picture.
+                .overlay { MomentsPostDimming(lowering: lowers ? lowering : nil, dims: model.draft != .text) }
                 .clipped()
                 .ignoresSafeArea()
+        }
+    }
+
+    /// The sheet pulls down over a photo or a video, not over a text card (its Edit shows the card).
+    private var lowers: Bool {
+        switch model.draft {
+        case .photo, .video: true
+        case .text, nil: false
         }
     }
 
@@ -66,8 +95,15 @@ struct MomentsPostStage: View {
         MomentsPostSheet(model: model, asCard: asCard, mapHeight: mapHeight, onPosted: onPosted)
     }
 
-    @ViewBuilder
+    /// Behind the sheet: the picture a little darker, or the text card's colors.
     var backdrop: some View {
+        undimmedBackdrop
+            .overlay { Color.black.opacity(model.draft == .text ? 0 : 0.3).allowsHitTesting(false) }
+    }
+
+    /// The picture as it will post (the phone darkens it under the sheet with `MomentsPostDimming`).
+    @ViewBuilder
+    var undimmedBackdrop: some View {
         switch model.draft {
         case let .photo(image):
             MomentsMarkedPhoto(
@@ -76,11 +112,9 @@ struct MomentsPostStage: View {
                 placement: model.marking.placement,
                 backdrop: model.marking.backdrop
             )
-            .overlay(Color.black.opacity(0.3))
             .accessibilityLabel("The photo you're posting")
         case let .video(url):
             markedVideo(url: url)
-                .overlay(Color.black.opacity(0.3))
                 .accessibilityLabel("The video you're posting")
         case .text:
             let colors = MomentsPalette.card(model.background)
@@ -116,6 +150,9 @@ struct MomentsPostStage: View {
     }
 }
 
+/// The options' scroll view, for where their top stands in it.
+private let momentsPostOptionsSpace = "momentsPostOptions"
+
 struct MomentsPostSheet: View {
     let model: MomentsComposerModel
     /// On the open iPhone Duo, a card beside the picture (board O9): no grabber, every corner rounded.
@@ -124,6 +161,8 @@ struct MomentsPostSheet: View {
     var mapHeight: CGFloat = 150
     let onPosted: () -> Void
     @Environment(AuthManager.self) private var auth
+    /// The phone's drag over a photo or a video (`MomentsPostStage+Lower.swift`); nil elsewhere.
+    @Environment(\.momentsPostLowering) private var lowering
     @State private var optionsHeight: CGFloat = 520
 
     var body: some View {
@@ -138,10 +177,19 @@ struct MomentsPostSheet: View {
             // (a small phone, the at-home notice, the keyboard up).
             ScrollView {
                 options
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { optionsHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        optionsHeight = height
+                        lowering?.optionsHeight = height
+                    }
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.frame(in: .named(momentsPostOptionsSpace)).minY
+                    } action: { lowering?.optionsTop = $0 }
             }
+            .coordinateSpace(.named(momentsPostOptionsSpace))
             .frame(maxHeight: optionsHeight)
             .scrollBounceBehavior(.basedOnSize)
+            // On the phone a pull down past the options' top lowers the sheet (`+Lower`).
+            .momentsPostOptionsDrag(lowering)
             // Post is always in reach: under the options, outside their scrolling, with what stopped it right above.
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 if let error = model.error {
@@ -156,6 +204,13 @@ struct MomentsPostSheet: View {
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s3)
             .padding(.bottom, Spacing.s6)
+            .momentsPostDragArea(lowering)
+        }
+        // The grab handle's band: a drag on it moves the sheet, a tap lowers it to show the picture.
+        .overlay(alignment: .top) {
+            if let lowering, !asCard {
+                handleBand(lowering)
+            }
         }
         // As a card, the stage gives it its frame and its rounded background.
         .background {
@@ -184,6 +239,21 @@ struct MomentsPostSheet: View {
         }
     }
 
+    private func handleBand(_ lowering: MomentsPostLowering) -> some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: MomentsPostLowering.handleBand)
+            .contentShape(Rectangle())
+            .onTapGesture { lowering.setLowered(true) }
+            .momentsPostDragArea(lowering)
+            .accessibilityElement()
+            .accessibilityLabel("Show the picture")
+            .accessibilityHint("Lowers the options so the whole picture shows")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { lowering.setLowered(true) }
+            .accessibilityIdentifier("moments.post.handle")
+    }
+
     private var options: some View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: 0) {
@@ -195,7 +265,8 @@ struct MomentsPostSheet: View {
                     disc: model.skyDisc,
                     me: me,
                     placeholder: model.locating == .unavailable ? "Location is off" : "Finding where you are…",
-                    height: mapHeight
+                    height: mapHeight,
+                    fullMap: MomentsPostFullMap.Place(model: model)
                 )
                 .padding(.top, asCard ? 16 : 11)
             }
@@ -400,90 +471,5 @@ struct MomentsPostSheet: View {
         .buttonStyle(.plain)
         .disabled(!model.canPost)
         .accessibilityIdentifier("moments.post.submit")
-    }
-}
-
-/// The small map at the top of the sheet: your ring on the pin, or the area's circle.
-struct MomentsPostMap: View {
-    let pin: CLLocationCoordinate2D?
-    let showArea: Bool
-    /// The Sky: a floating Moment's area (its own point and radius), drawn in place of the circle around the pin.
-    var disc: (center: CLLocationCoordinate2D, radiusM: Double)?
-    let me: MomentAuthorDTO?
-    /// What shows while there's no pin.
-    let placeholder: String
-    var height: CGFloat = 150
-
-    var body: some View {
-        Group {
-            if let pin {
-                Map(initialPosition: .region(region(around: pin)), interactionModes: []) {
-                    if showArea {
-                        MapCircle(center: disc?.center ?? pin, radius: disc?.radiusM ?? 800)
-                            .foregroundStyle(Theme.Color.primary500.opacity(0.18))
-                            .stroke(Theme.Color.primary500.opacity(0.6), lineWidth: 1.5)
-                    } else {
-                        Annotation("", coordinate: pin, anchor: UnitPoint(x: 0.5, y: 55.0 / 56.0)) {
-                            selfPin
-                        }
-                        .annotationTitles(.hidden)
-                    }
-                }
-                .mapStyle(.standard(pointsOfInterest: .excludingAll))
-                .id("\(pin.latitude),\(pin.longitude),\(showArea),\(disc?.radiusM ?? 0)")
-            } else {
-                Theme.Color.appSurfaceSunken
-                    .overlay(Text(placeholder).font(.system(size: 14)).foregroundStyle(Theme.Color.appTextSecondary))
-            }
-        }
-        .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(showArea ? "Map with the area around your pin" : "Map with your pin")
-        .accessibilityIdentifier("moments.post.map")
-    }
-
-    /// Your face in the sky-to-green ring, on a pin like the map's.
-    private var selfPin: some View {
-        ZStack(alignment: .top) {
-            Circle().fill(Color.white).frame(width: 47, height: 47).offset(y: 0.5)
-            Circle()
-                .inset(by: 2.5)
-                .stroke(MomentsPalette.ringGradient, lineWidth: 3)
-                .frame(width: 48, height: 48)
-            MomentSelfFace(author: me, size: 36)
-                .offset(y: 6)
-        }
-        .frame(width: 48, height: 56, alignment: .top)
-        .overlay(alignment: .bottom) {
-            Path { path in
-                path.move(to: CGPoint(x: 18, y: 0))
-                path.addLine(to: CGPoint(x: 24, y: 11))
-                path.addLine(to: CGPoint(x: 30, y: 0))
-                path.closeSubpath()
-            }
-            .fill(Color.white)
-            .frame(width: 48, height: 12)
-        }
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.3), radius: 1.5, x: 0, y: 2)
-    }
-
-    private func region(around pin: CLLocationCoordinate2D) -> MKCoordinateRegion {
-        // The Sky's disc fills about three quarters of the map's height.
-        if let disc {
-            let span = max(0.004, disc.radiusM * 2 / 0.72 / 111_000)
-            return MKCoordinateRegion(center: disc.center, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span))
-        }
-        let span = showArea ? 0.03 : 0.004
-        // The pin's head stands above its point: a little south keeps it in the middle (as far as on the 150-pt map on
-        // a taller one, the table's 407, board T5).
-        let south = showArea ? 0 : span * 0.12 * min(1, 150 / height)
-        return MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: pin.latitude + south, longitude: pin.longitude),
-            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
-        )
     }
 }

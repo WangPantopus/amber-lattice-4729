@@ -156,6 +156,7 @@ import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.NoteAdd
@@ -638,6 +639,9 @@ enum class PantopusIcon(
     // empty-state hero tile. Material fallbacks: ZoomOutMap / LocationOff.
     Maximize("maximize"),
     MapPinOff("map-pin-off"),
+
+    // The Moments Post sheet's full-screen map: `locate-fixed` brings the pin back to the middle (as on iOS).
+    LocateFixed("locate-fixed"),
 
     // Calendarly (A0) — the four glyphs the scheduling _shared/ components need
     // that Material's set doesn't already cover under another PantopusIcon case.
@@ -1134,6 +1138,8 @@ internal fun PantopusIcon.source(): IconSource =
         // `map-pin-off`.
         PantopusIcon.Maximize -> IconSource.Material(Icons.Filled.ZoomOutMap)
         PantopusIcon.MapPinOff -> IconSource.Material(Icons.Filled.LocationOff)
+        // `MyLocation` is the crosshair-in-a-ring for `locate-fixed`.
+        PantopusIcon.LocateFixed -> IconSource.Material(Icons.Filled.MyLocation)
         // Calendarly (A0). `EventBusy` is the calendar-with-strike for both
         // `calendar-x` and `calendar-off`; `SearchOff` for `search-x`;
         // `PauseCircle` for the host-paused state; `AddAlert` for `bell-plus`.
