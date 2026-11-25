@@ -25,6 +25,39 @@ import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
 import { authPageHref } from '@/lib/auth-utils';
 
+const STORY_TOPICS: Record<string, string> = {
+  events: 'Events', kids: 'Kids & schools', sports: 'Sports', government: 'Government', business: 'Business',
+  safety: 'Roads & safety',
+};
+
+/**
+ * A story Today's Around you posted for an outlet (the server marks it in `post_metadata.around_you` and gives every
+ * reader the outlet's name and link): the outlet published it, so this page names the outlet, links to the story
+ * there and sets the headline apart from the outlet's summary. Null for every other post.
+ */
+function storyOf(post: { content?: string | null; post_metadata?: Record<string, unknown> | null }) {
+  const meta = post.post_metadata;
+  const around = meta?.around_you as { topics?: unknown } | undefined;
+  if (!around || typeof around !== 'object') return null;
+  const text = String(post.content || '');
+  const cut = text.indexOf('\n');
+  let link: string | null = null;
+  try {
+    const url = new URL(String(meta?.source_url || ''));
+    if (url.protocol === 'https:' || url.protocol === 'http:') link = url.href;
+  } catch { /* no link */ }
+  const name = typeof meta?.source_name === 'string' ? meta.source_name.trim() : '';
+  const topics = Array.isArray(around.topics) ? around.topics : [];
+  return {
+    headline: (cut < 0 ? text : text.slice(0, cut)).trim(),
+    summary: cut < 0 ? '' : text.slice(cut + 1).trim(),
+    outlet: name.replace(/\s*\(subscription\)$/i, '') || null,
+    readAt: name || null,
+    link,
+    topic: topics.map((topic) => STORY_TOPICS[String(topic)]).find(Boolean) ?? 'Local news',
+  };
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -51,10 +84,11 @@ export async function generateMetadata({
     ref_listing_id: post.ref_listing_id ?? null,
   };
 
+  const metaStory = storyOf(post);
   return buildShareMetadata({
-    title: post.title || post.post_type || 'Pantopus post',
+    title: metaStory?.headline || post.title || post.post_type || 'Pantopus post',
     description: summarizeText(
-      post.content,
+      metaStory ? (metaStory.summary || `From ${metaStory.outlet || 'a local outlet'}, on Pantopus.`) : post.content,
       160,
       'See this post on Pantopus.'
     ),
@@ -149,6 +183,8 @@ export default async function PublicPostPage({
   }
 
   const creatorName = displayNameForUser(post.creator, 'Pantopus member');
+  const story = storyOf(post);
+  const replies = Number(post.comment_count) || 0;
   const image = pickPreviewImage(post.media_urls, post.media_live_urls);
   // The public author has no city or state; the post's own place name is its location. A Home post's place is its
   // city, which is also the Home's public name, so the byline says it once.
@@ -194,7 +230,7 @@ export default async function PublicPostPage({
           <div className="space-y-5 p-6 sm:p-8">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-app-text-secondary">
               <span className="rounded-full bg-primary-50 px-3 py-1 text-primary-700">
-                {post.post_type || 'Post'}
+                {story ? story.topic : post.post_type || 'Post'}
               </span>
               {post.state ? (
                 <span className="rounded-full bg-surface-muted px-3 py-1">
@@ -203,6 +239,27 @@ export default async function PublicPostPage({
               ) : null}
             </div>
 
+            {story ? (
+              <div data-testid="publicStory">
+                <h1 className="text-2xl font-semibold tracking-tight text-app sm:text-3xl break-words">
+                  {story.headline}
+                </h1>
+                {story.summary ? (
+                  <p className="mt-3 text-base leading-7 text-app-text-secondary break-words">{story.summary}</p>
+                ) : null}
+                {story.link ? (
+                  <a
+                    href={story.link}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    data-testid="publicStoryLink"
+                    className="mt-4 inline-flex rounded-full border border-app px-4 py-2 text-sm font-semibold text-app hover:bg-surface-muted"
+                  >
+                    {story.readAt ? `Read at ${story.readAt}` : 'Read the story'}
+                  </a>
+                ) : null}
+              </div>
+            ) : (
             <div>
               {post.title ? (
                 <h1 className="text-3xl font-semibold tracking-tight text-app sm:text-4xl">
@@ -213,9 +270,11 @@ export default async function PublicPostPage({
                 {post.content || ''}
               </p>
             </div>
+            )}
 
             <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-app-text-secondary">
-              <span className="font-semibold text-app">{creatorName}</span>
+              <span className="font-semibold text-app">{story?.outlet || creatorName}</span>
+              {story?.outlet ? ` · via ${creatorName}` : ''}
               {location ? ` · ${location}` : ''}
               {post.created_at ? ` · ${new Date(post.created_at).toLocaleString()}` : ''}
             </div>
@@ -223,8 +282,12 @@ export default async function PublicPostPage({
         </article>
 
         <div className="mt-6 rounded-3xl border border-app bg-surface p-6 shadow-sm">
-          <p className="text-sm leading-6 text-app-text-secondary">
-            Open this post in Pantopus to reply, react, and keep up with the conversation.
+          <p className="text-sm leading-6 text-app-text-secondary" data-testid="publicPostInvite">
+            {story && replies > 0
+              ? `${replies === 1 ? '1 reply' : `${replies} replies`} from people around here so far. Open it in Pantopus to read ${replies === 1 ? 'it' : 'them'} and add yours.`
+              : story
+                ? 'Open this story in Pantopus to say what you think; people around here will see your reply.'
+                : 'Open this post in Pantopus to reply, react, and keep up with the conversation.'}
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
             <Link

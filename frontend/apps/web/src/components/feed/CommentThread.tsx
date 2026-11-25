@@ -24,6 +24,10 @@ interface CommentThreadProps {
   composeDisabledMessage?: string | null;
   /** Shown when there are no comments; null shows nothing (e.g. the load failed). */
   emptyText?: string | null;
+  /** What the reply box says while it is empty and no reply is being answered. */
+  placeholder?: string;
+  /** The thread was opened to reply: the reply box takes the keyboard when it first shows. */
+  autoFocus?: boolean;
 }
 
 function isImageAttachment(mimeType?: string) {
@@ -46,6 +50,8 @@ export default function CommentThread({
   canCompose = true,
   composeDisabledMessage,
   emptyText = 'No comments yet — start the conversation',
+  placeholder = 'Add a comment, emoji, or photo…',
+  autoFocus = false,
 }: CommentThreadProps) {
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
@@ -87,6 +93,12 @@ export default function CommentThread({
   useEffect(() => {
     if (replyTo && inputRef.current) inputRef.current.focus();
   }, [replyTo]);
+
+  // Opened to reply: the box takes the keyboard once, when it first shows.
+  useEffect(() => {
+    if (autoFocus && canCompose) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on the thread's first show
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -462,7 +474,7 @@ export default function CommentThread({
                 value={newComment}
                 onChange={(e) => { draftRevision.current += 1; setNewComment(e.target.value); }}
                 onKeyDown={handleKeyDown}
-                placeholder={replyTo ? `Reply to ${replyTo.name}…` : 'Add a comment, emoji, or photo…'}
+                placeholder={replyTo ? `Reply to ${replyTo.name}…` : placeholder}
                 className="min-h-[72px] w-full resize-none bg-transparent px-2 py-1 text-sm text-app outline-none placeholder:text-app-muted"
                 disabled={isPosting}
                 spellCheck

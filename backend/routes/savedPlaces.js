@@ -126,7 +126,8 @@ router.get('/:id/around', verifyToken, async (req, res) => {
     if (error) throw error;
     if (!place) return res.status(404).json({ error: 'Saved place not found' });
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.json(await require('../services/aroundYouService').aroundYou({ ...place, userId: req.user.id }));
+    const { aroundYou, listQuery } = require('../services/aroundYouService');
+    return res.json(await aroundYou({ ...place, userId: req.user.id, ...listQuery(req.query) }));
   } catch (err) {
     logger.error('Failed to load Around you for a saved place:', { error: err.message });
     return res.status(500).json({ error: 'Failed to load what is around this saved place' });
@@ -146,7 +147,9 @@ router.post('/area/around', verifyToken, async (req, res) => {
   const { coordinates } = require('../utils/timezone');
   const point = coordinates(Number(latitude.toFixed(2)), Number(longitude.toFixed(2)));
   if (!point) return res.status(400).json({ error: 'A valid latitude and longitude are required' });
-  return res.json(await require('../services/aroundYouService').aroundYou({ ...point, userId: req.user.id }));
+  // `list` and `before` (a list behind the first page) come in the body too.
+  const { aroundYou, listQuery } = require('../services/aroundYouService');
+  return res.json(await aroundYou({ ...point, userId: req.user.id, ...listQuery(req.body) }));
 });
 
 // GET /api/saved-places/:id/preview — the public address preview for the

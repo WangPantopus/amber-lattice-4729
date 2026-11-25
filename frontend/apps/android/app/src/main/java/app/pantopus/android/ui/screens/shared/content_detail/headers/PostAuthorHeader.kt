@@ -2,6 +2,8 @@
 
 package app.pantopus.android.ui.screens.shared.content_detail.headers
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +15,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -33,6 +37,7 @@ import app.pantopus.android.ui.components.VerifiedBadge
 import app.pantopus.android.ui.screens.moments.components.momentsRing
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 
@@ -98,6 +103,11 @@ fun PostAuthorHeader(
     onAvatarTap: (() -> Unit)? = null,
     /** The author's account: the photo wears their Moments ring while they have Moments to watch. */
     momentsUserId: String? = null,
+    /**
+     * Drawn where the photo goes when the name is not a person's or a business's: the outlet of a story Today's
+     * Around you posted. Null (every other post) draws the photo or the initials.
+     */
+    placeIcon: PantopusIcon? = null,
 ) {
     Row(
         modifier =
@@ -125,14 +135,28 @@ fun PostAuthorHeader(
                     ),
             contentAlignment = Alignment.TopStart,
         ) {
-            AvatarWithIdentityRing(
-                name = displayName,
-                modifier = Modifier.momentsRing(momentsUserId),
-                imageUrl = avatarUrl,
-                identity = identity,
-                ringProgress = 1f,
-                size = 44.dp,
-            )
+            if (placeIcon != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(PantopusColors.appSurfaceSunken)
+                            .border(1.dp, PantopusColors.appBorder, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PantopusIconImage(icon = placeIcon, contentDescription = null, size = 20.dp, tint = PantopusColors.appTextSecondary)
+                }
+            } else {
+                AvatarWithIdentityRing(
+                    name = displayName,
+                    modifier = Modifier.momentsRing(momentsUserId),
+                    imageUrl = avatarUrl,
+                    identity = identity,
+                    ringProgress = 1f,
+                    size = 44.dp,
+                )
+            }
             if (isVerified) {
                 Box(
                     modifier = Modifier.size(20.dp).offset(x = 28.dp, y = 28.dp),

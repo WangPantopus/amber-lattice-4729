@@ -232,7 +232,7 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     setMounted(true);
     setCanGoBack(window.history.length > 1);
   }, []);
-  // The profile with sources (launch key profile_sources): the server's page for this viewer. `viewer` says whose read
+  // The profile with sources (on everywhere since November 25): the server's page for this viewer. `viewer` says whose read
   // it is ('anon' signed out); a null page means the server answered anything but a page, and today's profile shows.
   const [sources, setSources] = useState<{ viewer: string; page: ProfilePage | null } | null>(
     () => (launchFeatures.profileSources ? { viewer: 'anon', page: isProfilePage(initialPage) ? initialPage : null } : null));
@@ -544,25 +544,6 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     });
   }, [profileIdentifier, loadProfile, loadCurrentUser, initialProfile, captureAction]);
 
-  useEffect(() => {
-    // Posts open first; the portfolio and reviews decide whether there is a Work tab, so they load with the page.
-    if (profile && postsRequested.current !== profile.id) {
-      postsRequested.current = profile.id;
-      loadUserPosts();
-    }
-    if (profile && portfolioRequested.current !== profile.id) {
-      loadPortfolio();
-    }
-    const reviewsKey = profile ? `${profile.id}:${currentUser?.id ?? ''}` : null;
-    if (profile && reviewsRequested.current !== reviewsKey) {
-      reviewsRequested.current = reviewsKey;
-      loadReviews();
-    }
-    // Launch cut #4 (Open Gigs): a person's open tasks are not shown, so not loaded.
-    if (launchFeatures.openGigs && profile && activeTab === 'missions' && userGigs.length === 0) {
-      loadUserGigs();
-    }
-  }, [activeTab, profile, currentUser?.id, userGigs.length, portfolio, loadUserGigs, loadPortfolio, loadUserPosts, loadReviews]);
 
   useEffect(() => {
     if (currentUser && profile && currentUser.id !== profile.id) {
@@ -593,8 +574,52 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     );
     return () => { live = false; };
   }, [sourcesViewer, profileIdentifier, initialPage, captureAction]);
+  // After the owner changes their Work: read the page again in place (no spinner), keeping it if the read fails.
+  const refreshSources = useCallback(() => {
+    const viewer = sourcesViewer;
+    if (!viewer || viewer === 'anon') return;
+    Promise.resolve().then(() => api.profilePage.getPage(profileIdentifier)).then(
+      (page) => { if (isProfilePage(page)) setSources((prev) => (prev?.viewer === viewer ? { viewer, page } : prev)); },
+      () => {},
+    );
+  }, [sourcesViewer, profileIdentifier]);
   const sourcesPending = launchFeatures.profileSources && (sourcesViewer === null || sources?.viewer !== sourcesViewer);
   const shownSources = launchFeatures.profileSources && !sourcesPending ? sources?.page ?? null : null;
+  // Whether today's profile is the page drawn: false while the profile with sources is (or is still being read).
+  const todaysPage = !(launchFeatures.profileSources && (sourcesPending || Boolean(shownSources)));
+  // A piece's address (`?piece=<id>`) on a page that fell back to today's profile opens nothing: drop it from the
+  // address, so it never stays on a page that doesn't show the piece.
+  useEffect(() => {
+    if (!mounted || !launchFeatures.profileSources || !todaysPage) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('piece')) return;
+    params.delete('piece');
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }, [mounted, todaysPage]);
+
+  useEffect(() => {
+    // Posts open first; the portfolio and reviews decide whether there is a Work tab, so they load with the page.
+    // Today's profile only: while the profile with sources is drawn they aren't shown, so they aren't read (they are
+    // if the page falls back to today's profile).
+    if (todaysPage === false) return;
+    if (profile && postsRequested.current !== profile.id) {
+      postsRequested.current = profile.id;
+      loadUserPosts();
+    }
+    if (profile && portfolioRequested.current !== profile.id) {
+      loadPortfolio();
+    }
+    const reviewsKey = profile ? `${profile.id}:${currentUser?.id ?? ''}` : null;
+    if (profile && reviewsRequested.current !== reviewsKey) {
+      reviewsRequested.current = reviewsKey;
+      loadReviews();
+    }
+    // Launch cut #4 (Open Gigs): a person's open tasks are not shown, so not loaded.
+    if (launchFeatures.openGigs && profile && activeTab === 'missions' && userGigs.length === 0) {
+      loadUserGigs();
+    }
+  }, [activeTab, profile, currentUser?.id, userGigs.length, portfolio, loadUserGigs, loadPortfolio, loadUserPosts, loadReviews, todaysPage]);
 
   // Your own profile: the name and photo neighbors see (your Local Profile) and, in Preview as, the audience's read.
   const ownerCandidate = Boolean(currentUser?.id && profile?.id && currentUser.id === profile.id);
@@ -1572,6 +1597,9 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       signedOut={anyoneView}
       onJoin={() => router.push(authPageHref('/register', profilePath))}
       onReport={isOwnProfile && !previewing ? null : handleReport}
+      onChanged={isOwnProfile && !previewing ? refreshSources : null}
+      onReread={previewing ? null : refreshSources}
+      ready={mounted}
       onDoor={(door) => {
         // Doors (phase 3): a signed-out visitor signs in first; Send a card opens the card flow with them chosen.
         if (!getAuthToken()) { router.push(signInHref); return; }

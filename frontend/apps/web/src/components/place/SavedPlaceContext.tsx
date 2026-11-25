@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import PendingPlaceSaver from './PendingPlaceSaver';
 import { PreviewBody } from './StartFunnel';
+import AskPlaceRow from './AskPlaceRow';
 import ErrorState from '@/components/ui/ErrorState';
 import { extractApiError } from '@/lib/auth-utils';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -116,8 +117,17 @@ export default function SavedPlaceContext({ previewId, savedPlaceId, claimInRevi
       </section>
       {preview.isPending ? <p role="status" className="mt-4">Loading address information…</p> : null}
       {preview.isError ? <ErrorState message="Your address is saved. We could not refresh its public information." onRetry={() => preview.refetch()} /> : null}
-      {preview.data && (preview.data.status === 'ready' || preview.data.status === 'partial') ? <PreviewBody preview={preview.data} onWall={setup} onRetry={() => { void preview.refetch(); }} retrying={preview.isFetching} /> : null}
+      {preview.data && (preview.data.status === 'ready' || preview.data.status === 'partial') ? <PreviewBody preview={preview.data} onWall={setup} onRetry={() => { void preview.refetch(); }} retrying={preview.isFetching} onRecord={() => router.push(`/app/saved-places/${encodeURIComponent(active.id)}/record`)} recordButton={false} /> : null}
       {preview.data && (preview.data.status === 'unsupported_region' || preview.data.status === 'could_not_place') ? <p className="mt-4 text-app-text-secondary">Your address is saved. Public information is not available for this address yet.</p> : null}
+      {/* The assistant about this saved address (LOOKUPORDER SPEC 5.3): its public facts, read for the person's own saved place. */}
+      {preview.data && (preview.data.status === 'ready' || preview.data.status === 'partial') ? (
+        <div className="mt-2">
+          <AskPlaceRow
+            label="Ask Pantopus about this place"
+            onOpen={() => router.push(`/app/chat/ai-assistant?surface=place&saved_place_id=${encodeURIComponent(active.id)}`)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

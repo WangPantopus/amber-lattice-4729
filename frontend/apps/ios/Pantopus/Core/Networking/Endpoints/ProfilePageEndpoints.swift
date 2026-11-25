@@ -87,6 +87,50 @@ public enum ProfilePageEndpoints {
         Endpoint(method: .delete, path: "/api/profile-page/me/links/\(Endpoint.pathSegment(id))")
     }
 
+    // MARK: - The owner's pieces (CONTRACT P2.3, P2.4; route backend/routes/profilePage.js)
+
+    /// `GET /api/profile-page/me/pieces` — every piece of the owner's (drafts and hidden ones too), the jobs and
+    /// plans not yet made into a piece, and "<n> of your <m> pieces".
+    public static func myPieces() -> Endpoint {
+        Endpoint(method: .get, path: "/api/profile-page/me/pieces", cachePolicy: .reloadIgnoringLocalCacheData)
+    }
+
+    /// `POST /api/profile-page/me/pieces` — makes a piece; 201 with the piece as the owner sees it.
+    public static func createPiece(_ body: ProfilePieceBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/pieces", body: body)
+    }
+
+    /// `POST /api/profile-page/me/pieces/preview` — "How this piece will show", worked out by the server; nothing saved.
+    public static func previewPiece(_ body: ProfilePieceBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/pieces/preview", body: body, reportsServerErrors: false)
+    }
+
+    /// `PATCH /api/profile-page/me/pieces/:id` — the fields sent replace theirs (attachments and links as whole lists).
+    public static func updatePiece(id: String, _ body: ProfilePieceBody) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(id))", body: body)
+    }
+
+    /// `DELETE /api/profile-page/me/pieces/:id` — removes the piece and the files only it held.
+    public static func deletePiece(id: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(id))")
+    }
+
+    /// `POST /api/profile-page/me/pieces/:id/links/:linkId/proof` — the short line to put on the page.
+    public static func linkProof(pieceId: String, linkId: String) -> Endpoint {
+        Endpoint(
+            method: .post,
+            path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(pieceId))/links/\(Endpoint.pathSegment(linkId))/proof"
+        )
+    }
+
+    /// `POST /api/profile-page/me/pieces/:id/links/:linkId/check` — reads the page; the card, Seen, when the line is there.
+    public static func linkCheck(pieceId: String, linkId: String) -> Endpoint {
+        Endpoint(
+            method: .post,
+            path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(pieceId))/links/\(Endpoint.pathSegment(linkId))/check"
+        )
+    }
+
     /// `GET /api/profile-page/marks?ids=a,b,c` — the ring on each avatar (board 6): since when each person has
     /// anything on record, and whether anything is seen. People the viewer may not see are left out.
     public static func marks(ids: [String]) -> Endpoint {

@@ -1,6 +1,6 @@
 /**
  * SPEC rule 4.7 (CONTRACT.md section 8): the old profile reads never tell a signed-out caller more than the main link
- * shows. While PROFILE_SOURCES is on and once the person has saved their parts, GET /api/users/id/:id,
+ * shows. Unless PROFILE_SOURCES=0 (the emergency off), once the person has saved their parts, GET /api/users/id/:id,
  * /username/:username and the legacy /:username send a signed-out caller (and the owner's `?as=anyone` preview) null
  * or empty values for what the link doesn't show. Every key and type stays, so the store apps keep working.
  * Before a first save, with the switch off, or for a signed-in caller, the reads are exactly as before.

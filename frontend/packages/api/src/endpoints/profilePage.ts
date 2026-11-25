@@ -161,6 +161,16 @@ export interface ProfileDoorsBlock extends BlockBase {
   sign_in_note?: string | null;
 }
 
+/**
+ * Something waiting for the person that their app doesn't draw (CONTRACT "On by default"): at the top of their own
+ * first tab, with the full web address. The web names every part it draws, so it should never get one.
+ */
+export interface ProfileNoticeBlock extends BlockBase {
+  kind: 'notice';
+  text: string;
+  link?: ProfileLink | null;
+}
+
 export interface ProfileShelfBlock extends BlockBase {
   kind: 'shelf';
   objects: Array<{ id: string; picture_url: string; caption: string | null }>;
@@ -201,6 +211,66 @@ export interface ProfilePiece extends ProfileLine {
   when?: string | null;
   cover_url?: string | null;
   media?: { photos?: number; videos?: number; documents?: number; links?: number } | null;
+  /** Phase 2 (P2.1): the months it ran (`YYYY-MM`), city and state only (null unless the city part reaches the viewer). */
+  from?: string | null;
+  to?: string | null;
+  place?: string | null;
+  pinned?: boolean | null;
+  /** On someone else's Work: a piece they signed a credit on, kept once on its owner's page (P2.5). */
+  with?: { name: string | null; user_id: string | null; username: string | null } | null;
+  /** The owner's view only. */
+  audience?: 'anyone' | 'members' | 'connections' | null;
+  draft?: boolean | null;
+  hidden?: boolean | null;
+  /** On the signer's own Work, a "With <owner>" piece: their tie, to take their name off (p2.5). */
+  tie_id?: string | null;
+}
+
+/** A link on a piece (P2.4): words only, never a picture from the page. */
+export interface ProfileLinkCard {
+  id?: string | null;
+  url: string;
+  site: string | null;
+  kind?: 'site' | 'video' | 'code' | 'app' | 'article' | 'paper' | string | null;
+  title: string | null;
+  description?: string | null;
+  picture_url?: string | null;
+  ink?: ProfileInk | null;
+  how?: string | null;
+  /** The owner's card only: false for pages anyone can edit (wikis), which can't be proven (p2.5). */
+  provable?: boolean | null;
+}
+
+/** A person, business or typed name on a piece (P2.5). Others see only signed people and typed names. */
+export interface ProfileCredit {
+  id: string;
+  party: {
+    name: string | null;
+    user_id: string | null;
+    username: string | null;
+    portrait_url: string | null;
+    typed?: boolean | null;
+    /** What to show when `name` is null ("A carpenter"). */
+    did?: string | null;
+  };
+  role: string | null;
+  relation?: 'with' | 'led' | 'learned_from' | 'for' | string | null;
+  ink: ProfileInk;
+  how: string | null;
+  /** The owner's view only: `asked`, `signed`, `did_not_confirm`. */
+  status?: string | null;
+  /** The signer's own signed credit only (p2.7): what they chose, to change with `updateTie`. */
+  mine?: { show_on_my_work: boolean; show_name_on_links: boolean } | null;
+}
+
+/** An attachment on a piece (P2.2). */
+export interface ProfileAttachment {
+  id?: string | null;
+  kind: 'photo' | 'video' | 'document' | string;
+  url: string;
+  thumbnail_url: string | null;
+  title?: string | null;
+  detail?: string | null;
 }
 
 export interface ProfilePiecesBlock extends BlockBase {
@@ -218,23 +288,39 @@ export interface ProfileWorkRingsBlock extends BlockBase {
   from: number;
   now: string;
   months: string[];
-  dots?: Array<{ piece_id: string; month: string }> | null;
+  /** Each piece's month; phase 2 adds the piece's ink. */
+  dots?: Array<{ piece_id: string; month: string; ink?: ProfileInk | null }> | null;
   years?: Array<{ year: number; pieces: number }> | null;
 }
 
 export interface ProfileCirclePerson {
   user_id: string | null;
   name: string | null;
+  username?: string | null;
   portrait_url: string | null;
   did: string | null;
   ink: ProfileInk;
+  /** Pieces the two share that this viewer may open (p2.6). */
+  shared_pieces?: number | null;
+  /** A person, a business on Pantopus or a place typed as words (asked of profile-server); absent: a person. */
+  kind?: 'person' | 'business' | 'place' | string | null;
 }
+
+export interface ProfileCircleGroup { key: string; title: string; count: number; people: ProfileCirclePerson[] }
 
 export interface ProfileCircleBlock extends BlockBase {
   kind: 'circle';
   text?: string | null;
-  groups: Array<{ key: string; title: string; count: number; people: ProfileCirclePerson[] }>;
+  groups: ProfileCircleGroup[];
+  hired_by?: ProfileLine | null;
   link?: ProfileLink | null;
+}
+
+/** The work circle opened (board 9): everyone, by group, and how many households and businesses hired the person. */
+export interface ProfileCircleRead {
+  v: number;
+  groups: ProfileCircleGroup[];
+  hired_by: ProfileLine | null;
 }
 
 export interface ProfileOwnsBlock extends BlockBase {
@@ -267,6 +353,7 @@ export type ProfileKnownBlock =
   | ProfileInCommonBlock
   | ProfileDoorsBlock
   | ProfileShelfBlock
+  | ProfileNoticeBlock
   | ProfilePromptsBlock
   | ProfilePinnedPostsBlock
   | ProfileRowsBlock
@@ -318,11 +405,24 @@ export interface ProfilePage {
 export interface ProfilePieceRead {
   v: number;
   view: ProfileView;
-  piece: ProfilePiece & {
+  piece: Omit<ProfilePiece, 'media'> & {
     description: ProfileLine | null;
-    media: Array<{ kind: 'photo' | 'video' | 'document' | string; url: string; thumbnail_url: string | null }>;
-    links: Array<{ url: string; title: string | null; site: string | null }>;
-    skills: string[];
+    /** v1: the piece's pictures and files. A phase 2 server may send the counts here instead; read both. */
+    media: ProfileAttachment[] | ProfilePiece['media'];
+    links: ProfileLinkCard[];
+    skills?: string[];
+    /** Phase 2 (P2.2). */
+    how_we_know?: ProfileLine[] | null;
+    shows_can?: string[] | null;
+    attachments?: ProfileAttachment[] | null;
+    /** Only with PROFILE_TIES on. */
+    credits?: ProfileCredit[] | null;
+    written?: Array<ProfileLine & { who?: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null; did: string | null } | null; when?: string | null }> | null;
+    kept_once?: string | null;
+    owner_role?: string | null;
+    /** The owner's view only. */
+    how_it_will_show?: string[] | null;
+    suggested_credits?: ProfileSuggestedCredit[] | null;
   };
 }
 
@@ -371,6 +471,10 @@ export interface ProfileShare {
   /** Links for one purpose (v1.3). Absent while the server's PROFILE_LINKS is off: no section is drawn. */
   links_enabled?: boolean;
   links?: ProfileShareLink[];
+  /** Phase 2 (P2.5): the Work row's "<shown> of your <total> pieces". */
+  work_pieces?: { shown: number; total: number } | null;
+  /** "Let people name me on their work"; absent while the server's PROFILE_TIES is off. */
+  ties_enabled?: boolean;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -459,6 +563,200 @@ export async function getShare(): Promise<ProfileShare> {
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
+}
+
+// ── Phase 2: the owner's pieces (CONTRACT P2.3, P2.4) ──
+
+/** The person who hired the owner, offered to ask in one tap (owner only, p2.6). Never in anyone else's read. */
+export interface ProfileSuggestedCredit {
+  user_id: string;
+  name: string | null;
+  username: string | null;
+  portrait_url: string | null;
+  relation: 'for' | string;
+  role: string | null;
+  why: string;
+}
+
+/** A job or plan Pantopus saw that isn't a piece yet (board 10's top). `with` is for the owner's eyes only. */
+export interface ProfilePieceOffer {
+  kind: 'gig' | 'plan' | string;
+  id: string;
+  title: string;
+  when: string | null;
+  with: string | null;
+  text: string;
+  suggested_credits?: ProfileSuggestedCredit[] | null;
+}
+
+/** What the owner writes on a piece. Fields not sent keep theirs on a change. */
+export interface ProfilePieceFields {
+  title?: string;
+  kind?: 'did' | 'built' | 'owns' | null;
+  from?: string | null;
+  to?: string | null;
+  city?: string | null;
+  state?: string | null;
+  description?: string | null;
+  role?: string | null;
+  skills?: string[];
+  audience?: 'anyone' | 'members' | 'connections';
+  pinned?: boolean;
+  hidden?: boolean;
+  draft?: boolean;
+  started_from?: { kind: 'gig' | 'plan' | string; id: string };
+  /** Files from `POST /api/files/portfolio`, the owner's own, in order (cover first). */
+  attachments?: Array<{ file_id: string }>;
+  links?: Array<{ url: string }>;
+}
+
+export interface ProfileMyPieces {
+  pieces: ProfilePiece[];
+  offered: ProfilePieceOffer[];
+  counts: { shown_on_link: number; total: number } | null;
+}
+
+const ME_PIECES = '/api/profile-page/me/pieces';
+
+/** The owner's pieces (drafts and hidden ones too), the jobs and plans offered, and how many a link shows. */
+export async function getMyPieces(): Promise<ProfileMyPieces> {
+  return get<ProfileMyPieces>(ME_PIECES);
+}
+
+/** A new piece; the answer is the piece as saved, with `how_it_will_show`. */
+export async function createPiece(fields: ProfilePieceFields): Promise<ProfilePiece & { how_it_will_show?: string[] | null }> {
+  return post<ProfilePiece & { how_it_will_show?: string[] | null }>(ME_PIECES, fields);
+}
+
+/** "How this piece will show", worked out by the server for these fields; nothing is saved. */
+export async function previewPiece(fields: ProfilePieceFields): Promise<{ how_it_will_show: string[] }> {
+  return post<{ how_it_will_show: string[] }>(`${ME_PIECES}/preview`, fields);
+}
+
+export async function updatePiece(id: string, fields: ProfilePieceFields): Promise<ProfilePiece & { how_it_will_show?: string[] | null }> {
+  return patch<ProfilePiece & { how_it_will_show?: string[] | null }>(`${ME_PIECES}/${encodeURIComponent(id)}`, fields);
+}
+
+/** Removes the piece and ends its credits. */
+export async function deletePiece(id: string): Promise<{ id: string; deleted: boolean }> {
+  return del<{ id: string; deleted: boolean }>(`${ME_PIECES}/${encodeURIComponent(id)}`);
+}
+
+/** The line to put in a linked page's title or description to prove it's the owner's, and a meta tag for one's own site (P2.4, p2.4). */
+export async function proveLink(pieceId: string, linkId: string): Promise<{ line: string; how: string; meta?: string | null }> {
+  return post<{ line: string; how: string; meta?: string | null }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/proof`, {});
+}
+
+/** Reads the page for the line; Seen when it is there, else 409 PROOF_NOT_FOUND. */
+export async function checkLink(pieceId: string, linkId: string): Promise<ProfileLinkCard> {
+  return post<ProfileLinkCard>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/links/${encodeURIComponent(linkId)}/check`, {});
+}
+
+// ── Phase 2: credits, signing and "Asked of you" (CONTRACT P2.5, p2.5; behind PROFILE_TIES) ──
+
+/** Someone asked to sign: a credit on a piece, or a role. */
+export interface ProfileAsk {
+  id: string;
+  kind: 'credit' | 'role' | string;
+  from: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null };
+  piece: { id: string; title: string; kind: string | null; when: string | null; cover_url: string | null } | null;
+  role: string | null;
+  relation?: string | null;
+  asked_at: string;
+  /** A role ask (p2.6): the business the person owns, asked to confirm, and the years. */
+  business?: { name: string | null; user_id: string | null; username: string | null; picture_url: string | null } | null;
+  when?: string | null;
+}
+
+/** Name a person (`user_id`: a connection, or the other party of the job or plan; they are asked) or type a name. */
+export async function addCredit(pieceId: string, body: { user_id?: string; name?: string; role: string | null; relation: 'with' | 'led' | 'learned_from' | 'for' }): Promise<ProfileCredit> {
+  return post<ProfileCredit>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/credits`, body);
+}
+
+export async function removeCredit(pieceId: string, creditId: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`${ME_PIECES}/${encodeURIComponent(pieceId)}/credits/${encodeURIComponent(creditId)}`);
+}
+
+export async function getAsks(): Promise<{ asks: ProfileAsk[] }> {
+  return get<{ asks: ProfileAsk[] }>('/api/profile-page/me/asks');
+}
+
+export async function signAsk(id: string, body: { show_on_my_work: boolean; show_name_on_links: boolean }): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/sign`, body);
+}
+
+/** "Not me". */
+export async function declineAsk(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/asks/${encodeURIComponent(id)}/decline`, {});
+}
+
+/** The signer changes their two choices later (p2.6). */
+export async function updateTie(id: string, body: { show_on_my_work?: boolean; show_name_on_links?: boolean }): Promise<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }> {
+  return patch<{ id: string; show_on_my_work: boolean; show_name_on_links: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`, body);
+}
+
+/** The signer takes their name off a piece (or a role). */
+export async function removeTie(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/ties/${encodeURIComponent(id)}`);
+}
+
+// ── Phase 2: roles and schools ("Worked and learned", CONTRACT P2.6, p2.6; behind PROFILE_TIES) ──
+
+/** A role line in the `worked_learned` block (and Record's work lines). The owner's view adds `status`. */
+export interface ProfileRoleLine extends ProfileLine {
+  id: string;
+  title: string;
+  relation: 'worked' | 'learned' | string;
+  from: string | null;
+  to: string | null;
+  where: { name: string | null; user_id: string | null; username: string | null; picture_url: string | null; typed: boolean | null } | null;
+  status?: string | null;
+  /**
+   * Only for a viewer who owns the business that signed this role (p2.11): its name on pages opened by a link. The
+   * line's `id` is the tie, for `updateTie` and `removeTie`.
+   */
+  mine?: { show_name_on_links: boolean } | null;
+}
+
+export interface ProfileRoleFields {
+  title: string;
+  /** A business on Pantopus (asked to confirm through its owners) or a typed place, which stays Said. */
+  where?: { business_user_id: string } | { name: string };
+  relation: 'worked' | 'learned';
+  from: string;
+  to: string | null;
+}
+
+export async function createRole(fields: ProfileRoleFields): Promise<ProfileRoleLine> {
+  return post<ProfileRoleLine>('/api/profile-page/me/roles', fields);
+}
+
+/** Title, relation, from and to; the place can't change (remove the role and add it again). */
+export async function updateRole(id: string, fields: Partial<Omit<ProfileRoleFields, 'where'>>): Promise<ProfileRoleLine> {
+  return patch<ProfileRoleLine>(`/api/profile-page/me/roles/${encodeURIComponent(id)}`, fields);
+}
+
+export async function deleteRole(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/roles/${encodeURIComponent(id)}`);
+}
+
+// ── Phase 2: the work circle (board 9, CONTRACT p2.6; behind PROFILE_TIES) ──
+
+export async function getCircle(identifier: string, options?: { as?: ProfilePreviewView }): Promise<ProfileCircleRead> {
+  return get<ProfileCircleRead>(`${base(identifier)}/circle`, options?.as ? { as: options.as } : undefined);
+}
+
+/** The pieces the person and that account share, each only if this viewer can open it. */
+export async function getCirclePieces(identifier: string, userId: string, options?: { as?: ProfilePreviewView }): Promise<{ v: number; pieces: ProfilePiece[] }> {
+  return get<{ v: number; pieces: ProfilePiece[] }>(`${base(identifier)}/circle/${encodeURIComponent(userId)}`, options?.as ? { as: options.as } : undefined);
+}
+
+export async function getLinkCircle(username: string, key: string): Promise<ProfileCircleRead> {
+  return get<ProfileCircleRead>(`${linkBase(username, key)}/circle`);
+}
+
+export async function getLinkCirclePieces(username: string, key: string, userId: string): Promise<{ v: number; pieces: ProfilePiece[] }> {
+  return get<{ v: number; pieces: ProfilePiece[] }>(`${linkBase(username, key)}/circle/${encodeURIComponent(userId)}`);
 }

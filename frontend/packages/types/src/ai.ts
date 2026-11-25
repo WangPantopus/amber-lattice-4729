@@ -201,7 +201,9 @@ export interface NeighborhoodPulse {
 
 // ─── AI Chat ─────────────────────────────────────────────────
 
-export type AIDraftType = 'gig' | 'listing' | 'post' | 'mail_summary' | 'support_train' | 'pickup_schedule';
+export type AIDraftType =
+  | 'gig' | 'listing' | 'post' | 'mail_summary' | 'support_train' | 'pickup_schedule'
+  | 'moment' | 'letter' | 'christmas_card' | 'action';
 
 /** A Support Train the assistant has the story for; the start flow drafts the rest. */
 export interface SupportTrainChatDraft {
@@ -223,10 +225,128 @@ export interface PickupScheduleChatDraft {
   recycling_next_date: string | null;
 }
 
+/**
+ * A Moment the assistant wrote; the Moments composer opens with it filled in and the person posts it there
+ * (AI everywhere contract, section 4.1).
+ */
+export interface MomentChatDraft {
+  /** A text card, or a photo or video the person takes or picks in the composer. */
+  kind: 'text' | 'photo';
+  /** kind text: the card's words. */
+  text?: string;
+  /** kind text: the card's colour. */
+  background?: 'teal' | 'sky' | 'green' | 'amber' | 'rose' | 'slate';
+  /** kind photo: the caption, when there is one. */
+  caption?: string | null;
+  hours: 1 | 6 | 24 | 48;
+  audience: 'nearby' | 'connections';
+}
+
+/**
+ * A letter the assistant wrote; Mail's letter compose opens with it filled in and the person sends it there
+ * (section 4.2). `recipient` is one row of GET /api/mailbox/compose/recipients.
+ */
+export interface LetterChatDraft {
+  recipient: {
+    userId: string;
+    name: string;
+    username?: string | null;
+    homeId: string | null;
+    homeAddress?: string | null;
+    isVerified?: boolean;
+    homeMediaUrl?: string | null;
+    isOnPantopus?: boolean;
+  };
+  intent: 'say_hello' | 'congratulations' | 'condolences' | 'business_note' | 'just_because';
+  body: string;
+}
+
+/**
+ * A Christmas card the assistant put together; the card screen opens with it filled in and the person seals and
+ * sends it there (section 4.3).
+ */
+export interface ChristmasCardChatDraft {
+  design: { id: string; caption?: string | null; collection?: string | null };
+  to: { user_id: string; name: string } | { email: string };
+  message: string;
+  arrival: 'next_morning' | 'sealed_christmas' | 'christmas_morning' | 'now';
+  arrival_label?: string;
+  /** The arrival asked for has closed and the card is set to the next morning: a sentence saying so. */
+  arrival_changed?: string;
+}
+
+/** The request an action card's button sends (phase 1 contract, section 4.2): an endpoint the app already uses. */
+export interface AIActionCardRequest {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  body?: Record<string, unknown> | null;
+  /** Only `x-pantopus-session-scope` is ever sent. */
+  headers?: Record<string, string> | null;
+}
+
+/** One button on an action card. `{{response.a.b}}` in `then` and `done.link` reads the first request's reply. */
+export interface AIActionCardAction {
+  id: string;
+  label: string;
+  style?: 'primary' | 'secondary' | 'destructive';
+  request: AIActionCardRequest;
+  then?: { request: AIActionCardRequest } | null;
+  done?: { label?: string | null; link?: string | null } | null;
+}
+
+export interface AIActionCardLine {
+  label: string;
+  value: string;
+}
+
+/** One row with its own buttons (a person asking to join a plan). */
+export interface AIActionCardItem {
+  id: string;
+  title?: string | null;
+  lines?: AIActionCardLine[];
+  actions: AIActionCardAction[];
+}
+
+/**
+ * Something the assistant can do with one tap: host or change a plan, add a home task, change notification settings
+ * (phase 1 contract, section 4). Nothing happens until the person taps a button.
+ */
+export interface AIActionCardDraft {
+  /** Also the card's key for its done state on the server (phase 3 contract, section 4). */
+  id: string;
+  card: string;
+  title: string;
+  lines?: AIActionCardLine[];
+  warnings?: string[];
+  note?: string | null;
+  expires_at?: string | null;
+  actions?: AIActionCardAction[];
+  items?: AIActionCardItem[];
+}
+
+/** What was done on an action card, on any of the person's devices (phase 3 contract, section 4.3). */
+export interface AIActionCardState {
+  status: 'open' | 'done' | 'dismissed' | 'expired';
+  done?: { item_id?: string | null; action_id: string; at?: string; link?: string | null }[];
+}
+
 export interface AIChatDraft {
   type: AIDraftType;
-  draft: GigDraft | ListingDraft | PostDraft | MailSummary | SupportTrainChatDraft | PickupScheduleChatDraft;
+  draft:
+    | GigDraft | ListingDraft | PostDraft | MailSummary | SupportTrainChatDraft | PickupScheduleChatDraft
+    | MomentChatDraft | LetterChatDraft | ChristmasCardChatDraft | AIActionCardDraft;
   valid: boolean;
+  /** An action card restored from history: what was done on it (only when the history request lists "state"). */
+  state?: AIActionCardState | null;
+}
+
+/**
+ * A button under a reply that opens a screen in the app (phase 1 contract, section 5). `url` is a `pantopus://…`
+ * address from the server's fixed catalog; each app opens it with its own router.
+ */
+export interface AIChatLink {
+  label: string;
+  url: string;
 }
 
 export interface AIChatMessage {
@@ -235,7 +355,33 @@ export interface AIChatMessage {
   content: string;
   imageUrls?: string[];
   drafts?: AIChatDraft[];
+  /** Buttons under this reply, for apps that list "link" in `cards`. */
+  links?: AIChatLink[];
   timestamp: string;
+}
+
+/**
+ * One item of a conversation's history (GET /api/ai/conversations/:id/messages): the person's words, a reply's words
+ * with its buttons, or one draft or card. A reply that streamed as one message can be several items.
+ */
+export interface AIHistoryItem {
+  role: 'user' | 'assistant';
+  text?: string;
+  photos?: number;
+  documents?: number;
+  draft?: { type: AIDraftType; draft: AIChatDraft['draft'] };
+  links?: AIChatLink[];
+  state?: AIActionCardState | null;
+  /** A brief or nudge Pantopus sent: its first item. */
+  nudge?: { id: string; kind?: string } | null;
+  /** When it was said (ISO 8601). */
+  at?: string;
+}
+
+export interface AIConversationMessages {
+  conversationId: string;
+  title?: string | null;
+  messages: AIHistoryItem[];
 }
 
 export interface AIConversation {
@@ -253,6 +399,7 @@ export type AIStreamEvent =
   | { type: 'conversation'; conversationId: string; isNew: boolean }
   | { type: 'text_delta'; delta: string }
   | { type: 'draft'; draftType: AIDraftType; draft: unknown; valid: boolean }
+  | { type: 'link'; label: string; url: string }
   | { type: 'error'; error: string; message: string }
   | { type: 'done'; conversationId: string; usage: { inputTokens: number; outputTokens: number }; toolCalls: number }
   | { type: 'close' };
@@ -264,8 +411,22 @@ export interface AIChatRequest {
   conversationId?: string;
   coarseLocation?: { city?: string; state?: string };
   images?: string[];
-  /** Draft cards this app can show beyond the original ones, e.g. 'pickup_schedule'. */
+  /**
+   * What this app can show beyond the original draft cards: 'pickup_schedule', 'action' (one-tap cards), 'state'
+   * (their done states in history), 'link' (buttons under a reply), 'moment', 'letter', 'christmas_card' (drafts its
+   * own composers open), 'identity'.
+   */
   cards?: string[];
+  /** The screen the person tapped Ask on; the server reads it with that screen's own access checks. */
+  context?: AIChatContext | null;
+}
+
+/** "Ask about this": the Place screen of one of their homes, or of one of their saved addresses (LOOKUPORDER SPEC 5.3). */
+export interface AIChatContext {
+  surface: 'place' | 'today';
+  home_id?: string | null;
+  saved_place_id?: string | null;
+  section?: string | null;
 }
 
 export interface AIDraftGigRequest {

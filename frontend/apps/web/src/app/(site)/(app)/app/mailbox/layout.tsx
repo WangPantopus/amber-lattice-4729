@@ -15,6 +15,8 @@ import { useMe } from '@/lib/me';
 import { launchFeatures } from '@/lib/featureFlags';
 import { MailboxIcons } from '@/lib/icons';
 import ComposeLetter from './_components/ComposeLetter';
+import type { LetterChatDraft } from '@pantopus/types';
+import { takeLetterDraft } from '@/lib/aiDraftHandoff';
 
 // The delivery moment plays the first time you open Mail after a round,
 // remembered per account in this browser (contract `delivery.last_at`).
@@ -94,6 +96,16 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Launch cut #8 (Mail extras): writing a letter is hidden.
   const [composeOpen, setComposeOpen] = useState(false);
+  // A letter Pantopus AI wrote, on its way from the assistant's chat ("Open in Mail"): the composer opens with it,
+  // once, as Mail opens. Nothing is sent until the person sends it there.
+  const [letterDraft, setLetterDraft] = useState<LetterChatDraft | null>(null);
+  useEffect(() => {
+    if (!launchFeatures.mailExtras) return;
+    const draft = takeLetterDraft();
+    if (!draft) return;
+    setLetterDraft(draft);
+    setComposeOpen(true);
+  }, []);
 
   // ── Your mailbox and today's delivery ──────────────────
   const { data: drawers } = useMailboxDrawers();
@@ -167,7 +179,7 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
         </MailboxErrorBoundary>
       </div>
 
-      {composeOpen && <ComposeLetter onClose={() => setComposeOpen(false)} />}
+      {composeOpen && <ComposeLetter letter={letterDraft} onClose={() => { setComposeOpen(false); setLetterDraft(null); }} />}
       {/* Mail's first screen has loaded (and today's delivery has finished opening): its guidance card may show. */}
       {view.kind === 'main' && !view.pushed && drawers && !deliveryOpening ? <GuidanceScreen name="mail" facts={{ sentAny: Boolean(drawers.sent?.any) }} /> : null}
     </div>

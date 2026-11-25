@@ -74,6 +74,8 @@ struct SavedPlaceRootView: View {
     private let onSetUpHome: () -> Void
     private let onLookUpAddress: () -> Void
     private let onOpenDetail: ((PlaceDetailGroup) -> Void)?
+    /// "Ask Pantopus: what does this mean for me?": the assistant, about this saved address.
+    @State private var askTopic: AIAskTopic?
 
     init(
         viewModel: SavedPlaceRootViewModel,
@@ -103,7 +105,7 @@ struct SavedPlaceRootView: View {
                         .id(Self.topAnchor)
                     nextStep
                         .padding(.top, Spacing.s4)
-                    content
+                    content { id in withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) } }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, Spacing.s10)
@@ -123,6 +125,7 @@ struct SavedPlaceRootView: View {
         .task { await viewModel.load() }
         .refreshable { await viewModel.refresh() }
         .refreshFailureToast($viewModel.refreshFailureMessage)
+        .askPantopus($askTopic)
         .refreshesOnStoreChange { await viewModel.load() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("place.savedRoot")
@@ -215,8 +218,9 @@ struct SavedPlaceRootView: View {
         .placeCard()
     }
 
+    /// The facts, in the server's order; a glance row's tap scrolls to its card.
     @ViewBuilder
-    private var content: some View {
+    private func content(scrollTo: @escaping (String) -> Void) -> some View {
         switch viewModel.state {
         case .loading:
             VStack(spacing: 8) {
@@ -238,6 +242,8 @@ struct SavedPlaceRootView: View {
                     preview: preview,
                     showsLocked: false,
                     onOpenDetail: onOpenDetail,
+                    onAsk: { askTopic = .savedPlace(id: viewModel.place.id) },
+                    onScrollTo: scrollTo,
                     onAction: onSetUpHome,
                     onRetry: { Task { await viewModel.refresh() } },
                     retrying: viewModel.isRefreshing

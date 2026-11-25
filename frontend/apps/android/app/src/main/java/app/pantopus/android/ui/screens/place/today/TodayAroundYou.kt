@@ -46,7 +46,6 @@ import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
 import app.pantopus.android.ui.components.rememberShareTextWithCompletion
 import app.pantopus.android.ui.components.toastDurationMillis
-import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.place.components.placeCard
@@ -54,7 +53,6 @@ import app.pantopus.android.ui.screens.profile.ProfilePostCardActions
 import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import app.pantopus.android.ui.screens.profile.ProfilePostOptionsSheet
 import app.pantopus.android.ui.screens.profile.ProfilePostReportDialog
-import app.pantopus.android.ui.screens.profile.profilePostHasOptions
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -77,6 +75,10 @@ import kotlin.math.roundToLong
  * card (emoji reactions, Save, the post menu; a tap opens its post page with the reply threads); "Read at <outlet>"
  * opens the story. A server from before the posts sends rows, drawn as the first build drew them. Parity twin of iOS
  * `TodayAroundYou.swift`.
+ * Topics and scrolling back (founder, 2026-11-24): a row of chips over the page (All, Talked about, Events, Kids &
+ * schools, Sports, …; the server says which this place has), each a list that keeps loading as it is scrolled for as
+ * long as there are stories; under All the first page's sections are followed by every earlier story
+ * (`TodayAroundYouLists.kt`). A server from before the lists sends no chips, and the page is as it was.
  */
 
 /** Something to show for this place: Today offers the switch. */
@@ -127,6 +129,7 @@ fun TodayHalfSwitch(
 
 private val noCards: StateFlow<List<PulsePostCardContent>> = MutableStateFlow(emptyList())
 private val noPost: StateFlow<String?> = MutableStateFlow(null)
+private val noList: StateFlow<AroundYouLists.State> = MutableStateFlow(AroundYouLists.State())
 
 /**
  * Around you on the Today tab: the page, its posts' "Post options" (Share…, Report post) and report reasons as on a
@@ -145,8 +148,13 @@ internal fun TodayAroundYouHost(
     onDismissToast: () -> Unit,
     onOpenPost: (String) -> Unit,
     onQuotePost: ((String) -> Unit)? = null,
+    /** The lists behind the first page (the chips); null leaves the page as it was before them. */
+    lists: AroundYouLists? = null,
+    /** "Reply" and the reply preview on a card: its post page with the reply box ready to type in. */
+    onReplyPost: (String) -> Unit = onOpenPost,
 ) {
     val cards by (controller?.cards ?: noCards).collectAsStateWithLifecycle()
+    val listState by (lists?.state ?: noList).collectAsStateWithLifecycle()
     val optionsId by (controller?.optionsPostId ?: noPost).collectAsStateWithLifecycle()
     val reportingId by (controller?.reportingPostId ?: noPost).collectAsStateWithLifecycle()
     val shareText = rememberShareTextWithCompletion()
@@ -175,6 +183,7 @@ internal fun TodayAroundYouHost(
                         onToggleRepost = posts::openRepostChooser,
                     )
                 } ?: ProfilePostCardActions(onOpen = onOpenPost),
+            lists = lists?.let { AroundYouListsUi(listState, onSelect = it::select, onMore = it::loadMore, onReply = onReplyPost) },
         )
         toast?.let { message ->
             Toast(
@@ -240,16 +249,17 @@ private fun AroundYouRepostChooser(
  */
 @Composable
 @Suppress("LongParameterList")
-fun TodayAroundYouPage(
+internal fun TodayAroundYouPage(
     page: AroundYouDto,
     top: Dp,
     nowMs: Long,
     modifier: Modifier = Modifier,
     cards: List<PulsePostCardContent> = emptyList(),
     actions: ProfilePostCardActions = ProfilePostCardActions(),
+    lists: AroundYouListsUi? = null,
 ) {
     if (page.hasPosts) {
-        AroundYouPostsPage(page, top, cards, actions, modifier)
+        AroundYouPostsList(page, top, nowMs, cards, actions, lists, modifier)
         return
     }
     val context = LocalContext.current
@@ -286,74 +296,7 @@ fun TodayAroundYouPage(
 }
 
 @Composable
-private fun AroundYouPostsPage(
-    page: AroundYouDto,
-    top: Dp,
-    cards: List<PulsePostCardContent>,
-    actions: ProfilePostCardActions,
-    modifier: Modifier,
-) {
-    val scroll = rememberScrollState()
-    ScrollAwayHeaderPage(scroll)
-    Column(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .verticalScroll(scroll)
-                .padding(top = top)
-                .padding(top = 8.dp, bottom = 40.dp)
-                .testTag("aroundYouPanel"),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        page.area?.let { area ->
-            Text(
-                "From local news outlets around $area. Each post links to the story where it was published.",
-                fontSize = 13.sp,
-                color = PantopusColors.appTextSecondary,
-                modifier = Modifier.padding(horizontal = 20.dp),
-            )
-        }
-        page.sections.forEach { section ->
-            val ids = section.posts.orEmpty().map { it.id }.toSet()
-            val sectionCards = cards.filter { it.id in ids }
-            // A section whose posts all left (removed, hidden) shows nothing.
-            if (sectionCards.isNotEmpty()) AroundYouPostSection(section.id, section.title, sectionCards, actions)
-        }
-    }
-}
-
-/** A section's posts, full-width rows as in Pulse. */
-@Composable
-private fun AroundYouPostSection(
-    id: String,
-    title: String,
-    cards: List<PulsePostCardContent>,
-    actions: ProfilePostCardActions,
-) {
-    Column(modifier = Modifier.testTag("aroundYouSection_$id"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionHeading(title, Modifier.padding(horizontal = 20.dp))
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PantopusColors.appBorderSubtle))
-            cards.forEach { card ->
-                val going = { actions.onReact(card.id) }
-                // A Repost shows the headline to the reposter's connections in Pulse; the post itself lists only here.
-                PulsePostCard(
-                    content = card,
-                    onTap = { actions.onOpen(card.id) },
-                    onPrimaryReaction = going,
-                    onRSVP = going.takeIf { card.attendees != null },
-                    onReact = { emoji -> actions.onChooseReaction(card.id, emoji) },
-                    onOverflow = { actions.onOptions(card.id) }.takeIf { profilePostHasOptions(card) },
-                    onToggleSave = { actions.onToggleSave(card.id) },
-                    onToggleRepost = { actions.onToggleRepost(card.id) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionHeading(
+internal fun SectionHeading(
     title: String,
     modifier: Modifier = Modifier,
 ) {

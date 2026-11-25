@@ -71,6 +71,12 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
     /// Where the post's story was published (`post_metadata.source_url`): an
     /// Around you headline's outlet, or an Official or curator notice's source.
     public let source: PostSource?
+    /// Set on a story Today's Around you posted for an outlet (`post_metadata.around_you`, the server's alone):
+    /// its topics. Nil on every other post.
+    public let aroundYou: PostAroundYou?
+    /// Who replied and the latest reply, for a card that shows the conversation before it is opened. Only Around
+    /// you sends it, and only on a post with replies (`backend/services/aroundYou/lists.js`).
+    public let conversation: PostConversation?
     /// True for cold-start neighborhood facts injected by the feed handler
     /// (`backend/routes/posts.js:84`). Those rows are dismissable, not
     /// reportable.
@@ -126,6 +132,7 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         case expiresAt = "expires_at"
         case claimMode = "claim_mode"
         case postMetadata = "post_metadata"
+        case conversation
         case isSeeded = "is_seeded"
         case isVisitorPost = "is_visitor_post"
         case locationBasis = "location_basis"
@@ -181,6 +188,9 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         keptOpenAt = metadata?.keptOpenAt
         isPlanPost = metadata?.plan == true
         source = PostSource(url: metadata?.sourceUrl, name: metadata?.sourceName)
+        aroundYou = metadata?.aroundYou
+        // A preview the app can't read leaves the card without one, never without its post.
+        conversation = c.lenient(PostConversation.self, forKey: .conversation)
         isSeeded = c.lenient(Bool.self, forKey: .isSeeded) ?? false
         isVisitorPost = c.lenient(Bool.self, forKey: .isVisitorPost) ?? false
         locationBasis = c.lenient(String.self, forKey: .locationBasis)
@@ -257,12 +267,14 @@ struct PostLifecycleMetadata: Decodable {
     let plan: Bool?
     let sourceUrl: String?
     let sourceName: String?
+    let aroundYou: PostAroundYou?
 
     private enum CodingKeys: String, CodingKey {
         case keptOpenAt = "kept_open_at"
         case plan
         case sourceUrl = "source_url"
         case sourceName = "source_name"
+        case aroundYou = "around_you"
     }
 
     init(from decoder: any Decoder) throws {
@@ -271,6 +283,61 @@ struct PostLifecycleMetadata: Decodable {
         plan = c?.lenient(Bool.self, forKey: .plan)
         sourceUrl = c?.lenient(String.self, forKey: .sourceUrl)
         sourceName = c?.lenient(String.self, forKey: .sourceName)
+        aroundYou = c?.lenient(PostAroundYou.self, forKey: .aroundYou)
+    }
+}
+
+/// The mark on a story Today's Around you posted for an outlet (`post_metadata.around_you`): the topics the
+/// server sorted it into ("sports", "kids", …), in the chips' order; empty when it has none.
+public struct PostAroundYou: Decodable, Sendable, Hashable {
+    public let topics: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case topics
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        topics = c.lenient([String].self, forKey: .topics) ?? []
+    }
+}
+
+/// A post's reply preview: the latest repliers (newest first, at most three) and the latest reply, cut short.
+public struct PostConversation: Decodable, Sendable, Hashable {
+    public struct Person: Decodable, Sendable, Hashable, Identifiable {
+        public let id: String
+        public let name: String
+        public let avatarURL: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name
+            case avatarURL = "avatar_url"
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = c.lenient(String.self, forKey: .name) ?? "Someone"
+            avatarURL = c.lenient(String.self, forKey: .avatarURL)
+        }
+    }
+
+    public struct Reply: Decodable, Sendable, Hashable {
+        public let name: String
+        public let text: String
+    }
+
+    public let people: [Person]
+    public let latest: Reply
+
+    private enum CodingKeys: String, CodingKey {
+        case people, latest
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        people = c.lossyList(Person.self, forKey: .people)
+        latest = try c.decode(Reply.self, forKey: .latest)
     }
 }
 

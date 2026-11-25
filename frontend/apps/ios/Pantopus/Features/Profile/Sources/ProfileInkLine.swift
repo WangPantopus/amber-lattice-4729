@@ -28,13 +28,20 @@ struct ProfileSourceLine: Hashable, Identifiable {
 
     /// "Seen · by mail, June 2026".
     var source: String {
-        guard let how = how?.trimmingCharacters(in: .whitespacesAndNewlines), !how.isEmpty else { return ink.word }
+        guard let how = how?.trimmingCharacters(in: .whitespacesAndNewlines), !how.isEmpty,
+              how.lowercased() != ink.word.lowercased() else { return ink.word }
         return "\(ink.word) · \(how)"
     }
 
     /// Read aloud: the line, then how we know it.
     var spoken: String {
-        "\(text). \(source)"
+        Self.spokenJoin(text, source)
+    }
+
+    /// "The words. Seen · how": one stop between them, never two when the words already end in one.
+    static func spokenJoin(_ text: String, _ then: String) -> String {
+        let ends = text.last.map { ".!?…".contains($0) } ?? false
+        return ends ? "\(text) \(then)" : "\(text). \(then)"
     }
 }
 

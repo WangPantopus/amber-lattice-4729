@@ -30,8 +30,12 @@ struct ProfileSourcesContent: Equatable {
         self.page = page
         let raw = page.header.rings
         rings = ProfileRings(from: raw.from, now: raw.now, lanes: [.home: raw.home, .work: raw.work, .others: raw.others])
+        let owner = page.view == "owner"
         tabs = page.tabs.compactMap { tab in
-            guard let key = ProfileSourcesTab.Key(rawValue: tab.key), !tab.blocks.isEmpty else { return nil }
+            // The owner's Work stays even when empty: it is where "Add a piece" and the offered jobs are (SPEC 2A).
+            guard let key = ProfileSourcesTab.Key(rawValue: tab.key), !tab.blocks.isEmpty || (owner && key == .work) else {
+                return nil
+            }
             return ProfileSourcesTab(key: key, title: tab.title, blocks: tab.blocks)
         }
     }
@@ -88,6 +92,10 @@ final class ProfilePageModel {
     /// The piece opened from Work.
     private(set) var openedPiece: ProfilePieceReadDTO?
     var openingPieceId: String?
+    /// The owner's pieces with the jobs and plans offered (`GET /me/pieces`); nil for anyone else, or on a server
+    /// without it (the owner then keeps phase 1's "Add or remove pieces").
+    private(set) var ownerPieces: ProfileMyPiecesDTO?
+    @ObservationIgnored private var piecesObserver: ProfileObserverToken?
 
     private let identifier: String
     private let previewAs: String?
@@ -137,6 +145,10 @@ final class ProfilePageModel {
                 selectedTab = first.key
             }
             state = .loaded(content)
+            if content.isOwner, previewAs == nil {
+                ownerPieces = try? await client.request(ProfilePageEndpoints.myPieces())
+                watchPieces()
+            }
             if previewAs == nil {
                 Self.recent[cacheKey] = (content, Date())
                 // The person's own ring is known now, without asking (board 6).
@@ -215,5 +227,42 @@ final class ProfilePageModel {
     func closePiece() {
         openingPieceId = nil
         openedPiece = nil
+    }
+
+    /// A piece was made, changed or removed in the editor: the page, the owner's list and an open piece read again.
+    private func watchPieces() {
+        guard piecesObserver == nil else { return }
+        piecesObserver = ProfileObserverToken(
+            NotificationCenter.default.addObserver(forName: .profilePiecesChanged, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.reloadAfterPieceChange() }
+            }
+        )
+    }
+
+    private func reloadAfterPieceChange() async {
+        Self.recent[cacheKey] = nil
+        await load()
+        if let pieceId = openingPieceId {
+            if let answer: ProfilePieceReadDTO = try? await client.request(
+                ProfilePageEndpoints.piece(identifier: userId ?? identifier, pieceId: pieceId, previewAs: previewAs)
+            ), openingPieceId == pieceId {
+                openedPiece = answer
+            } else if openingPieceId == pieceId {
+                closePiece()
+            }
+        }
+    }
+}
+
+/// Removes a notification observer when whatever holds it goes.
+final class ProfileObserverToken {
+    private let token: any NSObjectProtocol
+
+    init(_ token: any NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
     }
 }

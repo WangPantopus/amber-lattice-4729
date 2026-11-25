@@ -33,6 +33,35 @@ export function postSource(post: Post): { url: string; label: string } | null {
   }
 }
 
+// Around you's topics, as the chips name them (backend/services/aroundYou/topics.js).
+const AROUND_TOPIC_TITLES: Record<string, string> = {
+  events: 'Events', kids: 'Kids & schools', sports: 'Sports', government: 'Government', business: 'Business',
+  safety: 'Roads & safety',
+};
+
+/**
+ * A story Today's Around you posted for an outlet (`post_metadata.around_you`, set only by the server): the outlet
+ * that published it, its first topic's name, and its headline apart from the outlet's summary (the post's text is
+ * the headline, then the summary on the next line). Null for every other post.
+ */
+export function aroundStory(post: Post): { outlet: string | null; topic: string | null; headline: string; summary: string } | null {
+  const meta = post.post_metadata;
+  const around = meta?.around_you as { topics?: unknown } | undefined;
+  if (!around || typeof around !== 'object') return null;
+  // The byline is the outlet's name alone; "(subscription)" stays on the link that opens the story.
+  const outlet = typeof meta?.source_name === 'string' && meta.source_name.trim()
+    ? meta.source_name.trim().replace(/\s*\(subscription\)$/i, '') || null : null;
+  const topics = Array.isArray(around.topics) ? around.topics.filter((topic): topic is string => typeof topic === 'string') : [];
+  const text = post.content || '';
+  const cut = text.indexOf('\n');
+  return {
+    outlet,
+    topic: topics.map((topic) => AROUND_TOPIC_TITLES[topic]).find(Boolean) ?? null,
+    headline: (cut < 0 ? text : text.slice(0, cut)).trim(),
+    summary: cut < 0 ? '' : text.slice(cut + 1).trim(),
+  };
+}
+
 /** Keep the same saved details visible in cards, reply panels and full post pages. */
 export default function PostMetadata({ post, onClick, spacing = 'mx-4 mb-2' }: {
   post: Post;

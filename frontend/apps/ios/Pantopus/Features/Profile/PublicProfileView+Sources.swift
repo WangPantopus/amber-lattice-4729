@@ -43,6 +43,8 @@ extension PublicProfileView {
         let more: (@MainActor () -> Void)? = isOwner || preview != nil ? nil : openOverflow
         let refresh: @MainActor () async -> Void = isOwner ? refreshOwnPage : refreshProfile
         let pieces: (@MainActor () -> Void)? = isOwner ? openOwnerPieces : nil
+        var editPiece: (@MainActor (ProfilePieceEditorStart) -> Void)?
+        if isOwner, preview == nil { editPiece = { start in open(.piece(start)) } }
         let context = blockContext(payload, page: page, content: content, isOwner: isOwner)
         return ProfileSourcesPage(
             content: content,
@@ -56,6 +58,7 @@ extension PublicProfileView {
             moreLabel: "More: follow, block or report",
             onRefresh: refresh,
             onManagePieces: pieces,
+            onEditPiece: editPiece,
             actions: { sourcesActions(payload, content: content, isOwner: isOwner, preview: preview) },
             ownerTop: { sourcesOwnerTop(payload, isOwner: isOwner) },
             ownerBottom: { sourcesOwnerBottom(isOwner: isOwner) }
@@ -96,10 +99,6 @@ extension PublicProfileView {
         viewModel.showOverflow = true
     }
 
-    private func openOwnerPieces() {
-        showOwnerPieces = true
-    }
-
     private func refreshProfile() async {
         await viewModel.refresh()
     }
@@ -132,7 +131,7 @@ private struct SourcesSheets: ViewModifier {
                     set: { if $0 == nil { page.closePiece() } }
                 )
             ) { _ in
-                ProfilePieceSheet(model: page) { page.closePiece() }
+                ProfilePieceSheet(model: page, isOwner: content.isOwner && view.viewModel.previewAudience == nil) { page.closePiece() }
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: view.$showOwnerPieces) {

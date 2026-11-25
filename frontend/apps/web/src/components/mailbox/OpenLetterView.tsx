@@ -25,6 +25,7 @@ import * as api from '@pantopus/api';
 import type { EscrowClaimErrorCode, EscrowedMailView } from '@pantopus/api';
 import { BadgeCheck, Clock, Loader2, Mail, MailCheck, MailX, type LucideIcon } from 'lucide-react';
 import { confirmStore } from '@/components/ui/confirm-store';
+import { isMissingName } from '@/components/profile/NamePrompt';
 import { launchFeatures } from '@/lib/featureFlags';
 import CardLinkScene, { cardLinkStyles as table, type CardLinkSceneFront } from './cards/CardLinkScene';
 import { PaperFront } from './cards/CardPaper';
@@ -329,6 +330,79 @@ function CodeSignIn({ letter, look, mailId, token, loginHref, onSignedIn }: {
 }
 
 /**
+ * Before it's opened, an account with no name (a code just made it, or an older one that never gave one) gives its name,
+ * so the sender's "arrived" notice and their Sent list say who has it instead of "They". Saved on the profile, as
+ * the app's own name prompt does, which then doesn't ask again.
+ */
+function NameStep({ letter, look, busy, onOpen }: {
+  letter: LinkPageLetter;
+  look: Pick<CodeLook, 'primary' | 'field' | 'line' | 'alert'>;
+  busy: boolean;
+  onOpen: () => void;
+}) {
+  const card = Boolean(letter.card);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  const first = useRef<HTMLInputElement>(null);
+  useEffect(() => { first.current?.focus(); }, []);
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (saving || busy) return;
+    if (!firstName.trim() || !lastName.trim()) { setSaid('Enter your first and last name.'); return; }
+    setSaving(true);
+    setSaid(null);
+    try {
+      await api.users.updateProfile({ firstName: firstName.trim(), lastName: lastName.trim() });
+      onOpen();
+    } catch (err: unknown) {
+      setSaid(serverWords(err) ?? 'Your name wasn’t saved. Check your connection and try again.');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <form className="flex w-full flex-col gap-2.5" onSubmit={(event) => void save(event)} data-testid="cardLinkNameStep">
+      <p className={look.line}>What’s your name? {letter.senderName} will see it, so they know the {card ? 'card' : 'letter'} reached you.</p>
+      <input ref={first} className={look.field} value={firstName} onChange={(event) => setFirstName(event.target.value)}
+        autoComplete="given-name" placeholder="First name" aria-label="First name" maxLength={255} data-testid="cardLinkFirstName" />
+      <input className={look.field} value={lastName} onChange={(event) => setLastName(event.target.value)}
+        autoComplete="family-name" placeholder="Last name" aria-label="Last name" maxLength={255} data-testid="cardLinkLastName" />
+      <button type="submit" className={look.primary} disabled={saving || busy} data-testid="cardLinkNameOpen">
+        {saving || busy ? <Loader2 size={18} className="animate-spin" /> : null}
+        {card ? 'Open your card' : 'Read the letter'}
+      </button>
+      {said ? <div role="alert" className={look.alert}>{said}</div> : null}
+    </form>
+  );
+}
+
+/**
+ * After the name, for someone with no home yet: the card is already theirs, and adding their home address (the app's
+ * own Add home page) is offered, never needed. It's for digital cards, mail and coupons only, never paper, and the words say so.
+ */
+function HomeStep({ letter, look, letterHref }: {
+  letter: LinkPageLetter;
+  look: Pick<CodeLook, 'primary' | 'secondary' | 'line'>;
+  letterHref: string;
+}) {
+  const card = Boolean(letter.card);
+  return (
+    <div className="flex w-full flex-col gap-2.5" data-testid="cardLinkHomeStep">
+      <p className={look.line}>
+        Your {card ? 'card' : 'letter'} is in your Pantopus mailbox. If you like, add your home address too, so it’s
+        easier to get digital cards, digital mail and digital coupons here later. All of it is digital: nothing physical
+        is sent to your door.
+      </p>
+      <Link href={letterHref} className={look.primary} data-testid="cardLinkHomeSkip">{card ? 'Open your card' : 'Read the letter'}</Link>
+      <Link href="/app/homes/new" className={look.secondary} data-testid="cardLinkHomeAdd">Add my home address</Link>
+    </div>
+  );
+}
+
+/**
  * Signed out: sign in or create an account with the address it was sent to. Without links (Look it over) it's drawn
  * as the page shows it, and does nothing.
  */
@@ -433,6 +507,12 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
   const [switching, setSwitching] = useState(false);
   // A card by link someone already has: signed in, the person who has it goes on to it.
   const [checkingTaken, setCheckingTaken] = useState(false);
+  // An account with no name gives one before it opens (NameStep). Known once read: null until then.
+  const [hasName, setHasName] = useState<boolean | null>(null);
+  const [askName, setAskName] = useState(false);
+  // Someone who just gave their name and has no home yet is offered one once the card is theirs (HomeStep).
+  const justNamed = useRef(false);
+  const [askHome, setAskHome] = useState(false);
 
   const here = `/open/${mailId}?token=${encodeURIComponent(token)}`;
   const loginHref = `/login?redirectTo=${encodeURIComponent(here)}`;
@@ -470,11 +550,33 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taken, signedIn, mailId, token]);
 
+  // The sender's notice names whoever opens it: an account with no name is asked for one first (NameStep). A profile
+  // that can't be read doesn't stop it opening.
+  const readName = async (): Promise<boolean> => {
+    const profile = await api.users.getMyProfile().catch(() => null);
+    const named = !profile || profile.accountType === 'business' || !isMissingName(profile);
+    setHasName(named);
+    if (!named) setAskName(true);
+    return named;
+  };
+
+  // Signed in, it asks at once: a code sign-in remounts this page, so the claim it started never asks.
+  const ready = state.phase === 'ready';
+  useEffect(() => {
+    if (signedIn !== true || !ready || hasName !== null) return;
+    void readName();
+  }, [signedIn, ready, hasName]);
+
   const claim = async () => {
     setClaiming(true);
     setProblem(null);
+    if (hasName === null && !(await readName())) { setClaiming(false); return; }
     try {
       await api.mailCompose.claimEscrowedMail(mailId, token);
+      if (justNamed.current) {
+        const mine = await api.homes.getMyHomes().catch(() => null);
+        if (mine && mine.homes.length === 0) { setAskHome(true); setClaiming(false); return; }
+      }
       router.push(letterHref);
     } catch (err: unknown) {
       const code = (err as { code?: unknown } | null)?.code;
@@ -508,6 +610,8 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
       await api.auth.logout();
       setWrongAccount(false);
       setAccount('');
+      setHasName(null);
+      setAskName(false);
       setProblem(null);
     } catch {
       setProblem('SIGN_OUT');
@@ -624,7 +728,21 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
           </div>
         )}
 
-        {signedIn === true && !wrongAccount && (
+        {signedIn === true && !wrongAccount && askHome && (
+          <div className={table.actions}>
+            <HomeStep letter={letter} look={TABLE_LOOK} letterHref={letterHref} />
+          </div>
+        )}
+
+        {signedIn === true && !wrongAccount && askName && !askHome && (
+          <div className={table.actions}>
+            <NameStep letter={letter} look={TABLE_LOOK} busy={claiming} onOpen={() => { justNamed.current = true; setHasName(true); void claim(); }} />
+            {problem === 'MAIL_OWN_LETTER' && <div role="alert" className={table.alert}>{ownWords}</div>}
+            {problem === 'FAILED' && <div role="alert" className={table.alert}>Couldn’t add the card to your mailbox. Check your connection and try again.</div>}
+          </div>
+        )}
+
+        {signedIn === true && !wrongAccount && hasName !== null && !askName && (
           <div className={table.actions}>
             <button type="button" data-testid="cardLinkOpen" onClick={() => void claim()} disabled={claiming} className={table.primary}>
               {claiming ? <Loader2 size={18} className="animate-spin" /> : null}
@@ -673,7 +791,25 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
         </div>
       )}
 
-      {signedIn === true && !wrongAccount && (
+      {signedIn === true && !wrongAccount && askHome && (
+        <div className="mt-5 flex flex-col gap-2.5">
+          <HomeStep letter={letter} look={PANEL_LOOK} letterHref={letterHref} />
+        </div>
+      )}
+
+      {signedIn === true && !wrongAccount && askName && !askHome && (
+        <div className="mt-5 flex flex-col gap-2.5">
+          <NameStep letter={letter} look={PANEL_LOOK} busy={claiming} onOpen={() => { justNamed.current = true; setHasName(true); void claim(); }} />
+          {problem === 'MAIL_OWN_LETTER' && <div role="alert" className={PANEL_LOOK.alert}>{ownWords}</div>}
+          {problem === 'FAILED' && (
+            <p role="alert" className="text-[13px] text-app-error leading-[19px] text-center">
+              Couldn’t add the {noun} to your mailbox. Check your connection and try again.
+            </p>
+          )}
+        </div>
+      )}
+
+      {signedIn === true && !wrongAccount && hasName !== null && !askName && (
         <div className="mt-5 flex flex-col gap-2.5">
           <button type="button" onClick={() => void claim()} disabled={claiming} className={primaryButton}>
             {claiming ? <Loader2 size={18} className="animate-spin" /> : <MailCheck size={18} strokeWidth={2.25} />}

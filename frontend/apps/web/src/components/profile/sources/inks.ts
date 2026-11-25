@@ -10,5 +10,6 @@ export function inkOf(value: unknown): ProfileInk {
 /** "Seen · By mail, June 2026", or the word alone. */
 export function howText(ink: ProfileInk, how?: string | null): string {
   const detail = typeof how === 'string' ? how.trim() : '';
-  return detail ? `${INK_WORD[ink]} · ${detail}` : INK_WORD[ink];
+  // A how that only repeats the word ("Said") is said once.
+  return detail && detail.toLowerCase() !== INK_WORD[ink].toLowerCase() ? `${INK_WORD[ink]} · ${detail}` : INK_WORD[ink];
 }

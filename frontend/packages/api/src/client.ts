@@ -5,6 +5,7 @@
 // ============================================================
 
 import { API_BASE_URL } from '@pantopus/utils';
+import { PROFILE_PARTS, PROFILE_PARTS_HEADER } from './endpoints/profileParts';
 import {
   HttpError,
   buildFullPath,
@@ -391,7 +392,8 @@ export function getApiBaseUrl(): string {
  */
 export function fetchAuthHeaders(method = 'GET'): Record<string, string> {
   if (_isWeb) {
-    const headers: Record<string, string> = { 'x-token-transport': 'cookie' };
+    // Which build is asking, as every other request says (the assistant's chat stream uses these headers too).
+    const headers: Record<string, string> = { 'x-token-transport': 'cookie', 'X-Client-Platform': WEB_BUILD };
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
       const csrf = getCookie('pantopus_csrf');
       if (csrf) headers['x-csrf-token'] = csrf;
@@ -1068,11 +1070,13 @@ export async function apiRequest<T = any>(
   data?: any,
   config?: ApiRequestConfig
 ): Promise<T> {
+  const profilePage = typeof url === 'string' && url.startsWith('/api/profile-page');
   const response = await apiClient.request<T>({
     method,
     url,
     data,
     ...config,
+    ...(profilePage ? { headers: { ...(config?.headers as Record<string, string> | undefined), [PROFILE_PARTS_HEADER]: PROFILE_PARTS } } : {}),
   });
   return response.data;
 }

@@ -140,6 +140,48 @@ public struct PulsePostDetailLoadedContent: View {
         return { onOpenProfile(userId) }
     }
 
+    /// A story Today's Around you posted for an outlet: named for the outlet, its headline apart from the summary.
+    private var story: PulseStory? {
+        PulseStory(aroundYou: detail.post.aroundYou, source: detail.post.source, text: detail.post.content)
+    }
+
+    /// The post's kind as its chip names it.
+    private var intentLabel: String? {
+        PulseComposePurpose.allCases.first { $0.postType == detail.post.postType }?.label
+    }
+
+    /// Who the post is from: the outlet that published a story, else its author.
+    @ViewBuilder private var authorHeader: some View {
+        if let story, let outlet = story.outlet {
+            PulseStoryPageHeader(
+                outlet: outlet,
+                via: detail.authorDisplayName,
+                time: detail.timeAndLocality,
+                chipLabel: story.topic ?? intentLabel ?? detail.intent.label,
+                intent: detail.intent
+            )
+        } else {
+            PostAuthorHeader(
+                displayName: detail.authorDisplayName,
+                avatarURL: detail.authorAvatarURL,
+                isVerified: detail.authorVerified,
+                identity: detail.authorIdentity,
+                timeAndLocality: detail.timeAndLocality,
+                intent: detail.intent,
+                intentLabel: intentLabel,
+                onAvatarTap: authorProfileTap,
+                momentsUserId: detail.post.creator?.identityType == "business"
+                    ? detail.post.creator?.businessPageId : detail.post.userId
+            )
+        }
+    }
+
+    /// The post's title, or a story's headline.
+    private var titleText: String? {
+        let title = (story?.headline ?? detail.post.title)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title?.isEmpty == false ? title : nil
+    }
+
     public var body: some View {
         ContentDetailShell(
             title: "Post",
@@ -154,24 +196,13 @@ public struct PulsePostDetailLoadedContent: View {
                         RemovedPostNotice()
                             .padding(.horizontal, Spacing.s4)
                     }
-                    PostAuthorHeader(
-                        displayName: detail.authorDisplayName,
-                        avatarURL: detail.authorAvatarURL,
-                        isVerified: detail.authorVerified,
-                        identity: detail.authorIdentity,
-                        timeAndLocality: detail.timeAndLocality,
-                        intent: detail.intent,
-                        intentLabel: PulseComposePurpose.allCases.first { $0.postType == detail.post.postType }?.label,
-                        onAvatarTap: authorProfileTap,
-                        momentsUserId: detail.post.creator?.identityType == "business"
-                            ? detail.post.creator?.businessPageId : detail.post.userId
-                    )
+                    authorHeader
                     // How it ended, or when a Heads-up ends (Pulse S7).
                     if let status = detail.status {
                         PulsePostStatusPill(status: status, postId: detail.post.id)
                             .padding(.horizontal, Spacing.s4)
                     }
-                    if let title = detail.post.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+                    if let title = titleText {
                         Text(title)
                             .pantopusTextStyle(.h3)
                             .foregroundStyle(Theme.Color.appText)
@@ -184,7 +215,7 @@ public struct PulsePostDetailLoadedContent: View {
             },
             body: {
                 BodyReactionsBody(
-                    body: detail.post.content,
+                    body: story?.summary ?? detail.post.content,
                     media: detail.media,
                     intent: detail.intent,
                     reactions: detail.reactions,
@@ -212,7 +243,8 @@ public struct PulsePostDetailLoadedContent: View {
                     onCommentDelete: onCommentDelete,
                     aboveReactions: quotedCard,
                     belowReactions: belowReactions,
-                    repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil
+                    repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil,
+                    composerPrompt: story == nil ? nil : "What do you think? People around here can read your reply…"
                 ) { userId in
                     onOpenProfile(userId)
                 }

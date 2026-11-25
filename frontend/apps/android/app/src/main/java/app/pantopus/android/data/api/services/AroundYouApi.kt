@@ -1,13 +1,16 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.saved_places.AreaAroundListBody
 import app.pantopus.android.data.api.models.saved_places.AreaTodayBody
 import app.pantopus.android.data.api.models.saved_places.AroundYouDto
+import app.pantopus.android.data.api.models.saved_places.AroundYouListPageDto
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /** Around you, Today's second half: one read per kind of place Today shows (`backend/services/aroundYouService.js`). */
 interface AroundYouApi {
@@ -39,4 +42,27 @@ interface AroundYouApi {
         @Path("id") id: String,
         @Header("If-None-Match") etag: String?,
     ): Response<AroundYouDto>
+
+    /**
+     * The same three routes with `list` (and `before`, where the list continues): a page of one of Around you's lists
+     * behind the first page (a topic's, "Talked about", or under `all` the earlier stories).
+     */
+    @GET("api/homes/{id}/around")
+    suspend fun homeAroundList(
+        @Path("id") id: String,
+        @Query("list") list: String,
+        @Query("before") before: String?,
+    ): AroundYouListPageDto
+
+    @GET("api/saved-places/{id}/around")
+    suspend fun savedPlaceAroundList(
+        @Path("id") id: String,
+        @Query("list") list: String,
+        @Query("before") before: String?,
+    ): AroundYouListPageDto
+
+    @POST("api/saved-places/area/around")
+    suspend fun areaAroundList(
+        @Body body: AreaAroundListBody,
+    ): AroundYouListPageDto
 }

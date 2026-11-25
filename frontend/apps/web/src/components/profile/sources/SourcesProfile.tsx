@@ -6,15 +6,19 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
 import { MomentAvatar } from '@/components/moments/MomentLinks';
-import { Block, HeaderLines, card, drawable, pieceInks, type BlockContext } from './blocks';
-import { InkGlyph, InkLine, howText, inkOf, type Target } from './ink';
+import { Blocks, HeaderLines, card, drawable, pieceInks, type BlockContext } from './blocks';
+import { InkGlyph, InkLine, howText, type Target } from './ink';
 import { RingMark, yearsText } from './RingArt';
-import Picture from './Picture';
+import PieceView from './PieceView';
+import PieceEditor, { type PieceEditorStart } from './PieceEditor';
+import OwnerWork from './OwnerWork';
+import RoleEditor from './RoleEditor';
+import CircleView from './CircleView';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -68,9 +72,15 @@ export function drawnTabs(page: ProfilePage): ProfilePageTab[] {
 /** The first tab's opening group of untitled lines (`key_lines`) sits in the header card (board 1). */
 function splitHeaderLines(tab: ProfilePageTab | undefined) {
   const blocks = tab?.blocks ?? [];
-  const first = blocks[0] as ProfileLinesBlock | undefined;
-  if (first?.kind === 'lines' && (first.id === 'key_lines' || !first.title)) return { header: first, rest: blocks.slice(1) };
-  return { header: null, rest: blocks };
+  // `key_lines` by its id wherever it is (a `notice` may come first on the person's own page); else, as before, an
+  // untitled group of lines that opens the tab.
+  let at = blocks.findIndex((block) => block?.kind === 'lines' && (block as ProfileLinesBlock).id === 'key_lines');
+  if (at < 0) {
+    const first = blocks[0] as ProfileLinesBlock | undefined;
+    at = first?.kind === 'lines' && !first.title ? 0 : -1;
+  }
+  if (at < 0) return { header: null, rest: blocks };
+  return { header: blocks[at] as ProfileLinesBlock, rest: blocks.filter((_, i) => i !== at) };
 }
 
 function SummaryWell({ summary, onOpenRecord }: { summary: ProfilePageSummary; onOpenRecord: (() => void) | null }) {
@@ -156,43 +166,6 @@ function OpenedSheet({ opened, onClose, onRetry }: { opened: Opened | null; onCl
         {(state.lines || []).filter((line) => line?.text).map((line, i) => <InkLine key={i} line={line} />)}
       </div>
     );
-  } else if (state && typeof state === 'object' && 'piece' in state && state.piece) {
-    const piece = state.piece;
-    const ink = inkOf(piece.ink);
-    title = piece.title || title;
-    const photos = (piece.media || []).filter((m) => m?.kind === 'photo' && (m.thumbnail_url || m.url));
-    body = (
-      <div className="flex flex-col gap-4">
-        {photos.length > 0 ? (
-          <ul className="grid grid-cols-2 gap-2">
-            {photos.map((m, i) => (
-              <li key={i} className={`relative overflow-hidden rounded-xl bg-app-surface-sunken ${i === 0 ? 'col-span-2 aspect-[3/2]' : 'aspect-square'}`}>
-                <Picture src={i === 0 ? m.url : m.thumbnail_url || m.url} className="absolute inset-0 w-full h-full object-cover" />
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="flex items-center gap-1.5 text-xs leading-4 text-app-muted"><InkGlyph ink={ink} inline />{howText(ink, piece.how)}</p>
-        {piece.description?.text ? <InkLine line={piece.description} /> : null}
-        {(piece.links || []).length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {piece.links.filter((l) => /^https?:\/\//i.test(l?.url || '')).map((l, i) => (
-              <li key={i}>
-                <a href={l.url} target="_blank" rel="noopener noreferrer nofollow" className="block rounded-xl border border-app px-3.5 py-2.5 hover-bg-app">
-                  <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{l.title || l.site || l.url}</span>
-                  {l.site ? <span className="block text-xs leading-4 text-app-muted">{l.site}</span> : null}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {(piece.skills || []).length > 0 ? (
-          <ul className="flex flex-wrap gap-2" aria-label="Skills used">
-            {piece.skills.map((skill) => <li key={skill} className="inline-flex items-center min-h-7 px-2.5 rounded-full bg-app-surface-sunken text-xs leading-4 font-semibold text-app-secondary">{skill}</li>)}
-          </ul>
-        ) : null}
-      </div>
-    );
   }
   return (
     <BottomSheet open={Boolean(opened)} onClose={onClose} title={title}>
@@ -251,6 +224,12 @@ export interface SourcesProfileProps {
   onConnect?: () => void;
   onReport?: (() => void) | null;
   onJoin?: (() => void) | null;
+  /** The owner (not previewing): their Work can be changed here; call after a change to read the page again. */
+  onChanged?: (() => void) | null;
+  /** Any signed-in view (not a preview): read the page again after the viewer changed a tie of their own on it. */
+  onReread?: (() => void) | null;
+  /** False while this is a stand-in page (a signed-in visit draws the visitor's page first): it opens no piece. */
+  ready?: boolean;
 }
 
 /**
@@ -260,7 +239,7 @@ export interface SourcesProfileProps {
  */
 export default function SourcesProfile({
   page, viewerId, actions, afterHeader, afterPage, postsReadable, previewAs = null, viaLink = null, signedOut = false,
-  onDoor, onConnect, onReport, onJoin,
+  onDoor, onConnect, onReport, onJoin, onChanged = null, onReread = null, ready = true,
 }: SourcesProfileProps) {
   const router = useRouter();
   const tabsId = useId();
@@ -269,13 +248,38 @@ export default function SourcesProfile({
   const name = header.name?.trim() || 'Pantopus member';
   const firstName = header.first_name?.trim() || name.split(/\s+/)[0];
   const inert = Boolean(previewAs);
+  // The owner changes their Work here (phase 2): an empty Work still has its tab for them, with "Add a piece".
+  const owner = page.view === 'owner' && !previewAs && Boolean(onChanged);
   // The first tab's key lines sit in the header card; a first tab left with nothing else is not drawn as a tab.
   const { headerLines, tabs } = useMemo(() => {
     const all = drawnTabs(page);
     const split = splitHeaderLines(all[0]);
     const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: split.rest } : tab)).filter((tab) => tab.blocks.length > 0);
+    if (owner && !rest.some((tab) => tab.key === 'work')) rest.splice(Math.min(1, rest.length), 0, { key: 'work', title: 'Work', blocks: [] });
     return { headerLines: split.header, tabs: rest };
+  }, [page, owner]);
+  const [editing, setEditing] = useState<PieceEditorStart | null>(null);
+  // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
+  const [tiesOn, setTiesOn] = useState(false);
+  // The work circle opened (board 9), and whether this page put `?circle=1` in the history.
+  const [circle, setCircle] = useState<'loading' | 'failed' | ProfileCircleRead | null>(null);
+  const pushedCircle = useRef(false);
+  const circleRound = useRef(0);
+  // A role or school being added (`role: null`) or changed.
+  const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
+  // Each new read of the page (after a change) reads the owner's offers again.
+  // The first page is read with round 0 already, so only a later read of the page counts.
+  const [pageRound, setPageRound] = useState(0);
+  const roundPage = useRef(page);
+  useEffect(() => {
+    if (roundPage.current === page) return;
+    roundPage.current = page;
+    setPageRound((n) => n + 1);
   }, [page]);
+  const workBlocks = useMemo(() => tabs.find((tab) => tab.key === 'work')?.blocks ?? [], [tabs]);
+  const skillsSuggested = useMemo(() => workBlocks.flatMap((block) => (block.kind === 'can_do'
+    ? ((block as ProfileCanDoBlock).skills || []).map((skill) => skill.name || skill.text).filter(Boolean) : [])), [workBlocks]);
+  const pinnedCount = (workBlocks.find((block) => block.kind === 'pieces' && block.id === 'pinned') as ProfilePiecesBlock | undefined)?.pieces?.length ?? 0;
   const pieces = useMemo(() => pieceInks(tabs.flatMap((tab) => tab.blocks)), [tabs]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [explainerOpen, setExplainerOpen] = useState(false);
@@ -300,8 +304,9 @@ export default function SourcesProfile({
     });
   }, [tabsId]);
 
-  const load = useCallback((what: { kind: 'month'; month: string } | { kind: 'piece'; id: string }) => {
+  const load = useCallback((what: { kind: 'month'; month: string } | { kind: 'piece'; id: string }, quiet = false) => {
     const round = ++openRound.current;
+    pieceLoading.current = what.kind === 'piece' ? what.id : null;
     const options = previewAs ? { as: previewAs } : undefined;
     setOpened({ ...what, state: 'loading' } as Opened);
     const read: Promise<ProfileMonthRead | ProfilePieceRead> = viaLink
@@ -312,13 +317,138 @@ export default function SourcesProfile({
         ? api.profilePage.getMonth(personId, what.month, options)
         : api.profilePage.getPiece(personId, what.id, options);
     read.then(
-      (value) => { if (round === openRound.current) setOpened({ ...what, state: value } as Opened); },
+      (value) => { if (round === openRound.current && mountedRef.current) setOpened({ ...what, state: value } as Opened); },
       (err: { statusCode?: number } | null) => {
-        if (round !== openRound.current) return;
+        // A page that is already gone (a signed-in visit draws the visitor's page for a moment first) does nothing,
+        // so it never takes the piece out of the address before the viewer's own page reads it.
+        if (round !== openRound.current || !mountedRef.current) return;
+        // A piece opened from its address that this viewer may not see: the plain profile, nothing said about it.
+        // Opened from its address: whatever stops it (404, a failed read), nothing opens and the address loses ?piece.
+        if (quiet) { dropPieceAddress.current(); return; }
         setOpened({ ...what, state: err?.statusCode === 404 ? 'gone' : 'failed' } as Opened);
       },
     );
   }, [personId, previewAs, viaLink]);
+
+  // An opened piece has its own address, `?piece=<id>` on this page (board 8 is a screen of its own on a phone): the
+  // browser's Back closes it, a reload opens it again, and the address can be sent. Kept in the browser's own history
+  // (opening one asks the server for the piece and nothing else); Back and Forward are followed through `popstate`.
+  const pushedPiece = useRef(false);
+  const pieceLoading = useRef<string | null>(null);
+  const pieceInAddress = () => {
+    const id = new URLSearchParams(window.location.search).get('piece');
+    return id && /^[0-9a-f-]{8,64}$/i.test(id) ? id : null;
+  };
+  const addressFor = (id: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    if (id) params.set('piece', id); else params.delete('piece');
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  };
+  const dropPieceAddress = useRef(() => {});
+  dropPieceAddress.current = () => {
+    openRound.current += 1;
+    setOpened(null);
+    pushedPiece.current = false;
+    pieceLoading.current = null;
+    if (pieceInAddress()) window.history.replaceState(window.history.state, '', addressFor(null));
+  };
+  const openPiece = useCallback((id: string) => {
+    if (pieceInAddress() !== id) {
+      window.history.pushState(window.history.state, '', addressFor(id));
+      pushedPiece.current = true;
+    }
+    load({ kind: 'piece', id });
+  }, [load]);
+  const closePiece = useCallback(() => {
+    if (pushedPiece.current) { pushedPiece.current = false; window.history.back(); return; }
+    dropPieceAddress.current();
+  }, []);
+  const loadCircle = useCallback((quiet = false) => {
+    const round = ++circleRound.current;
+    // Open from now on, so the address isn't followed into a second read.
+    circleOpen.current = true;
+    setCircle('loading');
+    const read = viaLink ? api.profilePage.getLinkCircle(viaLink.username, viaLink.key) : api.profilePage.getCircle(personId, previewAs ? { as: previewAs } : undefined);
+    Promise.resolve(read).then(
+      (value) => { if (round === circleRound.current && mountedRef.current) setCircle(value); },
+      () => {
+        if (round !== circleRound.current || !mountedRef.current) return;
+        // Opened from its address and it doesn't open (404, a failed read): the plain page, the address cleaned.
+        if (quiet) { dropCircleAddress(); return; }
+        setCircle('failed');
+      },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dropCircleAddress reads only refs and the address
+  }, [personId, previewAs, viaLink]);
+  const circleInAddress = () => new URLSearchParams(window.location.search).get('circle') === '1';
+  const circleAddress = (on: boolean) => {
+    const params = new URLSearchParams(window.location.search);
+    if (on) params.set('circle', '1'); else params.delete('circle');
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  };
+  const dropCircleAddress = () => {
+    circleRound.current += 1;
+    circleOpen.current = false;
+    setCircle(null);
+    pushedCircle.current = false;
+    if (circleInAddress()) window.history.replaceState(window.history.state, '', circleAddress(false));
+  };
+  const openCircle = useCallback(() => {
+    if (!circleInAddress()) {
+      window.history.pushState(window.history.state, '', circleAddress(true));
+      pushedCircle.current = true;
+    }
+    loadCircle();
+  }, [loadCircle]);
+  const closeCircle = () => {
+    if (pushedCircle.current) { pushedCircle.current = false; window.history.back(); return; }
+    dropCircleAddress();
+  };
+  const circleOpen = useRef(false);
+  if (circle !== null) circleOpen.current = true;
+  const readCirclePieces = useCallback((userId: string) => (viaLink
+    ? api.profilePage.getLinkCirclePieces(viaLink.username, viaLink.key, userId)
+    : api.profilePage.getCirclePieces(personId, userId, previewAs ? { as: previewAs } : undefined)), [personId, previewAs, viaLink]);
+
+  const followAddress = useRef(() => {});
+  const mountedRef = useRef(false);
+  followAddress.current = () => {
+    // The circle's address (`?circle=1`), then a piece's.
+    if (circleInAddress()) { if (!circleOpen.current) loadCircle(true); } else if (circleOpen.current) { pushedCircle.current = false; circleRound.current += 1; circleOpen.current = false; setCircle(null); }
+    const id = pieceInAddress();
+    if (id) {
+      // Opened from its address (a reload, a sent link, Forward): a piece this viewer may not see opens nothing.
+      // One read: not again while the same piece is being read or is open.
+      if (pieceLoading.current !== id) load({ kind: 'piece', id }, true);
+    } else if (pieceLoading.current) {
+      pushedPiece.current = false;
+      pieceLoading.current = null;
+      openRound.current += 1;
+      setOpened(null);
+    }
+  };
+  useEffect(() => {
+    mountedRef.current = true;
+    const onPop = () => followAddress.current();
+    window.addEventListener('popstate', onPop);
+    return () => { mountedRef.current = false; window.removeEventListener('popstate', onPop); };
+  }, []);
+  // `?tab=work` (the notification "asked you to sign" links there): open that tab on arrival, once.
+  const tabFromAddress = useRef(false);
+  useEffect(() => {
+    if (!ready || tabFromAddress.current) return;
+    const key = new URLSearchParams(window.location.search).get('tab');
+    if (!key) return;
+    // Opened and scrolled to, as a tap on the tab would (the arrival is for that tab).
+    if (tabs.some((tab) => tab.key === key)) { tabFromAddress.current = true; openTab(key); }
+  }, [ready, tabs, openTab]);
+  // The address is followed once the page is this viewer's own (`ready`): a signed-in visit draws the visitor's page
+  // for a moment first, and that page reads nothing.
+  useEffect(() => {
+    if (ready) followAddress.current();
+  }, [ready]);
 
   const target = useCallback((link: ProfileLink | null | undefined): Target | null => {
     if (!link || typeof link !== 'object' || typeof link.kind !== 'string') return null;
@@ -330,7 +460,18 @@ export default function SourcesProfile({
       case 'tab': { const tab = value('tab'); return tab && tabs.some((t) => t.key === tab) ? { onClick: () => openTab(tab) } : null; }
       case 'record': return tabs.some((t) => t.key === 'record') ? { onClick: () => openTab('record') } : null;
       case 'month': { const month = value('month'); return month && /^\d{4}-\d{2}$/.test(month) ? { onClick: () => load({ kind: 'month', month }) } : null; }
-      case 'piece': { const id = value('id'); return id ? { onClick: () => load({ kind: 'piece', id }) } : null; }
+      case 'piece': {
+        const id = value('id');
+        if (!id) return null;
+        // A piece signed on someone else's work ("With Maria Kovács") opens on its owner's page.
+        const who = value('username') ?? value('user_id');
+        const owner = value('user_id');
+        if (who && (owner ? owner !== personId : value('username') !== header.username)) {
+          const path = value('username') ? `/${encodeURIComponent(value('username')!)}` : `/u/${encodeURIComponent(owner!)}`;
+          return { href: `${path}?piece=${encodeURIComponent(id)}` };
+        }
+        return { onClick: () => openPiece(id) };
+      }
       case 'business': { const username = value('username'); return username ? { href: `/b/${encodeURIComponent(username)}` } : null; }
       case 'profile': { const who = value('username') ?? value('user_id'); return who ? { href: buildUserProfilePath(who) } : null; }
       case 'plan': { const id = value('id'); return id ? { href: buildPlanPath(id) } : null; }
@@ -348,12 +489,21 @@ export default function SourcesProfile({
         return id ? { onClick: () => router.push(`/app/moments?person=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(back)}`) } : null;
       }
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
+      case 'circle': return { onClick: () => openCircle() };
       default: return null;
     }
-  }, [tabs, openTab, load, header.username, router, viaLink]);
+  }, [tabs, openTab, load, openPiece, openCircle, header.username, personId, router, viaLink]);
+
+  const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
+  const personTarget = useCallback(
+    (who: { user_id: string | null; username: string | null }) => target({ kind: 'profile', user_id: who.user_id, username: who.username } as ProfileLink),
+    [target],
+  );
 
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
+    onEditRole: owner ? (role: ProfileRoleLine) => setRoleEdit({ role }) : null,
+    onReread: inert ? null : onReread ?? onChanged,
     onDoor: onDoor ?? (() => {}),
     onConnect: onConnect ?? (() => {}),
   };
@@ -482,7 +632,17 @@ export default function SourcesProfile({
                 inert={inert || undefined}
               >
                 {tabs.length > 1 ? <h2 className="hidden print:block break-after-avoid text-lg font-bold text-app pt-2">{tab.title}</h2> : null}
-                {blocks.map((block, i) => <Block key={`${tab.key}-${block.id ?? i}`} block={block} ctx={ctx} />)}
+                {owner && tab.key === 'work' ? (
+                  <OwnerWork
+                    round={pageRound}
+                    onAdd={() => setEditing({ kind: 'new' })}
+                    onOffer={(offer) => setEditing({ kind: 'offer', offer })}
+                    onTies={setTiesOn}
+                    onAnswered={() => onChanged?.()}
+                    onAddRole={() => setRoleEdit({ role: null })}
+                  />
+                ) : null}
+                <Blocks blocks={blocks} ctx={ctx} keyPrefix={tab.key} />
               </div>
             );
           })}
@@ -514,10 +674,58 @@ export default function SourcesProfile({
       </div>
       <InksExplainer open={explainerOpen} onClose={() => setExplainerOpen(false)} firstName={firstName} />
       <OpenedSheet
-        opened={opened}
-        onClose={() => { openRound.current += 1; setOpened(null); }}
-        onRetry={() => { if (opened) load(opened.kind === 'month' ? { kind: 'month', month: opened.month } : { kind: 'piece', id: opened.id }); }}
+        opened={opened?.kind === 'month' ? opened : null}
+        onClose={closeOpened}
+        onRetry={() => { if (opened?.kind === 'month') load({ kind: 'month', month: opened.month }); }}
       />
+      <PieceView
+        state={opened?.kind === 'piece' ? opened.state : null}
+        onClose={closePiece}
+        onRetry={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); }}
+        firstName={firstName}
+        owner={{ name, portraitUrl: header.portrait_url ?? null }}
+        target={personTarget}
+        onChange={owner ? (piece) => setEditing({ kind: 'edit', piece }) : null}
+        viewerId={viewerId}
+        onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); (onReread ?? onChanged)?.(); }}
+      />
+      <CircleView
+        open={circle !== null}
+        state={circle}
+        onClose={closeCircle}
+        onRetry={() => loadCircle()}
+        firstName={firstName}
+        center={{ name, portraitUrl: header.portrait_url ?? null }}
+        readPieces={readCirclePieces}
+        target={target}
+      />
+      {owner ? (
+        <PieceEditor
+          start={editing}
+          onClose={() => setEditing(null)}
+          onSaved={({ id }) => {
+            setEditing(null);
+            onChanged?.();
+            if (opened?.kind === 'piece' && opened.id === id) load({ kind: 'piece', id });
+          }}
+          onRemoved={(id) => {
+            setEditing(null);
+            if (opened?.kind === 'piece' && opened.id === id) closePiece();
+            onChanged?.();
+          }}
+          skillsSuggested={skillsSuggested}
+          pinnedCount={pinnedCount}
+          tiesOn={tiesOn}
+        />
+      ) : null}
+      {owner ? (
+        <RoleEditor
+          open={Boolean(roleEdit)}
+          role={roleEdit?.role ?? null}
+          onClose={() => setRoleEdit(null)}
+          onSaved={() => { setRoleEdit(null); onChanged?.(); }}
+        />
+      ) : null}
     </div>
   );
 }

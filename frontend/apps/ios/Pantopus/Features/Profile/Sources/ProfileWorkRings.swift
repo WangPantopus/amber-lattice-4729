@@ -15,8 +15,14 @@ struct ProfileWorkRingsBlock: View {
     let title: String?
     let rings: ProfileWorkRingsDTO
     let context: ProfileBlockContext
+    /// The list of pieces drawn under the line in the same card (board 7), narrowed by the year chips and the kinds.
+    var list: ProfilePiecesDTO?
+    var listTitle: String?
+    /// The pinned pieces drawn above, so a year or a kind finds them too when the list leaves them out.
+    var pinned: [ProfilePieceDTO] = []
 
     @State private var year: Int?
+    @State private var kind: String?
 
     private var parsed: ProfileRings? {
         ProfileRings(from: rings.from, now: rings.now, lanes: [.work: rings.months])
@@ -41,32 +47,99 @@ struct ProfileWorkRingsBlock: View {
                         .accessibilityLabel(spoken(parsed))
                     legend
                     if !rings.years.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: Spacing.s2) {
-                                ForEach(rings.years.sorted { $0.year > $1.year }, id: \.year) { item in
-                                    let on = year == item.year
-                                    Button { year = on ? nil : item.year } label: {
-                                        Text(verbatim: "\(item.year) · \(item.pieces)")
-                                            .scaledFont(12, weight: .semibold)
-                                            .foregroundStyle(on ? Theme.Color.appSurface : Theme.Color.appTextStrong)
-                                            .padding(.horizontal, 10)
-                                            .frame(minHeight: 44)
-                                            .background(on ? Theme.Color.appText : Theme.Color.appSurfaceSunken, in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("\(item.year), \(item.pieces == 1 ? "1 piece" : "\(item.pieces) pieces")")
-                                    .accessibilityAddTraits(on ? .isSelected : [])
-                                }
-                            }
-                        }
+                        chips
                     }
+                    if let list {
+                        pieces(list)
+                    }
+                }
+            }
+        } else if let list {
+            ProfilePiecesBlock(title: listTitle, block: list, context: context)
+        }
+    }
+
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Spacing.s2) {
+                ForEach(rings.years.sorted { $0.year > $1.year }, id: \.year) { item in
+                    let on = year == item.year
+                    Button { year = on ? nil : item.year } label: {
+                        Text(verbatim: "\(item.year) · \(item.pieces)")
+                            .scaledFont(12, weight: .semibold)
+                            .foregroundStyle(on ? Theme.Color.appSurface : Theme.Color.appTextStrong)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 44)
+                            .background(on ? Theme.Color.appText : Theme.Color.appSurfaceSunken, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Self.chipLabel(item))
+                    .accessibilityHint(list == nil ? "" : on ? "Shows every year" : "Shows the pieces of \(String(item.year))")
+                    .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
         }
     }
 
+    /// The kinds the switch offers: the server's `filters` when it sends them, else the kinds on Work (board 7's
+    /// All / Did / Built), only with two kinds or more.
+    private func kinds(_ list: ProfilePiecesDTO) -> [String] {
+        let sent = list.filters.filter { $0 != "all" }
+        if !sent.isEmpty { return sent }
+        let present = Set((list.pieces + pinned).compactMap(\.kind))
+        return ["did", "built", "owns"].filter(present.contains)
+    }
+
+    @ViewBuilder
+    private func pieces(_ list: ProfilePiecesDTO) -> some View {
+        let kinds = kinds(list)
+        if kinds.count > 1 {
+            Picker("Show", selection: $kind) {
+                Text("All").tag(String?.none)
+                ForEach(kinds, id: \.self) { kind in
+                    Text(ProfilePieceCover.kindWord(kind) ?? kind.capitalized).tag(String?.some(kind))
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.vertical, Spacing.s2)
+        }
+        // As sent until a year or a kind is chosen; then every piece on Work that matches, pinned ones included.
+        let pool = year == nil && kind == nil
+            ? list.pieces
+            : list.pieces + pinned.filter { pin in !list.pieces.contains { $0.id == pin.id } }
+        let shown = pool.filter { piece in
+            (kind == nil || piece.kind == kind) && (year == nil || piece.year == year)
+        }
+        VStack(alignment: .leading, spacing: Spacing.s0) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, piece in
+                if index > 0 { ProfileRowDivider(inset: 0) }
+                ProfilePieceRow(piece: piece, context: context)
+            }
+            if shown.isEmpty {
+                // A year and a kind with nothing in common: say so in the list's place, so nothing looks missing.
+                Text(emptyLine)
+                    .scaledFont(14)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .padding(.vertical, Spacing.s3)
+            }
+            ProfileMoreLink(more: list.more, context: context)
+        }
+    }
+
+    /// "2026, 3 pieces": the year read as a year (a number in a label would be read "2,026").
+    static func chipLabel(_ item: ProfileWorkRingsDTO.Year) -> String {
+        let pieces = item.pieces == 1 ? "1 piece" : "\(item.pieces) pieces"
+        return String(item.year) + ", " + pieces
+    }
+
+    private var emptyLine: String {
+        let word = kind.flatMap { ProfilePieceCover.kindWord($0)?.lowercased() }
+        let what = word.map { "No \($0) pieces" } ?? "No pieces"
+        return year.map { "\(what) in \(String($0))." } ?? "\(what)."
+    }
+
     private var legend: some View {
-        HStack(spacing: 14) {
+        ProfileWrapLayout(spacing: 14) {
             ForEach(ProfileInk.allCases, id: \.self) { ink in
                 HStack(spacing: 6) {
                     ProfileWorkDot(ink: ink, pinned: false).frame(width: 10, height: 10)

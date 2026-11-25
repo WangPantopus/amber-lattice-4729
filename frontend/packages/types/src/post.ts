@@ -100,6 +100,12 @@ export type QuotedPost =
   | { available: true; post: Post }
   | { available: false; post?: undefined };
 
+/** A post's reply preview: the latest repliers (newest first, at most three) and the latest reply, cut short. */
+export interface PostConversation {
+  people: { id: string; name: string; avatar_url: string | null }[];
+  latest: { id: string; user_id: string; name: string; text: string; created_at: string };
+}
+
 export interface Post {
   id: string;
   user_id: string;
@@ -164,6 +170,11 @@ export interface Post {
    * moments rather than the composer's wall clock labelled UTC.
    */
   post_metadata?: { plan?: boolean; [key: string]: unknown } | null;
+  /**
+   * Who replied and the latest reply, for a card that shows the conversation before it is opened. Only Today's
+   * Around you sends it, and only on a post with replies (backend/services/aroundYou/lists.js).
+   */
+  conversation?: PostConversation | null;
   // Safety alert fields
   safety_alert_kind?: SafetyAlertKind | null;
   safety_happened_at?: string | null;

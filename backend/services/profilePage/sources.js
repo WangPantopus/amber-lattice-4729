@@ -12,6 +12,8 @@
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { NOT_HELPFUL_POST_TYPES } = require('../../utils/postReaction');
+const { profileTiesEnabled, profileKnownForEnabled } = require('../../utils/featureFlags');
+const { readShare } = require('./parts');
 
 const SOURCE_LIMIT_MS = 1500;
 const MONTH_ROW_LIMIT = 1000;
@@ -72,21 +74,28 @@ async function homesFrom(rows) {
     .filter((home) => home.verified);
 }
 
+/**
+ * People read as `{ user, profile }` (the account and its Local Profile), named as others see them
+ * (services/chatPeople.js, as the old reads name a review's writer): account id → { name, username, avatar }.
+ */
+function namesOf(read) {
+  const list = (read || []).filter((p) => p?.user?.id);
+  if (!list.length) return new Map();
+  const { chatPeopleFrom, reviewerRow } = require('../chatPeople');
+  const { chosenUsernameOrNull } = require('../../utils/personalUsername');
+  const users = list.map((p) => p.user);
+  const people = chatPeopleFrom(users, list.map((p) => p.profile).filter(Boolean));
+  return new Map(users.map((u) => {
+    const shown = reviewerRow(u, people) || {};
+    return [String(u.id), { name: shown.name || null, username: chosenUsernameOrNull(shown.username), avatar: shown.profile_picture_url || null }];
+  }));
+}
+
 // Reviews with words, each with what its writer did (`role`: hired the person, or the person did a job for them) and,
-// when the writers were read, their name as others see it (services/chatPeople.js, as the old read names them).
+// when the writers were read, their name as others see it.
 function reviewsFrom(userId, rows) {
   const reviews = rows.reviews || [];
-  let writerById = new Map();
-  if ((rows.reviewers || []).length) {
-    const { chatPeopleFrom, reviewerRow } = require('../chatPeople');
-    const { chosenUsernameOrNull } = require('../../utils/personalUsername');
-    const users = rows.reviewers.map((r) => r.user);
-    const people = chatPeopleFrom(users, rows.reviewers.map((r) => r.profile).filter(Boolean));
-    writerById = new Map(users.map((u) => {
-      const shown = reviewerRow(u, people) || {};
-      return [String(u.id), { name: shown.name || null, username: chosenUsernameOrNull(shown.username), avatar: shown.profile_picture_url || null }];
-    }));
-  }
+  const writerById = namesOf(rows.reviewers || []);
   return {
     rows: reviews.map((r) => {
       let role = null;
@@ -106,9 +115,68 @@ function professionalFrom(row) {
   return row;
 }
 
-/** One person's rows, shaped as the composer reads them (compose.buildRecord). */
-async function sourcesFrom(userId, rows, { pinned = true } = {}) {
+/**
+ * Credits on the person's pieces (phase 2B), none after the emergency off PROFILE_TIES=0. Typed names and signed credits for
+ * everyone (the composer decides what each view names); asked and "did not confirm" only for the owner, and an ask for
+ * the one asked. A credit whose party turned off "Let people name me on their work", or with a block either way
+ * between the two, is gone for everyone. Each person credit carries `party_shown`, their name as others see it.
+ */
+function creditsFrom(rows, { owner = false, viewerId = null } = {}) {
+  if (!rows || !profileTiesEnabled()) return [];
+  const extra = (rows.owner_only_credits || []).filter((c) => owner
+    || (viewerId && c.status === 'asked' && String(c.party_user_id) === String(viewerId)));
+  const list = [...(rows.credits || []), ...extra]
+    .filter((c) => !c.party_user_id || (c.party_ties_enabled !== false && c.party_blocked !== true));
+  const names = namesOf(list.map((c) => c.party));
+  return list.map(({ party, ...c }) => ({ ...c, party_shown: c.party_user_id ? (names.get(String(c.party_user_id)) || {}) : null }));
+}
+
+/**
+ * Others' pieces this person signed and shows on their Work ("With <owner>"), none after PROFILE_TIES=0 or while the
+ * person's own switch is off. Each carries `owner_shown` (the owner's name as others see it); the composer shows each
+ * only to a viewer who may open the owner's piece.
+ */
+function withTiesFrom(rows) {
+  if (!rows || !profileTiesEnabled() || !readShare(rows.share).ties_enabled) return [];
+  const list = rows.signed_ties || [];
+  const names = namesOf(list.map((t) => t.owner));
+  return list.map(({ owner, ...t }) => ({ ...t, owner_shown: names.get(String(t.owner_id)) || {} }));
+}
+
+/**
+ * Roles and schools (phase 2B), none after PROFILE_TIES=0: typed places, and roles at a business on Pantopus,
+ * asked or signed (the composer names the business only where it may). A "Not me" stays for the owner alone. A role
+ * whose business turned naming off, or with a block between the person and the business or any of its owners, is
+ * gone for everyone.
+ */
+function rolesFrom(rows, { owner = false } = {}) {
+  if (!rows || !profileTiesEnabled()) return [];
+  return (rows.roles || [])
+    .filter((r) => !r.party_user_id || (r.party_ties_enabled !== false && r.party_blocked !== true))
+    .filter((r) => owner || r.status !== 'declined');
+}
+
+/**
+ * Known-for lines about the person (phase 3A), none after the emergency off PROFILE_KNOWN_FOR=0 or while the person's own choice is off.
+ * Shown lines for everyone; waiting and hidden ones for the person, and a writer's own line for that writer. A line
+ * with a block either way between the two is gone for everyone. Each carries `party_shown` (the writer's name).
+ */
+function knownForFrom(rows, { owner = false, viewerId = null } = {}) {
+  if (!rows || !profileKnownForEnabled() || !readShare(rows.share).known_for_enabled) return [];
+  const mine = (t) => viewerId && String(t.party_user_id) === String(viewerId);
+  const list = [...(rows.known_for || []), ...(rows.owner_only_known_for || []).filter((t) => owner || mine(t))]
+    .filter((t) => t.party_blocked !== true);
+  const names = namesOf(list.map((t) => t.party));
+  return list.map(({ party, ...t }) => ({ ...t, party_shown: names.get(String(t.party_user_id)) || {} }));
+}
+
+/**
+ * One person's rows, shaped as the composer reads them (compose.buildRecord). `viewerId`: the signed-in viewer whose
+ * side the rows were read for (null for a preview or a link), so an ask shows to the one asked.
+ */
+async function sourcesFrom(userId, rows, { pinned = true, owner = false, viewerId = null } = {}) {
   if (!rows) return {};
+  // Hidden and draft pieces are the owner's alone (SPEC phase 2A): nobody else's rows ever carry them.
   return {
     homes: await homesFrom(rows),
     paidJobs: rows.paid_jobs || [],
@@ -117,11 +185,21 @@ async function sourcesFrom(userId, rows, { pinned = true } = {}) {
     professional: professionalFrom(rows.professional),
     businesses: rows.businesses || [],
     skills: rows.skills || [],
-    pieces: rows.pieces || [],
+    pieces: owner ? [...(rows.pieces || []), ...(rows.owner_only_pieces || [])] : (rows.pieces || []),
+    tools: rows.tools || null,
     plansHosted: rows.plans || [],
     supportTrains: (rows.trains || []).map((t) => ({ support_train_id: t.support_train_id, created_at: t.created_at, slot: { slot_date: t.slot_date } })),
     helpful: { count: Number(rows.helpful_count) || 0, months: rows.helpful_months || [] },
     pinned: pinned ? Boolean(rows.pinned) : null,
+    tiesOn: profileTiesEnabled(),
+    credits: creditsFrom(rows, { owner, viewerId }),
+    withTies: withTiesFrom(rows),
+    roles: rolesFrom(rows, { owner }),
+    knownForOn: profileKnownForEnabled(),
+    knownFor: knownForFrom(rows, { owner, viewerId }),
+    // Whether this viewer may write a line (the composer adds the block and the person's switch).
+    knownForWriter: profileKnownForEnabled() && viewerId && !owner
+      ? { sharesRecord: rows.viewer_shares_record === true, linesThisYear: Number(rows.viewer_lines_this_year) || 0 } : null,
   };
 }
 
@@ -134,4 +212,4 @@ function relationshipStatus(row, viewerId, { forViewer = false } = {}) {
   return 'none';
 }
 
-module.exports = { readRows, sourcesFrom, relationshipStatus, bounded, SOURCE_LIMIT_MS };
+module.exports = { readRows, sourcesFrom, creditsFrom, knownForFrom, namesOf, relationshipStatus, bounded, SOURCE_LIMIT_MS };

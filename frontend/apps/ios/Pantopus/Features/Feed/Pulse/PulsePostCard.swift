@@ -173,6 +173,11 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
     public let source: PostSource?
     /// The post this one quotes ("Repost with your words", contract §8.3); nil for an ordinary post.
     public let quoted: PulseQuotedPost?
+    /// Set on a story Today's Around you posted for an outlet: the card names the outlet where the author goes,
+    /// its topic where the post kind goes, and sets the headline apart from the summary. Nil on every other post.
+    public var story: PulseStory?
+    /// Who replied and the latest reply (Around you sends it on a post with replies); nil elsewhere.
+    public var conversation: PulseConversation?
     public var isCurator: Bool {
         origin == "curator"
     }
@@ -287,6 +292,8 @@ public struct PulsePostCard: View {
     private let onOpenQuotedPost: (@MainActor (String) -> Void)?
     /// The Repost chooser this card's ↻ presents, so it points at the button. `nil`: the screen presents it.
     private let repostChooser: PulseCardRepostChooser?
+    /// Opens the post to reply, from Reply and from the conversation strip. `nil`: they open it as the card does.
+    private let onReply: (@MainActor () -> Void)?
 
     public init(
         content: PulsePostCardContent,
@@ -299,9 +306,11 @@ public struct PulsePostCard: View {
         onToggleRepost: (@MainActor () -> Void)? = nil,
         onOpenAuthor: (@MainActor () -> Void)? = nil,
         onOpenQuotedPost: (@MainActor (String) -> Void)? = nil,
-        repostChooser: PulseCardRepostChooser? = nil
+        repostChooser: PulseCardRepostChooser? = nil,
+        onReply: (@MainActor () -> Void)? = nil
     ) {
         self.repostChooser = repostChooser
+        self.onReply = onReply
         self.content = content
         self.onTap = onTap
         self.onPickReaction = onPickReaction
@@ -338,13 +347,22 @@ public struct PulsePostCard: View {
         HStack(alignment: .center, spacing: 9) {
             authorIdentity
             Spacer(minLength: Spacing.s2)
-            PulseIntentChip(intent: content.intent, label: content.chipLabel)
+            PulseIntentChip(intent: content.intent, label: content.story?.topic ?? content.chipLabel)
             headerTrailingControl
         }
     }
 
-    /// The author's photo and name, which open their profile (or page) when the card has somewhere to take them.
+    /// Who the card is from: the outlet that published an Around you story, else the post's author.
     @ViewBuilder private var authorIdentity: some View {
+        if let outlet = content.story?.outlet {
+            PulseStoryByline(outlet: outlet, via: content.authorName, meta: content.meta)
+        } else {
+            personIdentity
+        }
+    }
+
+    /// The author's photo and name, which open their profile (or page) when the card has somewhere to take them.
+    @ViewBuilder private var personIdentity: some View {
         let identity = HStack(alignment: .center, spacing: 9) {
             FeedAvatar(
                 initials: content.authorInitials,
@@ -526,18 +544,7 @@ public struct PulsePostCard: View {
                 .accessibilityIdentifier("pulsePostRepost_\(content.id)")
                 .modifier(PulseCardRepostChooserHost(chooser: repostChooser, postId: content.id))
             }
-            HStack(spacing: Spacing.s1) {
-                Icon(.messageCircle, size: 12, color: Theme.Color.appTextSecondary)
-                Text(content.commentCount > 0 ? "Reply \(content.commentCount)" : "Reply")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-            }
-            .accessibilityElement()
-            .accessibilityLabel(
-                content.commentCount > 0
-                    ? "Reply. \(content.commentCount) comments"
-                    : "Reply"
-            )
+            replyAffordance
         }
         .padding(.top, Spacing.s2)
     }
@@ -547,7 +554,7 @@ public struct PulsePostCard: View {
     private static let attendeeTints: [FeedAvatarTint] = [.orange, .sky, .violet, .green]
 
     private var a11yLabel: String {
-        var parts = [content.authorName, content.chipLabel]
+        var parts = [content.story?.outlet ?? content.authorName, content.story?.topic ?? content.chipLabel]
         if let repostedBy = content.repostedBy { parts.insert(repostedBy, at: 0) }
         if content.isCurator { parts.append("Pantopus curator") }
         if content.isVisitor { parts.append("Visitor") }
@@ -563,6 +570,9 @@ public struct PulsePostCard: View {
         }
         if let quoted = content.quoted { parts.append(quoted.spoken) }
         parts += reactionsSpoken
+        if let conversation = content.conversation {
+            parts.append("\(conversation.line(replyCount: content.commentCount)): \(conversation.latestText)")
+        }
         // A part that already ends a sentence keeps its own mark (as on Android): VoiceOver never hears "7..".
         return parts.reduce("") { label, part in
             guard let last = label.last else { return part }
@@ -700,8 +710,37 @@ private extension PulsePostCard {
         showsReactionPicker = true
     }
 
+    /// "Reply 3" in the engagement strip. With `onReply` it is a button that opens the post to reply; without, the
+    /// card's own tap opens the post, as before.
+    @ViewBuilder var replyAffordance: some View {
+        let label = HStack(spacing: Spacing.s1) {
+            Icon(.messageCircle, size: 12, color: Theme.Color.appTextSecondary)
+            Text(content.commentCount > 0 ? "Reply \(content.commentCount)" : "Reply")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+        }
+        let spoken = content.commentCount > 0 ? "Reply. \(content.commentCount) comments" : "Reply"
+        if let onReply {
+            Button(action: onReply) {
+                label
+                    .frame(minHeight: 24)
+                    .hitArea(horizontal: 8, vertical: 10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(spoken)
+            .accessibilityIdentifier("pulsePostReply_\(content.id)")
+        } else {
+            label
+                .accessibilityElement()
+                .accessibilityLabel(spoken)
+        }
+    }
+
     /// The card's controls as VoiceOver actions, named as their buttons are.
     @ViewBuilder var cardActions: some View {
+        if let onReply {
+            Button("Reply", action: onReply)
+        }
         if let onRSVP, content.attendees != nil {
             Button(content.reaction.accessibilityLabel, action: onRSVP)
         } else if content.reaction.kind == .emoji {
@@ -833,20 +872,26 @@ private extension PulsePostCard {
             }
             header
                 .padding(.horizontal, Spacing.s4)
-            if let title = content.title, !title.isEmpty {
-                Text(title)
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(Theme.Color.appText)
-                    .lineLimit(1)
+            if let story = content.story {
+                // An Around you story: its headline apart from the outlet's summary.
+                PulseStoryText(story: story)
                     .padding(.horizontal, Spacing.s4)
-            }
-            if !content.body.isEmpty {
-                PostLinkText(content.body)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.Color.appTextStrong)
-                    .lineLimit(content.title?.isEmpty == false ? 2 : 3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Spacing.s4)
+            } else {
+                if let title = content.title, !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appText)
+                        .lineLimit(1)
+                        .padding(.horizontal, Spacing.s4)
+                }
+                if !content.body.isEmpty {
+                    PostLinkText(content.body)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.Color.appTextStrong)
+                        .lineLimit(content.title?.isEmpty == false ? 2 : 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.s4)
+                }
             }
             if let source = content.source {
                 PostSourceLink(source: source, accessibilityID: "pulsePostSource_\(content.id)") {
@@ -892,6 +937,16 @@ private extension PulsePostCard {
             if !content.actions.isSeeded {
                 reactionStrip
                     .padding(.horizontal, Spacing.s4)
+                // The conversation so far: who replied and the latest reply.
+                if let conversation = content.conversation {
+                    PulseConversationStrip(
+                        conversation: conversation,
+                        replyCount: content.commentCount,
+                        postId: content.id,
+                        onOpen: onReply ?? onTap
+                    )
+                    .padding(.horizontal, Spacing.s4)
+                }
             }
         }
         .padding(.vertical, Spacing.s4)

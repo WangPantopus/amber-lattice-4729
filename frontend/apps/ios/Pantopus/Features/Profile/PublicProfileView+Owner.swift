@@ -208,6 +208,11 @@ extension PublicProfileView {
         return rows
     }
 
+    /// Today's portfolio sheet, on a server without the owner's pieces (phase 1's "Add or remove pieces").
+    func openOwnerPieces() {
+        showOwnerPieces = true
+    }
+
     /// The cover pushes the screen itself; a profile pushed in another tab
     /// asks the root to open the cover on it.
     func open(_ destination: ProfileOwnerDestination) {

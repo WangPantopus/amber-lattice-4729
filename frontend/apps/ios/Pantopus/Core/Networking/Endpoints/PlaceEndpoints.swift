@@ -58,4 +58,18 @@ public enum PlaceEndpoints {
             query: ["address": address]
         )
     }
+
+    /// `POST /api/public/place/reading` with `{ address }` (LOOKUPORDER SPEC 5.1): Pantopus AI's reading of an
+    /// address this network looked up in the last ten minutes. No account. 404 when switched off, 409 when the
+    /// address was not looked up here lately, 429 past the day's readings, 502 when no good answer came.
+    /// `ticket` is the lookup's `reading_ticket` (SPEC 5.1a): a valid one is enough on its own; sent only when held.
+    public static func reading(address: String, ticket: String? = nil) -> Endpoint {
+        Endpoint(method: .post, path: "/api/public/place/reading", body: PlaceReadingBody(address: address, ticket: ticket))
+    }
+}
+
+public struct PlaceReadingBody: Encodable, Sendable {
+    public let address: String
+    /// Left out of the body when nil.
+    public let ticket: String?
 }

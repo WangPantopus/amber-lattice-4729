@@ -31,35 +31,74 @@ struct ProfileBlockContext {
     var openedMonth: ProfileRingMonth?
 }
 
-/// A run of blocks, with Says and Known for sharing one card when they come together (board 1).
+/// A run of blocks, with Says and Known for sharing one card when they come together (board 1), and the work line
+/// with the list of pieces under it in one card (board 7), where its year chips and kinds narrow the list.
 struct ProfileBlockList: View {
     let blocks: [ProfilePageBlockDTO]
     let context: ProfileBlockContext
 
-    var body: some View {
-        ForEach(groups, id: \.first?.id) { group in
-            if group.count == 2 {
-                ProfileBlockCard {
-                    ProfileBlockView(block: group[0], context: context, inSharedCard: true)
-                    Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1).padding(.vertical, 14)
-                    ProfileBlockView(block: group[1], context: context, inSharedCard: true)
-                }
-            } else if let block = group.first {
-                ProfileBlockView(block: block, context: context, inSharedCard: false)
+    private enum Group: Identifiable {
+        case single(ProfilePageBlockDTO)
+        case saysAndKnownFor(ProfilePageBlockDTO, ProfilePageBlockDTO)
+        case work(rings: ProfilePageBlockDTO, ProfileWorkRingsDTO, list: ProfilePageBlockDTO, ProfilePiecesDTO)
+
+        var id: String {
+            switch self {
+            case let .single(block): block.id
+            case let .saysAndKnownFor(block, _): block.id
+            case let .work(rings, _, _, _): rings.id
             }
         }
     }
 
-    private var groups: [[ProfilePageBlockDTO]] {
-        var out: [[ProfilePageBlockDTO]] = []
+    var body: some View {
+        ForEach(groups) { group in
+            switch group {
+            case let .single(block):
+                ProfileBlockView(block: block, context: context, inSharedCard: false)
+            case let .saysAndKnownFor(says, knownFor):
+                ProfileBlockCard {
+                    ProfileBlockView(block: says, context: context, inSharedCard: true)
+                    Rectangle().fill(Theme.Color.appBorderSubtle).frame(height: 1).padding(.vertical, 14)
+                    ProfileBlockView(block: knownFor, context: context, inSharedCard: true)
+                }
+            case let .work(ringsBlock, rings, listBlock, list):
+                ProfileWorkRingsBlock(
+                    title: ringsBlock.title,
+                    rings: rings,
+                    context: context,
+                    list: list,
+                    listTitle: listBlock.title,
+                    pinned: pinnedPieces
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("profileBlock_\(ringsBlock.id)")
+            }
+        }
+    }
+
+    private var pinnedPieces: [ProfilePieceDTO] {
+        blocks.flatMap { block -> [ProfilePieceDTO] in
+            if case let .pieces(pieces) = block.content, pieces.style == "pinned" { return pieces.pieces }
+            return []
+        }
+    }
+
+    private var groups: [Group] {
+        var out: [Group] = []
         var index = 0
         while index < blocks.count {
             let block = blocks[index]
-            if case .says = block.content, index + 1 < blocks.count, case .knownFor = blocks[index + 1].content {
-                out.append([block, blocks[index + 1]])
+            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
+            if case .says = block.content, let next, case .knownFor = next.content {
+                out.append(.saysAndKnownFor(block, next))
+                index += 2
+            } else if case let .workRings(rings) = block.content, let next, case let .pieces(list) = next.content,
+                      list.style != "pinned" {
+                out.append(.work(rings: block, rings, list: next, list))
                 index += 2
             } else {
-                out.append([block])
+                out.append(.single(block))
                 index += 1
             }
         }
@@ -295,10 +334,10 @@ struct ProfileWrittenLineView: View {
         if let link = line.link {
             Button { context.openLink(link) } label: { text.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(line.text). \(source.ink.word)")
+                .accessibilityLabel(ProfileSourceLine.spokenJoin(line.text, source.ink.word))
                 .accessibilityHint(link.isGig ? "Opens the job" : "")
         } else {
-            text.accessibilityLabel("\(line.text). \(source.ink.word)")
+            text.accessibilityLabel(ProfileSourceLine.spokenJoin(line.text, source.ink.word))
         }
     }
 
