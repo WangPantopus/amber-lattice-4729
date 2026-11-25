@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.data.api.models.place.PlacePreviewStatus
 import app.pantopus.android.data.api.models.saved_places.SavedPlaceDto
 import app.pantopus.android.ui.components.PrimaryButton
@@ -76,6 +77,8 @@ fun SavedPlaceRootScreen(
     modifier: Modifier = Modifier,
     /** The Place tab tapped again on this root: back to the top. */
     scrollToTop: Flow<Unit>? = null,
+    /** "Ask Pantopus: what does this mean for me?": the assistant, about this saved address (LOOKUPORDER 5.3). */
+    onAsk: ((AIScreenContext) -> Unit)? = null,
     viewModel: SavedPlaceRootViewModel = hiltViewModel(key = "saved-place-${place.id}"),
 ) {
     LifecycleResumeEffect(place.id) {
@@ -128,6 +131,7 @@ fun SavedPlaceRootScreen(
                     onRetry = viewModel::refresh,
                     onOpenDetail = onOpenDetail,
                     jumps = jumps,
+                    onAsk = onAsk?.let { ask -> { ask(AIScreenContext.savedPlace(place.id)) } },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -196,6 +200,7 @@ private fun SavedPlaceNextStep(
 
 /** The public preview of the saved point, as the launch preview renders it, without its account wall. */
 @Composable
+@Suppress("LongParameterList")
 private fun SavedPlacePublicPreview(
     state: SavedPlaceRootUiState,
     retrying: Boolean,
@@ -203,6 +208,7 @@ private fun SavedPlacePublicPreview(
     onRetry: () -> Unit,
     onOpenDetail: ((PlaceDetailGroup) -> Unit)?,
     jumps: PreviewJumps,
+    onAsk: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -241,6 +247,7 @@ private fun SavedPlacePublicPreview(
                         retrying = retrying,
                         modifier = modifier,
                         jumps = jumps,
+                        onAsk = onAsk,
                     )
             }
         }

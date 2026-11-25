@@ -24,6 +24,8 @@ import app.pantopus.android.data.api.models.place.NeighborMessageTemplates
 import app.pantopus.android.data.api.models.place.NeighborhoodPulse
 import app.pantopus.android.data.api.models.place.PlaceIntelligence
 import app.pantopus.android.data.api.models.place.PlacePreview
+import app.pantopus.android.data.api.models.place.PlaceReadingRequest
+import app.pantopus.android.data.api.models.place.PlaceReadingResponse
 import app.pantopus.android.data.api.models.place.PlaceSectionId
 import app.pantopus.android.data.api.models.place.PublicUnlistedResponse
 import app.pantopus.android.data.api.models.place.ReceivedNeighborMessage
@@ -194,6 +196,10 @@ class PlaceRepository
 
         /** The anonymous, address-only T0 preview (no account required). */
         suspend fun publicPreview(address: String): NetworkResult<PlacePreview> = safeApiCall { placeApi.publicPreview(address) }
+
+        /** Pantopus AI's reading of a lookup this network just made (LOOKUPORDER 5.1). */
+        suspend fun publicReading(address: String): NetworkResult<PlaceReadingResponse> =
+            safeApiCall { placeApi.publicReading(PlaceReadingRequest(address)) }
 
         // ─── Address calendar (Wedge v2 D6) ────────────────────
 

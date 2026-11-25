@@ -1827,3 +1827,43 @@ data class PlaceMoneyTrend(
     /** Two points or more make a line. */
     val isDrawable: Boolean get() = (changeSinceFirstPct?.size ?: 0) >= 2
 }
+
+/** `POST /api/public/place/reading`: the address exactly as the lookup used it. */
+@JsonClass(generateAdapter = true)
+data class PlaceReadingRequest(
+    val address: String,
+)
+
+/** The route's answer: `{ reading }`. */
+@JsonClass(generateAdapter = true)
+data class PlaceReadingResponse(
+    val reading: PlaceReading? = null,
+)
+
+/**
+ * Pantopus AI's reading of the lookup (LOOKUPORDER 5.1), written from the page's public records only: what matters
+ * most, the steps in order with the agency behind each, what the page can't tell, and three questions with answers.
+ */
+@JsonClass(generateAdapter = true)
+data class PlaceReading(
+    val matters: String = "",
+    val steps: List<PlaceReadingStep> = emptyList(),
+    @Json(name = "cannot_tell") val cannotTell: String = "",
+    val questions: List<PlaceReadingQuestion> = emptyList(),
+) {
+    /** Never a half reading: without what matters, what it can't tell and its questions there is none to show. */
+    val isComplete: Boolean get() = matters.isNotBlank() && cannotTell.isNotBlank() && questions.isNotEmpty()
+}
+
+@JsonClass(generateAdapter = true)
+data class PlaceReadingStep(
+    val text: String = "",
+    /** The agency that publishes the fact, e.g. "EPA". */
+    val source: String = "",
+)
+
+@JsonClass(generateAdapter = true)
+data class PlaceReadingQuestion(
+    val q: String = "",
+    val a: String = "",
+)
