@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import type { Post, PostComment } from '@pantopus/types';
 
-/** The kinds of post a made-up name may carry (the server's list, less its own plain "share"). */
+/** The kinds of post a made-up name may carry (the server's list, less its own plain "share"). A reply may go on any kind. */
 export const PEN_NAME_POST_TYPES: readonly string[] = ['ask_local', 'recommendation', 'local_update', 'neighborhood_win'];
 
 export const PEN_NAME_ME_KEY = ['pen-names', 'me'] as const;
@@ -49,16 +49,16 @@ export function voiceInConversation(
 }
 
 /**
- * Whether a reply to this post may be written under a made-up name: a made-up-name conversation, or a post of a kind a
- * made-up name may carry, to people nearby (never Connections, a home, a business or a plan).
+ * Whether a reply to this post may be written under a made-up name, by the post's audience only (the contract's
+ * `POST /api/posts/:id/comments`): a made-up-name conversation, a post for people nearby (`distribution_targets` holds
+ * 'place'), or one of Today's Around you stories. Never a post for Connections, a household or a plan's guests (the
+ * server answers PEN_NAME_AUDIENCE there). The post's kind, home, business or author don't decide it.
  */
 export function takesPenNameReply(post: Post | null | undefined): boolean {
   if (!post) return false;
   if (isMadeUp(post)) return true;
-  if (!PEN_NAME_POST_TYPES.includes(post.post_type)) return false;
-  if (post.visibility === 'connections' || post.visibility === 'private' || post.visibility === 'followers') return false;
-  if (post.home_id || post.business_id || post.post_metadata?.plan === true) return false;
-  return post.author?.type == null || post.author.type === 'local';
+  if (post.distribution_targets?.includes('place')) return true;
+  return Boolean(post.post_metadata?.around_you);
 }
 
 /** The person's own made-up name, whether they may use one, the promise and names Pantopus could give. */
