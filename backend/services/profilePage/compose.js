@@ -797,9 +797,10 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       });
     }
   }
-  // The shelf (phase 3C): the owner always (to add to it), others where the `shelf` part reaches them.
+  // The shelf (phase 3C), only when it holds something, the owner's view included: `shelf` is a v1 block kind that a
+  // released app may draw, so it never arrives empty. The owner's own screens offer "Add" from GET /me/shelf.
   const shelf = ctx.shelf || [];
-  if (view === 'owner' || (shelf.length && on('shelf'))) {
+  if (shelf.length && (view === 'owner' || on('shelf'))) {
     person.push({
       kind: 'shelf', id: 'shelf', title: `On ${ctx.firstName}'s shelf`,
       objects: shelf.map((o) => ({ id: o.id, picture_url: o.picture_url, caption: o.caption, ink: 'said' })),
