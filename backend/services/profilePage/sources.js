@@ -199,7 +199,8 @@ async function sourcesFrom(userId, rows, { pinned = true, owner = false, viewerI
     knownFor: knownForFrom(rows, { owner, viewerId }),
     // Whether this viewer may write a line (the composer adds the block and the person's switch).
     knownForWriter: profileKnownForEnabled() && viewerId && !owner
-      ? { sharesRecord: rows.viewer_shares_record === true, linesThisYear: Number(rows.viewer_lines_this_year) || 0 } : null,
+      ? { sharesRecord: rows.viewer_shares_record === true, linesThisYear: Number(rows.viewer_lines_this_year) || 0,
+        takenBackAt: rows.viewer_taken_back_at || null } : null,
   };
 }
 

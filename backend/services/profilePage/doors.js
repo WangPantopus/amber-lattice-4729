@@ -99,11 +99,11 @@ async function leaveCard(visitorId, personId, body) {
   const f = await cardFacts(visitorId, personId);
   const first = firstWord(namesOf([f.person_named]).get(String(personId))?.name) || 'them';
   const person = f.person;
-  // Everyone who may not leave one gets the same answer: themself, a business or curator, a block either way, the
-  // person's switch off.
+  // Everyone who may not leave one gets the same answer, with no name in it: themself, a business or curator, a block
+  // either way, the person's switch off.
   if (!person || String(visitorId) === String(personId) || ['business', 'curator'].includes(person.account_type)
     || f.blocked === true || !readShare(person.share || null).cards_enabled) {
-    throw new DoorsRefusal(404, 'CARD_CANNOT_LEAVE', `You can't leave ${first} a card.`);
+    throw new DoorsRefusal(404, 'CARD_CANNOT_LEAVE', 'You can\'t leave a card here.');
   }
   if (f.last_at) throw new DoorsRefusal(409, 'CARD_TOO_SOON', `You left ${first} a card on ${dayWords(f.last_at)}.`);
   if (Number(f.today) >= CARDS_A_DAY) throw new DoorsRefusal(409, 'CARD_DAY_LIMIT', 'You can leave ten cards a day. Try again tomorrow.');
@@ -180,8 +180,10 @@ async function listCards(personId) {
 }
 
 /**
- * POST /me/cards/:id/write-back: the person's one reply. The card is marked answered and the answer is a link to
- * today's conversation with the visitor (today's messages already allow it); nothing in Messages changes.
+ * POST /me/cards/:id/write-back: the person's one reply. The card is marked answered once (a second try is
+ * CARD_WRITTEN_BACK) and the answer is a link to today's conversation with the visitor. A card gives no right to
+ * message: today's Messages already let any signed-in person write to anyone not blocked, and refuse a blocked pair
+ * (routes/chats.js /direct and the database's direct-message block check). A blocked pair gets CARD_NOT_FOUND here.
  */
 async function writeBack(personId, id) {
   if (!UUID_RE.test(String(id))) throw notFound();
@@ -189,6 +191,10 @@ async function writeBack(personId, id) {
     .eq('id', id).eq('kind', 'card').eq('user_id', personId).in('status', ['asked', 'signed']).maybeSingle();
   if (error) throw error;
   if (!card) throw notFound();
+  // A block either way since the card was left: the card is gone for both (GET /me/cards leaves it out), so no answer.
+  const { data: blocked, error: blockError } = await supabaseAdmin.rpc('profile_tie_blocked', { p_a: personId, p_b: card.party_user_id });
+  if (blockError) throw blockError;
+  if (blocked === true) throw notFound();
   if (card.status === 'signed') throw new DoorsRefusal(409, 'CARD_WRITTEN_BACK', 'You wrote back to this card already.');
   const now = new Date().toISOString();
   const { error: upError } = await supabaseAdmin.from('ProfileTie').update({ status: 'signed', signed_by: personId, signed_at: now, updated_at: now })

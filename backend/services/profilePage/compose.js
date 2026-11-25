@@ -334,6 +334,9 @@ function roleOf(r, { view, first, now = new Date() }) {
 // ---------- Known for (phase 3A, CONTRACT P3.2) ----------
 
 const KNOWN_FOR_YEAR = 12;
+// After taking a line back, a writer waits 30 days before writing about the same person again (design, 2026-11-25).
+const KNOWN_FOR_WAIT_MS = 30 * 24 * 60 * 60 * 1000;
+const knownForWaiting = (takenBackAt, now = Date.now()) => Boolean(takenBackAt) && now - new Date(takenBackAt).getTime() < KNOWN_FOR_WAIT_MS;
 
 /** What the writer did with the person, from the record the line is tied to. */
 function knownForDid(relation, first) {
@@ -863,7 +866,8 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
     const kLines = knownForLines(ctx, sources, record, view);
     const w = sources.knownForWriter;
     const hasLive = kLines.some((l) => l.mine);
-    const write = w && w.sharesRecord && !ctx.blockedEitherWay && !hasLive && readShare(ctx.share || null).known_for_enabled
+    const write = w && w.sharesRecord && !knownForWaiting(w.takenBackAt) && !ctx.blockedEitherWay && !hasLive
+      && readShare(ctx.share || null).known_for_enabled
       ? { text: `Write a line about ${ctx.firstName}`, left_this_year: Math.max(0, KNOWN_FOR_YEAR - w.linesThisYear), of: KNOWN_FOR_YEAR,
         link: { kind: 'known_for_write' } } : null;
     // `known_for` is a v1 block kind that released apps may draw: it is sent only with lines in it. With none, a
@@ -1253,6 +1257,6 @@ function dayLabel(at) {
 }
 
 module.exports = {
-  pieceOf, cardOf, provable, creditsFor, creditOf, roleOf, knownForLineOf, knownForLines, KNOWN_FOR_YEAR, buildRecord, composeCircle, composeCirclePieces, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, cardOf, provable, creditsFor, creditOf, roleOf, knownForLineOf, knownForLines, KNOWN_FOR_YEAR, knownForWaiting, buildRecord, composeCircle, composeCirclePieces, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };
