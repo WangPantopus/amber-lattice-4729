@@ -147,6 +147,10 @@ for (const tpl of PLATFORM_TEMPLATES) {
 }
 
 // Socket.IO references — set by chatSocketio.js after connection
+// The account every made-up-name post and reply is stored under (services/penName/owner.js, which this file can't
+// require at load: it would close a require loop).
+const PEN_NAME_SYSTEM_ACCOUNT_ID = '5ea1ed00-0000-4000-8000-000000000001';
+
 let _io = null;
 let _connectedUsers = null;
 
@@ -362,7 +366,13 @@ async function publishStoredNotification(data) {
  *   than the stored row may keep: content read for this recipient now (homeTaskPushText). The bell row keeps title/body.
  * @returns {Promise<Object|null>} notification or null on error
  */
-async function createNotification({ id, userId, type, title, body, icon, link, metadata, contextType, contextId, context, idempotencyKey, sendPush = true, pushText = null }) {
+async function createNotification({ id, userId: addressedTo, type, title, body, icon, link, metadata, contextType, contextId, context, idempotencyKey, sendPush = true, pushText = null }) {
+  // A notice to the account a made-up-name post or reply is stored under goes to the person who wrote it, or to
+  // nobody (services/penName/notices.js). Lazy-required: this file is loaded everywhere.
+  // eslint-disable-next-line global-require
+  const penNameNotices = addressedTo === PEN_NAME_SYSTEM_ACCOUNT_ID ? require('./penName/notices') : null;
+  const userId = penNameNotices ? await penNameNotices.recipientFor({ type, metadata }) : addressedTo;
+  if (penNameNotices && !userId) return null;
   if (!userId || !type || !title) {
     logger.warn('createNotification called with missing required fields', { userId, type, title });
     return null;
@@ -448,6 +458,8 @@ async function createBulkNotifications(notifications, { sendPush = true } = {}) 
     const rows = [];
     for (const n of notifications) {
       const resolvedContext = NOTIFICATION_CONTEXTS.has(n.context) ? n.context : 'personal';
+      // The account made-up-name rows are stored under reads nothing: a bulk notice never goes to it.
+      if (n.userId === PEN_NAME_SYSTEM_ACCOUNT_ID) continue;
       // Launch cuts: a notification that only a hidden feature produces is not sent.
       if (isLaunchNotificationHidden(n.type, resolvedContext)) continue;
       if (resolvedContext === 'audience'
