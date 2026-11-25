@@ -4,7 +4,7 @@ import { useId, useMemo, useState, type ComponentType, type ReactNode } from 're
 import { ArrowLeftRight, CalendarDays, ChevronRight, Hammer, Mail, MessageCircle, Users } from 'lucide-react';
 import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
-  ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
+  ProfileInk, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWriteBlock, ProfileLane, ProfileLinesForYouBlock, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
   ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
@@ -17,6 +17,7 @@ import { HowLine, InkGlyph, InkLine, LineText, Opens, howText, inkOf, type Targe
 import { RecordChart, WorkFan } from './RingArt';
 import Picture from './Picture';
 import { CircleFace } from './CircleView';
+import { KnownForLineCard, LineChoices, TakeBack, WhoRow } from './KnownFor';
 import type { FanDot } from './rings';
 
 /** What a block needs to know about the page around it. */
@@ -44,6 +45,12 @@ export interface BlockContext {
   onReread?: (() => void) | null;
   /** The owner: open their shelf to add, reorder and remove things (P3.1). */
   onEditShelf?: (() => void) | null;
+  /** Known for (P3.2): open its screen with the sentence box first ("Write a line about Maria"). */
+  onWriteLine?: (() => void) | null;
+  /** Known for: a line written, taken back, shown or hidden; read the page again. */
+  onLinesChanged?: (() => void) | null;
+  /** Known for: where a line's "Tied to …" opens (a piece this viewer may open), or nothing. */
+  tiedTarget?: ((line: ProfileKnownForLine) => Target | null) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -251,28 +258,65 @@ function SaysBlock({ block }: { block: ProfileSaysBlock }) {
   );
 }
 
+/** The "Write a line about Maria" button, only where the server says this viewer may (P3.2). */
+function WriteLineButton({ write, ctx }: { write?: { text: string; left_this_year: number; of: number } | null; ctx: BlockContext }) {
+  if (!write?.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <button type="button" onClick={ctx.onWriteLine} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+      {write.text}
+    </button>
+  );
+}
+
+/**
+ * Known for on the first tab (board 1): two lines (the person's "on top" ones, else the newest), each with who wrote
+ * it and what they did, "All <n> lines" opening board 14, and "Write a line" for a viewer the server lets write.
+ */
 function KnownForBlock({ block, ctx }: { block: ProfileKnownForBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => line?.text?.trim());
   if (lines.length === 0) return null;
   return (
     <Section title={block.title || 'Known for'} aside={<MoreLink more={block.more} ctx={ctx} />}>
       <div className="flex flex-col gap-3.5">
-        {lines.map((line, i) => {
-          const ink = inkOf(line.ink);
-          return (
-            <div key={i} className="flex flex-col gap-1.5">
-              <LineText ink={ink}>{line.text}</LineText>
-              <div className="flex items-center gap-2">
-                {line.who?.portrait_url
-                  ? <Picture src={line.who.portrait_url} className="w-[22px] h-[22px] rounded-full object-cover shrink-0 bg-app-surface-sunken" />
-                  : <InkGlyph ink={ink} inline />}
-                <span className="text-xs leading-4 text-app-muted [overflow-wrap:anywhere]">{howText(ink, line.how)}</span>
-              </div>
-            </div>
-          );
-        })}
+        {lines.map((line, i) => (
+          <div key={line.id || i} className="flex flex-col gap-1.5">
+            <LineText ink={inkOf(line.ink)}>{line.text}</LineText>
+            <WhoRow line={line} size={22} />
+            {line.mine?.take_back && !ctx.inert ? <TakeBack line={line} firstName={ctx.firstName} onDone={ctx.onLinesChanged ?? (() => {})} /> : null}
+          </div>
+        ))}
       </div>
+      <WriteLineButton write={block.write} ctx={ctx} />
     </Section>
+  );
+}
+
+/** No shown lines yet, but this viewer may write one (P3.2's `known_for_write`): the card with only the button. */
+function KnownForWriteBlock({ block, ctx }: { block: ProfileKnownForWriteBlock; ctx: BlockContext }) {
+  if (!block.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <Section title={block.title || 'Known for'}>
+      <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">One sentence about what {ctx.firstName} did, tied to something you did together.</p>
+      <WriteLineButton write={block} ctx={ctx} />
+    </Section>
+  );
+}
+
+/** The person's own page while lines wait (P3.2): each with "Show it" or "Keep it hidden"; nobody else sees them. */
+function LinesForYouBlock({ block, ctx }: { block: ProfileLinesForYouBlock; ctx: BlockContext }) {
+  const lines = (block.lines || []).filter((line) => line?.id && line.text?.trim());
+  if (lines.length === 0 || ctx.inert) return null;
+  return (
+    <section aria-label={block.title || 'Lines for you'} className="flex flex-col gap-2">
+      <h2 className={`${overline} px-1`}>{block.title || 'Lines for you'}</h2>
+      <ul className="flex flex-col gap-3">
+        {lines.map((line) => (
+          <KnownForLineCard key={line.id} line={line} tiedTarget={ctx.tiedTarget?.(line) ?? null}>
+            <LineChoices line={{ ...line, status: line.status || 'waiting' }} onTop={false} canTop={false} onDone={() => ctx.onLinesChanged?.()} />
+          </KnownForLineCard>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -892,6 +936,8 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
+    case 'known_for_write': return <KnownForWriteBlock block={block as ProfileKnownForWriteBlock} ctx={ctx} />;
+    case 'lines_for_you': return <LinesForYouBlock block={block as ProfileLinesForYouBlock} ctx={ctx} />;
     default: return null;
   }
 }
@@ -900,7 +946,7 @@ const KNOWN_KINDS = new Set([
   'lines', 'owns', 'says', 'known_for', 'in_common', 'doors', 'shelf', 'prompts', 'pinned_posts', 'rows', 'can_do',
   // Not `notice` (CONTRACT "On by default"): a notice sends a phone user to pantopus.com; on the web it could only point
   // back at the page the person is already on, so the web skips it and names only what it really draws.
-  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer',
+  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'known_for_write', 'lines_for_you',
 ]);
 
 /** True when this page can draw the block (a known kind). A tab of unknown kinds only is not drawn. */

@@ -130,16 +130,43 @@ export interface ProfileSaysBlock extends BlockBase {
 }
 
 export type ProfileKnownForLine = ProfileLine & {
+  id?: string;
   /** On a link the name, portrait and id are null and `did` says what they did ("Someone who learned from Maria"). */
-  who?: { name: string | null; portrait_url: string | null; user_id: string | null; did: string | null } | null;
+  who?: { name: string | null; portrait_url: string | null; user_id: string | null; username?: string | null; did: string | null } | null;
   when?: string | null;
-  tied_to?: { kind: string; id: string; title: string } | null;
+  /** What the line is tied to, in the server's words ("Tied to the piece Rebuilt a 1912 porch"); a piece by its id. */
+  tied_to?: { kind: 'gig' | 'plan' | 'train' | 'piece' | string; id: string | null; text: string } | null;
+  on_top?: boolean;
+  /** The writer's own line (any state; never says which): they can take it back (P3.2). */
+  mine?: { take_back: boolean } | null;
+  /** The person's own list (GET /me/known-for) and "Lines for you". */
+  status?: 'waiting' | 'shown' | 'hidden' | string;
 };
+
+/** "Write a line about Maria" (P3.2): only for a signed-in viewer the server lets write. */
+export interface ProfileKnownForWrite {
+  text: string;
+  left_this_year: number;
+  of: number;
+  link?: ProfileLink | null;
+}
 
 export interface ProfileKnownForBlock extends BlockBase {
   kind: 'known_for';
   lines: ProfileKnownForLine[];
   more?: ProfileMore | null;
+  write?: ProfileKnownForWrite | null;
+}
+
+/** No shown lines, but this viewer may write one (P3.2): a kind older apps skip. */
+export interface ProfileKnownForWriteBlock extends BlockBase, ProfileKnownForWrite {
+  kind: 'known_for_write';
+}
+
+/** The person's own page, while lines wait for them to show or keep hidden (P3.2). */
+export interface ProfileLinesForYouBlock extends BlockBase {
+  kind: 'lines_for_you';
+  lines: ProfileKnownForLine[];
 }
 
 /** What the viewer and the person share: exactly the body of GET /api/users/:id/in-common. */
@@ -359,6 +386,8 @@ export type ProfileKnownBlock =
   | ProfileLinesBlock
   | ProfileSaysBlock
   | ProfileKnownForBlock
+  | ProfileKnownForWriteBlock
+  | ProfileLinesForYouBlock
   | ProfileInCommonBlock
   | ProfileDoorsBlock
   | ProfileShelfBlock
@@ -484,6 +513,8 @@ export interface ProfileShare {
   work_pieces?: { shown: number; total: number } | null;
   /** "Let people name me on their work"; absent while the server's PROFILE_TIES is off. */
   ties_enabled?: boolean;
+  /** "Let people write lines about me" (P3.2); absent while the server's Known for is off. */
+  known_for_enabled?: boolean;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -572,7 +603,7 @@ export async function getShare(): Promise<ProfileShare> {
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean; known_for_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
 }
 
@@ -784,4 +815,56 @@ export async function getMyShelf(): Promise<{ objects: ProfileShelfObject[] }> {
 /** The whole shelf in order: reorder by sending the new order, remove by leaving out. At most five. */
 export async function saveShelf(objects: Array<{ file_id: string; caption: string }>): Promise<{ objects: ProfileShelfObject[] }> {
   return put<{ objects: ProfileShelfObject[] }>('/api/profile-page/me/shelf', { objects });
+}
+
+// ── Phase 3: Known for (board 14, CONTRACT P3.2) ──
+
+export interface ProfileKnownForRead { v: number; lines: ProfileKnownForLine[] }
+
+/** All shown lines, the "on top" ones first, for anyone the `known_for` part reaches. */
+export async function getKnownFor(identifier: string, options?: { as?: ProfilePreviewView }): Promise<ProfileKnownForRead> {
+  return get<ProfileKnownForRead>(`${base(identifier)}/known-for`, options?.as ? { as: options.as } : undefined);
+}
+
+export async function getLinkKnownFor(username: string, key: string): Promise<ProfileKnownForRead> {
+  return get<ProfileKnownForRead>(`${linkBase(username, key)}/known-for`);
+}
+
+/** The writer's sheet: why they may write (one or more reasons) and how many lines they have left this year. */
+export interface ProfileKnownForSheet {
+  reasons: Array<{ kind: string; id: string; text: string }>;
+  left_this_year: number;
+  of: number;
+  max_chars: number;
+}
+
+export async function getKnownForWrite(identifier: string): Promise<ProfileKnownForSheet> {
+  return get<ProfileKnownForSheet>(`${base(identifier)}/known-for/write`);
+}
+
+export async function writeKnownFor(identifier: string, body: { text: string; reason: { kind: string; id: string }; show_name_on_links: boolean }): Promise<ProfileKnownForLine> {
+  return post<ProfileKnownForLine>(`${base(identifier)}/known-for`, body);
+}
+
+/** The writer takes their line back: it leaves everywhere at once. */
+export async function takeBackLine(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/lines-written/${encodeURIComponent(id)}`);
+}
+
+/** The person's own lines, every status, and which are on top. */
+export async function getMyKnownFor(): Promise<{ lines: ProfileKnownForLine[]; on_top: string[] }> {
+  return get<{ lines: ProfileKnownForLine[]; on_top: string[] }>('/api/profile-page/me/known-for');
+}
+
+export async function showLine(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/known-for/${encodeURIComponent(id)}/show`, {});
+}
+
+export async function hideLine(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/known-for/${encodeURIComponent(id)}/hide`, {});
+}
+
+/** Up to two shown lines on top of the first tab. */
+export async function setLinesOnTop(ids: string[]): Promise<{ on_top: string[] }> {
+  return put<{ on_top: string[] }>('/api/profile-page/me/known-for/on-top', { ids });
 }
