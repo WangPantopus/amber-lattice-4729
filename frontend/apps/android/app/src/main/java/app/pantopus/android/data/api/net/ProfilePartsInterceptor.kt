@@ -4,7 +4,7 @@ import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
- * `X-Pantopus-Profile-Parts` on every `/api/profile-page/**` request (CONTRACT, "On by default, and what a phone can't
+ * `X-Pantopus-Profile-Parts` on every request under `/api/profile-page` (CONTRACT, "On by default, and what a phone can't
  * show yet"): the parts of the profile this build draws. For anything waiting for a person in a part not named here
  * (an ask to sign a piece, a role ask, a line or a card), the server puts a `notice` row on their own page that opens
  * it on pantopus.com. Name a part here in the pull request that builds it, never before.

@@ -78,7 +78,17 @@ private fun NoticeRow(
             Modifier
                 .sourcesCard()
                 .heightIn(min = 48.dp)
-                .then(if (onOpen != null) Modifier.clickable(onClickLabel = "Open on pantopus.com", role = Role.Button, onClick = onOpen) else Modifier)
+                .then(
+                    if (onOpen != null) {
+                        Modifier.clickable(
+                            onClickLabel = "Open on pantopus.com",
+                            role = Role.Button,
+                            onClick = onOpen,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = 16.dp, vertical = 14.dp)
                 .semantics(mergeDescendants = true) { },
         verticalAlignment = Alignment.CenterVertically,
