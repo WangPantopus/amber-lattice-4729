@@ -329,7 +329,7 @@ async function offeredFor(userId, rows) {
     if (postError) throw postError;
     for (const post of data || []) titles.set(String(post.id), String(post.title || post.content || 'A plan').trim().slice(0, 60));
   }
-  // Who hired them, when they could be asked now, for "Who was on it" (PROFILE_TIES; a plan suggests nobody); read
+  // Who hired them, when they could be asked now, for "Who was on it" (not after PROFILE_TIES=0; a plan suggests nobody); read
   // beside the names.
   const { profileTiesEnabled } = require('../../utils/featureFlags');
   const tiesOn = profileTiesEnabled();

@@ -42,38 +42,23 @@ function aroundYouSourceFinderEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
-// A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md): GET /api/profile-page/*
-// composes a person's page for each viewer, the person chooses what their link shows, and the old profile reads follow
-// those choices for signed-out callers (rule 4.7). PROFILE_SOURCES is '1' (on) or '0' (off); unset, it is on for
-// hosted staging and off everywhere else. Off, every profile read is exactly as before.
+// A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md). No switch: built and
+// merged means available (the founder, 2026-11-24: "do not make a switch to this, this should be automatically turned
+// on, nothing here should be turned off"; SPEC rule 4.12). Each answers true unless its variable is exactly "0", which
+// stays only as an emergency off. PROFILE_SOURCES=0 turns off the whole profile with sources (every profile read is
+// exactly as before); PROFILE_LINKS=0 links for one purpose; PROFILE_TIES=0 credits, signing, roles and the circle.
+const isOn = (env, name) => String(env[name] || '').trim() !== '0';
+
 function profileSourcesEnabled(env = process.env) {
-  const value = String(env.PROFILE_SOURCES || '').trim();
-  if (value === '1') return true;
-  if (value === '0') return false;
-  return env.APP_ENV === 'staging';
+  return isOn(env, 'PROFILE_SOURCES');
 }
 
-// Links for one purpose (founder approval 2026-11-23, SPEC item 9.1), the first feature with its own switch beneath
-// PROFILE_SOURCES (rule 4.12). PROFILE_LINKS is '1' (on) or '0' (off); unset, it is on for hosted staging and off
-// everywhere else. It needs PROFILE_SOURCES on too.
 function profileLinksEnabled(env = process.env) {
-  if (!profileSourcesEnabled(env)) return false;
-  const value = String(env.PROFILE_LINKS || '').trim();
-  if (value === '1') return true;
-  if (value === '0') return false;
-  return env.APP_ENV === 'staging';
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_LINKS');
 }
 
-// Credits, roles and the work circle (founder approval of ProfileTie 2026-11-23, SPEC item 9.1; phase 2B), with their
-// own switch beneath PROFILE_SOURCES (rule 4.12). PROFILE_TIES is '1' (on) or '0' (off); unset, it is on for hosted
-// staging and off everywhere else. It needs PROFILE_SOURCES on too. Off, no credit, ask, tie role or circle leaves the
-// server and their routes answer 404 PROFILE_TIES_OFF.
 function profileTiesEnabled(env = process.env) {
-  if (!profileSourcesEnabled(env)) return false;
-  const value = String(env.PROFILE_TIES || '').trim();
-  if (value === '1') return true;
-  if (value === '0') return false;
-  return env.APP_ENV === 'staging';
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_TIES');
 }
 
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new

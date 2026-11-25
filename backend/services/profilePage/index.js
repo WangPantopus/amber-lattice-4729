@@ -66,6 +66,35 @@ async function momentsFor(req, ctx, rows) {
   return { count: shown.length, placed: shown.filter((row) => store.displayedPoint(row).latitude != null).length };
 }
 
+/**
+ * What a person's app can't show yet (CONTRACT "# On by default, and what a phone can't show yet"): on their own page
+ * only, for each thing waiting for them whose part their app did not name in X-Pantopus-Profile-Parts, a `notice` that
+ * opens the web screen for it. No header (a 2.1.5 app) means none. Asks to sign and role asks need one read, made only
+ * when the app leaves `credits` or `roles` out.
+ */
+const PARTS_HEADER = 'x-pantopus-profile-parts';
+async function noticesFor(req, ctx) {
+  const header = req.get?.(PARTS_HEADER);
+  if (header === undefined || ctx.view !== 'owner' || ctx.preview) return [];
+  const named = new Set(String(header).split(',').map((p) => p.trim().toLowerCase()).filter(Boolean));
+  const base = webBase();
+  const site = base.replace(/^https?:\/\//, '');
+  const work = `${base}/${encodeURIComponent(ctx.username)}?tab=work`;
+  const out = [];
+  if (profileTiesEnabled() && (!named.has('credits') || !named.has('roles'))) {
+    const { asks } = await require('./ties').listAsks(String(ctx.userData.id));
+    for (const a of asks) {
+      const who = a.from?.name || 'Someone';
+      if (a.kind === 'credit' && !named.has('credits')) {
+        out.push({ id: `notice_${a.id}`, text: `${who} asked you to sign a piece. Open it on ${site}.`, url: work });
+      } else if (a.kind === 'role' && !named.has('roles')) {
+        out.push({ id: `notice_${a.id}`, text: `${who} asked ${a.business?.name || 'your business'} to confirm a role. Open it on ${site}.`, url: work });
+      }
+    }
+  }
+  return out.map((n) => ({ kind: 'notice', id: n.id, text: n.text, link: { kind: 'url', url: n.url, site } }));
+}
+
 // "You and <name>" (services/profileInCommon.js). GET /api/users/:id/in-common also refuses a personal block either
 // way; that comes with the person's rows (blocked_by_them, blocked_by_viewer). Content: a failure leaves it out.
 function readInCommon(viewerUser, targetId) {
@@ -115,7 +144,7 @@ function contextFrom(opened, stored, found) {
  * Reads everything for one request. `view` forces a view (the share read's visitor). `keyed` opens a link for one
  * purpose: the link view, with that link's parts.
  */
-async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommon = true } = {}) {
+async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommon = true, notices = false } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
   const userId = found.userData.id;
   const signedIn = req.user?.id ? String(req.user.id) : null;
@@ -155,6 +184,10 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
+  ctx.notices = !notices ? [] : await noticesFor(req, ctx).catch((err) => {
+    logger.warn('Profile page notices unavailable; left out', { userId, error: err.message });
+    return [];
+  });
   const moments = await momentsFor(req, ctx, rows).catch((err) => {
     logger.warn('Profile page Moments row unavailable; left out', { userId, error: err.message });
     return null;
@@ -163,7 +196,7 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
 }
 
 async function getPage(req, lookup) {
-  const loaded = await loadPage(req, lookup);
+  const loaded = await loadPage(req, lookup, { notices: true });
   const page = composePage(loaded.ctx, loaded.sources, loaded.extras);
   return loaded.ctx.preview ? { ...page, preview_as: loaded.ctx.preview } : page;
 }
@@ -216,7 +249,7 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
 }
 
-// ---------- the work circle (PROFILE_TIES; CONTRACT P2.6) ----------
+// ---------- the work circle (CONTRACT P2.6) ----------
 
 const circleMissing = () => new PageRefusal(404, 'CIRCLE_NOT_FOUND', 'Nothing to show here.');
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

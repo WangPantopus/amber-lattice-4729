@@ -772,7 +772,8 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   };
 
   // ---- person tab ----
-  const person = [];
+  // What the person's own app can't show yet comes first: one `notice` each (index.noticesFor; owner only).
+  const person = [...(view === 'owner' ? (ctx.notices || []) : [])];
   const keyLines = record.entries.filter((e) => e.place === 'key' && visible(e)).sort((a, b) => a.rank - b.rank).map(lineOf).slice(0, 3);
   if (keyLines.length) person.push({ kind: 'lines', id: 'key_lines', title: null, lines: keyLines, more: null });
   const bio = String(ctx.shown.bio || '').trim();
@@ -872,7 +873,7 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       work.push({ kind: 'pieces', id: 'all', title: pinned.length ? 'All pieces' : 'Pieces', style: 'list', subtitle: null,
         pieces: rest.map(withPlace), filters, more: null });
     }
-    // The work circle and "Worked and learned" (phase 2B), only with PROFILE_TIES on.
+    // The work circle and "Worked and learned" (phase 2B); none after the emergency off PROFILE_TIES=0.
     if (sources.tiesOn) {
       const circle = circleBlock(ctx, record, sources, on);
       if (circle) work.push(circle);
@@ -974,7 +975,7 @@ function composePiece(ctx, row, { attachments = [], reviews = [], credits = null
   if (!party && (!reaches(ctx.parts, 'work', view) || !reaches({ piece: row.audience || 'anyone' }, 'piece', view))) return null;
   const first = ctx.firstName;
   const owner = view === 'owner';
-  // `credits` null: PROFILE_TIES is off, and the answer has no `credits` key at all.
+  // `credits` null: after the emergency off PROFILE_TIES=0, and the answer has no `credits` key at all.
   const shownCredits = credits ? creditsFor(credits, row.id, { view, viewerId: ctx.viewerId, first, now }) : [];
   const { piece } = pieceOf(row, first, owner, shownCredits);
   const cityOk = reaches(ctx.parts, 'city', view) && ctx.cityByPrivacy;
