@@ -21,11 +21,12 @@ const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const { previewLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
-const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled } = require('../utils/featureFlags');
+const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled } = require('../utils/featureFlags');
 const profilePage = require('../services/profilePage');
 const pieces = require('../services/profilePage/pieces');
 const ties = require('../services/profilePage/ties');
 const shelf = require('../services/profilePage/shelf');
+const knownFor = require('../services/profilePage/knownFor');
 
 const router = express.Router();
 
@@ -41,7 +42,7 @@ function handle(label, run, status = 200) {
       return res.status(status).json(await run(req));
     } catch (err) {
       if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal
-        || err instanceof ties.TieRefusal || err instanceof shelf.ShelfRefusal) {
+        || err instanceof ties.TieRefusal || err instanceof shelf.ShelfRefusal || err instanceof knownFor.KnownForRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -89,6 +90,18 @@ router.post('/me/asks/:id/sign', verifyToken, tiesOn, handle('ask-sign', (req) =
 router.post('/me/asks/:id/decline', verifyToken, tiesOn, handle('ask-decline', (req) => ties.declineAsk(String(req.user.id), req.params.id)));
 router.patch('/me/ties/:id', verifyToken, tiesOn, handle('tie-change', (req) => ties.changeTie(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/ties/:id', verifyToken, tiesOn, handle('tie-remove', (req) => ties.removeTie(String(req.user.id), req.params.id)));
+// Known for (CONTRACT P3.2), behind its own switch PROFILE_KNOWN_FOR.
+function knownForOn(req, res, next) {
+  if (profileKnownForEnabled()) return next();
+  return res.status(404).json({ error: 'Not found', code: 'PROFILE_KNOWN_FOR_OFF' });
+}
+router.get('/me/known-for', verifyToken, knownForOn, handle('known-for-mine', (req) => knownFor.listMine(String(req.user.id))));
+router.post('/me/known-for/:id/show', verifyToken, knownForOn,
+  handle('known-for-show', (req) => knownFor.setStatus(String(req.user.id), req.params.id, 'signed')));
+router.post('/me/known-for/:id/hide', verifyToken, knownForOn,
+  handle('known-for-hide', (req) => knownFor.setStatus(String(req.user.id), req.params.id, 'declined')));
+router.put('/me/known-for/on-top', verifyToken, knownForOn, handle('known-for-top', (req) => knownFor.setOnTop(String(req.user.id), req.body)));
+router.delete('/me/lines-written/:id', verifyToken, knownForOn, handle('known-for-take-back', (req) => knownFor.takeBack(String(req.user.id), req.params.id)));
 router.post('/me/roles', verifyToken, tiesOn, handle('role-add', (req) => ties.addRole(String(req.user.id), req.body), 201));
 router.patch('/me/roles/:id', verifyToken, tiesOn, handle('role-change', (req) => ties.updateRole(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/roles/:id', verifyToken, tiesOn, handle('role-remove', (req) => ties.removeRole(String(req.user.id), req.params.id)));
@@ -108,6 +121,7 @@ router.get('/id/:id/piece/:pieceId', publicRead,
   handle('piece-id', (req) => profilePage.getPiece(req, { id: req.params.id }, req.params.pieceId)));
 router.get('/id/:id/month/:month', publicRead,
   handle('month-id', (req) => profilePage.getMonth(req, { id: req.params.id }, req.params.month)));
+router.get('/id/:id/known-for', publicRead, knownForOn, handle('known-for-id', (req) => profilePage.getKnownFor(req, { id: req.params.id })));
 router.get('/id/:id/circle', publicRead, tiesOn, handle('circle-id', (req) => profilePage.getCircle(req, { id: req.params.id })));
 router.get('/id/:id/circle/:userId', publicRead, tiesOn,
   handle('circle-pieces-id', (req) => profilePage.getCircle(req, { id: req.params.id }, req.params.userId)));
@@ -137,6 +151,8 @@ router.get('/:username/v/:key/piece/:pieceId', publicRead, linksOn,
   handle('link-piece', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'piece', req.params.pieceId)));
 router.get('/:username/v/:key/month/:month', publicRead, linksOn,
   handle('link-month', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'month', req.params.month)));
+router.get('/:username/v/:key/known-for', publicRead, linksOn, knownForOn,
+  handle('link-known-for', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'known_for', null)));
 router.get('/:username/v/:key/circle', publicRead, linksOn, tiesOn,
   handle('link-circle', (req) => profilePage.openByKey(req, req.params.username, req.params.key, 'circle', null)));
 router.get('/:username/v/:key/circle/:userId', publicRead, linksOn, tiesOn,
@@ -145,6 +161,13 @@ router.get('/:username/piece/:pieceId', publicRead,
   handle('piece', (req) => profilePage.getPiece(req, byUsername(req), req.params.pieceId)));
 router.get('/:username/month/:month', publicRead,
   handle('month', (req) => profilePage.getMonth(req, byUsername(req), req.params.month)));
+router.get('/:username/known-for', publicRead, knownForOn, handle('known-for', (req) => profilePage.getKnownFor(req, byUsername(req))));
+router.get('/:username/known-for/write', verifyToken, knownForOn, handle('known-for-sheet', async (req) => {
+  return knownFor.writeSheet(String(req.user.id), await profilePage.personIdFor(byUsername(req)));
+}));
+router.post('/:username/known-for', verifyToken, knownForOn, handle('known-for-write', async (req) => {
+  return knownFor.writeLine(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
+}, 201));
 router.get('/:username/circle', publicRead, tiesOn, handle('circle', (req) => profilePage.getCircle(req, byUsername(req))));
 router.get('/:username/circle/:userId', publicRead, tiesOn,
   handle('circle-pieces', (req) => profilePage.getCircle(req, byUsername(req), req.params.userId)));

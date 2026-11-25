@@ -11,8 +11,9 @@ const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require
 const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
-const { profileLinksEnabled, profileTiesEnabled } = require('../../utils/featureFlags');
-const { buildRecord, composePage, composeMonth, composePiece, composeCircle, composeCirclePieces, partContent, firstWord } = require('./compose');
+const { profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled, profileDoorsEnabled } = require('../../utils/featureFlags');
+const { buildRecord, composePage, composeMonth, composePiece, composeCircle, composeCirclePieces, partContent, firstWord, knownForLines } = require('./compose');
+const { reaches } = require('./parts');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -168,6 +169,9 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
   const ctx = contextFrom(opened, rows.share || null, found);
   ctx.viewerId = viewerId;
   ctx.shelf = require('./shelf').objectsOf(rows.shelf);
+  ctx.share = rows.share || null;
+  // A block either way between a signed-in viewer and the person: no "Write a line", no doors, no card.
+  ctx.blockedEitherWay = Boolean(viewerId) && String(viewerId) !== String(userId) && blockedEitherWay(rows, viewerId);
   if (keyed) {
     // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).
@@ -247,6 +251,22 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   });
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
+}
+
+// ---------- Known for (CONTRACT P3.2) ----------
+
+/** GET …/known-for: every shown line this viewer may see (the writer's own too), on top first. */
+async function getKnownFor(req, lookup, { keyed = null } = {}) {
+  const loaded = await loadPage(req, lookup, { inCommon: false, keyed });
+  const { ctx } = loaded;
+  if (!reaches(ctx.parts, 'known_for', ctx.view)) throw new PageRefusal(404, 'KNOWN_FOR_NOT_FOUND', 'Nothing to show here.');
+  const answer = { v: 1, lines: knownForLines(ctx, loaded.sources, loaded.record, ctx.view) };
+  return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
+}
+
+/** The person a writer means, by the page's lookup (their username or account id). */
+async function personIdFor(lookup) {
+  return String((await findPerson(lookup)).userData.id);
 }
 
 // ---------- the work circle (CONTRACT P2.6) ----------
@@ -332,13 +352,17 @@ async function shareBody(req) {
     visitor: await visitorFrom(loaded),
     work_pieces: workPieces(loaded.sources),
     ...(tiesOn ? { ties_enabled: readShare(loaded.rows.share).ties_enabled } : {}),
+    ...(profileKnownForEnabled() ? { known_for_enabled: readShare(loaded.rows.share).known_for_enabled } : {}),
+    ...(profileDoorsEnabled() ? { cards_enabled: readShare(loaded.rows.share).cards_enabled } : {}),
     ...linkFields,
   };
 }
 
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
-  const change = applyShareChange(readShare(stored), req.body, new Date(), { links: profileLinksEnabled(), ties: profileTiesEnabled() });
+  const change = applyShareChange(readShare(stored), req.body, new Date(), {
+    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(), doors: profileDoorsEnabled(),
+  });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);
   if (error) throw error;
@@ -418,6 +442,9 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
         if (!MONTH_RE.test(String(arg || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
         answer = composeMonth(loaded.ctx, loaded.record, arg);
         if (!answer) throw new PageRefusal(404, 'MONTH_NOT_FOUND', 'Nothing to show for that month.');
+      } else if (what === 'known_for') {
+        if (!reaches(loaded.ctx.parts, 'known_for', loaded.ctx.view)) throw new PageRefusal(404, 'KNOWN_FOR_NOT_FOUND', 'Nothing to show here.');
+        answer = { v: 1, lines: knownForLines(loaded.ctx, loaded.sources, loaded.record, loaded.ctx.view) };
       } else if (what === 'circle') {
         if (arg !== null && !ID_RE.test(String(arg))) throw circleMissing();
         answer = arg === null ? composeCircle(loaded.ctx, loaded.record, loaded.sources)
@@ -439,6 +466,6 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
 }
 
 module.exports = {
-  getPage, getMonth, getPiece, getCircle, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
+  getPage, getMonth, getPiece, getCircle, getKnownFor, personIdFor, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
   makeLink, changeLink, removeLink, openByKey, LinkRefusal: links.LinkRefusal,
 };

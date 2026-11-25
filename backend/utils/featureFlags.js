@@ -61,6 +61,20 @@ function profileTiesEnabled(env = process.env) {
   return profileSourcesEnabled(env) && isOn(env, 'PROFILE_TIES');
 }
 
+// Phase 3 of a profile with sources (founder: "yes please do so", 2026-11-24; SPEC "Phase 3"), each with its own
+// switch beneath PROFILE_SOURCES (rule 4.12): Known for (PROFILE_KNOWN_FOR) and doors with Leave your card
+// (PROFILE_DOORS). '1' on, '0' off; unset, on for hosted staging and off everywhere else. Off, none of the feature's
+// reads or writes exist and the page is exactly as before.
+function beneathProfileSources(name, env) {
+  if (!profileSourcesEnabled(env)) return false;
+  const value = String(env[name] || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+const profileKnownForEnabled = (env = process.env) => beneathProfileSources('PROFILE_KNOWN_FOR', env);
+const profileDoorsEnabled = (env = process.env) => beneathProfileSources('PROFILE_DOORS', env);
+
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
 // account. The apps show nothing unless the profile's `guidance.enabled` is true (routes/users.js). GUIDANCE_CARDS is
 // '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else.
@@ -286,6 +300,8 @@ module.exports = {
   profileSourcesEnabled,
   profileLinksEnabled,
   profileTiesEnabled,
+  profileKnownForEnabled,
+  profileDoorsEnabled,
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,
