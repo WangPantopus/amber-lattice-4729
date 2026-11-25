@@ -177,16 +177,26 @@ struct ProfileCircleDiagram: View {
         let centreY = above
             ? slot.point.y - Geo.radius - 4 - Geo.labelHeight / 2
             : slot.point.y + Geo.radius + 4 + Geo.labelHeight / 2
-        return VStack(spacing: 1) {
+        return VStack(spacing: 0) {
             if let person = slot.person {
                 Text(person.name ?? person.did ?? "Someone")
                     .scaledFont(12, weight: .semibold)
                     .foregroundStyle(Theme.Color.appText)
                     .lineLimit(2)
-                Text(person.circleWords)
-                    .scaledFont(11)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .lineLimit(2)
+                    .layoutPriority(1)
+                // The ink's word is never cut: "Carpenter · Signed" when it fits on a line, else what they did on
+                // its own (shortened) line and the word under it.
+                ViewThatFits(in: .horizontal) {
+                    Text(person.circleWords).lineLimit(1).fixedSize()
+                    VStack(spacing: 0) {
+                        if person.name != nil, let did = person.did {
+                            Text(did).lineLimit(1)
+                        }
+                        Text(person.inkWord).lineLimit(1)
+                    }
+                }
+                .scaledFont(11)
+                .foregroundStyle(Theme.Color.appTextSecondary)
             } else {
                 Text("\(slot.more) more").scaledFont(11).foregroundStyle(Theme.Color.appTextSecondary)
             }
@@ -258,7 +268,12 @@ struct ProfileCircleDiagram: View {
 extension ProfileCirclePersonDTO {
     /// What they did and the ink in a word, under their name: "Carpenter · Signed", "First boss · Said".
     var circleWords: String {
-        [name == nil ? nil : did, ink == "signed" ? "Signed" : "Said"].compactMap(\.self).joined(separator: " · ")
+        [name == nil ? nil : did, inkWord].compactMap(\.self).joined(separator: " · ")
+    }
+
+    /// The ink in a word: "Signed" for a tie both sides confirmed, else "Said".
+    var inkWord: String {
+        ink == "signed" ? "Signed" : "Said"
     }
 
     /// For VoiceOver: name, what they did, the ink and how many pieces the two share.
