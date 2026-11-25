@@ -208,6 +208,9 @@ private fun mapBlock(
     inCommon: (Map<String, Any?>) -> ProfileInCommonResponse?,
 ): ProfileBlock? {
     val kind = map.str("kind") ?: return null
+    // The 2.1.6 apps stop at the profile with its pieces (SPEC §5, the stopping point): Known for, doors, the shelf and
+    // the work circle are not shown even where a server sends them, so nothing on the page mentions them.
+    if (kind in NOT_IN_THIS_RELEASE) return null
     val id = map.str("id") ?: kind
     val title = map.str("title")
     return when (kind) {
@@ -493,6 +496,7 @@ private fun mapWorkRings(
 }
 
 private const val YEAR_CHARS = 4
+private val NOT_IN_THIS_RELEASE = setOf("known_for", "doors", "shelf", "circle", "lines_for_you", "cards_for_you")
 private val PIECE_FILTERS = setOf("all", "did", "built", "owns")
 
 private fun mapRecordChart(

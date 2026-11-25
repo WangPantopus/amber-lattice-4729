@@ -143,7 +143,7 @@ internal fun ProfilePieceEditor(
     var confirmRemove by remember { mutableStateOf(false) }
     var monthOpen by rememberSaveable { mutableStateOf(false) }
     val leave: () -> Unit = {
-        if (s.title.isNotBlank() && !s.done) {
+        if (s.dirty && !s.done) {
             confirmLeave = true
         } else {
             onClose(PieceEditorResult.Cancelled)
@@ -633,7 +633,7 @@ private fun AttachmentTile(
     Box(
         modifier =
             Modifier
-                .size(72.dp)
+                .size(88.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(PantopusColors.appSurfaceSunken)
                 .then(if (attachment.failed) Modifier.border(2.dp, PantopusColors.error, RoundedCornerShape(10.dp)) else Modifier)
@@ -687,7 +687,7 @@ private fun AttachmentTile(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .size(40.dp)
+                        .size(36.dp)
                         .clickable(onClickLabel = "Remove $word", role = Role.Button, onClick = onRemove),
                 contentAlignment = Alignment.TopEnd,
             ) {
@@ -718,7 +718,7 @@ private fun EditorLinkCard(
             title = null,
             description = "Read when you save.",
             ink = ProfileInk.Said,
-            how = "Said, until you prove the page is yours",
+            how = "Not proven yours yet",
         )
     PieceLinkCardView(
         link = card,

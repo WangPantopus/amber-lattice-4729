@@ -89,14 +89,12 @@ private val ABOUT_YOU =
     linkedMapOf(
         "says" to PartWords("Says", "Your one line"),
         "prompts" to PartWords("Get to know", "Your answers"),
-        "shelf" to PartWords("Shelf", null),
         "city" to PartWords("City", null),
     )
 
 private val WHAT_YOU_DID =
     linkedMapOf(
         "work" to PartWords("Work", "What you can do, your pieces and what you own"),
-        "known_for" to PartWords("Known for", "Writers show by name only if they allow it."),
         "record_work" to PartWords("Record: work and learning", null),
         "record_home" to PartWords("Record: home", "That your home is verified. Never the address."),
         "record_others" to PartWords("Record: with others", null),
@@ -104,10 +102,8 @@ private val WHAT_YOU_DID =
         "reviews" to PartWords("Reviews", "Job reviews, all of them or none"),
     )
 
-private val REACHING_YOU =
-    linkedMapOf(
-        "doors" to PartWords("Doors", "Hire, ask, send a card, leave a card. A visitor signs in to use one."),
-    )
+// Doors (phase 3) are not in the 2.1.6 apps; this group keeps its fixed "Phone and email" row.
+private val REACHING_YOU = linkedMapOf<String, PartWords>()
 
 /** Every part's words, in board 21's order (a link for one purpose lists them the same way). */
 internal val PART_WORDS: Map<String, PartWords> = ABOUT_YOU + WHAT_YOU_DID + REACHING_YOU

@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -87,6 +89,8 @@ data class PieceEditorState(
     val proof: EditorProof? = null,
     /** Set once a save or a removal is done: the editor closes and the page is read again. */
     val done: Boolean = false,
+    /** Anything changed since it opened: closing then asks first. */
+    val dirty: Boolean = false,
     val removed: Boolean = false,
 ) {
     val count: Int get() = attachments.size + links.size
@@ -120,6 +124,9 @@ class ProfilePieceEditorViewModel
 
         private var previewJob: Job? = null
         private var started = false
+
+        /** Picked files are read and uploaded one at a time: two read at once from the picker could fail. */
+        private val uploads = Mutex()
 
         /** A new piece, blank or started from [offer] (a job's title stays the poster's: the field starts empty). */
         fun startNew(offer: PieceOffer?) {
@@ -215,6 +222,7 @@ class ProfilePieceEditorViewModel
                     it.copy(
                         attachments = it.attachments + EditorAttachment(key, kind, null, null, null, source = uri, uploading = true),
                         attachmentsChanged = true,
+                        dirty = true,
                     )
                 }
                 upload(key, uri)
@@ -224,7 +232,10 @@ class ProfilePieceEditorViewModel
         fun retryAttachment(key: String) {
             val uri = _state.value.attachments.firstOrNull { it.key == key }?.source ?: return
             _state.update { s ->
-                s.copy(attachments = s.attachments.map { if (it.key == key) it.copy(uploading = true, failed = false) else it })
+                s.copy(
+                    attachments = s.attachments.map { if (it.key == key) it.copy(uploading = true, failed = false) else it },
+                    notice = null,
+                )
             }
             upload(key, uri)
         }
@@ -253,7 +264,7 @@ class ProfilePieceEditorViewModel
                         title = preview.title,
                         description = preview.description,
                         ink = ProfileInk.Said,
-                        how = "Said, until you prove the page is yours",
+                        how = "Not proven yours yet",
                     )
                 _state.update { s -> s.copy(links = s.links.map { if (it.url == url && it.card == null) it.copy(card = card) else it }) }
             }
@@ -328,10 +339,21 @@ class ProfilePieceEditorViewModel
             uri: Uri,
         ) {
             viewModelScope.launch {
+                uploads.withLock { uploadNow(key, uri) }
+            }
+        }
+
+        private suspend fun uploadNow(
+            key: String,
+            uri: Uri,
+        ) {
+            run {
+                // Removed while it waited its turn: nothing to upload.
+                if (_state.value.attachments.none { it.key == key }) return
                 val read = withContext(Dispatchers.IO) { readFile(uri) }
                 if (read == null) {
                     markFailed(key, "That file couldn't be read.")
-                    return@launch
+                    return
                 }
                 val (name, mime, bytes) = read
                 when (val result = pieces.upload(name, mime, bytes)) {
@@ -401,7 +423,7 @@ class ProfilePieceEditorViewModel
 
         /** A change to a field: "How this piece will show" is asked for again shortly after typing stops. */
         private fun change(transform: (PieceEditorState) -> PieceEditorState) {
-            _state.update(transform)
+            _state.update { transform(it).copy(dirty = true) }
             previewSoon()
         }
 

@@ -324,7 +324,10 @@ private fun AttachmentRow(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(attachment.title ?: attachment.word(), style = SourcesType.rowTitle)
-            Text(attachment.detail ?: attachment.word(), style = SourcesType.caption)
+            // With no title the kind is the title, so the detail line says only what it adds ("Document · PDF").
+            (attachment.detail ?: attachment.word()).takeIf { it != (attachment.title ?: attachment.word()) }?.let {
+                Text(it, style = SourcesType.caption)
+            }
         }
         if (!isVideo) {
             PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
