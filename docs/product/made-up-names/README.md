@@ -147,6 +147,7 @@ Today's routes do the same when handed a pen name's id, which is what older apps
 | `PEN_NAME_WORDS_REFUSED` (422) | The automatic check read the words and they can't go out under a made-up name; the sentence says why |
 | `PEN_NAME_CHECK_UNAVAILABLE` (503) | The check can't run. Nothing is posted under a made-up name meanwhile; a post under the person's own name is untouched |
 | `PEN_NAME_ONE_VOICE` (409) | Already in this conversation under their own name |
+| `PEN_NAME_VOICE_UNAVAILABLE` (503) | The server couldn't tell which name the person has in a made-up-name conversation: nothing is posted; try again |
 | `PEN_NAME_LENGTH`, `PEN_NAME_CHARACTERS`, `PEN_NAME_RESERVED`, `PEN_NAME_REFUSED` (400), `PEN_NAME_TAKEN`, `PEN_NAME_EXISTS`, `PEN_NAME_TOO_SOON` (409), `PEN_NAME_RATE_LIMIT` (429) | Taking a name |
 | `PEN_NAME_IS_YOURS` (400), `PEN_NAME_NOT_FOUND` (404) | Muting or blocking |
 

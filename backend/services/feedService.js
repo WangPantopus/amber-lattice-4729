@@ -498,6 +498,8 @@ async function getMuteAndHideFilters(userId) {
   const pendingEntry = { data: null };
   _filterCache.set(userId, pendingEntry, FILTER_CACHE_TTL);
 
+  // Started beside the reads below, so it never adds a round of its own.
+  const penNameBrake = penName.gate.isHidden();
   const [
     { data: mutes, error: mutesError },
     { data: hides, error: hidesError },
@@ -522,10 +524,14 @@ async function getMuteAndHideFilters(userId) {
 
   const filterError = mutesError || hidesError || blocksError || userBlocksError || personaBlocksError || feedPrefsError;
   if (filterError) throw new Error(`Failed to load feed filters: ${filterError.message}`);
-  // Both fail open on a read error, as a missing mute would: they never fail the feed.
+  // Made-up names (services/penName). The mutes above already hold the ones this person muted or blocked, so
+  // nothing more is read for someone who never did; the brake is read once a minute. Both fail open on a read
+  // error, as a missing mute would: they never fail the feed.
   const [penNameHidden, allPenNamesHidden] = await Promise.all([
-    penName.present.hiddenIds(userId),
-    penName.gate.isHidden(),
+    penName.present.hiddenIds(userId, (mutes || [])
+      .filter((m) => [penName.present.MUTE, penName.present.BLOCK].includes(m.muted_entity_type))
+      .map((m) => m.muted_entity_id)),
+    penNameBrake,
   ]);
 
   const blockedUserIds = new Set();

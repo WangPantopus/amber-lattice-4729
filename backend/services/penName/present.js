@@ -133,33 +133,46 @@ function forgetHidden(viewerId) {
 }
 
 /**
- * The made-up names this person muted or blocked, and every other name the same accounts have had: a Set of pen-name
- * ids. A read error answers an empty set, as the feed's other filters do.
+ * These made-up names and every other name the same accounts have had: a Set of pen-name ids. Throws on a read error.
  */
-async function hiddenIds(viewerId) {
+async function withSameWriters(penNameIds) {
+  const muted = [...new Set((penNameIds || []).filter(Boolean).map(String))];
+  const ids = new Set(muted);
+  if (!muted.length) return ids;
+  const { data: chosen, error: chosenError } = await supabaseAdmin.from('AudienceIdentity')
+    .select('lineage_id').eq('kind', owner.KIND).in('id', muted);
+  if (chosenError) throw chosenError;
+  const lineages = [...new Set((chosen || []).map((row) => row.lineage_id).filter(Boolean))];
+  if (lineages.length) {
+    const { data: all, error: allError } = await supabaseAdmin.from('AudienceIdentity')
+      .select('id').eq('kind', owner.KIND).in('lineage_id', lineages);
+    if (allError) throw allError;
+    for (const row of all || []) ids.add(String(row.id));
+  }
+  return ids;
+}
+
+/**
+ * The made-up names this person muted or blocked, and every other name the same accounts have had: a Set of pen-name
+ * ids. `mutedIds`: the person's "PostMute" ids of those two kinds when the caller has already read them (the feed's
+ * filters have), so nothing more is read for someone who never muted one. A read error answers an empty set, as a
+ * missing mute would: it never fails a feed.
+ */
+async function hiddenIds(viewerId, mutedIds = null) {
   if (!viewerId) return new Set();
   const key = String(viewerId);
   const hit = hiddenCache.get(key);
-  if (hit && Date.now() - hit.at < HIDDEN_MS) return hit.ids;
-  let ids = new Set();
+  if (!mutedIds && hit && Date.now() - hit.at < HIDDEN_MS) return hit.ids;
+  let ids;
   try {
-    const { data: mutes, error } = await supabaseAdmin.from('PostMute').select('muted_entity_id')
-      .eq('user_id', viewerId).in('muted_entity_type', [MUTE, BLOCK]);
-    if (error) throw error;
-    const muted = [...new Set((mutes || []).map((row) => row.muted_entity_id).filter(Boolean))];
-    if (muted.length) {
-      const { data: chosen, error: chosenError } = await supabaseAdmin.from('AudienceIdentity')
-        .select('lineage_id').eq('kind', owner.KIND).in('id', muted);
-      if (chosenError) throw chosenError;
-      const lineages = [...new Set((chosen || []).map((row) => row.lineage_id).filter(Boolean))];
-      if (lineages.length) {
-        const { data: all, error: allError } = await supabaseAdmin.from('AudienceIdentity')
-          .select('id').eq('kind', owner.KIND).in('lineage_id', lineages);
-        if (allError) throw allError;
-        ids = new Set((all || []).map((row) => String(row.id)));
-      }
-      for (const id of muted) ids.add(String(id));
+    let muted = mutedIds;
+    if (!muted) {
+      const { data: mutes, error } = await supabaseAdmin.from('PostMute').select('muted_entity_id')
+        .eq('user_id', viewerId).in('muted_entity_type', [MUTE, BLOCK]);
+      if (error) throw error;
+      muted = (mutes || []).map((row) => row.muted_entity_id);
     }
+    ids = await withSameWriters(muted);
   } catch (error) {
     logger.warn('penName.hidden_unavailable', { error: error.message });
     return new Set();

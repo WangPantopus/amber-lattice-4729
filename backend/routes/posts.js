@@ -3897,7 +3897,7 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     if (!post) return;
     // One voice per conversation (services/penName): which name this person already has here. Read while the checks
     // below run; it is needed only just before the reply is saved.
-    const voiceRead = penName.owner.voiceIn(userId, postId).catch(() => null);
+    const voiceRead = penName.owner.voiceIn(userId, postId).then((voice) => ({ voice }), () => ({ failed: true }));
 
     let parent = null;
     if (parentCommentId) {
@@ -3928,7 +3928,12 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     // Where this person is already in the conversation under their made-up name, the reply carries it whatever the
     // app sent (an app from before made-up names sends nothing): it never falls back to their own name. Where they are
     // here under their own name, a made-up name is refused.
-    const voice = await voiceRead;
+    const { voice = null, failed: voiceUnknown = false } = await voiceRead;
+    // Not knowing matters only where a made-up name is in play: there the reply waits, so a writer's own reply in
+    // their made-up-name conversation can never go out under their own name by default.
+    if (voiceUnknown && (penName.isPenNameRow(post) || penName.isPenNameRow(parent) || req.body.postAs === 'pen_name')) {
+      return res.status(503).json({ error: "That didn't go through. Please try again.", code: 'PEN_NAME_VOICE_UNAVAILABLE' });
+    }
     const underPenName = voice === 'pen_name' || req.body.postAs === 'pen_name';
     let pen = null;
     if (underPenName) {
