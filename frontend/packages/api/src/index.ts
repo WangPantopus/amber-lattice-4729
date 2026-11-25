@@ -422,13 +422,13 @@ export type {
   ProfilePage, ProfilePageHeader, ProfilePageSummary, ProfilePageTab, ProfilePageAction, ProfileBlock, ProfileKnownBlock,
   ProfileLine, ProfileBadgeLine, ProfileInk, ProfileLane, ProfileView, ProfilePreviewView, ProfileLink, ProfileMore,
   ProfileRings, ProfilePlace, ProfileShare, ProfileSharePart, ProfileSharePartKey, ProfilePartSetting,
-  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileInCommonBlock, ProfileDoorsBlock,
+  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileLinesForYouBlock, ProfileKnownForRead, ProfileKnownForSheet, ProfileOpenDoorsBlock, ProfileLeaveCard, ProfileCardSheet, ProfileCard, ProfileCardsBlock, ProfileDoorSetting, ProfileInCommonBlock, ProfileDoorsBlock,
   ProfileDoor, ProfileShelfBlock, ProfileNoticeBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
   ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
   ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
   ProfileLinkCard, ProfileCredit, ProfileAttachment, ProfilePieceOffer, ProfilePieceFields, ProfileMyPieces,
   ProfileAsk, ProfileSuggestedCredit, ProfileRoleLine, ProfileRoleFields,
-  ProfileCircleRead, ProfileCircleGroup,
+  ProfileCircleRead, ProfileCircleGroup, ProfileShelfObject,
 } from './endpoints/profilePage';
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 

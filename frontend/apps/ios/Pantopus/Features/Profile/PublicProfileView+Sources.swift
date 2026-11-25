@@ -104,87 +104,6 @@ extension PublicProfileView {
     }
 }
 
-/// The page's sheets: a month, a piece, the posts and the share sheet.
-private struct SourcesSheets: ViewModifier {
-    let view: PublicProfileView
-    let payload: PublicProfileContent
-    let page: ProfilePageModel
-    let content: ProfileSourcesContent
-
-    @Environment(\.dynamicTypeSize) private var typeSize
-
-    func body(content body: Content) -> some View {
-        body
-            .sheet(
-                item: Binding(get: { page.openedMonth }, set: { if $0 == nil { page.closeMonth() } })
-            ) { _ in
-                ProfileMonthSheet(model: page, firstName: content.header.firstName) { link in
-                    page.closeMonth()
-                    view.openSourcesLink(link, payload: payload, page: page)
-                }
-                .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(
-                item: Binding(
-                    get: { page.openingPieceId.map(ProfileOpenedPiece.init) },
-                    set: { if $0 == nil { page.closePiece() } }
-                )
-            ) { _ in
-                ProfilePieceSheet(model: page, isOwner: content.isOwner && view.viewModel.previewAudience == nil) { page.closePiece() }
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: view.$showOwnerPieces) {
-                NavigationStack {
-                    ScrollView {
-                        ProfilePortfolioSection(
-                            userId: content.header.userId,
-                            isOwnProfile: true,
-                            viewModel: view.viewModel.workModels(userId: content.header.userId, isOwnProfile: true).portfolio
-                        )
-                        .padding(Spacing.s4)
-                    }
-                    .background(Theme.Color.appBg)
-                    .navigationTitle("Your pieces")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { view.showOwnerPieces = false }
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: view.$showSourcesPosts) {
-                view.sourcesPostsSheet(payload)
-            }
-            .sheet(isPresented: view.$showProfileShare) {
-                ProfileShareSheet(
-                    model: ProfileShareModel(),
-                    name: content.header.name,
-                    avatarURL: content.header.portraitURL,
-                    avatarColor: payload.header.avatarColor,
-                    userId: content.header.userId,
-                    onClose: { view.showProfileShare = false },
-                    onPickUsername: {
-                        view.showProfileShare = false
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(600))
-                            view.usernameShare = UsernameShareSheetModel(currentUsername: view.viewModel.loadedUsername)
-                        }
-                    },
-                    onSeeAsVisitor: {
-                        view.showProfileShare = false
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(600))
-                            view.shownPreview = .anyone
-                        }
-                    }
-                )
-                .presentationDragIndicator(.visible)
-            }
-    }
-}
-
 extension PublicProfileView {
     /// What the blocks need from this screen.
     private func blockContext(
@@ -238,8 +157,8 @@ extension PublicProfileView {
             let bits = month.split(separator: "-").compactMap { Int($0) }
             guard bits.count == 2 else { return }
             Task { await page.open(month: ProfileRingMonth(year: bits[0], month: bits[1] - 1)) }
-        case let .piece(id):
-            Task { await page.open(pieceId: id) }
+        case let .piece(id, owner):
+            Task { await page.open(pieceId: id, owner: owner) }
         case let .business(username):
             DeepLinkRouter.shared.handle(path: "/business/\(username)")
         case let .profile(userId, username):

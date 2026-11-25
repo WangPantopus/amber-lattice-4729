@@ -16,7 +16,7 @@
 // show today's profile.
 // ============================================================
 
-import { del, get, patch, post, put } from '../client';
+import { del, get, patch, post, put, uploadFile } from '../client';
 import type { UserInCommon } from './users';
 
 export type ProfileInk = 'seen' | 'signed' | 'said';
@@ -130,16 +130,43 @@ export interface ProfileSaysBlock extends BlockBase {
 }
 
 export type ProfileKnownForLine = ProfileLine & {
+  id?: string;
   /** On a link the name, portrait and id are null and `did` says what they did ("Someone who learned from Maria"). */
-  who?: { name: string | null; portrait_url: string | null; user_id: string | null; did: string | null } | null;
+  who?: { name: string | null; portrait_url: string | null; user_id: string | null; username?: string | null; did: string | null } | null;
   when?: string | null;
-  tied_to?: { kind: string; id: string; title: string } | null;
+  /** What the line is tied to, in the server's words ("Tied to the piece Rebuilt a 1912 porch"); a piece by its id. */
+  tied_to?: { kind: 'gig' | 'plan' | 'train' | 'piece' | string; id: string | null; text: string } | null;
+  on_top?: boolean;
+  /** The writer's own line (any state; never says which): they can take it back (P3.2). */
+  mine?: { take_back: boolean } | null;
+  /** The person's own list (GET /me/known-for) and "Lines for you". */
+  status?: 'waiting' | 'shown' | 'hidden' | string;
 };
+
+/** "Write a line about Maria" (P3.2): only for a signed-in viewer the server lets write. */
+export interface ProfileKnownForWrite {
+  text: string;
+  left_this_year: number;
+  of: number;
+  link?: ProfileLink | null;
+}
 
 export interface ProfileKnownForBlock extends BlockBase {
   kind: 'known_for';
   lines: ProfileKnownForLine[];
   more?: ProfileMore | null;
+  write?: ProfileKnownForWrite | null;
+}
+
+/** No shown lines, but this viewer may write one (P3.2): a kind older apps skip. */
+export interface ProfileKnownForWriteBlock extends BlockBase, ProfileKnownForWrite {
+  kind: 'known_for_write';
+}
+
+/** The person's own page, while lines wait for them to show or keep hidden (P3.2). */
+export interface ProfileLinesForYouBlock extends BlockBase {
+  kind: 'lines_for_you';
+  lines: ProfileKnownForLine[];
 }
 
 /** What the viewer and the person share: exactly the body of GET /api/users/:id/in-common. */
@@ -150,7 +177,43 @@ export interface ProfileDoor {
   key: string;
   text: string;
   note?: string | null;
+  /** P3.3: who the door is open to; the owner's own view says which. */
+  open_to?: 'anyone' | 'connections' | string;
+  /** `message` (the sentence goes in the composer, unsent), `send_card`, or null signed out. */
   link?: ProfileLink | null;
+}
+
+/** P3.3: "Leave your card" for a signed-in visitor (never the person, never on a link). */
+export interface ProfileLeaveCard {
+  text: string;
+  note: string | null;
+  /** The visitor's own last card to this person in the last 30 days. */
+  left_at?: string | null;
+  /** The visitor as the person will see them on the card, when the server sends it. */
+  you?: { name: string | null; portrait_url: string | null; seen_as: string | null } | null;
+}
+
+/** P3.3 doors, as the new kind (released apps skip it): the same keys as the v1 `doors` block. */
+export interface ProfileOpenDoorsBlock extends BlockBase {
+  kind: 'open_doors';
+  doors: ProfileDoor[];
+  leave_card?: ProfileLeaveCard | null;
+  sign_in_note?: string | null;
+}
+
+/** A card left for the person (P3.3): only theirs, never counted on any page. */
+export interface ProfileCard {
+  id: string;
+  from: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null; seen_as: string | null };
+  /** The visitor's own words, or null. */
+  text: string | null;
+  left_at: string;
+  written_back: boolean;
+}
+
+export interface ProfileCardsBlock extends BlockBase {
+  kind: 'cards';
+  cards: ProfileCard[];
 }
 
 export interface ProfileDoorsBlock extends BlockBase {
@@ -171,9 +234,18 @@ export interface ProfileNoticeBlock extends BlockBase {
   link?: ProfileLink | null;
 }
 
+/** One thing on the shelf (P3.1): its `id` is its picture's file id. */
+export interface ProfileShelfObject {
+  id: string;
+  picture_url: string;
+  caption: string | null;
+  ink?: ProfileInk | null;
+}
+
+/** At most five, in the person's order. Sent only when it holds objects, for the owner too (P3.1, after review). */
 export interface ProfileShelfBlock extends BlockBase {
   kind: 'shelf';
-  objects: Array<{ id: string; picture_url: string; caption: string | null }>;
+  objects: ProfileShelfObject[];
 }
 
 /** Get to know: said lines with the prompt's catalog key (skip a key the app doesn't know). */
@@ -350,6 +422,10 @@ export type ProfileKnownBlock =
   | ProfileLinesBlock
   | ProfileSaysBlock
   | ProfileKnownForBlock
+  | ProfileKnownForWriteBlock
+  | ProfileOpenDoorsBlock
+  | ProfileCardsBlock
+  | ProfileLinesForYouBlock
   | ProfileInCommonBlock
   | ProfileDoorsBlock
   | ProfileShelfBlock
@@ -475,6 +551,10 @@ export interface ProfileShare {
   work_pieces?: { shown: number; total: number } | null;
   /** "Let people name me on their work"; absent while the server's PROFILE_TIES is off. */
   ties_enabled?: boolean;
+  /** "Let people write lines about me" (P3.2); absent while the server's Known for is off. */
+  known_for_enabled?: boolean;
+  /** "Let people leave me a card" (P3.3). */
+  cards_enabled?: boolean;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -563,7 +643,7 @@ export async function getShare(): Promise<ProfileShare> {
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean; known_for_enabled?: boolean; cards_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
 }
 
@@ -759,4 +839,117 @@ export async function getLinkCircle(username: string, key: string): Promise<Prof
 
 export async function getLinkCirclePieces(username: string, key: string, userId: string): Promise<{ v: number; pieces: ProfilePiece[] }> {
   return get<{ v: number; pieces: ProfilePiece[] }>(`${linkBase(username, key)}/circle/${encodeURIComponent(userId)}`);
+}
+
+// ── Phase 3: the shelf (board 1, CONTRACT P3.1; under PROFILE_SOURCES, the `shelf` part) ──
+
+/** A shelf picture through today's upload and its checks (kept as a kind the portfolio grid never lists). */
+export async function uploadShelfPicture(file: File): Promise<{ file: { id: string; url: string } }> {
+  return uploadFile<{ file: { id: string; url: string } }>('/api/files/upload', file, { file_type: 'profile_shelf', visibility: 'public' });
+}
+
+export async function getMyShelf(): Promise<{ objects: ProfileShelfObject[] }> {
+  return get<{ objects: ProfileShelfObject[] }>('/api/profile-page/me/shelf');
+}
+
+/** The whole shelf in order: reorder by sending the new order, remove by leaving out. At most five. */
+export async function saveShelf(objects: Array<{ file_id: string; caption: string }>): Promise<{ objects: ProfileShelfObject[] }> {
+  return put<{ objects: ProfileShelfObject[] }>('/api/profile-page/me/shelf', { objects });
+}
+
+// ── Phase 3: Known for (board 14, CONTRACT P3.2) ──
+
+export interface ProfileKnownForRead { v: number; lines: ProfileKnownForLine[] }
+
+/** All shown lines, the "on top" ones first, for anyone the `known_for` part reaches. */
+export async function getKnownFor(identifier: string, options?: { as?: ProfilePreviewView }): Promise<ProfileKnownForRead> {
+  return get<ProfileKnownForRead>(`${base(identifier)}/known-for`, options?.as ? { as: options.as } : undefined);
+}
+
+export async function getLinkKnownFor(username: string, key: string): Promise<ProfileKnownForRead> {
+  return get<ProfileKnownForRead>(`${linkBase(username, key)}/known-for`);
+}
+
+/** The writer's sheet: why they may write (one or more reasons) and how many lines they have left this year. */
+export interface ProfileKnownForSheet {
+  reasons: Array<{ kind: string; id: string; text: string }>;
+  left_this_year: number;
+  of: number;
+  max_chars: number;
+}
+
+export async function getKnownForWrite(identifier: string): Promise<ProfileKnownForSheet> {
+  return get<ProfileKnownForSheet>(`${base(identifier)}/known-for/write`);
+}
+
+export async function writeKnownFor(identifier: string, body: { text: string; reason: { kind: string; id: string }; show_name_on_links: boolean }): Promise<ProfileKnownForLine> {
+  return post<ProfileKnownForLine>(`${base(identifier)}/known-for`, body);
+}
+
+/** The writer takes their line back: it leaves everywhere at once. */
+export async function takeBackLine(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/lines-written/${encodeURIComponent(id)}`);
+}
+
+/** The person's own lines, every status, and which are on top. */
+export async function getMyKnownFor(): Promise<{ lines: ProfileKnownForLine[]; on_top: string[] }> {
+  return get<{ lines: ProfileKnownForLine[]; on_top: string[] }>('/api/profile-page/me/known-for');
+}
+
+export async function showLine(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/known-for/${encodeURIComponent(id)}/show`, {});
+}
+
+export async function hideLine(id: string): Promise<{ id: string; status: string }> {
+  return post<{ id: string; status: string }>(`/api/profile-page/me/known-for/${encodeURIComponent(id)}/hide`, {});
+}
+
+/** Up to two shown lines on top of the first tab. */
+export async function setLinesOnTop(ids: string[]): Promise<{ on_top: string[] }> {
+  return put<{ on_top: string[] }>('/api/profile-page/me/known-for/on-top', { ids });
+}
+
+// ── Phase 3: doors and "Leave your card" (board 1 and board 20, CONTRACT P3.3) ──
+
+/** The person's doors as they set them: key, the end of the sentence (none for send_card), who it's open to. */
+export interface ProfileDoorSetting { key: string; end?: string | null; open_to: 'anyone' | 'connections' | string }
+
+export async function getMyDoors(): Promise<{ doors: Array<ProfileDoor & { end?: string | null }> }> {
+  return get<{ doors: Array<ProfileDoor & { end?: string | null }> }>('/api/profile-page/me/doors');
+}
+
+/** At most five, in order; each key once. */
+export async function saveDoors(doors: ProfileDoorSetting[]): Promise<{ doors: ProfileDoor[] }> {
+  return put<{ doors: ProfileDoor[] }>('/api/profile-page/me/doors', { doors });
+}
+
+/** Leave a card on a person's page (a few words, or none). */
+/** The Leave your card sheet (P3.3, board 20), read when it opens: the visitor as the person will see them. */
+export interface ProfileCardSheet {
+  you: { name: string | null; portrait_url: string | null; seen_as: string | null } | null;
+  /** The visitor's own last card to this person in the last 30 days, YYYY-MM-DD. */
+  left_at: string | null;
+  max_chars: number;
+}
+
+/** Signed in, not the person: 404 `CARD_CANNOT_LEAVE` when no card can be left (the same answer as leaving one). */
+export async function getCardSheet(username: string): Promise<ProfileCardSheet> {
+  return get<ProfileCardSheet>(`/api/profile-page/${encodeURIComponent(username)}/card`);
+}
+
+export async function leaveCard(username: string, text: string | null): Promise<{ left: boolean; left_at: string }> {
+  return post<{ left: boolean; left_at: string }>(`/api/profile-page/${encodeURIComponent(username)}/card`, { text });
+}
+
+export async function getMyCards(): Promise<{ cards: ProfileCard[] }> {
+  return get<{ cards: ProfileCard[] }>('/api/profile-page/me/cards');
+}
+
+/** Marks a card answered once; its link opens today's conversation with the visitor. */
+export async function writeBackCard(id: string): Promise<{ id: string; written_back: boolean; link: ProfileLink }> {
+  return post<{ id: string; written_back: boolean; link: ProfileLink }>(`/api/profile-page/me/cards/${encodeURIComponent(id)}/write-back`);
+}
+
+export async function removeCard(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/cards/${encodeURIComponent(id)}`);
 }

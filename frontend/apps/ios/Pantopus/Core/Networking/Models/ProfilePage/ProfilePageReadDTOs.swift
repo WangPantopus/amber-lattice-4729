@@ -92,6 +92,12 @@ public struct ProfilePieceReadDTO: Decodable, Sendable, Hashable {
         public let keptOnce: String?
         /// The owner's view only: how the piece will show, as the server words it.
         public let howItWillShow: [String]
+        /// "Who was on it" (P2.5): only with the server's `PROFILE_TIES` on; empty otherwise.
+        public let credits: [ProfileCreditDTO]
+        /// The owner's own part on the piece ("Lead carpenter").
+        public let ownerRole: String?
+        /// The owner's view: the other party of the job or plan it started from, to name.
+        public let suggestedCredits: [ProfileSuggestedCreditDTO]
 
         enum CodingKeys: String, CodingKey {
             case description, media, links, skills, attachments, written
@@ -99,6 +105,9 @@ public struct ProfilePieceReadDTO: Decodable, Sendable, Hashable {
             case showsCan = "shows_can"
             case keptOnce = "kept_once"
             case howItWillShow = "how_it_will_show"
+            case credits
+            case ownerRole = "owner_role"
+            case suggestedCredits = "suggested_credits"
         }
 
         public init(from decoder: any Decoder) throws {
@@ -118,6 +127,9 @@ public struct ProfilePieceReadDTO: Decodable, Sendable, Hashable {
             written = list(.written)
             keptOnce = try? c.decodeIfPresent(String.self, forKey: .keptOnce)
             howItWillShow = (try? c.decodeIfPresent([String].self, forKey: .howItWillShow)) ?? []
+            credits = list(.credits)
+            ownerRole = try? c.decodeIfPresent(String.self, forKey: .ownerRole)
+            suggestedCredits = list(.suggestedCredits)
         }
     }
 
@@ -164,6 +176,8 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
     public let linksNote: String?
     /// The Work row's "12 of your 18 pieces" (P2.5): pieces open to anyone, of all shown ones.
     public let workPieces: WorkPieces?
+    /// "Let people name me on their work" (P2.5); nil while the server's `PROFILE_TIES` is off (no switch is drawn).
+    public let tiesEnabled: Bool?
 
     public struct WorkPieces: Decodable, Sendable, Hashable {
         public let shown: Int
@@ -180,6 +194,7 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
         case linksOpen = "links_open"
         case linksNote = "links_note"
         case workPieces = "work_pieces"
+        case tiesEnabled = "ties_enabled"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -197,5 +212,6 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
         linksOpen = (try? c.decodeIfPresent(Bool.self, forKey: .linksOpen)) ?? true
         linksNote = try? c.decodeIfPresent(String.self, forKey: .linksNote)
         workPieces = try? c.decodeIfPresent(WorkPieces.self, forKey: .workPieces)
+        tiesEnabled = try? c.decodeIfPresent(Bool.self, forKey: .tiesEnabled)
     }
 }

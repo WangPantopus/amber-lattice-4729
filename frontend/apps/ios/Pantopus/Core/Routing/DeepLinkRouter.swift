@@ -87,7 +87,8 @@ final class DeepLinkRouter {
         /// `code` is the card's code from a scanned link's `#c=` fragment (FASTVERIFY), filled into the code field.
         case postcardVerification(id: String, code: String? = nil)
         case conversation(id: String)
-        case user(id: String)
+        /// `tab` from `?tab=work` (the ask notification opens the asked person's Work).
+        case user(id: String, tab: String? = nil)
         /// `pantopus://persona/:handle` or `/@handle` — public Beacon profile.
         case beaconProfile(handle: String)
         /// `pantopus://join/:code` — signup invite code (RN `/join/[code]` alias).
@@ -722,7 +723,7 @@ final class DeepLinkRouter {
             return .unknown(url)
         case "user", "users", "u":
             // Short profile URL `pantopus://u/:username` shares the user surface.
-            if let id = segments.dropFirst().first { return .user(id: id) }
+            if let id = segments.dropFirst().first { return .user(id: id, tab: tabQuery) }
             return .unknown(url)
         case "b":
             // Public business short link `pantopus://b/:username` and its

@@ -82,12 +82,13 @@ final class ProfilePieceEditorModel {
     private(set) var isDraft = true
     private(set) var saving = false
     private(set) var removing = false
-    private(set) var howItWillShow: [String] = []
+    var howItWillShow: [String] = []
     /// The server's own sentence when a save is refused.
     var problem: String?
 
     var title = ""
-    var kind: String? = "did"
+    /// None until the person taps one (as on the web), so a piece is never labelled by accident.
+    var kind: String?
     /// The month and year of "When"; nil until picked.
     var month: Int?
     var year: Int?
@@ -98,6 +99,11 @@ final class ProfilePieceEditorModel {
     var audience: Audience = .anyone
     var pinned = false
     var hidden = false
+    /// Your own part on the piece ("Lead carpenter"), shown first in "Who was on it".
+    var ownerRole = ""
+    /// Who was on it (the server's ties on): each with its status; and who to suggest naming.
+    var credits: [ProfileCreditDTO] = []
+    var suggested: [ProfileSuggestedCreditDTO] = []
     private(set) var attachments: [Attachment] = []
     var links: [Link] = []
 
@@ -117,7 +123,7 @@ final class ProfilePieceEditorModel {
         case let .offer(offer):
             // A job's title is the poster's words: the piece starts without one. A plan's is the host's own.
             if offer.kind == "plan" { title = String(offer.title.prefix(Self.titleMost)) }
-            kind = "did"
+            suggested = offer.suggestedCredits
         case let .change(pieceId):
             self.pieceId = pieceId
             isDraft = false
@@ -199,6 +205,9 @@ final class ProfilePieceEditorModel {
         hidden = summary.hidden
         isDraft = summary.draft
         howItWillShow = piece.howItWillShow
+        ownerRole = piece.ownerRole ?? ""
+        credits = piece.credits
+        suggested = piece.suggestedCredits
         attachments = piece.attachments.map { item in
             Attachment(
                 id: item.id ?? item.url,
@@ -274,6 +283,7 @@ final class ProfilePieceEditorModel {
         body.set("city", .text(parts.first ?? ""))
         body.set("state", .text(parts.count > 1 ? parts[1] : ""))
         body.set("description", .text(String(words.prefix(Self.wordsMost))))
+        if ProfileTies.isOn == true || !ownerRole.isEmpty { body.set("role", .text(String(ownerRole.prefix(40)))) }
         body.set("skills", .strings(Array(skills.prefix(Self.skillsMost))))
         body.set("audience", .string(audience.rawValue))
         body.set("pinned", .bool(pinned))
@@ -314,7 +324,11 @@ final class ProfilePieceEditorModel {
         defer { saving = false }
         do {
             let answer: ProfileOwnedPieceDTO = if let pieceId {
-                try await client.request(ProfilePageEndpoints.updatePiece(id: pieceId, body(draft: draft)))
+                // A change sends only what changed since the piece was read or last saved.
+                try await client.request(ProfilePageEndpoints.updatePiece(
+                    id: pieceId,
+                    loadedBody.map { body(draft: draft).changes(since: $0) } ?? body(draft: draft)
+                ))
             } else {
                 try await client.request(ProfilePageEndpoints.createPiece(body(draft: draft)))
             }

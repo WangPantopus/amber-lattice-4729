@@ -1461,7 +1461,8 @@ public struct HubTabRoot: View {
         case .notifications:
             path.append(.notifications)
             _ = router.consume()
-        case let .user(id):
+        case let .user(id, tab):
+            ProfileOpenTab.request(tab, for: id)
             path.append(.publicProfile(userId: id))
             _ = router.consume()
         case let .beaconProfile(handle):

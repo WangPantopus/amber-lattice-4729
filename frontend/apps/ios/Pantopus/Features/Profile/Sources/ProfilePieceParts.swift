@@ -220,3 +220,41 @@ struct ProfileVideoBackdrop: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - What they wrote
+
+/// A review from the job the piece started from ("What Dan wrote", board 8): the words, then who wrote it, what they
+/// did and when, with the ink word.
+struct ProfilePieceWritten: View {
+    let line: ProfilePageLineDTO
+    let position: Int
+
+    private var title: String {
+        guard let name = line.who?.name, let first = name.split(separator: " ").first else { return "What they wrote" }
+        return "What \(first) wrote"
+    }
+
+    var body: some View {
+        let source = line.sourceLine(at: position)
+        let who = [line.who?.name, line.who?.did, line.when].compactMap(\.self).joined(separator: " · ")
+        ProfileBlockCard {
+            ProfileBlockTitle(title: title).padding(.bottom, Spacing.s2)
+            Text(line.text)
+                .scaledFont(17)
+                .foregroundStyle(Theme.Color.appText)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                ProfileInkGlyph(ink: source.ink, size: 9)
+                Text(who.isEmpty ? source.source : "\(source.ink.word) · \(who)")
+                    .scaledFont(12)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, Spacing.s2)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(title). " + ProfileSourceLine.spokenJoin(line.text, who.isEmpty ? source.source : "\(source.ink.word), \(who)")
+        )
+    }
+}

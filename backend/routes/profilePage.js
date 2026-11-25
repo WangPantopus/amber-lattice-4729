@@ -14,6 +14,7 @@
  *   POST | DELETE …/me/pieces/:id/credits[/:creditId], GET /me/asks, POST /me/asks/:id/sign | decline,
  *   PATCH | DELETE /me/ties/:id                 credits and signing (CONTRACT P2.5; PROFILE_TIES=0 turns them off)
  *   POST | PATCH | DELETE /me/roles[/:id], GET …/circle[/:userId]   roles, schools and the circle (P2.6; PROFILE_TIES=0 too)
+ *   GET | POST /:username/card                  the Leave your card sheet and leaving one (P3.3)
  */
 
 const express = require('express');
@@ -176,6 +177,9 @@ router.get('/:username/known-for/write', verifyToken, knownForOn, handle('known-
 router.post('/:username/known-for', verifyToken, knownForOn, handle('known-for-write', async (req) => {
   return knownFor.writeLine(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
 }, 201));
+router.get('/:username/card', verifyToken, handle('card-sheet', async (req) => {
+  return doorsService.cardSheet(String(req.user.id), await profilePage.personIdFor(byUsername(req)));
+}));
 router.post('/:username/card', verifyToken, handle('card-leave', async (req) => {
   return doorsService.leaveCard(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
 }, 201));

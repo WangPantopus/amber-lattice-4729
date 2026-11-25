@@ -1,12 +1,12 @@
 'use client';
 
-import { useId, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeftRight, CalendarDays, ChevronRight, Hammer, Mail, MessageCircle, Users } from 'lucide-react';
 import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
-  ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
+  ProfileCardsBlock, ProfileInk, ProfileKnownForBlock, ProfileOpenDoorsBlock, ProfileKnownForLine, ProfileKnownForWriteBlock, ProfileLane, ProfileLinesForYouBlock, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
-  ProfileNoticeBlock, ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
+  ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
 import * as api from '@pantopus/api';
 import { extractApiError } from '@/lib/auth-utils';
@@ -17,6 +17,8 @@ import { HowLine, InkGlyph, InkLine, LineText, Opens, howText, inkOf, type Targe
 import { RecordChart, WorkFan } from './RingArt';
 import Picture from './Picture';
 import { CircleFace } from './CircleView';
+import { KnownForLineCard, LineChoices, TakeBack, WhoRow } from './KnownFor';
+import { CardsForYou, dayText } from './Doors';
 import type { FanDot } from './rings';
 
 /** What a block needs to know about the page around it. */
@@ -42,6 +44,16 @@ export interface BlockContext {
   onEditRole?: ((role: ProfileRoleLine) => void) | null;
   /** A signed-in viewer changed a tie of their own on this page (a business's name off a role): read it again. */
   onReread?: (() => void) | null;
+  /** The owner: open their shelf to add, reorder and remove things (P3.1). */
+  onEditShelf?: (() => void) | null;
+  /** Known for (P3.2): open its screen with the sentence box first ("Write a line about Maria"). */
+  onWriteLine?: (() => void) | null;
+  /** Known for: a line written, taken back, shown or hidden; read the page again. */
+  onLinesChanged?: (() => void) | null;
+  /** Known for: where a line's "Tied to …" opens (a piece this viewer may open), or nothing. */
+  tiedTarget?: ((line: ProfileKnownForLine) => Target | null) | null;
+  /** The owner: open their doors to choose and finish them (P3.3). */
+  onEditDoors?: (() => void) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -249,28 +261,90 @@ function SaysBlock({ block }: { block: ProfileSaysBlock }) {
   );
 }
 
+/** The "Write a line about Maria" button, only where the server says this viewer may (P3.2). */
+function WriteLineButton({ write, ctx }: { write?: { text: string; left_this_year: number; of: number } | null; ctx: BlockContext }) {
+  if (!write?.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <button type="button" onClick={ctx.onWriteLine} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+      {write.text}
+    </button>
+  );
+}
+
+/**
+ * Known for on the first tab (board 1): two lines (the person's "on top" ones, else the newest), each with who wrote
+ * it and what they did, "All <n> lines" opening board 14, and "Write a line" for a viewer the server lets write.
+ */
 function KnownForBlock({ block, ctx }: { block: ProfileKnownForBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => line?.text?.trim());
   if (lines.length === 0) return null;
   return (
     <Section title={block.title || 'Known for'} aside={<MoreLink more={block.more} ctx={ctx} />}>
       <div className="flex flex-col gap-3.5">
-        {lines.map((line, i) => {
-          const ink = inkOf(line.ink);
-          return (
-            <div key={i} className="flex flex-col gap-1.5">
-              <LineText ink={ink}>{line.text}</LineText>
-              <div className="flex items-center gap-2">
-                {line.who?.portrait_url
-                  ? <Picture src={line.who.portrait_url} className="w-[22px] h-[22px] rounded-full object-cover shrink-0 bg-app-surface-sunken" />
-                  : <InkGlyph ink={ink} inline />}
-                <span className="text-xs leading-4 text-app-muted [overflow-wrap:anywhere]">{howText(ink, line.how)}</span>
-              </div>
-            </div>
-          );
-        })}
+        {lines.map((line, i) => (
+          <div key={line.id || i} className="flex flex-col gap-1.5">
+            <LineText ink={inkOf(line.ink)}>{line.text}</LineText>
+            <WhoRow line={line} size={22} />
+            {line.mine?.take_back && !ctx.inert ? <TakeBack line={line} firstName={ctx.firstName} onDone={ctx.onLinesChanged ?? (() => {})} /> : null}
+          </div>
+        ))}
       </div>
+      <WriteLineButton write={block.write} ctx={ctx} />
     </Section>
+  );
+}
+
+/** No shown lines yet, but this viewer may write one (P3.2's `known_for_write`): the card with only the button. */
+function KnownForWriteBlock({ block, ctx }: { block: ProfileKnownForWriteBlock; ctx: BlockContext }) {
+  if (!block.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <Section title={block.title || 'Known for'}>
+      <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">One sentence about what {ctx.firstName} did, tied to something you did together.</p>
+      <WriteLineButton write={block} ctx={ctx} />
+    </Section>
+  );
+}
+
+/** The person's own page while lines wait (P3.2): each with "Show it" or "Keep it hidden"; nobody else sees them. */
+function LinesForYouBlock({ block, ctx }: { block: ProfileLinesForYouBlock; ctx: BlockContext }) {
+  const lines = (block.lines || []).filter((line) => line?.id && line.text?.trim());
+  // A line chosen from the keyboard leaves this block: the focus goes to the next line still waiting, or, when none
+  // waits any more and the block goes, to the page's open tab, never to the top of the page.
+  const list = useRef<HTMLUListElement>(null);
+  const landing = useRef<number | null>(null);
+  const ids = lines.map((line) => line.id).join(',');
+  useEffect(() => {
+    if (landing.current === null) return;
+    const items = list.current?.children;
+    if (!items || items.length === 0) return;
+    const at = Math.min(landing.current, items.length - 1);
+    landing.current = null;
+    items[at]?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+  }, [ids]);
+  useEffect(() => () => {
+    if (landing.current === null) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    });
+  }, []);
+  if (lines.length === 0 || ctx.inert) return null;
+  return (
+    <section aria-label={block.title || 'Lines for you'} className="flex flex-col gap-2">
+      <h2 className={`${overline} px-1`}>{block.title || 'Lines for you'}</h2>
+      <ul ref={list} className="flex flex-col gap-3">
+        {lines.map((line, i) => (
+          <KnownForLineCard key={line.id} line={line} tiedTarget={ctx.tiedTarget?.(line) ?? null}>
+            <LineChoices
+              line={{ ...line, status: line.status || 'waiting' }}
+              onTop={false}
+              canTop={false}
+              onDone={(_, fromKeys) => { landing.current = fromKeys ? i : null; ctx.onLinesChanged?.(); }}
+            />
+          </KnownForLineCard>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -283,38 +357,98 @@ function InCommonBlock({ block, ctx }: { block: ProfileInCommonBlock; ctx: Block
   );
 }
 
-function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock; ctx: BlockContext }) {
+/**
+ * "Doors <first name> keeps open" (board 1): the doors the server sends this viewer (P3.3, the new kind `open_doors`).
+ * A visitor's door opens its message or the card flow (signed out: sign in first); the owner's rows only show what
+ * their doors say, with "Change". "Leave your card" below for a signed-in visitor, or the day they left one.
+ */
+function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock | ProfileOpenDoorsBlock; ctx: BlockContext }) {
   const doors = (block.doors || []).filter((door) => door?.text?.trim());
-  if (doors.length === 0 && !block.leave_card) return null;
+  const leave = block.leave_card ?? null;
+  const owner = Boolean(ctx.onEditDoors) && !ctx.inert;
+  if (doors.length === 0 && !leave && !owner) return null;
+  const leftAt = leave && 'left_at' in leave ? dayText(leave.left_at as string | null | undefined) : '';
   return (
-    <Section title={block.title || `Doors ${ctx.firstName} keeps open`} padded={false}>
-      <ul className="divide-y divide-app">
-        {doors.map((door, i) => (
-          <li key={door.key || i}>
-            <button type="button" onClick={() => ctx.onDoor(door)} disabled={ctx.inert} className={rowClass}>
-              <Tile icon={DOOR_ICON[door.key]} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{door.text}</span>
-                {door.note ? <span className="block text-xs leading-4 text-app-muted">{door.note}</span> : null}
-              </span>
-              {chevron}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {block.leave_card || block.sign_in_note ? (
-        <div className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
-          {block.leave_card ? (
-            <button
-              type="button"
-              disabled={ctx.inert}
-              onClick={() => ctx.onDoor({ key: 'leave_card' })}
-              className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60"
-            >
-              {block.leave_card.text}
-            </button>
+    <DoorsSection block={block} ctx={ctx} doors={doors} leave={leave} owner={owner} leftAt={leftAt} />
+  );
+}
+
+function DoorsSection({ block, ctx, doors, leave, owner, leftAt }: {
+  block: ProfileDoorsBlock | ProfileOpenDoorsBlock;
+  ctx: BlockContext;
+  doors: ProfileDoor[];
+  leave: ProfileDoorsBlock['leave_card'] | ProfileOpenDoorsBlock['leave_card'] | null;
+  owner: boolean;
+  leftAt: string;
+}) {
+  // "Leave your card" turns into "You left a card on …" once a card is left: if the keyboard was on the button (or
+  // has nowhere to go), it lands on that line instead of the top of the page. The card sheet looks for this anchor.
+  const leftLine = useRef<HTMLParagraphElement>(null);
+  const hadLeft = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = hadLeft.current;
+    hadLeft.current = Boolean(leftAt);
+    if (was === false && leftAt && (!document.activeElement || document.activeElement === document.body)) leftLine.current?.focus();
+  }, [leftAt]);
+  return (
+    <Section
+      title={block.title || `Doors ${ctx.firstName} keeps open`}
+      padded={false}
+      aside={owner && doors.length > 0 ? <button type="button" onClick={ctx.onEditDoors!} className="min-h-[2.75rem] -my-3 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline">Change</button> : null}
+    >
+      {doors.length > 0 ? (
+        <ul className="divide-y divide-app">
+          {doors.map((door, i) => {
+            const words = (
+              <>
+                <Tile icon={DOOR_ICON[door.key]} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{door.text}</span>
+                  {door.note ? <span className="block text-xs leading-4 text-app-muted">{door.note}</span> : null}
+                </span>
+              </>
+            );
+            return (
+              <li key={door.key || i}>
+                {owner ? (
+                  <div className="flex items-center gap-3 px-4 py-3 min-h-[3rem]">{words}</div>
+                ) : (
+                  <button type="button" onClick={() => ctx.onDoor(door)} disabled={ctx.inert} className={rowClass}>
+                    {words}
+                    {chevron}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : owner ? (
+        <p className="px-4 pt-1 pb-4 text-[0.9375rem] leading-[1.375rem] text-app-secondary">
+          Up to five ways people can reach you: hire you, ask you, borrow, invite you, or send you a card.
+        </p>
+      ) : null}
+      {owner && doors.length === 0 ? (
+        <div className="px-4 pb-4">
+          <button type="button" onClick={ctx.onEditDoors!} className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">Choose your doors</button>
+        </div>
+      ) : null}
+      {leave || block.sign_in_note ? (
+        <div data-focus-anchor="" className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
+          {leave ? (
+            leftAt ? (
+              <p ref={leftLine} tabIndex={-1} className="min-h-[2.75rem] flex items-center justify-center rounded-xl bg-app-surface-sunken text-[0.9375rem] text-app-secondary">You left a card on {leftAt}</p>
+            ) : (
+              <button
+                type="button"
+                disabled={ctx.inert}
+                onClick={() => ctx.onDoor({ key: 'leave_card' })}
+                className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60"
+              >
+                {leave.text}
+              </button>
+            )
           ) : null}
-          {block.leave_card?.note ? <p className="text-center text-xs leading-4 text-app-muted">{block.leave_card.note}</p> : null}
+          {leave?.note && !leftAt ? <p className="text-center text-xs leading-4 text-app-muted">{leave.note}</p> : null}
           {block.sign_in_note ? <p className="text-center text-xs leading-4 text-app-muted">{block.sign_in_note}</p> : null}
         </div>
       ) : null}
@@ -322,22 +456,66 @@ function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock; ctx: BlockContex
   );
 }
 
-function ShelfBlock({ block }: { block: ProfileShelfBlock }) {
+/** "Cards left for you" (P3.3, the new kind `cards`): the person's own page only, while there are cards. */
+function CardsBlock({ block, ctx }: { block: ProfileCardsBlock; ctx: BlockContext }) {
+  const cards = (block.cards || []).filter((c) => c?.id);
+  if (cards.length === 0 || ctx.inert) return null;
+  return <CardsForYou title={block.title || 'Cards left for you'} cards={cards} onChanged={() => ctx.onReread?.()} />;
+}
+
+/**
+ * "On <first name>'s shelf" (board 1): up to five things on a wooden board, a picture and the person's caption each;
+ * the row scrolls when the screen is too narrow for five. The owner always gets it: empty, it offers "Add to your
+ * shelf"; else "Change" opens their shelf (P3.1).
+ */
+function ShelfBlock({ block, ctx }: { block: ProfileShelfBlock; ctx: BlockContext }) {
   const objects = (block.objects || []).filter((item) => item?.picture_url).slice(0, 5);
-  if (objects.length === 0) return null;
+  const edit = ctx.inert ? null : ctx.onEditShelf ?? null;
+  if (objects.length === 0) {
+    if (!edit) return null;
+    return (
+      <Section title={block.title}>
+        <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">Put up to five things on your shelf, each a picture and a few words.</p>
+        <button type="button" onClick={edit} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+          Add to your shelf
+        </button>
+      </Section>
+    );
+  }
+  // The words for where these came from, written once when every object has the same ink, else under each caption.
+  const inks = objects.map((item) => inkOf(item.ink ?? 'said'));
+  const oneInk = inks.every((ink) => ink === inks[0]) ? inks[0] : null;
+  const columns = 'grid grid-cols-[repeat(5,minmax(3.5rem,1fr))] gap-1';
   return (
-    <Section title={block.title}>
-      <ul className="grid grid-cols-5 gap-1 items-end">
-        {objects.map((item) => (
-          <li key={item.id} className="flex flex-col items-center">
-            <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
-          </li>
-        ))}
-      </ul>
-      <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
-      <ul className="pt-2.5 grid grid-cols-5 gap-1" aria-hidden="true">
-        {objects.map((item) => <li key={item.id} className="font-serif italic text-xs leading-[0.9375rem] text-center text-app-strong [overflow-wrap:anywhere]">{item.caption}</li>)}
-      </ul>
+    <Section
+      title={block.title}
+      aside={edit ? (
+        <button type="button" onClick={edit} className="min-h-[2.75rem] -my-3 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline">Change</button>
+      ) : null}
+    >
+      <div className="-mx-5 px-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="min-w-[18.5rem]">
+          <ul className={`${columns} items-end`}>
+            {objects.map((item) => (
+              <li key={item.id} className="flex flex-col items-center">
+                <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
+              </li>
+            ))}
+          </ul>
+          <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
+          <ul className={`pt-2.5 ${columns}`} aria-hidden="true">
+            {objects.map((item, i) => (
+              <li key={item.id} className="flex flex-col items-center gap-1">
+                <LineText ink={inks[i]} className="!text-xs !leading-[0.9375rem] text-center [overflow-wrap:anywhere]">{item.caption}</LineText>
+                {oneInk ? null : <span className="text-[0.6875rem] leading-4 text-app-muted">{howText(inks[i])}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {oneInk ? (
+        <HowLine className="!mt-2.5 flex items-center gap-1.5"><InkGlyph ink={oneInk} inline />{howText(oneInk)}</HowLine>
+      ) : null}
     </Section>
   );
 }
@@ -423,7 +601,7 @@ function CanDoBlock({ block, ctx }: { block: ProfileCanDoBlock; ctx: BlockContex
   const most = Math.max(1, ...skills.map((skill) => skill.pieces || 0));
   return (
     <Section title={block.title || 'Can do'} aside={block.subtitle ? <span className="text-xs leading-4 text-app-muted">{block.subtitle}</span> : null}>
-      <ul className="-my-1 divide-y divide-app-subtle">
+      <ul className="-my-1 divide-y divide-app">
         {skills.map((skill, i) => {
           const ink = inkOf(skill.ink);
           const counted = skill.pieces > 0 && skill.inks ? inkCounts(skill.inks) : '';
@@ -682,7 +860,7 @@ export function WorkLineBlock({ rings, list, ctx, pinned = null }: {
               options={kinds.map((key) => ({ key, label: key === 'all' ? 'All' : KIND_WORD[key] }))}
             />
           ) : null}
-          <ul className="-mx-3 divide-y divide-app-subtle" aria-live="polite">
+          <ul className="-mx-3 divide-y divide-app" aria-live="polite">
             {shown.map(({ piece, month }) => (
               <li key={piece.id}>
                 <PieceRow piece={piece} ctx={ctx} month={shownYear && month ? MONTH_WORDS[Number(month.slice(5, 7)) - 1] ?? null : undefined} />
@@ -780,24 +958,6 @@ function RecordChartBlock({ block, ctx }: { block: ProfileRecordChartBlock; ctx:
   );
 }
 
-/** A notice (CONTRACT "On by default"): a plain row with the server's words, opening its link. */
-function NoticeBlock({ block, ctx }: { block: ProfileNoticeBlock; ctx: BlockContext }) {
-  const text = typeof block.text === 'string' ? block.text.trim() : '';
-  if (!text) return null;
-  const target = ctx.inert ? null : ctx.target(block.link);
-  const row = (
-    <span className="flex items-center gap-3 w-full">
-      <span className="min-w-0 flex-1 text-[0.9375rem] leading-[1.3125rem] text-app [overflow-wrap:anywhere]">{text}</span>
-      {target ? chevron : null}
-    </span>
-  );
-  return (
-    <section className={`${card} overflow-hidden`}>
-      {target ? <Opens target={target} className={rowClass}>{row}</Opens> : <div className="px-4 py-3 min-h-[3rem] flex items-center">{row}</div>}
-    </section>
-  );
-}
-
 function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: BlockContext }) {
   if (!block.title?.trim()) return null;
   return (
@@ -856,7 +1016,7 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'known_for': return <KnownForBlock block={block as ProfileKnownForBlock} ctx={ctx} />;
     case 'in_common': return ctx.viewerId ? <InCommonBlock block={block as ProfileInCommonBlock} ctx={ctx} /> : null;
     case 'doors': return <DoorsBlock block={block as ProfileDoorsBlock} ctx={ctx} />;
-    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} />;
+    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} ctx={ctx} />;
     case 'prompts': return <PromptsBlock block={block as ProfilePromptsBlock} ctx={ctx} />;
     case 'pinned_posts': {
       const id = (block as ProfilePinnedPostsBlock).user_id || ctx.personId;
@@ -871,14 +1031,19 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
-    case 'notice': return <NoticeBlock block={block as ProfileNoticeBlock} ctx={ctx} />;
+    case 'known_for_write': return <KnownForWriteBlock block={block as ProfileKnownForWriteBlock} ctx={ctx} />;
+    case 'open_doors': return <DoorsBlock block={block as ProfileOpenDoorsBlock} ctx={ctx} />;
+    case 'cards': return <CardsBlock block={block as ProfileCardsBlock} ctx={ctx} />;
+    case 'lines_for_you': return <LinesForYouBlock block={block as ProfileLinesForYouBlock} ctx={ctx} />;
     default: return null;
   }
 }
 
 const KNOWN_KINDS = new Set([
   'lines', 'owns', 'says', 'known_for', 'in_common', 'doors', 'shelf', 'prompts', 'pinned_posts', 'rows', 'can_do',
-  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'notice',
+  // Not `notice` (CONTRACT "On by default"): a notice sends a phone user to pantopus.com; on the web it could only point
+  // back at the page the person is already on, so the web skips it and names only what it really draws.
+  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'known_for_write', 'lines_for_you', 'open_doors', 'cards',
 ]);
 
 /** True when this page can draw the block (a known kind). A tab of unknown kinds only is not drawn. */

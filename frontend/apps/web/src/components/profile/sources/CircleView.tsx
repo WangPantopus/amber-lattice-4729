@@ -227,7 +227,7 @@ function Shared({ person, read, target }: { person: ProfileCirclePerson; read: (
         </div>
       </div>
       {pieces && pieces.length > 0 ? (
-        <ul className="divide-y divide-app-subtle border-t border-app-subtle">
+        <ul className="divide-y divide-app border-t border-app">
           {pieces.map((piece) => {
             const t = target(piece.link);
             const pInk = inkOf(piece.ink);

@@ -213,7 +213,7 @@ struct ProfilePieceCover: View {
 
     var body: some View {
         let source = piece.line.sourceLine(at: 0)
-        Button { context.openLink(.piece(id: piece.id)) } label: {
+        Button { context.openLink(piece.opening) } label: {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 ZStack(alignment: .topLeading) {
                     ProfilePiecePicture(url: piece.coverURL)
@@ -370,7 +370,7 @@ struct ProfilePieceRow: View {
 
     var body: some View {
         let source = piece.line.sourceLine(at: 0)
-        Button { context.openLink(.piece(id: piece.id)) } label: {
+        Button { context.openLink(piece.opening) } label: {
             Group {
                 if typeSize.isAccessibilitySize {
                     // The words get the full width: the small picture sits on its own line above them.
@@ -478,5 +478,14 @@ struct ProfileOwnsBlock: View {
         }
         .frame(width: 36, height: 36)
         .accessibilityHidden(true)
+    }
+}
+
+extension ProfilePieceDTO {
+    /// Where a tap opens it: on this page, or on its owner's when it is theirs ("With Maria Kovács").
+    var opening: ProfilePageLinkDTO {
+        if case let .piece(id, owner?) = line.link { return .piece(id: id, owner: owner) }
+        if let with, let owner = with.userId ?? with.username { return .piece(id: id, owner: owner) }
+        return .piece(id: id)
     }
 }

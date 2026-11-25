@@ -30,11 +30,14 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
         case owns([ProfileOwnsLineDTO])
         case recordChart(ProfileRecordChartDTO)
         case moreCloser(text: String, connects: Bool)
+        /// Something waiting for the owner that this app can't show yet, opened on pantopus.com (the owner's own page,
+        /// at the top; CONTRACT "On by default, and what a phone can't show yet").
+        case notice(text: String, link: ProfilePageLinkDTO?)
     }
 
     enum CodingKeys: String, CodingKey {
         case kind, id, title, lines, more, line, doors, objects, prompts, rows, subtitle, skills, style, pieces
-        case filters, text, action, note
+        case filters, text, action, note, link
         case leaveCard = "leave_card"
         case signInNote = "sign_in_note"
         case userId = "user_id"
@@ -94,6 +97,11 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
             struct Action: Decodable { let kind: String }
             let action = try? c.decodeIfPresent(Action.self, forKey: .action)
             content = try .moreCloser(text: c.decode(String.self, forKey: .text), connects: action?.kind == "connect")
+        case "notice":
+            content = try .notice(
+                text: c.decode(String.self, forKey: .text),
+                link: try? c.decodeIfPresent(ProfilePageLinkDTO.self, forKey: .link)
+            )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Unknown block \(kind)")
         }
@@ -259,10 +267,15 @@ public struct ProfilePieceDTO: Decodable, Sendable, Hashable, Identifiable {
     public let audience: String?
     public let draft: Bool
     public let hidden: Bool
+    /// On the Work of someone who signed a credit: whose piece it is ("With Maria Kovács"), kept once (P2.5).
+    public let with: ProfilePieceWithDTO?
+    /// The signer's own view: their tie, to take their name off.
+    public let tieId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, kind, when, media, from, to, place, pinned, audience, draft, hidden
+        case id, title, kind, when, media, from, to, place, pinned, audience, draft, hidden, with
         case coverURL = "cover_url"
+        case tieId = "tie_id"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -281,6 +294,8 @@ public struct ProfilePieceDTO: Decodable, Sendable, Hashable, Identifiable {
         audience = try? c.decodeIfPresent(String.self, forKey: .audience)
         draft = (try? c.decodeIfPresent(Bool.self, forKey: .draft)) ?? false
         hidden = (try? c.decodeIfPresent(Bool.self, forKey: .hidden)) ?? false
+        with = try? c.decodeIfPresent(ProfilePieceWithDTO.self, forKey: .with)
+        tieId = try? c.decodeIfPresent(String.self, forKey: .tieId)
     }
 
     /// The year the piece sits in on the work line: its last month, else its first, else the year in `when`.
@@ -289,6 +304,18 @@ public struct ProfilePieceDTO: Decodable, Sendable, Hashable, Identifiable {
             if let year = month.flatMap({ $0.split(separator: "-").first }).flatMap({ Int($0) }) { return year }
         }
         return when?.split(separator: " ").compactMap { Int($0) }.first { $0 > 1900 }
+    }
+}
+
+/// Whose piece a "With" piece is.
+public struct ProfilePieceWithDTO: Decodable, Sendable, Hashable {
+    public let name: String?
+    public let userId: String?
+    public let username: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, username
+        case userId = "user_id"
     }
 }
 

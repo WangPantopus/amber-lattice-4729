@@ -171,6 +171,8 @@ struct ProfileBlockView: View {
             ProfileOwnsBlock(title: block.title ?? "Owns", lines: lines, context: context)
         case let .recordChart(chart):
             ProfileRecordChartBlock(title: block.title, chart: chart, context: context)
+        case let .notice(text, link):
+            ProfileNoticeRow(text: text, onOpen: link.map { link in { context.openLink(link) } })
         }
     }
 
@@ -421,7 +423,7 @@ struct ProfilePromptsBlock: View {
                             }
                         }
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(item.question): \(item.prompt.answer). \(source.ink.word)")
+                        .accessibilityLabel("\(item.question): " + ProfileSourceLine.spokenJoin(item.prompt.answer, source.ink.word))
                     }
                     if sameSource, let first = shown.first {
                         Text(first.prompt.line.sourceLine(at: 0).source)

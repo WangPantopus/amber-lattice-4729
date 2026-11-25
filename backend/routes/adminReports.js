@@ -22,6 +22,7 @@ const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
 const verifyToken = require('../middleware/verifyToken');
 const { requireAdmin } = require('../middleware/verifyToken');
+const penName = require('../services/penName');
 const logger = require('../utils/logger');
 const notificationService = require('../services/notificationService');
 const cardReports = require('../services/cardReports');
@@ -92,8 +93,11 @@ async function targetsFor(kind, ids) {
   if (kind === 'post') {
     const { data } = await supabaseAdmin
       .from('Post')
-      .select('id, user_id, title, content, post_type, archived_at, archive_reason, created_at, is_story, story_expires_at, moderation_state, post_metadata')
+      .select('id, user_id, title, content, post_type, archived_at, archive_reason, created_at, is_story, story_expires_at, moderation_state, post_metadata, identity_context_type, identity_context_id')
       .in('id', unique);
+    // A post under a made-up name shows the name, not its writer: who wrote it is a separate, logged look
+    // (POST /post/:reportId/writer).
+    const penNames = await penName.names.rowsById((data || []).filter(penName.isPenNameRow).map((p) => p.identity_context_id));
     const [authors, moments] = await Promise.all([
       usersById((data || []).map((p) => p.user_id)),
       momentsForReview(data || []).catch((err) => {
@@ -107,7 +111,9 @@ async function targetsFor(kind, ids) {
       excerpt: excerpt(p.content),
       post_type: p.post_type || null,
       archived: Boolean(p.archived_at),
-      author: authors[p.user_id] || null,
+      author: penName.isPenNameRow(p) ? null : authors[p.user_id] || null,
+      ...(penName.isPenNameRow(p)
+        ? { made_up_name: penNames.get(String(p.identity_context_id))?.display_name || penName.present.UNKNOWN_NAME } : {}),
       ...(moments.has(p.id) ? { moment: moments.get(p.id) } : {}),
     }]));
   }
@@ -284,6 +290,25 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
  * and the author can't restore it), and every open report on that post is
  * closed as resolved. Repeating it changes nothing.
  */
+// Who wrote a reported made-up-name post: { reason } is required and the look is written to "IdentityAuditLog" before
+// the answer is given (penName/standing.js). A post under the person's own name already shows its author in the list.
+router.post('/post/:reportId/writer', async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    if (!UUID_REGEX.test(reportId)) return res.status(400).json({ error: 'Invalid report id' });
+    const { data: report, error } = await supabaseAdmin.from('PostReport').select('post_id').eq('id', reportId).maybeSingle();
+    if (error) throw error;
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const writerId = await penName.standing.staffLook({ req, kind: 'post', contentId: report.post_id, reason: req.body?.reason });
+    if (!writerId) return res.status(404).json({ error: 'This post was not written under a made-up name.' });
+    return res.json({ writer: (await usersById([writerId]))[writerId] || { id: writerId } });
+  } catch (err) {
+    if (err.status && err.code) return res.status(err.status).json({ error: err.message, code: err.code });
+    logger.error('Admin made-up name writer look failed', { error: err.message });
+    return res.status(500).json({ error: 'Failed to look up the writer' });
+  }
+});
+
 router.post('/post/:reportId/remove', async (req, res) => {
   try {
     const { reportId } = req.params;
@@ -303,7 +328,7 @@ router.post('/post/:reportId/remove', async (req, res) => {
     const now = new Date().toISOString();
     const { data: post, error: postError } = await supabaseAdmin
       .from('Post')
-      .select('id, user_id, archive_reason, is_story')
+      .select('id, user_id, archive_reason, is_story, identity_context_type')
       .eq('id', report.post_id)
       .maybeSingle();
     if (postError) {
@@ -348,11 +373,20 @@ router.post('/post/:reportId/remove', async (req, res) => {
       return res.status(500).json({ error: 'The post was removed, but its reports could not be closed' });
     }
 
+    // A removed made-up-name post is a strike on the account behind it: a warning, then no made-up name for 30 days;
+    // `severe: true` in the body takes the made-up name away for good (penName/standing.js).
+    let madeUpName = null;
+    if (post && post.archive_reason !== 'moderation' && penName.isPenNameRow(post)) {
+      madeUpName = await penName.standing.recordRemoval({ postId: post.id, severe: req.body?.severe === true })
+        .catch((err) => { logger.error('Admin post removal: made-up name strike failed', { postId: post.id, error: err.message }); return null; });
+    }
+
     logger.info('admin.post_removed', {
       report_id: reportId, post_id: report.post_id, post_found: Boolean(post),
       reports_closed: (closed || []).length, admin_id: req.user.id,
     });
-    res.json({ removed: Boolean(post), post_id: report.post_id, reports_closed: (closed || []).length });
+    res.json({ removed: Boolean(post), post_id: report.post_id, reports_closed: (closed || []).length,
+      ...(madeUpName ? { made_up_name_penalty: madeUpName } : {}) });
   } catch (err) {
     logger.error('Admin post removal error', { error: err.message });
     res.status(500).json({ error: 'Failed to remove the post' });

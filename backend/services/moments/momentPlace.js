@@ -283,5 +283,7 @@ function labelKind(labels, label) {
 
 module.exports = {
   labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
+  // scripts/seedmap.js tags a Pulse post with the venue that names its photo's spot, as its Moment's label does.
+  namingVenue, VENUE_WAIT_MS,
   FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
 };

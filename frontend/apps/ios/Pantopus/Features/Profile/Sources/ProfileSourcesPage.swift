@@ -48,7 +48,7 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     /// The first tab's opening run: drawn above the tabs, as board 1 does.
     private static func isLead(_ block: ProfilePageBlockDTO) -> Bool {
         switch block.content {
-        case .says, .knownFor, .inCommon, .doors: true
+        case .notice, .says, .knownFor, .inCommon, .doors: true
         case .lines: block.id == "key_lines"
         default: false
         }
@@ -58,9 +58,10 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
         content.tab(.person)
     }
 
-    /// `key_lines` sits inside the header card.
+    /// `key_lines` sits inside the header card. Only the owner's notices come before it.
     private var keyLines: [ProfilePageLineDTO] {
-        guard let first = person?.blocks.first, first.id == "key_lines", case let .lines(lines, _) = first.content else { return [] }
+        let lead = person?.blocks.prefix { Self.isLead($0) }
+        guard let key = lead?.first(where: { $0.id == "key_lines" }), case let .lines(lines, _) = key.content else { return [] }
         return lines
     }
 
@@ -125,6 +126,12 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
                 .refreshable {
                     if let onRefresh { await Task { await onRefresh() }.value }
                 }
+                .task(id: model.scrollsToTabs) {
+                    guard model.scrollsToTabs else { return }
+                    model.scrollsToTabs = false
+                    await Task.yield()
+                    scroller.scrollTo(Self.tabsAnchor, anchor: .top)
+                }
             }
         }
         .background(Theme.Color.appBg)
@@ -134,6 +141,13 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     /// The picked tab's blocks, then your own page's parts and a link's footer.
     @ViewBuilder private var tabContent: some View {
         if let selected {
+            if selected.key == .work, content.isOwner, let asks = model.asks, !asks.isEmpty {
+                ProfileAskedOfYou(asks: asks, model: model) { ask in
+                    guard let piece = ask.piece else { return }
+                    Task { await model.open(pieceId: piece.id, owner: ask.from.userId ?? ask.from.username, ownerName: ask.from.name) }
+                }
+                .padding(.horizontal, Spacing.s4)
+            }
             if selected.key == .work, content.isOwner, let mine = model.ownerPieces, let onEditPiece {
                 ProfileOwnerWorkCard(mine: mine) { onEditPiece($0) }
                     .padding(.horizontal, Spacing.s4)

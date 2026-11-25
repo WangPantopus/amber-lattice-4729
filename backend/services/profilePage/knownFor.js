@@ -15,7 +15,7 @@ const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { namesOf } = require('./sources');
 const { readShare } = require('./parts');
-const { knownForLineOf, monthOf, monthLabel, firstWord, KNOWN_FOR_YEAR } = require('./compose');
+const { knownForLineOf, monthOf, monthLabel, firstWord, KNOWN_FOR_YEAR, knownForWaiting } = require('./compose');
 
 const WORDS_MAX = 120;
 const A_DAY = 3;
@@ -35,7 +35,10 @@ class KnownForRefusal extends Error {
   }
 }
 const notFound = () => new KnownForRefusal(404, 'KNOWN_FOR_NOT_FOUND', 'That line isn\'t here.');
-const cannotWrite = (first) => new KnownForRefusal(404, 'KNOWN_FOR_CANNOT_WRITE', `You can't write a line about ${first}.`);
+// One answer for everyone who may not write, with no name in it: a block either way must give nothing away.
+const cannotWrite = () => new KnownForRefusal(404, 'KNOWN_FOR_CANNOT_WRITE', 'You can\'t write a line here.');
+// After taking a line back, a writer waits 30 days before writing about the same person again (compose.knownForWaiting).
+const waiting = (f) => knownForWaiting(f.taken_back_at);
 
 async function facts(writerId, personId) {
   const { data, error } = await supabaseAdmin.rpc('profile_known_for_facts', { p_writer: writerId, p_person: personId });
@@ -92,7 +95,7 @@ async function writeSheet(writerId, personId) {
   const f = await facts(writerId, personId);
   const first = firstOf(f, personId);
   const reasons = mayWrite(f, writerId, personId) ? reasonsFrom(f, first) : [];
-  if (!reasons.length || f.live) throw cannotWrite(first);
+  if (!reasons.length || f.live || waiting(f)) throw cannotWrite();
   return {
     reasons: reasons.map(({ kind, id, text }) => ({ kind, id, text })),
     left_this_year: Math.max(0, KNOWN_FOR_YEAR - Number(f.lines_this_year || 0)), of: KNOWN_FOR_YEAR, max_chars: WORDS_MAX,
@@ -119,7 +122,7 @@ async function writeLine(writerId, personId, body) {
   const f = await facts(writerId, personId);
   const first = firstOf(f, personId);
   const reasons = mayWrite(f, writerId, personId) ? reasonsFrom(f, first) : [];
-  if (!reasons.length) throw cannotWrite(first);
+  if (!reasons.length || waiting(f)) throw cannotWrite();
   if (f.live) throw new KnownForRefusal(409, 'KNOWN_FOR_ONE_LINE', `You already have a line about ${first}. Take it back to write another.`);
   const text = typeof b.text === 'string' ? b.text.replace(/\s+/g, ' ').trim() : '';
   if (!text || text.length > WORDS_MAX) throw new KnownForRefusal(400, 'KNOWN_FOR_INVALID', `Write one sentence of 1 to ${WORDS_MAX} characters.`);

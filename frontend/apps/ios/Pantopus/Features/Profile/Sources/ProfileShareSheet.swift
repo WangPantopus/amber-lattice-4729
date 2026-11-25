@@ -82,6 +82,18 @@ final class ProfileShareModel {
         }
     }
 
+    /// "Let people name me on their work" (P2.5).
+    func setTiesEnabled(_ on: Bool) async {
+        saving.insert("ties_enabled")
+        defer { saving.remove("ties_enabled") }
+        do {
+            let share: ProfileShareDTO = try await client.request(ProfilePageEndpoints.setTiesEnabled(on))
+            state = .loaded(share)
+        } catch {
+            toast = "Couldn't save that. Try again."
+        }
+    }
+
     /// Makes a link; the server's sentence when it can't (ten working links at most).
     func createLink(_ body: ProfileShareLinkBody) async -> String? {
         do {
@@ -359,6 +371,7 @@ struct ProfileShareSheet: View {
                 .padding(.vertical, Spacing.s3)
                 .accessibilityIdentifier("profileSharePart_search_engines")
             }
+            ProfileShareTiesRow(model: model, share: share)
         }
     }
 

@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead, ProfileShelfBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileOpenDoorsBlock,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -18,7 +18,10 @@ import PieceView from './PieceView';
 import PieceEditor, { type PieceEditorStart } from './PieceEditor';
 import OwnerWork from './OwnerWork';
 import RoleEditor from './RoleEditor';
+import ShelfEditor from './ShelfEditor';
 import CircleView from './CircleView';
+import KnownForScreen, { type KnownState } from './KnownFor';
+import { DoorsEditor, LeaveCardSheet } from './Doors';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -81,6 +84,28 @@ function splitHeaderLines(tab: ProfilePageTab | undefined) {
   }
   if (at < 0) return { header: null, rest: blocks };
   return { header: blocks[at] as ProfileLinesBlock, rest: blocks.filter((_, i) => i !== at) };
+}
+
+/**
+ * The owner's first tab with a shelf to add to when the server sent none (it sends one only with objects): an empty
+ * `shelf` block where the server would put it (before Get to know, pinned posts, With others and the rows).
+ */
+function withOwnShelf(blocks: ProfilePageTab['blocks'], firstName: string): ProfilePageTab['blocks'] {
+  if (blocks.some((block) => block?.kind === 'shelf')) return blocks;
+  const shelf = { kind: 'shelf', id: 'shelf', title: `On ${firstName}'s shelf`, objects: [] } as ProfileShelfBlock;
+  const at = blocks.findIndex((block) => ['prompts', 'pinned_posts', 'rows'].includes(block?.kind) || block?.id === 'with_others');
+  return at < 0 ? [...blocks, shelf] : [...blocks.slice(0, at), shelf, ...blocks.slice(at)];
+}
+
+/**
+ * The owner's first tab with their doors to choose when the server sent none (P3.3 sends `open_doors` only when it
+ * holds a door): an empty block where the doors go (before More closer, the shelf, Get to know and the rest).
+ */
+function withOwnDoors(blocks: ProfilePageTab['blocks'], firstName: string): ProfilePageTab['blocks'] {
+  if (blocks.some((block) => block?.kind === 'open_doors' || block?.kind === 'doors')) return blocks;
+  const doors = { kind: 'open_doors', id: 'doors', title: `Doors ${firstName} keeps open`, doors: [], leave_card: null, sign_in_note: null } as ProfileOpenDoorsBlock;
+  const at = blocks.findIndex((block) => ['more_closer', 'shelf', 'prompts', 'pinned_posts', 'rows'].includes(block?.kind) || block?.id === 'with_others');
+  return at < 0 ? [...blocks, doors] : [...blocks.slice(0, at), doors, ...blocks.slice(at)];
 }
 
 function SummaryWell({ summary, onOpenRecord }: { summary: ProfilePageSummary; onOpenRecord: (() => void) | null }) {
@@ -254,10 +279,12 @@ export default function SourcesProfile({
   const { headerLines, tabs } = useMemo(() => {
     const all = drawnTabs(page);
     const split = splitHeaderLines(all[0]);
-    const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: split.rest } : tab)).filter((tab) => tab.blocks.length > 0);
+    // The owner's own first tab always offers a shelf: the server sends one only when it holds something (P3.1).
+    const firstBlocks = owner ? withOwnDoors(withOwnShelf(split.rest, firstName), firstName) : split.rest;
+    const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: firstBlocks } : tab)).filter((tab) => tab.blocks.length > 0);
     if (owner && !rest.some((tab) => tab.key === 'work')) rest.splice(Math.min(1, rest.length), 0, { key: 'work', title: 'Work', blocks: [] });
     return { headerLines: split.header, tabs: rest };
-  }, [page, owner]);
+  }, [page, owner, firstName]);
   const [editing, setEditing] = useState<PieceEditorStart | null>(null);
   // Credits are on when the owner's asks can be read (the server's PROFILE_TIES).
   const [tiesOn, setTiesOn] = useState(false);
@@ -265,8 +292,19 @@ export default function SourcesProfile({
   const [circle, setCircle] = useState<'loading' | 'failed' | ProfileCircleRead | null>(null);
   const pushedCircle = useRef(false);
   const circleRound = useRef(0);
+  // Known for opened (board 14, `?known=1`), and whether it opened on the sentence box ("Write a line").
+  const [known, setKnown] = useState<KnownState | null>(null);
+  const [knownWriteFirst, setKnownWriteFirst] = useState(false);
+  const pushedKnown = useRef(false);
+  const knownRound = useRef(0);
+  const knownOpen = useRef(false);
   // A role or school being added (`role: null`) or changed.
   const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
+  // The owner's shelf open to change (P3.1).
+  const [shelfEdit, setShelfEdit] = useState(false);
+  // The owner's doors open to change, and a visitor's "Leave your card" sheet (P3.3).
+  const [doorsEdit, setDoorsEdit] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
   // Each new read of the page (after a change) reads the owner's offers again.
   // The first page is read with round 0 already, so only a later read of the page counts.
   const [pageRound, setPageRound] = useState(0);
@@ -408,6 +446,53 @@ export default function SourcesProfile({
   };
   const circleOpen = useRef(false);
   if (circle !== null) circleOpen.current = true;
+  const loadKnown = useCallback((quiet = false, keep = false) => {
+    const round = ++knownRound.current;
+    knownOpen.current = true;
+    if (!keep) setKnown('loading');
+    const lines = viaLink ? api.profilePage.getLinkKnownFor(viaLink.username, viaLink.key) : api.profilePage.getKnownFor(personId, previewAs ? { as: previewAs } : undefined);
+    // The person's own list (every line, its state, which are on top) only on their own page, never in a preview.
+    const mine = page.view === 'owner' && !previewAs && !viaLink ? api.profilePage.getMyKnownFor() : null;
+    Promise.all([lines, mine]).then(
+      ([read, own]) => {
+        if (round !== knownRound.current || !mountedRef.current) return;
+        setKnown({ lines: (read?.lines || []).filter((l) => l?.text), mine: own ? { lines: (own.lines || []).filter((l) => l?.text), on_top: own.on_top || [] } : null });
+      },
+      () => {
+        if (round !== knownRound.current || !mountedRef.current) return;
+        if (quiet) { dropKnownAddress(); return; }
+        if (!keep) setKnown('failed');
+      },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dropKnownAddress reads only refs and the address
+  }, [personId, previewAs, viaLink, page.view]);
+  const knownInAddress = () => new URLSearchParams(window.location.search).get('known') === '1';
+  const knownAddress = (on: boolean) => {
+    const params = new URLSearchParams(window.location.search);
+    if (on) params.set('known', '1'); else params.delete('known');
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  };
+  const dropKnownAddress = () => {
+    knownRound.current += 1;
+    knownOpen.current = false;
+    setKnown(null);
+    pushedKnown.current = false;
+    if (knownInAddress()) window.history.replaceState(window.history.state, '', knownAddress(false));
+  };
+  const openKnown = useCallback((writeFirst = false) => {
+    setKnownWriteFirst(writeFirst);
+    if (!knownInAddress()) {
+      window.history.pushState(window.history.state, '', knownAddress(true));
+      pushedKnown.current = true;
+    }
+    loadKnown();
+  }, [loadKnown]);
+  const closeKnown = () => {
+    if (pushedKnown.current) { pushedKnown.current = false; window.history.back(); return; }
+    dropKnownAddress();
+  };
+  if (known !== null) knownOpen.current = true;
   const readCirclePieces = useCallback((userId: string) => (viaLink
     ? api.profilePage.getLinkCirclePieces(viaLink.username, viaLink.key, userId)
     : api.profilePage.getCirclePieces(personId, userId, previewAs ? { as: previewAs } : undefined)), [personId, previewAs, viaLink]);
@@ -417,6 +502,7 @@ export default function SourcesProfile({
   followAddress.current = () => {
     // The circle's address (`?circle=1`), then a piece's.
     if (circleInAddress()) { if (!circleOpen.current) loadCircle(true); } else if (circleOpen.current) { pushedCircle.current = false; circleRound.current += 1; circleOpen.current = false; setCircle(null); }
+    if (knownInAddress()) { if (!knownOpen.current) loadKnown(true); } else if (knownOpen.current) { pushedKnown.current = false; knownRound.current += 1; knownOpen.current = false; setKnown(null); }
     const id = pieceInAddress();
     if (id) {
       // Opened from its address (a reload, a sent link, Forward): a piece this viewer may not see opens nothing.
@@ -490,9 +576,11 @@ export default function SourcesProfile({
       }
       case 'url': { const url = value('url'); return url && /^https?:\/\//i.test(url) ? { href: url, external: true } : null; }
       case 'circle': return { onClick: () => openCircle() };
+      case 'known_for': return { onClick: () => openKnown(false) };
+      case 'known_for_write': return inert ? null : { onClick: () => openKnown(true) };
       default: return null;
     }
-  }, [tabs, openTab, load, openPiece, openCircle, header.username, personId, router, viaLink]);
+  }, [tabs, openTab, load, openPiece, openCircle, openKnown, inert, header.username, personId, router, viaLink]);
 
   const closeOpened = useCallback(() => { openRound.current += 1; setOpened(null); }, []);
   const personTarget = useCallback(
@@ -500,11 +588,40 @@ export default function SourcesProfile({
     [target],
   );
 
+  // Known for (P3.2): what this viewer may write, the writer's own line, and where "Tied to …" opens.
+  const firstBlocks = tabs[0]?.blocks ?? [];
+  const knownBlock = firstBlocks.find((block) => block.kind === 'known_for') as ProfileKnownForBlock | undefined;
+  const knownWriteBlock = firstBlocks.find((block) => block.kind === 'known_for_write') as ProfileKnownForWriteBlock | undefined;
+  const knownWrite: ProfileKnownForWrite | null = inert ? null : knownBlock?.write ?? (knownWriteBlock?.text ? knownWriteBlock : null);
+  const knownMine = (knownBlock?.lines || []).filter((line) => line?.mine?.take_back);
+  const leaveCard = (firstBlocks.find((block) => block.kind === 'open_doors') as ProfileOpenDoorsBlock | undefined)?.leave_card ?? null;
+  const tiedTarget = useCallback((line: ProfileKnownForLine): Target | null => {
+    const tied = line.tied_to;
+    if (!tied?.id) return null;
+    if (tied.kind === 'piece') return target({ kind: 'piece', id: tied.id } as ProfileLink);
+    if (tied.kind === 'plan') return target({ kind: 'plan', id: tied.id } as ProfileLink);
+    if (tied.kind === 'train') return target({ kind: 'support_train', id: tied.id } as ProfileLink);
+    return null;
+  }, [target]);
+  const linesChanged = useCallback(() => {
+    (onReread ?? onChanged)?.();
+    if (knownOpen.current) loadKnown(false, true);
+  }, [onReread, onChanged, loadKnown]);
+
   const ctx: BlockContext = {
     firstName, personId, viewerId, postsReadable, inert, target, pieces,
     onEditRole: owner ? (role: ProfileRoleLine) => setRoleEdit({ role }) : null,
+    onEditShelf: owner ? () => setShelfEdit(true) : null,
     onReread: inert ? null : onReread ?? onChanged,
-    onDoor: onDoor ?? (() => {}),
+    onWriteLine: knownWrite ? () => openKnown(true) : null,
+    onLinesChanged: inert ? null : linesChanged,
+    tiedTarget,
+    onEditDoors: owner ? () => setDoorsEdit(true) : null,
+    // "Leave your card" opens its sheet here; signed out it goes to sign in first, as every door does.
+    onDoor: (door) => {
+      if (door.key === 'leave_card' && viewerId && !inert) { setLeaveOpen(true); return; }
+      onDoor?.(door);
+    },
     onConnect: onConnect ?? (() => {}),
   };
 
@@ -689,6 +806,21 @@ export default function SourcesProfile({
         viewerId={viewerId}
         onNameOff={() => { if (opened?.kind === 'piece') load({ kind: 'piece', id: opened.id }); (onReread ?? onChanged)?.(); }}
       />
+      <KnownForScreen
+        open={known !== null}
+        state={known}
+        onClose={closeKnown}
+        onRetry={() => loadKnown()}
+        firstName={firstName}
+        // The writer's sheet and "Sign and add" live under the username only (P3.2).
+        identifier={header.username || personId}
+        owner={page.view === 'owner' && !previewAs && !viaLink}
+        write={knownWrite}
+        writeFirst={knownWriteFirst}
+        extraMine={knownMine}
+        tiedTarget={tiedTarget}
+        onChanged={linesChanged}
+      />
       <CircleView
         open={circle !== null}
         state={circle}
@@ -724,6 +856,28 @@ export default function SourcesProfile({
           role={roleEdit?.role ?? null}
           onClose={() => setRoleEdit(null)}
           onSaved={() => { setRoleEdit(null); onChanged?.(); }}
+        />
+      ) : null}
+      <LeaveCardSheet
+        open={leaveOpen}
+        onClose={() => setLeaveOpen(false)}
+        firstName={firstName}
+        username={header.username || ''}
+        leave={leaveCard}
+        viewerId={viewerId}
+        onLeft={() => (onReread ?? onChanged)?.()}
+      />
+      {owner && doorsEdit ? (
+        <DoorsEditor
+          firstName={firstName}
+          onClose={() => setDoorsEdit(false)}
+          onSaved={() => { setDoorsEdit(false); onChanged?.(); }}
+        />
+      ) : null}
+      {owner && shelfEdit ? (
+        <ShelfEditor
+          onClose={() => setShelfEdit(false)}
+          onSaved={() => { setShelfEdit(false); onChanged?.(); }}
         />
       ) : null}
     </div>
