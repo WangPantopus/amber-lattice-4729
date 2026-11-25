@@ -61,6 +61,11 @@ function profileTiesEnabled(env = process.env) {
   return profileSourcesEnabled(env) && isOn(env, 'PROFILE_TIES');
 }
 
+// Known for (phase 3A; CONTRACT P3.2): on, as everything built and merged is; PROFILE_KNOWN_FOR=0 is its emergency off.
+function profileKnownForEnabled(env = process.env) {
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_KNOWN_FOR');
+}
+
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
 // account. The apps show nothing unless the profile's `guidance.enabled` is true (routes/users.js). GUIDANCE_CARDS is
 // '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else.
@@ -286,6 +291,7 @@ module.exports = {
   profileSourcesEnabled,
   profileLinksEnabled,
   profileTiesEnabled,
+  profileKnownForEnabled,
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,

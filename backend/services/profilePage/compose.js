@@ -331,6 +331,65 @@ function roleOf(r, { view, first, now = new Date() }) {
     });
 }
 
+// ---------- Known for (phase 3A, CONTRACT P3.2) ----------
+
+const KNOWN_FOR_YEAR = 12;
+
+/** What the writer did with the person, from the record the line is tied to. */
+function knownForDid(relation, first) {
+  return {
+    hired: `hired ${first}`, did_job_for: `did a job for ${first}`, went_to_plan: `went to ${first}'s plan`,
+    hosted_plan: `hosted a plan ${first} went to`, train: `helped alongside ${first}`, with: `worked with ${first}`,
+    learned: `learned from ${first}`, taught: `taught ${first}`,
+  }[relation] || `knows ${first}`;
+}
+
+/**
+ * One Known-for line as this view sees it. Signed in, the writer is named (writing a line is signing it); on a page
+ * opened without signing in, or by a link, only if they ticked "Show my name on pages opened by a link". A job is
+ * never named (its title is its poster's words); a piece only where this viewer may open it. The writer's own line
+ * says nothing of whether it is shown.
+ */
+function knownForLineOf(t, { view, first, viewerId = null, openPieces = new Map(), onTop = [] }) {
+  const named = view !== 'link' || t.name_on_links === true;
+  const shown = t.party_shown || {};
+  const did = knownForDid(t.relation, first);
+  const when = monthLabel(monthOf(t.from_month)) || monthLabel(monthOf(t.created_at));
+  const who = named
+    ? { name: shown.name || null, user_id: t.party_user_id, username: shown.username || null, portrait_url: shown.avatar || null, did }
+    : { name: null, user_id: null, username: null, portrait_url: null, did: `Someone who ${did}` };
+  let tied;
+  if (t.relation === 'hired' || t.relation === 'did_job_for') tied = { kind: 'gig', id: null, text: `Tied to a paid job${when ? `, ${when}` : ''}` };
+  else if (t.relation === 'went_to_plan' || t.relation === 'hosted_plan') {
+    tied = { kind: 'plan', id: null, text: t.plan_title ? `Tied to ${t.plan_title}, a plan that took place` : 'Tied to a plan that took place' };
+  } else if (t.relation === 'train') tied = { kind: 'train', id: null, text: 'Tied to a Support Train they both helped on' };
+  else if (t.piece_id && openPieces.has(String(t.piece_id))) {
+    tied = { kind: 'piece', id: t.piece_id, text: `Tied to the piece ${openPieces.get(String(t.piece_id))}` };
+  } else tied = { kind: t.piece_id ? 'piece' : 'role', id: null, text: t.piece_id ? 'Tied to work they did together' : 'Tied to a role they both confirmed' };
+  const by = who.name || who.did[0].toLowerCase() + who.did.slice(1);
+  const answer = line('signed', t.note, `Written by ${by}${when ? `, ${when}` : ''}`, 'others', null, {
+    id: t.id, who, when, tied_to: tied, on_top: onTop.includes(String(t.id)),
+  });
+  if (viewerId && String(t.party_user_id) === String(viewerId) && view !== 'owner') answer.mine = { take_back: true };
+  return answer;
+}
+
+/** The lines this view sees on the page: shown ones (on top first, then newest), and a writer's own line. */
+function knownForLines(ctx, sources, record, view) {
+  const first = ctx.firstName;
+  const onTop = (readShare(ctx.share || null).known_for_top || []).map(String);
+  const openPieces = new Map(record.pieces.filter((p) => !p.with && !p.row.is_draft && p.row.is_visible !== false).map((p) => [String(p.row.id), p.row.title]));
+  const mine = (t) => ctx.viewerId && String(t.party_user_id) === String(ctx.viewerId);
+  return (sources.knownFor || []).filter((t) => t.status === 'signed' || (view !== 'owner' && mine(t)))
+    .map((t) => knownForLineOf(t, { view, first, viewerId: ctx.viewerId, openPieces, onTop }))
+    // The person's "on top" lines first, in the order they chose; then the newest.
+    .sort((a, b) => {
+      const ra = a.on_top ? onTop.indexOf(String(a.id)) : 99;
+      const rb = b.on_top ? onTop.indexOf(String(b.id)) : 99;
+      return ra - rb;
+    });
+}
+
 const CIRCLE_GROUPS = [['taught_or_led', 'Has taught or led'], ['works_beside', 'Works beside'], ['learned_from', 'Learned from']];
 // A credit on the person's own piece: `led` → they led them; `learned_from` → they learned from them.
 const OWN_GROUP = { led: 'taught_or_led', with: 'works_beside', learned_from: 'learned_from' };
@@ -653,6 +712,17 @@ function buildRecord(ctx, sources, { now }) {
       line: line('said', `Tools: ${tools}`, `In ${first}'s words`, 'work', null, { badge: null }) });
   }
 
+  // Known for (phase 3A): each shown line marks its month Signed on the "with others" lane and is a Record line.
+  for (const t of (sources.knownFor || []).filter((k) => k.status === 'signed')) {
+    const km = monthOf(t.from_month) || monthOf(t.created_at);
+    mark('others', [km], 'signed', ['known_for']);
+    const did = knownForDid(t.relation, first);
+    entries.push({ id: `known_for_${t.id}`, parts: ['known_for', 'record_others'], place: 'others', order: 3,
+      make: (linkOnly) => line('signed', t.note, `Written by ${(!linkOnly || t.name_on_links) && t.party_shown?.name ? t.party_shown.name
+        : `someone who ${did}`}${km ? `, ${monthLabel(km)}` : ''}`, 'others', null), linkAware: true });
+    if (km) events.push({ month: km, parts: ['known_for'], line: line('signed', t.note, `A line about ${first}`, 'others', null) });
+  }
+
   // Roles and schools (phase 2B): lines only, no months (a six-year role would fill the rings).
   const roles = (sources.roles || []).map((r) => roleOf(r, { view: viewOf, first, now }));
   roles.forEach((ln, i) => entries.push({ id: `role_${i}`, parts: ['record_work'], place: 'record_work', order: 5, line: ln }));
@@ -712,7 +782,7 @@ function partContent(ctx, record) {
     shelf: (ctx.shelf || []).length > 0,
     city: Boolean(ctx.placeLabel || ctx.homePlaceLabel),
     work: record.pieces.length > 0 || record.skills.length > 0 || has('owns'),
-    known_for: false,
+    known_for: record.entries.some((e) => String(e.id).startsWith('known_for_')),
     record_work: has('record_work'),
     record_home: has('record_home'),
     record_others: has('others'),
@@ -774,11 +844,38 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   // ---- person tab ----
   // What the person's own app can't show yet comes first: one `notice` each (index.noticesFor; owner only).
   const person = [...(view === 'owner' ? (ctx.notices || []) : [])];
+  // The person's own view: lines waiting for "Show it" or "Keep it hidden" (phase 3A).
+  if (view === 'owner' && sources.knownForOn) {
+    const onTop = (readShare(ctx.share || null).known_for_top || []).map(String);
+    const waiting = (sources.knownFor || []).filter((t) => t.status === 'asked')
+      .map((t) => ({ ...knownForLineOf(t, { view, first: ctx.firstName, onTop }), status: 'waiting' }));
+    if (waiting.length) person.push({ kind: 'lines_for_you', id: 'lines_for_you', title: 'Lines for you', lines: waiting });
+  }
   const keyLines = record.entries.filter((e) => e.place === 'key' && visible(e)).sort((a, b) => a.rank - b.rank).map(lineOf).slice(0, 3);
   if (keyLines.length) person.push({ kind: 'lines', id: 'key_lines', title: null, lines: keyLines, more: null });
   const bio = String(ctx.shown.bio || '').trim();
   if (bio && on('says')) {
     person.push({ kind: 'says', id: 'says', title: 'Says', line: line('said', bio, `In ${ctx.firstName}'s words`, null, null) });
+  }
+  // Known for (phase 3A): shown lines where the part reaches the view; a writer's own line; and "Write a line" for
+  // someone who shares a record with the person (and nobody else).
+  if (sources.knownForOn && on('known_for')) {
+    const kLines = knownForLines(ctx, sources, record, view);
+    const w = sources.knownForWriter;
+    const hasLive = kLines.some((l) => l.mine);
+    const write = w && w.sharesRecord && !ctx.blockedEitherWay && !hasLive && readShare(ctx.share || null).known_for_enabled
+      ? { text: `Write a line about ${ctx.firstName}`, left_this_year: Math.max(0, KNOWN_FOR_YEAR - w.linesThisYear), of: KNOWN_FOR_YEAR,
+        link: { kind: 'known_for_write' } } : null;
+    // `known_for` is a v1 block kind that released apps may draw: it is sent only with lines in it. With none, a
+    // writer's offer comes as its own new kind, `known_for_write`, which older apps skip (design session, 2026-11-25).
+    if (kLines.length) {
+      person.push({
+        kind: 'known_for', id: 'known_for', title: 'Known for', lines: kLines.slice(0, 2),
+        more: kLines.length > 2 ? { text: `All ${kLines.length} lines`, link: { kind: 'known_for' } } : null, write,
+      });
+    } else if (write) {
+      person.push({ kind: 'known_for_write', id: 'known_for_write', title: 'Known for', ...write });
+    }
   }
   if (extras.inCommon && ['member', 'connection', 'household'].includes(view)) {
     const ic = extras.inCommon;
@@ -1124,6 +1221,6 @@ function dayLabel(at) {
 }
 
 module.exports = {
-  pieceOf, cardOf, provable, creditsFor, creditOf, roleOf, buildRecord, composeCircle, composeCirclePieces, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
+  pieceOf, cardOf, provable, creditsFor, creditOf, roleOf, knownForLineOf, knownForLines, KNOWN_FOR_YEAR, buildRecord, composeCircle, composeCirclePieces, composePage, composeMonth, composePiece, partContent, ringsFor, monthOf, monthLabel, localDate, firstWord,
   PACIFIC,
 };

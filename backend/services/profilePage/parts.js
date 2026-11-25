@@ -56,6 +56,11 @@ function readShare(stored) {
     links_enabled: !(stored && typeof stored === 'object' && stored.links_enabled === false),
     // "Let people name me on their work" (phase 2B): on unless the person turned it off.
     ties_enabled: !(stored && typeof stored === 'object' && stored.ties_enabled === false),
+    // Phase 3: "Let people write lines about me", "Let people leave me a card" (on unless turned off), and the at most
+    // two shown lines the person put on top.
+    known_for_enabled: !(stored && typeof stored === 'object' && stored.known_for_enabled === false),
+    cards_enabled: !(stored && typeof stored === 'object' && stored.cards_enabled === false),
+    known_for_top: Array.isArray(stored?.known_for_top) ? stored.known_for_top.filter((id) => typeof id === 'string').slice(0, 2) : [],
   };
 }
 
@@ -70,15 +75,17 @@ function reaches(parts, part, view) {
  * Checks a PUT /me/share body. Returns { value } (the share to store) or { error } (a sentence to show). Parts not sent
  * keep their setting; a first save stores all twelve.
  */
-function applyShareChange(current, body, now = new Date(), { links = false, ties = false } = {}) {
+function applyShareChange(current, body, now = new Date(), { links = false, ties = false, knownFor = false, doors = false } = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { error: 'Send the parts to change, each set to anyone, members or connections.' };
   }
-  const allowed = ['parts', 'search_engines', ...(links ? ['links_enabled'] : []), ...(ties ? ['ties_enabled'] : [])];
+  const allowed = ['parts', 'search_engines', ...(links ? ['links_enabled'] : []), ...(ties ? ['ties_enabled'] : []),
+    ...(knownFor ? ['known_for_enabled'] : []), ...(doors ? ['cards_enabled'] : [])];
   const unknown = Object.keys(body).filter((key) => !allowed.includes(key));
   if (unknown.length) {
     const named = ['the parts', 'search engines', ...(links ? ['links for one purpose'] : []),
-      ...(ties ? ['whether people can name you on their work'] : [])];
+      ...(ties ? ['whether people can name you on their work'] : []),
+      ...(knownFor ? ['whether people can write lines about you'] : []), ...(doors ? ['whether people can leave you a card'] : [])];
     return { error: `Only ${named.slice(0, -1).join(', ')} and ${named[named.length - 1]} can be saved here.` };
   }
   const parts = { ...current.parts };
@@ -107,9 +114,18 @@ function applyShareChange(current, body, now = new Date(), { links = false, ties
     if (typeof body.ties_enabled !== 'boolean') return { error: 'Letting people name you on their work is on or off.' };
     tiesEnabled = body.ties_enabled;
   }
+  const switchOf = (key, label) => {
+    if (body[key] === undefined) return { value: current[key] !== false };
+    if (typeof body[key] !== 'boolean') return { error: `${label} is on or off.` };
+    return { value: body[key] };
+  };
+  const knownForEnabled = switchOf('known_for_enabled', 'Letting people write lines about you');
+  const cardsEnabled = switchOf('cards_enabled', 'Letting people leave you a card');
+  if (knownForEnabled.error || cardsEnabled.error) return { error: knownForEnabled.error || cardsEnabled.error };
   // Turning links or naming on or off alone doesn't save the parts (rule 4.7 starts only with a save of the parts).
   const savesParts = current.saved || body.parts !== undefined || body.search_engines !== undefined;
-  const value = { v: 1, links_enabled: linksEnabled, ties_enabled: tiesEnabled };
+  const value = { v: 1, links_enabled: linksEnabled, ties_enabled: tiesEnabled, known_for_enabled: knownForEnabled.value,
+    cards_enabled: cardsEnabled.value, known_for_top: current.known_for_top || [] };
   if (savesParts) Object.assign(value, { parts, search_engines: searchEngines, saved_at: now.toISOString() });
   return { value };
 }

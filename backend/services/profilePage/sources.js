@@ -12,7 +12,7 @@
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { NOT_HELPFUL_POST_TYPES } = require('../../utils/postReaction');
-const { profileTiesEnabled } = require('../../utils/featureFlags');
+const { profileTiesEnabled, profileKnownForEnabled } = require('../../utils/featureFlags');
 const { readShare } = require('./parts');
 
 const SOURCE_LIMIT_MS = 1500;
@@ -157,6 +157,20 @@ function rolesFrom(rows, { owner = false } = {}) {
 }
 
 /**
+ * Known-for lines about the person (phase 3A), none after the emergency off PROFILE_KNOWN_FOR=0 or while the person's own choice is off.
+ * Shown lines for everyone; waiting and hidden ones for the person, and a writer's own line for that writer. A line
+ * with a block either way between the two is gone for everyone. Each carries `party_shown` (the writer's name).
+ */
+function knownForFrom(rows, { owner = false, viewerId = null } = {}) {
+  if (!rows || !profileKnownForEnabled() || !readShare(rows.share).known_for_enabled) return [];
+  const mine = (t) => viewerId && String(t.party_user_id) === String(viewerId);
+  const list = [...(rows.known_for || []), ...(rows.owner_only_known_for || []).filter((t) => owner || mine(t))]
+    .filter((t) => t.party_blocked !== true);
+  const names = namesOf(list.map((t) => t.party));
+  return list.map(({ party, ...t }) => ({ ...t, party_shown: names.get(String(t.party_user_id)) || {} }));
+}
+
+/**
  * One person's rows, shaped as the composer reads them (compose.buildRecord). `viewerId`: the signed-in viewer whose
  * side the rows were read for (null for a preview or a link), so an ask shows to the one asked.
  */
@@ -181,6 +195,11 @@ async function sourcesFrom(userId, rows, { pinned = true, owner = false, viewerI
     credits: creditsFrom(rows, { owner, viewerId }),
     withTies: withTiesFrom(rows),
     roles: rolesFrom(rows, { owner }),
+    knownForOn: profileKnownForEnabled(),
+    knownFor: knownForFrom(rows, { owner, viewerId }),
+    // Whether this viewer may write a line (the composer adds the block and the person's switch).
+    knownForWriter: profileKnownForEnabled() && viewerId && !owner
+      ? { sharesRecord: rows.viewer_shares_record === true, linesThisYear: Number(rows.viewer_lines_this_year) || 0 } : null,
   };
 }
 
@@ -193,4 +212,4 @@ function relationshipStatus(row, viewerId, { forViewer = false } = {}) {
   return 'none';
 }
 
-module.exports = { readRows, sourcesFrom, creditsFrom, namesOf, relationshipStatus, bounded, SOURCE_LIMIT_MS };
+module.exports = { readRows, sourcesFrom, creditsFrom, knownForFrom, namesOf, relationshipStatus, bounded, SOURCE_LIMIT_MS };
