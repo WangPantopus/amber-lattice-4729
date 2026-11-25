@@ -328,6 +328,12 @@ public struct ProfilePageMoreDTO: Decodable, Sendable, Hashable {
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         text = try c.decode(String.self, forKey: .text)
-        link = try? c.decodeIfPresent(ProfilePageLinkDTO.self, forKey: .link)
+        // A link this app can't follow yet (Known for's "All 4 lines" opens a sheet the phones don't draw) drops the
+        // whole label: a count nobody can open reads as a dead button. No link at all keeps the plain words (§3.3).
+        if (try? c.decodeNil(forKey: .link)) == false {
+            link = try c.decode(ProfilePageLinkDTO.self, forKey: .link)
+        } else {
+            link = nil
+        }
     }
 }

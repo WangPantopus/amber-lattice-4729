@@ -30,11 +30,14 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
         case owns([ProfileOwnsLineDTO])
         case recordChart(ProfileRecordChartDTO)
         case moreCloser(text: String, connects: Bool)
+        /// Something waiting for the owner that this app can't show yet, opened on pantopus.com (the owner's own page,
+        /// at the top; CONTRACT "On by default, and what a phone can't show yet").
+        case notice(text: String, link: ProfilePageLinkDTO?)
     }
 
     enum CodingKeys: String, CodingKey {
         case kind, id, title, lines, more, line, doors, objects, prompts, rows, subtitle, skills, style, pieces
-        case filters, text, action, note
+        case filters, text, action, note, link
         case leaveCard = "leave_card"
         case signInNote = "sign_in_note"
         case userId = "user_id"
@@ -94,6 +97,11 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
             struct Action: Decodable { let kind: String }
             let action = try? c.decodeIfPresent(Action.self, forKey: .action)
             content = try .moreCloser(text: c.decode(String.self, forKey: .text), connects: action?.kind == "connect")
+        case "notice":
+            content = try .notice(
+                text: c.decode(String.self, forKey: .text),
+                link: try? c.decodeIfPresent(ProfilePageLinkDTO.self, forKey: .link)
+            )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Unknown block \(kind)")
         }

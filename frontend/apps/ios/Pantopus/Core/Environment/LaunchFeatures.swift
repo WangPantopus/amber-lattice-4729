@@ -74,9 +74,10 @@ public enum LaunchFeature: String, CaseIterable, Sendable {
     case holidayCardMemories = "holiday_card_memories"
     /// 15. The profile with sources (founder decision, 2026-11-23; `~/pantopus-profile-sources/SPEC.md`): a person's
     /// profile drawn from the blocks the server composes for the viewer (`GET /api/profile-page/…`), the rings around
-    /// the portrait and on avatars, the Record tab, and the share sheet with its parts. Beside the backend's
-    /// `PROFILE_SOURCES`: the app draws the new page only when this key is on and the server answers it. Off, every
-    /// profile screen is exactly today's.
+    /// the portrait and on avatars, the Record tab, and the share sheet with its parts. On in every build since the
+    /// founder's word of 2026-11-24 ("if they are built and merged they should be available"): the key no longer
+    /// switches it. The app draws the new page whenever the server answers it, and today's profile when it doesn't
+    /// (the backend's `PROFILE_SOURCES=0`, its emergency off). Unit tests may still leave it out to draw today's.
     case profileSources = "profile_sources"
 }
 
@@ -153,8 +154,12 @@ public enum LaunchFeatures {
         isEnabled(.holidayCardMemories) && isEnabled(.mailbox)
     }
 
+    /// On in every build (see `LaunchFeature.profileSources`); only a unit test's override can leave it out.
     public static var profileSources: Bool {
-        isEnabled(.profileSources)
+        #if DEBUG
+        if let overrideForTesting { return overrideForTesting.contains(.profileSources) }
+        #endif
+        return true
     }
 
     /// Parses a comma-separated key list ("all" enables every feature).

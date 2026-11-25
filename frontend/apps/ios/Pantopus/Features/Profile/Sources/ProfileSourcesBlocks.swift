@@ -171,6 +171,8 @@ struct ProfileBlockView: View {
             ProfileOwnsBlock(title: block.title ?? "Owns", lines: lines, context: context)
         case let .recordChart(chart):
             ProfileRecordChartBlock(title: block.title, chart: chart, context: context)
+        case let .notice(text, link):
+            ProfileNoticeRow(text: text, onOpen: link.map { link in { context.openLink(link) } })
         }
     }
 

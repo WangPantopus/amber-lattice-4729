@@ -253,3 +253,39 @@ struct ProfileMoreCloserBlock: View {
         }
     }
 }
+
+// MARK: - notice
+
+/// One row for something waiting for the owner that this app can't show yet: the server's words, opened on
+/// pantopus.com. The owner's own page only, at the top of the first tab.
+struct ProfileNoticeRow: View {
+    let text: String
+    let onOpen: (() -> Void)?
+
+    var body: some View {
+        ProfileBlockCard {
+            Button { onOpen?() } label: {
+                HStack(alignment: .top, spacing: Spacing.s3) {
+                    Icon(.bell, size: 18, color: Theme.Color.primary600)
+                        .frame(width: 36, height: 36)
+                        .background(Theme.Color.infoBg, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    Text(text)
+                        .scaledFont(14, weight: .medium)
+                        .foregroundStyle(Theme.Color.appText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if onOpen != nil {
+                        Icon(.externalLink, size: 16, color: Theme.Color.appTextMuted)
+                            .padding(.top, Spacing.s2)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(onOpen == nil)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(onOpen == nil ? [] : .isLink)
+        .accessibilityIdentifier("profileNotice")
+    }
+}

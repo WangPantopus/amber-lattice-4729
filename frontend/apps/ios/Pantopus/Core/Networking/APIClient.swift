@@ -551,7 +551,7 @@ final class APIClient: @unchecked Sendable {
             "ios-\(Bundle.main.appVersion)",
             forHTTPHeaderField: "X-Client-Platform"
         )
-        for (key, value) in endpoint.headers {
+        for (key, value) in endpoint.headers.merging(ProfilePageParts.headers(for: endpoint.path), uniquingKeysWith: { own, _ in own }) {
             request.setValue(value, forHTTPHeaderField: key)
         }
         for (key, value) in extraHeaders {

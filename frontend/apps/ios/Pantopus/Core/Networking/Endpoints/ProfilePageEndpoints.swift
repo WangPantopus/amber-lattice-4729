@@ -213,3 +213,16 @@ public struct ProfileLinksEnabledBody: Encodable, Sendable {
         case linksEnabled = "links_enabled"
     }
 }
+
+/// The parts this app draws, named on every `/api/profile-page/…` request (`APIClient` sets it; CONTRACT "The parts
+/// header"). For anything waiting for the person in a part not named here (an ask to a business they own, a line in
+/// "Lines for you", a card left), the server sends a `notice` row that opens it on pantopus.com.
+public enum ProfilePageParts {
+    public static let header = "X-Pantopus-Profile-Parts"
+    public static let drawn = "pieces, credits, shelf"
+
+    /// The header for a profile-page request, none for any other.
+    public static func headers(for path: String) -> [String: String] {
+        path.hasPrefix("/api/profile-page/") ? [header: drawn] : [:]
+    }
+}
