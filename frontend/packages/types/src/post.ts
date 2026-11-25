@@ -224,6 +224,8 @@ export interface Post {
    */
   made_up_name?: boolean;
   viewer_is_author?: boolean;
+  /** Whether a reply here may be written under a made-up name (the server's rule); missing from older servers. */
+  takes_made_up_name_reply?: boolean;
   home?: { id: string; address?: string | null; city: string; state?: string } | null;
   userHasLiked?: boolean;
   /** Each reaction emoji's count, most used first (only emoji someone picked); missing from older servers. */
