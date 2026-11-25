@@ -27,6 +27,7 @@ const pieces = require('../services/profilePage/pieces');
 const ties = require('../services/profilePage/ties');
 const shelf = require('../services/profilePage/shelf');
 const knownFor = require('../services/profilePage/knownFor');
+const doorsService = require('../services/profilePage/doors');
 
 const router = express.Router();
 
@@ -42,7 +43,8 @@ function handle(label, run, status = 200) {
       return res.status(status).json(await run(req));
     } catch (err) {
       if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal
-        || err instanceof ties.TieRefusal || err instanceof shelf.ShelfRefusal || err instanceof knownFor.KnownForRefusal) {
+        || err instanceof ties.TieRefusal || err instanceof shelf.ShelfRefusal || err instanceof knownFor.KnownForRefusal
+        || err instanceof doorsService.DoorsRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -102,6 +104,12 @@ router.post('/me/known-for/:id/hide', verifyToken, knownForOn,
   handle('known-for-hide', (req) => knownFor.setStatus(String(req.user.id), req.params.id, 'declined')));
 router.put('/me/known-for/on-top', verifyToken, knownForOn, handle('known-for-top', (req) => knownFor.setOnTop(String(req.user.id), req.body)));
 router.delete('/me/lines-written/:id', verifyToken, knownForOn, handle('known-for-take-back', (req) => knownFor.takeBack(String(req.user.id), req.params.id)));
+// Doors and Leave your card (CONTRACT P3.3): no switch of their own.
+router.get('/me/doors', verifyToken, handle('doors', (req) => doorsService.getDoors(String(req.user.id))));
+router.put('/me/doors', verifyToken, handle('doors-save', (req) => doorsService.putDoors(String(req.user.id), req.body)));
+router.get('/me/cards', verifyToken, handle('cards', (req) => doorsService.listCards(String(req.user.id))));
+router.post('/me/cards/:id/write-back', verifyToken, handle('card-write-back', (req) => doorsService.writeBack(String(req.user.id), req.params.id)));
+router.delete('/me/cards/:id', verifyToken, handle('card-remove', (req) => doorsService.removeCard(String(req.user.id), req.params.id)));
 router.post('/me/roles', verifyToken, tiesOn, handle('role-add', (req) => ties.addRole(String(req.user.id), req.body), 201));
 router.patch('/me/roles/:id', verifyToken, tiesOn, handle('role-change', (req) => ties.updateRole(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/roles/:id', verifyToken, tiesOn, handle('role-remove', (req) => ties.removeRole(String(req.user.id), req.params.id)));
@@ -167,6 +175,9 @@ router.get('/:username/known-for/write', verifyToken, knownForOn, handle('known-
 }));
 router.post('/:username/known-for', verifyToken, knownForOn, handle('known-for-write', async (req) => {
   return knownFor.writeLine(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
+}, 201));
+router.post('/:username/card', verifyToken, handle('card-leave', async (req) => {
+  return doorsService.leaveCard(String(req.user.id), await profilePage.personIdFor(byUsername(req)), req.body);
 }, 201));
 router.get('/:username/circle', publicRead, tiesOn, handle('circle', (req) => profilePage.getCircle(req, byUsername(req))));
 router.get('/:username/circle/:userId', publicRead, tiesOn,
