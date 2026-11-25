@@ -118,7 +118,8 @@ async function account(name) {
   if (accounts.has(name)) return accounts.get(name);
   const found = (async () => {
     const query = db.from('User').select('id, email, username, account_type, role').limit(2);
-    const { data, error } = await (name.includes('@') ? query.ilike('email', name) : query.eq('username', name));
+    // An email matches whatever its case; `_` and `%` in it are letters, not patterns.
+    const { data, error } = await (name.includes('@') ? query.ilike('email', name.replace(/[\\%_]/g, '\\$&')) : query.eq('username', name));
     if (error) throw new Error(`Failed to read the account ${name}: ${error.message}`);
     if (!data?.length) return { name, problem: 'no account has this email or username' };
     if (data.length > 1) return { name, problem: 'more than one account matches this name' };
@@ -293,6 +294,10 @@ let videoLimitBytes = null;
 /** The Moment half: { skip } with the reason, or { days }. */
 async function momentPlan(line, who, existing) {
   if (!['moment', 'both'].includes(line.post_as)) return null;
+  // One an earlier run made but stopped before its file went up is finished, at the length it was made with.
+  if (existing && !store.meta(existing).media && store.momentState(existing) === 'uploading') {
+    return { days: store.storedHours(existing) / 24, resume: true };
+  }
   if (existing) return { skip: `already posted (Moment ${existing.id}, ${store.momentState(existing)})`, done: true };
   if (!who.moments) return { skip: 'Moments are not on for this account' };
   const days = Number(line.moment_days);
@@ -308,6 +313,7 @@ async function momentPlan(line, who, existing) {
     return { skip: 'the photo is too large for a Moment' };
   }
   const today = await momentsPostedToday(who.user.id);
+  // (a resumed one was counted when it was made)
   if (today >= store.DAILY_LIMIT) return { skip: `${store.DAILY_LIMIT} Moments already posted for this account in the last 24 hours; a later run posts it` };
   momentsToday.set(who.user.id, today + 1);
   return { days };
@@ -422,11 +428,11 @@ async function pulseRoutes() {
 
 const readFile = (p) => ({ buffer: fs.readFileSync(p), size: fs.statSync(p).size });
 
-async function postMoment(line, who, days) {
+async function postMoment(line, who, days, resume = false) {
   const user = who.user;
   const location = { source: 'capture', latitude: line.latitude, longitude: line.longitude, taken_at: line.taken_at || new Date().toISOString() };
-  // The route's own rules for this account: 18+ and the 20 a day.
-  await store.checkPostingRules(user, { kind: line.kind, location });
+  // The route's own rules for this account: 18+ and the 20 a day (a resumed Moment was counted when it was made).
+  if (!resume) await store.checkPostingRules(user, { kind: line.kind, location });
   if (await momentPlace.isAtHome(user.id, line.latitude, line.longitude, { onFailure: true })) {
     throw new Error(`taken at the account's home (within ${momentPlace.AT_HOME_M} m)`);
   }
@@ -544,7 +550,7 @@ async function run() {
     line.posted = line.posted || {};
     if (moment && !moment.skip) {
       try {
-        const made = await postMoment(line, who, moment.days);
+        const made = await postMoment(line, who, moment.days, Boolean(moment.resume));
         Object.assign(line.posted, { moment_id: made.id, moment_at: new Date().toISOString() });
         totals.moments += 1;
         console.log(`             Moment ${made.id}: ${made.state}${made.check ? ` (picture check: ${made.check})` : ''}`);
