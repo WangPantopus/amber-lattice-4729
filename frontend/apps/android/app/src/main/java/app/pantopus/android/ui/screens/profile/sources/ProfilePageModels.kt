@@ -257,6 +257,8 @@ data class PieceLinkCard(
     val description: String?,
     val ink: ProfileInk,
     val how: String?,
+    /** The owner's card only (p2.5): false for a page anyone can edit, which can never be proven. */
+    val provable: Boolean? = null,
 )
 
 /** One piece opened (board 8, contract §5 and P2.2). */

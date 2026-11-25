@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.links.LinkPreviewRepository
+import app.pantopus.android.data.profile.AttachmentRef
 import app.pantopus.android.data.profile.PieceFields
 import app.pantopus.android.data.profile.ProfilePageRepository
 import app.pantopus.android.data.profile.ProfilePieceRepository
@@ -40,7 +41,7 @@ data class EditorAttachment(
     val source: Uri? = null,
     val uploading: Boolean = false,
     val failed: Boolean = false,
-    /** A piece from before phase 2 keeps its pictures as addresses with no file id: shown, never sent. */
+    /** A picture from before phase 2 (no file id): kept, moved or removed by its url (p2.12). */
     val legacy: Boolean = false,
 )
 
@@ -56,7 +57,8 @@ data class EditorProof(
     val site: String?,
     val proof: PieceProof?,
     val checking: Boolean = false,
-    val notFound: Boolean = false,
+    /** The server's own words when a check didn't find the line (or failed). */
+    val problem: String? = null,
 )
 
 /** Board 10: a new piece or a piece being changed. */
@@ -90,7 +92,6 @@ data class PieceEditorState(
     val count: Int get() = attachments.size + links.size
     val room: Int get() = (MAX_ATTACHMENTS - count).coerceAtLeast(0)
     val uploading: Boolean get() = attachments.any { it.uploading }
-    val hasLegacy: Boolean get() = attachments.any { it.legacy }
     val canSave: Boolean get() = title.isNotBlank() && !uploading && !saving && attachments.none { it.failed }
 
     companion object {
@@ -301,7 +302,7 @@ class ProfilePieceEditorViewModel
         fun checkProof() {
             val id = _state.value.id ?: return
             val proof = _state.value.proof ?: return
-            _state.update { it.copy(proof = proof.copy(checking = true, notFound = false)) }
+            _state.update { it.copy(proof = proof.copy(checking = true, problem = null)) }
             viewModelScope.launch {
                 when (val result = pieces.check(id, proof.linkId)) {
                     is NetworkResult.Success -> {
@@ -315,13 +316,7 @@ class ProfilePieceEditorViewModel
                         }
                     }
                     is NetworkResult.Failure ->
-                        _state.update { s ->
-                            val notFound = result.error.code == HTTP_CONFLICT
-                            s.copy(
-                                proof = s.proof?.copy(checking = false, notFound = notFound),
-                                notice = if (notFound) null else result.error.message,
-                            )
-                        }
+                        _state.update { s -> s.copy(proof = s.proof?.copy(checking = false, problem = result.error.message)) }
                 }
             }
         }
@@ -440,7 +435,16 @@ class ProfilePieceEditorViewModel
                 draft = draft,
                 startedFrom = offer?.let { it.kind to it.id },
                 // A piece's files are sent only when they changed, and never while older pictures (no file id) are on it.
-                attachments = if (attachmentsChanged && !hasLegacy) attachments.mapNotNull { it.fileId } else null,
+                // Sent only when they changed: files by id, and a picture from before phase 2 by its url (p2.12), in order.
+                attachments =
+                    if (attachmentsChanged) {
+                        attachments.mapNotNull {
+                                a ->
+                            a.fileId?.let { AttachmentRef(fileId = it) } ?: a.url?.takeIf { a.legacy }?.let { AttachmentRef(url = it) }
+                        }
+                    } else {
+                        null
+                    },
                 links = links.map { it.url },
             )
         }
@@ -450,7 +454,6 @@ class ProfilePieceEditorViewModel
             const val PLACE_MOST = 80
             const val MIN_URL = 11
             const val MAX_BYTES = 100L * 1024 * 1024
-            const val HTTP_CONFLICT = 409
         }
     }
 

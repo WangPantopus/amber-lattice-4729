@@ -393,6 +393,13 @@ private fun OfferBanner(offer: PieceOffer) {
                     if (offer.kind == "plan") "Pantopus has seen this plan." else "Pantopus has seen this job.",
                     style = SourcesType.title,
                 )
+                // A job's title is the poster's words: shown here to the owner, never put in the title field.
+                if (offer.title.isNotBlank()) {
+                    Text(
+                        "\u201C${offer.title}\u201D",
+                        style = SourcesType.secondary.copy(color = PantopusColors.appText, fontWeight = FontWeight.SemiBold),
+                    )
+                }
                 Text(
                     "${offer.text} A piece started from it shows as Seen.",
                     style = SourcesType.secondary.copy(color = PantopusColors.appText),
@@ -509,19 +516,28 @@ private fun WhenAndWhere(
             }
         }
     }
+    // A city refuses anything with a digit (a street number is an address, and a piece never says one).
+    var refused by remember { mutableStateOf(false) }
     val whereField: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Field(label = "Where") {
                 OutlinedTextField(
                     value = place,
-                    onValueChange = onPlace,
+                    onValueChange = { typed ->
+                        refused = typed.any(Char::isDigit)
+                        if (!refused) onPlace(typed)
+                    },
+                    isError = refused,
                     singleLine = true,
                     placeholder = { Text("Camas, WA") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth().testTag("profileSources.pieceEditor.where"),
                 )
             }
-            Text("City only, never the address", style = SourcesType.caption)
+            Text(
+                if (refused) "City and state only: no numbers, never the address" else "City only, never the address",
+                style = SourcesType.caption.copy(color = if (refused) PantopusColors.error else PantopusColors.appTextMuted),
+            )
         }
     }
     if (profileLargeText()) {
@@ -548,7 +564,7 @@ private fun ShowIt(
     onRemove: (String) -> Unit,
     onRetry: (String) -> Unit,
 ) {
-    val canAdd = state.room > 0 && !state.hasLegacy
+    val canAdd = state.room > 0
     Field(label = "Show it", counter = "${state.count} of ${PieceEditorState.MAX_ATTACHMENTS} added") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FlowRow(
@@ -559,12 +575,6 @@ private fun ShowIt(
                 AddButton(PantopusIcon.Image, "Photos", canAdd, onPhotos, Modifier.weight(1f))
                 AddButton(PantopusIcon.Video, "Video", canAdd, onVideo, Modifier.weight(1f))
                 AddButton(PantopusIcon.FileText, "Document", canAdd, onDocument, Modifier.weight(1f))
-            }
-            if (state.hasLegacy) {
-                Text(
-                    "This piece's earlier pictures stay as they are. Adding or removing files works on pieces made since November.",
-                    style = SourcesType.caption,
-                )
             }
             if (state.attachments.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
@@ -672,7 +682,7 @@ private fun AttachmentTile(
                 Text("Try again", style = SourcesType.caption.copy(color = PantopusColors.error, fontWeight = FontWeight.SemiBold))
             }
         }
-        if (!attachment.uploading && !attachment.legacy) {
+        if (!attachment.uploading) {
             Box(
                 modifier =
                     Modifier
@@ -719,7 +729,8 @@ private fun EditorLinkCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val canProve = card.ink == ProfileInk.Said && card.id != null && saved
+                // Only a saved card the server marks provable (p2.5): a page anyone can edit never offers it.
+                val canProve = card.ink == ProfileInk.Said && card.id != null && saved && card.provable == true
                 when {
                     canProve ->
                         Text(
@@ -733,14 +744,14 @@ private fun EditorLinkCard(
                                     .clickable(role = Role.Button) { onProve(card) }
                                     .padding(horizontal = 16.dp, vertical = 13.dp),
                         )
-                    card.ink == ProfileInk.Said ->
+                    card.ink == ProfileInk.Said && card.id == null ->
                         Text(
                             "You can prove it's yours once the piece is saved.",
                             style = SourcesType.caption,
                             modifier = Modifier.weight(1f),
                         )
                 }
-                if (canProve || card.ink != ProfileInk.Said) Spacer(Modifier.weight(1f))
+                if (canProve || card.id != null) Spacer(Modifier.weight(1f))
                 Text(
                     "Remove",
                     style = SourcesType.link.copy(color = PantopusColors.appTextSecondary),
@@ -913,7 +924,41 @@ private fun MonthPicker(
     )
 }
 
-/** "Prove it's yours" (P2.4): the line to put in the page's title or description, then "Check now". */
+/** One thing to put on the page, under what it is for, with its copy button. */
+@Composable
+private fun ProofSnippet(
+    label: String,
+    text: String,
+    copyLabel: String,
+    tag: String,
+    onCopy: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = SourcesType.rowTitle)
+        Text(
+            text,
+            style = SourcesType.secondary.copy(fontFamily = FontFamily.Monospace, color = PantopusColors.appText),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(PantopusColors.appSurfaceSunken)
+                    .padding(12.dp)
+                    .testTag(tag),
+        )
+        Text(
+            copyLabel,
+            style = SourcesType.link,
+            modifier =
+                Modifier
+                    .heightIn(min = 48.dp)
+                    .clickable(role = Role.Button, onClick = onCopy)
+                    .padding(vertical = 14.dp),
+        )
+    }
+}
+
+/** "Prove it's yours" (P2.4): the server's sentence, the line and the meta tag to put on the page, then "Check now". */
 @Composable
 private fun ProofDialog(
     proof: EditorProof,
@@ -930,32 +975,26 @@ private fun ProofDialog(
                 if (line == null) {
                     Text("Getting your line…", style = SourcesType.secondary)
                 } else {
+                    // The server's sentence first, then the line for a page's title or description, then the meta tag.
                     Text(line.how, style = SourcesType.secondary.copy(color = PantopusColors.appText))
-                    Text(
-                        line.line,
-                        style = SourcesType.body.copy(fontFamily = FontFamily.Monospace),
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(PantopusColors.appSurfaceSunken)
-                                .padding(12.dp)
-                                .testTag("profileSources.pieceEditor.proofLine"),
+                    ProofSnippet(
+                        label = "For the page's title or description",
+                        text = line.line,
+                        copyLabel = "Copy the line",
+                        tag = "profileSources.pieceEditor.proofLine",
+                        onCopy = { clipboard.setText(AnnotatedString(line.line)) },
                     )
-                    Text(
-                        "Copy the line",
-                        style = SourcesType.link,
-                        modifier =
-                            Modifier
-                                .heightIn(min = 48.dp)
-                                .clickable(role = Role.Button) { clipboard.setText(AnnotatedString(line.line)) }
-                                .padding(vertical = 14.dp),
-                    )
-                    if (proof.notFound) {
-                        Text(
-                            "The line isn't in the page's title or description yet. A page can take a few minutes to change.",
-                            style = SourcesType.secondary.copy(color = PantopusColors.error),
+                    line.meta?.let { meta ->
+                        ProofSnippet(
+                            label = "For your own site",
+                            text = meta,
+                            copyLabel = "Copy the tag",
+                            tag = "profileSources.pieceEditor.proofMeta",
+                            onCopy = { clipboard.setText(AnnotatedString(meta)) },
                         )
+                    }
+                    proof.problem?.let { problem ->
+                        Text(problem, style = SourcesType.secondary.copy(color = PantopusColors.error))
                     }
                 }
             }

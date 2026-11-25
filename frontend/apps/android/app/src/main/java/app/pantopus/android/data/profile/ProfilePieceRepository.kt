@@ -47,8 +47,14 @@ data class PieceFields(
     val draft: Boolean,
     /** `gig` or `plan` and its id: only when the piece is made from an offer. */
     val startedFrom: Pair<String, String>?,
-    val attachments: List<String>?,
+    val attachments: List<AttachmentRef>?,
     val links: List<String>,
+)
+
+/** One attachment as a save sends it: an uploaded file by its id, or (p2.12) an older picture already on the piece by its url. */
+data class AttachmentRef(
+    val fileId: String? = null,
+    val url: String? = null,
 )
 
 /** One file just uploaded through today's portfolio upload, ready to attach to a piece by its id. */
@@ -187,7 +193,14 @@ class ProfilePieceRepository
                 if (forCreate) {
                     startedFrom?.let { (kind, id) -> put("started_from", JSONObject().put("kind", kind).put("id", id)) }
                 }
-                attachments?.let { ids -> put("attachments", JSONArray(ids.map { JSONObject().put("file_id", it) })) }
+                attachments?.let { refs ->
+                    val items =
+                        refs.mapNotNull {
+                                ref ->
+                            ref.fileId?.let { JSONObject().put("file_id", it) } ?: ref.url?.let { JSONObject().put("url", it) }
+                        }
+                    put("attachments", JSONArray(items))
+                }
                 put("links", JSONArray(links.map { JSONObject().put("url", it) }))
             }
 

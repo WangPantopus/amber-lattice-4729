@@ -901,8 +901,13 @@ private fun PieceList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { }) {
-                    PieceImage(piece.coverUrl, iconSize = 20.dp)
+                // A piece with no picture has no picture box in a list (as on iPhone); pinned cards keep their tinted tile.
+                piece.coverUrl?.let { cover ->
+                    Box(
+                        Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { },
+                    ) {
+                        PieceImage(cover, iconSize = 20.dp)
+                    }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(piece.title, style = SourcesType.rowTitle)

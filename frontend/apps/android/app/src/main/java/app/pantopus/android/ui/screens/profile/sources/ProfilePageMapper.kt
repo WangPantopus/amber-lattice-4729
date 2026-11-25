@@ -422,6 +422,7 @@ fun mapLinkCard(link: Map<String, Any?>): PieceLinkCard? {
         description = link.str("description"),
         ink = ProfileInk.fromApi(link.str("ink")),
         how = link.str("how"),
+        provable = link["provable"] as? Boolean,
     )
 }
 
