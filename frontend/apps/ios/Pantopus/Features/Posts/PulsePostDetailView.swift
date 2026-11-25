@@ -154,6 +154,7 @@ public struct PulsePostDetailView: View {
             .sheet(isPresented: $showsWhy) {
                 PulseWhySheet(postId: viewModel.postId, view: nil, topic: nil, areaId: nil)
             }
+            .modifier(PulsePostDetailPenNameSurfaces(viewModel: viewModel))
             .askPantopus($askTopic)
             .sheet(isPresented: $showsReadScopeConfirm) {
                 PulseAudiencePickerView(viewModel: viewModel)
@@ -316,8 +317,31 @@ public struct PulsePostDetailView: View {
             onCommentReport: { id in commentPendingReport = id },
             onRefresh: { [viewModel] in await viewModel.refresh() },
             onAsk: askAction(detail.post),
-            onOpenQuotedPost: openQuotedPost
+            onOpenQuotedPost: openQuotedPost,
+            onOpenPenName: { id, onPost in viewModel.openPenNameCard(id, onPost: onPost) },
+            aboveComposer: replyPostAs
         )
+        .task(id: viewModel.replyVoiceState) { await viewModel.loadReplyPostAs() }
+    }
+}
+
+extension PulsePostDetailView {
+    /// Over the reply box: "Post as" while the person may pick, "Posting as …" once the conversation fixed their
+    /// made-up name, nothing when only their own name can answer here.
+    private var replyPostAs: AnyView? {
+        switch viewModel.replyVoiceState {
+        case .free:
+            AnyView(PostAsRow(
+                voice: viewModel.effectiveReplyVoice,
+                me: PenNameStore.shared.me,
+                onSelect: { viewModel.selectReplyVoice($0) },
+                idPrefix: "pulseReply"
+            ))
+        case .fixedPenName:
+            viewModel.replyPenName.map { AnyView(PostingAsBanner(penName: $0, identifier: "pulseReplyPostingAs")) }
+        case .ownOnly:
+            nil
+        }
     }
 }
 

@@ -31,7 +31,11 @@ public struct PrivacyView: View {
         GroupedListView(
             dataSource: viewModel,
             onBack: onBack,
-            headerView: AnyView(NeighborsSeeYouCard(viewModel: neighbors) { showsEditor = true })
+            headerView: AnyView(VStack(spacing: Spacing.s3) {
+                NeighborsSeeYouCard(viewModel: neighbors) { showsEditor = true }
+                // Your made-up name, under how others see your own (made-up names contract, "What each app builds").
+                PenNameSettingsCard()
+            })
         )
         .accessibilityIdentifier("privacySettings")
         .task {

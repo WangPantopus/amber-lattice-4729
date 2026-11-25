@@ -22,19 +22,23 @@ import Observation
 public enum PostCollectionKind: Sendable {
     case saved
     case reposts
+    /// Your posts under your made-up name (`GET /api/pen-names/me/posts`), paged by `before`.
+    case madeUp
 
     /// The tab's id in My posts.
     var tab: String {
         switch self {
         case .saved: MyPostsTab.saved
         case .reposts: MyPostsTab.reposts
+        case .madeUp: MyPostsTab.madeUp
         }
     }
 
-    func page(limit: Int, offset: Int) -> Endpoint {
+    func page(limit: Int, offset: Int, before: String? = nil) -> Endpoint {
         switch self {
         case .saved: PostsEndpoints.savedPosts(limit: limit, offset: offset)
         case .reposts: PostsEndpoints.repostedPosts(limit: limit, offset: offset)
+        case .madeUp: PenNamesEndpoints.myPosts(before: before, limit: limit)
         }
     }
 
@@ -42,6 +46,7 @@ public enum PostCollectionKind: Sendable {
         switch self {
         case .saved: "Couldn't load your saved posts."
         case .reposts: "Couldn't load your reposts."
+        case .madeUp: "Couldn't load your made-up name's posts."
         }
     }
 
@@ -49,6 +54,7 @@ public enum PostCollectionKind: Sendable {
         switch self {
         case .saved: "Couldn't load more saved posts."
         case .reposts: "Couldn't load more reposts."
+        case .madeUp: "Couldn't load more of your made-up name's posts."
         }
     }
 
@@ -66,6 +72,12 @@ public enum PostCollectionKind: Sendable {
                 headline: "No reposts yet",
                 subcopy: "Posts you repost show up here and on your profile."
             )
+        case .madeUp:
+            ListOfRowsState.EmptyContent(
+                icon: .eyeOff,
+                headline: "Nothing under your made-up name yet",
+                subcopy: "Posts you write under your made-up name show up here. Only you can see this is you."
+            )
         }
     }
 
@@ -73,6 +85,7 @@ public enum PostCollectionKind: Sendable {
         switch self {
         case .saved: "Couldn't remove it. Try again."
         case .reposts: "Couldn't undo the repost. Try again."
+        case .madeUp: "Couldn't do that. Try again."
         }
     }
 }
@@ -97,6 +110,8 @@ public final class PostCollectionModel {
     /// The same posts read as the feed's, for the cards.
     private var feedPosts: [FeedPostDTO] = []
     private var nextOffset: Int?
+    /// Where the Made-up name tab's next page starts (`next_before`).
+    private var nextBefore: String?
     private var loadedOnce = false
     private var loadingMore = false
     /// Bumped by every first-page load so a page that lands later can't append to its replacement.
@@ -128,6 +143,8 @@ public final class PostCollectionModel {
             cards.onRepostSettled = { [weak self] postId, reposted in
                 if !reposted { Task { await self?.drop(postId: postId) } }
             }
+        case .madeUp:
+            break
         }
     }
 
@@ -174,18 +191,22 @@ public final class PostCollectionModel {
         feedPosts = response.feedPosts
         cards.show(feedPosts, readRevision: readRevision)
         nextOffset = Self.nextOffset(after: response)
+        nextBefore = response.nextBefore
         loadedOnce = true
         await rebuild()
     }
 
     /// Footer reached: append the next page. A failed page keeps the rows and offers Try again.
     func loadMoreIfNeeded() async {
-        guard !loadingMore, let offset = nextOffset else { return }
+        guard !loadingMore, nextOffset != nil || nextBefore != nil else { return }
+        let offset = nextOffset ?? 0
         let current = generation
         loadingMore = true
         loadMoreError = nil
         do {
-            let response: SavedPostsResponse = try await api.request(kind.page(limit: Self.pageSize, offset: offset))
+            let response: SavedPostsResponse = try await api.request(
+                kind.page(limit: Self.pageSize, offset: offset, before: nextBefore)
+            )
             guard current == generation else { return }
             let seen = Set(posts.map(\.id))
             posts += response.posts.filter { !seen.contains($0.id) }
@@ -193,6 +214,7 @@ public final class PostCollectionModel {
             feedPosts += response.feedPosts.filter { !seenCards.contains($0.id) }
             cards.show(feedPosts, readRevision: -1)
             nextOffset = Self.nextOffset(after: response)
+            nextBefore = response.nextBefore
         } catch {
             guard current == generation else { return }
             loadMoreError = kind.loadMoreError
@@ -227,6 +249,9 @@ public final class PostCollectionModel {
                     change.shareCount = response.shareCount
                     PulsePostsRefresh.notifyPostChanged(change)
                 }
+            case .madeUp:
+                // No row action here: its card's own Delete takes a made-up-name post away.
+                return
             }
             if stillThere {
                 // A server that still toggles put it back (it had been taken out elsewhere): re-read the list.
@@ -251,7 +276,7 @@ public final class PostCollectionModel {
     }
 
     private func rebuild() async {
-        if posts.isEmpty, nextOffset != nil {
+        if posts.isEmpty, hasMore {
             if loadMoreError != nil {
                 // Reading on failed, which isn't "nothing here": say so, with Try again.
                 state = .error(message: kind.loadError)
@@ -269,7 +294,7 @@ public final class PostCollectionModel {
         let snapshot = now()
         state = .loaded(
             sections: [RowSection(id: kind.tab, rows: posts.map { row(for: $0, now: snapshot) })],
-            hasMore: nextOffset != nil
+            hasMore: hasMore
         )
     }
 
@@ -302,8 +327,14 @@ public final class PostCollectionModel {
         )
     }
 
-    /// Remove on a saved post; Undo repost on a reposted one (`myPostsUndoRepost_<id>`, contract §10).
-    private func rowAction(for postId: String) -> RowEngagementCTA {
+    /// More to read after the loaded posts.
+    private var hasMore: Bool {
+        nextOffset != nil || nextBefore != nil
+    }
+
+    /// Remove on a saved post; Undo repost on a reposted one (`myPostsUndoRepost_<id>`, contract §10); none on a
+    /// made-up-name post (its card has Edit and Delete).
+    private func rowAction(for postId: String) -> RowEngagementCTA? {
         let handler: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in await self?.remove(postId: postId) }
         }
@@ -317,6 +348,8 @@ public final class PostCollectionModel {
                 accessibilityIdentifier: "myPostsUndoRepost_\(postId)",
                 handler: handler
             )
+        case .madeUp:
+            return nil
         }
     }
 

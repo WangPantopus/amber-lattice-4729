@@ -45,6 +45,10 @@ public struct PulsePostDetailLoadedContent: View {
     private let onAsk: (@MainActor () -> Void)?
     /// Opens a quote's original from its card (PULSEREPOST contract §8.3).
     private let onOpenQuotedPost: (@MainActor (String) -> Void)?
+    /// Over the reply box: "Post as", or "Posting as …" (made-up names); nil for none.
+    private let aboveComposer: AnyView?
+    /// A made-up name tapped: its id, and whether it was the post's (true) or a reply's.
+    private let onOpenPenName: @MainActor (String, Bool) -> Void
 
     public init(
         detail: PulsePostDetailContent,
@@ -73,8 +77,12 @@ public struct PulsePostDetailLoadedContent: View {
         onCommentReport: (@MainActor (String) -> Void)? = nil,
         onRefresh: (@Sendable () async -> Void)? = nil,
         onAsk: (@MainActor () -> Void)? = nil,
-        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil
+        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil,
+        onOpenPenName: @escaping @MainActor (String, Bool) -> Void = { _, _ in },
+        aboveComposer: AnyView? = nil
     ) {
+        self.aboveComposer = aboveComposer
+        self.onOpenPenName = onOpenPenName
         self.detail = detail
         self.commentsState = commentsState
         _composerText = composerText
@@ -134,6 +142,10 @@ public struct PulsePostDetailLoadedContent: View {
     /// Opens the author's profile, or a business author's page; nil (no tap) when the post came
     /// without its author's id, or from a business with no published page (the web links none).
     private var authorProfileTap: (@MainActor () -> Void)? {
+        // A made-up name opens its small card, never a profile.
+        if let penNameId = detail.post.penNameId {
+            return { onOpenPenName(penNameId, true) }
+        }
         if let creator = detail.post.creator, creator.identityType == "business" {
             guard let businessId = creator.businessPageId else { return nil }
             return { onOpenBusiness(businessId) }
@@ -141,6 +153,11 @@ public struct PulsePostDetailLoadedContent: View {
         let userId = detail.post.userId
         guard !userId.isEmpty else { return nil }
         return { onOpenProfile(userId) }
+    }
+
+    /// A made-up name tapped on a reply: its small card.
+    private var replyPenNameTap: @MainActor (String) -> Void {
+        { onOpenPenName($0, false) }
     }
 
     /// A story Today's Around you posted for an outlet: named for the outlet, its headline apart from the summary.
@@ -173,8 +190,11 @@ public struct PulsePostDetailLoadedContent: View {
                 intent: detail.intent,
                 intentLabel: intentLabel,
                 onAvatarTap: authorProfileTap,
-                momentsUserId: detail.post.creator?.identityType == "business"
-                    ? detail.post.creator?.businessPageId : detail.post.userId
+                // A made-up name's Moments are never joined to its writer's.
+                momentsUserId: detail.post.penNameId != nil ? nil
+                    : detail.post.creator?.identityType == "business"
+                    ? detail.post.creator?.businessPageId : detail.post.userId,
+                showsMadeUpMark: detail.post.penNameId != nil
             )
         }
     }
@@ -248,7 +268,9 @@ public struct PulsePostDetailLoadedContent: View {
                     aboveReactions: quotedCard,
                     belowReactions: belowReactions,
                     repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil,
-                    composerPrompt: story == nil ? nil : "What do you think? People around here can read your reply…"
+                    composerPrompt: story == nil ? nil : "What do you think? People around here can read your reply…",
+                    aboveComposer: aboveComposer,
+                    onCommentPenNameTap: replyPenNameTap
                 ) { userId in
                     onOpenProfile(userId)
                 }

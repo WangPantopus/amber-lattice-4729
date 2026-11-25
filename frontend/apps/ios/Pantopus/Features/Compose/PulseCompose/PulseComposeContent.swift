@@ -67,6 +67,8 @@ public struct PulseComposeContentState: Equatable {
     public var canTakePhoto: Bool
     /// "Repost with your words": the quoted post's card under the text box (PULSEREPOST contract §8).
     public var quoted: PulseQuotedPost?
+    /// "Post as" (made-up names): nil when the composer doesn't offer it.
+    public var postAs: PulseComposePostAs?
 
     public init(
         activeIntent: PulseComposeIntent,
@@ -100,7 +102,8 @@ public struct PulseComposeContentState: Equatable {
         assistPhotoCount: Int = 0,
         assistCanUndo: Bool = false,
         canTakePhoto: Bool = false,
-        quoted: PulseQuotedPost? = nil
+        quoted: PulseQuotedPost? = nil,
+        postAs: PulseComposePostAs? = nil
     ) {
         self.activeIntent = activeIntent
         self.identity = identity
@@ -134,7 +137,18 @@ public struct PulseComposeContentState: Equatable {
         self.assistCanUndo = assistCanUndo
         self.canTakePhoto = canTakePhoto
         self.quoted = quoted
+        self.postAs = postAs
     }
+}
+
+/// "Post as" in the composer: the choice, `/me`, and the made-up name while it is chosen.
+public struct PulseComposePostAs: Equatable, Sendable {
+    public var voice: PenNameVoice
+    public var me: PenNameMeResponse?
+    /// Set while the made-up name is chosen: the top reads "Posting as …", the post is words only and goes nearby.
+    public var chosen: PenNameDTO?
+    /// The "Post as" row is offered (a new post); false while a made-up-name post is edited.
+    public var showsChoice = true
 }
 
 /// Action callbacks the content view bubbles up to the view-model.
@@ -181,6 +195,8 @@ public struct PulseComposeContentActions {
     public var onTakePhoto: () -> Void
     /// "Change" beside "Posting to …" ("Repost with your words"): back to picking where the post goes. Nil hides it.
     public var onChangeTarget: (() -> Void)?
+    /// A choice in "Post as".
+    public var onSelectVoice: (PenNameVoice) -> Void = { _ in }
 
     public init(
         onSelectIntent: @escaping (PulseComposeIntent) -> Void = { _ in },
@@ -210,6 +226,7 @@ public struct PulseComposeContentActions {
         onAssistTakePhoto: @escaping () -> Void = {},
         onAssistChoosePhotos: @escaping () -> Void = {},
         onTakePhoto: @escaping () -> Void = {},
+        onSelectVoice: @escaping (PenNameVoice) -> Void = { _ in },
         onChangeTarget: (() -> Void)? = nil
     ) {
         self.onSelectIntent = onSelectIntent
@@ -240,6 +257,7 @@ public struct PulseComposeContentActions {
         self.onAssistChoosePhotos = onAssistChoosePhotos
         self.onTakePhoto = onTakePhoto
         self.onChangeTarget = onChangeTarget
+        self.onSelectVoice = onSelectVoice
     }
 }
 
@@ -276,14 +294,23 @@ public struct PulseComposeContent: View {
         // Single container — `.toolbar(placement: .keyboard)` on a `Group`
         // registers once per child and stacks duplicate Done buttons.
         VStack(alignment: .leading, spacing: Spacing.s5) {
+            if let chosen = state.postAs?.chosen {
+                PostingAsBanner(penName: chosen)
+                    .padding(.horizontal, Spacing.s4)
+            }
             if state.isFlowMode {
                 flowContextHeader
             } else {
                 intentPicker
                 identitySection
             }
+            if let postAs = state.postAs, postAs.showsChoice {
+                PostAsRow(voice: postAs.voice, me: postAs.me, onSelect: actions.onSelectVoice)
+                    .padding(.horizontal, Spacing.s4)
+            }
             precheckBanners
-            if let assist = state.assist {
+            // The assist writes a post from photos; a post under a made-up name is words only.
+            if let assist = state.assist, state.postAs?.chosen == nil {
                 PulseComposeAssistCard(
                     assist: assist,
                     hasMaterial: state.assistHasMaterial,
@@ -311,7 +338,8 @@ public struct PulseComposeContent: View {
             // Place tags are create-only (PostUpdateRequest carries no
             // location fields), so hide the row in edit mode — offering a
             // picker whose input the Save path drops would lose data.
-            if !state.isIntentLocked {
+            // A post under a made-up name floats over its area: no tagged place.
+            if !state.isIntentLocked, state.postAs?.chosen == nil {
                 locationSection
             }
             // The audience is fixed after posting (edits don't send it), so edit mode shows no selector, like web.
@@ -1120,7 +1148,43 @@ public struct PulseComposeContent: View {
 
     // MARK: - Photos
 
-    private var photosSection: some View {
+    @ViewBuilder private var photosSection: some View {
+        if state.postAs?.chosen != nil {
+            wordsOnlySection
+        } else {
+            attachmentsSection
+        }
+    }
+
+    /// While the made-up name is chosen the photo button says the post is words only (a photo goes out as a Moment,
+    /// which has the picture check). Attachments added before stay removable, and the post waits until they're gone.
+    private var wordsOnlySection: some View {
+        FormFieldGroup("Attachments") {
+            VStack(alignment: .leading, spacing: Spacing.s2) {
+                if !state.photos.isEmpty {
+                    ScrollView(.horizontal) { HStack(spacing: Spacing.s2) {
+                        ForEach(state.photos) { photo in
+                            photoThumbnail(photo)
+                        }
+                    }
+                    }
+                }
+                HStack(alignment: .top, spacing: Spacing.s2) {
+                    Icon(.imagePlus, size: 16, strokeWidth: 2, color: Theme.Color.appTextMuted)
+                    Text(state.photos.isEmpty
+                        ? "Words only under a made-up name. Share a photo as a Moment."
+                        : "Words only under a made-up name. Remove the attachments to post.")
+                        .pantopusTextStyle(.caption)
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("composePulseWordsOnly")
+            }
+        }
+    }
+
+    private var attachmentsSection: some View {
         FormFieldGroup("Attachments (optional)") {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 ScrollView(.horizontal) { HStack(spacing: Spacing.s2) {
@@ -1315,7 +1379,11 @@ public struct PulseComposeContent: View {
     private var visibilitySection: some View {
         FormFieldGroup("Who can see this") {
             VStack(spacing: Spacing.s2) {
-                ForEach(PulseComposeVisibility.allCases, id: \.rawValue) { option in
+                // A made-up name speaks to people nearby only.
+                ForEach(
+                    state.postAs?.chosen == nil ? PulseComposeVisibility.allCases : [.neighbors],
+                    id: \.rawValue
+                ) { option in
                     visibilityRow(option)
                 }
             }

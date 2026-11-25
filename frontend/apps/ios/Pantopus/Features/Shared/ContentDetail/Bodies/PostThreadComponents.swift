@@ -133,7 +133,7 @@ struct CommentRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("pulsePostDetail-commentAvatar-\(comment.id)")
-            .accessibilityLabel("Open \(comment.authorName)'s profile")
+            .accessibilityLabel(authorTapLabel)
             .frame(minWidth: 28, minHeight: 28)
 
             VStack(alignment: .leading, spacing: Spacing.s1) {
@@ -145,7 +145,11 @@ struct CommentRow: View {
                                 .foregroundStyle(Theme.Color.appText)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Open \(comment.authorName)'s profile")
+                        .accessibilityLabel(authorTapLabel)
+                        if comment.penNameId != nil {
+                            PenNameMark()
+                                .accessibilityIdentifier("pulsePostDetail-commentMadeUp-\(comment.id)")
+                        }
                         Text("·")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.Color.appTextMuted)
@@ -228,6 +232,11 @@ struct CommentRow: View {
             Spacer(minLength: Spacing.s0)
         }
         .padding(.vertical, 2)
+    }
+
+    /// A made-up name opens its small card; anyone else's name their profile.
+    private var authorTapLabel: String {
+        comment.penNameId == nil ? "Open \(comment.authorName)'s profile" : "About \(comment.authorName)"
     }
 
     /// Up to four square image attachments inside the bubble. Tapping

@@ -178,6 +178,9 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
     public var story: PulseStory?
     /// Who replied and the latest reply (Around you sends it on a post with replies); nil elsewhere.
     public var conversation: PulseConversation?
+    /// Written under a made-up name: the "Made-up name" mark, and a tap on the name opens the small card, never a
+    /// profile (contract "What each app builds", 4 and 5). Nil for every other post.
+    public var madeUp: PulseMadeUpAuthor?
     public var isCurator: Bool {
         origin == "curator"
     }
@@ -245,6 +248,17 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
     }
 }
 
+/// A post's made-up-name author: the name's id (for the small card) and whether the viewer wrote it.
+public struct PulseMadeUpAuthor: Sendable, Hashable {
+    public let penNameId: String
+    public let isYou: Bool
+
+    public init(penNameId: String, isYou: Bool) {
+        self.penNameId = penNameId
+        self.isYou = isYou
+    }
+}
+
 /// Where a post's author leads, as the post page's header: a person's profile or a business's page.
 public enum PulseAuthorLink: Sendable, Hashable {
     case person(userId: String)
@@ -294,6 +308,8 @@ public struct PulsePostCard: View {
     private let repostChooser: PulseCardRepostChooser?
     /// Opens the post to reply, from Reply and from the conversation strip. `nil`: they open it as the card does.
     private let onReply: (@MainActor () -> Void)?
+    /// The small card of the made-up name tapped on this card.
+    @State private var penNameCard: PenNameCardTarget?
 
     public init(
         content: PulsePostCardContent,
@@ -324,6 +340,11 @@ public struct PulsePostCard: View {
     }
 
     public var body: some View {
+        cardBody
+            .penNameCardSheet($penNameCard)
+    }
+
+    @ViewBuilder private var cardBody: some View {
         if content.actions.isSeeded {
             // A cold-start tip isn't a post: there's no page to open and nothing to react to (its X dismisses it).
             card
@@ -381,7 +402,16 @@ public struct PulsePostCard: View {
                 headerMetadata
             }
         }
-        if let onOpenAuthor {
+        if let madeUp = content.madeUp {
+            // A made-up name opens its small card: never a profile, Message or Connect.
+            Button {
+                penNameCard = PenNameCardTarget(penNameId: madeUp.penNameId, reportPostId: madeUp.isYou ? nil : content.id)
+            } label: {
+                identity.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("pulsePostAuthor_\(content.id)")
+        } else if let onOpenAuthor {
             Button(action: onOpenAuthor) {
                 identity.contentShape(Rectangle())
             }
@@ -394,7 +424,9 @@ public struct PulsePostCard: View {
 
     /// The author's account, a person's or a business's: its Moments ring goes around the photo.
     private var authorAccountId: String? {
-        switch content.authorLink {
+        // A made-up name has no ring here: its Moments are never joined to its writer's.
+        if content.madeUp != nil { return nil }
+        return switch content.authorLink {
         case let .person(userId): userId
         case let .business(businessId): businessId
         case nil: nil
@@ -584,7 +616,20 @@ public struct PulsePostCard: View {
 /// The card's VoiceOver actions sit in an extension so the card's body stays within SwiftLint's type length.
 private extension PulsePostCard {
     @ViewBuilder var headerMetadata: some View {
-        if content.isCurator {
+        if content.madeUp != nil {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.s1) {
+                    PenNameMark()
+                    metadataText
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 2) {
+                    PenNameMark()
+                    metadataText
+                }
+            }
+            .accessibilityIdentifier("pulsePostMadeUp_\(content.id)")
+        } else if content.isCurator {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Spacing.s1) {
                     curatorChip
@@ -762,7 +807,11 @@ private extension PulsePostCard {
         if let onOverflow {
             Button("Post options", action: onOverflow)
         }
-        if let onOpenAuthor {
+        if let madeUp = content.madeUp {
+            Button("About \(content.authorName)") {
+                penNameCard = PenNameCardTarget(penNameId: madeUp.penNameId, reportPostId: madeUp.isYou ? nil : content.id)
+            }
+        } else if let onOpenAuthor {
             Button(openAuthorLabel, action: onOpenAuthor)
         }
     }

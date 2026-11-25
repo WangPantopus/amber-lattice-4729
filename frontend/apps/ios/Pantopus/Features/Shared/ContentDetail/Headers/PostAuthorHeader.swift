@@ -113,6 +113,9 @@ public struct PostAuthorHeader: View {
     private let pulseCard: PulsePageCard?
     /// The author's account: the photo wears their Moments ring while they have Moments to watch.
     private let momentsUserId: String?
+    /// Written under a made-up name: the "Made-up name" mark beside the name, and a tap on the name or the picture
+    /// opens its small card (`onAvatarTap`), never a profile.
+    private let showsMadeUpMark: Bool
 
     public init(
         displayName: String,
@@ -124,7 +127,8 @@ public struct PostAuthorHeader: View {
         intentLabel: String? = nil,
         onAvatarTap: (@MainActor () -> Void)? = nil,
         pulseCard: PulsePageCard? = nil,
-        momentsUserId: String? = nil
+        momentsUserId: String? = nil,
+        showsMadeUpMark: Bool = false
     ) {
         self.displayName = displayName
         self.avatarURL = avatarURL
@@ -136,6 +140,7 @@ public struct PostAuthorHeader: View {
         self.onAvatarTap = onAvatarTap
         self.pulseCard = pulseCard
         self.momentsUserId = momentsUserId
+        self.showsMadeUpMark = showsMadeUpMark
     }
 
     public var body: some View {
@@ -168,9 +173,13 @@ public struct PostAuthorHeader: View {
         HStack(alignment: .top, spacing: Spacing.s3) {
             avatarTile
             VStack(alignment: .leading, spacing: 2) {
-                Text(displayName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.Color.appText)
+                if showsMadeUpMark {
+                    madeUpName
+                } else {
+                    Text(displayName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appText)
+                }
                 Text(timeAndLocality)
                     .pantopusTextStyle(.caption)
                     .foregroundStyle(Theme.Color.appTextSecondary)
@@ -184,6 +193,35 @@ public struct PostAuthorHeader: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// A made-up name and its mark; a tap opens the name's small card.
+    private var madeUpName: some View {
+        Button(action: { onAvatarTap?() }) {
+            // The mark goes under a name too long to share its line, so "Night Gardener (you)" is never cut.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.s1) {
+                    madeUpNameText.fixedSize()
+                    PenNameMark()
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    madeUpNameText
+                    PenNameMark()
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("About \(displayName), made-up name")
+        .accessibilityIdentifier("pulsePostDetail-madeUpName")
+    }
+
+    private var madeUpNameText: some View {
+        Text(displayName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.Color.appText)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     @ViewBuilder private var avatarTile: some View {
         if let onAvatarTap {
             Button(action: { onAvatarTap() }) {
@@ -192,7 +230,7 @@ public struct PostAuthorHeader: View {
             .buttonStyle(.plain)
             .frame(minWidth: 44, minHeight: 44)
             .accessibilityIdentifier("pulsePostDetail-authorAvatar")
-            .accessibilityLabel("Open \(displayName)'s profile")
+            .accessibilityLabel(showsMadeUpMark ? "About \(displayName)" : "Open \(displayName)'s profile")
         } else {
             avatarStack
         }

@@ -15,17 +15,22 @@ public struct PostCommentRequest: Encodable, Sendable, Hashable {
     public let comment: String
     public let parentCommentId: String?
     public let clientRequestId: String?
+    /// `pen_name` for a reply under the person's made-up name; nil (left out) for their own name. Route
+    /// `backend/routes/posts.js:418`.
+    public let postAs: String?
 
-    public init(comment: String, parentCommentId: String? = nil, clientRequestId: String? = nil) {
+    public init(comment: String, parentCommentId: String? = nil, clientRequestId: String? = nil, postAs: String? = nil) {
         self.comment = comment
         self.parentCommentId = parentCommentId
         self.clientRequestId = clientRequestId
+        self.postAs = postAs
     }
 
     private enum CodingKeys: String, CodingKey {
         case comment
         case parentCommentId
         case clientRequestId
+        case postAs
     }
 }
 
