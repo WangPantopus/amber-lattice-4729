@@ -175,6 +175,8 @@ struct ProfileBlockView: View {
             ProfileWorkRingsBlock(title: block.title, rings: rings, context: context)
         case let .owns(lines):
             ProfileOwnsBlock(title: block.title ?? "Owns", lines: lines, context: context)
+        case let .circle(circle):
+            ProfileCircleCard(title: block.title, circle: circle) { context.openLink(.circle) }
         case let .recordChart(chart):
             ProfileRecordChartBlock(title: block.title, chart: chart, context: context)
         case let .notice(text, link):

@@ -35,6 +35,26 @@ public enum ProfilePageEndpoints {
     }
 
     /// `GET …/piece/:pieceId` — one piece, opened.
+    /// `GET …/circle` — the whole work circle this viewer may see (P2.6).
+    public static func circle(identifier: String, previewAs: String? = nil) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "\(base(identifier))/circle",
+            query: previewAs.map { ["as": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
+    /// `GET …/circle/:userId` — the pieces the two share that this viewer may open.
+    public static func circlePieces(identifier: String, userId: String, previewAs: String? = nil) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "\(base(identifier))/circle/\(Endpoint.pathSegment(userId))",
+            query: previewAs.map { ["as": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
     public static func piece(identifier: String, pieceId: String, previewAs: String? = nil) -> Endpoint {
         Endpoint(
             method: .get,

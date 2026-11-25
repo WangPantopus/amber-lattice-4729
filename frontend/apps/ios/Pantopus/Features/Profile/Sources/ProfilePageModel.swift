@@ -115,6 +115,12 @@ final class ProfilePageModel {
     private(set) var openedPieceOwnerName: String?
     /// A link named the tab (`?tab=work`): the page scrolls to the tabs once it is drawn.
     var scrollsToTabs = false
+    /// The whole work circle (board 9), open over the page; the person chosen in it and the pieces you share.
+    var circleOpen = false
+    private(set) var circle: ProfileCircleDTO?
+    private(set) var circleFailed = false
+    private(set) var circleChosen: ProfileCirclePersonDTO?
+    private(set) var circleShared: [ProfilePieceDTO]?
     @ObservationIgnored private var piecesObserver: ProfileObserverToken?
 
     private let identifier: String
@@ -276,6 +282,39 @@ final class ProfilePageModel {
             guard openingPieceId == pieceId else { return }
             openingPieceId = nil
         }
+    }
+
+    func openCircle() async {
+        circleOpen = true
+        circleFailed = false
+        circleChosen = nil
+        circleShared = nil
+        do {
+            circle = try await client.request(ProfilePageEndpoints.circle(identifier: userId ?? identifier, previewAs: previewAs))
+        } catch {
+            circleFailed = true
+        }
+    }
+
+    /// Chooses a person in the circle: the pieces the two share, read for this viewer.
+    func choose(_ person: ProfileCirclePersonDTO) async {
+        circleChosen = person
+        circleShared = nil
+        guard let other = person.userId else {
+            circleShared = []
+            return
+        }
+        let answer: ProfileCirclePiecesDTO? = try? await client.request(
+            ProfilePageEndpoints.circlePieces(identifier: userId ?? identifier, userId: other, previewAs: previewAs)
+        )
+        guard circleChosen == person else { return }
+        circleShared = answer?.pieces ?? []
+    }
+
+    func closeCircle() {
+        circleOpen = false
+        circleChosen = nil
+        circleShared = nil
     }
 
     func closePiece() {

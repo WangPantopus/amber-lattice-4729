@@ -281,6 +281,8 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
     case posts(userId: String)
     case moments(userId: String)
     case url(URL, site: String?)
+    /// The whole work circle (`GET …/circle`).
+    case circle
 
     enum CodingKeys: String, CodingKey {
         case kind, tab, month, id, username, url, site
@@ -294,6 +296,7 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
         switch try c.decode(String.self, forKey: .kind) {
         case "tab": self = try .tab(c.decode(String.self, forKey: .tab))
         case "record": self = .record
+        case "circle": self = .circle
         case "month": self = try .month(c.decode(String.self, forKey: .month))
         case "piece":
             let userId: String? = (try? c.decodeIfPresent(String.self, forKey: .userId)).flatMap(\.self)
