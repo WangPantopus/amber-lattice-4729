@@ -54,7 +54,8 @@ async function each(filter, handle, label) {
 // The pictures a stored Moment's check reads; when they can't be read the check counts as one that couldn't run.
 async function checkStored(row) {
   try {
-    return await momentCheck.checkPictures(await momentCheck.storedPictures(row));
+    return await momentCheck.checkPictures(await momentCheck.storedPictures(row),
+      { madeUpName: row.identity_context_type === 'pen_name' });
   } catch (error) {
     logger.warn('[momentsCleanup] pictures unreadable', { momentId: row.id, error: error.message });
     return { status: 'unchecked', reasons: [], error: 'pictures unreadable' };
