@@ -43,6 +43,7 @@ const { shownReaction, reactionSummary } = require('../../utils/postReaction');
 const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
 const momentWeather = require('./momentWeather');
+const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
 const HOURS = [1, 6, 24, 48];
@@ -100,6 +101,8 @@ const MOMENT_SELECT = [
   'id', 'user_id', 'content', 'latitude', 'longitude', 'location_name', 'location_precision', 'audience',
   'created_at', 'story_expires_at', 'is_story', 'moderation_state', 'moderation_rule', 'moderation_note',
   'archived_at', 'archive_reason', 'post_metadata', 'view_count', 'origin',
+  // A Moment under a made-up name (services/penName): stored under the system account, with the made-up name's id.
+  'identity_context_type', 'identity_context_id',
 ].join(', ');
 
 function fail(status, code, message) {
@@ -203,14 +206,41 @@ function hasPlace(row) {
   return row.latitude != null && row.longitude != null;
 }
 
+// ─── Under a made-up name ──────────────────────────────────────────────────
+// A Moment under a made-up name (services/penName) is stored under the one system account, so `row.user_id` is the
+// same on all of them and is never its writer's. Two things stand in for it wherever a Moment is read:
+//   authorKey(row)  who it is by, as everyone sees it: the made-up name's id (the account's id on every other Moment);
+//   isOwn(row, id)  whether this viewer wrote it: marked on the row by markOwn, which asks services/penName.
+// `row.user_id` itself is left as stored: the files' keys, the row's updates and the writer's notices depend on it.
+
+const OWN = Symbol('ownUnderPenName');
+
+function authorKey(row) {
+  return penName.isPenNameRow(row) ? String(row.identity_context_id) : row.user_id;
+}
+
+function isOwn(row, viewerId) {
+  return Boolean(row) && (row.user_id === viewerId || row[OWN] === String(viewerId));
+}
+
+/** Marks the made-up-name Moments among `rows` that `viewerId` wrote. One read, and none without such a row. */
+async function markOwn(rows, viewerId) {
+  const pending = (rows || []).filter((row) => penName.isPenNameRow(row) && row[OWN] === undefined);
+  if (!pending.length || !viewerId) return rows;
+  const mine = await penName.owner.mine(viewerId, 'post', pending.map((row) => row.id));
+  for (const row of pending) row[OWN] = mine.has(String(row.id)) ? String(viewerId) : null;
+  return rows;
+}
+
 // One ring per person per spot (CONTRACT Ring.id): an exact pin's 0.005° cell, an area pin's displayed point; one
 // ring per person for the Moments with no location.
 function ringKey(row, point) {
-  if (!hasPlace(row)) return `u_${row.user_id}_none`;
+  const who = authorKey(row);
+  if (!hasPlace(row)) return `u_${who}_none`;
   if (meta(row).show_area) {
-    return `u_${row.user_id}_a_${Math.round(point.latitude * 1000)}_${Math.round(point.longitude * 1000)}`;
+    return `u_${who}_a_${Math.round(point.latitude * 1000)}_${Math.round(point.longitude * 1000)}`;
   }
-  return `u_${row.user_id}_c_${Math.floor(point.latitude * 200)}_${Math.floor(point.longitude * 200)}`;
+  return `u_${who}_c_${Math.floor(point.latitude * 200)}_${Math.floor(point.longitude * 200)}`;
 }
 
 // ─── Who sees what ──────────────────────────────────────────────────────────
@@ -220,10 +250,14 @@ function ringKey(row, point) {
  * muted (everywhere, or in Moments only) and, for connections-only Moments, who they're connected to. Throws when the
  * blocks or mutes can't be read, so nothing shows unfiltered.
  */
-async function viewerContext(viewerId, authorIds = [], shared = null) {
+async function viewerContext(viewerId, authorIds = [], shared = null, rows = null) {
   // `shared` (sharedViewerReads): the viewer's filters already being read for this request, used instead of reading
-  // them again; a failed read throws here, as its own would have.
-  const filters = shared ? await used(shared.filters) : await feedService.getMuteAndHideFilters(viewerId);
+  // them again; a failed read throws here, as its own would have. `rows`: the Moments being decided, so the viewer's
+  // own made-up-name ones are marked in the same step.
+  const [filters] = await Promise.all([
+    shared ? used(shared.filters) : feedService.getMuteAndHideFilters(viewerId),
+    rows ? markOwn(rows, viewerId) : null,
+  ]);
   const others = [...new Set(authorIds.filter((id) => id && id !== viewerId))];
   let connected;
   if (shared?.connections) {
@@ -245,12 +279,18 @@ async function viewerContext(viewerId, authorIds = [], shared = null) {
     blocked: filters.blockedUserIds,
     muted: new Set([...filters.mutedUserIds, ...filters.mutedBusinessIds, ...filters.momentMutedIds]),
     connected,
+    // Made-up names this viewer muted or blocked, and the brake that hides every made-up-name Moment.
+    hiddenPenNames: filters.hiddenPenNameIds || new Set(),
+    penNamesHidden: filters.penNamesHidden === true,
   };
 }
 
 /** Whether the viewer may see this Moment at all (blocks, mutes, audience), whatever its state. */
 function canSee(row, ctx) {
-  if (row.user_id === ctx.viewerId) return true;
+  if (isOwn(row, ctx.viewerId)) return true;
+  // Under a made-up name: hidden by that name (or the brake), never by a block or a mute of a person, which would
+  // say who is behind it. It goes to people nearby, so there is no audience to check.
+  if (penName.isPenNameRow(row)) return !ctx.penNamesHidden && !ctx.hiddenPenNames.has(String(row.identity_context_id));
   if (ctx.blocked.has(row.user_id) || ctx.muted.has(row.user_id)) return false;
   if (row.audience === 'connections') return ctx.connected.has(row.user_id);
   return true;
@@ -295,6 +335,28 @@ async function loadAuthors(userIds) {
       initials: initialsOf(name),
       verified: kind === 'person' ? residents.has(id) : kind === 'business' && verifiedBusinesses.has(id),
       kind,
+    });
+  }
+  return authors;
+}
+
+/**
+ * The authors of these Moments, by authorKey: the account's (loadAuthors), or the made-up name's. Everyone with a
+ * made-up name has a verified home, so its check tells nothing apart.
+ */
+async function authorsFor(rows) {
+  const penRows = rows.filter(penName.isPenNameRow);
+  const [authors, pens] = await Promise.all([
+    loadAuthors(rows.filter((row) => !penName.isPenNameRow(row)).map((row) => row.user_id)),
+    penRows.length ? penName.names.rowsById(penRows.map((row) => row.identity_context_id)) : new Map(),
+  ]);
+  for (const row of penRows) {
+    const id = String(row.identity_context_id);
+    if (authors.has(id)) continue;
+    const name = pens.get(id)?.display_name || penName.present.UNKNOWN_NAME;
+    authors.set(id, {
+      id, name, first_name: name, avatar_url: pens.get(id)?.avatar_url || null, initials: initialsOf(name),
+      verified: true, kind: 'person', made_up_name: true,
     });
   }
   return authors;
@@ -419,7 +481,7 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
   heights = false }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
-  const own = row.user_id === viewerId;
+  const own = isOwn(row, viewerId);
   const state = momentState(row);
   const point = displayedPoint(row);
   const showMedia = state === 'live' || (own && state !== 'ended');
@@ -497,16 +559,17 @@ function linkKeys(rows) {
 async function serializeMoments(rows, viewerId) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
-  const ownIds = rows.filter((r) => r.user_id === viewerId).map((r) => r.id);
+  await markOwn(rows, viewerId);
+  const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
   const [authors, marks, links, counts, heights] = await Promise.all([
-    loadAuthors(rows.map((r) => r.user_id)),
+    authorsFor(rows),
     viewerMarks(viewerId, ids),
     media.signedLinks(undefined, linkKeys(rows.filter((r) => momentState(r) !== 'ended'))),
     reactionCountsFor(ownIds),
     heightsOn(viewerId),
   ]);
   return rows.map((row) => serializeMoment(row, {
-    author: authors.get(String(row.user_id)),
+    author: authors.get(String(authorKey(row))),
     viewerId,
     seen: marks.seen.has(row.id),
     myReaction: marks.reactions.get(row.id) || null,
@@ -523,7 +586,8 @@ async function serializeMoments(rows, viewerId) {
 async function openMoment(id, viewerId, { liveOnly = true } = {}) {
   const row = await loadMoment(id);
   if (!row) throw fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
-  const own = row.user_id === viewerId;
+  await markOwn([row], viewerId);
+  const own = isOwn(row, viewerId);
   if (!own) {
     const ctx = await viewerContext(viewerId, [row.user_id]);
     if (!canSee(row, ctx)) throw fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
@@ -545,11 +609,11 @@ async function openMoments(ids, viewerId) {
   const { data, error } = await supabaseAdmin.from('Post').select(MOMENT_SELECT).in('id', wanted).eq('is_story', true);
   if (error) throw new Error(`Failed to load the Moments: ${error.message}`);
   const rows = data || [];
-  const ctx = await viewerContext(viewerId, rows.map((row) => row.user_id));
+  const ctx = await viewerContext(viewerId, rows.map((row) => row.user_id), null, rows);
   const open = new Map(rows.filter((row) => {
     const state = momentState(row);
     if (state === 'ended') return false;
-    if (row.user_id === viewerId) return true;
+    if (isOwn(row, viewerId)) return true;
     return state === 'live' && canSee(row, ctx);
   }).map((row) => [row.id, row]));
   return wanted.map((id) => open.get(id)).filter(Boolean);
@@ -615,7 +679,7 @@ async function shownInBox(viewerId, { south, west, north, east }, shared = null)
   if (error) throw new Error(`Failed to load Moments: ${error.message}`);
   const rows = (data || []).filter((row) => momentState(row) === 'live');
   const [ctx, reported] = await Promise.all([
-    viewerContext(viewerId, rows.map((r) => r.user_id), shared),
+    viewerContext(viewerId, rows.map((r) => r.user_id), shared, rows),
     rows.length ? (shared ? shared.reported : reportedIds(viewerId)) : new Set(),
   ]);
   const shown = [];
@@ -728,19 +792,19 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
     return { key, members, newest: members[members.length - 1] };
   }).sort((a, b) => Date.parse(shownAt(b.newest.row)) - Date.parse(shownAt(a.newest.row))).slice(0, MAX_RINGS);
   const [authors, marks, thumbs, heights] = await Promise.all([
-    loadAuthors(kept.map(({ newest }) => newest.row.user_id)),
+    authorsFor(kept.map(({ newest }) => newest.row)),
     viewerMarks(viewerId, kept.flatMap(({ members }) => members.map(({ row }) => row.id))),
     previews ? previewLinks(kept.map(({ newest }) => newest)) : new Map(),
     heightsOn(viewerId),
   ]);
   return kept.map(({ key, members, newest }) => {
-    const mine = newest.row.user_id === viewerId;
+    const mine = isOwn(newest.row, viewerId);
     const moments = members.map(({ row }) => briefOf(row, mine || marks.seen.has(row.id)));
     // The ring is as high as its newest Moment says it is (apps float the pin there); null when it doesn't say.
     const high = heights ? shownHeight(newest.row) : null;
     return {
       id: key,
-      author: authors.get(String(newest.row.user_id)),
+      author: authors.get(String(authorKey(newest.row))),
       preview: previews ? previewOf(newest, thumbs) : null,
       // A ring of Moments with no location has no point at all (apps put it in the row of faces, never on the map).
       ...(newest.point.latitude == null
@@ -778,19 +842,28 @@ async function peopleRings(viewerId, userIds) {
   const people = [...new Set((userIds || []).filter(Boolean).map(String))].slice(0, MAX_PEOPLE);
   if (!people.length) return [];
   const nowIso = new Date().toISOString();
-  const rows = (await readInBatches(people, (batch) => supabaseAdmin.from('Post').select(MOMENT_SELECT)
-    .eq('is_story', true)
-    .in('user_id', batch)
+  // An id may be a made-up name's (a ring's author id is, on a made-up-name Moment): its Moments are found by the
+  // name, and a person's own never include the ones they wrote under a made-up name. Both reads go out together; the
+  // second is by the made-up names' own index and finds nothing for an account's id.
+  const live = (query) => query.eq('is_story', true)
     .gt('story_expires_at', nowIso)
     .is('archived_at', null)
     .eq('moderation_state', 'live')
     .eq('post_metadata->moment->>state', 'live')
-    .limit(MAX_MAP_ROWS), "people's Moments")).filter((row) => momentState(row) === 'live');
+    .limit(MAX_MAP_ROWS);
+  const [byPerson, byPenName] = await Promise.all([
+    readInBatches(people, (batch) => live(supabaseAdmin.from('Post')
+      .select(MOMENT_SELECT).in('user_id', batch)), "people's Moments"),
+    readInBatches(people, (batch) => live(supabaseAdmin.from('Post').select(MOMENT_SELECT)
+      .eq('identity_context_type', penName.KIND).in('identity_context_id', batch)), "made-up names' Moments"),
+  ]);
+  const rows = [...byPerson, ...byPenName].filter((row) => momentState(row) === 'live');
   if (!rows.length) return [];
-  const [ctx, reported] = await Promise.all([viewerContext(viewerId, rows.map((r) => r.user_id)), reportedIds(viewerId)]);
+  const [ctx, reported] = await Promise.all([
+    viewerContext(viewerId, rows.map((r) => r.user_id), null, rows), reportedIds(viewerId)]);
   const shown = rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
     .map((row) => ({ row, point: displayedPoint(row) }));
-  return ringsOf(viewerId, shown, { keyOf: (row) => `u_${row.user_id}_all`, previews: false });
+  return ringsOf(viewerId, shown, { keyOf: (row) => `u_${authorKey(row)}_all`, previews: false });
 }
 
 /** When a Moment went live: its end time less its hours (a photo's or video's time starts when its upload finishes). */
@@ -812,11 +885,11 @@ async function unseenPeople(viewerId, box, since = null, { includeUnplaced = fal
     includeUnplaced ? unplacedOrNone(viewerId, shared) : [],
   ]);
   const fresh = [...inBox, ...unplaced].map(({ row }) => row)
-    .filter((row) => row.user_id !== viewerId && (since == null || wentLiveAt(row) > since));
+    .filter((row) => !isOwn(row, viewerId) && (since == null || wentLiveAt(row) > since));
   if (!fresh.length) return 0;
   const watched = new Set((await readInBatches(fresh.map((row) => row.id), (batch) => supabaseAdmin.from('PostView')
     .select('post_id').eq('user_id', viewerId).in('post_id', batch), 'views')).map((view) => view.post_id));
-  return new Set(fresh.filter((row) => !watched.has(row.id)).map((row) => row.user_id)).size;
+  return new Set(fresh.filter((row) => !watched.has(row.id)).map((row) => String(authorKey(row)))).size;
 }
 
 /** The caller's own Moments that haven't ended, any state, newest first. */
@@ -829,19 +902,50 @@ async function ownMoments(userId) {
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) throw new Error(`Failed to load your Moments: ${error.message}`);
-  return serializeMoments((data || []).filter((row) => momentState(row) !== 'ended'), userId);
+  // And the ones written under a made-up name: only their writer's own list holds them.
+  const underPenName = await ownUnderPenName(userId);
+  const rows = [...(data || []), ...underPenName].filter((row) => momentState(row) !== 'ended')
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  return serializeMoments(rows, userId);
+}
+
+/** The caller's own made-up-name Moments that haven't ended. A failed read leaves them out: the list never fails for them. */
+async function ownUnderPenName(userId) {
+  try {
+    const since = Date.now() - (LONG_MAX_HOURS + 24) * HOUR_MS;
+    const ids = (await penName.owner.owned(userId, 'post', { limit: 100 }))
+      .filter((row) => Date.parse(row.created_at) > since).map((row) => row.id);
+    if (!ids.length) return [];
+    const { data, error } = await supabaseAdmin.from('Post').select(MOMENT_SELECT)
+      .in('id', ids).eq('is_story', true).eq('identity_context_type', penName.KIND)
+      .gt('story_expires_at', new Date().toISOString()).is('archived_at', null);
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    logger.warn('moments.own_pen_name_read_failed', { error: error.message });
+    return [];
+  }
+}
+
+/** The Moment `id` when `viewerId` wrote it (under their own name or a made-up one), else null. */
+async function ownMoment(id, viewerId) {
+  const row = await loadMoment(id);
+  if (!row) return null;
+  await markOwn([row], viewerId);
+  return isOwn(row, viewerId) ? row : null;
 }
 
 /** Who watched the author's Moment, newest first (CONTRACT GET /:id/viewers). Blocked people aren't listed. */
-async function viewersOf(row) {
+async function viewersOf(row, writerId = row.user_id) {
+  // `writerId`: the account that wrote it, when that isn't the account it is stored under (a made-up-name Moment).
   const [views, likes, blocked] = await Promise.all([
     supabaseAdmin.from('PostView').select('user_id, created_at').eq('post_id', row.id)
       .order('created_at', { ascending: false }).limit(1000),
     supabaseAdmin.from('PostLike').select('user_id, reaction').eq('post_id', row.id),
-    require('../blockService').blockedUserIds(row.user_id),
+    require('../blockService').blockedUserIds(writerId),
   ]);
   if (views.error || likes.error) throw new Error(`Failed to load viewers: ${(views.error || likes.error).message}`);
-  const rows = (views.data || []).filter((v) => v.user_id !== row.user_id && !blocked.has(v.user_id));
+  const rows = (views.data || []).filter((v) => v.user_id !== writerId && !blocked.has(v.user_id));
   const viewerIds = rows.map((v) => v.user_id);
   const replied = new Set();
   for (let at = 0; at < viewerIds.length; at += 100) {
@@ -871,7 +975,7 @@ async function viewersOf(row) {
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
   location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
-  area = null, shareAt = null, takenHere: sentTakenHere = false, weather = null }) {
+  area = null, shareAt = null, takenHere: sentTakenHere = false, weather = null, pen = null }) {
   if (!validHours(hours)) throw fail(400, 'MOMENT_INVALID', 'A Moment lasts from 1 hour to 60 days.');
   const now = createdAt ? new Date(createdAt) : new Date();
   // A Moment shared later counts its hours from its time.
@@ -887,6 +991,9 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
   return {
     user_id: userId,
     author_user_id: userId,
+    // Under a made-up name (`pen`): stored under the system account with the name's id; the writer is recorded
+    // behind services/penName before the row is saved (insertMoment).
+    ...(pen ? penName.write.identityFields(pen, 'post') : {}),
     content: kind === 'text' ? text : (caption || ''),
     media_urls: [],
     media_types: [],
@@ -1027,11 +1134,17 @@ async function checkPostingRules(user, { kind, location, series = null }) {
 }
 
 /** Inserts a new Moment and returns its row. `id` (a retry key turned into the row's id) makes a retry return it. */
-async function insertMoment(row, id = null) {
-  const write = id
-    ? supabaseAdmin.from('Post').upsert({ ...row, id }, { onConflict: 'id', ignoreDuplicates: true })
-    : supabaseAdmin.from('Post').insert(row);
-  const { data, error } = await write.select(MOMENT_SELECT).maybeSingle();
+async function insertMoment(row, id = null, penWriter = null) {
+  const write = (rowId) => (rowId
+    ? supabaseAdmin.from('Post').upsert({ ...row, id: rowId }, { onConflict: 'id', ignoreDuplicates: true })
+    : supabaseAdmin.from('Post').insert(row)).select(MOMENT_SELECT).maybeSingle();
+  // `penWriter` ({ userId, pen }): a Moment under a made-up name. Its writer is recorded first; the database refuses
+  // the row otherwise, and the record is taken back if the row isn't saved (services/penName/write.js).
+  const { data, error } = !penWriter ? await write(id)
+    : await penName.write.sealed({ kind: 'post', id, userId: penWriter.userId, pen: penWriter.pen }, async (rowId) => {
+      const result = await write(rowId);
+      return { ...result, saved: !result.error };
+    });
   if (error) throw new Error(`Failed to save the Moment: ${error.message}`);
   if (data) return { row: data, created: true };
   // The retry key's row already exists: the earlier attempt went through.
@@ -1130,7 +1243,7 @@ async function purgeFiles(row) {
   if (m.purged_at || m.kind === 'text') return true;
   if (await filesHeld(row)) return false;
   const bucket = m.media?.bucket;
-  const keys = [...new Set([...media.mediaKeys(m.media), ...await media.folderKeys(bucket, row.user_id, row.id)])];
+  const keys = [...new Set([...media.mediaKeys(m.media), ...await media.folderKeys(bucket, media.folderOwner(row), row.id)])];
   if (!(await media.removeKeys(bucket, keys))) return false;
   await updateMoment(row, { moment: { purged_at: new Date().toISOString() } });
   return true;
@@ -1160,4 +1273,5 @@ module.exports = {
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
+  authorKey, isOwn, markOwn, authorsFor, ownMoment,
 };

@@ -3898,6 +3898,11 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     // One voice per conversation (services/penName): which name this person already has here. Read while the checks
     // below run; it is needed only just before the reply is saved.
     const voiceRead = penName.owner.voiceIn(userId, postId).then((voice) => ({ voice }), () => ({ failed: true }));
+    // Whether the post's writer blocked this person's made-up name (then this account reaches them under no name).
+    // Asked now, beside the reads below, so it never adds a wait of its own; never asked of a made-up-name post, where
+    // nothing is refused because of a block (a refusal there would say who is behind the name).
+    const postReachRead = penName.isPenNameRow(post) ? Promise.resolve(false)
+      : penName.present.reachRefused(userId, post.user_id);
 
     let parent = null;
     if (parentCommentId) {
@@ -3913,12 +3918,16 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       // A reply under a made-up name is stored under the system account, so this never refuses a reply to one: a
       // refusal there would say who is behind the name. Someone who blocked this person's made-up name is reached
       // under no name.
-      if (await blockService.isBlocked(userId, parent.user_id)
-        || (!penName.isPenNameRow(parent) && await penName.present.reachRefused(userId, parent.user_id))) {
+      const [acrossBlock, nameBlocked] = await Promise.all([
+        blockService.isBlocked(userId, parent.user_id),
+        penName.isPenNameRow(parent) || parent.user_id === post.user_id ? false
+          : penName.present.reachRefused(userId, parent.user_id),
+      ]);
+      if (acrossBlock || nameBlocked) {
         return res.status(403).json({ error: "You can't reply to this comment." });
       }
     }
-    if (!penName.isPenNameRow(post) && await penName.present.reachRefused(userId, post.user_id)) {
+    if (await postReachRead) {
       return res.status(403).json({ error: "You can't reply to this post." });
     }
 

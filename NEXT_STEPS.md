@@ -1653,7 +1653,7 @@ Your decision of November 25: a person may write a Pulse post or a reply under o
 
 - [ ] **The server** (this pull request): the names, who may use one, posts and replies under one, notices to the real writer, mute and block, two reports hiding a post, strikes after a removal, the logged staff look and the brake. Nobody can write under a made-up name from an app yet: the apps have no "Post as" until their own pull requests. Apps in the stores already draw a made-up-name post correctly and can mute, block and report one.
 - [ ] **Web, iPhone, Android:** "Post as" in the Pulse composer and the reply box, the name screen, the card's marks, the small card on a tap, and the private part of My posts. One pull request each.
-- [ ] **Moments under a made-up name:** not built. The server refuses it.
+- [ ] **Moments under a made-up name, the server** (a second pull request): a Moment may be posted under the made-up name. It always shows over its area or at a public place, goes to people nearby only, carries no "Live from here", weather or height, takes reactions but no replies, and its picture must pass the picture check before it shows. The three Moment composers have no "Post as" yet.
 - [ ] **Narrower than the design, on purpose:**
   1. Posts and replies under a made-up name are words only. Nothing reads a picture on a post before it shows; pictures come with Moments, which has the picture check.
   2. Words the automatic check refuses are not posted, and the person is told why at once. Nothing waits for a reviewer. While the check can't run, nothing is posted under a made-up name.
