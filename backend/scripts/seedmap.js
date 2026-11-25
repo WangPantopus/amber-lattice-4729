@@ -278,7 +278,7 @@ async function momentsPostedToday(userId) {
 function lineProblem(line, who) {
   if (who.problem) return `account: ${who.problem}`;
   if (line.problems?.length) return line.problems.join('; ');
-  if (line.undone_at) return `undone on ${line.undone_at}; clear "undone_at" to post it again`;
+  if (line.undone_at) return `undone on ${line.undone_at}; an undone file isn't posted again`;
   if (!String(line.caption || '').trim()) return 'no caption';
   if (!POST_AS.includes(line.post_as)) return `post_as must be ${POST_AS.join(', ')}`;
   if (line.not_before) {
