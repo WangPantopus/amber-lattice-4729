@@ -877,9 +877,11 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
       person.push({ kind: 'known_for_write', id: 'known_for_write', title: 'Known for', ...write });
     }
   }
-  // Cards left for the person (phase 3B): theirs alone, a new block kind, only while there are cards.
+  // Cards left for the person (phase 3B): theirs alone, a new block kind, only while there are cards. At the top,
+  // after only the notices.
   if (view === 'owner' && (ctx.cards || []).length) {
-    person.unshift({ kind: 'cards', id: 'cards_for_you', title: 'Cards left for you', cards: ctx.cards });
+    const notices = person.filter((b) => b.kind === 'notice').length;
+    person.splice(notices, 0, { kind: 'cards', id: 'cards_for_you', title: 'Cards left for you', cards: ctx.cards });
   }
   if (extras.inCommon && ['member', 'connection', 'household'].includes(view)) {
     const ic = extras.inCommon;
