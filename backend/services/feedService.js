@@ -22,6 +22,7 @@ const s3 = require('./s3Service');
 const { readablePosts, postScopeAccess } = require('./pulse/readAccess');
 const { unpublishedBusinessIds } = require('../utils/visibilityPolicy');
 const { localDisplayNames } = require('../utils/identityProfiles');
+const penName = require('./penName');
 const { reactionSummary, shownReaction } = require('../utils/postReaction');
 const { taggedPlaceKind } = require('../utils/postPlaceTag');
 const {
@@ -497,6 +498,8 @@ async function getMuteAndHideFilters(userId) {
   const pendingEntry = { data: null };
   _filterCache.set(userId, pendingEntry, FILTER_CACHE_TTL);
 
+  // Started beside the reads below, so it never adds a round of its own.
+  const penNameBrake = penName.gate.isHidden();
   const [
     { data: mutes, error: mutesError },
     { data: hides, error: hidesError },
@@ -521,6 +524,15 @@ async function getMuteAndHideFilters(userId) {
 
   const filterError = mutesError || hidesError || blocksError || userBlocksError || personaBlocksError || feedPrefsError;
   if (filterError) throw new Error(`Failed to load feed filters: ${filterError.message}`);
+  // Made-up names (services/penName). The mutes above already hold the ones this person muted or blocked, so
+  // nothing more is read for someone who never did; the brake is read once a minute. Both fail open on a read
+  // error, as a missing mute would: they never fail the feed.
+  const [penNameHidden, allPenNamesHidden] = await Promise.all([
+    penName.present.hiddenIds(userId, (mutes || [])
+      .filter((m) => [penName.present.MUTE, penName.present.BLOCK].includes(m.muted_entity_type))
+      .map((m) => m.muted_entity_id)),
+    penNameBrake,
+  ]);
 
   const blockedUserIds = new Set();
   if (blocks) {
@@ -565,6 +577,10 @@ async function getMuteAndHideFilters(userId) {
     globalMutedTopics,
     mutedTopicsBySurface,
     mutedTopicAreas,
+    // Made-up names this person muted or blocked (every name the same account has had), and the brake that takes
+    // every made-up-name post out of what people read (services/penName).
+    hiddenPenNameIds: penNameHidden,
+    penNamesHidden: allPenNamesHidden,
     sports: feedPrefs?.sports || {},
     feedPreferences: feedPrefs || {
       hide_deals_place: false, hide_alerts_place: false,
@@ -591,6 +607,10 @@ function applyMuteHideFilters(posts, filters, surface, viewerUserId = null) {
   return posts.filter(p => {
     const isOwnPost = viewerUserId != null && p.user_id === viewerUserId;
     if (filters.hiddenPostIds.has(p.id)) return false;
+    // A made-up-name post is stored under the system account, so the account checks below never match it: it is
+    // hidden by its made-up name, or by the brake.
+    if (penName.isPenNameRow(p)
+      && (filters.penNamesHidden || filters.hiddenPenNameIds?.has(String(p.identity_context_id)))) return false;
     if (!isOwnPost) {
       if (filters.mutedUserIds.has(p.user_id)) return false;
       if (p.identity_context_type === 'persona' && filters.mutedPersonaIds?.has(p.identity_context_id)) return false;
@@ -763,7 +783,7 @@ function loadIdentityAuthorRows(posts) {
     .filter(p => p.identity_context_type === 'persona' && p.identity_context_id)
     .map(p => p.identity_context_id))];
   const localUserIds = [...new Set(posts
-    .filter(p => p.identity_context_type !== 'persona' && !isBusinessPost(p))
+    .filter(p => p.identity_context_type !== 'persona' && !isBusinessPost(p) && !penName.isPenNameRow(p))
     .map(p => p.author_user_id || p.user_id)
     .filter(Boolean))];
   const businessIds = [...new Set(posts.filter(isBusinessPost).map(businessIdOfPost).filter(Boolean).map(String))];
@@ -787,6 +807,8 @@ async function attachIdentityAuthors(posts, viewerUserId, authorRows = null) {
   if (!posts.length) return posts;
 
   const [personaResult, localResult, localUserResult, businessesById = new Map()] = authorRows || await loadIdentityAuthorRows(posts);
+  // Made-up-name posts: their names, and which of them the viewer wrote. Read only when the page holds one.
+  const penNames = await penName.present.read('post', posts, viewerUserId);
 
   const personasById = new Map((personaResult.data || []).map(row => [row.id, row]));
   const localsByUserId = new Map((localResult.data || []).map(row => [String(row.user_id), row]));
@@ -794,6 +816,9 @@ async function attachIdentityAuthors(posts, viewerUserId, authorRows = null) {
 
   return posts.map((post) => {
     let author = null;
+
+    // Written under a made-up name: the name is the author, and the account behind it is on nothing sent.
+    if (penName.isPenNameRow(post)) return penName.present.presentPost(post, viewerUserId, penNames);
 
     if (post.identity_context_type === 'persona') {
       const persona = personasById.get(post.identity_context_id);

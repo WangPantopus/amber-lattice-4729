@@ -142,6 +142,36 @@ async function readRawCountForVerifiedInsider(geohash) {
   }
 }
 
+// Made-up names (services/penName/gate.js): how many verified homes could have written a post made at a point, as
+// one of three words and never a number. A post reaches people some miles around, so the crowd is every cell that
+// shares the point's geohash-5 (about 5 km square), not its one geohash-6 cell. Below MADE_UP_NAME_MIN a made-up
+// name would hide nobody and isn't offered; below MADE_UP_NAME_COMFORTABLE the composer says so plainly. A read
+// error answers 'too_few': the name fails closed.
+const MADE_UP_NAME_MIN = 10;
+const MADE_UP_NAME_COMFORTABLE = 50;
+
+async function crowdForMadeUpName(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'too_few';
+  try {
+    // eslint-disable-next-line global-require
+    const prefix = require('../../utils/geohash').encodeGeohash(lat, lng, 5);
+    const { data, error } = await supabaseAdmin
+      .from('NeighborhoodPreview')
+      .select('verified_users_count')
+      .like('geohash', `${prefix}%`)
+      .limit(64);
+    if (error) throw error;
+    const total = (data || []).reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.verified_users_count)) || 0), 0);
+    if (total < MADE_UP_NAME_MIN) return 'too_few';
+    return total < MADE_UP_NAME_COMFORTABLE ? 'few' : 'enough';
+  } catch (err) {
+    logger.warn('placeDensityReader: crowdForMadeUpName failed', { error: err.message });
+    return 'too_few';
+  }
+}
+
 /**
  * The neighborhood unlock threshold (Wedge Phase 1): the verified-home
  * count at which Pulse / Marketplace / Tasks open for a cell. Defaults to
@@ -157,6 +187,7 @@ module.exports = {
   unlockThreshold,
   getDensityBucket,
   readRawCountForVerifiedInsider,
+  crowdForMadeUpName,
   bucketForCount,
   DENSITY_BUCKET,
   K_ANON_MIN,

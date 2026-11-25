@@ -998,7 +998,7 @@ router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.arra
 
     const { data: comment, error: commentErr } = await supabaseAdmin
       .from('PostComment')
-      .select('id, user_id, post_id')
+      .select('id, user_id, post_id, identity_context_type')
       .eq('id', commentId)
       .single();
 
@@ -1006,6 +1006,14 @@ router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.arra
       return res.status(404).json({ error: 'Comment not found' });
     }
 
+    // A reply under a made-up name is words only (services/penName/gate.js).
+    if (comment.identity_context_type === 'pen_name') {
+      // eslint-disable-next-line global-require
+      const penName = require('../services/penName');
+      return (await penName.owner.mine(userId, 'comment', [comment.id])).size
+        ? res.status(400).json({ error: penName.gate.WORDS_ONLY.message, code: penName.gate.WORDS_ONLY.code })
+        : res.status(403).json({ error: 'Only the comment author can upload media' });
+    }
     if (String(comment.user_id) !== String(userId)) {
       return res.status(403).json({ error: 'Only the comment author can upload media' });
     }
@@ -1154,13 +1162,22 @@ router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.a
 
     const { data: postRecord, error: postErr } = await supabaseAdmin
       .from('Post')
-      .select('id, user_id, media_urls, media_types, media_thumbnails, media_live_urls, is_story')
+      .select('id, user_id, media_urls, media_types, media_thumbnails, media_live_urls, is_story, identity_context_type')
       .eq('id', postId)
       .single();
 
     if (postErr || !postRecord) {
       logger.error('Post lookup failed for media upload', { postId, error: postErr?.message });
       return res.status(404).json({ error: 'Post not found' });
+    }
+    // A post under a made-up name is words only (services/penName/gate.js): its writer is told so, and everyone
+    // else gets the answer anyone who isn't the post's creator gets.
+    if (postRecord.identity_context_type === 'pen_name') {
+      // eslint-disable-next-line global-require
+      const penName = require('../services/penName');
+      return (await penName.owner.mine(userId, 'post', [postRecord.id])).size
+        ? res.status(400).json({ error: penName.gate.WORDS_ONLY.message, code: penName.gate.WORDS_ONLY.code })
+        : res.status(403).json({ error: 'Only the post creator can upload media' });
     }
     if (String(postRecord.user_id) !== String(userId)) {
       return res.status(403).json({ error: 'Only the post creator can upload media' });

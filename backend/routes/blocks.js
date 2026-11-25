@@ -1,5 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
+const penName = require('../services/penName');
 const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
 const verifyToken = require('../middleware/verifyToken');
@@ -33,6 +34,19 @@ router.post('/:userId/block', verifyToken, async (req, res) => {
       .maybeSingle();
 
     if (targetError && targetError.code !== '22P02') throw targetError;
+    // A made-up name's id rides where an account's would. Blocking it hides everything that account writes under any
+    // made-up name and stops the account reaching this person under any name. It is kept apart from "UserBlock": a
+    // row there would hide the person's named posts too, and so say who is behind the name (services/penName).
+    if (!targetUser && await penName.present.isPenNameId(blockedId)) {
+      try {
+        await penName.present.hide(blockerId, blockedId, { block: true });
+      } catch (hideError) {
+        if (!hideError.code) throw hideError;
+        return res.status(hideError.status).json({ error: hideError.message, code: hideError.code });
+      }
+      invalidateFilterCache(blockerId);
+      return res.json({ success: true });
+    }
     if (!targetUser) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -143,6 +157,12 @@ router.delete('/:userId/block', verifyToken, async (req, res) => {
       blockedId = anonymousBlock.blocked_user_id;
     }
 
+    if (await penName.present.isPenNameId(blockedId)) {
+      await penName.present.unhide(blockerId, blockedId, { block: true });
+      invalidateFilterCache(blockerId);
+      return res.json({ success: true });
+    }
+
     const { error } = await supabaseAdmin
       .from('UserBlock')
       .delete()
@@ -198,10 +218,21 @@ router.get('/blocked', verifyToken, async (req, res) => {
       .map((b) => b.blocked_user_id));
     const blocks = (data || []).map((b) => ({ ...b, blocked_user: chatPersonRow(b.blocked_user, people) }));
 
+    // Blocked made-up names, by the name that was blocked: unblocking uses its id as any other row's.
+    const blockedPenNames = (await penName.present.hiddenList(userId)).filter((row) => row.blocked).map((row) => ({
+      id: `pen-name:${row.id}`,
+      user_id: row.id,
+      username: null,
+      name: `${row.name} (made-up name)`,
+      profile_picture_url: row.avatar_url,
+      reason: 'pen_name',
+      created_at: row.created_at,
+    }));
+
     res.json({
       // Keep the existing list/unblock contract, but never expose an anonymous
       // note's sender. Older clients can still unblock using this opaque handle.
-      blocked: blocks.map((b) => b.reason === 'neighbor_message' ? {
+      blocked: [...blockedPenNames, ...blocks.map((b) => b.reason === 'neighbor_message' ? {
         id: b.id,
         user_id: `anonymous:${b.id}`,
         username: null,
@@ -220,7 +251,7 @@ router.get('/blocked', verifyToken, async (req, res) => {
         profile_picture_url: b.blocked_user?.profile_picture_url || null,
         reason: b.reason,
         created_at: b.created_at,
-      })),
+      }))],
     });
   } catch (err) {
     logger.error('Fetch blocked users error', { error: err.message });

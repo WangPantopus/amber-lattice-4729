@@ -74,6 +74,9 @@ function main() {
   if (runNodeStep('Gate 3e: nested User select (file-allowlisted)', path.join(BACKEND_DIR, 'scripts/ci/check-nested-user-selects.js')) !== 0) {
     failures.push('Gate 3e: nested User select');
   }
+  if (runNodeStep('Gate 3f: made-up names, one door to who wrote it', path.join(BACKEND_DIR, 'scripts/ci/check-pen-name-owner.js')) !== 0) {
+    failures.push('Gate 3f: made-up names owner door');
+  }
   if (runJestStep('Gate 4: Phase 1 audience-profile E2E', 'tests/integration/audienceProfile.e2e.test.js') !== 0) {
     failures.push('Gate 4: Phase 1 E2E');
   }

@@ -1646,3 +1646,25 @@ Your plan from November 24: about 30 friends and family take photos and short vi
   - `node scripts/seedmap.js run <folder>` is a dry run: it prints what each line would post and why any line is left out. Add `--post` (and `--confirm-remote` off the local stack) to post.
   - `node scripts/seedmap.js undo <folder>` lists what it would take down; add `--yes` (and `--confirm-remote`) to do it.
 - [ ] Not checked: staging and production (nothing was posted there), real phones' own photo files (the checks used made-up pictures and videos carrying locations in downtown Vancouver and Portland), and the picture check with the AI key (the local stack has none, so its Moments read "unchecked", as any Moment does when the check can't run).
+
+## Made-up names: posting without your name (added November 25)
+
+Your decision of November 25: a person may write a Pulse post or a reply under one made-up name, typed by them or given by Pantopus, with a verified home behind it and the real account known only to Pantopus. The design is the Claude Doc "Made-up names: posting without your name"; what the server does and what each app builds is in [the build contract](docs/product/made-up-names/README.md).
+
+- [ ] **The server** (this pull request): the names, who may use one, posts and replies under one, notices to the real writer, mute and block, two reports hiding a post, strikes after a removal, the logged staff look and the brake. Nobody can write under a made-up name from an app yet: the apps have no "Post as" until their own pull requests. Apps in the stores already draw a made-up-name post correctly and can mute, block and report one.
+- [ ] **Web, iPhone, Android:** "Post as" in the Pulse composer and the reply box, the name screen, the card's marks, the small card on a tap, and the private part of My posts. One pull request each.
+- [ ] **Moments under a made-up name:** not built. The server refuses it.
+- [ ] **Narrower than the design, on purpose:**
+  1. Posts and replies under a made-up name are words only. Nothing reads a picture on a post before it shows; pictures come with Moments, which has the picture check.
+  2. Words the automatic check refuses are not posted, and the person is told why at once. Nothing waits for a reviewer. While the check can't run, nothing is posted under a made-up name.
+- [ ] **Yours:**
+  1. Staging needs its Claude key for the two checks (a typed name, and the words of every post and reply). Without it every made-up-name post is refused with "We can't check posts under a made-up name right now." Try on staging: a name like "Dr. Patel" is refused; a post that gives a street address is refused; an ordinary Ask goes out.
+  2. The Terms and the Privacy Policy need the promise's second sentence in their own words: Pantopus knows who wrote a made-up-name post, acts when the rules are broken, and can be required by law to say who wrote something. The words are yours, and for a lawyer to read.
+  3. The review notes and the age rating for the App Store and Google Play, before an app build with "Post as" is submitted: posts without the writer's name are something reviewers ask about. Say that every made-up name has a verified home, every post is checked before it shows, and Report, Mute and Block work on one.
+  4. The brake, if a bad day comes: in the database's `FeatureFlag` table, a row named `pen_names_paused` with `enabled_globally` on stops new made-up-name posts and replies within a minute; a row named `pen_names_hidden` also hides every one already written. Neither row exists today.
+  5. Held posts wait for you: two different people reporting a made-up-name post hides it. It shows in the admin report list with its made-up name; "who wrote it" is a separate look that asks for a reason and is logged.
+- [ ] **Found on the way, not fixed:**
+  1. A reply can't be reported in any app, under any name: the apps report posts only.
+  2. Blocking the "Anonymous sender" of a note to an address stores an ordinary block (`backend/routes/neighborMessages.js`), and the feeds hide posts by anyone in that table. The person who blocked can see whose posts vanished and work out who sent the note.
+  3. The writer of a made-up-name post that two reports hid isn't told, and can't open it meanwhile.
+- [ ] Not checked: the real Claude checks (the local stack has no key; a stand-in answered), staging and production, the iPhone and Android apps on a device (only the web was opened, as a second person), and the database's own lint outside CI.

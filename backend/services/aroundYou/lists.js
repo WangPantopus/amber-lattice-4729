@@ -10,6 +10,7 @@
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
+const penName = require('../penName');
 const { chatPeopleFrom } = require('../chatPeople');
 
 const PAGE_SIZE = 20;
@@ -142,7 +143,7 @@ async function conversations(posts, hiddenUserIds = new Set()) {
   const ids = posts.filter((post) => post.comment_count > 0).map((post) => post.id);
   if (!ids.length) return new Map();
   const answers = await Promise.all(chunks(ids, 20).map((batch) => supabaseAdmin.from('PostComment')
-    .select(`id, post_id, user_id, comment, created_at, moderation_state,
+    .select(`id, post_id, user_id, comment, created_at, moderation_state, identity_context_type, identity_context_id,
       writer:user_id (id, username, name, first_name, middle_name, last_name, profile_picture_url, account_type,
         profile:LocalProfile (user_id, handle, display_name, avatar_url))`)
     .in('post_id', batch)
@@ -152,7 +153,15 @@ async function conversations(posts, hiddenUserIds = new Set()) {
   const failed = answers.find((answer) => answer.error);
   if (failed) throw failed.error;
   const byPost = new Map();
-  for (const row of answers.flatMap((answer) => answer.data || [])) {
+  // A reply under a made-up name (services/penName) is stored under one system account: here it is its made-up name's,
+  // so two of them are two people and neither is the account. From here on `user_id` is that name's id on such a row.
+  const penRows = answers.flatMap((answer) => answer.data || []).filter(penName.isPenNameRow);
+  const penNames = penRows.length ? await penName.names.rowsById(penRows.map((row) => row.identity_context_id)) : new Map();
+  const allPenNamesHidden = penRows.length ? await penName.gate.isHidden() : false;
+  for (const stored of answers.flatMap((answer) => answer.data || [])) {
+    const underPenName = penName.isPenNameRow(stored);
+    if (underPenName && allPenNamesHidden) continue;
+    const row = underPenName ? { ...stored, user_id: String(stored.identity_context_id), writer: null } : stored;
     if ((row.moderation_state || 'live') !== 'live' || hiddenUserIds.has(row.user_id)) continue;
     if (!byPost.has(row.post_id)) byPost.set(row.post_id, []);
     byPost.get(row.post_id).push(row);
@@ -173,6 +182,8 @@ async function conversations(posts, hiddenUserIds = new Set()) {
   }
   const names = chatPeopleFrom([...users.values()], [...profiles.values()]);
   const person = (userId) => {
+    const pen = penNames.get(String(userId));
+    if (pen) return { id: userId, name: pen.display_name, avatar_url: pen.avatar_url || null };
     const known = names.get(String(userId));
     return { id: userId, name: known?.displayName || 'Someone', avatar_url: known?.avatarUrl || null };
   };
