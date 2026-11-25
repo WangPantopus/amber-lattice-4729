@@ -88,9 +88,9 @@ Every route needs a signed-in person. Refusals are `{ "error": "<a sentence to s
 |---|---|
 | `GET /api/pen-names/me` | `pen_name` (`id`, `name`, `avatar_url`, `taken_at`, `change_after`) or null; `allowed` and `refusal` (why this account can't use one); `limits` (posts, replies and Moments: a day's allowance and today's count); `name_rules` (`min` 3, `max` 24); `post_types`; `promise`; `suggestions` (four names Pantopus could give, when the person has none and may have one) |
 | `POST /api/pen-names` `{ "name": "…" }` | Takes the typed name. An empty or missing `name` lets Pantopus give one. `{ "replace": true }` gives up the name in use: free while nothing was written under it, else once every 30 days (`PEN_NAME_TOO_SOON`). 201 `{ pen_name }` |
-| `GET /api/pen-names/suggestions` | Four more names Pantopus could give (for a Shuffle button: show one, post it as `name` when the person keeps it) |
+| `GET /api/pen-names/suggestions` | Four more names Pantopus could give (for a Shuffle button: show one, post it as `name` when the person keeps it). A name Pantopus offered is kept as it was shown, with no name check to wait for (the words are Pantopus's own), so it works even while a typed name answers `PEN_NAME_CHECK_UNAVAILABLE`. The first word is always a describing word, never one people are named |
 | `GET /api/pen-names/check?latitude=&longitude=` | Whether a post made here may carry a made-up name: `allowed`, `refusal`, and `warning` (a sentence to show above the Post button when few verified homes are near) |
-| `GET /api/pen-names/me/posts?before=&limit=` | The person's own made-up-name posts, newest first (`posts`, `next_before`). Only they can read it |
+| `GET /api/pen-names/me/posts?before=&limit=` | The person's own made-up-name posts, newest first (`posts`, `next_before`). Only they can read it. Moments are not in it (their owner finds them in `GET /api/moments/mine`); a page can hold fewer than `limit`, or none, while `next_before` says there is more |
 
 A typed name is 3 to 24 characters (letters, numbers, spaces, hyphens, periods, apostrophes; at most three words), not
 taken, not a person's or business's name or handle on Pantopus, not Pantopus or an official, and passes an automatic
@@ -224,7 +224,9 @@ The same seven things on the web, the iPhone and Android. Words in quotes are th
    included; an app never works the rule out from the post's kind or audience itself): the person's own name ("your name and profile") and
    their made-up name ("others can't see it's you"). Every new post starts on the person's own name. When
    `/me` says `allowed: false`, the row shows `refusal.message` and can't be chosen (for a home that isn't verified,
-   that sentence is the nudge to verify).
+   that sentence is the nudge to verify). The row shows only once `/me` has answered: while it hasn't, or when it
+   can't be read (an older server, no connection), the composer and the reply box are as they were before made-up
+   names.
 2. **The first time**, one screen: a field for the name they want; left empty, Pantopus gives one (show a suggestion
    with **Shuffle**); the picture, always drawn; the promise; **"Use this name"**.
 3. **While it is chosen**, the top of the composer takes the made-up name's look and reads "Posting as Night

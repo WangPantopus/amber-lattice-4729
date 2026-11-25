@@ -19,13 +19,15 @@ const NAME_MIN = 3;
 const NAME_MAX = 24;
 const PEN_NAME_COLUMNS = 'id, display_name, avatar_url, status, lineage_id, retired_at, created_at';
 
+// The first word is always a describing word, never one people are named ("Hazel", "Autumn", "Willow"): with a
+// second word like Fox or Finch that would read as a real person's name, which a typed name may not be either.
 const FIRST_WORDS = [
-  'Quiet', 'Amber', 'Mossy', 'Silver', 'Misty', 'Gentle', 'Bright', 'Early', 'Late', 'Steady', 'Mellow', 'Breezy',
-  'Dusky', 'Sunny', 'Rainy', 'Frosty', 'Golden', 'Copper', 'Velvet', 'Hazel', 'Rustic', 'Tidal', 'Cedar', 'Maple',
-  'Willow', 'Juniper', 'Clover', 'Pebble', 'Harbor', 'Meadow', 'Canyon', 'Summit', 'Prairie', 'Coastal', 'Northern',
-  'Western', 'Evening', 'Morning', 'Autumn', 'Winter', 'Spring', 'Summer', 'Drifting', 'Wandering', 'Patient',
-  'Curious', 'Cheerful', 'Humble', 'Nimble', 'Sturdy', 'Lucky', 'Merry', 'Calm', 'Cozy', 'Daring', 'Eager', 'Fair',
-  'Glad', 'Hearty', 'Jolly', 'Keen', 'Lively', 'Mild', 'Noble', 'Plucky', 'Tidy', 'Witty', 'Zesty', 'Bold',
+  'Quiet', 'Mossy', 'Silver', 'Gentle', 'Bright', 'Early', 'Late', 'Steady', 'Mellow', 'Breezy', 'Dusky', 'Rainy',
+  'Frosty', 'Golden', 'Copper', 'Velvet', 'Rustic', 'Tidal', 'Pebble', 'Canyon', 'Summit', 'Prairie', 'Coastal',
+  'Northern', 'Western', 'Evening', 'Morning', 'Spring', 'Drifting', 'Wandering', 'Patient', 'Curious', 'Cheerful',
+  'Humble', 'Nimble', 'Sturdy', 'Lucky', 'Calm', 'Cozy', 'Daring', 'Eager', 'Fair', 'Glad', 'Hearty', 'Jolly', 'Keen',
+  'Lively', 'Mild', 'Noble', 'Plucky', 'Tidy', 'Witty', 'Zesty', 'Bold', 'Dappled', 'Dewy', 'Foggy', 'Starlit',
+  'Moonlit', 'Sunlit', 'Windy', 'Snowy', 'Shady', 'Leafy', 'Brisk', 'Crisp', 'Hushed', 'Sleepy', 'Kindly',
 ];
 const SECOND_WORDS = [
   'Heron', 'Osprey', 'Salmon', 'Otter', 'Marmot', 'Chickadee', 'Kestrel', 'Sparrow', 'Finch', 'Wren', 'Robin',
@@ -166,6 +168,15 @@ function drawName() {
   return `${pick(FIRST_WORDS)} ${pick(SECOND_WORDS)}`;
 }
 
+const DRAWN_FIRST = new Set(FIRST_WORDS);
+const DRAWN_SECOND = new Set(SECOND_WORDS);
+
+/** Whether Pantopus could have offered these exact words (a suggestion the person kept comes back as a typed name). */
+function isDrawn(name) {
+  const words = String(name || '').split(' ');
+  return words.length === 2 && DRAWN_FIRST.has(words[0]) && DRAWN_SECOND.has(words[1]);
+}
+
 /** Up to `count` names Pantopus could give that nobody holds. */
 async function suggestions(count = 4) {
   const wanted = Math.min(Math.max(Number(count) || 1, 1), 8);
@@ -287,10 +298,14 @@ async function ofOwner(ownerId) {
 async function take({ ownerId, typed, replace = false }) {
   const wantsOwn = tidy(typed).length > 0;
   let name;
+  // The apps show one name Pantopus could give and send it back when the person keeps it: those words are ours, so
+  // there is no meaning to check, and the person gets the name they saw even while the name check can't run.
+  let offered = false;
   if (wantsOwn) {
     name = checkTypedShape(typed);
+    offered = isDrawn(name);
     if (await matchesSomeone(name)) throw fail('PEN_NAME_TAKEN', 'That name is taken. Try another.', 409);
-    const verdict = await checkTypedMeaning(name);
+    const verdict = offered ? 'ok' : await checkTypedMeaning(name);
     if (verdict === 'refuse') throw fail('PEN_NAME_REFUSED', "That name can't be used. A made-up name can't be a real person's name, an official or a business.");
     if (verdict !== 'ok') {
       throw fail('PEN_NAME_CHECK_UNAVAILABLE', "We can't check a name right now. Try again in a little while, or let Pantopus pick one for you.", 503);
@@ -298,11 +313,13 @@ async function take({ ownerId, typed, replace = false }) {
   }
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const candidate = wantsOwn ? name : (await suggestions(1))[0] || `${drawName()} ${crypto.randomInt(10, 100)}`;
+    // A name Pantopus gives is never one somebody on Pantopus goes by, as a typed one can't be.
+    if (!wantsOwn && await matchesSomeone(candidate)) continue;
     const handle = `pn_${crypto.randomBytes(9).toString('hex')}`;
     try {
       const id = await owner.take({
         ownerId, name: candidate, nameKey: nameKey(candidate), handle,
-        avatarUrl: await storePicture(handle), source: wantsOwn ? 'user_selected' : 'generated',
+        avatarUrl: await storePicture(handle), source: wantsOwn && !offered ? 'user_selected' : 'generated',
         replace, minDays: MIN_DAYS_BETWEEN_NAMES,
       });
       return serialize((await rowsById([id])).get(String(id)) || { id, display_name: candidate, status: 'active' });
