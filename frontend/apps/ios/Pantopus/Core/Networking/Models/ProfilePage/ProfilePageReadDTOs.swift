@@ -56,9 +56,11 @@ public struct ProfilePieceReadDTO: Decodable, Sendable, Hashable {
         public let description: String?
         public let ink: String
         public let how: String?
+        /// The owner's card only: false where a page can't be proven theirs (an encyclopedia, a wiki).
+        public let provable: Bool
 
         enum CodingKeys: String, CodingKey {
-            case id, url, site, kind, title, description, ink, how
+            case id, url, site, kind, title, description, ink, how, provable
         }
 
         public init(from decoder: any Decoder) throws {
@@ -71,6 +73,7 @@ public struct ProfilePieceReadDTO: Decodable, Sendable, Hashable {
             description = try? c.decodeIfPresent(String.self, forKey: .description)
             ink = (try? c.decodeIfPresent(String.self, forKey: .ink)) ?? "said"
             how = try? c.decodeIfPresent(String.self, forKey: .how)
+            provable = (try? c.decodeIfPresent(Bool.self, forKey: .provable)) ?? true
         }
     }
 
@@ -159,6 +162,13 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
     public let linksOpen: Bool
     /// A plain note for the owner when their profile isn't open to visitors (v1.6); nil when it is.
     public let linksNote: String?
+    /// The Work row's "12 of your 18 pieces" (P2.5): pieces open to anyone, of all shown ones.
+    public let workPieces: WorkPieces?
+
+    public struct WorkPieces: Decodable, Sendable, Hashable {
+        public let shown: Int
+        public let total: Int
+    }
 
     enum CodingKeys: String, CodingKey {
         case username, url, saved, parts, visitor
@@ -169,6 +179,7 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
         case links
         case linksOpen = "links_open"
         case linksNote = "links_note"
+        case workPieces = "work_pieces"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -185,5 +196,6 @@ public struct ProfileShareDTO: Decodable, Sendable, Hashable {
         links = ((try? c.decodeIfPresent([Lossy<ProfileShareLinkDTO>].self, forKey: .links)) ?? []).compactMap(\.value)
         linksOpen = (try? c.decodeIfPresent(Bool.self, forKey: .linksOpen)) ?? true
         linksNote = try? c.decodeIfPresent(String.self, forKey: .linksNote)
+        workPieces = try? c.decodeIfPresent(WorkPieces.self, forKey: .workPieces)
     }
 }

@@ -28,6 +28,8 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     var onRefresh: (@MainActor () async -> Void)?
     /// Your own page: today's portfolio (add, open, delete), on Work, or on the first tab while there is no Work.
     var onManagePieces: (@MainActor () -> Void)?
+    /// Your own page on a server with pieces (phase 2): the editor, pushed, for a new piece or one started from a job.
+    var onEditPiece: (@MainActor (ProfilePieceEditorStart) -> Void)?
     @ViewBuilder let actions: () -> Actions
     /// Your own page: the tips only you see, under the header.
     @ViewBuilder let ownerTop: () -> OwnerTop
@@ -132,9 +134,14 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     /// The picked tab's blocks, then your own page's parts and a link's footer.
     @ViewBuilder private var tabContent: some View {
         if let selected {
+            if selected.key == .work, content.isOwner, let mine = model.ownerPieces, let onEditPiece {
+                ProfileOwnerWorkCard(mine: mine) { onEditPiece($0) }
+                    .padding(.horizontal, Spacing.s4)
+            }
             ProfileBlockList(blocks: tabBlocks(selected), context: context)
                 .padding(.horizontal, Spacing.s4)
-            if let onManagePieces, selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
+            if let onManagePieces, model.ownerPieces == nil,
+               selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
                 ProfileBlockCard(padded: false) {
                     ProfileTileRow(
                         tile: ProfileTile(icon: .plus, tint: .work),

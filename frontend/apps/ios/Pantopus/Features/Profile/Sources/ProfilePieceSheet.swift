@@ -14,7 +14,11 @@ import UniformTypeIdentifiers
 
 struct ProfilePieceSheet: View {
     let model: ProfilePageModel
+    /// Your own piece: Change (the editor, pushed in this sheet's own stack) and who sees it.
+    var isOwner = false
     let onClose: () -> Void
+
+    @State private var changing: String?
 
     @Environment(\.openURL) private var openURL
     /// The gallery opened full screen, from this item.
@@ -38,6 +42,18 @@ struct ProfilePieceSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", action: onClose)
+                }
+                if isOwner, let piece = model.openedPiece?.piece {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Change") { changing = piece.summary.id }
+                            .accessibilityIdentifier("profilePieceChange")
+                    }
+                }
+            }
+            .navigationDestination(item: $changing) { pieceId in
+                ProfilePieceEditor(start: .change(pieceId: pieceId)) { outcome in
+                    changing = nil
+                    if case .removed = outcome { onClose() }
                 }
             }
         }
@@ -87,7 +103,7 @@ struct ProfilePieceSheet: View {
                     }
                 }
                 if !piece.showsCan.isEmpty {
-                    skills(piece.showsCan)
+                    skills(piece.showsCan, firstName: model.content?.header.firstName)
                 }
                 if !others.isEmpty || !piece.links.isEmpty {
                     attached(others: others, links: piece.links, shown: shown)
@@ -121,6 +137,13 @@ struct ProfilePieceSheet: View {
                 .foregroundStyle(Theme.Color.appText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
+            if isOwner, let seenBy = Self.whoSees(summary) {
+                HStack(spacing: 6) {
+                    Icon(summary.draft || summary.hidden ? .eyeOff : .eye, size: 14, color: Theme.Color.appTextSecondary)
+                    Text(seenBy).scaledFont(13, weight: .semibold).foregroundStyle(Theme.Color.appTextStrong)
+                }
+                .accessibilityElement(children: .combine)
+            }
             if piece.howWeKnow.isEmpty, piece.description == nil {
                 let source = summary.line.sourceLine(at: 0)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -153,9 +176,9 @@ struct ProfilePieceSheet: View {
 
     // MARK: Skills
 
-    private func skills(_ names: [String]) -> some View {
+    private func skills(_ names: [String], firstName: String?) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            ProfileBlockTitle(title: "Skills it shows").padding(.horizontal, 4)
+            ProfileBlockTitle(title: firstName.map { "Shows \($0) can" } ?? "Shows they can").padding(.horizontal, 4)
             ProfileWrapLayout(spacing: Spacing.s2) {
                 ForEach(names, id: \.self) { ProfilePieceChip(text: $0, tinted: true) }
             }
@@ -218,6 +241,14 @@ struct ProfilePieceSheet: View {
                 }
             }
         }
+    }
+
+    /// "Who sees it: People on Pantopus", or that only you do (a draft, a hidden piece).
+    static func whoSees(_ summary: ProfilePieceDTO) -> String? {
+        if summary.draft { return "A draft: only you see it" }
+        if summary.hidden { return "Hidden: only you see it" }
+        guard let audience = summary.audience.flatMap(ProfilePieceEditorModel.Audience.init(rawValue:)) else { return nil }
+        return "Who sees it: \(audience.words)"
     }
 
     static func mediaItem(_ item: ProfilePieceReadDTO.Attachment) -> PostMediaItem? {
@@ -457,6 +488,8 @@ private struct ProfilePieceWritten: View {
             .padding(.top, Spacing.s2)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title). \(line.text). \(who.isEmpty ? source.source : "\(source.ink.word), \(who)")")
+        .accessibilityLabel(
+            "\(title). " + ProfileSourceLine.spokenJoin(line.text, who.isEmpty ? source.source : "\(source.ink.word), \(who)")
+        )
     }
 }
