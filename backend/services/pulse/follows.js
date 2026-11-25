@@ -5,6 +5,7 @@ const { UUID } = require('./feedCursor');
 const { isPulseTopic } = require('./topics');
 const { homeAreaContext, openAreas, AREA_SELECT } = require('./areas');
 const { POST_READ_SELECT, canReadPost, postScopeAccess } = require('./readAccess');
+const { NOTE_SENDER_BLOCK } = require('../blockService');
 
 const SELECT = 'id, target_type, target_id, area_id, notify, ends_on_resolve, until_at, created_at, updated_at';
 const POST_SELECT = `${POST_READ_SELECT}, state, resolution, expires_at, created_at, topic, post_as,
@@ -137,7 +138,8 @@ async function summary(viewerId) {
     const page = await checked(db.from('PostMute')
       .select('id, muted_entity_type, muted_entity_id, area_id, surface, created_at')
       .eq('user_id', viewerId).order('created_at').order('id').range(from, from + 999));
-    mutes.push(...page);
+    // A block of a note's sender is no mute, and its row holds who sent the note (blockService.NOTE_SENDER_BLOCK).
+    mutes.push(...page.filter((row) => row.muted_entity_type !== NOTE_SENDER_BLOCK));
     if (page.length < 1000) break;
   }
   return {

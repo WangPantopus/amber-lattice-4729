@@ -35,6 +35,26 @@ public enum ProfilePageEndpoints {
     }
 
     /// `GET …/piece/:pieceId` — one piece, opened.
+    /// `GET …/circle` — the whole work circle this viewer may see (P2.6).
+    public static func circle(identifier: String, previewAs: String? = nil) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "\(base(identifier))/circle",
+            query: previewAs.map { ["as": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
+    /// `GET …/circle/:userId` — the pieces the two share that this viewer may open.
+    public static func circlePieces(identifier: String, userId: String, previewAs: String? = nil) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "\(base(identifier))/circle/\(Endpoint.pathSegment(userId))",
+            query: previewAs.map { ["as": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
     public static func piece(identifier: String, pieceId: String, previewAs: String? = nil) -> Endpoint {
         Endpoint(
             method: .get,
@@ -171,6 +191,21 @@ public enum ProfilePageEndpoints {
         Endpoint(method: .delete, path: "/api/profile-page/me/ties/\(Endpoint.pathSegment(id))")
     }
 
+    /// `POST /api/profile-page/me/roles` — a role or school; a business on Pantopus is asked to confirm it.
+    public static func createRole(_ body: ProfileRoleBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/roles", body: body)
+    }
+
+    /// `PATCH /api/profile-page/me/roles/:id` — its title, kind and months (the place can't change).
+    public static func updateRole(id: String, _ body: ProfileRoleBody) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/profile-page/me/roles/\(Endpoint.pathSegment(id))", body: body)
+    }
+
+    /// `DELETE /api/profile-page/me/roles/:id`.
+    public static func deleteRole(id: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/profile-page/me/roles/\(Endpoint.pathSegment(id))")
+    }
+
     /// `PUT /api/profile-page/me/share` with `ties_enabled` — "Let people name me on their work".
     public static func setTiesEnabled(_ on: Bool) -> Endpoint {
         Endpoint(method: .put, path: "/api/profile-page/me/share", body: ProfileTiesEnabledBody(tiesEnabled: on))
@@ -220,7 +255,7 @@ public struct ProfileLinksEnabledBody: Encodable, Sendable {
 /// pantopus.com.
 public enum ProfilePageParts {
     public static let header = "X-Pantopus-Profile-Parts"
-    public static let drawn = "pieces, credits, roles, shelf"
+    public static let drawn = "pieces, credits, roles, circle, shelf"
 
     /// The header for a profile-page request, none for any other.
     public static func headers(for path: String) -> [String: String] {

@@ -175,6 +175,8 @@ public enum ProfileOwnerDestination: Hashable, Sendable {
     case developerTools
     /// Your own Work (the profile with sources, phase 2): adding a piece, or one started from a job or plan.
     case piece(ProfilePieceEditorStart)
+    /// Your own "Worked and learned": adding or changing a role or school.
+    case role(ProfileRoleEditorStart)
 }
 
 /// One row of "Your account".

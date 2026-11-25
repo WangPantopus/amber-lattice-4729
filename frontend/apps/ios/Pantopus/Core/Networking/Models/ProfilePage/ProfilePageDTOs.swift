@@ -231,6 +231,8 @@ public struct ProfilePageLineDTO: Decodable, Sendable, Hashable {
     /// Who wrote it (Known for, a review); on a link by what they did only.
     public let who: ProfilePageWhoDTO?
     public let when: String?
+    /// A role or school in "Worked and learned" (P2.6): its own fields, for the owner to change it.
+    public let role: ProfileRoleFieldsDTO?
 
     enum CodingKeys: String, CodingKey {
         case ink, text, how, lane, link, who, when
@@ -245,6 +247,7 @@ public struct ProfilePageLineDTO: Decodable, Sendable, Hashable {
         link = try? c.decodeIfPresent(ProfilePageLinkDTO.self, forKey: .link)
         who = try? c.decodeIfPresent(ProfilePageWhoDTO.self, forKey: .who)
         when = try? c.decodeIfPresent(String.self, forKey: .when)
+        role = try? ProfileRoleFieldsDTO(from: decoder)
     }
 }
 
@@ -278,6 +281,8 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
     case posts(userId: String)
     case moments(userId: String)
     case url(URL, site: String?)
+    /// The whole work circle (`GET …/circle`).
+    case circle
 
     enum CodingKeys: String, CodingKey {
         case kind, tab, month, id, username, url, site
@@ -291,6 +296,7 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
         switch try c.decode(String.self, forKey: .kind) {
         case "tab": self = try .tab(c.decode(String.self, forKey: .tab))
         case "record": self = .record
+        case "circle": self = .circle
         case "month": self = try .month(c.decode(String.self, forKey: .month))
         case "piece":
             let userId: String? = (try? c.decodeIfPresent(String.self, forKey: .userId)).flatMap(\.self)

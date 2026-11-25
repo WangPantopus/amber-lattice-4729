@@ -15,6 +15,7 @@ import { ACCOUNT_DELETED_NOTICE_KEY, hardNavigate } from '@/lib/session-refresh'
 import { signOut } from '@/lib/signOut';
 import { setMe, useMe } from '@/lib/me';
 import { useProfileGuidance } from '@/components/guidance/profileGuidance';
+import PenNameSettings from '@/components/penName/PenNameSettings';
 
 type SettingField = 'email_notifications' | 'push_notifications' | 'profile_visibility' | 'show_email' | 'show_phone';
 
@@ -363,6 +364,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* Made-up name (components/penName) */}
+          <PenNameSettings />
 
           {/* Blocked Users */}
           <div className="bg-surface rounded-xl border border-app p-6">

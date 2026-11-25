@@ -777,6 +777,8 @@ const READER_POST_FIELDS = [
   'reactions', 'userReaction', 'quoted_post', 'post_metadata', 'area',
   // Written under a made-up name (services/penName), and whether this reader is the one who wrote it.
   'made_up_name', 'viewer_is_author',
+  // Whether a first reply on it may be written under a made-up name (feedService.attachIdentityAuthors).
+  'takes_made_up_name_reply',
 ];
 
 // The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
@@ -3899,6 +3901,11 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     // One voice per conversation (services/penName): which name this person already has here. Read while the checks
     // below run; it is needed only just before the reply is saved.
     const voiceRead = penName.owner.voiceIn(userId, postId).then((voice) => ({ voice }), () => ({ failed: true }));
+    // Whether the post's writer blocked this person's made-up name (then this account reaches them under no name).
+    // Asked now, beside the reads below, so it never adds a wait of its own; never asked of a made-up-name post, where
+    // nothing is refused because of a block (a refusal there would say who is behind the name).
+    const postReachRead = penName.isPenNameRow(post) ? Promise.resolve(false)
+      : penName.present.reachRefused(userId, post.user_id);
 
     let parent = null;
     if (parentCommentId) {
@@ -3914,12 +3921,16 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       // A reply under a made-up name is stored under the system account, so this never refuses a reply to one: a
       // refusal there would say who is behind the name. Someone who blocked this person's made-up name is reached
       // under no name.
-      if (await blockService.isBlocked(userId, parent.user_id)
-        || (!penName.isPenNameRow(parent) && await penName.present.reachRefused(userId, parent.user_id))) {
+      const [acrossBlock, nameBlocked] = await Promise.all([
+        blockService.isBlocked(userId, parent.user_id),
+        penName.isPenNameRow(parent) || parent.user_id === post.user_id ? false
+          : penName.present.reachRefused(userId, parent.user_id),
+      ]);
+      if (acrossBlock || nameBlocked) {
         return res.status(403).json({ error: "You can't reply to this comment." });
       }
     }
-    if (!penName.isPenNameRow(post) && await penName.present.reachRefused(userId, post.user_id)) {
+    if (await postReachRead) {
       return res.status(403).json({ error: "You can't reply to this post." });
     }
 
@@ -3940,7 +3951,10 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     if (underPenName) {
       const refusal = voice === 'named'
         ? { status: 409, code: 'PEN_NAME_ONE_VOICE', message: "You're in this conversation under your own name, so your replies here use it too." }
-        : await penName.gate.accountRefusal(userId)
+        // Where the person is already here under their made-up name, the conversation is theirs to go on with; a
+        // first reply under it is only for a post people nearby read.
+        : (voice === 'pen_name' ? null : penName.gate.replyRefusal(post))
+          || await penName.gate.accountRefusal(userId)
           || await penName.gate.limitRefusal(userId, 'comment')
           || await penName.gate.wordsRefusal([normalizedComment]);
       if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });

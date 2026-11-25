@@ -34,6 +34,8 @@ import type { AudienceProfile, Post } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 import { canOfferProfilePin } from '@/hooks/useProfilePin';
 import { useHydrated } from '@/hooks/useHydrated';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine } from '@/components/penName/MadeUpName';
+import { isMadeUp, isMadeUpByMe, penNameIdOf } from '@/components/penName/penName';
 
 // ─── Lucide icon lookup (platform-specific JSX — data from shared config) ──
 const LUCIDE_MAP: Record<string, LucideIcon> = {
@@ -184,6 +186,11 @@ function PostCard({
   const ctaSaves = config.ctaIcon === 'bookmark' && Boolean(onSave);
   const authorUserId = post.author_user_id || post.user_id;
   const isOwn = authorUserId === currentUserId;
+  // Under a made-up name: its drawn picture and name open the small card, never a profile; no distance from its writer.
+  const madeUp = isMadeUp(post);
+  const madeUpByMe = madeUp && (isOwn || isMadeUpByMe(post));
+  const penNameId = penNameIdOf(post);
+  const reportFromCard = onReport && !madeUpByMe ? () => onReport(post.id) : undefined;
   // A plan's own post (made by Plans) is changed or cancelled from the plan, which tells everyone; the server
   // refuses editing, deleting or archiving it as a post.
   const isPlanPost = post.post_metadata?.plan === true;
@@ -335,6 +342,8 @@ function PostCard({
           >
             <Newspaper className="h-4 w-4" />
           </div>
+        ) : madeUp ? (
+          <MadeUpAuthorPicture penNameId={penNameId} name={creatorName} url={creatorAvatar} onReport={reportFromCard} />
         ) : (
         <UserAvatarLink href={authorHref} momentUserId={authorHref ? momentAuthorId : null} name={creatorName}>
           {creatorAvatar ? (
@@ -365,6 +374,8 @@ function PostCard({
                 <span className="text-sm font-semibold text-app truncate" data-testid="postStoryOutlet">{story.outlet}</span>
                 <span className="flex-shrink-0 text-[10px] text-app-muted">via {creatorName}</span>
               </>
+            ) : madeUp ? (
+              <MadeUpAuthorName penNameId={penNameId} name={creatorName} isYou={madeUpByMe} onReport={reportFromCard} />
             ) : publicAuthor?.type === 'persona' && !(launchFeatures.beacon && launchFeatures.personas) ? (
               <span className="text-sm font-semibold text-app truncate">{creatorName}</span>
             ) : publicAuthor?.href ? (
@@ -393,6 +404,12 @@ function PostCard({
           </div>
           {locationText && (
             <span className="text-[11px] text-app-muted">{locationText}</span>
+          )}
+          {madeUp && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <MadeUpNameMarks badges={publicAuthor?.badges} />
+              {madeUpByMe && <OnlyYouLine />}
+            </div>
           )}
         </div>
 
@@ -508,7 +525,7 @@ function PostCard({
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             {post.location_name || 'Pinned location'}
-            {post.distance_meters != null && post.distance_meters > 0 && (
+            {!madeUp && post.distance_meters != null && post.distance_meters > 0 && (
               <span className="text-app-muted">
                 · {formatDistance(post.distance_meters) === 'nearby' ? 'nearby' : `${formatDistance(post.distance_meters)} away`}
               </span>

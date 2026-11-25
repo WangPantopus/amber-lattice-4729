@@ -64,6 +64,7 @@ struct ProfilePieceEditor: View {
         .background(Theme.Color.appBg)
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) { bottomBar }
+        .profileColumn()
         .navigationTitle(model.isNew ? "New piece" : "Change piece")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

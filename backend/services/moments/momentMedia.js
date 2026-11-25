@@ -70,6 +70,14 @@ function keyFor(authorId, momentId, role, digest, ext) {
   return `${PREFIX}${String(authorId).toLowerCase()}/${String(momentId).toLowerCase()}/${role}-${digest}.${ext}`;
 }
 
+/**
+ * Whose folder a Moment's files sit in: its account's, or, for a Moment under a made-up name (services/penName), the
+ * made-up name's. Never the system account such a row is stored under, and never its writer's.
+ */
+function folderOwner(row) {
+  return row?.identity_context_type === 'pen_name' && row.identity_context_id ? row.identity_context_id : row.user_id;
+}
+
 function isMomentKey(key) {
   return typeof key === 'string' && key.startsWith(PREFIX) && !key.includes('..');
 }
@@ -314,6 +322,6 @@ module.exports = {
   LINK_SECONDS, STORAGE_CONTRACT, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_STILL_BYTES, MAX_VIDEO_MS, VIDEO_MS_TOLERANCE,
   PHOTO_TYPES, VIDEO_TYPES,
   failure, privateBucket, maxVideoBytes, sha256, keyFor, isMomentKey, isPlanPhotoKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
-  removeAccountFiles, download,
+  removeAccountFiles, download, folderOwner,
   videoFacts, jpegFacts, photoFacts, thumbnail, checkImage,
 };

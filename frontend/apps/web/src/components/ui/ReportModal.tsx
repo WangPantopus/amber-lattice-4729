@@ -28,6 +28,7 @@ const LISTING_REPORT_REASONS = [
 
 const ENTITY_LABELS: Record<string, string> = {
   post: 'Post',
+  reply: 'Reply',
   gig: 'Task',
   listing: 'Listing',
   user: 'User',
@@ -39,7 +40,7 @@ interface ReportModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (reason: string, details?: string) => Promise<void>;
-  entityType: 'post' | 'gig' | 'listing' | 'user' | 'message' | 'card';
+  entityType: 'post' | 'reply' | 'gig' | 'listing' | 'user' | 'message' | 'card';
   /** Its stacking layer, when it opens over something above the app (the card on the table). */
   layerClassName?: string;
   /** Said plainly under the heading: what the report shares ("Report this card" shares that one card with admins). */

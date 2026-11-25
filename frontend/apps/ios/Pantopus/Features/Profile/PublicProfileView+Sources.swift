@@ -123,7 +123,7 @@ extension PublicProfileView {
                 // A preview shows what they'd see without leaving it: tabs, months and pieces open; nothing else.
                 if viewModel.previewAudience != nil {
                     switch link {
-                    case .tab, .record, .month, .piece: break
+                    case .tab, .record, .month, .piece, .circle: break
                     default: return
                     }
                 }
@@ -141,7 +141,9 @@ extension PublicProfileView {
                 : nil,
             edit: isOwner ? { showEditProfile = true } : nil,
             pieceInk: content.pieceInk,
-            openedMonth: page.openedMonth
+            openedMonth: page.openedMonth,
+            // Your own roles and schools while the server's ties are on (its "Asked of you" answered): pushed editor.
+            editRole: isOwner && viewModel.previewAudience == nil && page.asks != nil ? { open(.role($0)) } : nil
         )
     }
 
@@ -151,6 +153,8 @@ extension PublicProfileView {
         switch link {
         case let .tab(key):
             if let key = ProfileSourcesTab.Key(rawValue: key) { page.selectedTab = key }
+        case .circle:
+            Task { await page.openCircle() }
         case .record:
             page.selectedTab = .record
         case let .month(month):

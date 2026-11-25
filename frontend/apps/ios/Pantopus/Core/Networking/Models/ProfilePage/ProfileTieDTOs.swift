@@ -222,3 +222,84 @@ public struct ProfileTiesEnabledBody: Encodable, Sendable {
         case tiesEnabled = "ties_enabled"
     }
 }
+
+// MARK: - Roles and schools (P2.6)
+
+/// A role or school on a line of "Worked and learned": what it was, where, when, and its status for the owner.
+public struct ProfileRoleFieldsDTO: Decodable, Sendable, Hashable {
+    public struct Place: Decodable, Sendable, Hashable {
+        public let name: String?
+        public let userId: String?
+        public let username: String?
+        public let pictureURL: String?
+        public let typed: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case name, username, typed
+            case userId = "user_id"
+            case pictureURL = "picture_url"
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try? c.decodeIfPresent(String.self, forKey: .name)
+            userId = try? c.decodeIfPresent(String.self, forKey: .userId)
+            username = try? c.decodeIfPresent(String.self, forKey: .username)
+            pictureURL = try? c.decodeIfPresent(String.self, forKey: .pictureURL)
+            typed = (try? c.decodeIfPresent(Bool.self, forKey: .typed)) ?? false
+        }
+    }
+
+    public let id: String
+    public let title: String
+    /// worked | learned
+    public let relation: String
+    /// "2017-02"
+    public let from: String?
+    /// nil for now
+    public let to: String?
+    public let place: Place?
+    /// The owner's view: signed | asked | said | did_not_confirm.
+    public let status: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, relation, from, to, status
+        case place = "where"
+    }
+
+    /// Only a line that is a role carries these; any other line decodes no role.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        relation = try c.decode(String.self, forKey: .relation)
+        from = try? c.decodeIfPresent(String.self, forKey: .from)
+        to = try? c.decodeIfPresent(String.self, forKey: .to)
+        place = try? c.decodeIfPresent(Place.self, forKey: .place)
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+    }
+}
+
+/// `POST /me/roles` (with its place) and `PATCH /me/roles/:id` (the place can't change: left out).
+public struct ProfileRoleBody: Encodable, Sendable {
+    public let title: String
+    public let relation: String
+    public let from: String
+    public let to: String?
+    /// `{ "business_user_id" }` or `{ "name" }`; nil on a change.
+    public let place: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case title, relation, from, to
+        case place = "where"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title, forKey: .title)
+        try c.encode(relation, forKey: .relation)
+        try c.encode(from, forKey: .from)
+        if let to { try c.encode(to, forKey: .to) } else { try c.encodeNil(forKey: .to) }
+        try c.encodeIfPresent(place, forKey: .place)
+    }
+}

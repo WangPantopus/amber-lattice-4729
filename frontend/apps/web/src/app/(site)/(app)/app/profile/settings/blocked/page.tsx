@@ -38,6 +38,8 @@ type BlockedEntry = {
   privacyBlockId?: string;
   /** What a scoped block covers ("Search block"), shown next to the handle. */
   scopeLabel?: string;
+  /** A made-up name (no profile, no connection requests). */
+  madeUp?: boolean;
 };
 
 const BLOCK_SCOPE_LABELS: Record<string, string> = {
@@ -91,6 +93,7 @@ function BlockedContent() {
             username: chosenUsername(b.username) || undefined,
             avatarUrl: b.profile_picture_url || undefined,
             personalUserId: b.user_id,
+            madeUp: b.made_up_name === true,
           }))
         : [];
 
@@ -156,7 +159,9 @@ function BlockedContent() {
 
     const yes = await confirmStore.open({
       title: 'Unblock User',
-      description: `Are you sure you want to unblock ${displayName}? They will be able to find your profile and send you connection requests again.`,
+      description: entry.madeUp
+        ? `Are you sure you want to unblock ${displayName}? What they write under a made-up name will show again.`
+        : `Are you sure you want to unblock ${displayName}? They will be able to find your profile and send you connection requests again.`,
       confirmLabel: 'Unblock',
       variant: 'destructive',
     });

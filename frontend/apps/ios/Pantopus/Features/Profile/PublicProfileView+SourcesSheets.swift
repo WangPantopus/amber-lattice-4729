@@ -45,26 +45,8 @@ struct SourcesSheets: ViewModifier {
                 )
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: view.$showOwnerPieces) {
-                NavigationStack {
-                    ScrollView {
-                        ProfilePortfolioSection(
-                            userId: content.header.userId,
-                            isOwnProfile: true,
-                            viewModel: view.viewModel.workModels(userId: content.header.userId, isOwnProfile: true).portfolio
-                        )
-                        .padding(Spacing.s4)
-                    }
-                    .background(Theme.Color.appBg)
-                    .navigationTitle("Your pieces")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { view.showOwnerPieces = false }
-                        }
-                    }
-                }
-            }
+            .sheet(isPresented: view.$showOwnerPieces) { ownerPieces }
+            .sheet(isPresented: Binding(get: { page.circleOpen }, set: { if !$0 { page.closeCircle() } })) { circle }
             .sheet(isPresented: view.$showSourcesPosts) {
                 view.sourcesPostsSheet(payload)
             }
@@ -93,5 +75,41 @@ struct SourcesSheets: ViewModifier {
                 )
                 .presentationDragIndicator(.visible)
             }
+    }
+
+    /// Today's portfolio, for the owner.
+    private var ownerPieces: some View {
+        NavigationStack {
+            ScrollView {
+                ProfilePortfolioSection(
+                    userId: content.header.userId,
+                    isOwnProfile: true,
+                    viewModel: view.viewModel.workModels(userId: content.header.userId, isOwnProfile: true).portfolio
+                )
+                .padding(Spacing.s4)
+            }
+            .background(Theme.Color.appBg)
+            .navigationTitle("Your pieces")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { view.showOwnerPieces = false }
+                }
+            }
+        }
+    }
+
+    /// The work circle (board 9); a piece chosen there opens over the page once the circle has gone.
+    private var circle: some View {
+        ProfileCircleScreen(model: page) { piece in
+            page.closeCircle()
+            Task {
+                try? await Task.sleep(for: .milliseconds(450))
+                if case let .piece(id, owner) = piece.opening {
+                    await page.open(pieceId: id, owner: owner, ownerName: piece.with?.name)
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
     }
 }

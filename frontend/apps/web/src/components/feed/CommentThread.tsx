@@ -7,15 +7,28 @@ import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
 import EmojiPickerPopover from '@/components/chat/EmojiPickerPopover';
 import { confirmStore } from '@/components/ui/confirm-store';
+import ReportModal from '@/components/ui/ReportModal';
+import { toast } from '@/components/ui/toast-store';
+import * as api from '@pantopus/api';
 import FeedMediaImage from './FeedMediaImage';
 import { formatTimeAgo as timeAgo } from '@pantopus/ui-utils';
-import type { PostComment } from '@pantopus/types';
+import type { Post, PostComment } from '@pantopus/types';
 import { PostLinkContent } from './LinkPreviewCard';
 import { chosenUsername } from '@pantopus/utils';
+import { useMe } from '@/lib/me';
+import PostAsChoice, { type PostAsValue } from '@/components/penName/PostAsChoice';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine, PenNameAvatar } from '@/components/penName/MadeUpName';
+import {
+  isMadeUp, isMadeUpByMe, penNameIdOf, takesPenNameReply, usePenNameMe, voiceInConversation,
+} from '@/components/penName/penName';
+
+// The server's own sentence (PEN_NAME_WORDS_ONLY).
+const PEN_NAME_WORDS_ONLY = 'A post or reply under a made-up name is words only for now. Take the photo off, or post under your own name.';
 
 interface CommentThreadProps {
   comments: PostComment[];
-  onAddComment: (input: { text: string; parentId?: string; files?: File[]; clientRequestId: string }) => Promise<boolean | void>;
+  /** `postAs: 'pen_name'`: under the person's made-up name (words only). */
+  onAddComment: (input: { text: string; parentId?: string; files?: File[]; clientRequestId: string; postAs?: 'pen_name' }) => Promise<boolean | void>;
   onDeleteComment: (commentId: string, deletedIds: ReadonlySet<string>) => Promise<void>;
   onLikeComment?: (commentId: string) => Promise<void>;
   currentUserId?: string;
@@ -28,6 +41,11 @@ interface CommentThreadProps {
   placeholder?: string;
   /** The thread was opened to reply: the reply box takes the keyboard when it first shows. */
   autoFocus?: boolean;
+  /**
+   * The post these replies are on: where a made-up name may reply, the reply box offers "Post as", fixed once the person
+   * is in the conversation (one voice, as the server keeps it).
+   */
+  post?: Post | null;
 }
 
 function isImageAttachment(mimeType?: string) {
@@ -52,7 +70,19 @@ export default function CommentThread({
   emptyText = 'No comments yet — start the conversation',
   placeholder = 'Add a comment, emoji, or photo…',
   autoFocus = false,
+  post = null,
 }: CommentThreadProps) {
+  // Made-up names: which name this reply carries.
+  const penOffered = canCompose && takesPenNameReply(post);
+  const penMeQuery = usePenNameMe(penOffered);
+  const meQuery = useMe({ enabled: penOffered });
+  const penMe = penOffered ? penMeQuery.data : undefined;
+  const voice = penOffered ? voiceInConversation(post, comments, currentUserId) : null;
+  const [replyAs, setReplyAs] = useState<PostAsValue>('personal');
+  const ownPen = penMe?.pen_name ?? null;
+  // In a conversation the person is in under their made-up name, every reply of theirs carries it.
+  const replyAsPen = voice === 'pen_name' || (voice == null && replyAs === 'pen_name' && ownPen != null && penMe?.allowed === true);
+  const viewerName = meQuery.data?.name || meQuery.data?.firstName || meQuery.data?.username || 'Your name';
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -65,6 +95,8 @@ export default function CommentThread({
   );
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  /** The reply someone is reporting (its post's own report sheet, with the reply's id). */
+  const [reporting, setReporting] = useState<PostComment | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
@@ -126,6 +158,10 @@ export default function CommentThread({
   const handleSubmit = async () => {
     if (!newComment.trim() && selectedFiles.length === 0) return;
     if (isPosting || submittingRef.current) return;
+    if (replyAsPen && selectedFiles.length > 0) {
+      setFileError(PEN_NAME_WORDS_ONLY);
+      return;
+    }
     submittingRef.current = true;
     const submittedRevision = draftRevision.current;
     // Images are uploaded after the comment exists. Changing/removing an image
@@ -140,6 +176,7 @@ export default function CommentThread({
         parentId: replyTo?.id,
         files: selectedFiles,
         clientRequestId: pendingComment.current.id,
+        ...(replyAsPen ? { postAs: 'pen_name' as const } : {}),
       });
       if (saved !== false) {
         pendingComment.current = null;
@@ -201,6 +238,20 @@ export default function CommentThread({
     inputRef.current?.focus();
   };
 
+  const reportReply = async (reason: string, details?: string) => {
+    if (!reporting) return;
+    try {
+      await api.posts.reportComment(reporting.post_id, reporting.id, {
+        reason: reason as 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'safety' | 'other',
+        details,
+      });
+      toast.success("Reply reported — we'll review it");
+    } catch (err) {
+      toast.error('Failed to report reply');
+      throw err;
+    }
+  };
+
   const renderComment = (comment: PostComment, depth = 0) => {
     // P0.4: read from the new identity shape only (displayName / handle).
     const authorName =
@@ -208,6 +259,10 @@ export default function CommentThread({
     const authorInitial = authorName[0]?.toUpperCase() || '?';
     const avatarUrl = comment.author?.avatarUrl;
     const isOwn = comment.user_id === currentUserId;
+    // Under a made-up name: the drawn picture and the name open the small card; the writer reads "(you)".
+    const madeUp = isMadeUp(comment);
+    const madeUpByMe = madeUp && (isOwn || isMadeUpByMe(comment));
+    const penNameId = penNameIdOf(comment);
     const replies = repliesMap[comment.id] || [];
     const imageAttachments = (comment.attachments || []).filter((attachment) => isImageAttachment(attachment.mime_type));
     const fileAttachments = (comment.attachments || []).filter((attachment) => !isImageAttachment(attachment.mime_type));
@@ -231,6 +286,9 @@ export default function CommentThread({
           {/* displayName / avatarUrl). Legacy username / profile_picture_url */}
           {/* aliases are gone. */}
           {/* The photo opens the page the name links to. */}
+          {madeUp ? (
+            <MadeUpAuthorPicture penNameId={penNameId} name={authorName} url={avatarUrl} size={28} className="self-start mt-0.5" />
+          ) : (
           <UserAvatarLink
             href={comment.author?.type === 'persona'
               ? comment.author.href || null
@@ -254,10 +312,17 @@ export default function CommentThread({
               </div>
             )}
           </UserAvatarLink>
+          )}
 
           <div className="flex-1 min-w-0">
             <div className="bg-surface-muted rounded-xl px-3 py-2 border border-app">
-              {comment.author?.type === 'persona' && comment.author.href ? (
+              {madeUp ? (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <MadeUpAuthorName penNameId={penNameId} name={authorName} isYou={madeUpByMe} className="text-xs font-semibold text-app" />
+                  <MadeUpNameMarks badges={comment.author?.badges} />
+                  {madeUpByMe && <OnlyYouLine />}
+                </div>
+              ) : comment.author?.type === 'persona' && comment.author.href ? (
                 <a href={comment.author.href} className="text-xs font-semibold text-app hover:underline">{authorName}</a>
               ) : comment.author?.id && comment.author.handle ? (
                 <UserIdentityLink
@@ -342,6 +407,16 @@ export default function CommentThread({
                   Reply
                 </button>
               )}
+              {/* Someone else's reply, under any name: the post's own report sheet. */}
+              {!isOwn && currentUserId && (
+                <button
+                  type="button"
+                  onClick={() => setReporting(comment)}
+                  className="text-[10px] font-semibold text-app-muted hover:text-red-500 transition"
+                >
+                  Report
+                </button>
+              )}
               {isOwn && (
                 <button
                   onClick={async () => {
@@ -405,6 +480,12 @@ export default function CommentThread({
 
   return (
     <div>
+      <ReportModal
+        open={reporting !== null}
+        onClose={() => setReporting(null)}
+        onSubmit={reportReply}
+        entityType="reply"
+      />
       {comments.length === 0 ? (
         emptyText ? (
           <div className="text-center py-6">
@@ -424,6 +505,24 @@ export default function CommentThread({
           </div>
         ) : (
           <>
+            {penOffered && penMe && voice == null && (
+              <div className="mb-2">
+                <PostAsChoice
+                  compact
+                  testId="replyPostAs"
+                  ownName={viewerName}
+                  me={penMe}
+                  value={replyAsPen ? 'pen_name' : 'personal'}
+                  onChange={(value) => { draftRevision.current += 1; setReplyAs(value); setFileError(''); }}
+                />
+              </div>
+            )}
+            {replyAsPen && ownPen && (
+              <div data-testid="replyPostingAs" className="mb-2 flex items-center gap-2 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white dark:bg-slate-700">
+                <PenNameAvatar url={ownPen.avatar_url} name={ownPen.name} size={20} />
+                <span className="truncate">Posting as {ownPen.name}</span>
+              </div>
+            )}
             {replyTo && (
               <div className="mb-2 flex items-center gap-2 rounded-lg border border-app bg-surface-muted px-2.5 py-1.5 text-[10px] text-app-muted">
                 <span>Replying to <strong>{replyTo.name}</strong></span>
@@ -474,7 +573,7 @@ export default function CommentThread({
                 value={newComment}
                 onChange={(e) => { draftRevision.current += 1; setNewComment(e.target.value); }}
                 onKeyDown={handleKeyDown}
-                placeholder={replyTo ? `Reply to ${replyTo.name}…` : placeholder}
+                placeholder={replyTo ? `Reply to ${replyTo.name}…` : replyAsPen && placeholder.includes('photo') ? 'Add a comment…' : placeholder}
                 className="min-h-[72px] w-full resize-none bg-transparent px-2 py-1 text-sm text-app outline-none placeholder:text-app-muted"
                 disabled={isPosting}
                 spellCheck
@@ -501,6 +600,7 @@ export default function CommentThread({
                   />
                 </div>
 
+                {!replyAsPen && (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -510,6 +610,7 @@ export default function CommentThread({
                 >
                   <ImagePlus className="h-4 w-4" />
                 </button>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -520,7 +621,7 @@ export default function CommentThread({
                 />
 
                 <span className="text-[11px] text-app-muted">
-                  {selectedFiles.length > 0 ? `${selectedFiles.length}/4 images selected` : 'Ctrl/Cmd + Enter to send'}
+                  {selectedFiles.length > 0 ? `${selectedFiles.length}/4 images selected` : replyAsPen ? 'Words only' : 'Ctrl/Cmd + Enter to send'}
                 </span>
 
                 <button

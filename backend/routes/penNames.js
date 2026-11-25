@@ -66,10 +66,7 @@ router.get('/me', async (req, res) => {
   try {
     const userId = req.user.id;
     const [pen, refusal] = await Promise.all([penName.names.ofOwner(userId), penName.gate.accountRefusal(userId)]);
-    const used = pen ? {
-      posts: await penName.owner.countSince(userId, 'post', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
-      replies: await penName.owner.countSince(userId, 'comment', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
-    } : { posts: 0, replies: 0 };
+    const used = pen ? await penName.gate.written(userId) : { post: 0, moment: 0, comment: 0 };
     res.json({
       pen_name: own(pen),
       allowed: !refusal,
@@ -77,8 +74,10 @@ router.get('/me', async (req, res) => {
       limits: {
         posts_per_day: penName.gate.DAILY_LIMITS.post,
         replies_per_day: penName.gate.DAILY_LIMITS.comment,
-        posts_today: used.posts,
-        replies_today: used.replies,
+        moments_per_day: penName.gate.DAILY_LIMITS.moment,
+        posts_today: used.post,
+        replies_today: used.comment,
+        moments_today: used.moment,
       },
       name_rules: { min: penName.names.NAME_MIN, max: penName.names.NAME_MAX },
       post_types: [...penName.gate.POST_TYPES],

@@ -18,7 +18,8 @@ const { verifiedResidentUserIds } = require('../../utils/identityProfiles');
 const owner = require('./owner');
 
 const MIN_ACCOUNT_DAYS = 7;
-const DAILY_LIMITS = { post: 3, comment: 20 };
+// A Moment is a post row too (is_story): the two are told apart when they are counted (written()).
+const DAILY_LIMITS = { post: 3, comment: 20, moment: 3 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 // The brake (not a launch switch): a "FeatureFlag" row named PAUSE_FLAG with enabled_globally stops new made-up-name
 // posts and replies everywhere; HIDE_FLAG also takes every one already written out of what people read.
@@ -127,14 +128,52 @@ function postRefusal({ postType, audience, visibility, distributionTargets, post
   return null;
 }
 
-/** Whether the account has reached today's limit for posts or replies under its made-up name. */
+/**
+ * Whether a first reply on this post may be written under a made-up name: null, or { code, message, status }. A reply
+ * is read by whoever reads its post, so the rule is the post's audience, whatever kind of post it is: people nearby
+ * (a post to its place, or one of Today's Around you stories), or a made-up-name conversation. Never a post for
+ * Connections, a household or a plan's guests: the fewer people who read a reply, the easier the guess.
+ */
+function replyRefusal(post) {
+  if (owner.isPenNameRow(post)) return null;
+  const targets = Array.isArray(post?.distribution_targets) ? post.distribution_targets : [];
+  const aroundYou = post?.origin === 'curator' && Boolean(post.post_metadata?.around_you);
+  if (targets.includes('place') || aroundYou) return null;
+  return refusal('PEN_NAME_AUDIENCE',
+    'A made-up name can reply where people nearby are reading. The fewer people who see a reply, the easier it is to guess who wrote it.', 400);
+}
+
+/** How many posts, Moments and replies the account wrote under its made-up name in the last day. */
+async function written(userId) {
+  const since = new Date(Date.now() - DAY_MS).toISOString();
+  const [rows, replies] = await Promise.all([
+    owner.owned(userId, 'post', { limit: 100 }),
+    owner.countSince(userId, 'comment', since),
+  ]);
+  const recent = rows.filter((row) => Date.parse(row.created_at) >= Date.parse(since)).map((row) => row.id);
+  let moments = 0;
+  if (recent.length) {
+    const { data, error } = await supabaseAdmin.from('Post').select('id').in('id', recent).eq('is_story', true);
+    if (error) throw error;
+    moments = (data || []).length;
+  }
+  return { post: recent.length - moments, moment: moments, comment: replies };
+}
+
+const LIMIT_SENTENCES = {
+  post: (limit) => `You can make ${limit} posts a day under a made-up name. You can still post under your own name.`,
+  moment: (limit) => `You can post ${limit} Moments a day under a made-up name. You can still post under your own name.`,
+  comment: (limit) => `You can write ${limit} replies a day under a made-up name. You can still reply under your own name.`,
+};
+
+/** Whether the account has reached today's limit for posts, Moments or replies under its made-up name. */
 async function limitRefusal(userId, kind) {
   const limit = DAILY_LIMITS[kind];
-  const used = await owner.countSince(userId, kind, new Date(Date.now() - DAY_MS).toISOString());
+  const used = kind === 'comment'
+    ? await owner.countSince(userId, 'comment', new Date(Date.now() - DAY_MS).toISOString())
+    : (await written(userId))[kind];
   if (used < limit) return null;
-  return refusal('PEN_NAME_DAILY_LIMIT', kind === 'post'
-    ? `You can make ${limit} posts a day under a made-up name. You can still post under your own name.`
-    : `You can write ${limit} replies a day under a made-up name. You can still reply under your own name.`, 429);
+  return refusal('PEN_NAME_DAILY_LIMIT', LIMIT_SENTENCES[kind](limit), 429);
 }
 
 /**
@@ -248,7 +287,9 @@ module.exports = {
   standingPenalty,
   accountRefusal,
   postRefusal,
+  replyRefusal,
   limitRefusal,
+  written,
   crowdAt,
   crowdRefusal,
   wordsRefusal,
