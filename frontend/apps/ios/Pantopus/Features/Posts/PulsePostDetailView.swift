@@ -321,7 +321,7 @@ public struct PulsePostDetailView: View {
             onOpenPenName: { id, onPost in viewModel.openPenNameCard(id, onPost: onPost) },
             aboveComposer: replyPostAs
         )
-        .task(id: viewModel.replyVoiceState) { await viewModel.loadReplyPostAs() }
+        .task(id: viewModel.threadReplyVoiceState) { await viewModel.loadReplyPostAs() }
     }
 }
 

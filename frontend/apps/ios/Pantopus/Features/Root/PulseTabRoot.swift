@@ -146,6 +146,8 @@ public struct PulseTabRoot: View {
                 consumeDeepLinkIfNeeded(pending: router.pending)
                 presentPendingSurfaceIfNeeded(door.pendingSurface)
             }
+            // The person's made-up name, read before the composer opens so its Post button doesn't move once there.
+            .task { await PenNameStore.shared.load() }
     }
 
     private var retainedRoutes: [PulseRoute] {

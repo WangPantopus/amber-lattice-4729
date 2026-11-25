@@ -21,8 +21,15 @@ public enum PulseReplyVoiceState: Sendable, Equatable {
 }
 
 extension PulsePostDetailViewModel {
-    /// The reply box's choice, from the post and the replies loaded on the post page.
+    /// The reply box's choice, from the post and the replies loaded on the post page. "Post as" shows only once `/me`
+    /// has answered; until then (and when it can't be read) the reply box is as it was before made-up names.
     var replyVoiceState: PulseReplyVoiceState {
+        let state = threadReplyVoiceState
+        return state == .free && PenNameStore.shared.me == nil ? .ownOnly : state
+    }
+
+    /// The choice the loaded thread allows, before `/me` is known: what `/me` is read for.
+    var threadReplyVoiceState: PulseReplyVoiceState {
         guard case let .loaded(content) = state else { return .ownOnly }
         let post = content.post
         let me = currentUserId ?? ""
@@ -86,7 +93,7 @@ extension PulsePostDetailViewModel {
 
     /// Reads `/me` for the reply box when it could offer the made-up name.
     func loadReplyPostAs() async {
-        guard replyVoiceState != .ownOnly else { return }
+        guard threadReplyVoiceState == .free else { return }
         await PenNameStore.shared.load()
     }
 

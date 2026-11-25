@@ -10,15 +10,20 @@
 import SwiftUI
 
 extension PulseComposeViewModel {
-    /// The composer offers "Post as": a new post by a person to a place (where they are, or their home area), of a
-    /// kind a made-up name may carry.
-    var offersPostAs: Bool {
+    /// A draft that could carry the made-up name: a new post by a person to a place (where they are, or their home
+    /// area), not a quote or a task share. `/me` is read for it.
+    var mayOfferPostAs: Bool {
         guard !isEditing, businessAuthorId == nil, quote == nil, taskShare == nil else { return false }
         switch postingTarget {
-        case .currentLocation, .home: break
+        case .currentLocation, .home: return true
         default: return false
         }
-        return PenNameStore.shared.allows(postType: effectivePostType)
+    }
+
+    /// The composer offers "Post as": such a draft, of a kind a made-up name may carry, once `/me` has answered.
+    /// Until then (and when it can't be read) the composer is as it was before made-up names.
+    var offersPostAs: Bool {
+        mayOfferPostAs && PenNameStore.shared.allows(postType: effectivePostType)
     }
 
     /// The made-up name the post will carry; nil while it goes out under the person's own name.
@@ -84,7 +89,7 @@ extension PulseComposeViewModel {
 
     /// Reads `/me` for the row (once per app run) and, while the made-up name is chosen, `/check` for the place.
     func loadPostAs() async {
-        guard offersPostAs else { return }
+        guard mayOfferPostAs else { return }
         await PenNameStore.shared.load()
         if penNameChosen != nil { await checkPenNamePlace() }
     }
@@ -138,6 +143,6 @@ struct PulseComposePenNameSurfaces: ViewModifier {
                 onDismiss: { viewModel.penNameSetupClosed() },
                 content: { PenNameSetupView { _ in viewModel.penNameTaken() } }
             )
-            .task(id: viewModel.offersPostAs) { await viewModel.loadPostAs() }
+            .task(id: viewModel.mayOfferPostAs) { await viewModel.loadPostAs() }
     }
 }

@@ -67,9 +67,12 @@ public final class PenNameStore {
         Task { await load(force: true) }
     }
 
-    /// Whether a post of this kind may carry the made-up name.
+    /// Whether a post of this kind may carry the made-up name. False until `/me` has answered for this account: a
+    /// server without made-up names (a 404), or a read that failed (offline), leaves every screen as it was before
+    /// them, with no "Post as".
     public func allows(postType: String) -> Bool {
-        (me?.postTypes ?? PenNameMeResponse.defaultPostTypes).contains(postType)
+        guard let me else { return false }
+        return me.postTypes.contains(postType)
     }
 
     /// The person's own name, as "Post as …" names it.
