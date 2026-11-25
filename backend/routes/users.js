@@ -6496,6 +6496,17 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
       logger.warn('Account deletion left plan photos', { userId, error: err.message });
     }
 
+    // ── 3c. Made-up names: which ones were this person's ─────────
+    // Their made-up-name Moments' files sit in folders named by the made-up name (never by the account), and the record
+    // of whose names they were goes with the User row below: read it now, for step 6. A failed read is logged and
+    // doesn't stop the deletion; the posts and Moments themselves are removed by the database either way.
+    let madeUpNameIds = [];
+    try {
+      madeUpNameIds = (await require('../services/penName').owner.owned(userId, 'pen_name', { limit: 100 })).map((row) => row.id);
+    } catch (err) {
+      logger.warn('Account deletion could not read made-up names', { userId, error: err.message });
+    }
+
     // ── 4. Delete User row ───────────────────────────────────────
     // This triggers ON DELETE CASCADE for ~70+ tables (Posts, Gigs,
     // Wallet, Listings, Notifications, Chat participants, etc.)
@@ -6546,7 +6557,12 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
     // (services/moments/momentMedia.js). In the background: the account is already deleted, and its answer
     // doesn't wait for storage or change with it.
     Promise.resolve()
-      .then(() => require('../services/moments/momentMedia').removeAccountFiles(userId))
+      .then(async () => {
+        const momentMedia = require('../services/moments/momentMedia');
+        let count = await momentMedia.removeAccountFiles(userId);
+        for (const penNameId of madeUpNameIds) count += await momentMedia.removeAccountFiles(penNameId);
+        return count;
+      })
       .then((count) => { if (count) logger.info('Account deletion removed Moment files', { userId, count }); })
       .catch((err) => logger.warn('Account deletion left Moment files', { userId, error: err.message }));
 

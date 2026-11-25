@@ -14,8 +14,9 @@ from the server's "made-up username" (`utils/personalUsername.js`) and the Mail 
 |---|---|
 | Server: names, the gate, posts and replies, notices, mute and block, holds, strikes, the staff look, the brake | Built (`backend/services/penName`, `backend/routes/penNames.js`, migration `20261125083000_pen_names.sql`) |
 | Web, iPhone, Android: "Post as", the name screen, the card, the small card, My posts | **Not built.** "What each app builds" below |
-| Moments under a made-up name | **Not built.** The server refuses it (`PEN_NAME_NOT_FOR_THIS`) |
-| Photos and videos on a made-up-name post or reply | **Not built: words only.** Nothing reads a picture on a post before it shows; pictures come with Moments, which has the picture check |
+| Server: Moments under a made-up name | Built ("Moments" below) |
+| Web, iPhone, Android: "Post as" in the Moment composer | **Not built** |
+| Photos and videos on a made-up-name post or reply | **Not built: words only.** Nothing reads a picture on a post before it shows. A photo or a video goes out as a Moment, which has the picture check |
 | Reporting a reply | **Not built, under any name.** The apps report posts only. A reply under a made-up name can be muted or blocked, and its words were checked before it showed |
 
 An app from before made-up names already draws a made-up-name post and reply correctly (the name and the drawn
@@ -83,7 +84,7 @@ Every route needs a signed-in person. Refusals are `{ "error": "<a sentence to s
 
 | Route | What it does |
 |---|---|
-| `GET /api/pen-names/me` | `pen_name` (`id`, `name`, `avatar_url`, `taken_at`, `change_after`) or null; `allowed` and `refusal` (why this account can't use one); `limits`; `name_rules` (`min` 3, `max` 24); `post_types`; `promise`; `suggestions` (four names Pantopus could give, when the person has none and may have one) |
+| `GET /api/pen-names/me` | `pen_name` (`id`, `name`, `avatar_url`, `taken_at`, `change_after`) or null; `allowed` and `refusal` (why this account can't use one); `limits` (posts, replies and Moments: a day's allowance and today's count); `name_rules` (`min` 3, `max` 24); `post_types`; `promise`; `suggestions` (four names Pantopus could give, when the person has none and may have one) |
 | `POST /api/pen-names` `{ "name": "…" }` | Takes the typed name. An empty or missing `name` lets Pantopus give one. `{ "replace": true }` gives up the name in use: free while nothing was written under it, else once every 30 days (`PEN_NAME_TOO_SOON`). 201 `{ pen_name }` |
 | `GET /api/pen-names/suggestions` | Four more names Pantopus could give (for a Shuffle button: show one, post it as `name` when the person keeps it) |
 | `GET /api/pen-names/check?latitude=&longitude=` | Whether a post made here may carry a made-up name: `allowed`, `refusal`, and `warning` (a sentence to show above the Post button when few verified homes are near) |
@@ -143,13 +144,44 @@ Today's routes do the same when handed a pen name's id, which is what older apps
 | `PEN_NAME_PAUSED` (503) | The brake is on |
 | `PEN_NAME_POST_TYPE`, `PEN_NAME_AUDIENCE`, `PEN_NAME_WORDS_ONLY`, `PEN_NAME_NOT_FOR_THIS`, `PEN_NAME_NEEDS_PLACE` (400) | Not this kind of post, audience, attachment or place |
 | `PEN_NAME_TOO_FEW_NEARBY` (403) | Fewer than 10 verified homes could have written it |
-| `PEN_NAME_DAILY_LIMIT` (429) | 3 posts or 20 replies a day under a made-up name |
+| `PEN_NAME_DAILY_LIMIT` (429) | 3 posts, 3 Moments or 20 replies a day under a made-up name |
 | `PEN_NAME_WORDS_REFUSED` (422) | The automatic check read the words and they can't go out under a made-up name; the sentence says why |
 | `PEN_NAME_CHECK_UNAVAILABLE` (503) | The check can't run. Nothing is posted under a made-up name meanwhile; a post under the person's own name is untouched |
 | `PEN_NAME_ONE_VOICE` (409) | Already in this conversation under their own name |
 | `PEN_NAME_VOICE_UNAVAILABLE` (503) | The server couldn't tell which name the person has in a made-up-name conversation: nothing is posted; try again |
 | `PEN_NAME_LENGTH`, `PEN_NAME_CHARACTERS`, `PEN_NAME_RESERVED`, `PEN_NAME_REFUSED` (400), `PEN_NAME_TAKEN`, `PEN_NAME_EXISTS`, `PEN_NAME_TOO_SOON` (409), `PEN_NAME_RATE_LIMIT` (429) | Taking a name |
 | `PEN_NAME_IS_YOURS` (400), `PEN_NAME_NOT_FOUND` (404) | Muting or blocking |
+
+## Moments
+
+`POST /api/moments` with `"post_as": "pen_name"` posts a Moment under the made-up name. The rest of the body is the
+ordinary Moment's.
+
+- **People nearby only:** `audience` is `nearby` and the Moment has a location (`PEN_NAME_AUDIENCE` otherwise).
+- **It floats.** It shows over an area of at least 100 homes, or at a public place when its own picture was taken
+  there, whatever the Sky's switch says for the person. Never at home, never an exact point elsewhere.
+- **Nothing that says where its writer is now or how high:** no "Live from here", no weather stamp, no height. The
+  server drops them if sent.
+- **The words** (a text card's text, a caption) are read by the same automatic check as a post's.
+- **The picture** is read by the picture check before it shows, with more to look for (a license plate, a house
+  number, a document with a name, a close-up of one person's face). Under a made-up name a picture the check could
+  not look at never shows: the Moment waits as `checking` and ends if the check never runs.
+- **Three a day** (`PEN_NAME_DAILY_LIMIT`), counted apart from posts.
+- **Reactions, not replies:** `POST /api/moments/:id/reply` answers 403 `MOMENT_REPLY_UNAVAILABLE` ("A Moment under a
+  made-up name takes reactions, not replies."). A reply is a chat message to the author, and a made-up name has no
+  chats.
+- **Nobody is told** a made-up-name Moment is by someone they know: no push to connections.
+
+What the server sends: the Moment's `author` is the made-up name (`id` = the pen name's id, `name`, `first_name`,
+`avatar_url`, `initials`, `verified: true`, `kind: "person"`, `made_up_name: true`), its ring on the map is the made-up
+name's (never merged with its writer's own ring), and its files sit in a folder named by the made-up name. The writer
+finds it in `GET /api/moments/mine` and reads its viewers as usual; for everyone else it is someone else's Moment.
+`GET /api/moments/people?ids=` takes a pen name's id. `PUT` / `DELETE /api/moments/authors/:id/mute` with a pen name's
+id mutes or unmutes the name everywhere (there is no Moments-only mute of a made-up name).
+
+Each app: "Post as" in the Moment composer, with the same name screen; while the made-up name is chosen the composer
+offers people nearby only, hides "Show height", the Live mark, the weather stamp and "No location", and says the
+Moment will show over its area. A made-up-name Moment's viewer has no reply box.
 
 ## Notices
 

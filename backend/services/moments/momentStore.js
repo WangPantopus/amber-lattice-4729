@@ -1243,7 +1243,7 @@ async function purgeFiles(row) {
   if (m.purged_at || m.kind === 'text') return true;
   if (await filesHeld(row)) return false;
   const bucket = m.media?.bucket;
-  const keys = [...new Set([...media.mediaKeys(m.media), ...await media.folderKeys(bucket, row.user_id, row.id)])];
+  const keys = [...new Set([...media.mediaKeys(m.media), ...await media.folderKeys(bucket, media.folderOwner(row), row.id)])];
   if (!(await media.removeKeys(bucket, keys))) return false;
   await updateMoment(row, { moment: { purged_at: new Date().toISOString() } });
   return true;
