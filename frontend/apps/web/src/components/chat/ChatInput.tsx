@@ -31,9 +31,11 @@ interface ChatInputProps {
   onTypingChange?: (active: boolean) => void;
   /** Why the conversation takes no messages (the server's sentence): shown in place of the composer. */
   lockedNote?: string | null;
+  /** Words for the composer when it opens empty (after any saved draft), unsent; used once. */
+  initialText?: string;
 }
 
-export default function ChatInput({ onSend, draft, sending, disabled = false, placeholder = 'Type a message…', onAttachAction, compact = false, replyingTo = null, onCancelReply, editingMessage = null, onCancelEdit, onSaveEdit, typingPeerCount = 0, onTypingChange, lockedNote = null }: ChatInputProps) {
+export default function ChatInput({ onSend, draft, sending, disabled = false, placeholder = 'Type a message…', onAttachAction, compact = false, replyingTo = null, onCancelReply, editingMessage = null, onCancelEdit, onSaveEdit, typingPeerCount = 0, onTypingChange, lockedNote = null, initialText }: ChatInputProps) {
   const [text, setText] = useState('');
   const [editText, setEditText] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -101,6 +103,13 @@ export default function ChatInput({ onSend, draft, sending, disabled = false, pl
     });
   }, [text, editText, selectedFiles, replyingTo, editingMessage, draftReady, draftWake, retainDraft]);
   const inputDisabled = disabled || !draftReady;
+  // `initialText` fills an empty composer once the saved draft (if any) is back; a saved draft wins.
+  const initialApplied = useRef(false);
+  useEffect(() => {
+    if (initialApplied.current || !initialText || (draft && !draftReady)) return;
+    initialApplied.current = true;
+    setText((current) => (current.trim() ? current : initialText));
+  }, [initialText, draft, draftReady]);
   useEffect(() => {
     if (disabled || lockedNote || editingMessage) onTypingChange?.(false);
     return () => onTypingChange?.(false);

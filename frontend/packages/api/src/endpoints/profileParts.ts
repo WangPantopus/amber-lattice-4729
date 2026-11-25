@@ -5,4 +5,4 @@
  * No imports: the edge runtime (the link picture) reads it too.
  */
 export const PROFILE_PARTS_HEADER = 'X-Pantopus-Profile-Parts';
-export const PROFILE_PARTS = 'pieces, credits, roles, circle, shelf, known_for';
+export const PROFILE_PARTS = 'pieces, credits, roles, circle, shelf, known_for, doors';

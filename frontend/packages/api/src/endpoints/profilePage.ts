@@ -177,7 +177,43 @@ export interface ProfileDoor {
   key: string;
   text: string;
   note?: string | null;
+  /** P3.3: who the door is open to; the owner's own view says which. */
+  open_to?: 'anyone' | 'connections' | string;
+  /** `message` (the sentence goes in the composer, unsent), `send_card`, or null signed out. */
   link?: ProfileLink | null;
+}
+
+/** P3.3: "Leave your card" for a signed-in visitor (never the person, never on a link). */
+export interface ProfileLeaveCard {
+  text: string;
+  note: string | null;
+  /** The visitor's own last card to this person in the last 30 days. */
+  left_at?: string | null;
+  /** The visitor as the person will see them on the card, when the server sends it. */
+  you?: { name: string | null; portrait_url: string | null; seen_as: string | null } | null;
+}
+
+/** P3.3 doors, as the new kind (released apps skip it): the same keys as the v1 `doors` block. */
+export interface ProfileOpenDoorsBlock extends BlockBase {
+  kind: 'open_doors';
+  doors: ProfileDoor[];
+  leave_card?: ProfileLeaveCard | null;
+  sign_in_note?: string | null;
+}
+
+/** A card left for the person (P3.3): only theirs, never counted on any page. */
+export interface ProfileCard {
+  id: string;
+  from: { name: string | null; user_id: string | null; username: string | null; portrait_url: string | null; seen_as: string | null };
+  /** The visitor's own words, or null. */
+  text: string | null;
+  left_at: string;
+  written_back: boolean;
+}
+
+export interface ProfileCardsBlock extends BlockBase {
+  kind: 'cards';
+  cards: ProfileCard[];
 }
 
 export interface ProfileDoorsBlock extends BlockBase {
@@ -387,6 +423,8 @@ export type ProfileKnownBlock =
   | ProfileSaysBlock
   | ProfileKnownForBlock
   | ProfileKnownForWriteBlock
+  | ProfileOpenDoorsBlock
+  | ProfileCardsBlock
   | ProfileLinesForYouBlock
   | ProfileInCommonBlock
   | ProfileDoorsBlock
@@ -515,6 +553,8 @@ export interface ProfileShare {
   ties_enabled?: boolean;
   /** "Let people write lines about me" (P3.2); absent while the server's Known for is off. */
   known_for_enabled?: boolean;
+  /** "Let people leave me a card" (P3.3). */
+  cards_enabled?: boolean;
 }
 
 /** A link for one purpose: its own parts, an optional last day, and how often it was opened (never by whom). */
@@ -603,7 +643,7 @@ export async function getShare(): Promise<ProfileShare> {
 }
 
 /** Save parts and the search setting; parts not sent keep theirs. The answer is the share as saved. */
-export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean; known_for_enabled?: boolean }): Promise<ProfileShare> {
+export async function saveShare(body: { parts?: Partial<Record<ProfileSharePartKey, ProfilePartSetting>>; search_engines?: boolean; links_enabled?: boolean; ties_enabled?: boolean; known_for_enabled?: boolean; cards_enabled?: boolean }): Promise<ProfileShare> {
   return put<ProfileShare>('/api/profile-page/me/share', body);
 }
 
@@ -867,4 +907,49 @@ export async function hideLine(id: string): Promise<{ id: string; status: string
 /** Up to two shown lines on top of the first tab. */
 export async function setLinesOnTop(ids: string[]): Promise<{ on_top: string[] }> {
   return put<{ on_top: string[] }>('/api/profile-page/me/known-for/on-top', { ids });
+}
+
+// ── Phase 3: doors and "Leave your card" (board 1 and board 20, CONTRACT P3.3) ──
+
+/** The person's doors as they set them: key, the end of the sentence (none for send_card), who it's open to. */
+export interface ProfileDoorSetting { key: string; end?: string | null; open_to: 'anyone' | 'connections' | string }
+
+export async function getMyDoors(): Promise<{ doors: Array<ProfileDoor & { end?: string | null }> }> {
+  return get<{ doors: Array<ProfileDoor & { end?: string | null }> }>('/api/profile-page/me/doors');
+}
+
+/** At most five, in order; each key once. */
+export async function saveDoors(doors: ProfileDoorSetting[]): Promise<{ doors: ProfileDoor[] }> {
+  return put<{ doors: ProfileDoor[] }>('/api/profile-page/me/doors', { doors });
+}
+
+/** Leave a card on a person's page (a few words, or none). */
+/** The Leave your card sheet (P3.3, board 20), read when it opens: the visitor as the person will see them. */
+export interface ProfileCardSheet {
+  you: { name: string | null; portrait_url: string | null; seen_as: string | null } | null;
+  /** The visitor's own last card to this person in the last 30 days, YYYY-MM-DD. */
+  left_at: string | null;
+  max_chars: number;
+}
+
+/** Signed in, not the person: 404 `CARD_CANNOT_LEAVE` when no card can be left (the same answer as leaving one). */
+export async function getCardSheet(username: string): Promise<ProfileCardSheet> {
+  return get<ProfileCardSheet>(`/api/profile-page/${encodeURIComponent(username)}/card`);
+}
+
+export async function leaveCard(username: string, text: string | null): Promise<{ left: boolean; left_at: string }> {
+  return post<{ left: boolean; left_at: string }>(`/api/profile-page/${encodeURIComponent(username)}/card`, { text });
+}
+
+export async function getMyCards(): Promise<{ cards: ProfileCard[] }> {
+  return get<{ cards: ProfileCard[] }>('/api/profile-page/me/cards');
+}
+
+/** Marks a card answered once; its link opens today's conversation with the visitor. */
+export async function writeBackCard(id: string): Promise<{ id: string; written_back: boolean; link: ProfileLink }> {
+  return post<{ id: string; written_back: boolean; link: ProfileLink }>(`/api/profile-page/me/cards/${encodeURIComponent(id)}/write-back`);
+}
+
+export async function removeCard(id: string): Promise<{ id: string; removed: boolean }> {
+  return del<{ id: string; removed: boolean }>(`/api/profile-page/me/cards/${encodeURIComponent(id)}`);
 }
