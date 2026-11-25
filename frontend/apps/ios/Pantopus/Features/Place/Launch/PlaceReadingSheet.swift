@@ -24,17 +24,20 @@ final class PlaceReadingModel {
     }
 
     let address: String
+    /// The lookup's `reading_ticket`, when the server sent one.
+    let ticket: String?
     private(set) var state: State = .loading
     private let api: APIClient
 
-    init(address: String, api: APIClient = .shared) {
+    init(address: String, ticket: String?, api: APIClient = .shared) {
         self.address = address
+        self.ticket = ticket
         self.api = api
     }
 
     func load() async {
         do {
-            let response: PlaceReadingResponse = try await api.request(PlaceEndpoints.reading(address: address))
+            let response: PlaceReadingResponse = try await api.request(PlaceEndpoints.reading(address: address, ticket: ticket))
             if let reading = response.reading, reading.isRenderable {
                 state = .loaded(reading)
             } else {
@@ -51,6 +54,7 @@ final class PlaceReadingModel {
 /// What the row opens, by address.
 struct PlaceReadingRequest: Identifiable, Hashable {
     let address: String
+    let ticket: String?
     var id: String {
         address
     }
@@ -63,8 +67,8 @@ struct PlaceReadingSheet: View {
     var onClose: () -> Void
     @State private var openQuestion: Int?
 
-    init(address: String, onSignUp: (() -> Void)?, onClose: @escaping () -> Void) {
-        _model = State(initialValue: PlaceReadingModel(address: address))
+    init(request: PlaceReadingRequest, onSignUp: (() -> Void)?, onClose: @escaping () -> Void) {
+        _model = State(initialValue: PlaceReadingModel(address: request.address, ticket: request.ticket))
         self.onSignUp = onSignUp
         self.onClose = onClose
     }

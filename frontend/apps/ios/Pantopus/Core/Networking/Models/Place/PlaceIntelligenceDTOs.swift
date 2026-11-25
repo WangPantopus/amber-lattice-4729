@@ -2172,6 +2172,8 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
     public let money: PlacePreviewMoney?
     /// SPEC 1.5: the flood cost band, whatever `money_lead` is; the first card of Risk & readiness.
     public let floodCost: PlaceMoneyLead?
+    /// SPEC 5.1a: a signed ticket for the reading of this lookup, sent back with the reading's request.
+    public let readingTicket: String?
 
     private enum CodingKeys: String, CodingKey {
         case status, tier, region, message, place, aha, sections, free, locked, disclaimer
@@ -2179,6 +2181,7 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
         case moneyLead = "money_lead"
         case notChecked = "not_checked"
         case floodCost = "flood_cost"
+        case readingTicket = "reading_ticket"
     }
 
     public init(from decoder: Decoder) throws {
@@ -2201,6 +2204,7 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
         notChecked = try? container.decodeIfPresent([PlacePreviewNotChecked].self, forKey: .notChecked)
         money = try? container.decodeIfPresent(PlacePreviewMoney.self, forKey: .money)
         floodCost = try? container.decodeIfPresent(PlaceMoneyLead.self, forKey: .floodCost)
+        readingTicket = container.lenient(String.self, forKey: .readingTicket)
     }
 }
 
