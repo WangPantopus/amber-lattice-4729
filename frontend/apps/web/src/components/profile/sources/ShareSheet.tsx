@@ -149,6 +149,12 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
     void save('ties_enabled', { ties_enabled: on }, { ...share, ties_enabled: on });
   };
 
+  // "Let people write lines about me" (P3.2): only while the server sends `known_for_enabled`.
+  const setKnownFor = (on: boolean) => {
+    if (!share) return;
+    void save('known_for_enabled', { known_for_enabled: on }, { ...share, known_for_enabled: on });
+  };
+
   const url = share?.url || '';
   const copy = async () => {
     try {
@@ -251,6 +257,15 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
               label="Let people name me on their work"
               detail={share.ties_enabled ? 'People you work with can ask you to sign their pieces.' : 'Off: nobody can ask you, and pieces you signed stop showing.'}
               control={<Switch on={share.ties_enabled} label="Let people name me on their work" disabled={saving !== null} onChange={setTies} />}
+            />
+          </section>
+        ) : null}
+        {typeof share.known_for_enabled === 'boolean' ? (
+          <section className={`${card} overflow-hidden`}>
+            <Row
+              label="Let people write lines about me"
+              detail={share.known_for_enabled ? 'Someone you did something with on Pantopus can write one sentence about you. Nothing shows until you say so.' : 'Off: nobody can write one, and lines you showed stop showing.'}
+              control={<Switch on={share.known_for_enabled} label="Let people write lines about me" disabled={saving !== null} onChange={setKnownFor} />}
             />
           </section>
         ) : null}
