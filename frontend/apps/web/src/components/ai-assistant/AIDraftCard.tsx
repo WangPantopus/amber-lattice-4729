@@ -37,6 +37,7 @@ import type {
   MomentChatDraft,
   LetterChatDraft,
   ChristmasCardChatDraft,
+  AIActionCardDraft,
 } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 import { queryKeys } from '@/lib/query-keys';
@@ -44,6 +45,7 @@ import { useMe } from '@/lib/me';
 import { AI_LETTER_DRAFT_KEY, AI_MOMENT_DRAFT_KEY, LETTER_KIND_NAMES, handOffDraft, letterIntentOf } from '@/lib/aiDraftHandoff';
 import { startAssistantCard } from '@/components/mailbox/cards/cardDraft';
 import { cardPicture } from '@/components/mailbox/cards/cardArt';
+import { AIActionCard } from './AIActionCard';
 
 interface AIDraftCardProps {
   draft: AIChatDraft;
@@ -72,6 +74,9 @@ export function AIDraftCard({ draft }: AIDraftCardProps) {
       return launchFeatures.mailbox && launchFeatures.mailExtras ? <LetterDraftCard draft={draft.draft as LetterChatDraft} /> : null;
     case 'christmas_card':
       return launchFeatures.mailbox && launchFeatures.holidayCards ? <ChristmasCardDraftCard draft={draft.draft as ChristmasCardChatDraft} /> : null;
+    // One tap does it: host or change a plan, add a home task, change notification settings (phase 1, section 4).
+    case 'action':
+      return <AIActionCard card={draft.draft as AIActionCardDraft} state={draft.state} />;
     default:
       return null;
   }

@@ -203,7 +203,7 @@ export interface NeighborhoodPulse {
 
 export type AIDraftType =
   | 'gig' | 'listing' | 'post' | 'mail_summary' | 'support_train' | 'pickup_schedule'
-  | 'moment' | 'letter' | 'christmas_card';
+  | 'moment' | 'letter' | 'christmas_card' | 'action';
 
 /** A Support Train the assistant has the story for; the start flow drafts the rest. */
 export interface SupportTrainChatDraft {
@@ -275,12 +275,69 @@ export interface ChristmasCardChatDraft {
   arrival_changed?: string;
 }
 
+/** The request an action card's button sends (phase 1 contract, section 4.2): an endpoint the app already uses. */
+export interface AIActionCardRequest {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  body?: Record<string, unknown> | null;
+  /** Only `x-pantopus-session-scope` is ever sent. */
+  headers?: Record<string, string> | null;
+}
+
+/** One button on an action card. `{{response.a.b}}` in `then` and `done.link` reads the first request's reply. */
+export interface AIActionCardAction {
+  id: string;
+  label: string;
+  style?: 'primary' | 'secondary' | 'destructive';
+  request: AIActionCardRequest;
+  then?: { request: AIActionCardRequest } | null;
+  done?: { label?: string | null; link?: string | null } | null;
+}
+
+export interface AIActionCardLine {
+  label: string;
+  value: string;
+}
+
+/** One row with its own buttons (a person asking to join a plan). */
+export interface AIActionCardItem {
+  id: string;
+  title?: string | null;
+  lines?: AIActionCardLine[];
+  actions: AIActionCardAction[];
+}
+
+/**
+ * Something the assistant can do with one tap: host or change a plan, add a home task, change notification settings
+ * (phase 1 contract, section 4). Nothing happens until the person taps a button.
+ */
+export interface AIActionCardDraft {
+  /** Also the card's key for its done state on the server (phase 3 contract, section 4). */
+  id: string;
+  card: string;
+  title: string;
+  lines?: AIActionCardLine[];
+  warnings?: string[];
+  note?: string | null;
+  expires_at?: string | null;
+  actions?: AIActionCardAction[];
+  items?: AIActionCardItem[];
+}
+
+/** What was done on an action card, on any of the person's devices (phase 3 contract, section 4.3). */
+export interface AIActionCardState {
+  status: 'open' | 'done' | 'dismissed' | 'expired';
+  done?: { item_id?: string | null; action_id: string; at?: string; link?: string | null }[];
+}
+
 export interface AIChatDraft {
   type: AIDraftType;
   draft:
     | GigDraft | ListingDraft | PostDraft | MailSummary | SupportTrainChatDraft | PickupScheduleChatDraft
-    | MomentChatDraft | LetterChatDraft | ChristmasCardChatDraft;
+    | MomentChatDraft | LetterChatDraft | ChristmasCardChatDraft | AIActionCardDraft;
   valid: boolean;
+  /** An action card restored from history: what was done on it (only when the history request lists "state"). */
+  state?: AIActionCardState | null;
 }
 
 /**
@@ -301,6 +358,30 @@ export interface AIChatMessage {
   /** Buttons under this reply, for apps that list "link" in `cards`. */
   links?: AIChatLink[];
   timestamp: string;
+}
+
+/**
+ * One item of a conversation's history (GET /api/ai/conversations/:id/messages): the person's words, a reply's words
+ * with its buttons, or one draft or card. A reply that streamed as one message can be several items.
+ */
+export interface AIHistoryItem {
+  role: 'user' | 'assistant';
+  text?: string;
+  photos?: number;
+  documents?: number;
+  draft?: { type: AIDraftType; draft: AIChatDraft['draft'] };
+  links?: AIChatLink[];
+  state?: AIActionCardState | null;
+  /** A brief or nudge Pantopus sent: its first item. */
+  nudge?: { id: string; kind?: string } | null;
+  /** When it was said (ISO 8601). */
+  at?: string;
+}
+
+export interface AIConversationMessages {
+  conversationId: string;
+  title?: string | null;
+  messages: AIHistoryItem[];
 }
 
 export interface AIConversation {
@@ -331,8 +412,9 @@ export interface AIChatRequest {
   coarseLocation?: { city?: string; state?: string };
   images?: string[];
   /**
-   * What this app can show beyond the original draft cards: 'pickup_schedule', 'link' (buttons under a reply),
-   * 'moment', 'letter', 'christmas_card' (drafts its own composers open), 'identity'.
+   * What this app can show beyond the original draft cards: 'pickup_schedule', 'action' (one-tap cards), 'state'
+   * (their done states in history), 'link' (buttons under a reply), 'moment', 'letter', 'christmas_card' (drafts its
+   * own composers open), 'identity'.
    */
   cards?: string[];
   /** The screen the person tapped Ask on; the server reads it with that screen's own access checks. */
