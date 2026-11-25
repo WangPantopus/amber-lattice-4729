@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName")
+
 package app.pantopus.android.ui.screens.profile.sources
 
 import androidx.compose.foundation.background

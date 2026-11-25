@@ -2,21 +2,9 @@
 
 package app.pantopus.android.ui.screens.profile
 
-import java.util.UUID
-import app.pantopus.android.ui.screens.profile.sources.ProfilePieceEditor
-import app.pantopus.android.ui.screens.profile.sources.ProfileOwnerWorkViewModel
-import app.pantopus.android.ui.screens.profile.sources.PieceOffer
-import app.pantopus.android.ui.screens.profile.sources.PieceEditorResult
-import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequestSaver
-import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequest
-import app.pantopus.android.ui.screens.profile.sources.OwnerWorkStart
-import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.hilt.navigation.compose.hiltViewModel
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,16 +14,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,33 +29,38 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.profile.sources.OwnerWorkStart
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequest
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequestSaver
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorResult
+import app.pantopus.android.ui.screens.profile.sources.PieceOffer
 import app.pantopus.android.ui.screens.profile.sources.ProfileBlock
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthSheet
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthState
+import app.pantopus.android.ui.screens.profile.sources.ProfileOwnerWorkViewModel
 import app.pantopus.android.ui.screens.profile.sources.ProfilePage
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageAction
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageLink
+import app.pantopus.android.ui.screens.profile.sources.ProfilePieceEditor
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceScreen
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceState
 import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
 import app.pantopus.android.ui.screens.profile.sources.SourcesFrameSlots
-import app.pantopus.android.ui.screens.profile.sources.SourcesTile
 import app.pantopus.android.ui.screens.profile.sources.SourcesType
 import app.pantopus.android.ui.screens.profile.sources.SourcesVisitorBar
-import app.pantopus.android.ui.screens.profile.sources.sourcesCard
-import app.pantopus.android.ui.screens.profile.tabs.ProfilePortfolioSection
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
-import app.pantopus.android.ui.theme.PantopusIconImage
+import java.util.UUID
 
 /** Where the profile with sources hands off to today's screen and the app. */
 internal class SourcesHostCallbacks(
@@ -132,6 +122,7 @@ internal fun ProfileSourcesPage(
     val ownerPieces = ownerWork?.state?.collectAsStateWithLifecycle()?.value
     LaunchedEffect(ownerWork) { ownerWork?.load() }
     var editor by rememberSaveable(stateSaver = PieceEditorRequestSaver) { mutableStateOf<PieceEditorRequest?>(null) }
+
     fun openEditor(
         pieceId: String?,
         offer: PieceOffer?,
@@ -400,4 +391,3 @@ internal fun ProfileSourcesPostsPage(
         }
     }
 }
-

@@ -77,7 +77,7 @@ internal fun ProfilePieceScreen(
     onEdit: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("profileSources.piece")) {
-        PieceTopBar(onBack, onEdit.takeIf { state is ProfilePieceState.Ready })
+        PieceTopBar(onBack, onEdit?.takeIf { state is ProfilePieceState.Ready })
         when (state) {
             is ProfilePieceState.Loading -> PieceSkeleton()
             is ProfilePieceState.Missing ->
@@ -122,7 +122,13 @@ private fun PieceTopBar(
             modifier = Modifier.weight(1f).semantics { heading() },
         )
         if (onEdit != null) {
-            ProfileIconButton(icon = PantopusIcon.Pencil, label = "Change this piece", onClick = onEdit, iconSize = 20.dp, testTag = "profileSources.piece.edit")
+            ProfileIconButton(
+                icon = PantopusIcon.Pencil,
+                label = "Change this piece",
+                onClick = onEdit,
+                iconSize = 20.dp,
+                testTag = "profileSources.piece.edit",
+            )
         } else {
             Spacer(Modifier.size(48.dp))
         }

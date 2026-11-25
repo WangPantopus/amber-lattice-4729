@@ -352,11 +352,20 @@ private fun EditorTopBar(
         modifier = Modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProfileIconButton(icon = PantopusIcon.X, label = "Close", onClick = onClose, iconSize = 24.dp, testTag = "profileSources.pieceEditor.close")
+        ProfileIconButton(
+            icon = PantopusIcon.X,
+            label = "Close",
+            onClick = onClose,
+            iconSize = 24.dp,
+            testTag = "profileSources.pieceEditor.close",
+        )
         Text(title, style = SourcesType.title, textAlign = TextAlign.Center, modifier = Modifier.weight(1f).semantics { heading() })
         if (onSaveDraft != null) {
             TextButton(onClick = onSaveDraft, enabled = draftEnabled, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Save draft", style = SourcesType.link.copy(color = if (draftEnabled) PantopusColors.primary600 else PantopusColors.appTextMuted))
+                Text(
+                    "Save draft",
+                    style = SourcesType.link.copy(color = if (draftEnabled) PantopusColors.primary600 else PantopusColors.appTextMuted),
+                )
             }
         } else {
             Spacer(Modifier.size(48.dp))
@@ -384,7 +393,10 @@ private fun OfferBanner(offer: PieceOffer) {
                     if (offer.kind == "plan") "Pantopus has seen this plan." else "Pantopus has seen this job.",
                     style = SourcesType.title,
                 )
-                Text("${offer.text} A piece started from it shows as Seen.", style = SourcesType.secondary.copy(color = PantopusColors.appText))
+                Text(
+                    "${offer.text} A piece started from it shows as Seen.",
+                    style = SourcesType.secondary.copy(color = PantopusColors.appText),
+                )
             }
         }
         Row(
@@ -585,7 +597,12 @@ private fun AddButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
-        PantopusIconImage(icon = icon, contentDescription = null, size = 20.dp, tint = if (enabled) PantopusColors.appText else PantopusColors.appTextMuted)
+        PantopusIconImage(
+            icon = icon,
+            contentDescription = null,
+            size = 20.dp,
+            tint = if (enabled) PantopusColors.appText else PantopusColors.appTextMuted,
+        )
         Text(label, style = SourcesType.rowTitle.copy(color = if (enabled) PantopusColors.appText else PantopusColors.appTextMuted))
     }
 }
@@ -623,11 +640,22 @@ private fun AttachmentTile(
         val picture = attachment.thumbnailUrl ?: attachment.url.takeIf { attachment.kind == PieceAttachment.Kind.Photo }
         when {
             attachment.kind == PieceAttachment.Kind.Document ->
-                PantopusIconImage(icon = PantopusIcon.FileText, contentDescription = null, size = 24.dp, tint = PantopusColors.appTextSecondary)
+                PantopusIconImage(
+                    icon = PantopusIcon.FileText,
+                    contentDescription = null,
+                    size = 24.dp,
+                    tint = PantopusColors.appTextSecondary,
+                )
             picture != null -> PieceImage(picture, iconSize = 18.dp)
             attachment.source != null && attachment.kind == PieceAttachment.Kind.Photo ->
                 PieceImage(attachment.source.toString(), iconSize = 18.dp)
-            else -> PantopusIconImage(icon = PantopusIcon.Video, contentDescription = null, size = 22.dp, tint = PantopusColors.appTextSecondary)
+            else ->
+                PantopusIconImage(
+                    icon = PantopusIcon.Video,
+                    contentDescription = null,
+                    size = 22.dp,
+                    tint = PantopusColors.appTextSecondary,
+                )
         }
         if (attachment.uploading) {
             Box(Modifier.fillMaxSize().background(PantopusColors.appText.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
@@ -686,7 +714,11 @@ private fun EditorLinkCard(
         link = card,
         onOpen = null,
         footer = {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 val canProve = card.ink == ProfileInk.Said && card.id != null && saved
                 when {
                     canProve ->
@@ -702,7 +734,11 @@ private fun EditorLinkCard(
                                     .padding(horizontal = 16.dp, vertical = 13.dp),
                         )
                     card.ink == ProfileInk.Said ->
-                        Text("You can prove it's yours once the piece is saved.", style = SourcesType.caption, modifier = Modifier.weight(1f))
+                        Text(
+                            "You can prove it's yours once the piece is saved.",
+                            style = SourcesType.caption,
+                            modifier = Modifier.weight(1f),
+                        )
                 }
                 if (canProve || card.ink != ProfileInk.Said) Spacer(Modifier.weight(1f))
                 Text(
@@ -836,7 +872,7 @@ private fun MonthPicker(
                         Spacer(Modifier.size(48.dp))
                     }
                 }
-                (1..12).chunked(3).forEach { row ->
+                for (row in (1..12).chunked(3)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { m ->
                             val month = YearMonth.of(year, m)
