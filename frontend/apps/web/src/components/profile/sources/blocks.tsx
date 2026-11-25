@@ -773,7 +773,9 @@ function RecordChartBlock({ block, ctx }: { block: ProfileRecordChartBlock; ctx:
   const rings = { from: block.from, now: block.now, ...Object.fromEntries(block.lanes.filter((l) => l && Array.isArray(l.months)).map((l) => [l.lane, l.months])) };
   return (
     <Section title={block.title} className="!px-3" aside={block.subtitle ? <span className="text-xs leading-4 text-app-muted">{block.subtitle}</span> : null}>
-      <RecordChart rings={rings} firstName={ctx.firstName} caption={block.note} />
+      {/* The server's note ends "Open a ring to see what happened in it.", but on the web the chart is a picture, not a
+          control (a month opens from its line below), so the web writes the caption without that sentence. */}
+      <RecordChart rings={rings} firstName={ctx.firstName} />
     </Section>
   );
 }
