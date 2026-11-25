@@ -14,6 +14,21 @@ import type { AIChatContext } from '@pantopus/types';
 import { useConfirm } from '@/hooks/useConfirm';
 import { AIMessageBubble } from './AIMessageBubble';
 import { launchFeatures } from '@/lib/featureFlags';
+import { useFeatureFlagState } from '@/hooks/useFeatureFlag';
+import { useMomentsAccess } from '@/components/moments/useMomentsAccess';
+
+/** "posts, Moments and letters": the things the assistant writes for this person, as their app has them. */
+function writes(momentsOn: boolean, plansOn: boolean): string {
+  const things = [
+    'posts',
+    momentsOn && 'Moments',
+    plansOn && 'plans',
+    launchFeatures.mailbox && launchFeatures.mailExtras && 'letters',
+    launchFeatures.mailbox && launchFeatures.holidayCards && 'Christmas cards',
+    'Support Trains',
+  ].filter(Boolean) as string[];
+  return things.length > 1 ? `${things.slice(0, -1).join(', ')} and ${things[things.length - 1]}` : things[0];
+}
 
 interface AIAssistantViewProps {
   /** Pre-fill the input with text (e.g. from Magic Task "Chat with Pantopus" link) */
@@ -27,6 +42,7 @@ interface AIAssistantViewProps {
 export function AIAssistantView({ initialMessage, onBack, context = null }: AIAssistantViewProps) {
   const {
     messages,
+    isRestoring,
     isStreaming,
     statusText,
     error,
@@ -37,6 +53,8 @@ export function AIAssistantView({ initialMessage, onBack, context = null }: AIAs
   } = useAIChat({ context });
   const { confirm } = useConfirm();
   const [deleting, setDeleting] = useState(false);
+  const plansOn = useFeatureFlagState('plans').enabled;
+  const momentsOn = !!useMomentsAccess().data?.enabled;
 
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -118,8 +136,7 @@ export function AIAssistantView({ initialMessage, onBack, context = null }: AIAs
               Pantopus Assistant
             </h2>
             <p className="text-xs text-app-text-muted">
-              {/* Name only capabilities available under the launch flags. */}
-              {isStreaming ? (statusText || 'Thinking…') : `Ask me to draft ${[launchFeatures.openGigs && 'gigs', launchFeatures.marketplace && 'listings', 'posts'].filter(Boolean).join(', ')}${launchFeatures.mailbox ? ' or summarize mail' : ''}`}
+              {isStreaming ? (statusText || 'Thinking…') : 'Ask about your home, your area or anything in Pantopus'}
             </p>
           </div>
         </div>
@@ -146,7 +163,15 @@ export function AIAssistantView({ initialMessage, onBack, context = null }: AIAs
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
       >
-        {messages.length === 0 && (
+        {/* The person's conversation is being read back: a quiet stand-in, not the welcome, which would flash first. */}
+        {messages.length === 0 && isRestoring && (
+          <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="Loading your conversation">
+            <div className="ml-auto h-9 w-2/5 rounded-2xl bg-app-surface-sunken" />
+            <div className="h-16 w-3/5 rounded-2xl bg-app-surface-sunken" />
+          </div>
+        )}
+
+        {messages.length === 0 && !isRestoring && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center mb-4">
               <Sparkles className="w-8 h-8 text-violet-500" />
@@ -155,7 +180,7 @@ export function AIAssistantView({ initialMessage, onBack, context = null }: AIAs
               Hi! I&apos;m Pantopus
             </h3>
             <p className="text-sm text-app-text-muted mb-6 max-w-sm">
-              {`I can help you ${[launchFeatures.openGigs && 'draft gigs', launchFeatures.marketplace && 'create listings', 'write posts'].filter(Boolean).join(', ')}${launchFeatures.mailbox ? ' and summarize your mail' : ''}. Just describe what you need!`}
+              {`I can find things anywhere in Pantopus, and write ${writes(momentsOn, plansOn)} for you to look over before anything goes out. Just say what you need.`}
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {QUICK_PROMPTS.map((prompt) => (
@@ -242,9 +267,8 @@ const QUICK_PROMPTS = [
   ...(launchFeatures.openGigs ? [{ label: '🛋️ Help me move something', text: 'I need help moving furniture' }] : []),
   ...(launchFeatures.marketplace ? [{ label: '🏷️ Sell an item', text: 'I want to sell' }] : []),
   { label: '📢 Post nearby', text: 'I want to tell people near me about' },
-  // The assistant summarizes a letter it is given (or one shared from Mail); it
-  // can't browse the inbox, so the prompt asks for the letter itself. Launch cut #10.
-  ...(launchFeatures.mailbox ? [{ label: '📬 Summarize a letter', text: 'Can you summarize this letter for me? Here it is: ' }] : []),
+  // The assistant looks through the person's Mail (on the web the sign-in is Mail's check). Launch cut #10.
+  ...(launchFeatures.mailbox ? [{ label: '📬 What came in the mail?', text: 'What came in my mail this week?' }] : []),
   { label: '🗑️ When\'s my pickup?', text: 'When is my next garbage pickup?' },
   { label: '🌤️ What\'s happening nearby?', text: 'What\'s happening near my home?' },
   ...(launchFeatures.openGigs ? [{ label: '🧹 Need cleaning help', text: 'I need someone to clean my house' }] : []),

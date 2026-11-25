@@ -595,7 +595,7 @@ async function streamChat({
   const momentsLine = momentsEnabled ? null : "- Moments: not available to them yet; don't offer or describe it.";
   // The guide describes the phones first; someone on the web hears where things are on the web.
   const webLine = clientKind === 'web'
-    ? '- They are using the web app, not a phone. When you say where something is, say where it is on the web, as HOW PANTOPUS WORKS describes it: in the sidebar, or on their profile (the Wallet, My homes, Support trains, My tasks). Never tell them to tap a tab or open the side menu.'
+    ? '- They are using the web app, not a phone. When you say where something is, say where it is on the web, as HOW PANTOPUS WORKS describes it: in the sidebar, or on their profile (the Wallet, My homes, Support trains, My tasks). Never tell them to tap a tab or open the side menu. The web has no Suggestions from Pantopus switch: briefings and suggestions arrive on the phones.'
     : null;
   const context = {
     timeZone: homeContext.timeZone,
