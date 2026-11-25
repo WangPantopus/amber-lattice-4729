@@ -329,7 +329,7 @@ internal fun ProfilePieceEditor(
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
             title = { Text("Remove this piece?") },
-            text = { Text("It leaves your Work and every page, and anyone named on it is taken off it.") },
+            text = { Text("It leaves your Work and every page.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmRemove = false
@@ -529,7 +529,7 @@ private fun WhenAndWhere(
                     },
                     isError = refused,
                     singleLine = true,
-                    placeholder = { Text("Camas, WA") },
+                    placeholder = { Text("City, state") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth().testTag("profileSources.pieceEditor.where"),
                 )
