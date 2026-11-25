@@ -283,6 +283,8 @@ class IconTest {
             // Gigs Tasks map — fit-to-pins control + zero-results empty state.
             "maximize",
             "map-pin-off",
+            // Moments Post sheet's full-screen map — bring the pin back to the middle (iOS `locate-fixed`).
+            "locate-fixed",
             // Magic Task wizard — voice-note describe card + One-time engagement tile.
             "mic",
             "circle-dot",
