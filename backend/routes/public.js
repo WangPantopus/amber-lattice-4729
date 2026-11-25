@@ -1026,7 +1026,10 @@ router.get('/place', optionalAuth, classifyPlaceLookup, placeLookupLimiter, shar
     }
 
     if (!req.placeLookup.shareCard) ownRecentLookups.set(ownLookupKey(req, rawAddress), true, GEO_TTL_MS);
-    return res.json(await placePreviewWithBallot(place));
+    const preview = await placePreviewWithBallot(place);
+    // The reading's ticket (SPEC 5.1a): issued only by a lookup a visitor made, never for a share-card render.
+    const ticket = !req.placeLookup.shareCard && lookupReading.enabled() ? lookupReading.issueTicket(place) : null;
+    return res.json(ticket ? { ...preview, reading_ticket: ticket } : preview);
   } catch (err) {
     console.error('[public/place] Error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1289,16 +1292,23 @@ async function makeReading(input, placing) {
   }
 }
 
-router.post('/place/reading', optionalAuth, express.json({ limit: '2kb' }), async (req, res) => {
+router.post('/place/reading', optionalAuth, express.json({ limit: '4kb' }), async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     if (!lookupReading.enabled()) return res.status(404).json({ error: 'NOT_AVAILABLE' });
     const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
     if (!address || address.length > 200) return res.status(400).json({ error: 'An address is required.' });
 
-    const place = previewCache.get(geoKey(address));
-    if (ownRecentLookups.get(ownLookupKey(req, address)) !== true || !place || !place.ok) {
-      return res.status(409).json({ error: 'LOOK_UP_FIRST' });
+    // A valid ticket from the lookup's answer is enough (SPEC 5.1a): the preview is built for its place, with no
+    // geocoder call and no dependence on this caller's address. Without one (the phone builds before their Ask
+    // PRs), the address must be one this caller looked up in the last ten minutes, as before.
+    let place = lookupReading.readTicket(req.body?.ticket);
+    if (!place) {
+      const cached = previewCache.get(geoKey(address));
+      if (ownRecentLookups.get(ownLookupKey(req, address)) !== true || !cached || !cached.ok) {
+        return res.status(409).json({ error: 'LOOK_UP_FIRST' });
+      }
+      place = cached;
     }
 
     const preview = await buildPlacePreview(place);

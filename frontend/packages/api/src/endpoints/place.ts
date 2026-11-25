@@ -205,6 +205,8 @@ export interface PlacePreview {
   money?: PlacePreviewMoney;
   /** The flood cost band whenever held, whatever `money_lead` is; drawn first in Risk. */
   flood_cost?: PlacePreviewMoneyLead | null;
+  /** Sent back with the reading request (SPEC 5.1a): signed by the server for this lookup's place, good for an hour. */
+  reading_ticket?: string;
 }
 
 /**
@@ -260,8 +262,8 @@ export interface PlaceReading {
  * The reading for an address this browser looked up in the last ten minutes. Any error (switched off, not looked
  * up, the day's cap, a refused or broken answer) means there is no reading to show: the page hides its Ask row.
  */
-export async function getPublicPlaceReading(address: string): Promise<{ reading: PlaceReading }> {
-  return post<{ reading: PlaceReading }>('/api/public/place/reading', { address });
+export async function getPublicPlaceReading(address: string, ticket?: string | null): Promise<{ reading: PlaceReading }> {
+  return post<{ reading: PlaceReading }>('/api/public/place/reading', { address, ...(ticket ? { ticket } : {}) });
 }
 
 /**
