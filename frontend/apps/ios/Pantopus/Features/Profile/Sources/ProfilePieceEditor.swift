@@ -32,6 +32,7 @@ struct ProfilePieceEditor: View {
     @State private var confirmingDiscard = false
     @State private var confirmingRemove = false
     @State private var proving: ProfilePieceEditorModel.Link?
+    @State private var addingCredit = false
     @FocusState private var linkFocused: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -86,6 +87,9 @@ struct ProfilePieceEditor: View {
         }
         .navigationDestination(item: $proving) { link in
             ProfileLinkProofView(model: model, link: link)
+        }
+        .navigationDestination(isPresented: $addingCredit) {
+            ProfileCreditAdder(model: model)
         }
         .confirmationDialog("Leave without saving?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
             Button("Leave without saving", role: .destructive) { onFinished(.cancelled) }
@@ -154,6 +158,9 @@ struct ProfilePieceEditor: View {
             }
             ProfileWhenWhere(model: model)
             showIt
+            if ProfileTies.isOn == true {
+                ProfileEditorCredits(model: model) { addingCredit = true }
+            }
             skills
             field("In your words", counter: "\(model.words.count) of \(ProfilePieceEditorModel.wordsMost)") {
                 TextField("What you did, how, and what it took", text: $model.words, axis: .vertical)
@@ -320,7 +327,7 @@ extension ProfilePieceEditor {
     // MARK: Skills
 
     var skills: some View {
-        field("Skills it shows", counter: "\(model.skills.count) of \(ProfilePieceEditorModel.skillsMost)") {
+        field("It shows you can", counter: "\(model.skills.count) of \(ProfilePieceEditorModel.skillsMost)") {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 if !model.skills.isEmpty {
                     ProfileWrapLayout(spacing: Spacing.s2) {

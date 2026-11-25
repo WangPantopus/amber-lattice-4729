@@ -68,9 +68,12 @@ public struct ProfilePieceOfferDTO: Decodable, Sendable, Hashable, Identifiable 
     /// The other party, shown to the owner only and never on the piece.
     public let with: String?
     public let text: String
+    /// Who to name on a piece started from it (the person who hired them), with the server's ties on (p2.6).
+    public let suggestedCredits: [ProfileSuggestedCreditDTO]
 
     enum CodingKeys: String, CodingKey {
         case kind, id, title, when, with, text
+        case suggestedCredits = "suggested_credits"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -81,6 +84,8 @@ public struct ProfilePieceOfferDTO: Decodable, Sendable, Hashable, Identifiable 
         when = try? c.decodeIfPresent(String.self, forKey: .when)
         with = try? c.decodeIfPresent(String.self, forKey: .with)
         text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        suggestedCredits = ((try? c.decodeIfPresent([Lossy<ProfileSuggestedCreditDTO>].self, forKey: .suggestedCredits)) ?? [])
+            .compactMap(\.value)
     }
 }
 
@@ -94,6 +99,16 @@ public struct ProfilePieceBody: Encodable, Sendable, Hashable {
 
     public mutating func set(_ key: String, _ value: ProfileJSONValue) {
         fields[key] = value
+    }
+
+    /// Only the fields that differ from `loaded`: a change never resends what the person didn't touch (a piece's own
+    /// files from before, say, which the server may not take back as uploads).
+    public func changes(since loaded: ProfilePieceBody) -> ProfilePieceBody {
+        var out = ProfilePieceBody()
+        for (key, value) in fields where loaded.fields[key] != value {
+            out.set(key, value)
+        }
+        return out
     }
 
     public func encode(to encoder: any Encoder) throws {

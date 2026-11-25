@@ -153,39 +153,68 @@ struct ProfileShelfBlock: View {
     let title: String?
     let objects: [ProfileShelfObjectDTO]
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         ProfileBlockCard {
             VStack(alignment: .leading, spacing: 10) {
                 if let title { ProfileBlockTitle(title: title) }
-                HStack(alignment: .bottom, spacing: 4) {
+                if typeSize.isAccessibilitySize {
+                    // Five captions side by side break mid-word at the largest sizes: one object a row instead.
                     ForEach(objects) { object in
-                        CachedAsyncImage(url: object.pictureURL.flatMap(URL.init(string:))) { phase in
-                            if let image = phase.image {
-                                image.resizable().scaledToFit()
-                            } else {
-                                Color.clear
-                            }
+                        HStack(spacing: Spacing.s3) {
+                            picture(object)
+                                .frame(width: 64, height: 64)
+                                .background(Theme.Color.appSurfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .accessibilityHidden(true)
+                            Text(object.caption)
+                                .scaledFont(12)
+                                .foregroundStyle(Theme.Color.appTextStrong)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .accessibilityElement(children: .combine)
+                    }
+                } else {
+                    shelf
+                }
+            }
+        }
+    }
+
+    private var shelf: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(objects) { object in
+                    picture(object)
                         .frame(maxWidth: .infinity, maxHeight: 96, alignment: .bottom)
                         .accessibilityLabel(object.caption)
-                    }
                 }
-                .frame(height: 96, alignment: .bottom)
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Theme.Color.warmAmber.opacity(0.55))
-                    .frame(height: 9)
-                    .accessibilityHidden(true)
-                // Captions are captions, not lines: no ink is claimed for them (the contract sends none).
-                HStack(alignment: .top, spacing: 4) {
-                    ForEach(objects) { object in
-                        Text(object.caption)
-                            .scaledFont(12)
-                            .foregroundStyle(Theme.Color.appTextStrong)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityHidden(true)
-                    }
+            }
+            .frame(height: 96, alignment: .bottom)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Theme.Color.warmAmber.opacity(0.55))
+                .frame(height: 9)
+                .accessibilityHidden(true)
+            // Captions are captions, not lines: no ink is claimed for them (the contract sends none).
+            HStack(alignment: .top, spacing: 4) {
+                ForEach(objects) { object in
+                    Text(object.caption)
+                        .scaledFont(12)
+                        .foregroundStyle(Theme.Color.appTextStrong)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
                 }
+            }
+        }
+    }
+
+    private func picture(_ object: ProfileShelfObjectDTO) -> some View {
+        CachedAsyncImage(url: object.pictureURL.flatMap(URL.init(string:))) { phase in
+            if let image = phase.image {
+                image.resizable().scaledToFit()
+            } else {
+                Color.clear
             }
         }
     }
@@ -250,6 +279,68 @@ struct ProfileMoreCloserBlock: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+}
+
+// MARK: - notice
+
+/// One row for something waiting for the owner that this app can't show yet: the server's words, opened on
+/// pantopus.com. The owner's own page only, at the top of the first tab.
+struct ProfileNoticeRow: View {
+    let text: String
+    let onOpen: (() -> Void)?
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        ProfileBlockCard {
+            Button { onOpen?() } label: {
+                // At the largest sizes the bell takes its own line, so the words keep the whole width.
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: Spacing.s2) {
+                        HStack {
+                            bell
+                            Spacer(minLength: Spacing.s2)
+                            arrow
+                        }
+                        words
+                    }
+                    .contentShape(Rectangle())
+                } else {
+                    HStack(alignment: .top, spacing: Spacing.s3) {
+                        bell
+                        words
+                        arrow.padding(.top, Spacing.s2)
+                    }
+                    .contentShape(Rectangle())
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(onOpen == nil)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(onOpen == nil ? [] : .isLink)
+        .accessibilityIdentifier("profileNotice")
+    }
+
+    private var bell: some View {
+        Icon(.bell, size: 18, color: Theme.Color.primary600)
+            .frame(width: 36, height: 36)
+            .background(Theme.Color.infoBg, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var words: some View {
+        Text(text)
+            .scaledFont(14, weight: .medium)
+            .foregroundStyle(Theme.Color.appText)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var arrow: some View {
+        if onOpen != nil {
+            Icon(.externalLink, size: 16, color: Theme.Color.appTextMuted)
         }
     }
 }

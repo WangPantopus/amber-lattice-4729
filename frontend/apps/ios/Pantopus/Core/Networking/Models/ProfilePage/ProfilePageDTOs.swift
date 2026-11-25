@@ -268,7 +268,8 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
     case tab(String)
     case record
     case month(String)
-    case piece(id: String)
+    /// A piece; `owner` (an id or a username) when it is another person's (a piece "With Maria" on the signer's Work).
+    case piece(id: String, owner: String? = nil)
     case business(username: String)
     case profile(userId: String?, username: String?)
     case plan(id: String)
@@ -291,7 +292,10 @@ public enum ProfilePageLinkDTO: Decodable, Sendable, Hashable {
         case "tab": self = try .tab(c.decode(String.self, forKey: .tab))
         case "record": self = .record
         case "month": self = try .month(c.decode(String.self, forKey: .month))
-        case "piece": self = try .piece(id: c.decode(String.self, forKey: .id))
+        case "piece":
+            let userId: String? = (try? c.decodeIfPresent(String.self, forKey: .userId)).flatMap(\.self)
+            let username: String? = (try? c.decodeIfPresent(String.self, forKey: .username)).flatMap(\.self)
+            self = try .piece(id: c.decode(String.self, forKey: .id), owner: userId ?? username)
         case "business": self = try .business(username: c.decode(String.self, forKey: .username))
         case "profile":
             self = .profile(
@@ -324,6 +328,12 @@ public struct ProfilePageMoreDTO: Decodable, Sendable, Hashable {
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         text = try c.decode(String.self, forKey: .text)
-        link = try? c.decodeIfPresent(ProfilePageLinkDTO.self, forKey: .link)
+        // A link this app can't follow yet (Known for's "All 4 lines" opens a sheet the phones don't draw) drops the
+        // whole label: a count nobody can open reads as a dead button. No link at all keeps the plain words (§3.3).
+        if (try? c.decodeNil(forKey: .link)) == false {
+            link = try c.decode(ProfilePageLinkDTO.self, forKey: .link)
+        } else {
+            link = nil
+        }
     }
 }

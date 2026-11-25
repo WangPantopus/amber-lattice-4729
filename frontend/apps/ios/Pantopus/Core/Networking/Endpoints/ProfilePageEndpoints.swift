@@ -131,6 +131,51 @@ public enum ProfilePageEndpoints {
         )
     }
 
+    // MARK: - Credits, asks and ties (CONTRACT P2.5, p2.7; 404 PROFILE_TIES_OFF while the server's switch is off)
+
+    /// `POST /api/profile-page/me/pieces/:id/credits` — names a person (who is asked to sign) or a typed name.
+    public static func addCredit(pieceId: String, _ body: ProfileCreditBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(pieceId))/credits", body: body)
+    }
+
+    /// `DELETE /api/profile-page/me/pieces/:id/credits/:creditId` — the owner takes a credit off.
+    public static func removeCredit(pieceId: String, creditId: String) -> Endpoint {
+        Endpoint(
+            method: .delete,
+            path: "/api/profile-page/me/pieces/\(Endpoint.pathSegment(pieceId))/credits/\(Endpoint.pathSegment(creditId))"
+        )
+    }
+
+    /// `GET /api/profile-page/me/asks` — "Asked of you".
+    public static func asks() -> Endpoint {
+        Endpoint(method: .get, path: "/api/profile-page/me/asks", cachePolicy: .reloadIgnoringLocalCacheData)
+    }
+
+    /// `POST /api/profile-page/me/asks/:id/sign` — with the signer's two choices.
+    public static func signAsk(id: String, _ choices: ProfileTieChoicesBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/asks/\(Endpoint.pathSegment(id))/sign", body: choices)
+    }
+
+    /// `POST /api/profile-page/me/asks/:id/decline` — "Not me".
+    public static func declineAsk(id: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/profile-page/me/asks/\(Endpoint.pathSegment(id))/decline")
+    }
+
+    /// `PATCH /api/profile-page/me/ties/:id` — the signer changes their two choices.
+    public static func updateTie(id: String, _ choices: ProfileTieChoicesBody) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/profile-page/me/ties/\(Endpoint.pathSegment(id))", body: choices)
+    }
+
+    /// `DELETE /api/profile-page/me/ties/:id` — the signer takes their name off.
+    public static func removeTie(id: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/profile-page/me/ties/\(Endpoint.pathSegment(id))")
+    }
+
+    /// `PUT /api/profile-page/me/share` with `ties_enabled` — "Let people name me on their work".
+    public static func setTiesEnabled(_ on: Bool) -> Endpoint {
+        Endpoint(method: .put, path: "/api/profile-page/me/share", body: ProfileTiesEnabledBody(tiesEnabled: on))
+    }
+
     /// `GET /api/profile-page/marks?ids=a,b,c` — the ring on each avatar (board 6): since when each person has
     /// anything on record, and whether anything is seen. People the viewer may not see are left out.
     public static func marks(ids: [String]) -> Endpoint {
@@ -166,5 +211,19 @@ public struct ProfileLinksEnabledBody: Encodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case linksEnabled = "links_enabled"
+    }
+}
+
+/// The parts this app draws, named on every `/api/profile-page/…` request (`APIClient` sets it; CONTRACT "The parts
+/// header"). `credits` and `roles`: "Asked of you" signs both kinds of ask. For anything waiting for the person in a
+/// part not named here (a line in "Lines for you", a card left), the server sends a `notice` row that opens it on
+/// pantopus.com.
+public enum ProfilePageParts {
+    public static let header = "X-Pantopus-Profile-Parts"
+    public static let drawn = "pieces, credits, roles, shelf"
+
+    /// The header for a profile-page request, none for any other.
+    public static func headers(for path: String) -> [String: String] {
+        path.hasPrefix("/api/profile-page/") ? [header: drawn] : [:]
     }
 }

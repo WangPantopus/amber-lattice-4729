@@ -16,6 +16,8 @@ struct ProfilePieceSheet: View {
     let model: ProfilePageModel
     /// Your own piece: Change (the editor, pushed in this sheet's own stack) and who sees it.
     var isOwner = false
+    /// Opening a person named on the piece, from the page around the sheet.
+    var onOpenLink: ((ProfilePageLinkDTO) -> Void)?
     let onClose: () -> Void
 
     @State private var changing: String?
@@ -101,6 +103,17 @@ struct ProfilePieceSheet: View {
                             }
                         }
                     }
+                }
+                if !piece.credits.isEmpty {
+                    ProfileWhoWasOnIt(
+                        piece: piece,
+                        ownerName: ownerName,
+                        ownerPortrait: model.openedPieceOwner == nil ? model.content?.header.portraitURL : nil,
+                        onThisProfile: model.openedPieceOwner == nil,
+                        onOpenPerson: onOpenLink.map { open in
+                            { party in open(.profile(userId: party.userId, username: party.username)) }
+                        }
+                    )
                 }
                 if !piece.showsCan.isEmpty {
                     skills(piece.showsCan, firstName: model.content?.header.firstName)
@@ -241,6 +254,12 @@ struct ProfilePieceSheet: View {
                 }
             }
         }
+    }
+
+    /// The piece's owner: this page's person, or whose it is when it is another person's ("With Maria Kovács").
+    private var ownerName: String {
+        if model.openedPieceOwner != nil { return model.openedPieceOwnerName ?? "" }
+        return model.content?.header.name ?? ""
     }
 
     /// "Who sees it: People on Pantopus", or that only you do (a draft, a hidden piece).
@@ -453,43 +472,5 @@ private struct ProfilePieceAttachmentRow: View {
         .accessibilityLabel([title, detail].compactMap(\.self).joined(separator: ". "))
         .accessibilityHint(video ? "Plays it" : "Opens it")
         .accessibilityAddTraits(.isButton)
-    }
-}
-
-// MARK: - What they wrote
-
-/// A review from the job the piece started from ("What Dan wrote", board 8): the words, then who wrote it, what they
-/// did and when, with the ink word.
-private struct ProfilePieceWritten: View {
-    let line: ProfilePageLineDTO
-    let position: Int
-
-    private var title: String {
-        guard let name = line.who?.name, let first = name.split(separator: " ").first else { return "What they wrote" }
-        return "What \(first) wrote"
-    }
-
-    var body: some View {
-        let source = line.sourceLine(at: position)
-        let who = [line.who?.name, line.who?.did, line.when].compactMap(\.self).joined(separator: " · ")
-        ProfileBlockCard {
-            ProfileBlockTitle(title: title).padding(.bottom, Spacing.s2)
-            Text(line.text)
-                .scaledFont(17)
-                .foregroundStyle(Theme.Color.appText)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                ProfileInkGlyph(ink: source.ink, size: 9)
-                Text(who.isEmpty ? source.source : "\(source.ink.word) · \(who)")
-                    .scaledFont(12)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, Spacing.s2)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            "\(title). " + ProfileSourceLine.spokenJoin(line.text, who.isEmpty ? source.source : "\(source.ink.word), \(who)")
-        )
     }
 }
