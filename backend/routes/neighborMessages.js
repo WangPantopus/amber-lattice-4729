@@ -13,7 +13,9 @@
 //   * sends are rate-limited (burst + a gentle weekly cap);
 //   * delivery REUSES the Notification pipeline — no new transport;
 //   * the recipient never learns the sender (serializer firewall); block
-//     resolves the sender from the row server-side and reuses UserBlock;
+//     resolves the sender from the row server-side and stops only their
+//     notes (blockService.blockNoteSender), never a UserBlock, which would
+//     hide the sender's named posts and so name them;
 //   * reply is templated + anonymous both ways; report / not-helpful are
 //     recorded inline and never notify the sender.
 //
@@ -38,9 +40,7 @@ const { geocodeLimiter } = require('../middleware/rateLimiter');
 const geoProvider = require('../services/geo');
 const { resolveTier } = require('../services/placeIntelligenceService');
 const { createNotification } = require('../services/notificationService');
-const { isBlocked, invalidateBlockCache } = require('../services/blockService');
-const { invalidateFilterCache } = require('../services/feedService');
-const marketplaceService = require('../services/marketplace/marketplaceService');
+const { isBlocked, noteSenderBlockers, blockNoteSender } = require('../services/blockService');
 const {
   MESSAGE_TEMPLATES,
   REPLY_TEMPLATES,
@@ -185,15 +185,25 @@ async function findVerifiedResident(homeId, { excludeUserId } = {}) {
   return null;
 }
 
+/** Whether either person blocked the other, by name or as a note's sender, and which of them blocked as one. */
+async function blocksBetween(userId1, userId2) {
+  const [blocked, noteBlockers] = await Promise.all([
+    isBlocked(userId1, userId2),
+    noteSenderBlockers(userId1, userId2),
+  ]);
+  return { any: blocked || noteBlockers.size > 0, blocked, noteBlockers };
+}
+
 /**
- * Who a note to these homes reaches: a verified resident the sender hasn't blocked and isn't blocked by, or null. A home
- * that asked to stay hidden isn't reached either: an unasked note from nearby isn't for them.
+ * Who a note to these homes reaches: a verified resident the sender hasn't blocked and isn't blocked by (by name or as
+ * a note's sender), or null. A home that asked to stay hidden isn't reached either: an unasked note from nearby isn't
+ * for them.
  */
 async function deliveryTarget(homes, senderId) {
   for (const home of homes) {
     if (home.privacy_mask_level !== 'normal') continue;
     const recipientUserId = await findVerifiedResident(home.id, { excludeUserId: senderId });
-    if (recipientUserId && !(await isBlocked(senderId, recipientUserId))) {
+    if (recipientUserId && !(await blocksBetween(senderId, recipientUserId)).any) {
       return { recipientUserId, recipientHomeId: home.id };
     }
   }
@@ -225,9 +235,10 @@ async function verifiedSenderHome(res, senderHomeId, userId) {
 // A sent reply may be edited. Only a block disables replying; expose the
 // viewer's own block state without revealing who the anonymous sender is.
 async function replyAccess(row, userId) {
-  if (!(await isBlocked(userId, row.sender_user_id))) {
-    return { canReply: true, blockedByViewer: false };
-  }
+  const blocks = await blocksBetween(userId, row.sender_user_id);
+  if (!blocks.any) return { canReply: true, blockedByViewer: false };
+  if (blocks.noteBlockers.has(String(userId))) return { canReply: false, blockedByViewer: true };
+  if (!blocks.blocked) return { canReply: false, blockedByViewer: false };
   const { count, error } = await supabaseAdmin
     .from('UserBlock')
     .select('id', { count: 'exact', head: true })
@@ -609,19 +620,9 @@ router.post('/:id/block', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Cannot block yourself.' });
     }
 
-    const { error } = await supabaseAdmin
-      .from('UserBlock')
-      .upsert(
-        { blocker_user_id: userId, blocked_user_id: senderId, reason: 'neighbor_message' },
-        { onConflict: 'blocker_user_id,blocked_user_id', ignoreDuplicates: true }
-      );
-    if (error) throw new Error(error.message);
-
-    invalidateBlockCache(userId, senderId);
-    invalidateFilterCache(userId);
-    invalidateFilterCache(senderId);
-    marketplaceService.invalidateFilterCache(userId);
-    marketplaceService.invalidateFilterCache(senderId);
+    // Stops this sender's notes and nothing else: what either person posts, replies or sends under their own name is
+    // untouched, or what went missing would say who sent the note (blockService.blockNoteSender).
+    await blockNoteSender(userId, senderId);
     return res.json({ success: true });
   } catch (err) {
     if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
