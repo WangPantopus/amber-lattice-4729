@@ -1083,7 +1083,7 @@ async function hold(row, rule, note) {
 /** Holds the Moment once REPORTS_TO_HOLD different people have open reports on it. */
 async function holdIfReported(row) {
   const { count, error } = await supabaseAdmin.from('PostReport').select('id', { count: 'exact', head: true })
-    .eq('post_id', row.id).in('status', ['pending', 'reviewed']);
+    .eq('post_id', row.id).is('comment_id', null).in('status', ['pending', 'reviewed']);
   if (error) throw new Error(`Failed to count reports: ${error.message}`);
   if (count >= REPORTS_TO_HOLD) return hold(row, 'moment_reports', 'Hidden while Pantopus reviews reports about it.');
   return false;
@@ -1098,7 +1098,7 @@ async function releaseIfReviewed(postId) {
   const { data: row, error } = await supabaseAdmin.from('Post').select(MOMENT_SELECT).eq('id', postId).maybeSingle();
   if (error || !row || !row.is_story || row.moderation_state !== 'held' || row.archive_reason === 'moderation') return false;
   const { count, error: countError } = await supabaseAdmin.from('PostReport').select('id', { count: 'exact', head: true })
-    .eq('post_id', postId).neq('status', 'dismissed');
+    .eq('post_id', postId).is('comment_id', null).neq('status', 'dismissed');
   if (countError || count > 0) return false;
   const { data, error: updateError } = await supabaseAdmin.from('Post')
     .update({ moderation_state: 'live', moderation_rule: null, moderation_note: null, moderated_at: new Date().toISOString() })
@@ -1115,7 +1115,7 @@ async function releaseIfReviewed(postId) {
 async function filesHeld(row) {
   if (row.moderation_state === 'held' && row.archive_reason !== 'moderation') return true;
   const { count, error } = await supabaseAdmin.from('PostReport').select('id', { count: 'exact', head: true })
-    .eq('post_id', row.id).in('status', ['pending', 'reviewed']);
+    .eq('post_id', row.id).is('comment_id', null).in('status', ['pending', 'reviewed']);
   if (error) throw new Error(`Failed to count reports: ${error.message}`);
   return count > 0;
 }

@@ -121,13 +121,20 @@ async function postScopeAccess(userId, context) {
 // the database and use the same scope predicate before both pagination and counts.
 // The computed field is a query-only server projection; it is never selected for a client.
 // `blockedRead` is blockService.blockedUserIds(userId) already started by the caller.
+// A moderator's removal notice (routes/adminReports.js) goes only to the writer and quotes nothing, so the removed
+// post or reply it is about never hides it. "The reader wrote it" can't be read from user_id for a made-up-name post
+// or reply, which is stored under the system account (services/penName). routes/notifications.js UNREAD_COUNTS_SQL
+// writes the same rule in SQL.
+const REMOVAL_NOTICE_TYPES = ['content_removed', 'comment_removed'];
+
 async function notificationPostFilter(userId, blockedRead) {
   const [access, blocked] = await Promise.all([postScopeAccess(userId), blockedRead || blockService.blockedUserIds(userId)]);
   const field = name => `pulse_notification_post_access->>${name}`;
+  const removalNotice = `type.in.(${REMOVAL_NOTICE_TYPES.join(',')})`;
   return query => {
     let q = access.query(query, null, 'pulse_notification_post_access')
-      .or(`${field('moderation_state')}.is.null,${field('moderation_state')}.eq.live,${field('user_id')}.eq.${userId}`)
-      .or(`${field('reply_moderation_state')}.is.null,${field('reply_moderation_state')}.eq.live,${field('reply_user_id')}.eq.${userId}`)
+      .or(`${field('moderation_state')}.is.null,${field('moderation_state')}.eq.live,${field('user_id')}.eq.${userId},${removalNotice}`)
+      .or(`${field('reply_moderation_state')}.is.null,${field('reply_moderation_state')}.eq.live,${field('reply_user_id')}.eq.${userId},${removalNotice}`)
       // A Helpful notice whose mark was withdrawn or made again no longer describes anything.
       .or(`${field('withdrawn')}.is.null`);
     if (blocked.size) {

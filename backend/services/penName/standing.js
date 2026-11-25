@@ -1,6 +1,7 @@
 // Made-up names: what happens after abuse (the design's "Safety" table).
 //
-//   * Two different people reporting a made-up-name post hides it until someone has looked (the rule Moments use).
+//   * Two different people reporting a made-up-name post or reply hides it until someone has looked (the rule Moments
+//     use). A reply whose reports were all dismissed shows again.
 //   * A moderator removing one is a strike on the account behind it: the first is a warning; a second within
 //     STRIKE_WINDOW_DAYS takes the made-up name away for SUSPENSION_DAYS; a removal marked severe (a threat, exposing
 //     someone's private details, anything aimed at a child) takes it away for good.
@@ -27,8 +28,9 @@ const HOLD_RULE = 'pen_name_reports';
 async function holdIfReported(post) {
   if (!owner.isPenNameRow(post)) return false;
   try {
+    // The post's own reports: a report on one of its replies has a comment_id.
     const { data, error } = await supabaseAdmin.from('PostReport').select('reported_by')
-      .eq('post_id', post.id).in('status', ['pending', 'reviewed']);
+      .eq('post_id', post.id).is('comment_id', null).in('status', ['pending', 'reviewed']);
     if (error) throw error;
     if (new Set((data || []).map((row) => row.reported_by)).size < REPORTS_TO_HOLD) return false;
     const now = new Date().toISOString();
@@ -44,11 +46,51 @@ async function holdIfReported(post) {
 }
 
 /**
- * A moderator removed a made-up-name post: the strike on its writer. Returns { level: 'warning' | 'suspended',
- * until } or null when the post wasn't written under a made-up name. `severe`: for good.
+ * The same for a made-up-name reply (PostComment has no moderated_at). Returns true when it was held now. Never throws.
  */
-async function recordRemoval({ postId, severe = false }) {
-  const writer = await owner.ownerOf('post', postId);
+async function holdReplyIfReported(reply) {
+  if (!owner.isPenNameRow(reply)) return false;
+  try {
+    const { data, error } = await supabaseAdmin.from('PostReport').select('reported_by')
+      .eq('comment_id', reply.id).in('status', ['pending', 'reviewed']);
+    if (error) throw error;
+    if (new Set((data || []).map((row) => row.reported_by)).size < REPORTS_TO_HOLD) return false;
+    const { data: held, error: holdError } = await supabaseAdmin.from('PostComment')
+      .update({ moderation_state: 'held', moderation_rule: HOLD_RULE })
+      .eq('id', reply.id).eq('moderation_state', 'live').select('id');
+    if (holdError) throw holdError;
+    return Boolean(held?.length);
+  } catch (error) {
+    logger.warn('penName.reply_hold_failed', { commentId: reply.id, error: error.message });
+    return false;
+  }
+}
+
+/**
+ * After a moderator closes a report on a reply (routes/adminReports.js): a reply held by the reports rule whose reports
+ * were all dismissed (no violation) shows again. One closed as resolved means the moderator agreed something was
+ * wrong, so it stays held. Returns true when it was released now.
+ */
+async function releaseReplyIfReviewed(commentId) {
+  const { data: reply, error } = await supabaseAdmin.from('PostComment').select('id, moderation_state, moderation_rule')
+    .eq('id', commentId).maybeSingle();
+  if (error || !reply || reply.moderation_state !== 'held' || reply.moderation_rule !== HOLD_RULE) return false;
+  const { count, error: countError } = await supabaseAdmin.from('PostReport').select('id', { count: 'exact', head: true })
+    .eq('comment_id', commentId).neq('status', 'dismissed');
+  if (countError || count > 0) return false;
+  const { data, error: updateError } = await supabaseAdmin.from('PostComment')
+    .update({ moderation_state: 'live', moderation_rule: null })
+    .eq('id', commentId).eq('moderation_state', 'held').eq('moderation_rule', HOLD_RULE).select('id');
+  if (updateError) return false;
+  return Boolean(data?.length);
+}
+
+/**
+ * A moderator removed a made-up-name post or reply (`kind` 'post' or 'comment'): the strike on its writer. Returns
+ * { level: 'warning' | 'suspended', until } or null when it wasn't written under a made-up name. `severe`: for good.
+ */
+async function recordRemoval({ postId, kind = 'post', contentId = postId, severe = false }) {
+  const writer = await owner.ownerOf(kind, contentId);
   if (!writer) return null;
   const now = Date.now();
   let level = 'warning';
@@ -68,7 +110,7 @@ async function recordRemoval({ postId, severe = false }) {
   }
   const { error: insertError } = await supabaseAdmin.from('UserPostingCooldown').insert({
     user_id: writer, surface: STANDING_SURFACE, restriction_level: level, expires_at: until, created_by: 'admin',
-    reason: severe ? 'A made-up-name post was removed (severe)' : 'A made-up-name post was removed',
+    reason: `A made-up-name ${kind === 'comment' ? 'reply' : 'post'} was removed${severe ? ' (severe)' : ''}`,
   });
   if (insertError) throw insertError;
   return { level, until };
@@ -95,4 +137,7 @@ async function staffLook({ req, kind, contentId, reason }) {
   return writer;
 }
 
-module.exports = { REPORTS_TO_HOLD, STRIKE_WINDOW_DAYS, SUSPENSION_DAYS, HOLD_RULE, holdIfReported, recordRemoval, staffLook };
+module.exports = {
+  REPORTS_TO_HOLD, STRIKE_WINDOW_DAYS, SUSPENSION_DAYS, HOLD_RULE,
+  holdIfReported, holdReplyIfReported, releaseReplyIfReviewed, recordRemoval, staffLook,
+};

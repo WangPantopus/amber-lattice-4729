@@ -1,11 +1,12 @@
 'use strict';
 
-const { createHash } = require('crypto');
 const db = require('../../config/supabaseAdmin');
 const conversation = require('./conversation');
 const { UUID } = require('./feedCursor');
 const notices = require('./notices');
 const { onlyShownReplies } = require('./readAccess');
+const penName = require('../penName');
+const { fileReplyReport } = require('../postReportService');
 
 // The reasons of today's post report (routes/posts.js reportPostSchema).
 const REPORT_REASONS = new Set(['spam', 'harassment', 'inappropriate', 'misinformation', 'safety', 'other']);
@@ -53,28 +54,25 @@ async function act(postId, replyId, viewerId, action, helpful) {
 }
 
 /** A report about one reply joins the existing post report queue with its comment_id
- * (contract §2.7). One per person per reply; a retry answers the same and never overwrites. */
+ * (contract §2.7). One per person per reply; a retry answers the same and never overwrites
+ * (services/postReportService.js, shared with POST /api/posts/:postId/comments/:commentId/report). */
 async function report(postId, replyId, viewerId, { reason, details } = {}) {
   if (!REPORT_REASONS.has(reason) || (details != null && (typeof details !== 'string' || details.length > 1000))) {
     throw refusal('INVALID_REPORT');
   }
   if (!UUID.test(replyId)) throw refusal('REPLY_NOT_FOUND');
   const context = await conversation.contextFor(postId, viewerId);
-  const { data: reply, error } = await onlyShownReplies(db.from('PostComment').select('id, user_id')
+  const { data: reply, error } = await onlyShownReplies(db.from('PostComment')
+    .select('id, post_id, user_id, identity_context_type, identity_context_id')
     .eq('id', replyId).eq('post_id', context.post.id).eq('is_deleted', false), viewerId).maybeSingle();
   if (error) throw error;
   if (!reply?.user_id || context.blocked.has(reply.user_id)) throw refusal('REPLY_NOT_FOUND');
-  if (reply.user_id === viewerId) throw Object.assign(refusal('OWN_REPLY'), { message: "You can't report your own reply." });
-  const reportId = createHash('sha256')
-    .update(`pantopus:reply-report:v1:${reply.id.toLowerCase()}:${viewerId.toLowerCase()}`)
-    .digest('hex').slice(0, 32);
-  const { data: inserted, error: insertError } = await db.from('PostReport').upsert({
-    id: reportId, post_id: context.post.id, comment_id: reply.id, reported_by: viewerId,
-    reason, details: details || null,
-  }, { onConflict: 'id', ignoreDuplicates: true }).select('id');
-  if (insertError) throw insertError;
-  // Only the request that wrote the row alerts the reviewers.
-  if (inserted?.length) require('../adminAlerts').notifyReportToReview({ kind: 'reply', reason, reportId }).catch(() => {});
+  // A reply under a made-up name is stored under the system account; only its writer's request reads it as theirs.
+  if (reply.user_id === viewerId || (penName.isPenNameRow(reply)
+    && (await penName.owner.mine(viewerId, 'comment', [reply.id])).size > 0)) {
+    throw Object.assign(refusal('OWN_REPLY'), { message: "You can't report your own reply." });
+  }
+  await fileReplyReport({ reply, userId: viewerId, reason, details: details || null });
   return { ok: true };
 }
 

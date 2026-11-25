@@ -15,7 +15,7 @@ type AdminReport = api.admin.AdminReport;
 type ReportStatus = api.admin.ReportStatus;
 type ReportPerson = api.admin.ReportPerson;
 
-const KIND_LABELS: Record<string, string> = { user: 'Person', post: 'Post', gig: 'Task', message: 'Message between homes' };
+const KIND_LABELS: Record<string, string> = { user: 'Person', post: 'Post', reply: 'Reply', gig: 'Task', message: 'Message between homes' };
 const REASON_LABELS: Record<string, string> = {
   spam: 'Spam',
   harassment: 'Harassment',
@@ -39,22 +39,52 @@ function personLabel(p: ReportPerson | null | undefined) {
 function targetHref(report: AdminReport): string | null {
   if (report.kind === 'message') return null;
   if (report.kind === 'post') return `/app/feed/post/${report.target_id}`;
+  if (report.kind === 'reply') {
+    const post = (report.target as { post?: { id: string; missing?: boolean } } | null)?.post;
+    return post && !post.missing ? `/app/feed/post/${post.id}` : null;
+  }
   if (report.kind === 'gig') return `/app/gigs/${report.target_id}`;
   const username = (report.target as ReportPerson | null)?.username;
   return username ? `/${username}` : null;
 }
 
+// A post or reply under a made-up name shows the name, never the person behind it.
+function writerLabel(t: Record<string, any>, by: ReportPerson | null | undefined) {
+  return t.made_up_name ? `${t.made_up_name} (made-up name)` : personLabel(by);
+}
+
+const REPLY_STATE_LABELS: Record<string, string> = { held: 'hidden until reviewed', removed: 'removed' };
+
 function TargetSummary({ report }: { report: AdminReport }) {
   const t = report.target as Record<string, any> | null;
-  if (!t) return <p className="text-sm text-app-text-secondary">This {KIND_LABELS[report.kind].toLowerCase()} no longer exists.</p>;
+  if (!t) return <p className="text-sm text-app-text-secondary">This {(KIND_LABELS[report.kind] || 'item').toLowerCase()} no longer exists.</p>;
   if (report.kind === 'user') return <p className="text-sm font-medium text-app-text">{personLabel(t as ReportPerson)}</p>;
+  if (report.kind === 'reply') {
+    const post = t.post as { title: string | null; excerpt: string; archived: boolean; missing?: boolean } | undefined;
+    return (
+      <div className="space-y-1">
+        {t.excerpt && <p className="text-sm text-app-text line-clamp-3">{t.excerpt}</p>}
+        <p className="text-xs text-app-text-muted">
+          Replied by {writerLabel(t, t.author)}
+          {t.deleted ? ' · deleted by its writer' : ''}
+          {REPLY_STATE_LABELS[t.moderation_state] ? ` · ${REPLY_STATE_LABELS[t.moderation_state]}` : ''}
+        </p>
+        {post && !post.missing && (
+          <p className="text-xs text-app-text-secondary line-clamp-2">
+            On the post: {post.title ? String(post.title).replace(/_/g, ' ') : post.excerpt}
+            {post.archived ? ' · archived' : ''}
+          </p>
+        )}
+      </div>
+    );
+  }
   const by = report.kind === 'gig' ? t.poster : t.author;
   return (
     <div className="space-y-1">
       {t.title && <p className="text-sm font-medium text-app-text">{String(t.title).replace(/_/g, ' ')}</p>}
       {t.excerpt && <p className="text-sm text-app-text-secondary line-clamp-3">{t.excerpt}</p>}
       <p className="text-xs text-app-text-muted">
-        {report.kind === 'message' ? 'Sent by ' : 'Posted by '}{personLabel(by)}
+        {report.kind === 'message' ? 'Sent by ' : 'Posted by '}{writerLabel(t, by)}
         {t.archived ? ' · archived' : ''}
         {t.status ? ` · ${String(t.status).replace(/_/g, ' ')}` : ''}
       </p>
@@ -133,6 +163,28 @@ export default function AdminReportsPage() {
     }
   };
 
+  const removeReply = async (report: AdminReport) => {
+    if (acting) return;
+    const confirmed = await confirmStore.open({
+      title: 'Remove this reply?',
+      description: 'Others will no longer see it, and its writer is told it was removed. Every open report on it is closed.',
+      confirmLabel: 'Remove reply',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setActing(`${report.kind}:${report.id}`);
+    try {
+      const result = await api.admin.removeReportedReply(report.id);
+      toast.success(result.removed ? 'Reply removed' : 'The reply was already gone; report closed');
+      fetchReports();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove the reply');
+      fetchReports();
+    } finally {
+      setActing(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-app-surface">
       {/* Header */}
@@ -187,7 +239,7 @@ export default function AdminReportsPage() {
               return (
                 <li key={key} className="rounded-xl border border-app-border bg-app-surface p-4">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded bg-slate-100 text-slate-700">{KIND_LABELS[report.kind]}</span>
+                    <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded bg-slate-100 text-slate-700">{KIND_LABELS[report.kind] || report.kind}</span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-1 rounded bg-red-50 text-red-700">
                       <Flag className="w-3 h-3" />{REASON_LABELS[report.reason] || report.reason}
                     </span>
@@ -215,7 +267,7 @@ export default function AdminReportsPage() {
                     ) : null}
                     {href && (
                       <Link href={href} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-app-border text-app-text hover:bg-app-hover transition">
-                        Open {KIND_LABELS[report.kind].toLowerCase()}
+                        Open {report.kind === 'reply' ? 'post' : (KIND_LABELS[report.kind] || 'item').toLowerCase()}
                       </Link>
                     )}
                     {status === 'pending' && !report.closable && (
@@ -230,6 +282,15 @@ export default function AdminReportsPage() {
                             className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition"
                           >
                             Remove post
+                          </button>
+                        )}
+                        {report.kind === 'reply' && (report.target as { moderation_state?: string } | null)?.moderation_state !== 'removed' && (
+                          <button
+                            onClick={() => removeReply(report)}
+                            disabled={acting === key}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition"
+                          >
+                            Remove reply
                           </button>
                         )}
                         <button
