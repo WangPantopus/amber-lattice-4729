@@ -39,6 +39,7 @@ public struct PulsePostDetailLoadedContent: View {
     private let onCommentReply: (@MainActor (PostCommentRow) -> Void)?
     private let onCommentLike: (@MainActor (String) -> Void)?
     private let onCommentDelete: (@MainActor (String) -> Void)?
+    private let onCommentReport: (@MainActor (String) -> Void)?
     private let onRefresh: (@Sendable () async -> Void)?
     /// "Ask Pantopus" about this post, under its reactions; nil hides it.
     private let onAsk: (@MainActor () -> Void)?
@@ -69,6 +70,7 @@ public struct PulsePostDetailLoadedContent: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        onCommentReport: (@MainActor (String) -> Void)? = nil,
         onRefresh: (@Sendable () async -> Void)? = nil,
         onAsk: (@MainActor () -> Void)? = nil,
         onOpenQuotedPost: (@MainActor (String) -> Void)? = nil
@@ -96,6 +98,7 @@ public struct PulsePostDetailLoadedContent: View {
         self.onCommentReply = onCommentReply
         self.onCommentLike = onCommentLike
         self.onCommentDelete = onCommentDelete
+        self.onCommentReport = onCommentReport
         self.onRefresh = onRefresh
         self.onAsk = onAsk
         self.onOpenQuotedPost = onOpenQuotedPost
@@ -241,6 +244,7 @@ public struct PulsePostDetailLoadedContent: View {
                     onCommentReply: detail.post.isRemovedByModerator ? nil : onCommentReply,
                     onCommentLike: onCommentLike,
                     onCommentDelete: onCommentDelete,
+                    onCommentReport: onCommentReport,
                     aboveReactions: quotedCard,
                     belowReactions: belowReactions,
                     repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil,

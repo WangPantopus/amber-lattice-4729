@@ -16,6 +16,8 @@ public struct PulsePostDetailView: View {
     @State private var showsReportDialog = false
     @State private var showsDeleteConfirm = false
     @State private var commentPendingDelete: String?
+    /// The October 13 page's reply being reported (its id), for the reasons dialog.
+    @State private var commentPendingReport: String?
     @State private var replyMenu: PulseReplyDTO?
     @State private var replyPendingReport: PulseReplyDTO?
     @State private var isVisible = false
@@ -66,7 +68,7 @@ public struct PulsePostDetailView: View {
 
     public var body: some View {
         @Bindable var bindable = viewModel
-        return replyDialogs
+        return commentReportDialog(replyDialogs)
             .confirmationDialog(
                 "Post options",
                 isPresented: $bindable.showsOverflowMenu,
@@ -311,6 +313,7 @@ public struct PulsePostDetailView: View {
             onCommentReply: { comment in viewModel.beginReply(to: comment) },
             onCommentLike: { id in Task { await viewModel.toggleCommentLike(commentId: id) } },
             onCommentDelete: { id in commentPendingDelete = id },
+            onCommentReport: { id in commentPendingReport = id },
             onRefresh: { [viewModel] in await viewModel.refresh() },
             onAsk: askAction(detail.post),
             onOpenQuotedPost: openQuotedPost
@@ -319,6 +322,21 @@ public struct PulsePostDetailView: View {
 }
 
 extension PulsePostDetailView {
+    /// "Report" under someone else's reply on the October 13 page: the post's reasons, for that reply.
+    private func commentReportDialog(_ content: some View) -> some View {
+        content.confirmationDialog(
+            "Why are you reporting this reply?",
+            isPresented: Binding(get: { commentPendingReport != nil }, set: { if !$0 { commentPendingReport = nil } }),
+            titleVisibility: .visible,
+            presenting: commentPendingReport
+        ) { commentId in
+            ForEach(Self.reportReasons, id: \.token) { reason in
+                Button(reason.label) { Task { await viewModel.reportComment(commentId: commentId, reason: reason.token) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
     /// The author's "Post options". A plan's own post opens its plan, where
     /// Change and Cancel tell everyone, instead of Edit post and Delete post
     /// (the server refuses both for a plan's post).

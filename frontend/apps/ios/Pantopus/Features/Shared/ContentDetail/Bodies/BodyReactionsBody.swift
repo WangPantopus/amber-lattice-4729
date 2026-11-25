@@ -167,6 +167,7 @@ public struct BodyReactionsBody: View {
     private let onCommentReply: (@MainActor (PostCommentRow) -> Void)?
     private let onCommentLike: (@MainActor (String) -> Void)?
     private let onCommentDelete: (@MainActor (String) -> Void)?
+    private let onCommentReport: (@MainActor (String) -> Void)?
     /// Place label for the media grid's map-pin badge (A10.4).
     private let mediaLocationBadge: String?
     /// One line of details under the text, such as a Lost & Found post's
@@ -220,6 +221,7 @@ public struct BodyReactionsBody: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        onCommentReport: (@MainActor (String) -> Void)? = nil,
         aboveReactions: AnyView? = nil,
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
@@ -256,6 +258,7 @@ public struct BodyReactionsBody: View {
         self.onCommentReply = onCommentReply
         self.onCommentLike = onCommentLike
         self.onCommentDelete = onCommentDelete
+        self.onCommentReport = onCommentReport
         self.onCommentAvatarTap = onCommentAvatarTap
     }
 
@@ -392,15 +395,7 @@ public struct BodyReactionsBody: View {
             if !comments.isEmpty {
                 VStack(alignment: .leading, spacing: Spacing.s3) {
                     ForEach(comments) { comment in
-                        CommentRow(
-                            comment: comment,
-                            onAvatarTap: {
-                                if let uid = comment.authorUserId { onCommentAvatarTap(uid) }
-                            },
-                            onReply: onCommentReply.map { handler in { handler(comment) } },
-                            onToggleLike: onCommentLike.map { handler in { handler(comment.id) } },
-                            onDelete: onCommentDelete.map { handler in { handler(comment.id) } }
-                        )
+                        commentRow(comment)
                     }
                     if hiddenReplyCount > 0, let onShowMoreReplies {
                         Button {
@@ -495,6 +490,20 @@ private extension BodyReactionsBody {
         if let replyingToName { return "Reply to \(replyingToName)..." }
         if let composerPrompt { return composerPrompt }
         return threadIsEmpty ? "Be the first to reply..." : "Add a comment"
+    }
+
+    /// One reply with its row of Reply, heart, and Delete (your own) or Report (someone else's).
+    func commentRow(_ comment: PostCommentRow) -> some View {
+        CommentRow(
+            comment: comment,
+            onAvatarTap: {
+                if let uid = comment.authorUserId { onCommentAvatarTap(uid) }
+            },
+            onReply: onCommentReply.map { handler in { handler(comment) } },
+            onToggleLike: onCommentLike.map { handler in { handler(comment.id) } },
+            onDelete: onCommentDelete.map { handler in { handler(comment.id) } },
+            onReport: onCommentReport.map { handler in { handler(comment.id) } }
+        )
     }
 }
 
