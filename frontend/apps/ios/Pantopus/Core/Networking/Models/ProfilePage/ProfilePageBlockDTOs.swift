@@ -33,6 +33,8 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
         /// Something waiting for the owner that this app can't show yet, opened on pantopus.com (the owner's own page,
         /// at the top; CONTRACT "On by default, and what a phone can't show yet").
         case notice(text: String, link: ProfilePageLinkDTO?)
+        /// The work circle (board 9, P2.6).
+        case circle(ProfileCircleDTO)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -93,6 +95,8 @@ public struct ProfilePageBlockDTO: Decodable, Sendable, Hashable, Identifiable {
             content = .owns(list(.lines))
         case "record_chart":
             content = try .recordChart(ProfileRecordChartDTO(from: decoder))
+        case "circle":
+            content = try .circle(ProfileCircleDTO(from: decoder))
         case "more_closer":
             struct Action: Decodable { let kind: String }
             let action = try? c.decodeIfPresent(Action.self, forKey: .action)

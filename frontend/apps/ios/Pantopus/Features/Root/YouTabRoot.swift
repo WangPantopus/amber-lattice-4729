@@ -20,6 +20,8 @@ public enum YouRoute: Hashable {
     case signOutConfirm
     /// Adding or changing a piece on your own Work (the profile with sources, board 10).
     case pieceEditor(ProfilePieceEditorStart)
+    /// Adding or changing a role or school on your own Work (P2.6).
+    case roleEditor(ProfileRoleEditorStart)
     /// B.1 — unified Mailbox root (drawer chips × tabs). Entry point for
     /// mailbox navigation from the You tab.
     case mailboxRoot
@@ -781,6 +783,7 @@ public struct YouTabRoot: View {
         case .myHomes: .myHomes
         case .help, .developerTools: .helpCenter
         case let .piece(start): .pieceEditor(start)
+        case let .role(start): .roleEditor(start)
         }
     }
 
@@ -2341,6 +2344,10 @@ public struct YouTabRoot: View {
             }
         case let .pieceEditor(start):
             ProfilePieceEditor(start: start) { _ in
+                if !path.isEmpty { path.removeLast() }
+            }
+        case let .roleEditor(start):
+            ProfileRoleEditor(start: start) {
                 if !path.isEmpty { path.removeLast() }
             }
         case .myHomes:

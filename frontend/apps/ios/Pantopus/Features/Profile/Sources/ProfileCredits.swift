@@ -313,6 +313,11 @@ private struct ProfileAskRow: View {
     @State private var nameOnLinks = false
     @State private var working = false
     @State private var problem: String?
+    @State private var confirmingNotMe = false
+
+    private var askerFirstName: String {
+        ask.from.name.split(separator: " ").first.map(String.init) ?? ask.from.name
+    }
 
     private var what: String {
         if ask.kind == "role" {
@@ -360,6 +365,14 @@ private struct ProfileAskRow: View {
                     Toggle("Show this piece on my Work too", isOn: $onMyWork).frame(minHeight: 44)
                     Toggle("Show my name on pages opened by a link", isOn: $nameOnLinks).frame(minHeight: 44)
                 }
+                // Nobody signs blind (the web's words).
+                Text(ask.kind == "role"
+                    ? "Signing says you were there. You can take your name off at any time."
+                    : "Signing says you were on this piece. You can take your name off at any time.")
+                    .scaledFont(13)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, Spacing.s1)
                 HStack(spacing: Spacing.s2) {
                     PrimaryButton(title: "Sign", isLoading: working) { await sign() }
                     PantopusButton(title: "Back", kind: .ghost) { signing = false }
@@ -370,7 +383,15 @@ private struct ProfileAskRow: View {
         } else {
             HStack(spacing: Spacing.s2) {
                 PrimaryButton(title: "Sign") { signing = true }
-                PantopusButton(title: "Not me", kind: .ghost, isLoading: working) { await decline() }
+                PantopusButton(title: "Not me", kind: .ghost, isLoading: working) { confirmingNotMe = true }
+            }
+            // "Not me" can't be undone and stops the asker asking again for 30 days: it asks first. An alert, so
+            // "Cancel" shows (a confirmation dialog drawn as a popover leaves it out).
+            .alert("Not you?", isPresented: $confirmingNotMe) {
+                Button("Not me", role: .destructive) { Task { await decline() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Only \(askerFirstName) will see that you didn't confirm.")
             }
         }
     }

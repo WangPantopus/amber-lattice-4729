@@ -134,6 +134,7 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
                 }
             }
         }
+        .profileColumn()
         .background(Theme.Color.appBg)
         .accessibilityIdentifier("profileSourcesPage")
     }
@@ -154,6 +155,10 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
             }
             ProfileBlockList(blocks: tabBlocks(selected), context: context)
                 .padding(.horizontal, Spacing.s4)
+            if selected.key == .work, let editRole = context.editRole, !selected.blocks.contains(where: { $0.id == "worked_learned" }) {
+                ProfileOwnerRolesBlock(title: nil, lines: [], onEdit: editRole)
+                    .padding(.horizontal, Spacing.s4)
+            }
             if let onManagePieces, model.ownerPieces == nil,
                selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
                 ProfileBlockCard(padded: false) {
@@ -290,5 +295,13 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
             await Task.yield()
             scroller.scrollTo(Self.tabsAnchor, anchor: .top)
         }
+    }
+}
+
+extension View {
+    /// The profile's screens on a wide screen (an iPad, the open iPhone Duo): one centred column of Apple's reading
+    /// width, as the web holds its profile, instead of the app's wider iPad column. On a phone nothing changes.
+    @MainActor func profileColumn() -> some View {
+        readableColumn(width: 672)
     }
 }
