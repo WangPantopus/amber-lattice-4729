@@ -249,7 +249,7 @@ async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
 }
 
-// ---------- the work circle (PROFILE_TIES; CONTRACT P2.6) ----------
+// ---------- the work circle (CONTRACT P2.6) ----------
 
 const circleMissing = () => new PageRefusal(404, 'CIRCLE_NOT_FOUND', 'Nothing to show here.');
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

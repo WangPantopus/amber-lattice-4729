@@ -9,11 +9,11 @@
  *   GET /api/profile-page/:username              the page, by the name in the person's link
  *   GET …/piece/:pieceId, …/month/:month         one piece, one month, under the same viewer rules
  *   GET /api/profile-page/marks?ids=…            the ring an avatar wears, for up to 100 people
- *   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   links for one purpose (PROFILE_LINKS)
+ *   POST | PATCH | DELETE /api/profile-page/me/links[/:id]   links for one purpose (on; PROFILE_LINKS=0 turns them off)
  *   GET /api/profile-page/:username/v/:key[/piece/:id | /month/:m]   a link for one purpose, opened by its key
  *   POST | DELETE …/me/pieces/:id/credits[/:creditId], GET /me/asks, POST /me/asks/:id/sign | decline,
- *   PATCH | DELETE /me/ties/:id                 credits and signing (PROFILE_TIES; CONTRACT P2.5)
- *   POST | PATCH | DELETE /me/roles[/:id], GET …/circle[/:userId]   roles, schools and the circle (PROFILE_TIES; P2.6)
+ *   PATCH | DELETE /me/ties/:id                 credits and signing (CONTRACT P2.5; PROFILE_TIES=0 turns them off)
+ *   POST | PATCH | DELETE /me/roles[/:id], GET …/circle[/:userId]   roles, schools and the circle (P2.6; PROFILE_TIES=0 too)
  */
 
 const express = require('express');
@@ -75,7 +75,7 @@ router.post('/me/pieces/:id/links/:linkId/check', verifyToken, linkBudget,
   handle('link-check', (req) => pieces.checkProof(String(req.user.id), req.params.id, req.params.linkId)));
 router.delete('/me/pieces/:id', verifyToken, handle('piece-delete', (req) => pieces.deletePiece(String(req.user.id), req.params.id)));
 
-// Credits, signing and "Asked of you" (CONTRACT P2.5), behind their own switch PROFILE_TIES.
+// Credits, signing and "Asked of you" (CONTRACT P2.5): on; PROFILE_TIES=0 is their emergency off.
 function tiesOn(req, res, next) {
   if (profileTiesEnabled()) return next();
   return res.status(404).json({ error: 'Not found', code: 'PROFILE_TIES_OFF' });
@@ -93,7 +93,7 @@ router.post('/me/roles', verifyToken, tiesOn, handle('role-add', (req) => ties.a
 router.patch('/me/roles/:id', verifyToken, tiesOn, handle('role-change', (req) => ties.updateRole(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/roles/:id', verifyToken, tiesOn, handle('role-remove', (req) => ties.removeRole(String(req.user.id), req.params.id)));
 
-// Links for one purpose (CONTRACT Changes v1.3), behind their own switch PROFILE_LINKS.
+// Links for one purpose (CONTRACT Changes v1.3): on; PROFILE_LINKS=0 is their emergency off.
 function linksOn(req, res, next) {
   if (profileLinksEnabled()) return next();
   return res.status(404).json({ error: 'Not found', code: 'PROFILE_LINKS_OFF' });

@@ -116,7 +116,7 @@ function professionalFrom(row) {
 }
 
 /**
- * Credits on the person's pieces (phase 2B), none while PROFILE_TIES is off. Typed names and signed credits for
+ * Credits on the person's pieces (phase 2B), none after the emergency off PROFILE_TIES=0. Typed names and signed credits for
  * everyone (the composer decides what each view names); asked and "did not confirm" only for the owner, and an ask for
  * the one asked. A credit whose party turned off "Let people name me on their work", or with a block either way
  * between the two, is gone for everyone. Each person credit carries `party_shown`, their name as others see it.
@@ -132,7 +132,7 @@ function creditsFrom(rows, { owner = false, viewerId = null } = {}) {
 }
 
 /**
- * Others' pieces this person signed and shows on their Work ("With <owner>"), none while PROFILE_TIES is off or the
+ * Others' pieces this person signed and shows on their Work ("With <owner>"), none after PROFILE_TIES=0 or while the
  * person's own switch is off. Each carries `owner_shown` (the owner's name as others see it); the composer shows each
  * only to a viewer who may open the owner's piece.
  */
@@ -144,7 +144,7 @@ function withTiesFrom(rows) {
 }
 
 /**
- * Roles and schools (phase 2B), none while PROFILE_TIES is off: typed places, and roles at a business on Pantopus,
+ * Roles and schools (phase 2B), none after PROFILE_TIES=0: typed places, and roles at a business on Pantopus,
  * asked or signed (the composer names the business only where it may). A "Not me" stays for the owner alone. A role
  * whose business turned naming off, or with a block between the person and the business or any of its owners, is
  * gone for everyone.
