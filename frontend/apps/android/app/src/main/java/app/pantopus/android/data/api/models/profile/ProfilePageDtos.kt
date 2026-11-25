@@ -88,6 +88,17 @@ data class ProfilePageFooterDto(
     @Json(name = "as_of") val asOf: String? = null,
 )
 
+/**
+ * `GET …/piece/:pieceId` (contract §5 and P2.2): one piece opened (board 8). The piece stays raw JSON for the mapper,
+ * as blocks do: its `media` is a list in v1's read and the counts in phase 2's.
+ */
+@JsonClass(generateAdapter = true)
+data class ProfilePieceDto(
+    val v: Int? = null,
+    val view: String? = null,
+    val piece: Map<String, Any?>? = null,
+)
+
 /** `GET …/month/:month` (contract §5). */
 @JsonClass(generateAdapter = true)
 data class ProfilePageMonthDto(

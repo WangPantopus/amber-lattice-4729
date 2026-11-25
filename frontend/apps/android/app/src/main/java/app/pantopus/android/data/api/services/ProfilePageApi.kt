@@ -3,6 +3,7 @@ package app.pantopus.android.data.api.services
 import app.pantopus.android.data.api.models.profile.ProfileMarksResponse
 import app.pantopus.android.data.api.models.profile.ProfilePageDto
 import app.pantopus.android.data.api.models.profile.ProfilePageMonthDto
+import app.pantopus.android.data.api.models.profile.ProfilePieceDto
 import app.pantopus.android.data.api.models.profile.ProfileShareDto
 import app.pantopus.android.data.api.models.profile.ProfileShareLinkCreateBody
 import app.pantopus.android.data.api.models.profile.ProfileShareLinkDto
@@ -22,6 +23,7 @@ import retrofit2.http.Query
  * by the server session). Every route answers 404 `PROFILE_SOURCES_OFF` while the backend's `PROFILE_SOURCES` switch is
  * off, and the app then keeps today's profile. `as` is the owner's Preview as: `link`, `member` or `connection`.
  */
+@Suppress("TooManyFunctions")
 interface ProfilePageApi {
     /** `GET /api/profile-page/:username`: the page as this viewer gets it (signed in or not). */
     @GET("api/profile-page/{username}")
@@ -44,6 +46,14 @@ interface ProfilePageApi {
         @Path("month") month: String,
         @Query("as") audience: String? = null,
     ): ProfilePageMonthDto
+
+    /** `GET /api/profile-page/id/:id/piece/:pieceId` (§5, P2.2): one piece opened (board 8). */
+    @GET("api/profile-page/id/{id}/piece/{pieceId}")
+    suspend fun piece(
+        @Path("id") id: String,
+        @Path("pieceId") pieceId: String,
+        @Query("as") audience: String? = null,
+    ): ProfilePieceDto
 
     /** `GET /api/profile-page/me/share`: the main link's parts, the link, and the page a visitor would see. */
     @GET("api/profile-page/me/share")

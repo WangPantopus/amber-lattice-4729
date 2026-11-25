@@ -147,7 +147,12 @@ fun InkGlyph(
 fun inkHow(
     ink: ProfileInk,
     how: String?,
-): String = how?.trim()?.takeIf { it.isNotEmpty() }?.let { "${ink.word} · $it" } ?: ink.word
+): String =
+    how
+        ?.trim()
+        // A how that only repeats the ink ("Said") adds nothing: the word is written once.
+        ?.takeIf { it.isNotEmpty() && !it.equals(ink.word, ignoreCase = true) }
+        ?.let { "${ink.word} · $it" } ?: ink.word
 
 /**
  * One line with its ink (`.ink`): the glyph in a 16 dp column, the text (Said lines in the person's serif), and under

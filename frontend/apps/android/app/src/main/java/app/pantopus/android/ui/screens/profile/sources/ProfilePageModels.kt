@@ -197,6 +197,80 @@ data class WorkPiece(
     val documents: Int,
     val links: Int,
     val line: ProfileLine,
+    /** Phase 2 (P2.1): the started and finished months (`YYYY-MM`), city and state, and pinned. */
+    val fromMonth: String? = null,
+    val toMonth: String? = null,
+    val place: String? = null,
+    val pinned: Boolean = false,
+    /** The owner's view only (P2.1): a draft or a hidden piece reaches nobody else. */
+    val draft: Boolean = false,
+    val hidden: Boolean = false,
+) {
+    /** The year the piece belongs to: its finished month, else its started month, else the year in its "when". */
+    val year: Int?
+        get() =
+            (toMonth ?: fromMonth)?.take(YEAR_CHARS)?.toIntOrNull()
+                ?: whenText?.let { Regex("""\b(\d{4})\b""").findAll(it).lastOrNull()?.value?.toIntOrNull() }
+
+    /** The month in words without its year ("August"), for a list already split by year. */
+    val monthWord: String?
+        get() = whenText?.replace(Regex("""\s*\b\d{4}\b\s*"""), " ")?.trim()?.takeIf { it.isNotEmpty() }
+
+    private companion object {
+        const val YEAR_CHARS = 4
+    }
+}
+
+/** A piece's dot on the work line (board 7). */
+data class WorkDot(
+    val pieceId: String,
+    val year: Int,
+    /** 0–11 */
+    val month: Int,
+    val ink: ProfileInk?,
+)
+
+/** One attachment on an opened piece (P2.2): a photo, a video or a document. */
+data class PieceAttachment(
+    val id: String,
+    val kind: Kind,
+    val url: String,
+    val thumbnailUrl: String?,
+    val title: String?,
+    /** "Video · 48 seconds", "Document · PDF" */
+    val detail: String?,
+) {
+    enum class Kind { Photo, Video, Document }
+}
+
+/** A link on a piece, read by the server into a card of words (P2.4, board 11): never a picture from the page. */
+data class PieceLinkCard(
+    val url: String,
+    /** site | video | code | app | article | paper */
+    val kind: String,
+    val site: String?,
+    val title: String?,
+    val description: String?,
+    val ink: ProfileInk,
+    val how: String?,
+)
+
+/** One piece opened (board 8, contract §5 and P2.2). */
+data class ProfilePieceDetail(
+    val piece: WorkPiece,
+    /** The person's own words, Said. */
+    val description: ProfileLine?,
+    /** Each source its own line: the job or plan (Seen), each signed credit (Signed), the person's words (Said). */
+    val howWeKnow: List<ProfileLine>,
+    val showsCan: List<String>,
+    /** Photos and videos, in the person's order, for the pager. */
+    val gallery: List<PieceAttachment>,
+    /** Videos and documents, listed under "Attached". */
+    val attached: List<PieceAttachment>,
+    val links: List<PieceLinkCard>,
+    /** What the person who hired them wrote (v1.2 review lines, with who and when). */
+    val written: List<ProfileLine>,
+    val keptOnce: String?,
 )
 
 /** An owned thing: a business, a credential, a tool, with its badge. */
@@ -284,14 +358,16 @@ sealed interface ProfileBlock {
         val subtitle: String?,
         val pieces: List<WorkPiece>,
         val more: ProfileMore?,
+        /** The kinds a viewer can narrow the list to (board 7's All / Did / Built): `all`, `did`, `built`, `owns`. */
+        val filters: List<String> = emptyList(),
     ) : ProfileBlock
 
     data class WorkRings(
         override val id: String,
         override val title: String?,
         val rings: ProfileRings,
-        /** piece id → (year, month 0–11) */
-        val dots: List<Triple<String, Int, Int>>,
+        /** A dot a piece, at its year and month (0–11); its ink when the server sends it. */
+        val dots: List<WorkDot>,
         val years: List<Pair<Int, Int>>,
     ) : ProfileBlock
 
