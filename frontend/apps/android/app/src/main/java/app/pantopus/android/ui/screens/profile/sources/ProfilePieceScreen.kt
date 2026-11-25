@@ -75,6 +75,7 @@ internal fun ProfilePieceScreen(
     onRetry: () -> Unit,
     onOpenLink: (ProfilePageLink) -> Unit,
     onEdit: (() -> Unit)? = null,
+    credits: PieceCreditActions? = null,
 ) {
     Column(Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("profileSources.piece")) {
         PieceTopBar(onBack, onEdit?.takeIf { state is ProfilePieceState.Ready })
@@ -94,7 +95,14 @@ internal fun ProfilePieceScreen(
                     action = "Try again",
                     onAction = onRetry,
                 )
-            is ProfilePieceState.Ready -> PieceContent(state.detail, firstName, onOpenLink)
+            is ProfilePieceState.Ready ->
+                PieceContent(
+                    detail = state.detail,
+                    firstName = firstName,
+                    onOpenLink = onOpenLink,
+                    // Someone else's piece (a "With" piece): no owner row from this page's header.
+                    credits = if (state.foreign) credits?.copy(owner = null) else credits,
+                )
         }
     }
 }
@@ -141,6 +149,7 @@ private fun PieceContent(
     detail: ProfilePieceDetail,
     firstName: String,
     onOpenLink: (ProfilePageLink) -> Unit,
+    credits: PieceCreditActions?,
 ) {
     val piece = detail.piece
     var viewer by remember { mutableStateOf<Pair<List<PostMediaItem>, Int>?>(null) }
@@ -183,6 +192,15 @@ private fun PieceContent(
                         detail.howWeKnow.forEach { line -> InkLineRow(line, onOpen = open(line.link)) }
                     }
                 }
+            }
+            if (credits != null) {
+                WhoWasOnIt(
+                    detail = detail,
+                    owner = credits.owner,
+                    onOpenPerson = credits.onOpenPerson,
+                    onTakeNameOff = { credits.onTakeNameOff(it.id) },
+                    onChangeChoices = credits.onChangeChoices,
+                )
             }
             if (detail.showsCan.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

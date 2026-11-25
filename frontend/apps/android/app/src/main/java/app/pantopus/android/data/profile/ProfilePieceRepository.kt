@@ -8,9 +8,14 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.ui.screens.profile.sources.OwnerPieces
 import app.pantopus.android.ui.screens.profile.sources.PieceAttachment
+import app.pantopus.android.ui.screens.profile.sources.PieceCredit
 import app.pantopus.android.ui.screens.profile.sources.PieceLinkCard
 import app.pantopus.android.ui.screens.profile.sources.PieceProof
+import app.pantopus.android.ui.screens.profile.sources.ProfileAsk
+import app.pantopus.android.ui.screens.profile.sources.TieChoices
 import app.pantopus.android.ui.screens.profile.sources.WorkPiece
+import app.pantopus.android.ui.screens.profile.sources.mapAsks
+import app.pantopus.android.ui.screens.profile.sources.mapCredit
 import app.pantopus.android.ui.screens.profile.sources.mapHowItWillShow
 import app.pantopus.android.ui.screens.profile.sources.mapLinkCard
 import app.pantopus.android.ui.screens.profile.sources.mapOwnerPieces
@@ -175,6 +180,69 @@ class ProfilePieceRepository
                 }
                 is NetworkResult.Failure -> result
             }
+
+        /** Asks a person (by [userId]) to sign, or names someone not on Pantopus ([name]); the owner's view of the credit. */
+        suspend fun addCredit(
+            pieceId: String,
+            userId: String?,
+            name: String?,
+            role: String?,
+            relation: String,
+        ): NetworkResult<PieceCredit> {
+            val body =
+                JSONObject().apply {
+                    userId?.let { put("user_id", it) }
+                    name?.let { put("name", it) }
+                    put("role", role ?: JSONObject.NULL)
+                    put("relation", relation)
+                }.toBody()
+            return when (val result = safeApiCall { api.addCredit(pieceId, body) }) {
+                is NetworkResult.Success -> {
+                    store.markEdited(StoreTopics.PROFILE_ME)
+                    mapCredit(result.data)?.let { NetworkResult.Success(it) } ?: NetworkResult.Failure(NetworkError.NotFound)
+                }
+                is NetworkResult.Failure -> result
+            }
+        }
+
+        suspend fun removeCredit(
+            pieceId: String,
+            creditId: String,
+        ): NetworkResult<Unit> = done { api.removeCredit(pieceId, creditId) }
+
+        /** What others asked this person to sign; none where credits aren't served (404). */
+        suspend fun asks(): NetworkResult<List<ProfileAsk>> =
+            when (val result = safeApiCall { api.asks() }) {
+                is NetworkResult.Success -> NetworkResult.Success(mapAsks(result.data))
+                is NetworkResult.Failure -> if (result.error == NetworkError.NotFound) NetworkResult.Success(emptyList()) else result
+            }
+
+        suspend fun sign(
+            askId: String,
+            choices: TieChoices,
+        ): NetworkResult<Unit> = done { api.signAsk(askId, choices.toBody()) }
+
+        suspend fun decline(askId: String): NetworkResult<Unit> = done { api.declineAsk(askId) }
+
+        suspend fun updateTie(
+            tieId: String,
+            choices: TieChoices,
+        ): NetworkResult<Unit> = done { api.updateTie(tieId, choices.toBody()) }
+
+        /** The signer takes their name off: it leaves the piece, their Work and the circle at once. */
+        suspend fun removeTie(tieId: String): NetworkResult<Unit> = done { api.removeTie(tieId) }
+
+        private suspend fun done(call: suspend () -> Map<String, Any?>): NetworkResult<Unit> =
+            when (val result = safeApiCall { call() }) {
+                is NetworkResult.Success -> {
+                    store.markEdited(StoreTopics.PROFILE_ME)
+                    NetworkResult.Success(Unit)
+                }
+                is NetworkResult.Failure -> result
+            }
+
+        private fun TieChoices.toBody(): RequestBody =
+            JSONObject().put("show_on_my_work", showOnMyWork).put("show_name_on_links", showNameOnLinks).toBody()
 
         private fun PieceFields.toJson(forCreate: Boolean): JSONObject =
             JSONObject().apply {

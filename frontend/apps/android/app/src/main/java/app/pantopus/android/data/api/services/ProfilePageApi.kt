@@ -98,6 +98,50 @@ interface ProfilePageApi {
         @Path("linkId") linkId: String,
     ): Map<String, Any?>
 
+    /** `POST …/me/pieces/:id/credits` (P2.5): ask a person (`user_id`) or name someone (`name`), with a role and relation. */
+    @POST("api/profile-page/me/pieces/{id}/credits")
+    suspend fun addCredit(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `DELETE …/me/pieces/:id/credits/:creditId` (P2.5): the owner takes a credit off their piece. */
+    @DELETE("api/profile-page/me/pieces/{id}/credits/{creditId}")
+    suspend fun removeCredit(
+        @Path("id") id: String,
+        @Path("creditId") creditId: String,
+    ): Map<String, Any?>
+
+    /** `GET /me/asks` (P2.5): what others asked this person to sign. */
+    @GET("api/profile-page/me/asks")
+    suspend fun asks(): Map<String, Any?>
+
+    /** `POST /me/asks/:id/sign` (P2.5) with the two choices. */
+    @POST("api/profile-page/me/asks/{id}/sign")
+    suspend fun signAsk(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `POST /me/asks/:id/decline` (P2.5): "Not me". */
+    @POST("api/profile-page/me/asks/{id}/decline")
+    suspend fun declineAsk(
+        @Path("id") id: String,
+    ): Map<String, Any?>
+
+    /** `PATCH /me/ties/:id` (p2.6): the signer changes their two choices. */
+    @PATCH("api/profile-page/me/ties/{id}")
+    suspend fun updateTie(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `DELETE /me/ties/:id` (P2.5): the signer takes their name off. */
+    @DELETE("api/profile-page/me/ties/{id}")
+    suspend fun removeTie(
+        @Path("id") id: String,
+    ): Map<String, Any?>
+
     /** `GET /api/profile-page/me/share`: the main link's parts, the link, and the page a visitor would see. */
     @GET("api/profile-page/me/share")
     suspend fun share(): ProfileShareDto

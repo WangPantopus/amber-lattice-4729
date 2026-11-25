@@ -54,6 +54,9 @@ import javax.inject.Inject
 /** Nav-arg key for the user ID. */
 const val PUBLIC_PROFILE_USER_ID_KEY = "userId"
 
+/** The profile with sources' tab to open first (`work` from a "sign this piece" notification), if any. */
+const val PUBLIC_PROFILE_TAB_KEY = "tab"
+
 /**
  * P6.5 — Profile-kind discriminator that swaps the chrome between the
  * Persona (creator) and Local (verified neighbor) variants. Persona is
@@ -298,6 +301,9 @@ class PublicProfileViewModel
          * The raw nav arg — may be a UUID or a `@handle`. ☰ → Your profile opens this screen with no arg: then it is
          * the signed-in person's own page.
          */
+        /** The tab the link asked for (`/u/:id?tab=work`); null opens the first tab. */
+        val initialTab: String? = savedStateHandle.get<String>(PUBLIC_PROFILE_TAB_KEY)
+
         private val routeIdentifier: String =
             savedStateHandle.get<String>(PUBLIC_PROFILE_USER_ID_KEY)
                 ?: (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id

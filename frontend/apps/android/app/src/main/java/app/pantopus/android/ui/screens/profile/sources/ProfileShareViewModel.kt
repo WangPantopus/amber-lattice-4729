@@ -61,6 +61,8 @@ data class ProfileShareState(
     val linksNote: String? = null,
     /** P2.5: the pieces a link shows, of the pieces on Work ("12 of your 18 pieces"); null before phase 2. */
     val workPieces: Pair<Int, Int>? = null,
+    /** P2.5: "Let people name me on their work"; null where credits aren't served (no row). */
+    val tiesEnabled: Boolean? = null,
 )
 
 /** A link's page as its visitor gets it, or why it isn't there. */
@@ -182,6 +184,16 @@ class ProfileShareViewModel
         }
 
         /** Links for one purpose on or off for this person: off, none of their links open and none can be made. */
+
+        /** "Let people name me on their work": off, nobody can ask this person and credits they signed stop showing. */
+        fun setTiesEnabled(on: Boolean) {
+            val loaded = _state.value as? ProfileShareUiState.Loaded ?: return
+            if (TIES in loaded.saving) return
+            val before = loaded.share
+            _state.value = loaded.copy(share = before.copy(tiesEnabled = on), saving = loaded.saving + TIES)
+            save(ProfileShareUpdateBody(tiesEnabled = on), TIES, before)
+        }
+
         fun setLinksEnabled(on: Boolean) {
             val loaded = _state.value as? ProfileShareUiState.Loaded ?: return
             if (LINKS in loaded.saving) return
@@ -315,6 +327,7 @@ class ProfileShareViewModel
                 linksOpen = dto.linksOpen != false,
                 linksNote = dto.linksNote?.takeIf { it.isNotBlank() },
                 links = dto.links.orEmpty().mapNotNull(::mapLink),
+                tiesEnabled = dto.tiesEnabled,
                 workPieces =
                     dto.workPieces?.let { counts ->
                         val total = counts.total ?: return@let null
@@ -340,6 +353,7 @@ class ProfileShareViewModel
         private companion object {
             const val SEARCH = "search_engines"
             const val LINKS = "links_enabled"
+            const val TIES = "ties_enabled"
             const val DAY_CHARS = 10
         }
     }

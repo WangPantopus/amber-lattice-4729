@@ -442,6 +442,7 @@ import app.pantopus.android.ui.screens.posts.PulsePostDetailScreen
 import app.pantopus.android.ui.screens.profile.EditProfileScreen
 import app.pantopus.android.ui.screens.profile.NamePromptViewModel
 import app.pantopus.android.ui.screens.profile.OwnerNavigation
+import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_TAB_KEY
 import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_USER_ID_KEY
 import app.pantopus.android.ui.screens.profile.PublicProfileScreen
 import app.pantopus.android.ui.screens.profile.professional.ProfessionalProfileScreen
@@ -1061,7 +1062,7 @@ private object ChildRoutes {
 
     fun propertyCorrection(homeId: String): String = "homes/$homeId/property/correction"
 
-    const val PUBLIC_PROFILE = "users/{$PUBLIC_PROFILE_USER_ID_KEY}"
+    const val PUBLIC_PROFILE = "users/{$PUBLIC_PROFILE_USER_ID_KEY}?tab={$PUBLIC_PROFILE_TAB_KEY}"
 
     /** P1.6 — Typed Business **public** profile screen (A10.6). `businessId`
      *  is the business User UUID. Lives at the singular `business/{id}` so the
@@ -1671,7 +1672,10 @@ private object ChildRoutes {
             "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}=${java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")}"
 
     /** Build the concrete path for a public profile. */
-    fun publicProfile(id: String): String = "users/$id"
+    fun publicProfile(
+        id: String,
+        tab: String? = null,
+    ): String = if (tab == null) "users/$id" else "users/$id?tab=$tab"
 
     /** A Pulse card's author: a person's profile, or a business's page (`/business/:key`, as the post page opens it). */
     fun pulseAuthor(link: PulseAuthorLink): String =
@@ -3076,7 +3080,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.User -> {
-                navController.navigate(ChildRoutes.publicProfile(pending.id))
+                navController.navigate(ChildRoutes.publicProfile(pending.id, pending.tab))
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.BeaconProfile -> {
@@ -5755,7 +5759,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 }
                 composable(
                     route = ChildRoutes.PUBLIC_PROFILE,
-                    arguments = listOf(navArgument(PUBLIC_PROFILE_USER_ID_KEY) { type = NavType.StringType }),
+                    arguments =
+                        listOf(
+                            navArgument(PUBLIC_PROFILE_USER_ID_KEY) { type = NavType.StringType },
+                            navArgument(PUBLIC_PROFILE_TAB_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
                 ) { profileEntry ->
                     val youViewModel: YouViewModel = hiltViewModel()
                     PublicProfileScreen(

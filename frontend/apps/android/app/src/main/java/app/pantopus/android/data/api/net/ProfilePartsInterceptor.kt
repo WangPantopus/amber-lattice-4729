@@ -20,7 +20,7 @@ class ProfilePartsInterceptor : Interceptor {
         const val HEADER = "X-Pantopus-Profile-Parts"
         private const val PATH = "/api/profile-page"
 
-        /** What this build draws. Later: credits, roles, circle, known_for, doors, shelf, each with its screens. */
-        val PARTS = listOf("pieces")
+        /** What this build draws. Later: roles, circle, known_for, doors, shelf, each with its screens. */
+        val PARTS = listOf("pieces", "credits")
     }
 }

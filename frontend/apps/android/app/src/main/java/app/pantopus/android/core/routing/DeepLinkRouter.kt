@@ -169,7 +169,11 @@ object DeepLinkRouter {
          */
         data class Conversation(val id: String, val name: String? = null) : Destination
 
-        data class User(val id: String) : Destination
+        /** `/u/:id`, with the profile tab to open (`?tab=work`, from a "sign this piece" notification). */
+        data class User(
+            val id: String,
+            val tab: String? = null,
+        ) : Destination
 
         /** `pantopus://persona/:handle` or `/@handle` — public Beacon profile. */
         data class BeaconProfile(val handle: String) : Destination
@@ -1214,7 +1218,11 @@ object DeepLinkRouter {
             }
             "user", "users", "u" -> {
                 val id = segments.getOrNull(1)
-                if (id.isNullOrBlank()) Destination.Unknown(raw) else Destination.User(id)
+                if (id.isNullOrBlank()) {
+                    Destination.Unknown(raw)
+                } else {
+                    Destination.User(id, tabQuery?.lowercase()?.takeIf { it == "work" || it == "record" })
+                }
             }
             "b" -> {
                 // Public business short link `pantopus://b/:username` and its

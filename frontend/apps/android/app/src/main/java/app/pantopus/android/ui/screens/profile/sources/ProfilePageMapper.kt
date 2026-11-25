@@ -372,6 +372,7 @@ private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
         hidden = map["hidden"] == true,
         audience = map.str("audience")?.takeIf { it in AUDIENCES },
         withName = map.obj("with")?.str("name"),
+        tieId = map.str("tie_id"),
     )
 }
 
@@ -417,8 +418,72 @@ fun mapProfilePiece(dto: ProfilePieceDto): ProfilePieceDetail? {
         attachments = attachments,
         ownerRole = map.str("owner_role"),
         howItWillShow = map.strs("how_it_will_show"),
+        credits = map.objs("credits").mapNotNull(::mapCredit),
+        suggested = map.objs("suggested_credits").mapNotNull(::mapSuggested),
     )
 }
+
+/** A credit (P2.5, p2.7); null without an id or anything to call the party. */
+fun mapCredit(map: Map<String, Any?>): PieceCredit? {
+    val id = map.str("id") ?: return null
+    val party = map.obj("party") ?: return null
+    val name = party.str("name")
+    val did = party.str("did")
+    if (name == null && did == null) return null
+    return PieceCredit(
+        id = id,
+        name = name,
+        did = did,
+        userId = party.str("user_id"),
+        username = party.str("username"),
+        portraitUrl = party.str("portrait_url"),
+        typed = party["typed"] == true,
+        role = map.str("role"),
+        relation = map.str("relation") ?: "with",
+        ink = ProfileInk.fromApi(map.str("ink")),
+        how = map.str("how"),
+        status = map.str("status") ?: if (ProfileInk.fromApi(map.str("ink")) == ProfileInk.Signed) "signed" else "said",
+        mine =
+            map.obj("mine")?.let { mine ->
+                TieChoices(showOnMyWork = mine["show_on_my_work"] != false, showNameOnLinks = mine["show_name_on_links"] == true)
+            },
+    )
+}
+
+private fun mapSuggested(map: Map<String, Any?>): SuggestedCredit? {
+    val userId = map.str("user_id") ?: return null
+    val name = map.str("name") ?: return null
+    return SuggestedCredit(
+        userId = userId,
+        name = name,
+        username = map.str("username"),
+        portraitUrl = map.str("portrait_url"),
+        relation = map.str("relation") ?: "for",
+        role = map.str("role"),
+        why = map.str("why"),
+    )
+}
+
+/** `GET /me/asks` (P2.5). */
+fun mapAsks(map: Map<String, Any?>): List<ProfileAsk> =
+    map.objs("asks").mapNotNull { ask ->
+        val id = ask.str("id") ?: return@mapNotNull null
+        val from = ask.obj("from")
+        val piece = ask.obj("piece")
+        ProfileAsk(
+            id = id,
+            kind = ask.str("kind") ?: "credit",
+            fromName = from?.str("name") ?: return@mapNotNull null,
+            fromUserId = from.str("user_id"),
+            fromPortraitUrl = from.str("portrait_url"),
+            pieceId = piece?.str("id"),
+            pieceTitle = piece?.str("title"),
+            pieceWhen = piece?.str("when"),
+            pieceCoverUrl = piece?.str("cover_url"),
+            role = ask.str("role"),
+            relation = ask.str("relation"),
+        )
+    }
 
 /** A link on a piece as a card of words (P2.4); null for anything but a public http(s) page. */
 fun mapLinkCard(link: Map<String, Any?>): PieceLinkCard? {

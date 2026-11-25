@@ -37,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.profile.sources.AskedOfYou
 import app.pantopus.android.ui.screens.profile.sources.OwnerWorkStart
+import app.pantopus.android.ui.screens.profile.sources.PieceCreditActions
 import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequest
 import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequestSaver
 import app.pantopus.android.ui.screens.profile.sources.PieceEditorResult
@@ -53,6 +55,7 @@ import app.pantopus.android.ui.screens.profile.sources.ProfilePieceEditor
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceScreen
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceState
 import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
+import app.pantopus.android.ui.screens.profile.sources.ProfileTiesViewModel
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
 import app.pantopus.android.ui.screens.profile.sources.SourcesFrameSlots
@@ -91,6 +94,8 @@ internal class SourcesHostCallbacks(
     val onOpenPiece: (pieceId: String, ownerId: String?) -> Unit = { _, _ -> },
     val onClosePiece: () -> Unit = {},
     val onRetryPiece: () -> Unit = {},
+    /** A short line over the page ("Signed."), in the profile's toast. */
+    val onToast: (String) -> Unit = {},
 )
 
 /**
@@ -121,6 +126,26 @@ internal fun ProfileSourcesPage(
     val ownerWork: ProfileOwnerWorkViewModel? = if (owner != null && preview == null) hiltViewModel() else null
     val ownerPieces = ownerWork?.state?.collectAsStateWithLifecycle()?.value
     LaunchedEffect(ownerWork) { ownerWork?.load() }
+    // Signing (P2.5): "Asked of you" on the owner's own Work, and a signer's own choices on any piece they signed.
+    val ties: ProfileTiesViewModel? = if (preview == null && viewerId != null) hiltViewModel() else null
+    val asks = ties?.asks?.collectAsStateWithLifecycle()?.value.orEmpty()
+    val asksBusy = ties?.busy?.collectAsStateWithLifecycle()?.value.orEmpty()
+    val tiesNotice = ties?.notice?.collectAsStateWithLifecycle()?.value
+    val tiesChanged = ties?.changed?.collectAsStateWithLifecycle()?.value ?: 0
+    LaunchedEffect(ties, owner != null) { if (owner != null) ties?.loadAsks() }
+    LaunchedEffect(tiesNotice) {
+        tiesNotice?.let {
+            host.onToast(it)
+            ties?.dismissNotice()
+        }
+    }
+    LaunchedEffect(tiesChanged) {
+        if (tiesChanged > 0) {
+            ownerWork?.load()
+            host.onPiecesChanged()
+            if (piece != null) host.onRetryPiece()
+        }
+    }
     var editor by rememberSaveable(stateSaver = PieceEditorRequestSaver) { mutableStateOf<PieceEditorRequest?>(null) }
 
     fun openEditor(
@@ -207,11 +232,20 @@ internal fun ProfileSourcesPage(
             workStart =
                 owner?.takeIf { preview == null }?.let {
                     {
-                        OwnerWorkStart(
-                            offers = ownerPieces?.offered.orEmpty(),
-                            onStart = { offer -> openEditor(pieceId = null, offer = offer) },
-                            onAdd = { openEditor(pieceId = null, offer = null) },
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            AskedOfYou(
+                                asks = asks,
+                                busy = asksBusy,
+                                onOpen = { ask -> ask.pieceId?.let { id -> host.onOpenPiece(id, ask.fromUserId) } },
+                                onSign = { ask, choices -> ties?.sign(ask, choices) },
+                                onDecline = { ask -> ties?.decline(ask) },
+                            )
+                            OwnerWorkStart(
+                                offers = ownerPieces?.offered.orEmpty(),
+                                onStart = { offer -> openEditor(pieceId = null, offer = offer) },
+                                onAdd = { openEditor(pieceId = null, offer = null) },
+                            )
+                        }
                     }
                 },
             pageEnd = {
@@ -265,6 +299,15 @@ internal fun ProfileSourcesPage(
                     onEdit =
                         { openEditor(pieceId = piece.id, offer = null) }
                             .takeIf { owner != null && preview == null && (piece as? ProfilePieceState.Ready)?.foreign != true },
+                    credits =
+                        ties?.let { vm ->
+                            PieceCreditActions(
+                                owner = header,
+                                onOpenPerson = { id -> if (id != header.userId) host.onOpenProfile(id) },
+                                onTakeNameOff = vm::takeNameOff,
+                                onChangeChoices = vm::change,
+                            )
+                        },
                 )
             }
         }

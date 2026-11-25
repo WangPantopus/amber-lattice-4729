@@ -253,6 +253,20 @@ internal fun ProfileShareSheet(
                                     share = share,
                                     saving = s.saving,
                                     onToggle = model::setPart,
+                                    trailing = {
+                                        // P2.5: the person's own choice (not a switch of the app's): off, nobody can ask them.
+                                        share.tiesEnabled?.let { on ->
+                                            SourcesDivider()
+                                            ShareSwitchRow(
+                                                title = "Let people name me on their work",
+                                                note = "People you worked with can ask you to sign their pieces.",
+                                                on = on,
+                                                enabled = "ties_enabled" !in s.saving,
+                                                tag = "profileSources.share.ties",
+                                                onToggle = model::setTiesEnabled,
+                                            )
+                                        }
+                                    },
                                 )
                                 PartsCard(
                                     title = "Reaching you",

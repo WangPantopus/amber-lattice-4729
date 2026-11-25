@@ -211,6 +211,8 @@ data class WorkPiece(
     val audience: String? = null,
     /** A piece this person signed on someone else's Work ("With Maria Kovács", p2.5): that owner's name. */
     val withName: String? = null,
+    /** The signer's own view of such a piece: the tie, to take their name off (p2.5). */
+    val tieId: String? = null,
 ) {
     /** The year the piece belongs to: its finished month, else its started month, else the year in its "when". */
     val year: Int?
@@ -286,6 +288,64 @@ data class ProfilePieceDetail(
     /** The owner's view only: their own part ("Lead carpenter") and "How this piece will show", as the server says. */
     val ownerRole: String? = null,
     val howItWillShow: List<String> = emptyList(),
+    /** Who was on it (P2.5): signed credits and typed names for everyone; asks and "did not confirm" for the owner. */
+    val credits: List<PieceCredit> = emptyList(),
+    /** The owner only (p2.6): the person who hired them, when they can be asked now. */
+    val suggested: List<SuggestedCredit> = emptyList(),
+)
+
+/** One person on a piece (P2.5): a person on Pantopus or a typed name, what they did, and where the credit stands. */
+data class PieceCredit(
+    val id: String,
+    /** Null where this view may not name them: then [did] says what they did ("A painter"). */
+    val name: String?,
+    val did: String?,
+    val userId: String?,
+    val username: String?,
+    val portraitUrl: String?,
+    val typed: Boolean,
+    val role: String?,
+    /** with | led | learned_from | for */
+    val relation: String,
+    val ink: ProfileInk,
+    val how: String?,
+    /** signed | said | asked | did_not_confirm (the last two only the owner sees) */
+    val status: String,
+    /** The viewer's own signed credit (p2.7): their two choices; null on anyone else's. */
+    val mine: TieChoices?,
+)
+
+/** A signer's two choices: the piece on their own Work, and their name on pages opened by a link. */
+data class TieChoices(
+    val showOnMyWork: Boolean,
+    val showNameOnLinks: Boolean,
+)
+
+/** Someone the owner can ask right now (p2.6), with why ("who hired you"). */
+data class SuggestedCredit(
+    val userId: String,
+    val name: String,
+    val username: String?,
+    val portraitUrl: String?,
+    val relation: String,
+    val role: String?,
+    val why: String?,
+)
+
+/** Something another person asked this person to sign (P2.5 `GET /me/asks`). */
+data class ProfileAsk(
+    val id: String,
+    /** credit | role */
+    val kind: String,
+    val fromName: String,
+    val fromUserId: String?,
+    val fromPortraitUrl: String?,
+    val pieceId: String?,
+    val pieceTitle: String?,
+    val pieceWhen: String?,
+    val pieceCoverUrl: String?,
+    val role: String?,
+    val relation: String?,
 )
 
 /** A job done or a plan hosted that is not yet a piece (board 10's top): one tap starts a piece from it. */

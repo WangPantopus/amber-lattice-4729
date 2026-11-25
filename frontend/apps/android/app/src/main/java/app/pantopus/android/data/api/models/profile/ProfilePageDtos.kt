@@ -136,6 +136,8 @@ data class ProfileShareDto(
     @Json(name = "links_note") val linksNote: String? = null,
     /** P2.5: the Work row's "12 of your 18 pieces", counted from each piece's who-sees-it. */
     @Json(name = "work_pieces") val workPieces: ProfileWorkPiecesDto? = null,
+    /** p2.5: "Let people name me on their work"; absent where credits aren't served. */
+    @Json(name = "ties_enabled") val tiesEnabled: Boolean? = null,
 )
 
 /** `GET /me/share`'s `work_pieces` (P2.5): pieces a link shows, of the pieces on Work. */
@@ -183,6 +185,8 @@ data class ProfileShareUpdateBody(
     val parts: Map<String, String>? = null,
     @Json(name = "search_engines") val searchEngines: Boolean? = null,
     @Json(name = "links_enabled") val linksEnabled: Boolean? = null,
+    /** p2.5: "Let people name me on their work" (the person's own choice, not a switch). */
+    @Json(name = "ties_enabled") val tiesEnabled: Boolean? = null,
 )
 
 /** `GET /api/profile-page/marks?ids=…` (contract §7): the outer ring for avatars (board 6). */

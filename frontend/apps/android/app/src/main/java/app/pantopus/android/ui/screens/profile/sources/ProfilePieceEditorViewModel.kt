@@ -7,12 +7,14 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.links.LinkPreviewRepository
 import app.pantopus.android.data.profile.AttachmentRef
 import app.pantopus.android.data.profile.PieceFields
 import app.pantopus.android.data.profile.ProfilePageRepository
 import app.pantopus.android.data.profile.ProfilePieceRepository
+import app.pantopus.android.data.relationships.RelationshipsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +94,16 @@ data class PieceEditorState(
     /** Anything changed since it opened: closing then asks first. */
     val dirty: Boolean = false,
     val removed: Boolean = false,
+    /** Who was on it (P2.5), changed at once (not part of Save): each person and where their credit stands. */
+    val credits: List<PieceCredit> = emptyList(),
+    /** People the owner can ask right now (p2.6), such as the person who hired them. */
+    val suggested: List<SuggestedCredit> = emptyList(),
+    /** The owner's connections, for "Add a person"; read when the sheet opens. */
+    val connections: List<CreditCandidate> = emptyList(),
+    val creditSaving: Boolean = false,
+    val creditNotice: String? = null,
+    /** Counts each person added: the add sheet closes when it moves. */
+    val creditsAdded: Int = 0,
 ) {
     val count: Int get() = attachments.size + links.size
     val room: Int get() = (MAX_ATTACHMENTS - count).coerceAtLeast(0)
@@ -117,6 +129,7 @@ class ProfilePieceEditorViewModel
         private val pieces: ProfilePieceRepository,
         private val pages: ProfilePageRepository,
         private val linkPreviews: LinkPreviewRepository,
+        private val relationships: RelationshipsRepository,
         @ApplicationContext private val context: Context,
     ) : ViewModel() {
         private val _state = MutableStateFlow(PieceEditorState())
@@ -180,6 +193,8 @@ class ProfilePieceEditorViewModel
                                     },
                                 links = detail.links.map { EditorLink(it.url, it) },
                                 howItWillShow = detail.howItWillShow,
+                                credits = detail.credits,
+                                suggested = detail.suggested,
                             )
                     }
                     is NetworkResult.Failure ->
@@ -208,6 +223,83 @@ class ProfilePieceEditorViewModel
         fun dropOffer() = change { it.copy(offer = null) }
 
         fun dismissNotice() = _state.update { it.copy(notice = null) }
+
+        /** The owner's accepted connections, for the add sheet (read once; the store keeps them fresh). */
+        fun loadConnections() {
+            if (_state.value.connections.isNotEmpty()) return
+            viewModelScope.launch {
+                val result = relationships.list(status = "accepted", limit = CONNECTIONS_MOST)
+                if (result is NetworkResult.Success) {
+                    val people =
+                        result.data.relationships.mapNotNull { row ->
+                            val user = row.otherUser ?: return@mapNotNull null
+                            val name =
+                                user.name?.takeIf { it.isNotBlank() }
+                                    ?: listOfNotNull(user.firstName, user.lastName).joinToString(" ").takeIf { it.isNotBlank() }
+                                    ?: user.username
+                                    ?: return@mapNotNull null
+                            CreditCandidate(userId = user.id, name = name, portraitUrl = user.profilePictureUrl)
+                        }
+                    _state.update { it.copy(connections = people.distinctBy { p -> p.userId }) }
+                }
+            }
+        }
+
+        /** Asks [candidate] to sign (one notification), or names someone not on Pantopus (Said). */
+        fun addCredit(
+            candidate: CreditCandidate,
+            role: String?,
+            relation: String,
+        ) {
+            val id = _state.value.id ?: return
+            if (_state.value.creditSaving) return
+            _state.update { it.copy(creditSaving = true, creditNotice = null) }
+            viewModelScope.launch {
+                val result =
+                    pieces.addCredit(
+                        pieceId = id,
+                        userId = candidate.userId,
+                        name = candidate.name.takeIf { candidate.userId == null },
+                        role = role,
+                        relation = relation,
+                    )
+                _state.update { s ->
+                    when (result) {
+                        is NetworkResult.Success ->
+                            s.copy(
+                                creditSaving = false,
+                                credits = s.credits.filterNot { it.id == result.data.id } + result.data,
+                                suggested = s.suggested.filterNot { it.userId == candidate.userId },
+                                creditsAdded = s.creditsAdded + 1,
+                            )
+                        is NetworkResult.Failure ->
+                            s.copy(creditSaving = false, creditNotice = creditFailure(result.error))
+                    }
+                }
+            }
+        }
+
+        /** Takes a person off the piece: their credit ends, and the piece leaves their Work. */
+        fun removeCredit(credit: PieceCredit) {
+            val id = _state.value.id ?: return
+            val before = _state.value.credits
+            _state.update { it.copy(credits = before.filterNot { c -> c.id == credit.id }) }
+            viewModelScope.launch {
+                if (pieces.removeCredit(id, credit.id) is NetworkResult.Failure) {
+                    _state.update { it.copy(credits = before, notice = "${credit.name ?: "They"} stayed on it. Try again.") }
+                }
+            }
+        }
+
+        fun dismissCreditNotice() = _state.update { it.copy(creditNotice = null) }
+
+        /** The server's own sentence for a refusal (already on it, can't be asked), else a plain retry line. */
+        private fun creditFailure(error: NetworkError): String =
+            when (error) {
+                is NetworkError.Forbidden -> error.reason ?: "They can't be asked to sign this piece."
+                is NetworkError.ClientError -> error.message
+                else -> "That didn't go through. Try again."
+            }
 
         /** Picked photos, a video or a document: each is uploaded through today's portfolio upload, in order. */
         fun addFiles(uris: List<Uri>) {
@@ -474,6 +566,7 @@ class ProfilePieceEditorViewModel
         private companion object {
             const val PREVIEW_WAIT_MS = 700L
             const val PLACE_MOST = 80
+            const val CONNECTIONS_MOST = 100
             const val MIN_URL = 11
             const val MAX_BYTES = 100L * 1024 * 1024
         }

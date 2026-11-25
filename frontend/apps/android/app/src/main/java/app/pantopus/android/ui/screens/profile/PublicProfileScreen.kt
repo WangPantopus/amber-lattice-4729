@@ -171,7 +171,7 @@ fun PublicProfileScreen(
     val sourcesMonth by viewModel.sources.month.collectAsStateWithLifecycle()
     val sourcesPiece by viewModel.sources.piece.collectAsStateWithLifecycle()
     val sourcesPreview by viewModel.sources.preview.collectAsStateWithLifecycle()
-    var sourcesTab by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourcesTab by rememberSaveable { mutableStateOf(viewModel.initialTab) }
     var sourcesPreviewAudience by remember { mutableStateOf<PreviewAudience?>(null) }
     var showSourcesShare by rememberSaveable { mutableStateOf(false) }
     var showPersonPosts by rememberSaveable { mutableStateOf(false) }
@@ -418,6 +418,7 @@ fun PublicProfileScreen(
                                                 onOpenPiece = { pieceId, ownerId -> viewModel.sources.openPiece(pieceId, ownerId) },
                                                 onClosePiece = viewModel.sources::closePiece,
                                                 onRetryPiece = { viewModel.sources.retryPiece() },
+                                                onToast = viewModel::showToast,
                                                 onOpenMoments = { userId ->
                                                     MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
                                                 },

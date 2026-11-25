@@ -142,6 +142,8 @@ internal fun ProfilePieceEditor(
     var confirmLeave by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var monthOpen by rememberSaveable { mutableStateOf(false) }
+    var addingCredit by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(s.creditsAdded) { addingCredit = false }
     val leave: () -> Unit = {
         if (s.dirty && !s.done) {
             confirmLeave = true
@@ -247,6 +249,20 @@ internal fun ProfilePieceEditor(
                     modifier = Modifier.fillMaxWidth().testTag("profileSources.pieceEditor.words"),
                 )
             }
+            EditorCredits(
+                credits = s.credits,
+                suggested = s.suggested.filterNot { c -> s.credits.any { it.userId == c.userId } },
+                saved = s.id != null,
+                asking = s.creditSaving,
+                onAsk = { c -> vm.addCredit(CreditCandidate(c.userId, c.name, c.portraitUrl), role = null, relation = c.relation) },
+                onAdd = {
+                    vm.dismissCreditNotice()
+                    vm.loadConnections()
+                    addingCredit = true
+                },
+                onRemove = vm::removeCredit,
+            )
+            if (!addingCredit) s.creditNotice?.let { Text(it, style = SourcesType.secondary.copy(color = PantopusColors.error)) }
             Field(label = "Who sees it") { AudienceChoice(s.audience, vm::setAudience) }
             Column(Modifier.sourcesCard()) {
                 SwitchRow("Pin it to the top of your Work", s.pinned, vm::setPinned)
@@ -311,6 +327,17 @@ internal fun ProfilePieceEditor(
         )
     }
     s.proof?.let { proof -> ProofDialog(proof, onCheck = vm::checkProof, onClose = vm::closeProof) }
+    if (addingCredit) {
+        val named = s.credits.mapNotNull { it.userId }.toSet()
+        AddCreditSheet(
+            suggested = emptyList(),
+            connections = s.connections.filterNot { it.userId in named || it.userId == ownerId },
+            saving = s.creditSaving,
+            notice = s.creditNotice,
+            onDismiss = { addingCredit = false },
+            onAdd = vm::addCredit,
+        )
+    }
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
