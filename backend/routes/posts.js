@@ -776,6 +776,8 @@ const READER_POST_FIELDS = [
   'reactions', 'userReaction', 'quoted_post', 'post_metadata', 'area',
   // Written under a made-up name (services/penName), and whether this reader is the one who wrote it.
   'made_up_name', 'viewer_is_author',
+  // Whether a first reply on it may be written under a made-up name (feedService.attachIdentityAuthors).
+  'takes_made_up_name_reply',
 ];
 
 // The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
@@ -3948,7 +3950,10 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     if (underPenName) {
       const refusal = voice === 'named'
         ? { status: 409, code: 'PEN_NAME_ONE_VOICE', message: "You're in this conversation under your own name, so your replies here use it too." }
-        : await penName.gate.accountRefusal(userId)
+        // Where the person is already here under their made-up name, the conversation is theirs to go on with; a
+        // first reply under it is only for a post people nearby read.
+        : (voice === 'pen_name' ? null : penName.gate.replyRefusal(post))
+          || await penName.gate.accountRefusal(userId)
           || await penName.gate.limitRefusal(userId, 'comment')
           || await penName.gate.wordsRefusal([normalizedComment]);
       if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
