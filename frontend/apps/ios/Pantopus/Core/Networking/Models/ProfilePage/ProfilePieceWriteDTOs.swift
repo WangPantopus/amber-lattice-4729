@@ -68,9 +68,12 @@ public struct ProfilePieceOfferDTO: Decodable, Sendable, Hashable, Identifiable 
     /// The other party, shown to the owner only and never on the piece.
     public let with: String?
     public let text: String
+    /// Who to name on a piece started from it (the person who hired them), with the server's ties on (p2.6).
+    public let suggestedCredits: [ProfileSuggestedCreditDTO]
 
     enum CodingKeys: String, CodingKey {
         case kind, id, title, when, with, text
+        case suggestedCredits = "suggested_credits"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -81,6 +84,8 @@ public struct ProfilePieceOfferDTO: Decodable, Sendable, Hashable, Identifiable 
         when = try? c.decodeIfPresent(String.self, forKey: .when)
         with = try? c.decodeIfPresent(String.self, forKey: .with)
         text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        suggestedCredits = ((try? c.decodeIfPresent([Lossy<ProfileSuggestedCreditDTO>].self, forKey: .suggestedCredits)) ?? [])
+            .compactMap(\.value)
     }
 }
 

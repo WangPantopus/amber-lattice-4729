@@ -134,6 +134,13 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
     /// The picked tab's blocks, then your own page's parts and a link's footer.
     @ViewBuilder private var tabContent: some View {
         if let selected {
+            if selected.key == .work, content.isOwner, let asks = model.asks, !asks.isEmpty {
+                ProfileAskedOfYou(asks: asks, model: model) { ask in
+                    guard let piece = ask.piece else { return }
+                    Task { await model.open(pieceId: piece.id, owner: ask.from.userId ?? ask.from.username, ownerName: ask.from.name) }
+                }
+                .padding(.horizontal, Spacing.s4)
+            }
             if selected.key == .work, content.isOwner, let mine = model.ownerPieces, let onEditPiece {
                 ProfileOwnerWorkCard(mine: mine) { onEditPiece($0) }
                     .padding(.horizontal, Spacing.s4)

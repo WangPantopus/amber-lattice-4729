@@ -45,6 +45,18 @@ struct ProfileSourcesContent: Equatable {
         tabs.first { $0.key == key }
     }
 
+    /// Whose a piece is when it is another person's on this page ("With Maria Kovács").
+    func with(pieceId id: String) -> ProfilePieceWithDTO? {
+        for tab in tabs {
+            for block in tab.blocks {
+                if case let .pieces(group) = block.content, let piece = group.pieces.first(where: { $0.id == id }), piece.with != nil {
+                    return piece.with
+                }
+            }
+        }
+        return nil
+    }
+
     /// The piece's ink, wherever this page lists it (for the dots on the work rings).
     func pieceInk(_ id: String) -> ProfileInk? {
         for tab in tabs {
@@ -95,6 +107,12 @@ final class ProfilePageModel {
     /// The owner's pieces with the jobs and plans offered (`GET /me/pieces`); nil for anyone else, or on a server
     /// without it (the owner then keeps phase 1's "Add or remove pieces").
     private(set) var ownerPieces: ProfileMyPiecesDTO?
+    /// "Asked of you" on your own Work (P2.5); nil for anyone else or while the server's ties are off.
+    private(set) var asks: [ProfileAskDTO]?
+    /// The opened piece is another person's (a piece "With Maria" on the signer's Work): read from their profile.
+    private(set) var openedPieceOwner: String?
+    /// That person's name, for the first row of "Who was on it".
+    private(set) var openedPieceOwnerName: String?
     @ObservationIgnored private var piecesObserver: ProfileObserverToken?
 
     private let identifier: String
@@ -145,8 +163,15 @@ final class ProfilePageModel {
                 selectedTab = first.key
             }
             state = .loaded(content)
+            if previewAs == nil, let tab = ProfileOpenTab.take(for: [identifier, page.header.userId, page.header.username]),
+               content.tabs.contains(where: { $0.key == tab }) {
+                selectedTab = tab
+            }
             if content.isOwner, previewAs == nil {
-                ownerPieces = try? await client.request(ProfilePageEndpoints.myPieces())
+                async let pieces: ProfileMyPiecesDTO? = try? await client.request(ProfilePageEndpoints.myPieces())
+                async let asked = readAsks()
+                ownerPieces = await pieces
+                asks = await asked
                 watchPieces()
             }
             if previewAs == nil {
@@ -208,13 +233,37 @@ final class ProfilePageModel {
         monthLines = nil
     }
 
-    /// Opens a piece from Work; nil when it isn't there for this viewer (the sheet closes).
-    func open(pieceId: String) async {
+    /// Reads "Asked of you"; a 404 means the server's ties are off (no asks, no credits, no gap).
+    private func readAsks() async -> [ProfileAskDTO]? {
+        do {
+            let answer: ProfileAsksDTO = try await client.request(ProfilePageEndpoints.asks())
+            ProfileTies.isOn = true
+            return answer.asks
+        } catch APIError.notFound {
+            ProfileTies.isOn = false
+            return nil
+        } catch {
+            return asks
+        }
+    }
+
+    /// After a sign or a "Not me": the asks and the page read again.
+    func reloadAsks() async {
+        asks = await readAsks()
+        Self.recent[cacheKey] = nil
+        await load()
+    }
+
+    /// Opens a piece from Work; nil when it isn't there for this viewer (the sheet closes). `owner` when the piece
+    /// is another person's (one this person signed, "With Maria").
+    func open(pieceId: String, owner: String? = nil, ownerName: String? = nil) async {
         openingPieceId = pieceId
+        openedPieceOwner = owner
+        openedPieceOwnerName = owner == nil ? nil : ownerName ?? content?.with(pieceId: pieceId)?.name
         openedPiece = nil
         do {
             let answer: ProfilePieceReadDTO = try await client.request(
-                ProfilePageEndpoints.piece(identifier: userId ?? identifier, pieceId: pieceId, previewAs: previewAs)
+                ProfilePageEndpoints.piece(identifier: owner ?? userId ?? identifier, pieceId: pieceId, previewAs: previewAs)
             )
             guard openingPieceId == pieceId else { return }
             openedPiece = answer
@@ -226,6 +275,8 @@ final class ProfilePageModel {
 
     func closePiece() {
         openingPieceId = nil
+        openedPieceOwner = nil
+        openedPieceOwnerName = nil
         openedPiece = nil
     }
 
@@ -242,9 +293,10 @@ final class ProfilePageModel {
     private func reloadAfterPieceChange() async {
         Self.recent[cacheKey] = nil
         await load()
+        if content?.isOwner == true { asks = await readAsks() }
         if let pieceId = openingPieceId {
             if let answer: ProfilePieceReadDTO = try? await client.request(
-                ProfilePageEndpoints.piece(identifier: userId ?? identifier, pieceId: pieceId, previewAs: previewAs)
+                ProfilePageEndpoints.piece(identifier: openedPieceOwner ?? userId ?? identifier, pieceId: pieceId, previewAs: previewAs)
             ), openingPieceId == pieceId {
                 openedPiece = answer
             } else if openingPieceId == pieceId {
@@ -264,5 +316,28 @@ final class ProfileObserverToken {
 
     deinit {
         NotificationCenter.default.removeObserver(token)
+    }
+}
+
+/// Whether the server's ties (credits, asks, roles, the circle) are on, as the owner's last read of "Asked of you" found.
+@MainActor
+enum ProfileTies {
+    static var isOn: Bool?
+}
+
+/// The tab a link asks a profile to open on (`/u/:id?tab=work`, the ask notification), taken once by that profile.
+@MainActor
+enum ProfileOpenTab {
+    private static var pending: (who: String, tab: ProfileSourcesTab.Key)?
+
+    static func request(_ tab: String?, for who: String) {
+        guard let tab, let key = ProfileSourcesTab.Key(rawValue: tab.lowercased()) else { return }
+        pending = (who.lowercased(), key)
+    }
+
+    static func take(for candidates: [String?]) -> ProfileSourcesTab.Key? {
+        guard let pending, candidates.compactMap({ $0?.lowercased() }).contains(pending.who) else { return nil }
+        self.pending = nil
+        return pending.tab
     }
 }
