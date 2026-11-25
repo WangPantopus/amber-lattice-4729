@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeftRight, CalendarDays, ChevronRight, Hammer, Mail, MessageCircle, Users } from 'lucide-react';
 import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
@@ -308,14 +308,39 @@ function KnownForWriteBlock({ block, ctx }: { block: ProfileKnownForWriteBlock; 
 /** The person's own page while lines wait (P3.2): each with "Show it" or "Keep it hidden"; nobody else sees them. */
 function LinesForYouBlock({ block, ctx }: { block: ProfileLinesForYouBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => line?.id && line.text?.trim());
+  // A line chosen from the keyboard leaves this block: the focus goes to the next line still waiting, or, when none
+  // waits any more and the block goes, to the page's open tab, never to the top of the page.
+  const list = useRef<HTMLUListElement>(null);
+  const landing = useRef<number | null>(null);
+  const ids = lines.map((line) => line.id).join(',');
+  useEffect(() => {
+    if (landing.current === null) return;
+    const items = list.current?.children;
+    if (!items || items.length === 0) return;
+    const at = Math.min(landing.current, items.length - 1);
+    landing.current = null;
+    items[at]?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+  }, [ids]);
+  useEffect(() => () => {
+    if (landing.current === null) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    });
+  }, []);
   if (lines.length === 0 || ctx.inert) return null;
   return (
     <section aria-label={block.title || 'Lines for you'} className="flex flex-col gap-2">
       <h2 className={`${overline} px-1`}>{block.title || 'Lines for you'}</h2>
-      <ul className="flex flex-col gap-3">
-        {lines.map((line) => (
+      <ul ref={list} className="flex flex-col gap-3">
+        {lines.map((line, i) => (
           <KnownForLineCard key={line.id} line={line} tiedTarget={ctx.tiedTarget?.(line) ?? null}>
-            <LineChoices line={{ ...line, status: line.status || 'waiting' }} onTop={false} canTop={false} onDone={() => ctx.onLinesChanged?.()} />
+            <LineChoices
+              line={{ ...line, status: line.status || 'waiting' }}
+              onTop={false}
+              canTop={false}
+              onDone={(_, fromKeys) => { landing.current = fromKeys ? i : null; ctx.onLinesChanged?.(); }}
+            />
           </KnownForLineCard>
         ))}
       </ul>
@@ -343,6 +368,28 @@ function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock | ProfileOpenDoor
   const owner = Boolean(ctx.onEditDoors) && !ctx.inert;
   if (doors.length === 0 && !leave && !owner) return null;
   const leftAt = leave && 'left_at' in leave ? dayText(leave.left_at as string | null | undefined) : '';
+  return (
+    <DoorsSection block={block} ctx={ctx} doors={doors} leave={leave} owner={owner} leftAt={leftAt} />
+  );
+}
+
+function DoorsSection({ block, ctx, doors, leave, owner, leftAt }: {
+  block: ProfileDoorsBlock | ProfileOpenDoorsBlock;
+  ctx: BlockContext;
+  doors: ProfileDoor[];
+  leave: ProfileDoorsBlock['leave_card'] | ProfileOpenDoorsBlock['leave_card'] | null;
+  owner: boolean;
+  leftAt: string;
+}) {
+  // "Leave your card" turns into "You left a card on …" once a card is left: if the keyboard was on the button (or
+  // has nowhere to go), it lands on that line instead of the top of the page. The card sheet looks for this anchor.
+  const leftLine = useRef<HTMLParagraphElement>(null);
+  const hadLeft = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = hadLeft.current;
+    hadLeft.current = Boolean(leftAt);
+    if (was === false && leftAt && (!document.activeElement || document.activeElement === document.body)) leftLine.current?.focus();
+  }, [leftAt]);
   return (
     <Section
       title={block.title || `Doors ${ctx.firstName} keeps open`}
@@ -386,10 +433,10 @@ function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock | ProfileOpenDoor
         </div>
       ) : null}
       {leave || block.sign_in_note ? (
-        <div className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
+        <div data-focus-anchor="" className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
           {leave ? (
             leftAt ? (
-              <p className="min-h-[2.75rem] flex items-center justify-center rounded-xl bg-app-surface-sunken text-[0.9375rem] text-app-secondary">You left a card on {leftAt}</p>
+              <p ref={leftLine} tabIndex={-1} className="min-h-[2.75rem] flex items-center justify-center rounded-xl bg-app-surface-sunken text-[0.9375rem] text-app-secondary">You left a card on {leftAt}</p>
             ) : (
               <button
                 type="button"
