@@ -1750,6 +1750,8 @@ data class PlacePreview(
     val money: PlacePreviewMoney? = null,
     /** LOOKUPORDER 1.5: the flood cost band (`flood_premium`), sent whenever it is held; first in Risk & readiness. */
     @Json(name = "flood_cost") val floodCost: PlaceMoneyLead? = null,
+    /** LOOKUPORDER 5.1a: the signed ticket the reading takes beside the address; absent from older servers. */
+    @Json(name = "reading_ticket") val readingTicket: String? = null,
 )
 
 /**
@@ -1832,6 +1834,8 @@ data class PlaceMoneyTrend(
 @JsonClass(generateAdapter = true)
 data class PlaceReadingRequest(
     val address: String,
+    /** The lookup's `reading_ticket`, when it sent one (not sent when null). */
+    val ticket: String? = null,
 )
 
 /** The route's answer: `{ reading }`. */

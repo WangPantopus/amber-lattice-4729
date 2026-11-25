@@ -198,8 +198,10 @@ class PlaceRepository
         suspend fun publicPreview(address: String): NetworkResult<PlacePreview> = safeApiCall { placeApi.publicPreview(address) }
 
         /** Pantopus AI's reading of a lookup this network just made (LOOKUPORDER 5.1). */
-        suspend fun publicReading(address: String): NetworkResult<PlaceReadingResponse> =
-            safeApiCall { placeApi.publicReading(PlaceReadingRequest(address)) }
+        suspend fun publicReading(
+            address: String,
+            ticket: String?,
+        ): NetworkResult<PlaceReadingResponse> = safeApiCall { placeApi.publicReading(PlaceReadingRequest(address, ticket)) }
 
         // ─── Address calendar (Wedge v2 D6) ────────────────────
 

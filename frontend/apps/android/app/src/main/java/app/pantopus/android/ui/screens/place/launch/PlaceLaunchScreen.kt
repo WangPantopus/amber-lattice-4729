@@ -148,7 +148,7 @@ fun PlaceLaunchScreen(
                     var readingOpen by rememberSaveable(current.address) { mutableStateOf(false) }
                     val openReading = {
                         readingOpen = true
-                        viewModel.openReading(current.address)
+                        viewModel.openReading(current.address, current.preview.readingTicket)
                     }
                     PreviewReadingSheet(
                         open = readingOpen,

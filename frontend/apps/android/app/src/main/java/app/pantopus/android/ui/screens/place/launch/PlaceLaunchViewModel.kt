@@ -200,13 +200,16 @@ class PlaceLaunchViewModel
          * The Ask row was tapped: the reading of the address as it was looked up. A reading in hand is kept; one
          * that failed is asked for again only on the next tap (no retry loop), and the row stays either way.
          */
-        fun openReading(address: String) {
+        fun openReading(
+            address: String,
+            ticket: String?,
+        ) {
             val current = _reading.value
             if (current is PlaceReadingState.Ready || current == PlaceReadingState.Loading) return
             _reading.value = PlaceReadingState.Loading
             readingJob =
                 viewModelScope.launch {
-                    val r = repo.publicReading(address)
+                    val r = repo.publicReading(address, ticket)
                     val reading = (r as? NetworkResult.Success)?.data?.reading?.takeIf { it.isComplete }
                     _reading.value = if (reading != null) PlaceReadingState.Ready(reading) else PlaceReadingState.Failed
                 }
