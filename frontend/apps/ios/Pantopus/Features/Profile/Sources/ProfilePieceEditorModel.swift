@@ -87,7 +87,8 @@ final class ProfilePieceEditorModel {
     var problem: String?
 
     var title = ""
-    var kind: String? = "did"
+    /// None until the person taps one (as on the web), so a piece is never labelled by accident.
+    var kind: String?
     /// The month and year of "When"; nil until picked.
     var month: Int?
     var year: Int?
@@ -123,7 +124,6 @@ final class ProfilePieceEditorModel {
             // A job's title is the poster's words: the piece starts without one. A plan's is the host's own.
             if offer.kind == "plan" { title = String(offer.title.prefix(Self.titleMost)) }
             suggested = offer.suggestedCredits
-            kind = "did"
         case let .change(pieceId):
             self.pieceId = pieceId
             isDraft = false

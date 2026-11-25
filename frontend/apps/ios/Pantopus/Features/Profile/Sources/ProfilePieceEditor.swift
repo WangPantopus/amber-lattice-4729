@@ -327,7 +327,7 @@ extension ProfilePieceEditor {
     // MARK: Skills
 
     var skills: some View {
-        field("Skills it shows", counter: "\(model.skills.count) of \(ProfilePieceEditorModel.skillsMost)") {
+        field("It shows you can", counter: "\(model.skills.count) of \(ProfilePieceEditorModel.skillsMost)") {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 if !model.skills.isEmpty {
                     ProfileWrapLayout(spacing: Spacing.s2) {
