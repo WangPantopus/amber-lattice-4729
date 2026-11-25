@@ -74,6 +74,8 @@ struct SavedPlaceRootView: View {
     private let onSetUpHome: () -> Void
     private let onLookUpAddress: () -> Void
     private let onOpenDetail: ((PlaceDetailGroup) -> Void)?
+    /// "Ask Pantopus: what does this mean for me?": the assistant, about this saved address.
+    @State private var askTopic: AIAskTopic?
 
     init(
         viewModel: SavedPlaceRootViewModel,
@@ -123,6 +125,7 @@ struct SavedPlaceRootView: View {
         .task { await viewModel.load() }
         .refreshable { await viewModel.refresh() }
         .refreshFailureToast($viewModel.refreshFailureMessage)
+        .askPantopus($askTopic)
         .refreshesOnStoreChange { await viewModel.load() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("place.savedRoot")
@@ -239,6 +242,7 @@ struct SavedPlaceRootView: View {
                     preview: preview,
                     showsLocked: false,
                     onOpenDetail: onOpenDetail,
+                    onAsk: { askTopic = .savedPlace(id: viewModel.place.id) },
                     onScrollTo: scrollTo,
                     onAction: onSetUpHome,
                     onRetry: { Task { await viewModel.refresh() } },

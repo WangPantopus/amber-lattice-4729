@@ -10,6 +10,8 @@
 
 import SwiftUI
 
+// swiftlint:disable file_length
+
 /// The signed-out front door: the Place launch funnel, with the existing
 /// auth screen presented over it for sign-in / account creation. Once the
 /// session flips to signed-in, `RootView` swaps in `RootTabView` and the
@@ -124,7 +126,8 @@ struct PlaceLaunchView: View {
                     onBack: viewModel.backToHero,
                     onRetry: viewModel.retryPreview,
                     retrying: viewModel.isLoadingPreview,
-                    onOpenRecord: viewModel.lookedUpAddress.map { address in { record = HomeRecordLookup(address: address) } }
+                    onOpenRecord: viewModel.lookedUpAddress.map { address in { record = HomeRecordLookup(address: address) } },
+                    readingAddress: viewModel.lookedUpAddress
                 )
             case let .region(message):
                 // Embedded there is nothing to go back to: the button looks up another address.

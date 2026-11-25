@@ -2377,3 +2377,83 @@ extension PlaceIntelligence {
         return copy
     }
 }
+
+// MARK: - LOOKUPORDER: the reading (SPEC 5.1)
+
+/// Pantopus AI's reading of a looked-up address's page, written from the
+/// public records the page shows. Never given the street address.
+public struct PlaceReading: Decodable, Sendable, Hashable {
+    public struct Step: Decodable, Sendable, Hashable {
+        public let text: String
+        /// The agency the step comes from ("EPA").
+        public let source: String
+
+        private enum CodingKeys: String, CodingKey {
+            case text, source
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+            source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        }
+    }
+
+    public struct Question: Decodable, Sendable, Hashable {
+        public let question: String
+        public let answer: String
+
+        private enum CodingKeys: String, CodingKey {
+            case question = "q"
+            case answer = "a"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            question = try container.decodeIfPresent(String.self, forKey: .question) ?? ""
+            answer = try container.decodeIfPresent(String.self, forKey: .answer) ?? ""
+        }
+    }
+
+    public let matters: String
+    public let steps: [Step]
+    public let cannotTell: String
+    public let questions: [Question]
+
+    private enum CodingKeys: String, CodingKey {
+        case matters, steps, questions
+        case cannotTell = "cannot_tell"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        matters = try container.decodeIfPresent(String.self, forKey: .matters) ?? ""
+        steps = try container.decodeIfPresent([Step].self, forKey: .steps)?.filter { !$0.text.isEmpty } ?? []
+        cannotTell = try container.decodeIfPresent(String.self, forKey: .cannotTell) ?? ""
+        questions = try container.decodeIfPresent([Question].self, forKey: .questions)?
+            .filter { !$0.question.isEmpty && !$0.answer.isEmpty } ?? []
+    }
+
+    /// Never a half reading: what matters, and something to do or to ask.
+    public var isRenderable: Bool {
+        !matters.isEmpty && (!steps.isEmpty || !questions.isEmpty)
+    }
+}
+
+/// `POST /api/public/place/reading`: the reading itself, or under `reading`.
+public struct PlaceReadingResponse: Decodable, Sendable {
+    public let reading: PlaceReading?
+
+    private enum CodingKeys: String, CodingKey {
+        case reading
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let nested = try? container.decodeIfPresent(PlaceReading.self, forKey: .reading) {
+            reading = nested
+        } else {
+            reading = try? PlaceReading(from: decoder)
+        }
+    }
+}

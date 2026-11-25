@@ -147,17 +147,21 @@ public struct AIChatContext: Encodable, Sendable, Hashable {
     public let homeId: String?
     /// A Place section's slug: `today`, `your-home`, `risk`, `block`, `money`, `civic`.
     public let section: String?
+    /// Place for an address the person saved without a Home (LOOKUPORDER SPEC 5.3).
+    public let savedPlaceId: String?
 
-    public init(surface: String, id: String? = nil, homeId: String? = nil, section: String? = nil) {
+    public init(surface: String, id: String? = nil, homeId: String? = nil, section: String? = nil, savedPlaceId: String? = nil) {
         self.surface = surface
         self.id = id
         self.homeId = homeId
         self.section = section
+        self.savedPlaceId = savedPlaceId
     }
 
     private enum CodingKeys: String, CodingKey {
         case surface, id, section
         case homeId = "home_id"
+        case savedPlaceId = "saved_place_id"
     }
 }
 
