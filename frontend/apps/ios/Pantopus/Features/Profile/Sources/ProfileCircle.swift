@@ -160,7 +160,8 @@ struct ProfileCircleScreen: View {
                         .foregroundStyle(Theme.Color.appText)
                     HStack(spacing: 5) {
                         ProfileInkGlyph(ink: person.ink == "signed" ? .signed : .said, size: 9)
-                        Text(person.sharedPieces == 1 ? "1 piece together" : "\(person.sharedPieces) pieces together")
+                        Text([person.circleWords, person.sharedPieces == 1 ? "1 piece together" : "\(person.sharedPieces) pieces together"]
+                            .joined(separator: " · "))
                             .scaledFont(13)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                     }
