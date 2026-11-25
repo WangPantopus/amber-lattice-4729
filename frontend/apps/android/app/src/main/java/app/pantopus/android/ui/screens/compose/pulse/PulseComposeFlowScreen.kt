@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.hilt.navigation.compose.hiltViewModel
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
+import app.pantopus.android.ui.screens.pennames.PenNameChoiceViewModel
 import java.io.File
 
 private sealed interface PulseComposeFlowStep {
@@ -61,6 +62,11 @@ fun PulseComposeFlowScreen(
     var changedFrom by rememberSaveable(stateSaver = FlowStepSaver) {
         mutableStateOf<PulseComposeFlowStep>(PulseComposeFlowStep.TargetPicker)
     }
+
+    // Made-up names: "Post as" reads the person's made-up name while the place and the kind are picked, so the draft
+    // opens in its final shape (the draft step shares this view-model).
+    val penNameChoice: PenNameChoiceViewModel = hiltViewModel(key = "composePenName")
+    LaunchedEffect(penNameChoice) { penNameChoice.load() }
 
     Box(modifier = Modifier.fillMaxSize().testTag("pulseComposeFlow")) {
         when (val current = step) {

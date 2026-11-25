@@ -6,7 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,12 +38,14 @@ import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.sheetKeyboardRules
+import app.pantopus.android.ui.screens.pennames.PenNameSettingsRow
 import app.pantopus.android.ui.screens.plans.teams.PlanTeamsSheet
 import app.pantopus.android.ui.screens.shared.grouped_list.GroupedListBanner
 import app.pantopus.android.ui.screens.shared.grouped_list.GroupedListCallbacks
 import app.pantopus.android.ui.screens.shared.grouped_list.GroupedListScreen
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.Spacing
 
 /**
  * T3.1 Settings index. Thin wrapper around [GroupedListScreen] —
@@ -260,7 +264,7 @@ fun PrivacySettingsScreen(
             refreshNotice = refreshNotice,
             onRefresh = viewModel::refresh,
             banner = banner,
-            header = { NeighborsSeeYouRow(onOpen = onOpenEditProfile) },
+            header = { PrivacyHeader(onOpenEditProfile) },
             callbacks =
                 GroupedListCallbacks(
                     onBack = onBack,
@@ -312,5 +316,14 @@ private fun Context.openAppNotificationSettings() {
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
+    }
+}
+
+/** Privacy's header: how others see you, and the person's made-up name (made-up names). */
+@Composable
+private fun PrivacyHeader(onOpenEditProfile: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+        NeighborsSeeYouRow(onOpen = onOpenEditProfile)
+        PenNameSettingsRow()
     }
 }

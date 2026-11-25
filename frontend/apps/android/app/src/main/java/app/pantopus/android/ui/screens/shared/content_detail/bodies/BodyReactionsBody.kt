@@ -77,6 +77,10 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseEventDetails
 import app.pantopus.android.ui.screens.feed.pulse.PulseReactionPicker
 import app.pantopus.android.ui.screens.feed.pulse.icon
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNameMarks
+import app.pantopus.android.ui.screens.pennames.PenNameOnlyYouLine
+import app.pantopus.android.ui.screens.pennames.PenNamePicture
 import app.pantopus.android.ui.screens.shared.content_detail.headers.PostIntent
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridWithViewer
@@ -105,6 +109,10 @@ data class PostCommentRow(
     val authorUserId: String?,
     /** True when the signed-in user wrote it — gates the Delete action. */
     val isOwn: Boolean = false,
+    /** Written under a made-up name: [authorUserId] is the name's id, and a tap opens its small card. */
+    val isMadeUp: Boolean = false,
+    /** The signed-in person wrote it under their made-up name: "Night Gardener (you)". */
+    val isMadeUpByYou: Boolean = false,
 )
 
 /** Quick-reply prompt rendered in the empty thread state. */
@@ -215,6 +223,10 @@ fun BodyReactionsBody(
     composerPlaceholder: String? = null,
     /** The page was opened to reply: the reply box takes the keyboard when it first shows. */
     focusComposer: Boolean = false,
+    /** Drawn just above the reply box: "Post as" (made-up names). Null for none. */
+    aboveComposer: (@Composable () -> Unit)? = null,
+    /** A reply under a made-up name: its photo and name open the name's small card, with the name's id. */
+    onMadeUpAuthorTap: (String) -> Unit = {},
 ) {
     val placeholders = commentsLoading && comments.isEmpty() && loadingCommentCount > 0
     Column(
@@ -332,6 +344,7 @@ fun BodyReactionsBody(
                         .testTag("pulsePostDetail-repliesClosed"),
             )
         } else {
+            aboveComposer?.let { slot -> Box(modifier = Modifier.padding(horizontal = Spacing.s4)) { slot() } }
             CommentComposer(
                 avatarName = composerAvatarName,
                 avatarUrl = composerAvatarUrl,
@@ -360,7 +373,7 @@ fun BodyReactionsBody(
                     CommentRow(
                         row = row,
                         onAvatarTap = {
-                            row.authorUserId?.let(onCommentAvatarTap)
+                            row.authorUserId?.let(if (row.isMadeUp) onMadeUpAuthorTap else onCommentAvatarTap)
                         },
                         onReply = onCommentReply?.let { handler -> { handler(row) } },
                         onToggleLike = onCommentLike?.let { handler -> { handler(row) } },
@@ -718,17 +731,24 @@ private fun CommentRow(
                     .sizeIn(minWidth = 28.dp, minHeight = 28.dp)
                     .testTag("pulsePostDetail-commentAvatar-${row.id}")
                     .clickable(onClick = onAvatarTap)
-                    .semantics { contentDescription = "Open ${row.authorName}'s profile" },
+                    .semantics {
+                        contentDescription =
+                            if (row.isMadeUp) "Open the made-up name ${row.authorName}" else "Open ${row.authorName}'s profile"
+                    },
         ) {
-            AvatarWithIdentityRing(
-                name = row.authorName,
-                // The commenter's Moments ring: a tap on a ringed photo plays them.
-                modifier = Modifier.momentsRing(row.authorUserId, stroke = 1.5.dp, gap = 1.5.dp),
-                imageUrl = row.authorAvatarUrl,
-                identity = row.authorIdentity,
-                ringProgress = 1f,
-                size = if (row.indentLevel > 0) 24.dp else 28.dp,
-            )
+            if (row.isMadeUp) {
+                PenNamePicture(url = row.authorAvatarUrl, size = if (row.indentLevel > 0) 24.dp else 28.dp)
+            } else {
+                AvatarWithIdentityRing(
+                    name = row.authorName,
+                    // The commenter's Moments ring: a tap on a ringed photo plays them.
+                    modifier = Modifier.momentsRing(row.authorUserId, stroke = 1.5.dp, gap = 1.5.dp),
+                    imageUrl = row.authorAvatarUrl,
+                    identity = row.authorIdentity,
+                    ringProgress = 1f,
+                    size = if (row.indentLevel > 0) 24.dp else 28.dp,
+                )
+            }
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -753,7 +773,7 @@ private fun CommentRow(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
                 ) {
                     Text(
-                        text = row.authorName,
+                        text = if (row.isMadeUpByYou) PenNameCopy.you(row.authorName) else row.authorName,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PantopusColors.appText,
@@ -764,6 +784,10 @@ private fun CommentRow(
                         fontSize = 10.sp,
                         color = PantopusColors.appTextMuted,
                     )
+                }
+                if (row.isMadeUp) {
+                    PenNameMarks(verifiedHome = true, testTagSuffix = row.id)
+                    if (row.isMadeUpByYou) PenNameOnlyYouLine(testTagSuffix = row.id)
                 }
                 Text(
                     text = row.body,

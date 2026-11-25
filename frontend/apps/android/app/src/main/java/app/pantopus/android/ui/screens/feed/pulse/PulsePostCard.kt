@@ -26,6 +26,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,11 @@ import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
 import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.pennames.PenNameCardSheet
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNameMarks
+import app.pantopus.android.ui.screens.pennames.PenNameOnlyYouLine
+import app.pantopus.android.ui.screens.pennames.PenNamePicture
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatar
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatarTint
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
@@ -179,8 +185,13 @@ data class PulsePostCardContent(
     val story: PulseStory? = null,
     /** Who replied and the latest reply (Around you sends it on a post with replies); null draws nothing. */
     val conversation: PulseConversationPreview? = null,
+    /** Written under a made-up name: the name opens its small card, never a profile. Null on every other post. */
+    val madeUp: PulseMadeUpAuthor? = null,
 ) {
     val isCurator: Boolean get() = origin == "curator"
+
+    /** The author's name as the card shows it: the writer's own made-up name says "(you)". */
+    val madeUpByline: String get() = if (madeUp?.isYou == true) PenNameCopy.you(authorName) else authorName
 
     /** Who the card names where an author goes: a story's outlet (it published the story), else the author. */
     val bylineName: String get() = story?.outlet ?: authorName
@@ -213,6 +224,14 @@ data class PulseConversationPreview(
 data class PulseConversationFace(
     val name: String,
     val avatarUrl: String?,
+)
+
+/** A post's made-up-name author (contract "The card"): its id for the small card, and the writer's own "(you)". */
+@Immutable
+data class PulseMadeUpAuthor(
+    val penNameId: String,
+    val isYou: Boolean,
+    val verifiedHome: Boolean,
 )
 
 /** Where a post's author leads, as the post page's header: a person's profile or a business's page. */
@@ -270,8 +289,19 @@ fun PulsePostCard(
      * leaves both part of the card's own tap, as everywhere but Today's Around you.
      */
     onReply: (() -> Unit)? = null,
+    /** The small card's Report under a made-up name: the post's own report. `null` leaves it out of the card. */
+    onReport: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    // A made-up name opens its small card here, wherever the card is drawn.
+    var showsPenNameCard by rememberSaveable(content.id) { mutableStateOf(false) }
+    content.madeUp?.takeIf { showsPenNameCard }?.let { madeUp ->
+        PenNameCardSheet(
+            penNameId = madeUp.penNameId,
+            onReport = onReport,
+            onDismiss = { showsPenNameCard = false },
+        )
+    }
     Column(
         modifier =
             modifier
@@ -291,7 +321,7 @@ fun PulsePostCard(
                 content = content,
                 onOverflow = onOverflow,
                 onDismissSeeded = onDismissSeeded,
-                onOpenAuthor = onOpenAuthor,
+                onOpenAuthor = if (content.madeUp != null) ({ showsPenNameCard = true }) else onOpenAuthor,
             )
             CardText(content)
             content.source?.let { source -> PostSourceLink(source, testTag = "pulsePostSource_${content.id}") }
@@ -374,7 +404,12 @@ private fun CardHeader(
                     if (onOpenAuthor != null) {
                         Modifier
                             .clickable(
-                                onClickLabel = if (content.authorLink is PulseAuthorLink.Business) "Open page" else "Open profile",
+                                onClickLabel =
+                                    when {
+                                        content.madeUp != null -> "Open the made-up name"
+                                        content.authorLink is PulseAuthorLink.Business -> "Open page"
+                                        else -> "Open profile"
+                                    },
                                 role = Role.Button,
                                 onClick = onOpenAuthor,
                             ).testTag("pulsePostAuthor_${content.id}")
@@ -387,6 +422,8 @@ private fun CardHeader(
                 val outlet = content.story?.outlet
                 if (outlet != null) {
                     OutletAvatar()
+                } else if (content.madeUp != null) {
+                    PenNamePicture(url = content.authorAvatarUrl, size = 32.dp)
                 } else {
                     FeedAvatar(
                         initials = content.authorInitials,
@@ -400,7 +437,7 @@ private fun CardHeader(
                 }
                 Column(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = outlet ?: content.authorName,
+                        text = outlet ?: content.madeUpByline,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PantopusColors.appText,
@@ -408,7 +445,12 @@ private fun CardHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = if (outlet != null) Modifier.testTag("pulsePostOutlet_${content.id}") else Modifier,
                     )
-                    if (outlet != null) {
+                    val madeUp = content.madeUp
+                    if (madeUp != null) {
+                        // A made-up name: its marks and the time, never a distance or a profile.
+                        PenNameMarks(verifiedHome = madeUp.verifiedHome, testTagSuffix = content.id, meta = content.meta)
+                        if (madeUp.isYou) PenNameOnlyYouLine(testTagSuffix = content.id)
+                    } else if (outlet != null) {
                         // The outlet published it; the curator account only brought it here.
                         CardMetadata(listOf("via ${content.authorName}", content.meta).filter(String::isNotEmpty).joinToString(" · "))
                     } else if (content.isCurator) {

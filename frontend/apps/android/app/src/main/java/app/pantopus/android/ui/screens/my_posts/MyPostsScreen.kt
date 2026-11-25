@@ -46,6 +46,7 @@ import app.pantopus.android.ui.components.rememberShareTextWithCompletion
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import app.pantopus.android.ui.screens.profile.ProfilePostOptionsSheet
@@ -92,6 +93,7 @@ fun MyPostsScreen(
     viewModel: MyPostsViewModel = hiltViewModel(),
     savedViewModel: SavedPostsViewModel = hiltViewModel(),
     repostsViewModel: RepostedPostsViewModel = hiltViewModel(),
+    madeUpViewModel: MadeUpPostsViewModel = hiltViewModel(),
 ) {
     // Once per visit, before the first read, so it reads the tab it opens on.
     viewModel.openInitialTab(initialTab)
@@ -109,8 +111,11 @@ fun MyPostsScreen(
         when (selectedTab) {
             MyPostsTab.SAVED -> savedViewModel
             MyPostsTab.REPOSTS -> repostsViewModel
+            MyPostsTab.MADE_UP -> madeUpViewModel
             else -> null
         }
+    // Made-up names: the part of My posts only its owner can open, for a person who has a made-up name.
+    val hasPenName by madeUpViewModel.hasPenName.collectAsStateWithLifecycle()
     val list = remember(keptList) { MyPostsTabList(viewModel, keptList) }
     val listState by list.state.collectAsStateWithLifecycle()
     val listRefreshNotice by list.refreshNotice.collectAsStateWithLifecycle()
@@ -128,6 +133,8 @@ fun MyPostsScreen(
         )
         savedViewModel.bindCallbacks(onOpenPost = onOpenPost)
         repostsViewModel.bindCallbacks(onOpenPost = onOpenPost)
+        madeUpViewModel.bindCallbacks(onOpenPost = onOpenPost)
+        madeUpViewModel.checkPenName()
     }
 
     LifecycleResumeEffect(list) {
@@ -180,7 +187,8 @@ fun MyPostsScreen(
             tabs =
                 tabs +
                     ListOfRowsTab(id = MyPostsTab.SAVED, label = "Saved") +
-                    ListOfRowsTab(id = MyPostsTab.REPOSTS, label = "Reposts"),
+                    ListOfRowsTab(id = MyPostsTab.REPOSTS, label = "Reposts") +
+                    listOfNotNull(ListOfRowsTab(id = MyPostsTab.MADE_UP, label = PenNameCopy.SETTINGS_TITLE).takeIf { hasPenName }),
             selectedTab = selectedTab,
             onSelectTab = { viewModel.selectTab(it) },
             // The type/date filter applies to your own posts only.

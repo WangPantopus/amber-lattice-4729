@@ -74,6 +74,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
+import app.pantopus.android.data.api.models.pennames.PenNameDto
 import app.pantopus.android.data.api.models.posts.EarlierPostDto
 import app.pantopus.android.data.location.HeightReading
 import app.pantopus.android.data.posts.PostCameraPhotos
@@ -96,6 +97,14 @@ import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerSheet
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedCard
 import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedPostCard
+import app.pantopus.android.ui.screens.pennames.PenNameChoiceViewModel
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNamePostAsRow
+import app.pantopus.android.ui.screens.pennames.PenNamePostAsUi
+import app.pantopus.android.ui.screens.pennames.PenNamePostBar
+import app.pantopus.android.ui.screens.pennames.PenNamePostingAsBanner
+import app.pantopus.android.ui.screens.pennames.PenNameSetupSheet
+import app.pantopus.android.ui.screens.pennames.PenNameVoice
 import app.pantopus.android.ui.screens.shared.form.FormFieldGroup
 import app.pantopus.android.ui.screens.shared.form.FormFieldState
 import app.pantopus.android.ui.screens.shared.form.FormShell
@@ -170,6 +179,13 @@ fun PulseComposeScreen(
     val aiPostConfirmation by viewModel.aiPostConfirmation.collectAsStateWithLifecycle()
     val quotedPost by viewModel.quotedPost.collectAsStateWithLifecycle()
     var showPlacePicker by remember { mutableStateOf(false) }
+    // Made-up names: "Post as" for a new post to a place nearby, and the name screen the first time.
+    val penName by viewModel.penName.collectAsStateWithLifecycle()
+    val penNameNeeded by viewModel.penNameNeeded.collectAsStateWithLifecycle()
+    val penNameRefusal by viewModel.penNameRefusal.collectAsStateWithLifecycle()
+    val penNameChoice: PenNameChoiceViewModel = hiltViewModel(key = "composePenName")
+    val postAsRow by penNameChoice.postAs.collectAsStateWithLifecycle()
+    val postAs = postAsRow?.takeIf { viewModel.offersPostAs }
 
     LaunchedEffect(flowTarget, flowPurpose) {
         if (flowTarget != null) {
@@ -184,6 +200,7 @@ fun PulseComposeScreen(
     }
 
     PlaceCheckEffect(viewModel, selectedPlaceTag, photos, visibility)
+    PenNameChoiceEffect(viewModel, penNameChoice, flowTarget, activeIntent, postAs, penNameNeeded)
 
     LaunchedEffect(Unit) {
         Analytics.track(AnalyticsEvent.ScreenPulseComposeViewed(intent = activeIntent.key))
@@ -242,15 +259,19 @@ fun PulseComposeScreen(
             selectedPlaceTag
             state
             assist
+            penName
         }
+        val canCommit = viewModel.isValid && !isLoadingMedia && !viewModel.isSuggesting
         FormShell(
             title = viewModel.displayTitle,
             rightActionLabel = viewModel.ctaLabel,
-            isValid = viewModel.isValid && !isLoadingMedia && !viewModel.isSuggesting,
+            isValid = canCommit,
             isDirty = viewModel.isDirty,
             isSaving = viewModel.isSubmitting,
             onClose = onBack,
             onCommit = viewModel::submit,
+            // While "Post as" shows, the button names the one the post will carry ("Post as Night Gardener").
+            stickyBottom = postAsBar(postAs, viewModel, canCommit, penNameRefusal),
         ) {
             when (val prefill = prefillState) {
                 PulseComposePrefillState.Loading -> PulseComposePrefillSkeleton()
@@ -295,6 +316,8 @@ fun PulseComposeScreen(
                                 assistCanUndo = canUndoSuggestion,
                                 canTakePhoto = media.canTakePhoto,
                                 quoted = quotedPost,
+                                postAs = postAs,
+                                penName = penName,
                             ),
                         actions =
                             PulseComposeActions(
@@ -326,6 +349,7 @@ fun PulseComposeScreen(
                                 onAssistChoosePhotos = { media.pickFiles(arrayOf("image/*"), true) },
                                 onTakePhoto = { media.takePhoto(false) },
                                 onChangeTarget = onChangeTarget,
+                                onChoosePostAs = penNameChoice::choose,
                             ),
                     )
             }
@@ -377,6 +401,64 @@ fun PulseComposeScreen(
             },
             onDismiss = { showPlacePicker = false },
         )
+    }
+}
+
+/** The composer's bottom bar while "Post as" shows; null keeps the usual Post action in the top bar. */
+private fun postAsBar(
+    row: PenNamePostAsUi?,
+    viewModel: PulseComposeViewModel,
+    canCommit: Boolean,
+    refusal: String?,
+): (@Composable () -> Unit)? {
+    if (row == null) return null
+    return {
+        PenNamePostBar(
+            label = row.carriedName?.let(PenNameCopy::postAsButton) ?: viewModel.ctaLabel,
+            warning = row.warning.takeIf { row.isMadeUp },
+            refusal = refusal,
+            isEnabled = canCommit && viewModel.isDirty,
+            isSaving = viewModel.isSubmitting,
+            onCommit = viewModel::submit,
+        )
+    }
+}
+
+/**
+ * Keeps "Post as" in step with the draft: reads the person's made-up name for a new post to a place, checks the place
+ * and the kind of post, hands the choice to the composer, and shows the name screen the first time the made-up name is
+ * picked or when the server asks for a name.
+ */
+@Composable
+@Suppress("LongParameterList")
+private fun PenNameChoiceEffect(
+    viewModel: PulseComposeViewModel,
+    choice: PenNameChoiceViewModel,
+    flowTarget: PulsePostingTarget?,
+    activeIntent: PulseComposeIntent,
+    postAs: PenNamePostAsUi?,
+    needed: Boolean,
+) {
+    LaunchedEffect(flowTarget, activeIntent) {
+        if (!viewModel.offersPostAs) return@LaunchedEffect
+        choice.load()
+        val point = viewModel.penNameCheckPoint
+        choice.checkAt(point?.first, point?.second)
+        choice.setPostType(viewModel.draftPostType)
+    }
+    LaunchedEffect(postAs) {
+        if (viewModel.offersPostAs) viewModel.setPenName(postAs?.takeIf { it.isMadeUp }?.penName)
+    }
+    LaunchedEffect(needed) {
+        if (needed) {
+            choice.needName()
+            viewModel.consumePenNameNeeded()
+        }
+    }
+    // The first time the made-up name is picked (or the server asks for one): the name screen.
+    val setupOpen by choice.setupOpen.collectAsStateWithLifecycle()
+    if (setupOpen) {
+        PenNameSetupSheet(replace = false, onDone = choice::onTaken, onDismiss = choice::dismissSetup)
     }
 }
 
@@ -644,6 +726,10 @@ internal data class PulseComposeContentState(
     val canTakePhoto: Boolean = false,
     /** "Repost with your words": the quoted post's card under the text box (read-only); null for an ordinary post. */
     val quoted: PulseQuotedCard? = null,
+    /** "Post as" (a new post to a place nearby); null hides it. */
+    val postAs: PenNamePostAsUi? = null,
+    /** The made-up name the post goes out under (chosen, or an edited made-up-name post's); null: the person's own. */
+    val penName: PenNameDto? = null,
 )
 
 internal data class PulseComposeSelectionActions(
@@ -687,6 +773,8 @@ internal data class PulseComposeActions(
     val onTakePhoto: () -> Unit = {},
     /** A quote's "Change" beside "Posting to Connections" (the composer picks the audience on its first step). */
     val onChangeTarget: (() -> Unit)? = null,
+    /** A tap on one of "Post as"'s names. */
+    val onChoosePostAs: (PenNameVoice) -> Unit = {},
 )
 
 /**
@@ -711,6 +799,15 @@ private fun PulseComposeBodySections(
     state: PulseComposeContentState,
     actions: PulseComposeActions,
 ) {
+    val pen = state.penName
+    if (pen != null) {
+        // The top of the composer takes the made-up name's look.
+        PenNamePostingAsBanner(
+            text = PenNameCopy.postingAs(pen.name),
+            pictureUrl = pen.avatarUrl,
+            modifier = Modifier.padding(horizontal = Spacing.s4),
+        )
+    }
     if (state.isFlowMode) {
         // A tagged place's check shows under the place, in the Location section.
         FlowContextHeader(
@@ -718,8 +815,14 @@ private fun PulseComposeBodySections(
             state.postingTargetLabel,
             state.eligibilityWarning.takeIf { state.selectedPlaceTag == null },
             onChangeTarget = actions.onChangeTarget,
-            sky = state.skyArea?.let { PulseSkyLine(area = it, pinnedAt = state.skyPinnedAt, onPin = actions.onAddLocation) },
+            sky =
+                state.skyArea?.takeIf { pen == null }?.let {
+                    PulseSkyLine(area = it, pinnedAt = state.skyPinnedAt, onPin = actions.onAddLocation)
+                },
         )
+        state.postAs?.let { row ->
+            PenNamePostAsRow(state = row, onChoose = actions.onChoosePostAs, modifier = Modifier.padding(horizontal = Spacing.s4))
+        }
     } else {
         IntentPicker(
             active = state.activeIntent,
@@ -735,7 +838,8 @@ private fun PulseComposeBodySections(
         nudge = state.precheckNudge,
         onDismissNudge = actions.onDismissPrecheckNudge,
     )
-    state.assist?.let { assist ->
+    // The assist writes from photos; a made-up-name post is words only.
+    state.assist?.takeIf { pen == null }?.let { assist ->
         val focusManager = LocalFocusManager.current
         PulseComposeAssistCard(assist = assist, state = state, actions = actions) {
             // The suggestion replaces the text being typed, so the keyboard goes first.
@@ -769,11 +873,14 @@ private fun PulseComposeBodySections(
         onPick = actions.onPickPhotos,
         onRemove = actions.onRemovePhoto,
         onTakePhoto = actions.onTakePhoto.takeIf { state.canTakePhoto },
+        // A made-up-name post is words only: no new attachment, and one already there has to come off.
+        wordsOnly =
+            pen?.let { if (state.photos.isEmpty()) PenNameCopy.WORDS_ONLY else PenNameCopy.WORDS_ONLY_WITH_PHOTO },
     )
     // Place tags are create-only (the update pipeline carries no location
     // fields), so hide the row in edit mode — offering a picker whose
-    // input the Save path drops would lose data. Mirrors iOS.
-    if (!state.isIntentLocked) {
+    // input the Save path drops would lose data. Mirrors iOS. A made-up-name post floats over its area: no tag.
+    if (!state.isIntentLocked && pen == null) {
         LocationSection(
             tag = state.selectedPlaceTag,
             onAdd = actions.onAddLocation,
@@ -792,7 +899,8 @@ private fun PulseComposeBodySections(
         )
     }
     // The audience is fixed after posting (edits don't send it), so edit mode shows no selector, like web.
-    if (!state.isIntentLocked && !state.isNetworkTarget) {
+    // A made-up name goes to people nearby only.
+    if (!state.isIntentLocked && !state.isNetworkTarget && pen == null) {
         VisibilitySection(
             active = state.visibility,
             onSelect = actions.selection.onSelectVisibility,
@@ -1662,21 +1770,26 @@ private fun PhotosSection(
     onPick: () -> Unit,
     onRemove: (String) -> Unit,
     onTakePhoto: (() -> Unit)? = null,
+    /** A made-up-name post: the sentence that says it is words only, in place of the add tile; null keeps the tile. */
+    wordsOnly: String? = null,
 ) {
     FormFieldGroup("Attachments (optional)") {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                photos.forEach { photo ->
-                    PhotoThumbnail(photo = photo, onRemove = onRemove)
-                }
-                if (photos.size < PULSE_COMPOSE_MAX_PHOTOS) {
-                    AddPhotoTile(onPick = onPick, onTakePhoto = onTakePhoto)
+            if (photos.isNotEmpty() || wordsOnly == null) {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    photos.forEach { photo ->
+                        PhotoThumbnail(photo = photo, onRemove = onRemove)
+                    }
+                    if (photos.size < PULSE_COMPOSE_MAX_PHOTOS && wordsOnly == null) {
+                        AddPhotoTile(onPick = onPick, onTakePhoto = onTakePhoto)
+                    }
                 }
             }
             Text(
-                text = "Up to $PULSE_COMPOSE_MAX_PHOTOS photos, videos, or PDFs. Tap an attachment to remove it.",
+                text = wordsOnly ?: "Up to $PULSE_COMPOSE_MAX_PHOTOS photos, videos, or PDFs. Tap an attachment to remove it.",
                 style = PantopusTextStyle.caption,
-                color = PantopusColors.appTextSecondary,
+                color = if (wordsOnly != null && photos.isNotEmpty()) PantopusColors.error else PantopusColors.appTextSecondary,
+                modifier = if (wordsOnly != null) Modifier.testTag("penNameWordsOnly") else Modifier,
             )
         }
     }

@@ -11,6 +11,8 @@ data class PostCommentRequest(
     val comment: String,
     val parentCommentId: String? = null,
     val clientRequestId: String? = null,
+    /** `pen_name` replies under the person's made-up name; left out, the reply is under their own name. */
+    val postAs: String? = null,
 )
 
 /** `POST /api/posts/:id/comments` envelope — returns the new row. */

@@ -102,12 +102,24 @@ data class MyPostsResponse(
 )
 
 /**
+ * `GET /api/pen-names/me/posts`: the person's own posts under their made-up name, newest first, which only they can
+ * read (My posts' Made-up name tab). Paged by [nextBefore] (the last row's `created_at`), null after the last page.
+ */
+@JsonClass(generateAdapter = true)
+data class PenNamePostsResponse(
+    val posts: List<MyPostDto> = emptyList(),
+    @Json(name = "next_before") val nextBefore: String? = null,
+    /** The same posts read as the feed's, drawn as Pulse cards. */
+    @Json(name = "feed_posts") val feedPosts: List<FeedPost> = emptyList(),
+)
+
+/**
  * My posts' replies list each post once, under `posts`, in the feed's shape: they are read twice, as the screen's rows
  * ([MyPostDto]) and, under `feed_posts`, as the feed's posts its Pulse cards draw. A saved copy of the reply keeps
  * both, so it reads back the same. Registered in `NetworkModule.provideMoshi`.
  */
 object FeedFormPostsAdapterFactory : JsonAdapter.Factory {
-    private val envelopes: Set<Type> = setOf(MyPostsResponse::class.java, SavedPostsResponse::class.java)
+    private val envelopes: Set<Type> = setOf(MyPostsResponse::class.java, SavedPostsResponse::class.java, PenNamePostsResponse::class.java)
 
     override fun create(
         type: Type,
