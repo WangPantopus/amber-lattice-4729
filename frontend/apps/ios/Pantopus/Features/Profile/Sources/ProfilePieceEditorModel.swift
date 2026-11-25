@@ -324,7 +324,11 @@ final class ProfilePieceEditorModel {
         defer { saving = false }
         do {
             let answer: ProfileOwnedPieceDTO = if let pieceId {
-                try await client.request(ProfilePageEndpoints.updatePiece(id: pieceId, body(draft: draft)))
+                // A change sends only what changed since the piece was read or last saved.
+                try await client.request(ProfilePageEndpoints.updatePiece(
+                    id: pieceId,
+                    loadedBody.map { body(draft: draft).changes(since: $0) } ?? body(draft: draft)
+                ))
             } else {
                 try await client.request(ProfilePageEndpoints.createPiece(body(draft: draft)))
             }

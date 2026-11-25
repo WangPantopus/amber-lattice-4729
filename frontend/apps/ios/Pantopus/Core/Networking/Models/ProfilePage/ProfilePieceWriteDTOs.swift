@@ -101,6 +101,16 @@ public struct ProfilePieceBody: Encodable, Sendable, Hashable {
         fields[key] = value
     }
 
+    /// Only the fields that differ from `loaded`: a change never resends what the person didn't touch (a piece's own
+    /// files from before, say, which the server may not take back as uploads).
+    public func changes(since loaded: ProfilePieceBody) -> ProfilePieceBody {
+        var out = ProfilePieceBody()
+        for (key, value) in fields where loaded.fields[key] != value {
+            out.set(key, value)
+        }
+        return out
+    }
+
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.singleValueContainer()
         try c.encode(fields)
