@@ -168,7 +168,9 @@ final class ProfilePageModel {
             if previewAs == nil, let tab = ProfileOpenTab.take(for: [identifier, page.header.userId, page.header.username]),
                content.tabs.contains(where: { $0.key == tab }) {
                 selectedTab = tab
-                scrollsToTabs = true
+                // The first tab starts at the top of the page (its opening run and any notice sit above the tabs);
+                // Work and Record are below them.
+                scrollsToTabs = tab != .person
             }
             if content.isOwner, previewAs == nil {
                 async let pieces: ProfileMyPiecesDTO? = try? await client.request(ProfilePageEndpoints.myPieces())
