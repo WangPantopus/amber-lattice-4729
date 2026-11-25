@@ -365,6 +365,15 @@ class PostsRepository
             details: String? = null,
         ): NetworkResult<PostActionAckResponse> = safeApiCall { api.report(id, PostReportRequest(reason = reason, details = details)) }
 
+        /** `POST /api/posts/:postId/comments/:commentId/report`. */
+        suspend fun reportComment(
+            postId: String,
+            commentId: String,
+            reason: String,
+            details: String? = null,
+        ): NetworkResult<PostActionAckResponse> =
+            safeApiCall { api.reportComment(postId, commentId, PostReportRequest(reason = reason, details = details)) }
+
         /** `POST /api/posts/:id/save`. */
         suspend fun toggleSave(
             id: String,

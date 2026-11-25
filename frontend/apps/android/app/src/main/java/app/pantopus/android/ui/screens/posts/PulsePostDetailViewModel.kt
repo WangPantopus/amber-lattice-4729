@@ -594,6 +594,19 @@ class PulsePostDetailViewModel
             }
         }
 
+        /** Flag someone else's reply with one of the post's report reasons. */
+        fun reportComment(
+            commentId: String,
+            reason: String,
+        ) {
+            viewModelScope.launch {
+                when (repo.reportComment(postId, commentId, reason)) {
+                    is NetworkResult.Success -> _toastMessage.value = POST_REPORT_SUBMITTED_TOAST
+                    is NetworkResult.Failure -> _toastMessage.value = "Couldn't submit the report"
+                }
+            }
+        }
+
         /** Toggle Save — optimistic with reconcile/rollback; "Saved." comes with "View" (contract §5). */
         fun toggleSave() {
             if (_savePending.value) return

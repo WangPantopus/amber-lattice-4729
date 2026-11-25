@@ -199,6 +199,7 @@ fun PulsePostDetailScreen(
     var showsReportReasons by rememberSaveable { mutableStateOf(false) }
     var showsDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var commentPendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var commentPendingReportId by rememberSaveable { mutableStateOf<String?>(null) }
     var showsRepostChooser by rememberSaveable { mutableStateOf(false) }
 
     LifecycleResumeEffect(Unit) {
@@ -309,6 +310,7 @@ fun PulsePostDetailScreen(
                     onCommentReply = { row -> viewModel.beginReply(row.id, row.authorName) },
                     onCommentLike = { row -> viewModel.toggleCommentLike(row.id) },
                     onCommentDelete = { row -> commentPendingDeleteId = row.id },
+                    onCommentReport = { row -> commentPendingReportId = row.id },
                     commentsLoading = commentsLoading,
                     onOpenQuoted = { quotedId ->
                         viewModel.seedQuotedPost(quotedId)
@@ -504,6 +506,35 @@ fun PulsePostDetailScreen(
         )
     }
 
+    commentPendingReportId?.let { pendingId ->
+        AlertDialog(
+            onDismissRequest = { commentPendingReportId = null },
+            title = { Text("Report this reply?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+                    reportReasons.forEach { (key, label) ->
+                        TextButton(
+                            onClick = {
+                                commentPendingReportId = null
+                                viewModel.reportComment(pendingId, key)
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .testTag("pulsePostDetail-commentReportReason-$key"),
+                        ) {
+                            Text(label, color = PantopusColors.appText)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { commentPendingReportId = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     commentPendingDeleteId?.let { pendingId ->
         AlertDialog(
             onDismissRequest = { commentPendingDeleteId = null },
@@ -578,6 +609,7 @@ fun PulsePostDetailLoadedContent(
     onCommentReply: ((PostCommentRow) -> Unit)? = null,
     onCommentLike: ((PostCommentRow) -> Unit)? = null,
     onCommentDelete: ((PostCommentRow) -> Unit)? = null,
+    onCommentReport: ((PostCommentRow) -> Unit)? = null,
     /** Instant Screens: the post shows from its feed card while its comments load. */
     commentsLoading: Boolean = false,
     refreshNotice: RefreshNotice? = null,
@@ -693,6 +725,7 @@ fun PulsePostDetailLoadedContent(
                 onCommentReply = if (content.post.isRemovedByModerator) null else onCommentReply,
                 onCommentLike = onCommentLike,
                 onCommentDelete = onCommentDelete,
+                onCommentReport = onCommentReport,
                 repliesClosedNote = if (content.post.isRemovedByModerator) "Replies are off for this post." else null,
                 commentsLoading = commentsLoading,
                 loadingCommentCount = content.post.commentCount,
