@@ -6,11 +6,16 @@
  * Mount at: app.use('/api/admin/reports', require('./routes/adminReports'));
  *
  * Endpoints:
- *   GET  /?status=pending            — Reports of people, posts, tasks and neighbor messages, newest first
+ *   GET  /?status=pending            — Reports of people, posts, replies, tasks and neighbor messages, newest first
  *   POST /:kind/:reportId/resolve    — { outcome: 'resolved' | 'dismissed' }
  *   POST /post/:reportId/remove      — take the reported post down, then close its open reports
+ *   POST /reply/:reportId/remove     — take the reported reply down, then close its open reports
+ *   POST /post|reply/:reportId/writer — who wrote a made-up-name post or reply ({ reason }, logged)
  *   GET  /user/:reportId/card        — the one Christmas card a "Report this card" shares (logged per opening)
  *   GET  /user/:reportId/card/media/:fileId — that card's own photo or voice
+ *
+ * A reply's report is a PostReport row with the reply's comment_id (and its post's post_id): it is listed as kind
+ * 'reply', never as a report on its post.
  *
  * Direct-message reports arrive as reports of the person (UserReport). A neighbor-message report is a flag on
  * the message itself (NeighborMessage.reported_at, free-text report_reason) with no review status, so it is
@@ -37,11 +42,14 @@ const OUTCOMES = new Set(['resolved', 'dismissed']);
 const REPORT_COLUMNS = 'id, reported_by, reason, details, status, created_at, resolved_at';
 
 // Listing reports stay out while Marketplace is not part of the launch.
+// `only` narrows a table shared by two kinds: a post's own reports have no comment_id, a reply's have one.
 const KINDS = {
   user: { table: 'UserReport', target: 'reported_user_id' },
-  post: { table: 'PostReport', target: 'post_id' },
+  post: { table: 'PostReport', target: 'post_id', only: (q) => q.is('comment_id', null) },
+  reply: { table: 'PostReport', target: 'comment_id', only: (q) => q.not('comment_id', 'is', null) },
   gig: { table: 'GigReport', target: 'gig_id' },
 };
+const scoped = (spec, query) => (spec.only ? spec.only(query) : query);
 
 const excerpt = (text) => {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
@@ -117,6 +125,35 @@ async function targetsFor(kind, ids) {
       ...(moments.has(p.id) ? { moment: moments.get(p.id) } : {}),
     }]));
   }
+  if (kind === 'reply') {
+    const { data } = await supabaseAdmin
+      .from('PostComment')
+      .select('id, post_id, user_id, comment, is_deleted, moderation_state, created_at, identity_context_type, identity_context_id')
+      .in('id', unique);
+    const replies = data || [];
+    // The reply's words and its post; a reply under a made-up name shows the name, never its writer (the logged look
+    // is POST /reply/:reportId/writer).
+    const [{ data: posts }, authors, penNames] = await Promise.all([
+      supabaseAdmin.from('Post').select('id, title, content, archived_at').in('id', [...new Set(replies.map((r) => r.post_id))]),
+      usersById(replies.filter((r) => !penName.isPenNameRow(r)).map((r) => r.user_id)),
+      penName.names.rowsById(replies.filter(penName.isPenNameRow).map((r) => r.identity_context_id)),
+    ]);
+    const postsById = new Map((posts || []).map((p) => [p.id, p]));
+    return Object.fromEntries(replies.map((r) => {
+      const post = postsById.get(r.post_id);
+      return [r.id, {
+        id: r.id,
+        excerpt: excerpt(r.comment),
+        deleted: Boolean(r.is_deleted),
+        moderation_state: r.moderation_state,
+        author: penName.isPenNameRow(r) ? null : authors[r.user_id] || null,
+        ...(penName.isPenNameRow(r)
+          ? { made_up_name: penNames.get(String(r.identity_context_id))?.display_name || penName.present.UNKNOWN_NAME } : {}),
+        post: post ? { id: post.id, title: post.title || null, excerpt: excerpt(post.content), archived: Boolean(post.archived_at) }
+          : { id: r.post_id, title: null, excerpt: '', archived: false, missing: true },
+      }];
+    }));
+  }
   if (kind === 'gig') {
     const { data } = await supabaseAdmin
       .from('Gig')
@@ -177,10 +214,10 @@ router.get('/', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
 
     const lists = await Promise.all(Object.entries(KINDS).map(async ([kind, { table, target }]) => {
-      const { data, error, count } = await supabaseAdmin
+      const { data, error, count } = await scoped(KINDS[kind], supabaseAdmin
         .from(table)
         .select(`${REPORT_COLUMNS}, ${target}`, { count: 'exact' })
-        .eq('status', status)
+        .eq('status', status))
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw Object.assign(new Error(`${table}: ${error.message}`), { kind });
@@ -246,11 +283,11 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
     }
 
     // Only an open report closes; a second click on a closed one changes nothing.
-    const { data: closed, error } = await supabaseAdmin
+    const { data: closed, error } = await scoped(spec, supabaseAdmin
       .from(spec.table)
       .update({ status: outcome, resolved_at: new Date().toISOString() })
       .eq('id', reportId)
-      .in('status', ['pending', 'reviewed'])
+      .in('status', ['pending', 'reviewed']))
       .select(REPORT_COLUMNS)
       .maybeSingle();
     if (error) {
@@ -258,10 +295,10 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update the report' });
     }
     if (!closed) {
-      const { data: current } = await supabaseAdmin
+      const { data: current } = await scoped(spec, supabaseAdmin
         .from(spec.table)
         .select('id, status, resolved_at')
-        .eq('id', reportId)
+        .eq('id', reportId))
         .maybeSingle();
       if (!current) return res.status(404).json({ error: 'Report not found' });
       return res.status(409).json({ error: `Report is already ${current.status}`, report: current });
@@ -274,6 +311,15 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
       if (target?.post_id) {
         await require('../services/moments/momentStore').releaseIfReviewed(target.post_id).catch((err) => {
           logger.warn('Admin reports: Moment release failed', { reportId, error: err.message });
+        });
+      }
+    }
+    // A made-up-name reply hidden by two reports shows again once its reports were all dismissed.
+    if (kind === 'reply') {
+      const { data: target } = await supabaseAdmin.from('PostReport').select('comment_id').eq('id', reportId).maybeSingle();
+      if (target?.comment_id) {
+        await penName.standing.releaseReplyIfReviewed(target.comment_id).catch((err) => {
+          logger.warn('Admin reports: reply release failed', { reportId, error: err.message });
         });
       }
     }
@@ -292,32 +338,44 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
  */
 // Who wrote a reported made-up-name post: { reason } is required and the look is written to "IdentityAuditLog" before
 // the answer is given (penName/standing.js). A post under the person's own name already shows its author in the list.
-router.post('/post/:reportId/writer', async (req, res) => {
+// The same for a reply: POST /reply/:reportId/writer.
+const WRITER_LOOK = {
+  post: { kind: 'post', column: 'post_id', notMadeUp: 'This post was not written under a made-up name.' },
+  reply: { kind: 'comment', column: 'comment_id', notMadeUp: 'This reply was not written under a made-up name.' },
+};
+const writerLook = (kind) => async (req, res) => {
   try {
     const { reportId } = req.params;
+    const spec = KINDS[kind];
+    const look = WRITER_LOOK[kind];
     if (!UUID_REGEX.test(reportId)) return res.status(400).json({ error: 'Invalid report id' });
-    const { data: report, error } = await supabaseAdmin.from('PostReport').select('post_id').eq('id', reportId).maybeSingle();
+    const { data: report, error } = await scoped(spec, supabaseAdmin.from('PostReport').select('post_id, comment_id')
+      .eq('id', reportId)).maybeSingle();
     if (error) throw error;
     if (!report) return res.status(404).json({ error: 'Report not found' });
-    const writerId = await penName.standing.staffLook({ req, kind: 'post', contentId: report.post_id, reason: req.body?.reason });
-    if (!writerId) return res.status(404).json({ error: 'This post was not written under a made-up name.' });
+    const writerId = await penName.standing.staffLook({ req, kind: look.kind, contentId: report[look.column], reason: req.body?.reason });
+    if (!writerId) return res.status(404).json({ error: look.notMadeUp });
     return res.json({ writer: (await usersById([writerId]))[writerId] || { id: writerId } });
   } catch (err) {
     if (err.status && err.code) return res.status(err.status).json({ error: err.message, code: err.code });
     logger.error('Admin made-up name writer look failed', { error: err.message });
     return res.status(500).json({ error: 'Failed to look up the writer' });
   }
-});
+};
+router.post('/post/:reportId/writer', writerLook('post'));
+router.post('/reply/:reportId/writer', writerLook('reply'));
 
 router.post('/post/:reportId/remove', async (req, res) => {
   try {
     const { reportId } = req.params;
     if (!UUID_REGEX.test(reportId)) return res.status(400).json({ error: 'Invalid report id' });
 
+    // A reply's report (comment_id) never takes its post down: that is POST /reply/:reportId/remove.
     const { data: report, error: reportError } = await supabaseAdmin
       .from('PostReport')
       .select('id, post_id, status')
       .eq('id', reportId)
+      .is('comment_id', null)
       .maybeSingle();
     if (reportError) {
       logger.error('Admin post removal: report lookup failed', { reportId, error: reportError.message });
@@ -366,6 +424,7 @@ router.post('/post/:reportId/remove', async (req, res) => {
       .from('PostReport')
       .update({ status: 'resolved', resolved_at: now })
       .eq('post_id', report.post_id)
+      .is('comment_id', null)
       .in('status', ['pending', 'reviewed'])
       .select('id');
     if (closeError) {
@@ -390,6 +449,102 @@ router.post('/post/:reportId/remove', async (req, res) => {
   } catch (err) {
     logger.error('Admin post removal error', { error: err.message });
     res.status(500).json({ error: 'Failed to remove the post' });
+  }
+});
+
+/**
+ * Remove a reported reply: moderation_state 'removed', which every reply list already honours (only its writer still
+ * sees it, services/pulse/readAccess.js canReadReply), and every open report on that reply is closed as resolved. The
+ * writer is told; a reply under a made-up name is stored under the system account, and the notice reaches its real
+ * writer by the reply's id (penName/notices.js reads `comment_id` on a `comment_…` notice). A removed made-up-name
+ * reply is the same strike as a post (`severe: true` for good). Repeating it changes nothing.
+ */
+router.post('/reply/:reportId/remove', async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    if (!UUID_REGEX.test(reportId)) return res.status(400).json({ error: 'Invalid report id' });
+
+    const { data: report, error: reportError } = await supabaseAdmin
+      .from('PostReport')
+      .select('id, post_id, comment_id, status')
+      .eq('id', reportId)
+      .not('comment_id', 'is', null)
+      .maybeSingle();
+    if (reportError) {
+      logger.error('Admin reply removal: report lookup failed', { reportId, error: reportError.message });
+      return res.status(500).json({ error: 'Failed to remove the reply' });
+    }
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    const { data: reply, error: replyError } = await supabaseAdmin
+      .from('PostComment')
+      .select('id, post_id, user_id, is_deleted, moderation_state, identity_context_type')
+      .eq('id', report.comment_id)
+      .maybeSingle();
+    if (replyError) {
+      logger.error('Admin reply removal: reply lookup failed', { reportId, error: replyError.message });
+      return res.status(500).json({ error: 'Failed to remove the reply' });
+    }
+
+    // Only the request that changed the state tells the writer and records a strike.
+    let removedNow = false;
+    if (reply && reply.moderation_state !== 'removed') {
+      const { data: changed, error: removeError } = await supabaseAdmin
+        .from('PostComment')
+        .update({ moderation_state: 'removed', moderation_rule: 'report_removed' })
+        .eq('id', reply.id)
+        .neq('moderation_state', 'removed')
+        .select('id');
+      if (removeError) {
+        logger.error('Admin reply removal failed', { reportId, commentId: reply.id, error: removeError.message });
+        return res.status(500).json({ error: 'Failed to remove the reply' });
+      }
+      removedNow = Boolean(changed?.length);
+    }
+    if (removedNow && reply.user_id && !reply.is_deleted) {
+      // The writer still sees the reply, so without this they'd never learn others can't. Neither the reporter nor
+      // the moderator is named. The type has no "post" or "reply" in it, so the apps file it under System.
+      notificationService.createNotification({
+        userId: reply.user_id,
+        type: 'comment_removed',
+        title: 'Your reply was removed',
+        body: 'A Pantopus moderator removed it after a report. Others can no longer see it.',
+        icon: '🛡️',
+        link: `/posts/${reply.post_id}`,
+        metadata: { comment_id: reply.id, post_id: reply.post_id },
+        idempotencyKey: `reply-removed:${reply.id}`,
+      }).catch((err) => {
+        logger.warn('Reply removal notification failed (non-blocking)', { commentId: reply.id, error: err.message });
+      });
+    }
+
+    const now = new Date().toISOString();
+    const { data: closed, error: closeError } = await supabaseAdmin
+      .from('PostReport')
+      .update({ status: 'resolved', resolved_at: now })
+      .eq('comment_id', report.comment_id)
+      .in('status', ['pending', 'reviewed'])
+      .select('id');
+    if (closeError) {
+      logger.error('Admin reply removal: closing reports failed', { reportId, error: closeError.message });
+      return res.status(500).json({ error: 'The reply was removed, but its reports could not be closed' });
+    }
+
+    let madeUpName = null;
+    if (removedNow && penName.isPenNameRow(reply)) {
+      madeUpName = await penName.standing.recordRemoval({ kind: 'comment', contentId: reply.id, severe: req.body?.severe === true })
+        .catch((err) => { logger.error('Admin reply removal: made-up name strike failed', { commentId: reply.id, error: err.message }); return null; });
+    }
+
+    logger.info('admin.reply_removed', {
+      report_id: reportId, comment_id: report.comment_id, reply_found: Boolean(reply),
+      reports_closed: (closed || []).length, admin_id: req.user.id,
+    });
+    res.json({ removed: Boolean(reply), comment_id: report.comment_id, post_id: report.post_id,
+      reports_closed: (closed || []).length, ...(madeUpName ? { made_up_name_penalty: madeUpName } : {}) });
+  } catch (err) {
+    logger.error('Admin reply removal error', { error: err.message });
+    res.status(500).json({ error: 'Failed to remove the reply' });
   }
 });
 

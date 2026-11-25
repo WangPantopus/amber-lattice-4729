@@ -17,7 +17,7 @@ from the server's "made-up username" (`utils/personalUsername.js`) and the Mail 
 | Server: Moments under a made-up name | Built ("Moments" below) |
 | Web, iPhone, Android: "Post as" in the Moment composer | **Not built** |
 | Photos and videos on a made-up-name post or reply | **Not built: words only.** Nothing reads a picture on a post before it shows. A photo or a video goes out as a Moment, which has the picture check |
-| Reporting a reply | **Not built, under any name.** The apps report posts only. A reply under a made-up name can be muted or blocked, and its words were checked before it showed |
+| Reporting a reply | Server built, under any name: `POST /api/posts/:postId/comments/:commentId/report` `{ reason, details? }` (a post's reasons), listed in the admin queue as kind `reply`. The apps' "Report" beside Reply and ♥: web #4891, iPhone #4892, Android in progress |
 
 An app from before made-up names already draws a made-up-name post and reply correctly (the name and the drawn
 picture, where it reads `author` / `creator`), and its Mute, Block, Report, Edit and Delete work on one. It can't write
@@ -203,12 +203,14 @@ Nobody is told "someone you know posted" about a made-up-name post: no connectio
   shares an address, a phone number or a plate, accuses a recognizable person or business of wrongdoing, threatens,
   abuses or is sexually explicit. A refused post isn't saved and the person is told why. If the check can't run,
   nothing is posted under a made-up name.
-- **Two reports** by different people hide a made-up-name post until someone has looked (`moderation_state: held`).
-- **A removal** by a moderator (`POST /api/admin/reports/post/:reportId/remove`) is a strike on the account: a warning
+- **Two reports** by different people hide a made-up-name post or reply until someone has looked
+  (`moderation_state: held`). A reply whose reports were all dismissed shows again.
+- **A removal** by a moderator (`POST /api/admin/reports/post/:reportId/remove`, or `/reply/:reportId/remove` for a
+  reply) is a strike on the account: a warning
   first, no made-up name for 30 days on a second within 90 days, and for good with `{ "severe": true }`. The notice
   of the removal reaches the writer.
-- **Staff** see the made-up name on a reported post, not its writer. `POST /api/admin/reports/post/:reportId/writer`
-  `{ "reason": "…" }` answers who wrote it and writes the look to `IdentityAuditLog` first.
+- **Staff** see the made-up name on a reported post or reply, not its writer. `POST /api/admin/reports/post/:reportId/writer`
+  (or `/reply/:reportId/writer`) `{ "reason": "…" }` answers who wrote it and writes the look to `IdentityAuditLog` first.
 - **The brake:** a `FeatureFlag` row named `pen_names_paused` with `enabled_globally = true` stops new made-up-name
   posts and replies everywhere within a minute; `pen_names_hidden` also takes every one already written out of what
   people read. Neither row exists by default. They are for a bad day, not for launching.

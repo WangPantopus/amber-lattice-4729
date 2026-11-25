@@ -92,7 +92,7 @@ export async function reviewClaim(
 
 // ── Report review queue ─────────────────────────────────────
 
-export type ReportKind = 'user' | 'post' | 'gig' | 'message';
+export type ReportKind = 'user' | 'post' | 'reply' | 'gig' | 'message';
 export type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed';
 
 export interface ReportPerson {
@@ -110,16 +110,24 @@ export interface AdminReport {
   created_at: string;
   resolved_at: string | null;
   target_id: string;
-  /** The reported person, or a post or neighbor message ({ title, excerpt, author }) or task ({ title, status, poster }). */
+  /**
+   * The reported person, or a post or neighbor message ({ title, excerpt, author }), a reply ({ excerpt, author,
+   * moderation_state, post }) or task ({ title, status, poster }). A post or reply under a made-up name has
+   * `made_up_name` and no author.
+   */
   target: (ReportPerson & Record<string, unknown>) | {
     id: string;
-    title: string | null;
+    title?: string | null;
     excerpt?: string;
     post_type?: string | null;
     archived?: boolean;
     status?: string | null;
     author?: ReportPerson | null;
     poster?: ReportPerson | null;
+    made_up_name?: string;
+    moderation_state?: 'live' | 'held' | 'removed';
+    deleted?: boolean;
+    post?: { id: string; title: string | null; excerpt: string; archived: boolean; missing?: boolean };
   } | null;
   reporter: ReportPerson | null;
   /** False for neighbor-message reports, which have no review status yet. */
@@ -185,6 +193,16 @@ export async function getReportedCardMediaBlob(reportId: string, fileId: string,
     { responseType: 'blob', signal },
   );
   return response.data;
+}
+
+/** Take a reported reply down (moderation) and close every open report on it; its writer is told. */
+export async function removeReportedReply(reportId: string): Promise<{
+  removed: boolean;
+  comment_id: string;
+  post_id: string;
+  reports_closed: number;
+}> {
+  return post(`/api/admin/reports/reply/${reportId}/remove`, {});
 }
 
 /** Take a reported post down (moderation) and close every open report on it. */

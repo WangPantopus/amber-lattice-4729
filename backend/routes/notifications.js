@@ -317,9 +317,10 @@ where n.user_id = $1 and n.is_read = false
   and (p.a->>'read_scope' is null or p.a->>'read_scope' = 'public' or p.a->>'user_id' = $1::text
     or (p.a->>'read_scope' = 'verified_town' and p.a->>'pulse_post_town_id' = any($6::text[]))
     or (p.a->>'read_scope' = 'verified_area' and p.a->>'area_id' = any($7::text[])))
-  and (p.a->>'moderation_state' is null or p.a->>'moderation_state' = 'live' or p.a->>'user_id' = $1::text)
+  and (p.a->>'moderation_state' is null or p.a->>'moderation_state' = 'live' or p.a->>'user_id' = $1::text
+    or n.type in ('content_removed', 'comment_removed'))
   and (p.a->>'reply_moderation_state' is null or p.a->>'reply_moderation_state' = 'live'
-    or p.a->>'reply_user_id' = $1::text)
+    or p.a->>'reply_user_id' = $1::text or n.type in ('content_removed', 'comment_removed'))
   and p.a->>'withdrawn' is null
   and (cardinality($5::text[]) = 0 or p.a->>'user_id' is null or not (p.a->>'user_id' = any($5::text[])))
   and (cardinality($5::text[]) = 0 or p.a->>'reply_user_id' is null or not (p.a->>'reply_user_id' = any($5::text[])))`;

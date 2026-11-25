@@ -227,6 +227,7 @@ const { PULSE_TOPICS, PULSE_TOPIC_NAMES, isPulseTopic } = require('../services/p
 const pulseLifecycle = require('../services/pulse/lifecycle');
 const pulseCompose = require('../services/pulse/compose');
 const penName = require('../services/penName');
+const postReportService = require('../services/postReportService');
 // The created post as its author's Pulse card (contract §2.5 response).
 async function pulseCard(postId, userId) {
   return (await require('../services/pulse/conversation').read(postId, userId)).post;
@@ -4717,9 +4718,10 @@ router.post('/:id/report', verifyToken, validate(reportPostSchema), async (req, 
     const userId = req.user.id;
     const post = await requireVisiblePost({ postId, userId, res });
     if (!post) return;
-    // Preserve reports written with the old random IDs, including their review state.
+    // Preserve reports written with the old random IDs, including their review state. A report on one of the post's
+    // replies (comment_id) is not a report on the post.
     const { data: existing, error: readError } = await supabaseAdmin.from('PostReport')
-      .select('id').eq('post_id', post.id).eq('reported_by', userId).limit(1);
+      .select('id').eq('post_id', post.id).eq('reported_by', userId).is('comment_id', null).limit(1);
     if (readError) throw readError;
     if (existing?.length) {
       return res.status(200).json({ message: 'Post reported successfully. We will review it shortly.' });
@@ -4741,6 +4743,36 @@ router.post('/:id/report', verifyToken, validate(reportPostSchema), async (req, 
   } catch (err) {
     logger.error('Report error', { error: err.message });
     res.status(500).json({ error: 'Failed to report post' });
+  }
+});
+
+// A reply is reported with a post's reasons and lands in the same admin queue (PostReport with its comment_id): one
+// report per person per reply, a retry answers the same (services/postReportService.js). Nobody reports their own
+// reply, including one written under their made-up name.
+router.post('/:postId/comments/:commentId/report', verifyToken, validate(reportPostSchema), async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { reason, details } = req.body;
+    const userId = req.user.id;
+    const reported = { message: 'Reply reported successfully. We will review it shortly.' };
+    if (!UUID_RE.test(String(commentId))) return res.status(404).json({ error: 'Comment not found' });
+    const post = await requireVisiblePost({ postId, userId, res });
+    if (!post) return;
+    const { data: reply, error: replyError } = await supabaseAdmin.from('PostComment')
+      .select('id, post_id, user_id, moderation_state, identity_context_type, identity_context_id')
+      .eq('id', commentId).eq('post_id', post.id).eq('is_deleted', false).maybeSingle();
+    if (replyError) throw replyError;
+    if (!reply || !canReadReply(reply, userId) || (reply.user_id && await blockService.isBlocked(userId, reply.user_id))) {
+      // Two reports can hide a reply; a retry from someone who reported it still gets its answer.
+      if (reply && await postReportService.hasReportedReply({ commentId: reply.id, userId })) return res.status(200).json(reported);
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    if (await isWriter(reply, userId, 'comment')) return res.status(400).json({ error: "You can't report your own reply." });
+    await postReportService.fileReplyReport({ reply, userId, reason, details: details || null });
+    res.status(200).json(reported);
+  } catch (err) {
+    logger.error('Reply report error', { error: err.message });
+    res.status(500).json({ error: 'Failed to report reply' });
   }
 });
 
