@@ -385,8 +385,9 @@ private struct ProfileAskRow: View {
                 PrimaryButton(title: "Sign") { signing = true }
                 PantopusButton(title: "Not me", kind: .ghost, isLoading: working) { confirmingNotMe = true }
             }
-            // "Not me" can't be undone and stops the asker asking again for 30 days: it asks first.
-            .confirmationDialog("Not you?", isPresented: $confirmingNotMe, titleVisibility: .visible) {
+            // "Not me" can't be undone and stops the asker asking again for 30 days: it asks first. An alert, so
+            // "Cancel" shows (a confirmation dialog drawn as a popover leaves it out).
+            .alert("Not you?", isPresented: $confirmingNotMe) {
                 Button("Not me", role: .destructive) { Task { await decline() } }
                 Button("Cancel", role: .cancel) {}
             } message: {
