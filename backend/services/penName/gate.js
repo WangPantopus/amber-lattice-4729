@@ -128,6 +128,21 @@ function postRefusal({ postType, audience, visibility, distributionTargets, post
   return null;
 }
 
+/**
+ * Whether a first reply on this post may be written under a made-up name: null, or { code, message, status }. A reply
+ * is read by whoever reads its post, so the rule is the post's audience, whatever kind of post it is: people nearby
+ * (a post to its place, or one of Today's Around you stories), or a made-up-name conversation. Never a post for
+ * Connections, a household or a plan's guests: the fewer people who read a reply, the easier the guess.
+ */
+function replyRefusal(post) {
+  if (owner.isPenNameRow(post)) return null;
+  const targets = Array.isArray(post?.distribution_targets) ? post.distribution_targets : [];
+  const aroundYou = post?.origin === 'curator' && Boolean(post.post_metadata?.around_you);
+  if (targets.includes('place') || aroundYou) return null;
+  return refusal('PEN_NAME_AUDIENCE',
+    'A made-up name can reply where people nearby are reading. The fewer people who see a reply, the easier it is to guess who wrote it.', 400);
+}
+
 /** How many posts, Moments and replies the account wrote under its made-up name in the last day. */
 async function written(userId) {
   const since = new Date(Date.now() - DAY_MS).toISOString();
@@ -272,6 +287,7 @@ module.exports = {
   standingPenalty,
   accountRefusal,
   postRefusal,
+  replyRefusal,
   limitRefusal,
   written,
   crowdAt,

@@ -99,7 +99,7 @@ check (not a real person's full name, not abusive). The picture is drawn by the 
 | Route | Under a made-up name |
 |---|---|
 | `POST /api/posts` | Send `"postAs": "pen_name"`. `postType` is one of `ask_local`, `recommendation`, `local_update`, `neighborhood_win`; `audience` is `nearby`; a place (`latitude`, `longitude`) is required; no media, no `homeId`, no `businessId`, no `quotedPostId`. Everything else is the ordinary post. The answer is the ordinary one, with the fields above |
-| `POST /api/posts/:id/comments` | Send `"postAs": "pen_name"`. Words only |
+| `POST /api/posts/:id/comments` | Send `"postAs": "pen_name"`. Words only. Allowed on any kind of post that people nearby read: one whose `distribution_targets` holds `place`, one of Today's Around you stories (`post_metadata.around_you`), or a made-up-name post. Refused (`PEN_NAME_AUDIENCE`) on a post for Connections, a household or a plan's guests |
 | `PATCH /api/posts/:id`, `PATCH …/comments/:commentId` | The writer may change the words (`content`, `title`, `tags`); other fields sent are ignored. The new words are checked again |
 | `DELETE`, archive, resolve, solve | As for any post of one's own |
 
@@ -215,7 +215,8 @@ Nobody is told "someone you know posted" about a made-up-name post: no connectio
 
 The same seven things on the web, the iPhone and Android. Words in quotes are the screen's own.
 
-1. **"Post as"** in the Pulse composer and in the reply box: the person's own name ("your name and profile") and
+1. **"Post as"** in the Pulse composer and in the reply box (the reply box offers it on any kind of post people
+   nearby read, an Event, an alert or an Around you story included; the rule is the row above, never the post's kind): the person's own name ("your name and profile") and
    their made-up name ("others can't see it's you"). Every new post starts on the person's own name. When
    `/me` says `allowed: false`, the row shows `refusal.message` and can't be chosen (for a home that isn't verified,
    that sentence is the nudge to verify).
