@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { ProfileKnownForLine, ProfileKnownForSheet, ProfileKnownForWrite } from '@pantopus/api';
@@ -90,24 +90,38 @@ export function LineChoices({ line, onTop, canTop, onDone }: {
   line: ProfileKnownForLine;
   onTop: boolean;
   canTop: boolean;
-  onDone: (change?: { top: boolean }) => Promise<void> | void;
+  /** `fromKeys`: the choice was made with the focus on it, so whoever moves the line can keep the focus nearby. */
+  onDone: (change?: { top: boolean }, fromKeys?: boolean) => Promise<void> | void;
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const status = line.status || 'shown';
+  // A choice turns its button into another one (Hide it → Show it) and may move the line: keep the focus on this
+  // line's first choice until the line settles, so the keyboard isn't dropped at the top of the page.
+  const group = useRef<HTMLDivElement>(null);
+  const keep = useRef<{ status: string; onTop: boolean; at: number } | null>(null);
+  useEffect(() => {
+    const k = keep.current;
+    if (!k || busy) return;
+    if (Date.now() - k.at > 10_000) { keep.current = null; return; }
+    group.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    if (k.status !== status || k.onTop !== onTop) keep.current = null;
+  }, [busy, status, onTop]);
   if (!line.id) return null;
   const run = async (fn: () => Promise<unknown>, change?: { top: boolean }) => {
+    const fromKeys = Boolean(group.current?.contains(document.activeElement));
+    keep.current = fromKeys ? { status, onTop, at: Date.now() } : null;
     setBusy(true); setNote(null);
     try {
       await fn();
-      await onDone(change);
+      await onDone(change, fromKeys);
     } catch (err) {
       setNote(extractApiError(err, 'Couldn’t change that. Try again.'));
     }
     setBusy(false);
   };
-  const status = line.status || 'shown';
   return (
-    <div className="flex flex-col gap-1.5">
+    <div ref={group} className="flex flex-col gap-1.5">
       <p className="text-[0.8125rem] text-app-muted">
         {status === 'waiting' ? 'Waiting for you. Only you and the writer see it.' : status === 'hidden' ? 'Hidden. Only you see it.' : onTop ? 'Shown, on top.' : 'Shown.'}
       </p>

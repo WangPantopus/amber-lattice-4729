@@ -54,6 +54,8 @@ function Sheet({ open, onClose, labelledBy, children }: { open: boolean; onClose
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement as HTMLElement | null;
+    // When the opener is gone on closing ("Leave your card" became "You left a card on …"), its place takes the focus.
+    const anchor = opener?.closest<HTMLElement>('[data-focus-anchor]') ?? null;
     panel.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); } };
     document.addEventListener('keydown', onKey);
@@ -63,6 +65,7 @@ function Sheet({ open, onClose, labelledBy, children }: { open: boolean; onClose
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
       if (opener?.isConnected) opener.focus();
+      else if (anchor?.isConnected) anchor.querySelector<HTMLElement>('button:not([disabled]), [tabindex="-1"]')?.focus();
     };
   }, [open]);
   if (!open || !mounted) return null;
