@@ -229,7 +229,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
           return (
             <section key={group.title} className={`${card} overflow-hidden`} aria-label={group.title}>
               <h3 className={`${overline} px-4 pt-3.5 pb-0.5`}>{group.title}</h3>
-              <div className="divide-y divide-app-subtle">
+              <div className="divide-y divide-app">
                 {group.title === 'About you' ? <Row label="Portrait, name and rings" detail="Always shown" /> : null}
                 {rows.map((p) => {
                   const part = byKey.get(p.key)!;

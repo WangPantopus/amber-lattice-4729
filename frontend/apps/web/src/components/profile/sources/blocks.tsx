@@ -554,7 +554,7 @@ function CanDoBlock({ block, ctx }: { block: ProfileCanDoBlock; ctx: BlockContex
   const most = Math.max(1, ...skills.map((skill) => skill.pieces || 0));
   return (
     <Section title={block.title || 'Can do'} aside={block.subtitle ? <span className="text-xs leading-4 text-app-muted">{block.subtitle}</span> : null}>
-      <ul className="-my-1 divide-y divide-app-subtle">
+      <ul className="-my-1 divide-y divide-app">
         {skills.map((skill, i) => {
           const ink = inkOf(skill.ink);
           const counted = skill.pieces > 0 && skill.inks ? inkCounts(skill.inks) : '';
@@ -813,7 +813,7 @@ export function WorkLineBlock({ rings, list, ctx, pinned = null }: {
               options={kinds.map((key) => ({ key, label: key === 'all' ? 'All' : KIND_WORD[key] }))}
             />
           ) : null}
-          <ul className="-mx-3 divide-y divide-app-subtle" aria-live="polite">
+          <ul className="-mx-3 divide-y divide-app" aria-live="polite">
             {shown.map(({ piece, month }) => (
               <li key={piece.id}>
                 <PieceRow piece={piece} ctx={ctx} month={shownYear && month ? MONTH_WORDS[Number(month.slice(5, 7)) - 1] ?? null : undefined} />

@@ -198,7 +198,7 @@ function Editor({ role, onClose, onSaved }: { role: ProfileRoleLine | null; onCl
             <>
               <input id={ids.where} className={field} value={whereText} maxLength={PLACE_MAX} onChange={(e) => setWhereText(e.target.value)} placeholder="A business on Pantopus, or a place’s name" autoComplete="off" />
               {found.length > 0 ? (
-                <ul className="rounded-xl border border-app divide-y divide-app-subtle overflow-hidden" aria-label="Businesses on Pantopus">
+                <ul className="rounded-xl border border-app divide-y divide-app overflow-hidden" aria-label="Businesses on Pantopus">
                   {found.map((b) => (
                     <li key={b.id}>
                       <button type="button" onClick={() => { setPlace(b); setWhereText(''); setFound([]); }} className="w-full flex items-center gap-3 px-3 py-2 text-left hover-bg-app">

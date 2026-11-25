@@ -174,7 +174,7 @@ export default function CreditsField({ pieceId, initial, suggested = [], queued,
       <span className="text-[0.9375rem] font-semibold text-app">Who was on it?</span>
       <div className="rounded-2xl border border-app bg-surface overflow-hidden">
         {suggestions.length > 0 || credits.length > 0 || queued.length > 0 ? (
-          <ul className="divide-y divide-app-subtle">
+          <ul className="divide-y divide-app">
             {suggestions.map((s) => (
               <li key={`s-${s.user_id}`} className={row}>
                 <Face name={s.name} url={s.portrait_url} />
@@ -216,9 +216,9 @@ export default function CreditsField({ pieceId, initial, suggested = [], queued,
           </ul>
         ) : null}
         {waiting ? (
-          <p className={`px-4 py-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>{waiting}</p>
+          <p className={`px-4 py-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary ${credits.length || queued.length || suggestions.length ? 'border-t border-app' : ''}`}>{waiting}</p>
         ) : adding ? (
-          <div className={`px-4 py-3 flex flex-col gap-3 ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>
+          <div className={`px-4 py-3 flex flex-col gap-3 ${credits.length || queued.length || suggestions.length ? 'border-t border-app' : ''}`}>
             <div className="flex flex-col gap-1.5">
               <label htmlFor={ids.who} className="text-[0.875rem] font-semibold text-app">Who</label>
               {chosen ? (
@@ -231,7 +231,7 @@ export default function CreditsField({ pieceId, initial, suggested = [], queued,
                 <input id={ids.who} value={who} maxLength={NAME_MAX} onChange={(e) => setWho(e.target.value)} placeholder="Someone you are connected to, or a name" autoComplete="off" className="w-full min-h-[3rem] rounded-xl border border-app-strong bg-surface px-3.5 text-[1rem] text-app placeholder:text-app-muted focus:outline focus:outline-2 focus:outline-[color:var(--color-link)]" />
               )}
               {matches.length > 0 ? (
-                <ul className="rounded-xl border border-app divide-y divide-app-subtle overflow-hidden" aria-label="Your connections">
+                <ul className="rounded-xl border border-app divide-y divide-app overflow-hidden" aria-label="Your connections">
                   {matches.map((c) => (
                     <li key={c.id}>
                       <button type="button" onClick={() => { setChosen(c); setWho(''); }} className="w-full flex items-center gap-3 px-3 py-2 text-left hover-bg-app">
@@ -272,7 +272,7 @@ export default function CreditsField({ pieceId, initial, suggested = [], queued,
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => setAdding(true)} className={`w-full flex items-center gap-2 px-4 min-h-[3rem] text-[0.9375rem] font-semibold text-app-link hover-bg-app ${credits.length || queued.length || suggestions.length ? 'border-t border-app-subtle' : ''}`}>
+          <button type="button" onClick={() => setAdding(true)} className={`w-full flex items-center gap-2 px-4 min-h-[3rem] text-[0.9375rem] font-semibold text-app-link hover-bg-app ${credits.length || queued.length || suggestions.length ? 'border-t border-app' : ''}`}>
             <Plus aria-hidden="true" className="w-5 h-5" />Add a person and ask them to sign
           </button>
         )}
