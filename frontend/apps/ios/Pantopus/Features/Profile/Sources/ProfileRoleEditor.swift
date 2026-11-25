@@ -203,6 +203,7 @@ struct ProfileRoleEditor: View {
             .padding(.vertical, Spacing.s3)
             .background(Theme.Color.appBg)
         }
+        .profileColumn()
         .navigationTitle(model.isNew ? "Where you worked or learned" : "Change it")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Remove this?", isPresented: $confirmingRemove, titleVisibility: .visible) {

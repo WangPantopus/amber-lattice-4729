@@ -134,6 +134,7 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
                 }
             }
         }
+        .profileColumn()
         .background(Theme.Color.appBg)
         .accessibilityIdentifier("profileSourcesPage")
     }
@@ -294,5 +295,13 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
             await Task.yield()
             scroller.scrollTo(Self.tabsAnchor, anchor: .top)
         }
+    }
+}
+
+extension View {
+    /// The profile's screens on a wide screen (an iPad, the open iPhone Duo): one centred column of Apple's reading
+    /// width, as the web holds its profile, instead of the app's wider iPad column. On a phone nothing changes.
+    @MainActor func profileColumn() -> some View {
+        readableColumn(width: 672)
     }
 }
