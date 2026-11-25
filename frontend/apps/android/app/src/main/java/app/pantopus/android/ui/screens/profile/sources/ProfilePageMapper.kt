@@ -144,7 +144,7 @@ internal fun mapLink(map: Map<String, Any?>?): ProfilePageLink? {
         "tab" -> map.str("tab")?.let { ProfilePageLink.Tab(it) }
         "record" -> ProfilePageLink.Record
         "month" -> map.str("month")?.let { ProfilePageLink.Month(it) }
-        "piece" -> map.str("id")?.let { ProfilePageLink.Piece(it) }
+        "piece" -> map.str("id")?.let { ProfilePageLink.Piece(it, map.str("user_id")) }
         "business" -> map.str("username")?.let { ProfilePageLink.Business(it) }
         "profile" ->
             ProfilePageLink
@@ -208,6 +208,9 @@ private fun mapBlock(
     inCommon: (Map<String, Any?>) -> ProfileInCommonResponse?,
 ): ProfileBlock? {
     val kind = map.str("kind") ?: return null
+    // The 2.1.6 apps stop at the profile with its pieces (SPEC §5, the stopping point): Known for, doors, the shelf and
+    // the work circle are not shown even where a server sends them, so nothing on the page mentions them.
+    if (kind in NOT_IN_THIS_RELEASE) return null
     val id = map.str("id") ?: kind
     val title = map.str("title")
     return when (kind) {
@@ -216,6 +219,12 @@ private fun mapBlock(
                 ProfileBlock.Lines(id, title, it, mapMore(map.obj("more")))
             }
         "says" -> mapLine(map.obj("line"))?.let { ProfileBlock.Says(id, title, it) }
+        "notice" -> {
+            val link = map.obj("link")
+            val url = link?.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            val text = map.str("text")
+            if (url == null || text == null) null else ProfileBlock.Notice(id, title, text, url, link.str("site"))
+        }
         "known_for" ->
             map
                 .objs("lines")
@@ -361,6 +370,8 @@ private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
         pinned = map["pinned"] == true,
         draft = map["draft"] == true,
         hidden = map["hidden"] == true,
+        audience = map.str("audience")?.takeIf { it in AUDIENCES },
+        withName = map.obj("with")?.str("name"),
     )
 }
 
@@ -392,19 +403,7 @@ fun mapProfilePiece(dto: ProfilePieceDto): ProfilePieceDetail? {
                 detail = item.str("detail"),
             )
         }
-    val links =
-        map.objs("links").mapNotNull { link ->
-            val url = link.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@mapNotNull null
-            PieceLinkCard(
-                url = url,
-                kind = link.str("kind")?.takeIf { it in LINK_KINDS } ?: "site",
-                site = link.str("site"),
-                title = link.str("title"),
-                description = link.str("description"),
-                ink = ProfileInk.fromApi(link.str("ink")),
-                how = link.str("how"),
-            )
-        }
+    val links = map.objs("links").mapNotNull(::mapLinkCard)
     return ProfilePieceDetail(
         piece = piece,
         description = mapLine(map.obj("description")),
@@ -415,8 +414,69 @@ fun mapProfilePiece(dto: ProfilePieceDto): ProfilePieceDetail? {
         links = links,
         written = map.objs("written").mapNotNull(::mapLine),
         keptOnce = map.str("kept_once"),
+        attachments = attachments,
+        ownerRole = map.str("owner_role"),
+        howItWillShow = map.strs("how_it_will_show"),
     )
 }
+
+/** A link on a piece as a card of words (P2.4); null for anything but a public http(s) page. */
+fun mapLinkCard(link: Map<String, Any?>): PieceLinkCard? {
+    val url = link.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return null
+    return PieceLinkCard(
+        id = link.str("id"),
+        url = url,
+        kind = link.str("kind")?.takeIf { it in LINK_KINDS } ?: "site",
+        site = link.str("site"),
+        title = link.str("title"),
+        description = link.str("description"),
+        ink = ProfileInk.fromApi(link.str("ink")),
+        how = link.str("how"),
+        provable = link["provable"] as? Boolean,
+    )
+}
+
+/** `GET /me/pieces` (P2.3). */
+fun mapOwnerPieces(map: Map<String, Any?>): OwnerPieces {
+    val counts = map.obj("counts")
+    val pieces = map.objs("pieces").mapNotNull(::mapPiece)
+    return OwnerPieces(
+        pieces = pieces,
+        offered =
+            map.objs("offered").mapNotNull { offer ->
+                val kind = offer.str("kind")?.takeIf { it == "gig" || it == "plan" } ?: return@mapNotNull null
+                val id = offer.str("id") ?: return@mapNotNull null
+                PieceOffer(
+                    kind = kind,
+                    id = id,
+                    title = offer.str("title").orEmpty(),
+                    whenText = offer.str("when"),
+                    with = offer.str("with"),
+                    text = offer.str("text") ?: offer.str("title") ?: return@mapNotNull null,
+                )
+            },
+        shownOnLink = counts?.int("shown_on_link") ?: 0,
+        total = counts?.int("total") ?: pieces.size,
+    )
+}
+
+/** A saved piece's answer (P2.3: the owner's view, with "How this piece will show"). */
+fun mapSavedPiece(map: Map<String, Any?>): Pair<WorkPiece, List<String>>? = mapPiece(map)?.let { it to map.strs("how_it_will_show") }
+
+/** `POST …/proof` (P2.4). */
+fun mapPieceProof(map: Map<String, Any?>): PieceProof? {
+    val line = map.str("line") ?: return null
+    return PieceProof(
+        line = line,
+        meta = map.str("meta"),
+        how = map.str("how") ?: "Put this line in the page's title or description, then check.",
+    )
+}
+
+/** `POST …/preview` (P2.3). */
+fun mapHowItWillShow(map: Map<String, Any?>): List<String> = map.strs("how_it_will_show")
+
+private val AUDIENCES = setOf("anyone", "members", "connections")
 
 private val LINK_KINDS = setOf("site", "video", "code", "app", "article", "paper")
 private const val MAX_SKILLS = 5
@@ -443,6 +503,7 @@ private fun mapWorkRings(
 }
 
 private const val YEAR_CHARS = 4
+private val NOT_IN_THIS_RELEASE = setOf("known_for", "doors", "shelf", "circle", "lines_for_you", "cards_for_you")
 private val PIECE_FILTERS = setOf("all", "did", "built", "owns")
 
 private fun mapRecordChart(

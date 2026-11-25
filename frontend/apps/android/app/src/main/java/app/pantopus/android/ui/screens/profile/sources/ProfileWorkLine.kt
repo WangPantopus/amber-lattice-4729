@@ -397,6 +397,7 @@ private fun WorkLineRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // A piece with no picture keeps the soft tinted tile with the tool mark (as on iPhone).
         Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { }) {
             PieceImage(piece.coverUrl, iconSize = 20.dp)
         }
@@ -410,6 +411,7 @@ private fun WorkLineRow(
                             piece.line.ink.word,
                             pieceKindWord(piece.kind),
                             if (byYear) piece.monthWord else piece.whenText,
+                            piece.withName?.let { "With $it" },
                             // Only the owner is sent these: the piece reaches nobody else yet.
                             "Draft".takeIf { piece.draft },
                             "Hidden".takeIf { piece.hidden },

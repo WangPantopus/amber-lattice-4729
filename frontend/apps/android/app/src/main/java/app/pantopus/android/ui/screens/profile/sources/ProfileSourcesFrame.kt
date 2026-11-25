@@ -93,7 +93,7 @@ private fun ProfileBlock.leads(): Boolean =
 
 /** The header card's lines: the first tab's untitled `lines` block that comes first (`key_lines`). */
 private fun ProfilePageTab.keyLines(): ProfileBlock.Lines? =
-    (blocks.firstOrNull() as? ProfileBlock.Lines)?.takeIf {
+    (blocks.firstOrNull { it !is ProfileBlock.Notice } as? ProfileBlock.Lines)?.takeIf {
         it.title == null || it.id == "key_lines"
     }
 
@@ -112,6 +112,11 @@ internal class SourcesFrameSlots(
      * item). With it, the owner always has a Work tab, as today; null for anyone else.
      */
     val workEnd: (@Composable () -> Unit)? = null,
+    /**
+     * Phase 2: the owner's way in at the top of Work (their offers and "Add a piece", board 10). With it, too, the
+     * owner always has a Work tab; null for anyone else.
+     */
+    val workStart: (@Composable () -> Unit)? = null,
     /** The bar's share button on Work and Record; null leaves it out. */
     val onShare: (() -> Unit)?,
     val onBack: () -> Unit,
@@ -130,7 +135,8 @@ internal fun ProfileSourcesFrame(
     actions: SourcesBlockActions,
     month: RecordMonth? = null,
 ) {
-    val tabs = remember(page.tabs, slots.workEnd != null) { tabsWithOwnerWork(page, slots.workEnd != null) }
+    val ownerWork = slots.workEnd != null || slots.workStart != null
+    val tabs = remember(page.tabs, ownerWork) { tabsWithOwnerWork(page, ownerWork) }
     val tab = tabs.firstOrNull { it.key == selectedTab } ?: tabs.firstOrNull()
     val first = tab == null || tab == tabs.firstOrNull()
     val scroll = rememberScrollState()
@@ -172,6 +178,7 @@ internal fun ProfileSourcesFrame(
                         modifier = Modifier.fillMaxWidth().padding(start = PAGE_SIDE, end = PAGE_SIDE, top = PAGE_GAP, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
                     ) {
+                        if (tab.key == WORK_TAB) slots.workStart?.invoke()
                         SourcesBlocks(blocks = tab.blocks, page = page, actions = actions, slots = slots, month = month)
                         if (tab.key == WORK_TAB) slots.workEnd?.invoke()
                         // Board 12 ends the record with how to read its lines.
@@ -211,7 +218,9 @@ private fun FirstTab(
     onTabBarPlaced: (Int) -> Unit,
 ) {
     val keyLines = tab?.keyLines()
-    val rest = tab?.blocks.orEmpty().let { if (keyLines != null) it.drop(1) else it }
+    // Notices (things waiting for the owner that this app can't show yet) stand right under the header card.
+    val notices = tab?.blocks.orEmpty().filterIsInstance<ProfileBlock.Notice>()
+    val rest = tab?.blocks.orEmpty().filterNot { it is ProfileBlock.Notice }.let { if (keyLines != null) it.drop(1) else it }
     val leading = rest.takeWhile { it.leads() }
     val after = rest.drop(leading.size)
     val record = tabs.firstOrNull { it.key == "record" }
@@ -226,6 +235,7 @@ private fun FirstTab(
             headerActions = slots.headerActions,
             actions = actions,
         )
+        SourcesBlocks(blocks = notices, page = page, actions = actions, slots = slots)
         SourcesBlocks(blocks = leading, page = page, actions = actions, slots = slots)
     }
     if (tabs.size > 1) {

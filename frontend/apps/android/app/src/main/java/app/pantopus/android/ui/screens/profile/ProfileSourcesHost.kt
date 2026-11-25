@@ -5,7 +5,6 @@ package app.pantopus.android.ui.screens.profile
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,16 +14,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,33 +29,38 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.profile.sources.OwnerWorkStart
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequest
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorRequestSaver
+import app.pantopus.android.ui.screens.profile.sources.PieceEditorResult
+import app.pantopus.android.ui.screens.profile.sources.PieceOffer
 import app.pantopus.android.ui.screens.profile.sources.ProfileBlock
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthSheet
 import app.pantopus.android.ui.screens.profile.sources.ProfileMonthState
+import app.pantopus.android.ui.screens.profile.sources.ProfileOwnerWorkViewModel
 import app.pantopus.android.ui.screens.profile.sources.ProfilePage
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageAction
 import app.pantopus.android.ui.screens.profile.sources.ProfilePageLink
+import app.pantopus.android.ui.screens.profile.sources.ProfilePieceEditor
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceScreen
 import app.pantopus.android.ui.screens.profile.sources.ProfilePieceState
 import app.pantopus.android.ui.screens.profile.sources.ProfileSourcesFrame
 import app.pantopus.android.ui.screens.profile.sources.RecordMonth
 import app.pantopus.android.ui.screens.profile.sources.SourcesBlockActions
 import app.pantopus.android.ui.screens.profile.sources.SourcesFrameSlots
-import app.pantopus.android.ui.screens.profile.sources.SourcesTile
 import app.pantopus.android.ui.screens.profile.sources.SourcesType
 import app.pantopus.android.ui.screens.profile.sources.SourcesVisitorBar
-import app.pantopus.android.ui.screens.profile.sources.sourcesCard
-import app.pantopus.android.ui.screens.profile.tabs.ProfilePortfolioSection
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
-import app.pantopus.android.ui.theme.PantopusIconImage
+import java.util.UUID
 
 /** Where the profile with sources hands off to today's screen and the app. */
 internal class SourcesHostCallbacks(
@@ -87,7 +88,7 @@ internal class SourcesHostCallbacks(
     /** The owner added or removed pieces: the page is read again. */
     val onPiecesChanged: () -> Unit = {},
     /** One piece opened over the page (board 8), and closed again; [onRetryPiece] reads it again. */
-    val onOpenPiece: (String) -> Unit = {},
+    val onOpenPiece: (pieceId: String, ownerId: String?) -> Unit = { _, _ -> },
     val onClosePiece: () -> Unit = {},
     val onRetryPiece: () -> Unit = {},
 )
@@ -116,7 +117,18 @@ internal fun ProfileSourcesPage(
     val header = page.header
     val shareUrl = page.actions.filterIsInstance<ProfilePageAction.Share>().firstOrNull()?.url
     val context = LocalContext.current
-    var showPieces by rememberSaveable { mutableStateOf(false) }
+    // Phase 2 (board 10): the owner's offers and pieces at the top of Work, and the piece editor over the page.
+    val ownerWork: ProfileOwnerWorkViewModel? = if (owner != null && preview == null) hiltViewModel() else null
+    val ownerPieces = ownerWork?.state?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(ownerWork) { ownerWork?.load() }
+    var editor by rememberSaveable(stateSaver = PieceEditorRequestSaver) { mutableStateOf<PieceEditorRequest?>(null) }
+
+    fun openEditor(
+        pieceId: String?,
+        offer: PieceOffer?,
+    ) {
+        editor = PieceEditorRequest(UUID.randomUUID().toString(), pieceId, offer)
+    }
     val onOpenLink: (ProfilePageLink) -> Unit = { link ->
         when (link) {
             is ProfilePageLink.Tab -> host.onSelectTab(link.key)
@@ -127,7 +139,7 @@ internal fun ProfileSourcesPage(
                     val index = m.toIntOrNull()?.minus(1)
                     if (year != null && index != null && index in 0..11) host.onOpenMonth(RecordMonth(year, index))
                 }
-            is ProfilePageLink.Piece -> host.onOpenPiece(link.id)
+            is ProfilePageLink.Piece -> host.onOpenPiece(link.id, link.userId)
             is ProfilePageLink.Business -> host.onOpenAppLink(Uri.parse("pantopus://b/${Uri.encode(link.username)}"))
             is ProfilePageLink.Profile ->
                 link.userId?.let(host.onOpenProfile)
@@ -192,9 +204,15 @@ internal fun ProfileSourcesPage(
                     onEdit = callbacks.onEditProfile.takeIf { owner != null },
                 )
             },
-            workEnd =
-                owner?.let {
-                    { OwnerPiecesRow(onClick = { showPieces = true }) }
+            workStart =
+                owner?.takeIf { preview == null }?.let {
+                    {
+                        OwnerWorkStart(
+                            offers = ownerPieces?.offered.orEmpty(),
+                            onStart = { offer -> openEditor(pieceId = null, offer = offer) },
+                            onAdd = { openEditor(pieceId = null, offer = null) },
+                        )
+                    }
                 },
             pageEnd = {
                 if (owner != null) {
@@ -226,7 +244,7 @@ internal fun ProfileSourcesPage(
         )
     // An opened piece covers the page, which stays where it was underneath (its scroll, its tab) for Back.
     Box(Modifier.fillMaxSize()) {
-        Box(if (piece != null) Modifier.clearAndSetSemantics { } else Modifier) {
+        Box(if (piece != null || editor != null) Modifier.clearAndSetSemantics { } else Modifier) {
             ProfileSourcesFrame(
                 page = page,
                 selectedTab = selectedTab,
@@ -237,23 +255,37 @@ internal fun ProfileSourcesPage(
             )
         }
         if (piece != null) {
-            ProfilePieceScreen(
-                state = piece,
-                firstName = if (owner != null && preview == null) "you" else header.firstName,
-                onBack = host.onClosePiece,
-                onRetry = host.onRetryPiece,
-                onOpenLink = onOpenLink,
+            Box(if (editor != null) Modifier.clearAndSetSemantics { } else Modifier) {
+                ProfilePieceScreen(
+                    state = piece,
+                    firstName = if (owner != null && preview == null) "you" else header.firstName,
+                    onBack = host.onClosePiece,
+                    onRetry = host.onRetryPiece,
+                    onOpenLink = onOpenLink,
+                    onEdit =
+                        { openEditor(pieceId = piece.id, offer = null) }
+                            .takeIf { owner != null && preview == null && (piece as? ProfilePieceState.Ready)?.foreign != true },
+                )
+            }
+        }
+        editor?.let { request ->
+            ProfilePieceEditor(
+                ownerId = header.userId,
+                request = request,
+                onClose = { result ->
+                    editor = null
+                    if (result != PieceEditorResult.Cancelled) {
+                        ownerWork?.load()
+                        host.onPiecesChanged()
+                        when {
+                            piece == null -> Unit
+                            result == PieceEditorResult.Removed -> host.onClosePiece()
+                            else -> host.onRetryPiece()
+                        }
+                    }
+                },
             )
         }
-    }
-    if (showPieces && owner != null) {
-        OwnerPiecesSheet(
-            userId = header.userId,
-            onDismiss = {
-                showPieces = false
-                host.onPiecesChanged()
-            },
-        )
     }
     val chart = page.tabs.flatMap { it.blocks }.filterIsInstance<ProfileBlock.RecordChart>().firstOrNull()
     if (month != null && month !is ProfileMonthState.Empty && chart != null) {
@@ -358,49 +390,6 @@ internal fun ProfileSourcesPostsPage(
                 )
             }
             Spacer(Modifier.height(40.dp))
-        }
-    }
-}
-
-/** The owner's way to today's portfolio tools from Work: "Add or remove pieces" (today's Work tab had them). */
-@Composable
-private fun OwnerPiecesRow(onClick: () -> Unit) {
-    Row(
-        modifier =
-            Modifier
-                .sourcesCard()
-                .heightIn(min = 48.dp)
-                .clickable(role = Role.Button, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SourcesTile(PantopusIcon.Hammer, PantopusColors.businessBg, PantopusColors.business)
-        Column(Modifier.weight(1f)) {
-            Text("Add or remove pieces", style = SourcesType.rowTitle)
-            Text("Only you see this.", style = SourcesType.caption)
-        }
-        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
-    }
-}
-
-/** Today's portfolio section, as the owner's Work tab had it: add, open and remove pieces. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun OwnerPiecesSheet(
-    userId: String,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = PantopusColors.appBg) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
-            Text(
-                text = "Your pieces",
-                style = SourcesType.h3,
-                modifier = Modifier.padding(horizontal = 20.dp).semantics { heading() },
-            )
-            Spacer(Modifier.height(12.dp))
-            Box(Modifier.padding(horizontal = 20.dp)) { ProfilePortfolioSection(userId = userId, isOwnProfile = true) }
         }
     }
 }

@@ -134,6 +134,15 @@ data class ProfileShareDto(
     /** v1.4: false while the profile is private (no link opens); then [linksNote] takes Copy and Send's place. */
     @Json(name = "links_open") val linksOpen: Boolean? = null,
     @Json(name = "links_note") val linksNote: String? = null,
+    /** P2.5: the Work row's "12 of your 18 pieces", counted from each piece's who-sees-it. */
+    @Json(name = "work_pieces") val workPieces: ProfileWorkPiecesDto? = null,
+)
+
+/** `GET /me/share`'s `work_pieces` (P2.5): pieces a link shows, of the pieces on Work. */
+@JsonClass(generateAdapter = true)
+data class ProfileWorkPiecesDto(
+    val shown: Int? = null,
+    val total: Int? = null,
 )
 
 /** A link for one purpose (contract v1.3). Its key is in [url]: shown only to the owner, never logged or pasted. */

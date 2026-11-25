@@ -21,6 +21,7 @@ import app.pantopus.android.data.api.models.posts.MyPostDto
 import app.pantopus.android.data.api.models.posts.PostCommentDto
 import app.pantopus.android.data.api.models.posts.PostDetailDto
 import app.pantopus.android.data.api.net.PlansBizInterceptor
+import app.pantopus.android.data.api.net.ProfilePartsInterceptor
 import app.pantopus.android.data.api.net.RetryInterceptor
 import app.pantopus.android.data.api.net.SafeHttpLoggingInterceptor
 import app.pantopus.android.data.api.net.UtcTimestampInterceptor
@@ -282,6 +283,8 @@ object NetworkModule {
             // `biz=1` and `more=1` on the Plans routes: this build can draw a business's plan (Plans with businesses),
             // an online plan and the four newer kinds (Plans steps 3 and 4).
             .addInterceptor(PlansBizInterceptor())
+            // X-Pantopus-Profile-Parts on the profile page: the parts this build draws (the rest come as `notice` rows).
+            .addInterceptor(ProfilePartsInterceptor())
             // X-Client-Platform + X-Device-Id on every API request (both clients).
             // This client also loads Coil images; other hosts get neither header nor the bearer.
             .addInterceptor(deviceIdentityInterceptor)
