@@ -140,22 +140,42 @@ router.get('/check', async (req, res) => {
   }
 });
 
+// A Moment is a post row too, and is sealed as one. It is not listed here: its owner finds it with their other Moments
+// (GET /api/moments/mine), where it has its picture. A page reads on past Moments until it is full.
+const OWN_POSTS_ROUNDS = 5;
+
 router.get('/me/posts', async (req, res) => {
   try {
     const userId = req.user.id;
     const before = typeof req.query.before === 'string' && !Number.isNaN(Date.parse(req.query.before)) ? req.query.before : null;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
-    const rows = await penName.owner.owned(userId, 'post', { before, limit });
-    if (!rows.length) return res.json({ posts: [], next_before: null });
     // eslint-disable-next-line global-require
     const feedService = require('../services/feedService');
-    const { data, error } = await supabaseAdmin.from('Post').select(feedService.FEED_POST_SELECT)
-      .in('id', rows.map((row) => row.id)).eq('identity_context_type', penName.KIND);
-    if (error) throw error;
-    const byId = new Map((data || []).map((row) => [String(row.id), row]));
-    const ordered = rows.map((row) => byId.get(row.id)).filter(Boolean);
-    const posts = await feedService.enrichFeedPosts(ordered.map((row) => feedService.normalizeFeedPostRow(row)), userId);
-    return res.json({ posts, next_before: rows.length === limit ? rows[rows.length - 1].created_at : null });
+    const found = [];
+    let cursor = before;
+    let more = true;
+    for (let round = 0; round < OWN_POSTS_ROUNDS && more && found.length < limit; round += 1) {
+      const rows = await penName.owner.owned(userId, 'post', { before: cursor, limit });
+      more = rows.length === limit;
+      if (!rows.length) break;
+      const { data, error } = await supabaseAdmin.from('Post').select(feedService.FEED_POST_SELECT)
+        .in('id', rows.map((row) => row.id)).eq('identity_context_type', penName.KIND).not('is_story', 'is', true);
+      if (error) throw error;
+      const byId = new Map((data || []).map((row) => [String(row.id), row]));
+      for (const row of rows) {
+        cursor = row.created_at;
+        const post = byId.get(String(row.id));
+        if (post) found.push(post);
+        if (found.length === limit) {
+          // Rows of this read may be left over: the next page starts after the last one taken.
+          more = more || row !== rows[rows.length - 1];
+          break;
+        }
+      }
+    }
+    if (!found.length) return res.json({ posts: [], next_before: more ? cursor : null });
+    const posts = await feedService.enrichFeedPosts(found.map((row) => feedService.normalizeFeedPostRow(row)), userId);
+    return res.json({ posts, next_before: more ? cursor : null });
   } catch (error) {
     return send(res, error, 'Own pen name posts failed');
   }
