@@ -202,9 +202,10 @@ struct ProfileCircleScreen: View {
 
     private func diagram(_ circle: ProfileCircleDTO) -> some View {
         let beside = circle.group("works_beside")
-        let besidePeople = beside?.people ?? []
-        let left = Array(besidePeople.prefix(2))
-        let right = Array(besidePeople.dropFirst(2).prefix(2))
+        // Up to four beside the person, split around them (the first half on the left), so no line crosses a face.
+        let besidePeople = Array((beside?.people ?? []).prefix(4))
+        let left = Array(besidePeople.prefix((besidePeople.count + 1) / 2))
+        let right = Array(besidePeople.dropFirst(left.count))
         return VStack(alignment: .leading, spacing: Spacing.s4) {
             if let led = circle.group("taught_or_led"), !led.people.isEmpty {
                 section(led.title) { row(led, shown: Array(led.people.prefix(3))) }
@@ -217,7 +218,7 @@ struct ProfileCircleScreen: View {
                         }
                         owner
                         ForEach(Array(right.enumerated()), id: \.offset) { index, person in
-                            bubble(person, key: "beside\(index + 2)")
+                            bubble(person, key: "beside\(index + left.count)")
                         }
                         if beside.count > left.count + right.count {
                             more(beside.count - left.count - right.count)
@@ -245,6 +246,9 @@ struct ProfileCircleScreen: View {
         return VStack(spacing: Spacing.s1) {
             ZStack {
                 Circle().fill(Theme.Color.appSurfaceSunken)
+                Text(Self.initials(header?.name))
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appTextStrong)
                 if let url = header?.portraitURL {
                     CachedAsyncImage(url: url) { phase in
                         if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
@@ -259,6 +263,10 @@ struct ProfileCircleScreen: View {
             Text(header?.name ?? "").scaledFont(13, weight: .semibold).foregroundStyle(Theme.Color.appText)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private static func initials(_ name: String?) -> String {
+        (name ?? "").split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
     }
 
     private func section(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
