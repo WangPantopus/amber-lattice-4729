@@ -6,6 +6,7 @@
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import type { ProfilePage } from '@pantopus/api';
+import { PROFILE_PARTS, PROFILE_PARTS_HEADER } from '@pantopus/api/endpoints/profileParts';
 import { normalizePublicProfileIdentifier, type PublicFetchResult } from '@/lib/publicShare';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
@@ -45,7 +46,7 @@ async function readSignedOut(path: string): Promise<PublicFetchResult<ProfilePag
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       cache: 'no-store',
-      headers: { accept: 'application/json', ...visitorHeaders(forwardedFor) },
+      headers: { accept: 'application/json', [PROFILE_PARTS_HEADER]: PROFILE_PARTS, ...visitorHeaders(forwardedFor) },
     });
     if (!response.ok) return { data: null, status: response.status };
     return { data: (await response.json()) as ProfilePage, status: response.status };

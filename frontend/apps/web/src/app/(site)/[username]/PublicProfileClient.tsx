@@ -232,7 +232,7 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     setMounted(true);
     setCanGoBack(window.history.length > 1);
   }, []);
-  // The profile with sources (launch key profile_sources): the server's page for this viewer. `viewer` says whose read
+  // The profile with sources (on everywhere since November 25): the server's page for this viewer. `viewer` says whose read
   // it is ('anon' signed out); a null page means the server answered anything but a page, and today's profile shows.
   const [sources, setSources] = useState<{ viewer: string; page: ProfilePage | null } | null>(
     () => (launchFeatures.profileSources ? { viewer: 'anon', page: isProfilePage(initialPage) ? initialPage : null } : null));
