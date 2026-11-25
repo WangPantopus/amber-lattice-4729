@@ -72,6 +72,8 @@ export * as homeIam from './endpoints/homeIam';
 export * as upload from './endpoints/upload';       // NEW
 export * as reviews from './endpoints/reviews';     // NEW
 export * as moments from './endpoints/moments';
+export * as penNames from './endpoints/penNames';       // Made-up names for Pulse posts and replies
+export type { PenNameMe, OwnPenName, PenNameCard as PenNameCardData, PenNameCheck, PenNameRefusal } from './endpoints/penNames';
 export * as posts from './endpoints/posts';                 // Scoped feeds & posts
 export * as plans from './endpoints/plans';
 export * as businesses from './endpoints/businesses';       // Business profiles

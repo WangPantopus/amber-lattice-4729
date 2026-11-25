@@ -1011,7 +1011,8 @@ describe('Profiles & Privacy web pages', () => {
       ],
     });
 
-    render(<PostComposer onPost={onPost} user={{ username: 'maya' }} />);
+    // The composer reads the made-up name (/api/pen-names/me) through the query client.
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PostComposer onPost={onPost} user={{ username: 'maya' }} /></QueryClientProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Lost & Found' }));
     fireEvent.click(await screen.findByRole('button', { name: /Change/i }));

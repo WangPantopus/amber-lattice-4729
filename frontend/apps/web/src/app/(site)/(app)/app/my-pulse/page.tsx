@@ -22,13 +22,16 @@ import { Bookmark, Newspaper, Repeat2 } from 'lucide-react';
 import { ListArchetype } from '@/components/archetypes';
 import { fetchMe } from '@/lib/me';
 import { FEED_POST_CREATED_EVENT } from '@/lib/feedComposerEvents';
+import { usePenNameMe } from '@/components/penName/penName';
 
 const PAGE_SIZE = 50;
 
 type PageCursor = { createdAt: string; id: string };
-type Tab = 'mine' | 'saved' | 'reposts';
-/** `?tab=saved` (a "Saved." toast's View) or `?tab=reposts` opens that tab. */
-const tabFromParam = (value: string | null | undefined): Tab => (value === 'saved' || value === 'reposts' ? value : 'mine');
+type Tab = 'mine' | 'saved' | 'reposts' | 'made-up';
+/** `?tab=saved` (a "Saved." toast's View), `?tab=reposts` or `?tab=made-up` opens that tab. */
+const tabFromParam = (value: string | null | undefined): Tab => (
+  value === 'saved' || value === 'reposts' || value === 'made-up' ? value : 'mine'
+);
 // Coming back shows the lists as they were left (contract §3); read again after a minute.
 const LIST_FRESH_MS = 60 * 1000;
 
@@ -85,6 +88,17 @@ export default function MyPulsePage() {
   const [repostsLoadingMore, setRepostsLoadingMore] = useState(false);
   const [repostsLoadMoreFailed, setRepostsLoadMoreFailed] = useState(false);
   const repostsGeneration = useRef(0);
+  // Made-up name: the person's own posts under it (GET /api/pen-names/me/posts). Only they can open this part.
+  const penMe = usePenNameMe();
+  const hasPenName = Boolean(penMe.data?.pen_name);
+  const [madeUp, setMadeUp] = useState<Post[]>([]);
+  const [madeUpLoading, setMadeUpLoading] = useState(true);
+  const [madeUpLoadError, setMadeUpLoadError] = useState(false);
+  const [madeUpBefore, setMadeUpBefore] = useState<string | null>(null);
+  const [madeUpLoadingMore, setMadeUpLoadingMore] = useState(false);
+  const [madeUpLoadMoreFailed, setMadeUpLoadMoreFailed] = useState(false);
+  const madeUpGeneration = useRef(0);
+  const madeUpShown = useRef(false);
 
   // ── Fetch user ───────────────────────────────────────────
   useEffect(() => {
@@ -294,17 +308,63 @@ export default function MyPulsePage() {
     if (tab === 'reposts' && !repostsLoading && repostsReadingOn) void loadMoreReposts();
   }, [tab, repostsLoading, repostsReadingOn, loadMoreReposts]);
 
+  // ── Fetch made-up-name posts (the Made-up name tab) ─────
+  const loadMadeUp = useCallback(async () => {
+    const generation = ++madeUpGeneration.current;
+    if (!madeUpShown.current) setMadeUpLoading(true);
+    setMadeUpLoadError(false);
+    setMadeUpLoadMoreFailed(false);
+    try {
+      const result = await api.penNames.getMyPosts({ limit: 20 });
+      if (generation !== madeUpGeneration.current) return;
+      madeUpShown.current = true;
+      setMadeUp(result?.posts || []);
+      setMadeUpBefore(result?.next_before ?? null);
+    } catch (err) {
+      if (generation !== madeUpGeneration.current) return;
+      console.error('Failed to load made-up-name posts:', err);
+      if (madeUpShown.current) return;
+      setMadeUp([]);
+      setMadeUpBefore(null);
+      setMadeUpLoadError(true);
+    } finally {
+      if (generation === madeUpGeneration.current) setMadeUpLoading(false);
+    }
+  }, []);
+  useEffect(() => { if (tab === 'made-up') void loadMadeUp(); }, [tab, loadMadeUp]);
+  const loadMoreMadeUp = useCallback(async () => {
+    if (!madeUpBefore || madeUpLoadingMore) return;
+    const generation = madeUpGeneration.current;
+    setMadeUpLoadingMore(true);
+    setMadeUpLoadMoreFailed(false);
+    try {
+      const result = await api.penNames.getMyPosts({ before: madeUpBefore, limit: 20 });
+      if (generation !== madeUpGeneration.current) return;
+      setMadeUp((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...(result?.posts || []).filter((p) => !seen.has(p.id))];
+      });
+      setMadeUpBefore(result?.next_before ?? null);
+    } catch {
+      if (generation === madeUpGeneration.current) setMadeUpLoadMoreFailed(true);
+    } finally {
+      if (generation === madeUpGeneration.current) setMadeUpLoadingMore(false);
+    }
+  }, [madeUpBefore, madeUpLoadingMore]);
+
   // ── Post actions ─────────────────────────────────────────
   // The state the person chose goes with each request, so a re-send can't flip it back.
   const listedPost = (postId: string) => posts.find((p) => p.id === postId)
     ?? saved.find((p) => p.id === postId)
-    ?? reposts.find((p) => p.id === postId);
+    ?? reposts.find((p) => p.id === postId)
+    ?? madeUp.find((p) => p.id === postId);
   /** A change to a post shows in every tab that lists it. */
   const updateListed = useCallback((postId: string, change: (post: Post) => Post) => {
     const apply = (p: Post) => (p.id === postId ? change(p) : p);
     setPosts((prev) => prev.map(apply));
     setSaved((prev) => prev.map(apply));
     setReposts((prev) => prev.map(apply));
+    setMadeUp((prev) => prev.map(apply));
   }, []);
 
   const likeMutation = useMutation({
@@ -408,6 +468,7 @@ export default function MyPulsePage() {
     try {
       await api.posts.deletePost(postId);
       setPosts((prev) => prev.filter((p) => p.id !== postId));
+      setMadeUp((prev) => prev.filter((p) => p.id !== postId));
       dropFromSaved(postId);
       dropFromReposts(postId);
       removePostFromFeedCaches(queryClient, postId);
@@ -454,18 +515,19 @@ export default function MyPulsePage() {
     });
   };
 
+  const onMadeUp = tab === 'made-up';
   const onSaved = tab === 'saved';
   const onReposts = tab === 'reposts';
-  const shown = onSaved ? saved : onReposts ? reposts : posts;
+  const shown = onMadeUp ? madeUp : onSaved ? saved : onReposts ? reposts : posts;
   // A failed read past an emptied page is a failed load, not "nothing saved".
-  const shownError = onSaved
+  const shownError = onMadeUp ? madeUpLoadError : onSaved
     ? savedLoadError || (saved.length === 0 && savedLoadMoreFailed)
     : onReposts ? repostsLoadError || (reposts.length === 0 && repostsLoadMoreFailed) : loadError;
-  const shownMore = onSaved ? savedNextOffset != null : onReposts ? repostsNextOffset != null : nextCursor != null;
-  const shownLoadingMore = onSaved ? savedLoadingMore : onReposts ? repostsLoadingMore : loadingMore;
-  const shownLoadMoreFailed = onSaved ? savedLoadMoreFailed : onReposts ? repostsLoadMoreFailed : loadMoreFailed;
-  const loadMoreShown = () => { void (onSaved ? loadMoreSaved() : onReposts ? loadMoreReposts() : loadMore()); };
-  const countLabel = onSaved
+  const shownMore = onMadeUp ? madeUpBefore != null : onSaved ? savedNextOffset != null : onReposts ? repostsNextOffset != null : nextCursor != null;
+  const shownLoadingMore = onMadeUp ? madeUpLoadingMore : onSaved ? savedLoadingMore : onReposts ? repostsLoadingMore : loadingMore;
+  const shownLoadMoreFailed = onMadeUp ? madeUpLoadMoreFailed : onSaved ? savedLoadMoreFailed : onReposts ? repostsLoadMoreFailed : loadMoreFailed;
+  const loadMoreShown = () => { void (onMadeUp ? loadMoreMadeUp() : onSaved ? loadMoreSaved() : onReposts ? loadMoreReposts() : loadMore()); };
+  const countLabel = onMadeUp ? 'Only you can see this is you' : onSaved
     ? `${shown.length}${shownMore ? '+' : ''} saved`
     : onReposts
       ? `${shown.length}${shownMore ? '+' : ''} ${shown.length === 1 && !shownMore ? 'repost' : 'reposts'}`
@@ -487,10 +549,12 @@ export default function MyPulsePage() {
             { key: 'mine', label: 'My posts' },
             { key: 'saved', label: 'Saved' },
             { key: 'reposts', label: 'Reposts' },
+            // Only its owner can open it: nobody else is ever told which posts are theirs.
+            ...(hasPenName || onMadeUp ? [{ key: 'made-up', label: 'Made-up name' }] : []),
           ]}
           activeTabKey={tab}
           onTabChange={(key) => setTab(key as Tab)}
-          loading={onSaved ? savedLoading || savedReadingOn : onReposts ? repostsLoading || repostsReadingOn : loading}
+          loading={onMadeUp ? madeUpLoading : onSaved ? savedLoading || savedReadingOn : onReposts ? repostsLoading || repostsReadingOn : loading}
           rows={shown}
           rowSpacing={4}
           keyExtractor={(post) => post.id}
@@ -519,7 +583,14 @@ export default function MyPulsePage() {
               showToast={(message) => toast.info(message)}
             />
           )}
-          emptyState={onSaved ? {
+          emptyState={onMadeUp ? {
+            icon: Newspaper,
+            headline: 'No posts under your made-up name yet',
+            subcopy: 'Only you can see this is you.',
+            tone: 'personal',
+            ctaLabel: 'Go to Pulse',
+            onCtaClick: () => router.push('/app/feed'),
+          } : onSaved ? {
             icon: Bookmark,
             headline: 'Nothing saved yet',
             subcopy: 'Save a post to keep it here.',
@@ -547,7 +618,7 @@ export default function MyPulsePage() {
                 message={onSaved
                   ? "We couldn't load your saved posts. Please try again."
                   : onReposts ? "We couldn't load your reposts. Please try again." : "We couldn't load your posts. Please try again."}
-                onRetry={() => { void (onSaved ? loadSaved() : onReposts ? loadReposts() : loadPosts()); }}
+                onRetry={() => { void (onMadeUp ? loadMadeUp() : onSaved ? loadSaved() : onReposts ? loadReposts() : loadPosts()); }}
               />
             </div>
           ) : undefined}
@@ -616,6 +687,7 @@ export default function MyPulsePage() {
           }}
           onGone={(postId) => {
             setPosts((prev) => prev.filter((p) => p.id !== postId));
+            setMadeUp((prev) => prev.filter((p) => p.id !== postId));
             dropFromSaved(postId);
             dropFromReposts(postId);
             removePostFromFeedCaches(queryClient, postId);
