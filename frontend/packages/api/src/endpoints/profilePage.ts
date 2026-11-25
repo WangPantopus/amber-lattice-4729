@@ -161,6 +161,16 @@ export interface ProfileDoorsBlock extends BlockBase {
   sign_in_note?: string | null;
 }
 
+/**
+ * Something waiting for the person that their app doesn't draw (CONTRACT "On by default"): at the top of their own
+ * first tab, with the full web address. The web names every part it draws, so it should never get one.
+ */
+export interface ProfileNoticeBlock extends BlockBase {
+  kind: 'notice';
+  text: string;
+  link?: ProfileLink | null;
+}
+
 export interface ProfileShelfBlock extends BlockBase {
   kind: 'shelf';
   objects: Array<{ id: string; picture_url: string; caption: string | null }>;
@@ -343,6 +353,7 @@ export type ProfileKnownBlock =
   | ProfileInCommonBlock
   | ProfileDoorsBlock
   | ProfileShelfBlock
+  | ProfileNoticeBlock
   | ProfilePromptsBlock
   | ProfilePinnedPostsBlock
   | ProfileRowsBlock

@@ -5,6 +5,7 @@
 // ============================================================
 
 import { API_BASE_URL } from '@pantopus/utils';
+import { PROFILE_PARTS, PROFILE_PARTS_HEADER } from './endpoints/profileParts';
 import {
   HttpError,
   buildFullPath,
@@ -1069,11 +1070,13 @@ export async function apiRequest<T = any>(
   data?: any,
   config?: ApiRequestConfig
 ): Promise<T> {
+  const profilePage = typeof url === 'string' && url.startsWith('/api/profile-page');
   const response = await apiClient.request<T>({
     method,
     url,
     data,
     ...config,
+    ...(profilePage ? { headers: { ...(config?.headers as Record<string, string> | undefined), [PROFILE_PARTS_HEADER]: PROFILE_PARTS } } : {}),
   });
   return response.data;
 }

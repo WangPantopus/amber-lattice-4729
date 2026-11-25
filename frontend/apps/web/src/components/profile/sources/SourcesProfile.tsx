@@ -72,9 +72,15 @@ export function drawnTabs(page: ProfilePage): ProfilePageTab[] {
 /** The first tab's opening group of untitled lines (`key_lines`) sits in the header card (board 1). */
 function splitHeaderLines(tab: ProfilePageTab | undefined) {
   const blocks = tab?.blocks ?? [];
-  const first = blocks[0] as ProfileLinesBlock | undefined;
-  if (first?.kind === 'lines' && (first.id === 'key_lines' || !first.title)) return { header: first, rest: blocks.slice(1) };
-  return { header: null, rest: blocks };
+  // `key_lines` by its id wherever it is (a `notice` may come first on the person's own page); else, as before, an
+  // untitled group of lines that opens the tab.
+  let at = blocks.findIndex((block) => block?.kind === 'lines' && (block as ProfileLinesBlock).id === 'key_lines');
+  if (at < 0) {
+    const first = blocks[0] as ProfileLinesBlock | undefined;
+    at = first?.kind === 'lines' && !first.title ? 0 : -1;
+  }
+  if (at < 0) return { header: null, rest: blocks };
+  return { header: blocks[at] as ProfileLinesBlock, rest: blocks.filter((_, i) => i !== at) };
 }
 
 function SummaryWell({ summary, onOpenRecord }: { summary: ProfilePageSummary; onOpenRecord: (() => void) | null }) {

@@ -6,7 +6,7 @@ import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
   ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
-  ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
+  ProfileNoticeBlock, ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
 import * as api from '@pantopus/api';
 import { extractApiError } from '@/lib/auth-utils';
@@ -780,6 +780,24 @@ function RecordChartBlock({ block, ctx }: { block: ProfileRecordChartBlock; ctx:
   );
 }
 
+/** A notice (CONTRACT "On by default"): a plain row with the server's words, opening its link. */
+function NoticeBlock({ block, ctx }: { block: ProfileNoticeBlock; ctx: BlockContext }) {
+  const text = typeof block.text === 'string' ? block.text.trim() : '';
+  if (!text) return null;
+  const target = ctx.inert ? null : ctx.target(block.link);
+  const row = (
+    <span className="flex items-center gap-3 w-full">
+      <span className="min-w-0 flex-1 text-[0.9375rem] leading-[1.3125rem] text-app [overflow-wrap:anywhere]">{text}</span>
+      {target ? chevron : null}
+    </span>
+  );
+  return (
+    <section className={`${card} overflow-hidden`}>
+      {target ? <Opens target={target} className={rowClass}>{row}</Opens> : <div className="px-4 py-3 min-h-[3rem] flex items-center">{row}</div>}
+    </section>
+  );
+}
+
 function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: BlockContext }) {
   if (!block.title?.trim()) return null;
   return (
@@ -853,13 +871,14 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
+    case 'notice': return <NoticeBlock block={block as ProfileNoticeBlock} ctx={ctx} />;
     default: return null;
   }
 }
 
 const KNOWN_KINDS = new Set([
   'lines', 'owns', 'says', 'known_for', 'in_common', 'doors', 'shelf', 'prompts', 'pinned_posts', 'rows', 'can_do',
-  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer',
+  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'notice',
 ]);
 
 /** True when this page can draw the block (a known kind). A tab of unknown kinds only is not drawn. */

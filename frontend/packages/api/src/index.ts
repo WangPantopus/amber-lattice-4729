@@ -29,6 +29,7 @@ export {
   del,
   uploadFile,
 } from './client';
+export { PROFILE_PARTS, PROFILE_PARTS_HEADER } from './endpoints/profileParts';
 
 // Export types
 export type { TokenStorage, AuthSessionUpdate, AuthRefreshResult, AuthClientEvent } from './client';
@@ -422,7 +423,7 @@ export type {
   ProfileLine, ProfileBadgeLine, ProfileInk, ProfileLane, ProfileView, ProfilePreviewView, ProfileLink, ProfileMore,
   ProfileRings, ProfilePlace, ProfileShare, ProfileSharePart, ProfileSharePartKey, ProfilePartSetting,
   ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileInCommonBlock, ProfileDoorsBlock,
-  ProfileDoor, ProfileShelfBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
+  ProfileDoor, ProfileShelfBlock, ProfileNoticeBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
   ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
   ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
   ProfileLinkCard, ProfileCredit, ProfileAttachment, ProfilePieceOffer, ProfilePieceFields, ProfileMyPieces,
