@@ -417,7 +417,9 @@ function Editor({ start, onClose, onSaved, onRemoved, skillsSuggested, pinnedCou
 
   const remove = async () => {
     if (!editing) return;
-    if (!window.confirm(`Remove “${editing.title}” from your Work? It goes from your page, and anyone named on it comes off.`)) return;
+    // Only a piece with people named on it says they come off (no credits, no word about them).
+    const named = Array.isArray(editing.credits) && editing.credits.length > 0;
+    if (!window.confirm(`Remove “${editing.title}” from your Work? It goes from your page${named ? ', and anyone named on it comes off' : ''}.`)) return;
     setSaving('remove');
     setError(null);
     try {
