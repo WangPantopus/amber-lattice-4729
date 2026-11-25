@@ -525,6 +525,14 @@ export async function reportPost(postId: string, data: {
   return post(`/api/posts/${postId}/report`, data);
 }
 
+/** Report someone else's reply, with a post's reasons: one report per person per reply, a retry answers the same. */
+export async function reportComment(postId: string, commentId: string, data: {
+  reason: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'safety' | 'other';
+  details?: string;
+}): Promise<{ message: string }> {
+  return post(`/api/posts/${postId}/comments/${commentId}/report`, data);
+}
+
 /** Repost or undo a repost; `reposted` is the state the person chose (see toggleLike). */
 export async function repostPost(postId: string, reposted?: boolean): Promise<{ reposted: boolean; shareCount: number }> {
   return post(`/api/posts/${postId}/share`, reposted === undefined ? { shareType: 'repost' } : { shareType: 'repost', reposted });
