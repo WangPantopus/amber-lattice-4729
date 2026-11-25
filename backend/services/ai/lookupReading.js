@@ -182,7 +182,7 @@ function placingWords({ typed, place }) {
   return [...words];
 }
 
-/** True when `text` holds any placing word (a house number counts only as a whole number). */
+/** True when `text` holds any placing word (the typed address, the street line, the street name or the ZIP). */
 function mentionsPlace(text, words) {
   const lower = String(text || '').toLowerCase();
   return words.some((w) => (/^\d+[a-z]?$/.test(w) ? new RegExp(`(^|[^0-9])${w}([^0-9]|$)`).test(lower) : lower.includes(w)));
@@ -279,8 +279,13 @@ function userContent(input) {
 const TICKET_TTL_MS = 60 * 60 * 1000;
 const TICKET_MAX_CHARS = 1500;
 
+// The key is derived (one-way) from a secret this server holds. The hosted servers set no JWT secret, so without
+// the last fallback they issued no ticket at all (seen on staging, 2026-11-24): SUPABASE_SERVICE_ROLE_KEY is the one
+// secret the backend cannot start without (config/supabaseAdmin.js), as LOCATION_JITTER_SECRET already falls back to it.
 function ticketKey() {
-  const secret = String(process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || '').trim();
+  const secret = String(
+    process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  ).trim();
   if (!secret) return null;
   return crypto.createHmac('sha256', secret).update('pantopus-lookup-reading-ticket-v1').digest();
 }
