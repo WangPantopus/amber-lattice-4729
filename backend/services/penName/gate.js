@@ -135,7 +135,7 @@ async function written(userId) {
     owner.owned(userId, 'post', { limit: 100 }),
     owner.countSince(userId, 'comment', since),
   ]);
-  const recent = rows.filter((row) => row.created_at >= since || Date.parse(row.created_at) >= Date.parse(since)).map((row) => row.id);
+  const recent = rows.filter((row) => Date.parse(row.created_at) >= Date.parse(since)).map((row) => row.id);
   let moments = 0;
   if (recent.length) {
     const { data, error } = await supabaseAdmin.from('Post').select('id').in('id', recent).eq('is_story', true);

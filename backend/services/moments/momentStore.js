@@ -843,8 +843,8 @@ async function peopleRings(viewerId, userIds) {
   if (!people.length) return [];
   const nowIso = new Date().toISOString();
   // An id may be a made-up name's (a ring's author id is, on a made-up-name Moment): its Moments are found by the
-  // name, and a person's own never include the ones they wrote under a made-up name.
-  const penIds = [...(await penName.names.rowsById(people)).keys()];
+  // name, and a person's own never include the ones they wrote under a made-up name. Both reads go out together; the
+  // second is by the made-up names' own index and finds nothing for an account's id.
   const live = (query) => query.eq('is_story', true)
     .gt('story_expires_at', nowIso)
     .is('archived_at', null)
@@ -852,9 +852,9 @@ async function peopleRings(viewerId, userIds) {
     .eq('post_metadata->moment->>state', 'live')
     .limit(MAX_MAP_ROWS);
   const [byPerson, byPenName] = await Promise.all([
-    readInBatches(people.filter((id) => !penIds.includes(id)), (batch) => live(supabaseAdmin.from('Post')
+    readInBatches(people, (batch) => live(supabaseAdmin.from('Post')
       .select(MOMENT_SELECT).in('user_id', batch)), "people's Moments"),
-    readInBatches(penIds, (batch) => live(supabaseAdmin.from('Post').select(MOMENT_SELECT)
+    readInBatches(people, (batch) => live(supabaseAdmin.from('Post').select(MOMENT_SELECT)
       .eq('identity_context_type', penName.KIND).in('identity_context_id', batch)), "made-up names' Moments"),
   ]);
   const rows = [...byPerson, ...byPenName].filter((row) => momentState(row) === 'live');

@@ -342,6 +342,8 @@ router.post('/', createLimiter, async (req, res) => {
     if (underPenName) {
       const refusal = req.user.accountType === 'curator' || body.location.source === 'none' || body.audience !== 'nearby'
         ? { status: 400, code: 'PEN_NAME_AUDIENCE', message: 'A made-up name can post to people nearby only. The fewer people who see a Moment, the easier it is to guess who made it.' }
+        // A long video's later parts are found by the account that made the first; under a made-up name there is none.
+        : body.series ? { status: 400, code: 'PEN_NAME_NOT_FOR_THIS', message: "A video posted in parts can't go out under a made-up name. Post one of up to a minute." }
         : await penName.gate.accountRefusal(req.user.id)
           || await penName.gate.limitRefusal(req.user.id, 'moment')
           || await penName.gate.wordsRefusal([body.caption, body.text]);
