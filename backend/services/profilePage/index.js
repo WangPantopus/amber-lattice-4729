@@ -11,7 +11,7 @@ const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require
 const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
-const { profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled, profileDoorsEnabled } = require('../../utils/featureFlags');
+const { profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled } = require('../../utils/featureFlags');
 const { buildRecord, composePage, composeMonth, composePiece, composeCircle, composeCirclePieces, partContent, firstWord, knownForLines } = require('./compose');
 const { reaches } = require('./parts');
 
@@ -71,10 +71,10 @@ async function momentsFor(req, ctx, rows) {
  * What a person's app can't show yet (CONTRACT "# On by default, and what a phone can't show yet"): on their own page
  * only, for each thing waiting for them whose part their app did not name in X-Pantopus-Profile-Parts, a `notice` that
  * opens the web screen for it. No header (a 2.1.5 app) means none. Asks to sign and role asks need one read, made only
- * when the app leaves `credits` or `roles` out.
+ * when the app leaves `credits` or `roles` out; lines waiting for "Show it" come with the page's own rows.
  */
 const PARTS_HEADER = 'x-pantopus-profile-parts';
-async function noticesFor(req, ctx) {
+async function noticesFor(req, ctx, sources = {}) {
   const header = req.get?.(PARTS_HEADER);
   if (header === undefined || ctx.view !== 'owner' || ctx.preview) return [];
   const named = new Set(String(header).split(',').map((p) => p.trim().toLowerCase()).filter(Boolean));
@@ -91,6 +91,11 @@ async function noticesFor(req, ctx) {
       } else if (a.kind === 'role' && !named.has('roles')) {
         out.push({ id: `notice_${a.id}`, text: `${who} asked ${a.business?.name || 'your business'} to confirm a role. Open it on ${site}.`, url: work });
       }
+    }
+  }
+  if (!named.has('known_for')) {
+    for (const t of (sources.knownFor || []).filter((line) => line.status === 'asked')) {
+      out.push({ id: `notice_${t.id}`, text: `${t.party_shown?.name || 'Someone'} wrote a line about you. Open it on ${site}.`, url: ctx.shareUrl });
     }
   }
   return out.map((n) => ({ kind: 'notice', id: n.id, text: n.text, link: { kind: 'url', url: n.url, site } }));
@@ -188,7 +193,7 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
-  ctx.notices = !notices ? [] : await noticesFor(req, ctx).catch((err) => {
+  ctx.notices = !notices ? [] : await noticesFor(req, ctx, sources).catch((err) => {
     logger.warn('Profile page notices unavailable; left out', { userId, error: err.message });
     return [];
   });
@@ -353,7 +358,6 @@ async function shareBody(req) {
     work_pieces: workPieces(loaded.sources),
     ...(tiesOn ? { ties_enabled: readShare(loaded.rows.share).ties_enabled } : {}),
     ...(profileKnownForEnabled() ? { known_for_enabled: readShare(loaded.rows.share).known_for_enabled } : {}),
-    ...(profileDoorsEnabled() ? { cards_enabled: readShare(loaded.rows.share).cards_enabled } : {}),
     ...linkFields,
   };
 }
@@ -361,7 +365,7 @@ async function shareBody(req) {
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
   const change = applyShareChange(readShare(stored), req.body, new Date(), {
-    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(), doors: profileDoorsEnabled(),
+    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(),
   });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);

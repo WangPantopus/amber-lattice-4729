@@ -90,7 +90,7 @@ router.post('/me/asks/:id/sign', verifyToken, tiesOn, handle('ask-sign', (req) =
 router.post('/me/asks/:id/decline', verifyToken, tiesOn, handle('ask-decline', (req) => ties.declineAsk(String(req.user.id), req.params.id)));
 router.patch('/me/ties/:id', verifyToken, tiesOn, handle('tie-change', (req) => ties.changeTie(String(req.user.id), req.params.id, req.body)));
 router.delete('/me/ties/:id', verifyToken, tiesOn, handle('tie-remove', (req) => ties.removeTie(String(req.user.id), req.params.id)));
-// Known for (CONTRACT P3.2), behind its own switch PROFILE_KNOWN_FOR.
+// Known for (CONTRACT P3.2): on; PROFILE_KNOWN_FOR=0 is its emergency off.
 function knownForOn(req, res, next) {
   if (profileKnownForEnabled()) return next();
   return res.status(404).json({ error: 'Not found', code: 'PROFILE_KNOWN_FOR_OFF' });

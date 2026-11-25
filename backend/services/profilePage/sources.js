@@ -157,7 +157,7 @@ function rolesFrom(rows, { owner = false } = {}) {
 }
 
 /**
- * Known-for lines about the person (phase 3A), none while PROFILE_KNOWN_FOR is off or the person's own switch is off.
+ * Known-for lines about the person (phase 3A), none after the emergency off PROFILE_KNOWN_FOR=0 or while the person's own choice is off.
  * Shown lines for everyone; waiting and hidden ones for the person, and a writer's own line for that writer. A line
  * with a block either way between the two is gone for everyone. Each carries `party_shown` (the writer's name).
  */

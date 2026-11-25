@@ -1,5 +1,6 @@
 /**
- * Known for (~/pantopus-profile-sources/CONTRACT.md P3.2; SPEC "Phase 3", 3A), behind PROFILE_KNOWN_FOR. A line is a
+ * Known for (~/pantopus-profile-sources/CONTRACT.md P3.2; SPEC "Phase 3", 3A): on; PROFILE_KNOWN_FOR=0 is its emergency
+ * off. A line is a
  * `ProfileTie` row of kind `known_for`: `user_id` the person it is about, `party_user_id` its writer, `note` the
  * words, `relation` what the writer did with the person, `from_month` when, `piece_id` a piece it is tied to.
  * Status: `asked` waiting for the person, `signed` shown, `declined` kept hidden, `removed` taken back by its writer.
