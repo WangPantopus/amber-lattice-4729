@@ -177,7 +177,7 @@ export default function OwnerWork({ round, onAdd, onAddRole, onOffer, onCounts, 
       {asks.length > 0 ? (
         <section aria-label="Asked of you" className={`${card} overflow-hidden print:hidden`}>
           <h2 className={`${overline} px-5 pt-4 pb-1`}>Asked of you</h2>
-          <ul className="divide-y divide-app-subtle">
+          <ul className="divide-y divide-app">
             {asks.map((ask) => <AskRow key={ask.id} ask={ask} onDone={() => { setAsksRound((n) => n + 1); onAnswered?.(); }} />)}
           </ul>
         </section>
@@ -186,7 +186,7 @@ export default function OwnerWork({ round, onAdd, onAddRole, onOffer, onCounts, 
         {offered.length > 0 ? (
           <>
             <h2 className={`${overline} px-5 pt-4 pb-1`}>Pantopus saw these</h2>
-            <ul className="divide-y divide-app-subtle">
+            <ul className="divide-y divide-app">
               {offered.map((offer) => (
                 <li key={`${offer.kind}-${offer.id}`} className="flex items-center gap-3 px-5 py-3">
                   <span className="min-w-0 flex-1">

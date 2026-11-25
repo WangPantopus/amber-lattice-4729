@@ -6,7 +6,7 @@ import { Eye, Lock, Mail, Phone } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type {
   ProfileDoor, ProfileLink, ProfileLinesBlock, ProfileMonthRead, ProfilePage, ProfilePageSummary, ProfilePageTab,
-  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead, ProfileShelfBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock,
+  ProfilePieceRead, ProfilePreviewView, ProfileCanDoBlock, ProfilePiecesBlock, ProfileRoleLine, ProfileCircleRead, ProfileShelfBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileOpenDoorsBlock,
 } from '@pantopus/api';
 import { buildGigPath, buildPlanPath, buildSupportTrainPath, buildUserProfilePath } from '@pantopus/utils';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -21,6 +21,7 @@ import RoleEditor from './RoleEditor';
 import ShelfEditor from './ShelfEditor';
 import CircleView from './CircleView';
 import KnownForScreen, { type KnownState } from './KnownFor';
+import { DoorsEditor, LeaveCardSheet } from './Doors';
 
 const SKIES: Record<string, string> = {
   day: '/profile-sources/sky-day.svg',
@@ -94,6 +95,17 @@ function withOwnShelf(blocks: ProfilePageTab['blocks'], firstName: string): Prof
   const shelf = { kind: 'shelf', id: 'shelf', title: `On ${firstName}'s shelf`, objects: [] } as ProfileShelfBlock;
   const at = blocks.findIndex((block) => ['prompts', 'pinned_posts', 'rows'].includes(block?.kind) || block?.id === 'with_others');
   return at < 0 ? [...blocks, shelf] : [...blocks.slice(0, at), shelf, ...blocks.slice(at)];
+}
+
+/**
+ * The owner's first tab with their doors to choose when the server sent none (P3.3 sends `open_doors` only when it
+ * holds a door): an empty block where the doors go (before More closer, the shelf, Get to know and the rest).
+ */
+function withOwnDoors(blocks: ProfilePageTab['blocks'], firstName: string): ProfilePageTab['blocks'] {
+  if (blocks.some((block) => block?.kind === 'open_doors' || block?.kind === 'doors')) return blocks;
+  const doors = { kind: 'open_doors', id: 'doors', title: `Doors ${firstName} keeps open`, doors: [], leave_card: null, sign_in_note: null } as ProfileOpenDoorsBlock;
+  const at = blocks.findIndex((block) => ['more_closer', 'shelf', 'prompts', 'pinned_posts', 'rows'].includes(block?.kind) || block?.id === 'with_others');
+  return at < 0 ? [...blocks, doors] : [...blocks.slice(0, at), doors, ...blocks.slice(at)];
 }
 
 function SummaryWell({ summary, onOpenRecord }: { summary: ProfilePageSummary; onOpenRecord: (() => void) | null }) {
@@ -268,7 +280,7 @@ export default function SourcesProfile({
     const all = drawnTabs(page);
     const split = splitHeaderLines(all[0]);
     // The owner's own first tab always offers a shelf: the server sends one only when it holds something (P3.1).
-    const firstBlocks = owner ? withOwnShelf(split.rest, firstName) : split.rest;
+    const firstBlocks = owner ? withOwnDoors(withOwnShelf(split.rest, firstName), firstName) : split.rest;
     const rest = all.map((tab, i) => (i === 0 ? { ...tab, blocks: firstBlocks } : tab)).filter((tab) => tab.blocks.length > 0);
     if (owner && !rest.some((tab) => tab.key === 'work')) rest.splice(Math.min(1, rest.length), 0, { key: 'work', title: 'Work', blocks: [] });
     return { headerLines: split.header, tabs: rest };
@@ -290,6 +302,9 @@ export default function SourcesProfile({
   const [roleEdit, setRoleEdit] = useState<{ role: ProfileRoleLine | null } | null>(null);
   // The owner's shelf open to change (P3.1).
   const [shelfEdit, setShelfEdit] = useState(false);
+  // The owner's doors open to change, and a visitor's "Leave your card" sheet (P3.3).
+  const [doorsEdit, setDoorsEdit] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
   // Each new read of the page (after a change) reads the owner's offers again.
   // The first page is read with round 0 already, so only a later read of the page counts.
   const [pageRound, setPageRound] = useState(0);
@@ -579,6 +594,7 @@ export default function SourcesProfile({
   const knownWriteBlock = firstBlocks.find((block) => block.kind === 'known_for_write') as ProfileKnownForWriteBlock | undefined;
   const knownWrite: ProfileKnownForWrite | null = inert ? null : knownBlock?.write ?? (knownWriteBlock?.text ? knownWriteBlock : null);
   const knownMine = (knownBlock?.lines || []).filter((line) => line?.mine?.take_back);
+  const leaveCard = (firstBlocks.find((block) => block.kind === 'open_doors') as ProfileOpenDoorsBlock | undefined)?.leave_card ?? null;
   const tiedTarget = useCallback((line: ProfileKnownForLine): Target | null => {
     const tied = line.tied_to;
     if (!tied?.id) return null;
@@ -600,7 +616,12 @@ export default function SourcesProfile({
     onWriteLine: knownWrite ? () => openKnown(true) : null,
     onLinesChanged: inert ? null : linesChanged,
     tiedTarget,
-    onDoor: onDoor ?? (() => {}),
+    onEditDoors: owner ? () => setDoorsEdit(true) : null,
+    // "Leave your card" opens its sheet here; signed out it goes to sign in first, as every door does.
+    onDoor: (door) => {
+      if (door.key === 'leave_card' && viewerId && !inert) { setLeaveOpen(true); return; }
+      onDoor?.(door);
+    },
     onConnect: onConnect ?? (() => {}),
   };
 
@@ -835,6 +856,22 @@ export default function SourcesProfile({
           role={roleEdit?.role ?? null}
           onClose={() => setRoleEdit(null)}
           onSaved={() => { setRoleEdit(null); onChanged?.(); }}
+        />
+      ) : null}
+      <LeaveCardSheet
+        open={leaveOpen}
+        onClose={() => setLeaveOpen(false)}
+        firstName={firstName}
+        username={header.username || ''}
+        leave={leaveCard}
+        viewerId={viewerId}
+        onLeft={() => (onReread ?? onChanged)?.()}
+      />
+      {owner && doorsEdit ? (
+        <DoorsEditor
+          firstName={firstName}
+          onClose={() => setDoorsEdit(false)}
+          onSaved={() => { setDoorsEdit(false); onChanged?.(); }}
         />
       ) : null}
       {owner && shelfEdit ? (

@@ -245,7 +245,7 @@ function Credits({ piece, owner, credits, target, viewerId, onNameOff }: {
 }) {
   return (
     <Card title="Who was on it" flush>
-      <ul className="divide-y divide-app-subtle">
+      <ul className="divide-y divide-app">
         <li className="flex items-center gap-3 px-5 py-2.5">
           <Face name={owner.name} url={owner.portraitUrl} />
           <span className="min-w-0 flex-1">
@@ -290,7 +290,7 @@ function Credits({ piece, owner, credits, target, viewerId, onNameOff }: {
           );
         })}
       </ul>
-      {piece.kept_once ? <p className="px-5 py-3 border-t border-app-subtle text-[0.8125rem] leading-[1.125rem] text-app-secondary">{piece.kept_once}</p> : null}
+      {piece.kept_once ? <p className="px-5 py-3 border-t border-app text-[0.8125rem] leading-[1.125rem] text-app-secondary">{piece.kept_once}</p> : null}
     </Card>
   );
 }
@@ -383,7 +383,7 @@ function PieceBody({ piece, firstName, owner, target, view, viewerId, onNameOff 
                 </li>
               ))}
               {documents.map((a, i) => (
-                <li key={`d-${i}`} className="border-t border-app-subtle first:border-t-0">
+                <li key={`d-${i}`} className="border-t border-app first:border-t-0">
                   <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-5 py-2.5 hover-bg-app">
                     <span className="relative shrink-0 w-[4.5rem] h-12 rounded-lg overflow-hidden bg-app-surface-sunken flex items-center justify-center">
                       {a.thumbnail_url ? <Picture src={a.thumbnail_url} className="absolute inset-0 w-full h-full object-cover" /> : <FileText aria-hidden="true" className="w-5 h-5 text-app-secondary" />}

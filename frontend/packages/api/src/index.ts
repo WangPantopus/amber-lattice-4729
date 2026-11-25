@@ -422,7 +422,7 @@ export type {
   ProfilePage, ProfilePageHeader, ProfilePageSummary, ProfilePageTab, ProfilePageAction, ProfileBlock, ProfileKnownBlock,
   ProfileLine, ProfileBadgeLine, ProfileInk, ProfileLane, ProfileView, ProfilePreviewView, ProfileLink, ProfileMore,
   ProfileRings, ProfilePlace, ProfileShare, ProfileSharePart, ProfileSharePartKey, ProfilePartSetting,
-  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileLinesForYouBlock, ProfileKnownForRead, ProfileKnownForSheet, ProfileInCommonBlock, ProfileDoorsBlock,
+  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileLinesForYouBlock, ProfileKnownForRead, ProfileKnownForSheet, ProfileOpenDoorsBlock, ProfileLeaveCard, ProfileCardSheet, ProfileCard, ProfileCardsBlock, ProfileDoorSetting, ProfileInCommonBlock, ProfileDoorsBlock,
   ProfileDoor, ProfileShelfBlock, ProfileNoticeBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
   ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
   ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,

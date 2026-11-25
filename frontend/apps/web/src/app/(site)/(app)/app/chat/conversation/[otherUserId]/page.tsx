@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ConversationView from '@/components/chat/ConversationView';
 import { safeRedirectPath } from '@/lib/auth-utils';
 
@@ -15,10 +15,20 @@ export default function ConversationPage() {
   // pages (a `javascript:` value would run in this page, `//host` would leave the site).
   const returnTo = safeRedirectPath(searchParams.get('returnTo'), '/app/chat');
   const messageId = searchParams.get('message') || undefined;
+  // `?start=`: words for an empty composer, unsent (a profile's door: "Hire Maria for carpenter work"). Read once, then
+  // taken out of the address so a reload doesn't put them back.
+  const [startText] = useState(() => (searchParams.get('start') || '').replace(/\s+/g, ' ').trim().slice(0, 500) || undefined);
 
   useEffect(() => {
     if (!otherUserId) router.replace('/app/chat');
   }, [otherUserId, router]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('start')) return;
+    params.delete('start');
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, []);
 
   if (!otherUserId) return <div className="p-6 text-app-text-secondary">Redirecting...</div>;
 
@@ -28,6 +38,7 @@ export default function ConversationPage() {
       initialTopicId={topicId}
       returnTo={returnTo}
       initialMessageId={messageId}
+      initialText={startText}
       key={messageId || 'latest'}
     />
   );

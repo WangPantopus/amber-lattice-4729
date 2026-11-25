@@ -870,6 +870,21 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
     }
   };
 
+  // A door's message (P3.3): today's conversation, with the door's sentence in the composer, unsent (`?start=`).
+  const openDoorConversation = async (userId: string, start: string | null) => {
+    if (pendingMessage.current) return;
+    pendingMessage.current = true;
+    try {
+      await api.chat.createDirectChat(userId);
+      router.push(`/app/chat/conversation/${encodeURIComponent(userId)}${start ? `?start=${encodeURIComponent(start)}` : ''}`);
+    } catch (err: unknown) {
+      const reason = err instanceof Error ? err.message.trim() : '';
+      toast.error(reason || 'Couldn\'t start a conversation. Try again.');
+    } finally {
+      pendingMessage.current = false;
+    }
+  };
+
   const handleMessage = async () => {
     // The public profile can render before the viewer's profile read finishes.
     // The session marker already covers cookie auth; the chat endpoint verifies it.
@@ -1601,10 +1616,14 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
       onReread={previewing ? null : refreshSources}
       ready={mounted}
       onDoor={(door) => {
-        // Doors (phase 3): a signed-out visitor signs in first; Send a card opens the card flow with them chosen.
+        // Doors (P3.3): a signed-out visitor signs in first, then comes back to this profile. A message door opens
+        // today's conversation with its sentence in the composer, unsent; Send a card opens the card flow for them.
         if (!getAuthToken()) { router.push(signInHref); return; }
-        if (door.key === 'send_card' && cardPersonId && cardArrivals.isSuccess) {
-          router.push(sendOneBackPath({ userId: cardPersonId, name: fullName }));
+        const link = ('link' in door ? door.link : null) as { kind?: string; user_id?: string; text?: string; name?: string } | null;
+        if (link?.kind === 'message' && link.user_id) { void openDoorConversation(link.user_id, link.text ?? null); return; }
+        if (door.key === 'send_card') {
+          const to = link?.user_id || (cardArrivals.isSuccess ? cardPersonId : null);
+          if (to) router.push(sendOneBackPath({ userId: to, name: link?.name || fullName }));
         }
       }}
       onConnect={() => {
