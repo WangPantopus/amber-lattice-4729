@@ -415,9 +415,9 @@ fun PublicProfileScreen(
                                                     if (content.isOwner) ownerNavigation.onSeeAllPosts() else showPersonPosts = true
                                                 },
                                                 onPiecesChanged = { viewModel.sources.load(content.profile.id) },
-                                                onOpenPiece = viewModel.sources::openPiece,
+                                                onOpenPiece = { pieceId, ownerId -> viewModel.sources.openPiece(pieceId, ownerId) },
                                                 onClosePiece = viewModel.sources::closePiece,
-                                                onRetryPiece = { sourcesPiece?.id?.let(viewModel.sources::openPiece) },
+                                                onRetryPiece = { viewModel.sources.retryPiece() },
                                                 onOpenMoments = { userId ->
                                                     MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
                                                 },

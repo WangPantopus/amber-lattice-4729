@@ -39,6 +39,8 @@ sealed interface ProfilePageLink {
 
     data class Piece(
         val id: String,
+        /** Whose piece, when it isn't the page's own: a "With <owner>" piece a person signed (p2.5). */
+        val userId: String? = null,
     ) : ProfilePageLink
 
     data class Business(
@@ -387,6 +389,18 @@ sealed interface ProfileBlock {
         override val title: String?,
         val subtitle: String?,
         val skills: List<CanDoSkill>,
+    ) : ProfileBlock
+
+    /**
+     * Something waiting for the owner in a part this app doesn't draw yet (an ask to sign, a line, a card): its words
+     * and a link that opens it on pantopus.com (CONTRACT "On by default, and what a phone can't show yet").
+     */
+    data class Notice(
+        override val id: String,
+        override val title: String?,
+        val text: String,
+        val url: String,
+        val site: String?,
     ) : ProfileBlock
 
     data class Pieces(

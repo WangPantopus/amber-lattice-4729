@@ -66,6 +66,30 @@ internal class SourcesBlockActions(
     val interactive: Boolean = true,
 )
 
+/** A notice (something waiting on pantopus.com): its words in a row that opens the page in the browser. */
+@Composable
+private fun NoticeRow(
+    block: ProfileBlock.Notice,
+    open: (ProfilePageLink?) -> (() -> Unit)?,
+) {
+    val onOpen = open(ProfilePageLink.Url(block.url, block.site))
+    Row(
+        modifier =
+            Modifier
+                .sourcesCard()
+                .heightIn(min = 48.dp)
+                .then(if (onOpen != null) Modifier.clickable(onClickLabel = "Open on pantopus.com", role = Role.Button, onClick = onOpen) else Modifier)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .semantics(mergeDescendants = true) { },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SourcesTile(PantopusIcon.Bell, PantopusColors.primary50, PantopusColors.primary600)
+        Text(block.text, style = SourcesType.body, modifier = Modifier.weight(1f))
+        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+    }
+}
+
 /** Every piece on the page's tabs (for the work line's dots). */
 internal fun ProfilePage.workPieces(): List<WorkPiece> =
     tabs
@@ -106,6 +130,7 @@ internal fun SourcesBlock(
                 open = open,
             )
         is ProfileBlock.Owns -> OwnsCard(block, open)
+        is ProfileBlock.Notice -> NoticeRow(block, open)
     }
 }
 
@@ -901,13 +926,9 @@ private fun PieceList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // A piece with no picture has no picture box in a list (as on iPhone); pinned cards keep their tinted tile.
-                piece.coverUrl?.let { cover ->
-                    Box(
-                        Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { },
-                    ) {
-                        PieceImage(cover, iconSize = 20.dp)
-                    }
+                // A piece with no picture keeps the soft tinted tile with the tool mark (as on iPhone).
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { }) {
+                    PieceImage(piece.coverUrl, iconSize = 20.dp)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(piece.title, style = SourcesType.rowTitle)

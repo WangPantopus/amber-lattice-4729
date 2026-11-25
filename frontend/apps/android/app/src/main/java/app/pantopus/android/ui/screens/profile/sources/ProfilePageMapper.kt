@@ -144,7 +144,7 @@ internal fun mapLink(map: Map<String, Any?>?): ProfilePageLink? {
         "tab" -> map.str("tab")?.let { ProfilePageLink.Tab(it) }
         "record" -> ProfilePageLink.Record
         "month" -> map.str("month")?.let { ProfilePageLink.Month(it) }
-        "piece" -> map.str("id")?.let { ProfilePageLink.Piece(it) }
+        "piece" -> map.str("id")?.let { ProfilePageLink.Piece(it, map.str("user_id")) }
         "business" -> map.str("username")?.let { ProfilePageLink.Business(it) }
         "profile" ->
             ProfilePageLink
@@ -219,6 +219,12 @@ private fun mapBlock(
                 ProfileBlock.Lines(id, title, it, mapMore(map.obj("more")))
             }
         "says" -> mapLine(map.obj("line"))?.let { ProfileBlock.Says(id, title, it) }
+        "notice" -> {
+            val link = map.obj("link")
+            val url = link?.str("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            val text = map.str("text")
+            if (url == null || text == null) null else ProfileBlock.Notice(id, title, text, url, link.str("site"))
+        }
         "known_for" ->
             map
                 .objs("lines")

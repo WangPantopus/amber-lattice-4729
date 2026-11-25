@@ -93,7 +93,7 @@ private fun ProfileBlock.leads(): Boolean =
 
 /** The header card's lines: the first tab's untitled `lines` block that comes first (`key_lines`). */
 private fun ProfilePageTab.keyLines(): ProfileBlock.Lines? =
-    (blocks.firstOrNull() as? ProfileBlock.Lines)?.takeIf {
+    (blocks.firstOrNull { it !is ProfileBlock.Notice } as? ProfileBlock.Lines)?.takeIf {
         it.title == null || it.id == "key_lines"
     }
 
@@ -218,7 +218,9 @@ private fun FirstTab(
     onTabBarPlaced: (Int) -> Unit,
 ) {
     val keyLines = tab?.keyLines()
-    val rest = tab?.blocks.orEmpty().let { if (keyLines != null) it.drop(1) else it }
+    // Notices (things waiting for the owner that this app can't show yet) stand right under the header card.
+    val notices = tab?.blocks.orEmpty().filterIsInstance<ProfileBlock.Notice>()
+    val rest = tab?.blocks.orEmpty().filterNot { it is ProfileBlock.Notice }.let { if (keyLines != null) it.drop(1) else it }
     val leading = rest.takeWhile { it.leads() }
     val after = rest.drop(leading.size)
     val record = tabs.firstOrNull { it.key == "record" }
@@ -233,6 +235,7 @@ private fun FirstTab(
             headerActions = slots.headerActions,
             actions = actions,
         )
+        SourcesBlocks(blocks = notices, page = page, actions = actions, slots = slots)
         SourcesBlocks(blocks = leading, page = page, actions = actions, slots = slots)
     }
     if (tabs.size > 1) {

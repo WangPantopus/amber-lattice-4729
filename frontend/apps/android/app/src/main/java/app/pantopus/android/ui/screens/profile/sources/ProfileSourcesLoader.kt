@@ -39,6 +39,8 @@ sealed interface ProfilePieceState {
     data class Ready(
         override val id: String,
         val detail: ProfilePieceDetail,
+        /** Someone else's piece (a "With <owner>" piece on the signer's Work): never the page owner's to change. */
+        val foreign: Boolean = false,
     ) : ProfilePieceState
 
     data class Missing(
@@ -104,6 +106,7 @@ class ProfileSourcesLoader(
     private var job: Job? = null
     private var monthJob: Job? = null
     private var pieceJob: Job? = null
+    private var pieceOwner: String? = null
     private var identifier: String? = null
 
     /**
@@ -163,17 +166,25 @@ class ProfileSourcesLoader(
         _month.value = null
     }
 
-    /** Opens one piece (board 8) as the page's viewer gets it, or as the owner's Preview as audience. */
-    fun openPiece(pieceId: String) {
+    /**
+     * Opens one piece (board 8) as the page's viewer gets it, or as the owner's Preview as audience. [ownerId] is whose
+     * piece it is when not the page's own (a "With <owner>" piece on the signer's Work).
+     */
+    fun openPiece(
+        pieceId: String,
+        ownerId: String? = null,
+    ) {
         val page = (_state.value as? ProfileSourcesState.Ready)?.page ?: return
         val shown = _preview.value ?: page
+        pieceOwner = ownerId
         pieceJob?.cancel()
         if ((_piece.value as? ProfilePieceState.Ready)?.id != pieceId) _piece.value = ProfilePieceState.Loading(pieceId)
         pieceJob =
             scope.launch {
                 _piece.value =
-                    when (val result = pages.piece(page.header.userId, pieceId, shown.previewAs?.key)) {
-                        is NetworkResult.Success -> ProfilePieceState.Ready(pieceId, result.data)
+                    when (val result = pages.piece(ownerId ?: page.header.userId, pieceId, shown.previewAs?.key)) {
+                        is NetworkResult.Success ->
+                            ProfilePieceState.Ready(pieceId, result.data, foreign = ownerId != null && ownerId != page.header.userId)
                         is NetworkResult.Failure ->
                             if (result.error == NetworkError.NotFound) {
                                 ProfilePieceState.Missing(pieceId)
@@ -182,6 +193,11 @@ class ProfileSourcesLoader(
                             }
                     }
             }
+    }
+
+    /** Reads the open piece again (after a failed read, or after it was changed). */
+    fun retryPiece() {
+        _piece.value?.id?.let { openPiece(it, pieceOwner) }
     }
 
     fun closePiece() {
