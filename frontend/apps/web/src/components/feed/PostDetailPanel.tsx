@@ -35,6 +35,8 @@ import { patchPostInFeedCaches, removePostFromFeedCaches } from '@/hooks/useFeed
 import { usePostDetail } from '@/hooks/usePostDetail';
 import type { Post, PostComment as PostCommentType } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine } from '@/components/penName/MadeUpName';
+import { isMadeUp, isMadeUpByMe, penNameIdOf } from '@/components/penName/penName';
 
 const LUCIDE_MAP: Record<string, LucideIcon> = {
   MessageCircle, Star, CalendarDays, Search, Megaphone, AlertTriangle,
@@ -146,7 +148,7 @@ export default function PostDetailPanel({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose, lightboxIndex, post?.media_urls]);
 
-  const handleAddComment = async ({ text, parentId, files = [], clientRequestId }: { text: string; parentId?: string; files?: File[]; clientRequestId: string }) => {
+  const handleAddComment = async ({ text, parentId, files = [], clientRequestId, postAs }: { text: string; parentId?: string; files?: File[]; clientRequestId: string; postAs?: 'pen_name' }) => {
     if (!postId) return false;
     const target = targetVersion.current;
     setCommentPosting(true);
@@ -155,6 +157,7 @@ export default function PostDetailPanel({
         comment: text,
         parentCommentId: parentId,
         clientRequestId,
+        ...(postAs ? { postAs } : {}),
       });
 
       let nextComment = res.comment;
@@ -394,6 +397,10 @@ export default function PostDetailPanel({
   const creatorUserId = publicAuthor?.type === 'local'
     ? post?.author_user_id || post?.user_id
     : post?.creator?.id || post?.user_id;
+  // Under a made-up name: the small card instead of a profile, and "(you)" for its writer.
+  const madeUp = isMadeUp(post);
+  const madeUpByMe = madeUp && (post?.user_id === currentUserId || isMadeUpByMe(post));
+  const penNameId = penNameIdOf(post);
 
   if (!mounted) return null;
   // Match SlidePanel: keep the existing overlay above the app shell's stacking context.
@@ -468,6 +475,8 @@ export default function PostDetailPanel({
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-app-muted" aria-hidden="true">
                     <Newspaper className="h-4 w-4" />
                   </div>
+                ) : madeUp ? (
+                  <MadeUpAuthorPicture penNameId={penNameId} name={creatorName} url={creatorAvatarUrl} size={40} />
                 ) : (
                 /* The photo opens the page the name links to. */
                 <UserAvatarLink
@@ -500,6 +509,11 @@ export default function PostDetailPanel({
                     <div className="text-sm font-semibold text-app">
                       {story.outlet} <span className="text-[11px] font-normal text-app-muted">via {creatorName}</span>
                     </div>
+                  ) : madeUp ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <MadeUpAuthorName penNameId={penNameId} name={creatorName} isYou={madeUpByMe} />
+                      <MadeUpNameMarks badges={publicAuthor?.badges} />
+                    </div>
                   ) : publicAuthor?.type === 'persona' ? (
                   // Launch cuts #1 + #2: no link to the hidden persona page.
                   publicAuthor.href && launchFeatures.beacon && launchFeatures.personas ? (
@@ -524,6 +538,7 @@ export default function PostDetailPanel({
                     {timeAgo(post.created_at)}
                     {post.is_edited && ' · edited'}
                   </div>
+                  {madeUpByMe && <OnlyYouLine />}
                 </div>
               </div>
 
@@ -707,6 +722,7 @@ export default function PostDetailPanel({
                     : story ? 'No replies yet. Say what you think; people around here will see it.' : undefined}
                   placeholder={story ? 'What do you think? People around here can read your reply…' : undefined}
                   autoFocus={focusReply}
+                  post={post}
                 />
               </div>
             </div>

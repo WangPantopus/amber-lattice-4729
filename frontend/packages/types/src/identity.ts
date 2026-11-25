@@ -21,7 +21,8 @@ export type NotificationFirewallContext = 'personal' | 'audience' | 'platform';
 
 export type BusinessRoleBase = 'owner' | 'admin' | 'editor' | 'staff' | 'viewer';
 
-export type PublicIdentityType = 'local' | 'persona' | 'business' | 'home';
+// 'pen_name': a post or reply under a made-up name (docs/product/made-up-names/README.md): no handle, no profile link.
+export type PublicIdentityType = 'local' | 'persona' | 'business' | 'home' | 'pen_name';
 export type PersonaCategory = 'creator' | 'writer' | 'coach' | 'consultant' | 'community_leader' | 'public_figure' | 'other' | 'doctor' | 'therapist' | 'lawyer' | 'teacher' | 'tutor';
 export type PersonaAudienceLabel = 'followers' | 'students' | 'patients' | 'clients' | 'customers' | 'subscribers' | 'members';
 export type PersonaAudienceMode = 'open' | 'approval_required' | 'invite_only' | 'organization_managed';
@@ -37,6 +38,10 @@ export interface PublicAuthorIdentity {
   avatarUrl?: string | null;
   href?: string | null;
   badges?: string[];
+  /** A made-up name: always true on a `pen_name` author. */
+  madeUp?: boolean;
+  /** Sent only to the person who wrote it under a made-up name: the app says "(you)". */
+  isYou?: boolean;
 }
 
 export interface LocalProfile {

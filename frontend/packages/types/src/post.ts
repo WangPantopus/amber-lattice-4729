@@ -84,6 +84,10 @@ export interface PostComment {
   author?: PostCreator;
   attachments?: PostCommentAttachment[];
   userHasLiked?: boolean;
+  /** Written under a made-up name. */
+  made_up_name?: boolean;
+  /** Only the person who wrote it under a made-up name gets this (true); `user_id` is then their own id. */
+  viewer_is_author?: boolean;
 }
 
 export interface PostingIdentity {
@@ -214,6 +218,12 @@ export interface Post {
   creator?: PostCreator;
   author?: PublicAuthorIdentity | null;
   business_author?: PostCreator | null;
+  /**
+   * Written under a made-up name (docs/product/made-up-names/README.md): `author` is the made-up name and `user_id` is
+   * its id, except for the writer, who gets their own id and `viewer_is_author: true`.
+   */
+  made_up_name?: boolean;
+  viewer_is_author?: boolean;
   home?: { id: string; address?: string | null; city: string; state?: string } | null;
   userHasLiked?: boolean;
   /** Each reaction emoji's count, most used first (only emoji someone picked); missing from older servers. */

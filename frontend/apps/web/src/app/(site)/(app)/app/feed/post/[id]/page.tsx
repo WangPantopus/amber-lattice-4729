@@ -27,6 +27,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { confirmStore } from '@/components/ui/confirm-store';
 import ReportModal from '@/components/ui/ReportModal';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine } from '@/components/penName/MadeUpName';
+import { isMadeUp, isMadeUpByMe, penNameIdOf } from '@/components/penName/penName';
 import ErrorState from '@/components/ui/ErrorState';
 import PostMetadata from '@/components/feed/PostMetadata';
 import { canSharePost, sharePostLink } from '@/components/feed/sharePostLink';
@@ -230,7 +232,7 @@ export default function PostDetailPage() {
     });
   }, [post, saveMutation]);
 
-  const handleAddComment = async ({ text, parentId, files = [], clientRequestId }: { text: string; parentId?: string; files?: File[]; clientRequestId: string }) => {
+  const handleAddComment = async ({ text, parentId, files = [], clientRequestId, postAs }: { text: string; parentId?: string; files?: File[]; clientRequestId: string; postAs?: 'pen_name' }) => {
     if (!postId) return false;
     setCommentPosting(true);
     try {
@@ -238,6 +240,7 @@ export default function PostDetailPage() {
         comment: text,
         parentCommentId: parentId,
         clientRequestId,
+        ...(postAs ? { postAs } : {}),
       });
 
       let nextComment = res.comment;
@@ -261,8 +264,9 @@ export default function PostDetailPage() {
       void postQuery.refetch();
       showToast(uploadFailed ? 'Comment posted; images not confirmed. Send to retry or Clear to discard draft.' : 'Comment posted');
       return !uploadFailed;
-    } catch {
-      showToast('Failed to add comment');
+    } catch (err) {
+      // A refusal says why (a made-up name's are { error, code }): shown as it is.
+      showToast(err instanceof Error && err.message ? err.message : 'Failed to add comment');
       return false;
     } finally {
       setCommentPosting(false);
@@ -403,6 +407,10 @@ export default function PostDetailPage() {
     ? post?.author_user_id || post?.user_id
     : post?.creator?.id || post?.user_id;
   const creatorInitial = (creatorName || '?')[0]?.toUpperCase() || '?';
+  // Under a made-up name: the small card instead of a profile, "(you)" for its writer, no distance from its writer.
+  const madeUp = isMadeUp(post);
+  const madeUpByMe = madeUp && (isOwn || isMadeUpByMe(post));
+  const penNameId = penNameIdOf(post);
   const locationText = '';
   const homeLabel = post?.home?.address || post?.home?.city || null;
 
@@ -536,6 +544,10 @@ export default function PostDetailPage() {
           {/* Author row: on a phone the owner's actions wrap below the name instead of squeezing it */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-4">
             {/* The photo opens the page the name links to. */}
+            {madeUp ? (
+              <MadeUpAuthorPicture penNameId={penNameId} name={creatorName} url={creatorAvatarUrl} size={44}
+                onReport={madeUpByMe ? undefined : () => setShowReportModal(true)} />
+            ) : (
             <UserAvatarLink
               href={publicAuthor?.type === 'persona' ? publicAuthor.href || null : creatorHandle ? `/${creatorHandle}` : null}
             >
@@ -558,9 +570,16 @@ export default function PostDetailPage() {
                 </div>
               )}
             </UserAvatarLink>
+            )}
             <div className="flex-1 min-w-[9rem]">
-              <div className="flex items-center gap-1.5">
-                {publicAuthor?.type === 'persona' ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {madeUp ? (
+                  <>
+                    <MadeUpAuthorName penNameId={penNameId} name={creatorName} isYou={madeUpByMe}
+                      onReport={madeUpByMe ? undefined : () => setShowReportModal(true)} />
+                    <MadeUpNameMarks badges={publicAuthor?.badges} />
+                  </>
+                ) : publicAuthor?.type === 'persona' ? (
                   publicAuthor.href ? (
                     <a href={publicAuthor.href} className="text-sm font-semibold text-app hover:underline">
                       {creatorName}
@@ -584,6 +603,7 @@ export default function PostDetailPage() {
                 {locationText && <span>{locationText}</span>}
                 {homeLabel && <span> · from {homeLabel}</span>}
               </div>
+              {madeUpByMe && <OnlyYouLine />}
             </div>
 
             {/* Owner / non-owner actions */}
@@ -664,7 +684,7 @@ export default function PostDetailPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 {post.location_name || post.location_address || 'Pinned location'}
-                {post.distance_meters != null && post.distance_meters > 0 && (
+                {!madeUp && post.distance_meters != null && post.distance_meters > 0 && (
                   <span className="text-app-muted">
                     · {formatDistance(post.distance_meters) === 'nearby' ? 'nearby' : `${formatDistance(post.distance_meters)} away`}
                   </span>
@@ -938,6 +958,7 @@ export default function PostDetailPage() {
               onLikeComment={handleCommentLike}
               currentUserId={user?.id}
               isPosting={commentPosting}
+              post={post}
               canCompose={!isRemovedByModerator}
               composeDisabledMessage="Replies are off for this post."
               // While the comments load, say nothing rather than "no comments".
