@@ -255,7 +255,7 @@ public struct ProfileLinksEnabledBody: Encodable, Sendable {
 /// pantopus.com.
 public enum ProfilePageParts {
     public static let header = "X-Pantopus-Profile-Parts"
-    public static let drawn = "pieces, credits, roles, shelf"
+    public static let drawn = "pieces, credits, roles, circle, shelf"
 
     /// The header for a profile-page request, none for any other.
     public static func headers(for path: String) -> [String: String] {
