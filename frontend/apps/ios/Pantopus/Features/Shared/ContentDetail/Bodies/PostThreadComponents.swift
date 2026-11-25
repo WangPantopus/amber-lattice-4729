@@ -112,6 +112,8 @@ struct CommentRow: View {
     var onReply: (@MainActor () -> Void)?
     var onToggleLike: (@MainActor () -> Void)?
     var onDelete: (@MainActor () -> Void)?
+    /// Someone else's reply, under any name: the post's own report reasons.
+    var onReport: (@MainActor () -> Void)?
 
     @State private var attachmentViewerIndex: MediaViewerSelection?
 
@@ -209,6 +211,16 @@ struct CommentRow: View {
                             .frame(minHeight: 44, alignment: .center)
                             .accessibilityIdentifier("pulsePostDetail-deleteComment-\(comment.id)")
                             .accessibilityLabel("Delete your reply")
+                    }
+
+                    if !comment.isOwn, let onReport {
+                        Button("Report") { onReport() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(Theme.Color.appTextSecondary)
+                            .frame(minHeight: 44, alignment: .center)
+                            .accessibilityIdentifier("pulsePostDetail-reportComment-\(comment.id)")
+                            .accessibilityLabel("Report \(comment.authorName)'s reply")
                     }
                 }
                 .padding(.leading, Spacing.s1)

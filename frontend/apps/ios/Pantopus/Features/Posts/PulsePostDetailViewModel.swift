@@ -594,6 +594,20 @@ public final class PulsePostDetailViewModel {
         }
     }
 
+    /// File a report against someone else's reply, with the post's reasons.
+    public func reportComment(commentId: String, reason: String) async {
+        do {
+            _ = try await client.request(
+                PostsEndpoints.reportComment(postId: postId, commentId: commentId, reason: reason),
+                as: PostActionAckResponse.self
+            )
+            toastMessage = "Report submitted. Thanks for flagging."
+        } catch {
+            logger.warning("Reply report failed: \(error)")
+            toastMessage = "Couldn't submit the report"
+        }
+    }
+
     /// Save toggle — optimistic, reconciled with `{saved}`. "Saved." offers
     /// View (contract §5).
     public func toggleSave() async {
