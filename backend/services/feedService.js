@@ -805,6 +805,15 @@ function loadIdentityAuthorRows(posts) {
 // `authorRows` is loadIdentityAuthorRows' result when the caller has already read it.
 async function attachIdentityAuthors(posts, viewerUserId, authorRows = null) {
   if (!posts.length) return posts;
+  // Every post says whether a first reply on it may be written under a made-up name (services/penName/gate.js), so
+  // no app works the rule out for itself: the reply box offers "Post as" where this is true.
+  return (await attachAuthors(posts, viewerUserId, authorRows)).map((post) => ({
+    ...post,
+    takes_made_up_name_reply: penName.gate.replyRefusal(post) === null,
+  }));
+}
+
+async function attachAuthors(posts, viewerUserId, authorRows = null) {
 
   const [personaResult, localResult, localUserResult, businessesById = new Map()] = authorRows || await loadIdentityAuthorRows(posts);
   // Made-up-name posts: their names, and which of them the viewer wrote. Read only when the page holds one.

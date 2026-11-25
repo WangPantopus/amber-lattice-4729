@@ -69,6 +69,8 @@ On a made-up-name post (feeds, the post page, My posts) and reply:
 }
 ```
 
+- Every post, under any name, carries `takes_made_up_name_reply`: whether a first reply on it may be written under a
+  made-up name. The reply box offers "Post as" where it is true.
 - `isYou` and `viewer_is_author: true` reach only the person who wrote it. They are how an app says "(you)".
 - `user_id` is the writer's own id for the writer, so "is this mine" checks (`user_id == me`) keep working, and the pen
   name's id for everyone else, so Mute and Block act on the name.
@@ -215,8 +217,9 @@ Nobody is told "someone you know posted" about a made-up-name post: no connectio
 
 The same seven things on the web, the iPhone and Android. Words in quotes are the screen's own.
 
-1. **"Post as"** in the Pulse composer and in the reply box (the reply box offers it on any kind of post people
-   nearby read, an Event, an alert or an Around you story included; the rule is the row above, never the post's kind): the person's own name ("your name and profile") and
+1. **"Post as"** in the Pulse composer and in the reply box (the reply box offers it where the post says
+   `takes_made_up_name_reply: true`: any kind of post people nearby read, an Event, an alert or an Around you story
+   included; an app never works the rule out from the post's kind or audience itself): the person's own name ("your name and profile") and
    their made-up name ("others can't see it's you"). Every new post starts on the person's own name. When
    `/me` says `allowed: false`, the row shows `refusal.message` and can't be chosen (for a home that isn't verified,
    that sentence is the nudge to verify).
