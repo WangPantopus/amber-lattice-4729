@@ -55,15 +55,6 @@ struct ProfileCircleFace: View {
 
 // MARK: - The circle (board 9)
 
-/// Where each face sits, to draw its line to the middle.
-private struct ProfileCircleAnchors: PreferenceKey {
-    static let defaultValue: [String: Anchor<CGRect>] = [:]
-
-    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
-        value.merge(nextValue()) { $1 }
-    }
-}
-
 struct ProfileCircleScreen: View {
     let model: ProfilePageModel
     let onOpenPiece: (ProfilePieceDTO) -> Void
@@ -122,7 +113,12 @@ struct ProfileCircleScreen: View {
             if typeSize.isAccessibilitySize {
                 list(circle)
             } else {
-                diagram(circle)
+                ProfileCircleDiagram(
+                    circle: circle,
+                    centreName: model.content?.header.name,
+                    centrePortrait: model.content?.header.portraitURL,
+                    chosen: model.circleChosen
+                ) { person in Task { await model.choose(person) } }
             }
             if let person = model.circleChosen {
                 shared(with: person)
@@ -141,77 +137,6 @@ struct ProfileCircleScreen: View {
         .padding(Spacing.s4)
     }
 
-    // MARK: The diagram
-
-    private func diagram(_ circle: ProfileCircleDTO) -> some View {
-        let beside = circle.group("works_beside")
-        // Up to four beside the person, split around them (the first half on the left), so no line crosses a face.
-        let besidePeople = Array((beside?.people ?? []).prefix(4))
-        let left = Array(besidePeople.prefix((besidePeople.count + 1) / 2))
-        let right = Array(besidePeople.dropFirst(left.count))
-        return VStack(alignment: .leading, spacing: Spacing.s4) {
-            if let led = circle.group("taught_or_led"), !led.people.isEmpty {
-                section(led.title) { row(led, shown: Array(led.people.prefix(3))) }
-            }
-            if let beside {
-                section(beside.title) {
-                    HStack(alignment: .top, spacing: Spacing.s2) {
-                        ForEach(Array(left.enumerated()), id: \.offset) { index, person in
-                            bubble(person, key: "beside\(index)")
-                        }
-                        owner
-                        ForEach(Array(right.enumerated()), id: \.offset) { index, person in
-                            bubble(person, key: "beside\(index + left.count)")
-                        }
-                        if beside.count > left.count + right.count {
-                            more(beside.count - left.count - right.count)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            } else {
-                owner.frame(maxWidth: .infinity)
-            }
-            if let learned = circle.group("learned_from"), !learned.people.isEmpty {
-                section(learned.title) { row(learned, shown: Array(learned.people.prefix(3))) }
-            }
-        }
-        .backgroundPreferenceValue(ProfileCircleAnchors.self) { anchors in
-            GeometryReader { proxy in
-                lines(anchors, circle: circle, in: proxy)
-            }
-            .accessibilityHidden(true)
-        }
-    }
-
-    private var owner: some View {
-        let header = model.content?.header
-        return VStack(spacing: Spacing.s1) {
-            ZStack {
-                Circle().fill(Theme.Color.appSurfaceSunken)
-                Text(Self.initials(header?.name))
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(Theme.Color.appTextStrong)
-                if let url = header?.portraitURL {
-                    CachedAsyncImage(url: url) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
-                    }
-                    .clipShape(Circle())
-                }
-                Circle().stroke(Theme.Color.appText, lineWidth: 3)
-            }
-            .frame(width: 72, height: 72)
-            .background(Theme.Color.appBg, in: Circle())
-            .anchorPreference(key: ProfileCircleAnchors.self, value: .bounds) { ["owner": $0] }
-            Text(header?.name ?? "").scaledFont(13, weight: .semibold).foregroundStyle(Theme.Color.appText)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private static func initials(_ name: String?) -> String {
-        (name ?? "").split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
-    }
-
     private func section(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             ProfileBlockTitle(title: title)
@@ -219,91 +144,8 @@ struct ProfileCircleScreen: View {
         }
     }
 
-    private func row(_ group: ProfileCircleGroupDTO, shown: [ProfileCirclePersonDTO]) -> some View {
-        HStack(alignment: .top, spacing: Spacing.s3) {
-            ForEach(Array(shown.enumerated()), id: \.offset) { index, person in
-                bubble(person, key: "\(group.key)\(index)")
-            }
-            if group.count > shown.count {
-                more(group.count - shown.count)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func bubble(_ person: ProfileCirclePersonDTO, key: String) -> some View {
-        Button { Task { await model.choose(person) } } label: {
-            VStack(spacing: Spacing.s1) {
-                ProfileCircleFace(person: person, size: 52, chosen: model.circleChosen == person)
-                    .anchorPreference(key: ProfileCircleAnchors.self, value: .bounds) { [key: $0] }
-                Text(person.name ?? person.did ?? "Someone")
-                    .scaledFont(13, weight: .semibold)
-                    .foregroundStyle(Theme.Color.appText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                if person.name != nil, let did = person.did {
-                    Text(did)
-                        .scaledFont(11)
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-                }
-            }
-            .frame(minWidth: 64, maxWidth: 96)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spoken(person))
-        .accessibilityHint("Shows the pieces you share")
-        .accessibilityAddTraits(model.circleChosen == person ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private func more(_ count: Int) -> some View {
-        VStack(spacing: Spacing.s1) {
-            Text("+\(count)")
-                .scaledFont(15, weight: .semibold)
-                .foregroundStyle(Theme.Color.appTextStrong)
-                .frame(width: 52, height: 52)
-                .background(Theme.Color.appSurface, in: Circle())
-                .overlay(Circle().stroke(Theme.Color.appBorder, lineWidth: 1))
-            Text("\(count) more").scaledFont(11).foregroundStyle(Theme.Color.appTextSecondary)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     private func spoken(_ person: ProfileCirclePersonDTO) -> String {
-        let ink = person.ink == "signed" ? "Signed" : "Said"
-        let together = person.sharedPieces == 1 ? "1 piece together" : "\(person.sharedPieces) pieces together"
-        return [person.name ?? person.did, person.name == nil ? nil : person.did, ink, person.sharedPieces > 0 ? together : nil]
-            .compactMap(\.self)
-            .joined(separator: ", ")
-    }
-
-    /// A line from each face to the middle: solid when both sides confirmed, dotted for a typed name.
-    private func lines(_ anchors: [String: Anchor<CGRect>], circle: ProfileCircleDTO, in proxy: GeometryProxy) -> some View {
-        Canvas { context, _ in
-            guard let ownerAnchor = anchors["owner"] else { return }
-            let middle = proxy[ownerAnchor]
-            let centre = CGPoint(x: middle.midX, y: middle.midY)
-            let people: [(String, ProfileCirclePersonDTO)] = circle.groups.flatMap { group -> [(String, ProfileCirclePersonDTO)] in
-                if group.key == "works_beside" {
-                    return Array(group.people.prefix(4).enumerated()).map { ("beside\($0.offset)", $0.element) }
-                }
-                return Array(group.people.prefix(3).enumerated()).map { ("\(group.key)\($0.offset)", $0.element) }
-            }
-            for (key, person) in people {
-                guard let anchor = anchors[key] else { continue }
-                let face = proxy[anchor]
-                var path = Path()
-                path.move(to: CGPoint(x: face.midX, y: face.midY))
-                path.addLine(to: centre)
-                let style = person.ink == "signed"
-                    ? StrokeStyle(lineWidth: 1.5)
-                    : StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [1, 4])
-                context.stroke(path, with: .color(Theme.Color.appTextMuted), style: style)
-            }
-        }
+        person.spokenInCircle
     }
 
     // MARK: Shared pieces
