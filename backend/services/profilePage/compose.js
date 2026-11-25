@@ -772,7 +772,8 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
   };
 
   // ---- person tab ----
-  const person = [];
+  // What the person's own app can't show yet comes first: one `notice` each (index.noticesFor; owner only).
+  const person = [...(view === 'owner' ? (ctx.notices || []) : [])];
   const keyLines = record.entries.filter((e) => e.place === 'key' && visible(e)).sort((a, b) => a.rank - b.rank).map(lineOf).slice(0, 3);
   if (keyLines.length) person.push({ kind: 'lines', id: 'key_lines', title: null, lines: keyLines, more: null });
   const bio = String(ctx.shown.bio || '').trim();

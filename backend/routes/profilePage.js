@@ -1,6 +1,7 @@
 /**
- * The profile page (~/pantopus-profile-sources/CONTRACT.md, frozen v1). Every route answers 404 PROFILE_SOURCES_OFF
- * while the backend switch PROFILE_SOURCES is off (utils/featureFlags.js), so the apps keep today's screens.
+ * The profile page (~/pantopus-profile-sources/CONTRACT.md, frozen v1). On: built and merged means available (SPEC rule
+ * 4.12). Only after an emergency off (PROFILE_SOURCES=0) does every route answer 404 PROFILE_SOURCES_OFF, and the apps
+ * keep today's screens; PROFILE_LINKS=0 and PROFILE_TIES=0 do the same for their own routes.
  *
  *   GET /api/profile-page/me/share               the owner's parts and what a visitor sees
  *   PUT /api/profile-page/me/share               save the parts of the main link
