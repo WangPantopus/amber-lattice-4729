@@ -107,6 +107,19 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
     public let profilePinned: Bool?
     /// False for a post that never shows on its author's profile (a plan's post).
     public let showOnProfile: Bool?
+    /// The identity projection of the author (`author`): on a made-up-name post it carries the marks and `isYou`.
+    public let author: PostCreatorDTO?
+    /// Written under a made-up name (contract "What the server sends"); false from an older server.
+    public let madeUpName: Bool
+    /// The viewer wrote it: sent only to them on a made-up-name post.
+    public let viewerIsAuthor: Bool
+    /// The reply box offers "Post as" (`takes_made_up_name_reply`); false from an older server.
+    public let takesMadeUpNameReply: Bool
+
+    /// The made-up name's id, on a post written under one.
+    public var penNameId: String? {
+        madeUpName ? (author?.penNameId ?? creator?.penNameId) : nil
+    }
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -150,6 +163,10 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         case creator
         case profilePinned = "profile_pinned"
         case showOnProfile = "show_on_profile"
+        case author
+        case madeUpName = "made_up_name"
+        case viewerIsAuthor = "viewer_is_author"
+        case takesMadeUpNameReply = "takes_made_up_name_reply"
     }
 
     /// Tolerant (Pulse S2): only `id` and `created_at` are required; any
@@ -209,6 +226,11 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         creator = c.lenient(PostCreatorDTO.self, forKey: .creator)
         profilePinned = c.lenient(Bool.self, forKey: .profilePinned)
         showOnProfile = c.lenient(Bool.self, forKey: .showOnProfile)
+        author = c.lenient(PostCreatorDTO.self, forKey: .author)
+        madeUpName = c.lenient(Bool.self, forKey: .madeUpName)
+            ?? ((author?.penNameId ?? creator?.penNameId) != nil)
+        viewerIsAuthor = c.lenient(Bool.self, forKey: .viewerIsAuthor) ?? (author?.isYou == true)
+        takesMadeUpNameReply = c.lenient(Bool.self, forKey: .takesMadeUpNameReply) ?? false
     }
 }
 

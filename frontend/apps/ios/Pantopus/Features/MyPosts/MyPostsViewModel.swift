@@ -53,6 +53,8 @@ public enum MyPostsTab {
     public static let saved = "saved"
     /// The posts you reposted (PULSEREPOST contract §4); a `PostCollectionModel` too.
     public static let reposts = "reposts"
+    /// Your posts under your made-up name (`GET /api/pen-names/me/posts`): only you can open them.
+    public static let madeUp = "madeUp"
 }
 
 // MARK: - Intent palette
@@ -133,7 +135,9 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
             ListOfRowsTab(id: MyPostsTab.archived, label: "Archived", count: loadedAtLeastOnce ? counts.archived : nil),
             ListOfRowsTab(id: MyPostsTab.saved, label: "Saved"),
             ListOfRowsTab(id: MyPostsTab.reposts, label: "Reposts")
-        ]
+        ] + (PenNameStore.shared.penName == nil && selectedTab != MyPostsTab.madeUp
+            ? []
+            : [ListOfRowsTab(id: MyPostsTab.madeUp, label: "Made-up name")])
     }
 
     public var selectedTab: String {
@@ -161,6 +165,9 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     /// The Reposts tab's list (the posts you reposted, paged by repost offset).
     public let reposts: PostCollectionModel
 
+    /// The Made-up name tab's list (your made-up-name posts, newest first); only you can read it.
+    public let madeUp: PostCollectionModel
+
     /// Your posts as Pulse cards and what your taps on them did.
     public let cards: ProfilePostCardsModel
 
@@ -174,6 +181,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         switch selectedTab {
         case MyPostsTab.saved: saved
         case MyPostsTab.reposts: reposts
+        case MyPostsTab.madeUp: madeUp
         default: nil
         }
     }
@@ -350,15 +358,16 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         self.onCompose = onCompose
         self.onEditPost = onEditPost
         self.now = now
-        selectedTab = [MyPostsTab.active, MyPostsTab.archived, MyPostsTab.saved, MyPostsTab.reposts]
+        selectedTab = [MyPostsTab.active, MyPostsTab.archived, MyPostsTab.saved, MyPostsTab.reposts, MyPostsTab.madeUp]
             .contains(initialTab) ? initialTab : MyPostsTab.active
         store = ScreenStore.store(for: api)
         let viewerId = currentUserId()
         saved = PostCollectionModel(kind: .saved, api: api, viewerId: viewerId, onOpenPost: onOpenPost, now: now)
         reposts = PostCollectionModel(kind: .reposts, api: api, viewerId: viewerId, onOpenPost: onOpenPost, now: now)
+        madeUp = PostCollectionModel(kind: .madeUp, api: api, viewerId: viewerId, onOpenPost: onOpenPost, now: now)
         cards = ProfilePostCardsModel(viewerId: viewerId, client: api, store: store)
         // A card's Saved, Repost or reaction says how it went, as on a profile.
-        for model in [cards, saved.cards, reposts.cards] {
+        for model in [cards, saved.cards, reposts.cards, madeUp.cards] {
             model.onToast = { [weak self] message in self?.showCardToast(message) }
         }
         showStoredCopy()
@@ -377,6 +386,8 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     // MARK: - ListOfRowsDataSource
 
     public func load() async {
+        // The Made-up name tab shows once the person has a made-up name.
+        Task { await PenNameStore.shared.load() }
         if let collection { return await collection.load() }
         if !loadedAtLeastOnce { ownState = .loading }
         await fetch(force: false)

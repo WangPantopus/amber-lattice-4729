@@ -19,7 +19,7 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
     public let title: String?
     public let postType: String
     public let visibility: String
-    public let postAs: String
+    public var postAs: String
     public let mediaUrls: [String]?
     /// Location block — `var` (like `refTaskId`) so the compose pipeline
     /// can apply an explicit place tag AFTER `mergeTargetContext` has
@@ -35,8 +35,8 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
     public var geocodeAccuracy: String?
     /// Mapbox feature id (e.g. `poi.123`) of the tagged place.
     public var geocodePlaceId: String?
-    public let homeId: String?
-    public let businessId: String?
+    public var homeId: String?
+    public var businessId: String?
     public let tags: [String]?
     public let gpsTimestamp: String?
     public let gpsLatitude: Double?
@@ -62,7 +62,7 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
     /// Ask category
     public let serviceCategory: String?
     /// Announce / persona audience
-    public let audience: String?
+    public var audience: String?
     /// v1.2 purpose tag (mirrors postType for sortability)
     public let purpose: String?
     /// "Share this task to the feed" — the gig this post references.

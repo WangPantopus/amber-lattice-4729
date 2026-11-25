@@ -298,7 +298,7 @@ private struct FormTopBar: View {
 /// `FormShell(bottomActionLabel:…)` for create-style flows (auth signup,
 /// later: long create wizards) where a top-right action would scroll out
 /// of view in long forms.
-private struct FormBottomCTA: View {
+struct FormBottomCTA: View {
     let label: String
     let icon: PantopusIcon?
     let isEnabled: Bool

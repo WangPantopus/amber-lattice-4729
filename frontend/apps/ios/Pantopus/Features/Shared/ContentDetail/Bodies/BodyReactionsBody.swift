@@ -27,6 +27,9 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
     /// True when the signed-in user authored this comment — gates the
     /// delete affordance.
     public let isOwn: Bool
+    /// The made-up name's id, on a reply written under one: the row shows the "Made-up name" mark and a tap on the
+    /// name opens its small card, never a profile.
+    public let penNameId: String?
 
     public init(
         id: String,
@@ -40,7 +43,8 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
         indentLevel: Int,
         authorUserId: String?,
         attachmentURLs: [URL] = [],
-        isOwn: Bool = false
+        isOwn: Bool = false,
+        penNameId: String? = nil
     ) {
         self.id = id
         self.authorName = authorName
@@ -54,6 +58,7 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
         self.authorUserId = authorUserId
         self.attachmentURLs = attachmentURLs
         self.isOwn = isOwn
+        self.penNameId = penNameId
     }
 
     /// Copy with updated heart state — used for optimistic toggles.
@@ -70,7 +75,8 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
             indentLevel: indentLevel,
             authorUserId: authorUserId,
             attachmentURLs: attachmentURLs,
-            isOwn: isOwn
+            isOwn: isOwn,
+            penNameId: penNameId
         )
     }
 }
@@ -193,6 +199,10 @@ public struct BodyReactionsBody: View {
     /// What the reply box says while it is empty and no reply is being answered (an Around you story asks what
     /// the reader thinks); nil keeps the usual words.
     private let composerPrompt: String?
+    /// Over the reply box: "Post as", or "Posting as …" once the conversation fixed the made-up name; nil for none.
+    private let aboveComposer: AnyView?
+    /// A tap on a made-up name on a reply: its small card.
+    private let onCommentPenNameTap: @MainActor (String) -> Void
 
     public init(
         body: String,
@@ -226,9 +236,13 @@ public struct BodyReactionsBody: View {
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
         composerPrompt: String? = nil,
+        aboveComposer: AnyView? = nil,
+        onCommentPenNameTap: @escaping @MainActor (String) -> Void = { _ in },
         onCommentAvatarTap: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.composerPrompt = composerPrompt
+        self.aboveComposer = aboveComposer
+        self.onCommentPenNameTap = onCommentPenNameTap
         self.aboveReactions = aboveReactions
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
@@ -380,6 +394,10 @@ public struct BodyReactionsBody: View {
                     .padding(.horizontal, Spacing.s4)
                     .accessibilityIdentifier("pulsePostDetail-repliesClosed")
             } else {
+                if let aboveComposer {
+                    aboveComposer
+                        .padding(.horizontal, Spacing.s4)
+                }
                 CommentComposer(
                     avatarName: composerAvatarName,
                     avatarURL: composerAvatarURL,
@@ -426,10 +444,22 @@ public struct BodyReactionsBody: View {
             }
         }
     }
+}
+
+/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
+private extension BodyReactionsBody {
+    var visibleCommentCount: Int {
+        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
+    }
+
+    /// No comments, as far as anyone on screen knows.
+    var threadIsEmpty: Bool {
+        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
+    }
 
     /// Opened from a list's copy: placeholders while the comments load, a
     /// short line if that failed.
-    @ViewBuilder private var pendingThread: some View {
+    @ViewBuilder var pendingThread: some View {
         switch commentsState {
         case let .loading(count) where count > 0:
             VStack(alignment: .leading, spacing: Spacing.s3) {
@@ -473,18 +503,6 @@ public struct BodyReactionsBody: View {
             EmptyView()
         }
     }
-}
-
-/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
-private extension BodyReactionsBody {
-    var visibleCommentCount: Int {
-        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
-    }
-
-    /// No comments, as far as anyone on screen knows.
-    var threadIsEmpty: Bool {
-        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
-    }
 
     var composerPlaceholder: String {
         if let replyingToName { return "Reply to \(replyingToName)..." }
@@ -497,7 +515,12 @@ private extension BodyReactionsBody {
         CommentRow(
             comment: comment,
             onAvatarTap: {
-                if let uid = comment.authorUserId { onCommentAvatarTap(uid) }
+                // A made-up name opens its small card, never a profile.
+                if let penNameId = comment.penNameId {
+                    onCommentPenNameTap(penNameId)
+                } else if let uid = comment.authorUserId {
+                    onCommentAvatarTap(uid)
+                }
             },
             onReply: onCommentReply.map { handler in { handler(comment) } },
             onToggleLike: onCommentLike.map { handler in { handler(comment.id) } },
