@@ -51,6 +51,9 @@ import javax.inject.Inject
 /** Nav-arg key for the Pulse post ID. */
 const val PULSE_POST_DETAIL_ID_KEY = "postId"
 
+/** The post page was opened to reply (a card's "Reply" on Today's Around you): its reply box takes the keyboard. */
+const val PULSE_POST_REPLY_KEY = "reply"
+
 /** The comment a reply is being drafted against. */
 data class PulseReplyTarget(
     val commentId: String,

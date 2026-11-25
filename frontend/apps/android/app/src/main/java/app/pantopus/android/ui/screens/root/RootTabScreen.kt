@@ -437,6 +437,7 @@ import app.pantopus.android.ui.screens.plans.map.PlansMapScreen
 import app.pantopus.android.ui.screens.plans.plansRoutes
 import app.pantopus.android.ui.screens.plans.today.PlansTodayActions
 import app.pantopus.android.ui.screens.posts.PULSE_POST_DETAIL_ID_KEY
+import app.pantopus.android.ui.screens.posts.PULSE_POST_REPLY_KEY
 import app.pantopus.android.ui.screens.posts.PulsePostDetailScreen
 import app.pantopus.android.ui.screens.profile.EditProfileScreen
 import app.pantopus.android.ui.screens.profile.NamePromptViewModel
@@ -1105,7 +1106,7 @@ private object ChildRoutes {
         pageSlug: String,
     ): String = "business/$businessId/page/${Uri.encode(pageSlug)}"
 
-    const val PULSE_POST = "posts/{$PULSE_POST_DETAIL_ID_KEY}"
+    const val PULSE_POST = "posts/{$PULSE_POST_DETAIL_ID_KEY}?reply={$PULSE_POST_REPLY_KEY}"
 
     const val INVITE_OWNER =
         "homes/{$INVITE_OWNER_HOME_ID_KEY}/invite?email={$INVITE_OWNER_CURRENT_EMAIL_KEY}"
@@ -1681,6 +1682,9 @@ private object ChildRoutes {
 
     /** Build the concrete path for a Pulse post detail. */
     fun pulsePost(id: String): String = "posts/$id"
+
+    /** A post's page opened to reply: its reply box is ready to type in. */
+    fun pulsePostReply(id: String): String = "posts/$id?reply=true"
 
     /**
      * Build the invite-owner path. `email` is forwarded so the form
@@ -3481,6 +3485,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenTask = { homeId, taskId -> navController.navigate(ChildRoutes.householdTaskDetail(homeId, taskId)) },
                         // An Around you post opens its page (reply threads) over Today.
                         onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
+                        // "Reply" on an Around you card: the same page with the reply box ready to type in.
+                        onReplyPost = { postId -> navController.navigate(ChildRoutes.pulsePostReply(postId)) },
                         // "Repost with your words" on an Around you post: the Pulse composer with the headline quoted.
                         onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                         scrollToTop = todayReselects,
@@ -5932,7 +5938,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 }
                 composable(
                     route = ChildRoutes.PULSE_POST,
-                    arguments = listOf(navArgument(PULSE_POST_DETAIL_ID_KEY) { type = NavType.StringType }),
+                    arguments =
+                        listOf(
+                            navArgument(PULSE_POST_DETAIL_ID_KEY) { type = NavType.StringType },
+                            // Opened to reply (Today's Around you): the reply box takes the keyboard.
+                            navArgument(PULSE_POST_REPLY_KEY) {
+                                type = NavType.BoolType
+                                defaultValue = false
+                            },
+                        ),
                 ) { entry ->
                     val postId = requireNotNull(entry.arguments?.getString(PULSE_POST_DETAIL_ID_KEY))
                     val arrival = DeepLinkRouter.Destination.Post(postId)
@@ -5941,6 +5955,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     }
                     PulsePostDetailScreen(
                         onBack = { navController.popBackStack() },
+                        focusReply = entry.arguments?.getBoolean(PULSE_POST_REPLY_KEY) == true,
                         onContentLoaded = { DeepLinkRouter.completeArrival(arrival) },
                         onOpenProfile = { userId ->
                             navController.navigate(ChildRoutes.publicProfile(userId))

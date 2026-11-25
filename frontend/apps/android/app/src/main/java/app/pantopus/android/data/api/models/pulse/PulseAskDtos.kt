@@ -1,5 +1,6 @@
 package app.pantopus.android.data.api.models.pulse
 
+import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
 import app.pantopus.android.data.api.models.posts.PostSource
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -15,6 +16,8 @@ data class PostLifecycleMetadata(
     val plan: Boolean? = null,
     @Json(name = "source_url") val sourceUrl: String? = null,
     @Json(name = "source_name") val sourceName: String? = null,
+    /** Set on a post Today's Around you made for an outlet's story (its section and topics); null on every other post. */
+    @Json(name = "around_you") val aroundYou: AroundYouStoryFacts? = null,
 ) {
     /** Where the post's story was published; null on most posts. */
     val source: PostSource? get() = PostSource.of(sourceUrl, sourceName)

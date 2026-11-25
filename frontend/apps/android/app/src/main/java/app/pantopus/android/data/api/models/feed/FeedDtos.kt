@@ -89,6 +89,11 @@ data class FeedPost(
     @Json(name = "allow_external_share") val allowExternalShare: Boolean? = null,
     @Json(name = "moderation_state") val moderationState: String? = null,
     val audience: String? = null,
+    /**
+     * Who replied and the latest reply, for a card that shows the conversation before it is opened. Only Today's
+     * Around you sends it, and only on a post with replies (`backend/services/aroundYou/lists.js`).
+     */
+    val conversation: FeedConversation? = null,
 ) {
     val canShareExternally: Boolean
         get() =
@@ -99,6 +104,9 @@ data class FeedPost(
 
     /** Where the post's story was published (an Around you headline's outlet); null on most posts. */
     val source: PostSource? get() = lifecycleMetadata?.source
+
+    /** A story Today's Around you posted for an outlet, with its topics; null for every other post. */
+    val aroundYou: AroundYouStoryFacts? get() = lifecycleMetadata?.aroundYou
 
     /** Its emoji reactions as the card shows them (an event's are its Going, counted in [likeCount]). */
     val reactionSummary: PostReactionSummary
@@ -117,6 +125,43 @@ data class FeedRepostedBy(
     val count: Int = 0,
     /** The viewer reposted it (then [names] starts with "You"); older servers leave it out. */
     val viewer: Boolean = false,
+)
+
+/**
+ * A post's reply preview: the latest repliers (newest first, at most three) and the latest reply, cut short. A value
+ * that can't be read reads as none, never failing the post that carries it.
+ */
+@JsonClass(generateAdapter = true)
+data class FeedConversation(
+    val people: List<FeedConversationPerson> = emptyList(),
+    val latest: FeedConversationReply? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class FeedConversationPerson(
+    val id: String? = null,
+    val name: String? = null,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class FeedConversationReply(
+    val id: String? = null,
+    @Json(name = "user_id") val userId: String? = null,
+    val name: String? = null,
+    val text: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+)
+
+/**
+ * What a post Today's Around you made says about itself (`post_metadata.around_you`, set only by the server): the
+ * section that took it and its topics (`events`, `kids`, `sports`, `government`, `business`, `safety`). A value that
+ * can't be read reads as none.
+ */
+@JsonClass(generateAdapter = true)
+data class AroundYouStoryFacts(
+    val section: String? = null,
+    val topics: List<String> = emptyList(),
 )
 
 /**

@@ -130,13 +130,16 @@ class TodayTabViewModel
          */
         val aroundCards: ProfilePostCards? by lazy {
             if (!::postsRepository.isInitialized || !::authRepository.isInitialized) return@lazy null
-            ProfilePostCards(
-                scope = viewModelScope,
-                posts = postsRepository,
-                viewerId = { (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id },
-                onToast = { _aroundToast.value = it },
-                profileColors = false,
-            )
+            aroundYouCards(viewModelScope, postsRepository, authRepository) { _aroundToast.value = it }
+        }
+
+        /**
+         * Around you's lists behind the first page (2026-11-24): the chosen chip and its list, read as it is scrolled.
+         * Its posts are cards of [aroundCards] too, after the first page's. Null without Hilt.
+         */
+        internal val aroundLists: AroundYouLists? by lazy {
+            if (!::aroundYou.isInitialized || !::postsRepository.isInitialized) return@lazy null
+            AroundYouLists(viewModelScope, aroundYou, postsRepository, { aroundCards }) { _around.value?.posts.orEmpty() }
         }
 
         private val _locating = MutableStateFlow(false)
@@ -186,17 +189,21 @@ class TodayTabViewModel
                 // switch it had last time instead of growing it a moment later.
                 val kept = keptAround(place)
                 _around.value = kept
+                // Another place starts at All, with no list read.
+                aroundLists?.show(place)
                 // A copy never undoes a tap (-1 is no read's revision).
-                kept?.let { aroundCards?.show(it.posts, readRevision = -1) }
+                kept?.let { aroundLists?.showCards(-1) ?: aroundCards?.show(it.posts, readRevision = -1) }
             }
             if (place == null || !::aroundYou.isInitialized) return
+            // Back from a post's page: its card in the open list takes what was done there.
+            aroundLists?.backFromPost()
             // A tap made while this read is out keeps its value over the read's (ProfilePostCards.show).
             val revision = aroundCards?.actionRevision ?: 0
             viewModelScope.launch {
                 val result = aroundYou.read(place)
                 if (result is NetworkResult.Success && aroundPlace == place) {
                     _around.value = result.data
-                    aroundCards?.show(result.data.posts, readRevision = revision)
+                    aroundLists?.showCards(revision) ?: aroundCards?.show(result.data.posts, readRevision = revision)
                 }
             }
         }
@@ -204,7 +211,7 @@ class TodayTabViewModel
         /** An Around you card was tapped: its post page opens at once from the card's copy (as from Pulse). */
         fun seedAroundPost(postId: String) {
             if (!::postsRepository.isInitialized) return
-            _around.value?.posts?.firstOrNull { it.id == postId }?.let(postsRepository::seedDetail)
+            (aroundLists?.opened(postId) ?: _around.value?.posts?.firstOrNull { it.id == postId })?.let(postsRepository::seedDetail)
         }
 
         /** The home this tab shows, once resolved. */

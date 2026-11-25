@@ -147,6 +147,8 @@ fun TodayTabScreen(
     onOpenPost: (postId: String) -> Unit = {},
     /** "Repost with your words" on an Around you post: the Pulse composer with it quoted. Null leaves it out. */
     onQuotePost: ((postId: String) -> Unit)? = null,
+    /** "Reply" on an Around you card: its post page with the reply box ready to type in. */
+    onReplyPost: (postId: String) -> Unit = onOpenPost,
     viewModel: TodayTabViewModel = hiltViewModel(),
     needsYou: NeedsYouViewModel = hiltViewModel(),
     christmasCards: ChristmasCardDoorsViewModel = hiltViewModel(),
@@ -244,10 +246,12 @@ fun TodayTabScreen(
         viewModel.load()
         needsYou.load()
     }
-    val pullAll = {
+    val pullAll: () -> Unit = {
         viewModel.pull()
         needsYou.pull()
         viewModel.readAround(aroundPlace)
+        // The open Around you list (a chip's, or the earlier stories) is read again with it.
+        viewModel.aroundLists?.refresh()
     }
     // Pull to refresh, like iOS's Today tab (`.refreshable`): it always reads now, with the pull indicator
     // over the content instead of placeholders. The indicator shows only for a pull, not the first load.
@@ -292,6 +296,11 @@ fun TodayTabScreen(
                         onOpenPost(postId)
                     },
                     onQuotePost = onQuotePost,
+                    lists = viewModel.aroundLists,
+                    onReplyPost = { postId ->
+                        viewModel.seedAroundPost(postId)
+                        onReplyPost(postId)
+                    },
                 )
                 return@PullToRefreshUnderHeader
             }
