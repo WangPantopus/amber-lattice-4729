@@ -742,10 +742,17 @@ private fun CanDoCard(block: ProfileBlock.CanDo) {
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 if (skill.pieces > 0) {
-                    SkillNameAndInk(name = skill.name, how = inkHow(skill.line.ink, skill.line.how), style = SourcesType.title)
+                    // The count beside the name, and the mix written out under the meter ("1 Seen · 1 Said"), as on the
+                    // web: a meter part solid, part dotted never tells its mix by line style alone.
+                    SkillNameAndInk(
+                        name = skill.name,
+                        how = skill.line.how ?: if (skill.pieces == 1) "1 piece" else "${skill.pieces} pieces",
+                        style = SourcesType.title,
+                    )
                     Box(Modifier.fillMaxWidth(skill.pieces.toFloat() / most)) {
                         InkMeter(ProfileSummary(years = 0, seenMonths = skill.seen, signedMonths = skill.signed, saidMonths = skill.said))
                     }
+                    Text(inkCounts(skill), style = SourcesType.caption)
                 } else {
                     SkillNameAndInk(
                         name = skill.name,
@@ -757,6 +764,12 @@ private fun CanDoCard(block: ProfileBlock.CanDo) {
         }
     }
 }
+
+/** "4 Seen · 3 Signed · 2 Said": a meter's inks in words, every ink that counts (the web's words). */
+private fun inkCounts(skill: CanDoSkill): String =
+    listOf(skill.seen to ProfileInk.Seen, skill.signed to ProfileInk.Signed, skill.said to ProfileInk.Said)
+        .filter { (n, _) -> n > 0 }
+        .joinToString(" · ") { (n, ink) -> "$n ${ink.word}" }
 
 /** A skill's name and its ink note: side by side, the note never wider than half; stacked at the largest text. */
 @Composable

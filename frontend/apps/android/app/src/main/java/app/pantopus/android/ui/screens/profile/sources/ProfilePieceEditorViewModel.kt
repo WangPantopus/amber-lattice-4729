@@ -102,6 +102,7 @@ data class PieceEditorState(
         const val MAX_ATTACHMENTS = 12
         const val TITLE_MOST = 60
         const val WORDS_MOST = 280
+        const val SKILLS_MOST = 5
     }
 }
 
@@ -271,6 +272,17 @@ class ProfilePieceEditorViewModel
         }
 
         fun removeLink(url: String) = change { s -> s.copy(links = s.links.filterNot { it.url == url }) }
+
+        /** "It shows you can": five skills at most, each up to 60 characters, none twice. */
+        fun addSkill(value: String) {
+            val skill = value.trim().take(SKILL_MOST)
+            val s = _state.value
+            val full = s.skills.size >= PieceEditorState.SKILLS_MOST
+            if (skill.isEmpty() || full || s.skills.any { it.equals(skill, ignoreCase = true) }) return
+            change { it.copy(skills = it.skills + skill) }
+        }
+
+        fun removeSkill(skill: String) = change { s -> s.copy(skills = s.skills - skill) }
 
         /** Saves: [toWork] false keeps it a draft (nobody else sees it); true puts it on Work. */
         fun save(toWork: Boolean) {
@@ -474,6 +486,7 @@ class ProfilePieceEditorViewModel
         private companion object {
             const val PREVIEW_WAIT_MS = 700L
             const val PLACE_MOST = 80
+            const val SKILL_MOST = 60
             const val MIN_URL = 11
             const val MAX_BYTES = 100L * 1024 * 1024
         }

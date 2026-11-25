@@ -247,6 +247,7 @@ internal fun ProfilePieceEditor(
                     modifier = Modifier.fillMaxWidth().testTag("profileSources.pieceEditor.words"),
                 )
             }
+            SkillsField(skills = s.skills, onAdd = vm::addSkill, onRemove = vm::removeSkill)
             Field(label = "Who sees it") { AudienceChoice(s.audience, vm::setAudience) }
             Column(Modifier.sourcesCard()) {
                 SwitchRow("Pin it to the top of your Work", s.pinned, vm::setPinned)
@@ -767,6 +768,65 @@ private fun EditorLinkCard(
     )
 }
 
+/** "It shows you can" (board 10): the piece's skills as chips (a tap takes one off), and a field for one more. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SkillsField(
+    skills: List<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    var draft by rememberSaveable { mutableStateOf("") }
+    val add = {
+        onAdd(draft)
+        draft = ""
+    }
+    Field(label = "It shows you can", counter = "${skills.size} of ${PieceEditorState.SKILLS_MOST}") {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (skills.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    skills.forEach { skill ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clickable(onClickLabel = "Remove $skill", role = Role.Button) { onRemove(skill) }
+                                    .padding(vertical = 6.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(PantopusColors.businessBg)
+                                    .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(skill, style = SourcesType.rowTitle.copy(color = PantopusColors.business))
+                            PantopusIconImage(
+                                icon = PantopusIcon.X,
+                                contentDescription = null,
+                                size = 12.dp,
+                                tint = PantopusColors.business,
+                            )
+                        }
+                    }
+                }
+            }
+            if (skills.size < PieceEditorState.SKILLS_MOST) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it.take(60) },
+                    singleLine = true,
+                    placeholder = { Text("Finish carpentry") },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { add() }),
+                    trailingIcon = {
+                        if (draft.isNotBlank()) TextButton(onClick = add, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add") }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("profileSources.pieceEditor.skill"),
+                )
+            }
+        }
+    }
+}
+
 /** Who sees the piece: never wider than the Work part (the server keeps the narrower). */
 @Composable
 private fun AudienceChoice(
@@ -776,7 +836,7 @@ private fun AudienceChoice(
     Column(Modifier.sourcesCard().selectableGroup()) {
         listOf(
             "anyone" to "Anyone with your link",
-            "members" to "People signed in to Pantopus",
+            "members" to "People on Pantopus",
             "connections" to "Your connections",
         ).forEachIndexed { index, (key, words) ->
             if (index > 0) SourcesDivider(Modifier.padding(horizontal = 16.dp))
