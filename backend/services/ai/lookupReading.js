@@ -13,6 +13,7 @@
  *   AI_LOOKUP_DAILY_READINGS=2000  model calls everyone together may make since midnight UTC (past it: 429)
  *   AI_ASSISTANT=off               stops it too
  */
+const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { isAssistantOff } = require('./assistantBudget');
@@ -171,9 +172,11 @@ function placingWords({ typed, place }) {
   const words = new Set();
   const add = (text, min = 3) => { const t = String(text || '').trim().toLowerCase(); if (t.length >= min) words.add(t); };
   add(typed);
-  add(place?.address);
+  // The geocoded place names its street line `line` (a preview's place calls it `address`).
+  const street = place?.line || place?.address;
+  add(street);
   add(place?.zipcode, 5);
-  for (const line of [place?.address, String(typed || '').split(',')[0]]) {
+  for (const line of [street, String(typed || '').split(',')[0]]) {
     add(String(line || '').replace(/^\s*\d+[a-z]?(-\d+)?\s+/i, ''), 5);
   }
   return [...words];
@@ -268,6 +271,66 @@ function userContent(input) {
   return `The public records on this page, as JSON:\n${JSON.stringify(input)}\n\nWrite the reading.`;
 }
 
+// ── The reading ticket (SPEC 5.1a) ─────────────────────────────
+// The lookup's answer carries a ticket for its own place, so the reading no longer leans on the caller's address
+// (a web proxy, a phone changing networks, a page read for longer than ten minutes). It holds the geocoded place
+// and an expiry an hour ahead, signed with a key derived from a secret the server already has; nothing is stored.
+// It is issued only by a counted lookup, never reaches the model or a log, and a bad or expired one is no ticket.
+const TICKET_TTL_MS = 60 * 60 * 1000;
+const TICKET_MAX_CHARS = 1500;
+
+function ticketKey() {
+  const secret = String(process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || '').trim();
+  if (!secret) return null;
+  return crypto.createHmac('sha256', secret).update('pantopus-lookup-reading-ticket-v1').digest();
+}
+
+const clipText = (value, max) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
+
+/** A signed ticket for a geocoded lookup place, or null (no key on this server, or no usable point). */
+function issueTicket(place, now = Date.now()) {
+  const key = ticketKey();
+  const lat = Number(place?.lat);
+  const lng = Number(place?.lng);
+  if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const claims = {
+    v: 1,
+    lat: Math.round(lat * 1e6) / 1e6,
+    lng: Math.round(lng * 1e6) / 1e6,
+    line: clipText(place.line, 120),
+    city: clipText(place.city, 120),
+    state: clipText(place.state, 24),
+    zip: clipText(place.zipcode, 12),
+    exp: now + TICKET_TTL_MS,
+  };
+  const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `${body}.${crypto.createHmac('sha256', key).update(body).digest('base64url')}`;
+}
+
+/** The place a valid, unexpired ticket names, in the lookup's place shape; null for anything else. */
+function readTicket(value, now = Date.now()) {
+  const key = ticketKey();
+  if (!key || typeof value !== 'string' || !value || value.length > TICKET_MAX_CHARS) return null;
+  const [body, mac, extra] = value.split('.');
+  if (!body || !mac || extra !== undefined) return null;
+  const expected = crypto.createHmac('sha256', key).update(body).digest();
+  const given = Buffer.from(mac, 'base64url');
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  let claims;
+  try {
+    claims = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (claims?.v !== 1 || !(Number(claims.exp) > now)) return null;
+  const lat = Number(claims.lat);
+  const lng = Number(claims.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return {
+    ok: true, lat, lng, line: claims.line || null, city: claims.city || null, state: claims.state || null, zipcode: claims.zip || null,
+  };
+}
+
 /** For tests: forget the daily count. */
 function resetMemo() {
   countMemo = { count: 0, until: 0 };
@@ -284,5 +347,7 @@ module.exports = {
   checkReading,
   userContent,
   readingClaudeSchema,
+  issueTicket,
+  readTicket,
   resetMemo,
 };

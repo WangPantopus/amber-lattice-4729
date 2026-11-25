@@ -661,13 +661,15 @@ function LegacyFreeTiles({ preview, onWall, stack }: { preview: PlacePreview; on
 export type AskReadingProps = {
   /** The words this lookup was made with: the reading answers only for an address this browser just looked up. */
   address: string;
+  /** The lookup's reading ticket (SPEC 5.1a), sent back so the reading doesn't depend on this browser's network. */
+  ticket?: string | null;
   /** Called once, the first time the panel opens (the t0_ask_opened beacon). */
   onOpened?: () => void;
   /** "Ask your own question. Free with an account." goes where the bar's button goes; absent when signed in. */
   onAskOwn?: () => void;
 };
 
-function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
+function AskReading({ address, ticket, onOpened, onAskOwn }: AskReadingProps) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [reading, setReading] = useState<PlaceReading | null>(null);
@@ -685,7 +687,7 @@ function AskReading({ address, onOpened, onAskOwn }: AskReadingProps) {
     if (state !== 'idle') return;
     setState('loading');
     try {
-      const res = await api.getPublicPlaceReading(address);
+      const res = await api.getPublicPlaceReading(address, ticket);
       if (!res?.reading?.matters || !Array.isArray(res.reading.questions)) throw new Error('No reading');
       setReading(res.reading);
       setState('ready');
@@ -1566,6 +1568,7 @@ export default function StartFunnel({ invite, topic }: { invite?: StartInvite; t
                   onEndReached={onEndReached}
                   ask={submitted && (preview.status === 'ready' || preview.status === 'partial') ? {
                     address: submitted,
+                    ticket: preview.reading_ticket ?? null,
                     onOpened: () => api.recordFunnelEvent('t0_ask_opened', { layout: side }),
                     onAskOwn: liveSession ? undefined : goWall,
                   } : undefined}
