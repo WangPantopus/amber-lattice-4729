@@ -6,7 +6,7 @@ import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
   ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
-  ProfileNoticeBlock, ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
+  ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
 import * as api from '@pantopus/api';
 import { extractApiError } from '@/lib/auth-utils';
@@ -42,6 +42,8 @@ export interface BlockContext {
   onEditRole?: ((role: ProfileRoleLine) => void) | null;
   /** A signed-in viewer changed a tie of their own on this page (a business's name off a role): read it again. */
   onReread?: (() => void) | null;
+  /** The owner: open their shelf to add, reorder and remove things (P3.1). */
+  onEditShelf?: (() => void) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -322,22 +324,59 @@ function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock; ctx: BlockContex
   );
 }
 
-function ShelfBlock({ block }: { block: ProfileShelfBlock }) {
+/**
+ * "On <first name>'s shelf" (board 1): up to five things on a wooden board, a picture and the person's caption each;
+ * the row scrolls when the screen is too narrow for five. The owner always gets it: empty, it offers "Add to your
+ * shelf"; else "Change" opens their shelf (P3.1).
+ */
+function ShelfBlock({ block, ctx }: { block: ProfileShelfBlock; ctx: BlockContext }) {
   const objects = (block.objects || []).filter((item) => item?.picture_url).slice(0, 5);
-  if (objects.length === 0) return null;
+  const edit = ctx.inert ? null : ctx.onEditShelf ?? null;
+  if (objects.length === 0) {
+    if (!edit) return null;
+    return (
+      <Section title={block.title}>
+        <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">Put up to five things on your shelf, each a picture and a few words.</p>
+        <button type="button" onClick={edit} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+          Add to your shelf
+        </button>
+      </Section>
+    );
+  }
+  // The words for where these came from, written once when every object has the same ink, else under each caption.
+  const inks = objects.map((item) => inkOf(item.ink ?? 'said'));
+  const oneInk = inks.every((ink) => ink === inks[0]) ? inks[0] : null;
+  const columns = 'grid grid-cols-[repeat(5,minmax(3.5rem,1fr))] gap-1';
   return (
-    <Section title={block.title}>
-      <ul className="grid grid-cols-5 gap-1 items-end">
-        {objects.map((item) => (
-          <li key={item.id} className="flex flex-col items-center">
-            <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
-          </li>
-        ))}
-      </ul>
-      <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
-      <ul className="pt-2.5 grid grid-cols-5 gap-1" aria-hidden="true">
-        {objects.map((item) => <li key={item.id} className="font-serif italic text-xs leading-[0.9375rem] text-center text-app-strong [overflow-wrap:anywhere]">{item.caption}</li>)}
-      </ul>
+    <Section
+      title={block.title}
+      aside={edit ? (
+        <button type="button" onClick={edit} className="min-h-[2.75rem] -my-3 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline">Change</button>
+      ) : null}
+    >
+      <div className="-mx-5 px-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="min-w-[18.5rem]">
+          <ul className={`${columns} items-end`}>
+            {objects.map((item) => (
+              <li key={item.id} className="flex flex-col items-center">
+                <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
+              </li>
+            ))}
+          </ul>
+          <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
+          <ul className={`pt-2.5 ${columns}`} aria-hidden="true">
+            {objects.map((item, i) => (
+              <li key={item.id} className="flex flex-col items-center gap-1">
+                <LineText ink={inks[i]} className="!text-xs !leading-[0.9375rem] text-center [overflow-wrap:anywhere]">{item.caption}</LineText>
+                {oneInk ? null : <span className="text-[0.6875rem] leading-4 text-app-muted">{howText(inks[i])}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {oneInk ? (
+        <HowLine className="!mt-2.5 flex items-center gap-1.5"><InkGlyph ink={oneInk} inline />{howText(oneInk)}</HowLine>
+      ) : null}
     </Section>
   );
 }
@@ -780,24 +819,6 @@ function RecordChartBlock({ block, ctx }: { block: ProfileRecordChartBlock; ctx:
   );
 }
 
-/** A notice (CONTRACT "On by default"): a plain row with the server's words, opening its link. */
-function NoticeBlock({ block, ctx }: { block: ProfileNoticeBlock; ctx: BlockContext }) {
-  const text = typeof block.text === 'string' ? block.text.trim() : '';
-  if (!text) return null;
-  const target = ctx.inert ? null : ctx.target(block.link);
-  const row = (
-    <span className="flex items-center gap-3 w-full">
-      <span className="min-w-0 flex-1 text-[0.9375rem] leading-[1.3125rem] text-app [overflow-wrap:anywhere]">{text}</span>
-      {target ? chevron : null}
-    </span>
-  );
-  return (
-    <section className={`${card} overflow-hidden`}>
-      {target ? <Opens target={target} className={rowClass}>{row}</Opens> : <div className="px-4 py-3 min-h-[3rem] flex items-center">{row}</div>}
-    </section>
-  );
-}
-
 function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: BlockContext }) {
   if (!block.title?.trim()) return null;
   return (
@@ -856,7 +877,7 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'known_for': return <KnownForBlock block={block as ProfileKnownForBlock} ctx={ctx} />;
     case 'in_common': return ctx.viewerId ? <InCommonBlock block={block as ProfileInCommonBlock} ctx={ctx} /> : null;
     case 'doors': return <DoorsBlock block={block as ProfileDoorsBlock} ctx={ctx} />;
-    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} />;
+    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} ctx={ctx} />;
     case 'prompts': return <PromptsBlock block={block as ProfilePromptsBlock} ctx={ctx} />;
     case 'pinned_posts': {
       const id = (block as ProfilePinnedPostsBlock).user_id || ctx.personId;
@@ -871,14 +892,15 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
-    case 'notice': return <NoticeBlock block={block as ProfileNoticeBlock} ctx={ctx} />;
     default: return null;
   }
 }
 
 const KNOWN_KINDS = new Set([
   'lines', 'owns', 'says', 'known_for', 'in_common', 'doors', 'shelf', 'prompts', 'pinned_posts', 'rows', 'can_do',
-  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'notice',
+  // Not `notice` (CONTRACT "On by default"): a notice sends a phone user to pantopus.com; on the web it could only point
+  // back at the page the person is already on, so the web skips it and names only what it really draws.
+  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer',
 ]);
 
 /** True when this page can draw the block (a known kind). A tab of unknown kinds only is not drawn. */

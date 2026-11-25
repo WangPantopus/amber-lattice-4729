@@ -428,7 +428,7 @@ export type {
   ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
   ProfileLinkCard, ProfileCredit, ProfileAttachment, ProfilePieceOffer, ProfilePieceFields, ProfileMyPieces,
   ProfileAsk, ProfileSuggestedCredit, ProfileRoleLine, ProfileRoleFields,
-  ProfileCircleRead, ProfileCircleGroup,
+  ProfileCircleRead, ProfileCircleGroup, ProfileShelfObject,
 } from './endpoints/profilePage';
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 
