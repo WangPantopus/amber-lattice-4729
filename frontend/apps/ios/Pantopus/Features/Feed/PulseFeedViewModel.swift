@@ -1552,9 +1552,12 @@ public final class PulseFeedViewModel {
             createdAt: post.createdAt
         )
         let keptOpen = live.keptOpen
-        return PulsePostCardContent(
+        let madeUp = post.penNameId.map { PulseMadeUpAuthor(penNameId: $0, isYou: post.viewerIsAuthor) }
+        let authorName = post.creator?.displayName ?? "Pantopus user"
+        var content = PulsePostCardContent(
             id: post.id,
-            authorName: post.creator?.displayName ?? "Pantopus user",
+            // The writer alone sees "Night Gardener (you)".
+            authorName: madeUp?.isYou == true ? "\(authorName) (you)" : authorName,
             authorInitials: initials,
             // Beacon credentials come from the public profile, never the surface.
             // Other surfaces carry no verification field, so no badge (being
@@ -1562,7 +1565,7 @@ public final class PulseFeedViewModel {
             authorVerified: surface == .beacons && post.creator?.credential?.status == "verified",
             avatarTint: isBusiness ? .violet : .sky,
             authorAvatarURL: post.creator?.profilePictureURL.flatMap(URL.init(string:)),
-            meta: Self.metaString(post: post, intent: intent),
+            meta: Self.metaString(post: post, intent: intent, madeUp: madeUp),
             intent: intent,
             title: post.title,
             body: post.content,
@@ -1622,12 +1625,18 @@ public final class PulseFeedViewModel {
             source: post.source,
             quoted: PulseQuotedPost(post.quotedPost)
         )
+        // A story Today's Around you posted for an outlet, and who replied to it (PulseStory.swift).
+        content.story = PulseStory(aroundYou: post.aroundYou, source: post.source, text: post.content)
+        content.conversation = live.commentCount > 0 ? PulseConversation(post.conversation) : nil
+        content.madeUp = madeUp
+        return content
     }
 
     /// Where the author's photo and name lead, as on the post's page: a business's published page or a person's
     /// profile. A tip, a creator persona (whose id is not the person's) and a post written as a home lead nowhere.
     static func authorLink(for post: FeedPostDTO) -> PulseAuthorLink? {
-        guard !post.isSeeded, let creator = post.creator else { return nil }
+        // A made-up name leads to its small card (the card opens it), never to a profile.
+        guard !post.isSeeded, post.penNameId == nil, let creator = post.creator else { return nil }
         switch creator.identityType {
         case "business":
             return creator.businessPageId.map { .business($0) }
@@ -1669,8 +1678,13 @@ public final class PulseFeedViewModel {
         return post.creator?.id == viewerId
     }
 
-    private static func metaString(post: FeedPostDTO, intent _: PulseIntent) -> String {
+    private static func metaString(post: FeedPostDTO, intent _: PulseIntent, madeUp: PulseMadeUpAuthor? = nil) -> String {
         var parts = [relative(timestamp: post.createdAt)]
+        // A made-up name: "Verified home nearby" for others (never a distance), "Only you can see this is you" for
+        // its writer.
+        if let madeUp {
+            parts.insert(madeUp.isYou ? "Only you can see this is you" : "Verified home nearby", at: 0)
+        }
         // Ahead of the place so a long place name never truncates it; web draws the badge beside the time.
         // A post the author's own photo placed says so instead of Visitor.
         if let photo = post.photoProvenanceLabel() {

@@ -77,18 +77,23 @@ enum class LaunchFeature(
     /**
      * 15. The profile with sources (founder decision, 2026-11-23; SPEC phase 1): a person's profile drawn from the
      * server's blocks (`GET /api/profile-page`), the Record tab with the full rings, the outer ring on avatars and the
-     * share sheet with parts. Beside the backend's `PROFILE_SOURCES` switch: while the server answers 404 the app keeps
-     * today's profile. Off, every screen is exactly today's.
+     * share sheet with parts. ON BY DEFAULT (the founder, 2026-11-25: "if they are built and merged they should be
+     * available"; SPEC rule 4.12): only a build that lists `-profile_sources` turns it off. While the server answers
+     * 404 (its emergency off) the app keeps today's profile.
      */
     PROFILE_SOURCES("profile_sources"),
 }
+
+/** Built, merged and on for everyone; a build turns one off only by listing `-<key>`. Above [LaunchFeatures], so it exists before the build's set is read. */
+private val ON_BY_DEFAULT = setOf(LaunchFeature.PROFILE_SOURCES)
 
 /**
  * Read-only switches for the features cut from the first launch. They are
  * hidden, not deleted: a feature is OFF unless its key is listed in the
  * `PANTOPUS_LAUNCH_FEATURES` build value (comma-separated, or "all"), read
  * from `.env` or the environment at build time like the other BuildConfig
- * values.
+ * values. A feature in [ON_BY_DEFAULT] is ON unless the value lists it with a
+ * leading minus (`-profile_sources`).
  */
 object LaunchFeatures {
     private val enabledFeatures: Set<LaunchFeature> = parse(BuildConfig.PANTOPUS_LAUNCH_FEATURES)
@@ -116,7 +121,7 @@ object LaunchFeatures {
     val holidayCardMemories: Boolean get() = isEnabled(LaunchFeature.HOLIDAY_CARD_MEMORIES) && mailbox
     val profileSources: Boolean get() = isEnabled(LaunchFeature.PROFILE_SOURCES)
 
-    /** Parses a comma-separated key list ("all" enables every feature). */
+    /** Parses a comma-separated key list ("all" enables every feature; "-key" turns an on-by-default one off). */
     fun parse(raw: String?): Set<LaunchFeature> {
         val listed =
             raw
@@ -125,6 +130,7 @@ object LaunchFeatures {
                 .map { it.trim().lowercase() }
                 .filter { it.isNotEmpty() }
         if ("all" in listed) return LaunchFeature.entries.toSet()
-        return LaunchFeature.entries.filter { it.key in listed }.toSet()
+        val off = listed.filter { it.startsWith("-") }.map { it.drop(1) }.toSet()
+        return LaunchFeature.entries.filter { (it.key in listed || it in ON_BY_DEFAULT) && it.key !in off }.toSet()
     }
 }

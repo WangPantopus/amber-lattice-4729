@@ -27,6 +27,9 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
     /// True when the signed-in user authored this comment — gates the
     /// delete affordance.
     public let isOwn: Bool
+    /// The made-up name's id, on a reply written under one: the row shows the "Made-up name" mark and a tap on the
+    /// name opens its small card, never a profile.
+    public let penNameId: String?
 
     public init(
         id: String,
@@ -40,7 +43,8 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
         indentLevel: Int,
         authorUserId: String?,
         attachmentURLs: [URL] = [],
-        isOwn: Bool = false
+        isOwn: Bool = false,
+        penNameId: String? = nil
     ) {
         self.id = id
         self.authorName = authorName
@@ -54,6 +58,7 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
         self.authorUserId = authorUserId
         self.attachmentURLs = attachmentURLs
         self.isOwn = isOwn
+        self.penNameId = penNameId
     }
 
     /// Copy with updated heart state — used for optimistic toggles.
@@ -70,7 +75,8 @@ public struct PostCommentRow: Sendable, Identifiable, Hashable {
             indentLevel: indentLevel,
             authorUserId: authorUserId,
             attachmentURLs: attachmentURLs,
-            isOwn: isOwn
+            isOwn: isOwn,
+            penNameId: penNameId
         )
     }
 }
@@ -167,6 +173,7 @@ public struct BodyReactionsBody: View {
     private let onCommentReply: (@MainActor (PostCommentRow) -> Void)?
     private let onCommentLike: (@MainActor (String) -> Void)?
     private let onCommentDelete: (@MainActor (String) -> Void)?
+    private let onCommentReport: (@MainActor (String) -> Void)?
     /// Place label for the media grid's map-pin badge (A10.4).
     private let mediaLocationBadge: String?
     /// One line of details under the text, such as a Lost & Found post's
@@ -189,6 +196,13 @@ public struct BodyReactionsBody: View {
     /// Shown in place of the composer when nobody can reply (a post a
     /// moderator removed); nil keeps the composer and the empty-thread prompts.
     private let repliesClosedNote: String?
+    /// What the reply box says while it is empty and no reply is being answered (an Around you story asks what
+    /// the reader thinks); nil keeps the usual words.
+    private let composerPrompt: String?
+    /// Over the reply box: "Post as", or "Posting as …" once the conversation fixed the made-up name; nil for none.
+    private let aboveComposer: AnyView?
+    /// A tap on a made-up name on a reply: its small card.
+    private let onCommentPenNameTap: @MainActor (String) -> Void
 
     public init(
         body: String,
@@ -217,11 +231,18 @@ public struct BodyReactionsBody: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        onCommentReport: (@MainActor (String) -> Void)? = nil,
         aboveReactions: AnyView? = nil,
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
+        composerPrompt: String? = nil,
+        aboveComposer: AnyView? = nil,
+        onCommentPenNameTap: @escaping @MainActor (String) -> Void = { _ in },
         onCommentAvatarTap: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        self.composerPrompt = composerPrompt
+        self.aboveComposer = aboveComposer
+        self.onCommentPenNameTap = onCommentPenNameTap
         self.aboveReactions = aboveReactions
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
@@ -251,6 +272,7 @@ public struct BodyReactionsBody: View {
         self.onCommentReply = onCommentReply
         self.onCommentLike = onCommentLike
         self.onCommentDelete = onCommentDelete
+        self.onCommentReport = onCommentReport
         self.onCommentAvatarTap = onCommentAvatarTap
     }
 
@@ -372,6 +394,10 @@ public struct BodyReactionsBody: View {
                     .padding(.horizontal, Spacing.s4)
                     .accessibilityIdentifier("pulsePostDetail-repliesClosed")
             } else {
+                if let aboveComposer {
+                    aboveComposer
+                        .padding(.horizontal, Spacing.s4)
+                }
                 CommentComposer(
                     avatarName: composerAvatarName,
                     avatarURL: composerAvatarURL,
@@ -387,15 +413,7 @@ public struct BodyReactionsBody: View {
             if !comments.isEmpty {
                 VStack(alignment: .leading, spacing: Spacing.s3) {
                     ForEach(comments) { comment in
-                        CommentRow(
-                            comment: comment,
-                            onAvatarTap: {
-                                if let uid = comment.authorUserId { onCommentAvatarTap(uid) }
-                            },
-                            onReply: onCommentReply.map { handler in { handler(comment) } },
-                            onToggleLike: onCommentLike.map { handler in { handler(comment.id) } },
-                            onDelete: onCommentDelete.map { handler in { handler(comment.id) } }
-                        )
+                        commentRow(comment)
                     }
                     if hiddenReplyCount > 0, let onShowMoreReplies {
                         Button {
@@ -426,10 +444,22 @@ public struct BodyReactionsBody: View {
             }
         }
     }
+}
+
+/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
+private extension BodyReactionsBody {
+    var visibleCommentCount: Int {
+        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
+    }
+
+    /// No comments, as far as anyone on screen knows.
+    var threadIsEmpty: Bool {
+        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
+    }
 
     /// Opened from a list's copy: placeholders while the comments load, a
     /// short line if that failed.
-    @ViewBuilder private var pendingThread: some View {
+    @ViewBuilder var pendingThread: some View {
         switch commentsState {
         case let .loading(count) where count > 0:
             VStack(alignment: .leading, spacing: Spacing.s3) {
@@ -473,22 +503,30 @@ public struct BodyReactionsBody: View {
             EmptyView()
         }
     }
-}
-
-/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
-private extension BodyReactionsBody {
-    var visibleCommentCount: Int {
-        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
-    }
-
-    /// No comments, as far as anyone on screen knows.
-    var threadIsEmpty: Bool {
-        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
-    }
 
     var composerPlaceholder: String {
         if let replyingToName { return "Reply to \(replyingToName)..." }
+        if let composerPrompt { return composerPrompt }
         return threadIsEmpty ? "Be the first to reply..." : "Add a comment"
+    }
+
+    /// One reply with its row of Reply, heart, and Delete (your own) or Report (someone else's).
+    func commentRow(_ comment: PostCommentRow) -> some View {
+        CommentRow(
+            comment: comment,
+            onAvatarTap: {
+                // A made-up name opens its small card, never a profile.
+                if let penNameId = comment.penNameId {
+                    onCommentPenNameTap(penNameId)
+                } else if let uid = comment.authorUserId {
+                    onCommentAvatarTap(uid)
+                }
+            },
+            onReply: onCommentReply.map { handler in { handler(comment) } },
+            onToggleLike: onCommentLike.map { handler in { handler(comment.id) } },
+            onDelete: onCommentDelete.map { handler in { handler(comment.id) } },
+            onReport: onCommentReport.map { handler in { handler(comment.id) } }
+        )
     }
 }
 

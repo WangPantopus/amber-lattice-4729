@@ -651,6 +651,8 @@ export default function FeedPage() {
             {showComposer && (
               <PostComposer
                 textBoxTestId="pulse.post"
+                // The assistant's "Create Post" opens the New Post window below (?compose=1): its draft goes there.
+                takesAssistantDraft={false}
                 onPost={feed.handleCreatePost}
                 isPosting={feed.isPosting}
                 user={feed.user}

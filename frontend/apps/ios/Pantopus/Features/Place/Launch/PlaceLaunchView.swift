@@ -10,6 +10,8 @@
 
 import SwiftUI
 
+// swiftlint:disable file_length
+
 /// The signed-out front door: the Place launch funnel, with the existing
 /// auth screen presented over it for sign-in / account creation. Once the
 /// session flips to signed-in, `RootView` swaps in `RootTabView` and the
@@ -124,7 +126,8 @@ struct PlaceLaunchView: View {
                     onBack: viewModel.backToHero,
                     onRetry: viewModel.retryPreview,
                     retrying: viewModel.isLoadingPreview,
-                    onOpenRecord: viewModel.lookedUpAddress.map { address in { record = HomeRecordLookup(address: address) } }
+                    onOpenRecord: viewModel.lookedUpAddress.map { address in { record = HomeRecordLookup(address: address) } },
+                    readingAddress: viewModel.lookedUpAddress
                 )
             case let .region(message):
                 // Embedded there is nothing to go back to: the button looks up another address.
@@ -471,13 +474,13 @@ private extension PlaceLaunchView {
         )
     }
 
-    /// Under the headline. The Place tab's first-run root (signed in) says
-    /// what an address shows, as the front door does (TABCARD 4b).
+    /// Under the headline. The Place tab's first-run root (signed in) says what an address shows (TABCARD 4b).
     var heroSentence: String {
-        if embedded != nil { return "Your flood risk, today's air, your home's value, and the verified homes near you." }
+        let shows = "Your flood risk, today's air, home values and taxes where you live, and the verified homes near you."
+        if embedded != nil { return shows }
         return signedInEntry
             ? "Look up an address, preview its public information, and choose whether to save it privately."
-            : "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
+            : shows + " Free, no account."
     }
 
     /// The Place tab's first-run root with a city kept on this phone (TABCARD

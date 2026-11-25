@@ -2,8 +2,8 @@ import SendCardFlow from '@/components/mailbox/cards/SendCardFlow';
 
 /**
  * Send a Christmas card (launch keys holiday_cards + mailbox; the middleware turns this page away while either is
- * off). One card a day; once it's sent, this page shows today's card. ?design= comes from a public card page: that
- * picture is already chosen (launch key card_table). ?to= comes from "Send them a card" on a card on the table: that
+ * off). One card a day; once it's sent, this page shows today's card. ?design= comes from a public card page or from a
+ * button under one of the assistant's replies: that picture is already chosen. ?to= comes from "Send them a card" on a card on the table: that
  * person is already chosen (launch key card_table).
  */
 export default async function SendChristmasCardPage({ searchParams }: { searchParams: Promise<{ design?: string | string[]; to?: string | string[]; again?: string | string[] }> }) {

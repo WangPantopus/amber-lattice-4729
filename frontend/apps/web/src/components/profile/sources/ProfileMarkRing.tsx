@@ -3,7 +3,7 @@
 // The ring an avatar wears anywhere in the app (board 6, CONTRACT section 7): the outer ring of the person's mark,
 // thicker with years on record and dotted until something is Seen. Read one screenful at a time: every avatar asking
 // within a frame shares one GET /api/profile-page/marks (at most 100 ids), and nothing waits for it, so the rings
-// appear when it answers. Behind the web's `profile_sources` key; a 404 (the server's switch is off, an older server)
+// appear when it answers. On everywhere; a 404 (the server's switch is off, an older server)
 // stops the asking until the page is loaded again.
 import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';

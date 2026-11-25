@@ -19,7 +19,7 @@
 //   * the money lead is the server's figure or nothing at all.
 // ============================================================
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import type { PlaceIntelligence } from '@pantopus/types';
@@ -402,27 +402,27 @@ async function runPreview() {
   fireEvent.click(screen.getByRole('button', { name: /see your place/i }));
 }
 
+// LOOKUPORDER: the flood cost band is drawn in the Risk group, and the
+// "Public preview" sentence card is no longer drawn on the result.
 describe('the money-first preview lead', () => {
-  it('leads with the server’s figure, above the tiles', async () => {
+  it('shows the server’s flood figure with its scope', async () => {
     getPreview.mockResolvedValue({ ...PREVIEW, money_lead: MONEY_LEAD });
     await runPreview();
 
-    const headline = await screen.findByText(MONEY_LEAD.headline);
+    expect(await screen.findByText(MONEY_LEAD.headline)).toBeInTheDocument();
     expect(screen.getByText(MONEY_LEAD.detail)).toBeInTheDocument();
     // Scope is stated — it is a tract benchmark, never "your home".
     expect(screen.getByText(/census tract-level, not this home/i)).toBeInTheDocument();
-    // And it sits above the free tiles.
-    const tile = screen.getByText(/zone x/i);
-    expect(headline.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/zone x/i)).toBeInTheDocument();
   });
 
   it('falls back to the tiles when money_lead is null — no gap, no placeholder', async () => {
     getPreview.mockResolvedValue({ ...PREVIEW, money_lead: null });
     await runPreview();
 
-    // The original hero carries the page exactly as before.
-    expect(await screen.findByText(/Here's what's public about your address/i)).toBeInTheDocument();
-    expect(screen.getByText(/zone x/i)).toBeInTheDocument();
+    // The tiles carry the page; the sentence card is gone.
+    expect(await screen.findByText(/zone x/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Here's what's public about your address/i)).not.toBeInTheDocument();
     // Nothing stands in for the missing figure.
     expect(screen.queryByText(/a year|a month/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/not available|unavailable figure/i)).not.toBeInTheDocument();
@@ -431,8 +431,8 @@ describe('the money-first preview lead', () => {
   it('never synthesizes a figure the server did not send', async () => {
     getPreview.mockResolvedValue({ ...PREVIEW });
     await runPreview();
-    const hero = await screen.findByText(/Here's what's public about your address/i);
-    expect(within(hero.closest('div') as HTMLElement).queryByText(/\$\d/)).not.toBeInTheDocument();
+    await screen.findByText(/zone x/i);
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
   });
 });
 

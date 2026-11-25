@@ -21,6 +21,7 @@
     "ci:check-legacy-ui-terms": "node scripts/ci/check-legacy-ui-terms.js",
     "ci:check-raw-personal-selects": "node scripts/ci/check-raw-personal-selects.js",
     "ci:check-nested-user-selects": "node scripts/ci/check-nested-user-selects.js",
+    "ci:check-pen-name-owner": "node scripts/ci/check-pen-name-owner.js",
     "test:privacy": "node scripts/ci/run-privacy-gates.js"
   },
   "keywords": [],

@@ -123,7 +123,9 @@ export function timeAgo(iso: string, now = Date.now()) {
   const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.floor(minutes / 60)}h ago`;
+  // Days after a day, as the iPhone and Android say it: a Moment from the seed-the-map tool can last 60 days.
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / (24 * 60))}d ago`;
 }
 
 export function heightColor(feet: number, flying = false) {

@@ -33,7 +33,9 @@ describe('summarizeFunnel', () => {
       ev('something_else', 'z'),
     ];
     const out = summarizeFunnel(rows);
-    expect(out.ladder).toEqual({ previews: 3, aha_views: 3, shares: 1, walls: 2, registers: 1, accounts: 1 });
+    expect(out.ladder).toEqual({
+      previews: 3, aha_views: 3, shares: 1, walls: 2, registers: 1, accounts: 1, record_opens: 0, ask_opens: 0, ends_reached: 0,
+    });
     expect(out.events.t0_preview_viewed).toBe(4);
     // 2 of 3 aha cards were non-calm → 0.667 of previews.
     expect(out.rates.aha).toBe(0.667);

@@ -69,6 +69,8 @@ export interface ShareSheetProps {
  */
 export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings, onSeeAsVisitor, onSaveAsPdf, onSaved }: ShareSheetProps) {
   const [share, setShare] = useState<ProfileShare | null>(null);
+  // The Work row's "<n> of your <m> pieces" (phase 2): the share's own count, else the owner's pieces read.
+  const [myCounts, setMyCounts] = useState<{ shown: number; total: number } | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [saving, setSaving] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -92,6 +94,12 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
       for (const part of next.parts || []) if (part.setting === 'connections') offSetting.current[part.key] = 'connections';
       setShare(next);
       setLoadState('ready');
+      if (!next.work_pieces) {
+        Promise.resolve().then(() => api.profilePage.getMyPieces()).then(
+          (pieces) => { if (pieces?.counts && round.current === mine) setMyCounts({ shown: pieces.counts.shown_on_link, total: pieces.counts.total }); },
+          () => {},
+        );
+      }
     } catch {
       if (mine === round.current) setLoadState('failed');
     }
@@ -135,6 +143,24 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
     void save('search_engines', { search_engines: on }, { ...share, search_engines: on });
   };
 
+  // "Let people name me on their work" (p2.5): only while the server's credits are on (`ties_enabled` is sent).
+  const setTies = (on: boolean) => {
+    if (!share) return;
+    void save('ties_enabled', { ties_enabled: on }, { ...share, ties_enabled: on });
+  };
+
+  // "Let people write lines about me" (P3.2): only while the server sends `known_for_enabled`.
+  const setKnownFor = (on: boolean) => {
+    if (!share) return;
+    void save('known_for_enabled', { known_for_enabled: on }, { ...share, known_for_enabled: on });
+  };
+
+  // "Let people leave me a card" (P3.3): only while the server sends `cards_enabled`.
+  const setCards = (on: boolean) => {
+    if (!share) return;
+    void save('cards_enabled', { cards_enabled: on }, { ...share, cards_enabled: on });
+  };
+
   const url = share?.url || '';
   const copy = async () => {
     try {
@@ -153,6 +179,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
   };
 
   const byKey = new Map((share?.parts || []).map((p) => [p.key, p]));
+  const workCount = share?.work_pieces ?? myCounts;
   const cityLimit = share?.city_limit;
 
   let body: ReactNode;
@@ -202,7 +229,7 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
           return (
             <section key={group.title} className={`${card} overflow-hidden`} aria-label={group.title}>
               <h3 className={`${overline} px-4 pt-3.5 pb-0.5`}>{group.title}</h3>
-              <div className="divide-y divide-app-subtle">
+              <div className="divide-y divide-app">
                 {group.title === 'About you' ? <Row label="Portrait, name and rings" detail="Always shown" /> : null}
                 {rows.map((p) => {
                   const part = byKey.get(p.key)!;
@@ -213,7 +240,9 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
                     ? (cityHeld
                       ? <>Your privacy settings keep your city {cityLimit === 'none' ? 'to you' : 'to connections'}. <Link href="/app/profile/settings/privacy" className="font-semibold text-app-link hover:underline">Change it</Link></>
                       : on ? 'Your city and state, never more' : 'Off, the page names no place')
-                    : p.detail;
+                    : p.key === 'work' && workCount && workCount.total > 0
+                      ? `${workCount.shown} of your ${workCount.total} ${workCount.total === 1 ? 'piece' : 'pieces'}`
+                      : p.detail;
                   return (
                     <Row
                       key={p.key}
@@ -228,6 +257,33 @@ export default function ShareSheet({ open, onClose, name, seed, photoUrl, rings,
             </section>
           );
         })}
+        {typeof share.ties_enabled === 'boolean' ? (
+          <section className={`${card} overflow-hidden`}>
+            <Row
+              label="Let people name me on their work"
+              detail={share.ties_enabled ? 'People you work with can ask you to sign their pieces.' : 'Off: nobody can ask you, and pieces you signed stop showing.'}
+              control={<Switch on={share.ties_enabled} label="Let people name me on their work" disabled={saving !== null} onChange={setTies} />}
+            />
+          </section>
+        ) : null}
+        {typeof share.known_for_enabled === 'boolean' ? (
+          <section className={`${card} overflow-hidden`}>
+            <Row
+              label="Let people write lines about me"
+              detail={share.known_for_enabled ? 'Someone you did something with on Pantopus can write one sentence about you. Nothing shows until you say so.' : 'Off: nobody can write one, and lines you showed stop showing.'}
+              control={<Switch on={share.known_for_enabled} label="Let people write lines about me" disabled={saving !== null} onChange={setKnownFor} />}
+            />
+          </section>
+        ) : null}
+        {typeof share.cards_enabled === 'boolean' ? (
+          <section className={`${card} overflow-hidden`}>
+            <Row
+              label="Let people leave me a card"
+              detail={share.cards_enabled ? 'Someone signed in can leave you a plain hello. Only you see your cards.' : 'Off: nobody can leave you a card.'}
+              control={<Switch on={share.cards_enabled} label="Let people leave me a card" disabled={saving !== null} onChange={setCards} />}
+            />
+          </section>
+        ) : null}
         <section className={`${card} overflow-hidden`}>
           <Row
             label="Let search engines list this page"

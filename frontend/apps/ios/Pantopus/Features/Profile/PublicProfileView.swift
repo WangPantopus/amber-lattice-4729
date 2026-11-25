@@ -34,7 +34,7 @@ public struct PublicProfileView: View {
     /// The "Pick a username for your link" sheet, asked before the first share.
     @State var usernameShare: UsernameShareSheetModel?
     /// The Connect sheet: the note, Send request, or just follow.
-    @State private var showConnectSheet = false
+    @State var showConnectSheet = false
     /// "What does Verified neighbor mean?" after a tap on the trust line.
     @State var showTrustExplainer = false
     /// The editor, opened from your own profile's Edit profile.
@@ -50,8 +50,20 @@ public struct PublicProfileView: View {
     @State var shareText: String?
     /// A Christmas card can go to this person now (cards open, and the send
     /// flow's "Who it's for" finds them): "Send a card" shows.
-    @State private var canSendCard = false
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @State var canSendCard = false
+    /// "Posts in Pulse" on the page with sources (`PublicProfileView+Sources.swift`).
+    @State var showSourcesPosts = false
+    /// "Share your profile" with its parts (board 21), on your own page with sources.
+    @State var showProfileShare = false
+    /// Your portfolio (add, open, delete), from your own page with sources.
+    @State var showOwnerPieces = false
+    @Environment(\.dynamicTypeSize) var typeSize
+    @Environment(\.openURL) var openURL
+    /// Where a person's Moments play from the "Moments" row (as a tap on their ring plays them).
+    @Environment(\.momentsRingStage) var momentsStage
+    /// The row's own stage, for when the tabs' stage can't show the viewer (this page is itself shown over the tabs).
+    @State var momentsOwnStage = MomentsRingStage()
+    @Environment(\.colorScheme) var colorScheme
     @Environment(RootTabModel.self) var rootTabs: RootTabModel?
     let onBack: @MainActor () -> Void
     let onOpenMessages: @MainActor (PublicProfile) -> Void
@@ -457,16 +469,32 @@ public struct PublicProfileView: View {
 
     @ViewBuilder
     private func loadedLayout(_ payload: PublicProfileContent) -> some View {
-        if payload.kind == .local, let neighbor = payload.neighbor {
-            if let audience = viewModel.previewAudience {
-                previewLayout(payload, neighbor: neighbor, audience: audience)
-            } else if payload.isOwner, let owner {
-                ownerLayout(payload, neighbor: neighbor, owner: owner)
-            } else {
-                localLayout(payload, neighbor: neighbor)
+        if payload.kind == .local, let neighbor = payload.neighbor, let page = viewModel.sourcesPage {
+            // The profile with sources: drawn once the server answers the page; until then the loading shape; any
+            // other answer draws today's page.
+            switch page.state {
+            case .loading:
+                LoadingLayout(onBack: onBack)
+            case let .loaded(content):
+                sourcesLayout(payload, page: page, content: content)
+            case .unavailable:
+                todaysLayout(payload, neighbor: neighbor)
             }
+        } else if payload.kind == .local, let neighbor = payload.neighbor {
+            todaysLayout(payload, neighbor: neighbor)
         } else {
             personaLayout(payload)
+        }
+    }
+
+    @ViewBuilder
+    private func todaysLayout(_ payload: PublicProfileContent, neighbor: NeighborProfileContent) -> some View {
+        if let audience = viewModel.previewAudience {
+            previewLayout(payload, neighbor: neighbor, audience: audience)
+        } else if payload.isOwner, let owner {
+            ownerLayout(payload, neighbor: neighbor, owner: owner)
+        } else {
+            localLayout(payload, neighbor: neighbor)
         }
     }
 
@@ -655,7 +683,7 @@ public struct PublicProfileView: View {
     /// the Mail tab with this person already chosen, as "Send one back" opens
     /// it. Only while cards are open and the flow can find them by name.
     @ViewBuilder
-    private func sendCardButton(for payload: PublicProfileContent) -> some View {
+    func sendCardButton(for payload: PublicProfileContent) -> some View {
         if canSendCard, !payload.isOwner, let rootTabs {
             ProfileActionButton(title: "Send a card", icon: .mail, style: .christmasCard)
                 .button {

@@ -26,6 +26,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,11 @@ import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
 import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.pennames.PenNameCardSheet
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNameMarks
+import app.pantopus.android.ui.screens.pennames.PenNameOnlyYouLine
+import app.pantopus.android.ui.screens.pennames.PenNamePicture
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatar
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatarTint
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
@@ -172,13 +178,61 @@ data class PulsePostCardContent(
     val source: PostSource? = null,
     /** "Repost with your words": the quoted post's compact card under the text and media; null on an ordinary post. */
     val quoted: PulseQuotedCard? = null,
+    /**
+     * A story Today's Around you posted for an outlet: the card names the outlet where an author goes and sets the
+     * headline apart from the outlet's summary. Null on every other post, whose card is unchanged.
+     */
+    val story: PulseStory? = null,
+    /** Who replied and the latest reply (Around you sends it on a post with replies); null draws nothing. */
+    val conversation: PulseConversationPreview? = null,
+    /** Written under a made-up name: the name opens its small card, never a profile. Null on every other post. */
+    val madeUp: PulseMadeUpAuthor? = null,
 ) {
     val isCurator: Boolean get() = origin == "curator"
+
+    /** The author's name as the card shows it: the writer's own made-up name says "(you)". */
+    val madeUpByline: String get() = if (madeUp?.isYou == true) PenNameCopy.you(authorName) else authorName
+
+    /** Who the card names where an author goes: a story's outlet (it published the story), else the author. */
+    val bylineName: String get() = story?.outlet ?: authorName
 
     /** Thumbnail-preferring URL projection kept for test compatibility. */
     val mediaUrls: List<String>
         get() = media.map { it.thumbnailUrl ?: it.url }
 }
+
+/**
+ * A story as its outlet wrote it: who published it ([outlet], without "(subscription)", which stays on the link that
+ * opens the story), its headline (the post's first line) and the outlet's own summary (the rest; may be empty).
+ */
+@Immutable
+data class PulseStory(
+    val outlet: String?,
+    val headline: String,
+    val summary: String,
+)
+
+/** A card's reply preview: the latest repliers' faces (newest first, at most three) and the latest reply. */
+@Immutable
+data class PulseConversationPreview(
+    val faces: List<PulseConversationFace>,
+    val latestName: String,
+    val latestText: String,
+)
+
+@Immutable
+data class PulseConversationFace(
+    val name: String,
+    val avatarUrl: String?,
+)
+
+/** A post's made-up-name author (contract "The card"): its id for the small card, and the writer's own "(you)". */
+@Immutable
+data class PulseMadeUpAuthor(
+    val penNameId: String,
+    val isYou: Boolean,
+    val verifiedHome: Boolean,
+)
 
 /** Where a post's author leads, as the post page's header: a person's profile or a business's page. */
 @Immutable
@@ -230,8 +284,24 @@ fun PulsePostCard(
     onOpenAuthor: (() -> Unit)? = null,
     /** Opens the quoted post's page, with its id; `null` leaves the quoted card still. */
     onOpenQuoted: ((String) -> Unit)? = null,
+    /**
+     * Opens the post to reply (its reply box ready to type in), from "Reply" and from the reply preview. `null`
+     * leaves both part of the card's own tap, as everywhere but Today's Around you.
+     */
+    onReply: (() -> Unit)? = null,
+    /** The small card's Report under a made-up name: the post's own report. `null` leaves it out of the card. */
+    onReport: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    // A made-up name opens its small card here, wherever the card is drawn.
+    var showsPenNameCard by rememberSaveable(content.id) { mutableStateOf(false) }
+    content.madeUp?.takeIf { showsPenNameCard }?.let { madeUp ->
+        PenNameCardSheet(
+            penNameId = madeUp.penNameId,
+            onReport = onReport,
+            onDismiss = { showsPenNameCard = false },
+        )
+    }
     Column(
         modifier =
             modifier
@@ -251,27 +321,9 @@ fun PulsePostCard(
                 content = content,
                 onOverflow = onOverflow,
                 onDismissSeeded = onDismissSeeded,
-                onOpenAuthor = onOpenAuthor,
+                onOpenAuthor = if (content.madeUp != null) ({ showsPenNameCard = true }) else onOpenAuthor,
             )
-            if (!content.title.isNullOrEmpty()) {
-                Text(
-                    text = content.title,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = PantopusColors.appText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (content.body.isNotEmpty()) {
-                Text(
-                    text = postLinkedText(content.body),
-                    fontSize = 12.5.sp,
-                    color = PantopusColors.appTextStrong,
-                    maxLines = if (!content.title.isNullOrEmpty()) 2 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            CardText(content)
             content.source?.let { source -> PostSourceLink(source, testTag = "pulsePostSource_${content.id}") }
             // An Event's when and where, under its text (as on the web card).
             content.event?.let { event ->
@@ -315,7 +367,9 @@ fun PulsePostCard(
                     onReact = onReact,
                     onToggleSave = onToggleSave,
                     onToggleRepost = onToggleRepost,
+                    onReply = onReply,
                 )
+                ConversationPreview(content, onOpen = onReply)
                 if (content.likePending || content.savePending) {
                     Text(
                         "Pending",
@@ -350,7 +404,12 @@ private fun CardHeader(
                     if (onOpenAuthor != null) {
                         Modifier
                             .clickable(
-                                onClickLabel = if (content.authorLink is PulseAuthorLink.Business) "Open page" else "Open profile",
+                                onClickLabel =
+                                    when {
+                                        content.madeUp != null -> "Open the made-up name"
+                                        content.authorLink is PulseAuthorLink.Business -> "Open page"
+                                        else -> "Open profile"
+                                    },
                                 role = Role.Button,
                                 onClick = onOpenAuthor,
                             ).testTag("pulsePostAuthor_${content.id}")
@@ -360,25 +419,41 @@ private fun CardHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
             ) {
-                FeedAvatar(
-                    initials = content.authorInitials,
-                    // The author's Moments ring (a person's or a business's): a tap on a ringed photo plays them.
-                    modifier = Modifier.momentsRing(content.authorLink?.accountId),
-                    tint = content.avatarTint,
-                    verified = content.authorVerified,
-                    size = 32.dp,
-                    imageUrl = content.authorAvatarUrl,
-                )
+                val outlet = content.story?.outlet
+                if (outlet != null) {
+                    OutletAvatar()
+                } else if (content.madeUp != null) {
+                    PenNamePicture(url = content.authorAvatarUrl, size = 32.dp)
+                } else {
+                    FeedAvatar(
+                        initials = content.authorInitials,
+                        // The author's Moments ring (a person's or a business's): a tap on a ringed photo plays them.
+                        modifier = Modifier.momentsRing(content.authorLink?.accountId),
+                        tint = content.avatarTint,
+                        verified = content.authorVerified,
+                        size = 32.dp,
+                        imageUrl = content.authorAvatarUrl,
+                    )
+                }
                 Column(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = content.authorName,
+                        text = outlet ?: content.madeUpByline,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PantopusColors.appText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = if (outlet != null) Modifier.testTag("pulsePostOutlet_${content.id}") else Modifier,
                     )
-                    if (content.isCurator) {
+                    val madeUp = content.madeUp
+                    if (madeUp != null) {
+                        // A made-up name: its marks and the time, never a distance or a profile.
+                        PenNameMarks(verifiedHome = madeUp.verifiedHome, testTagSuffix = content.id, meta = content.meta)
+                        if (madeUp.isYou) PenNameOnlyYouLine(testTagSuffix = content.id)
+                    } else if (outlet != null) {
+                        // The outlet published it; the curator account only brought it here.
+                        CardMetadata(listOf("via ${content.authorName}", content.meta).filter(String::isNotEmpty).joinToString(" · "))
+                    } else if (content.isCurator) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -398,6 +473,139 @@ private fun CardHeader(
             onOverflow = onOverflow,
             onDismissSeeded = onDismissSeeded,
         )
+    }
+}
+
+/** Where a story's author photo would be: its outlet is a paper, not a person. */
+@Composable
+private fun OutletAvatar() {
+    Box(
+        modifier =
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(PantopusColors.appSurfaceSunken)
+                .border(1.dp, PantopusColors.appBorder, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.FileText,
+            contentDescription = null,
+            size = 16.dp,
+            tint = PantopusColors.appTextSecondary,
+        )
+    }
+}
+
+/** The card's words: a story's headline and summary, or a post's title (one line) and text. */
+@Composable
+private fun CardText(content: PulsePostCardContent) {
+    if (content.story != null) {
+        StoryText(content.story, postId = content.id)
+        return
+    }
+    if (!content.title.isNullOrEmpty()) {
+        Text(
+            text = content.title,
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PantopusColors.appText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (content.body.isNotEmpty()) {
+        Text(
+            text = postLinkedText(content.body),
+            fontSize = 12.5.sp,
+            color = PantopusColors.appTextStrong,
+            maxLines = if (!content.title.isNullOrEmpty()) 2 else 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A story's headline, set apart from the outlet's own summary under it. */
+@Composable
+private fun StoryText(
+    story: PulseStory,
+    postId: String,
+) {
+    Text(
+        text = story.headline,
+        fontSize = 14.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = PantopusColors.appText,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.testTag("pulsePostHeadline_$postId"),
+    )
+    if (story.summary.isNotEmpty()) {
+        Text(
+            text = story.summary,
+            fontSize = 12.5.sp,
+            color = PantopusColors.appTextSecondary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * The conversation so far, under the card's buttons: the latest repliers' faces, who replied last and how many
+ * replies there are, and the latest reply on one line. A tap opens the post to reply ([onOpen]; null leaves it part
+ * of the card's own tap).
+ */
+@Composable
+private fun ConversationPreview(
+    content: PulsePostCardContent,
+    onOpen: (() -> Unit)?,
+) {
+    val talk = content.conversation ?: return
+    val postId = content.id
+    val shape = RoundedCornerShape(Radii.md)
+    val line = if (content.commentCount > 1) "${talk.latestName} · ${content.commentCount} replies" else "${talk.latestName} replied"
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.appSurfaceSunken)
+                .then(
+                    if (onOpen != null) {
+                        Modifier.clickable(role = Role.Button, onClickLabel = "Open the replies", onClick = onOpen)
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
+                .semantics(mergeDescendants = true) { contentDescription = "$line. ${talk.latestText}" }
+                .testTag("pulsePostConversation_$postId"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+            talk.faces.forEach { face ->
+                FeedAvatar(initials = pulseInitials(face.name), size = 20.dp, imageUrl = face.avatarUrl)
+            }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = line,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.appText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = talk.latestText,
+                fontSize = 11.5.sp,
+                color = PantopusColors.appTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -615,6 +823,7 @@ private fun ReactionStrip(
     onReact: ((PostReactionEmoji) -> Unit)?,
     onToggleSave: (() -> Unit)? = null,
     onToggleRepost: (() -> Unit)? = null,
+    onReply: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -703,20 +912,38 @@ private fun ReactionStrip(
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-            PantopusIconImage(
-                icon = PantopusIcon.MessageCircle,
-                contentDescription = null,
-                size = Radii.lg,
-                tint = PantopusColors.appTextSecondary,
-            )
-            Text(
-                text = if (content.commentCount > 0) "Reply ${content.commentCount}" else "Reply",
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Medium,
-                color = PantopusColors.appTextSecondary,
-            )
-        }
+        ReplyLabel(content, onReply)
+    }
+}
+
+/** "Reply 3": how many replied. With [onReply] a tap opens the post to reply; without, it is part of the card's tap. */
+@Composable
+private fun ReplyLabel(
+    content: PulsePostCardContent,
+    onReply: (() -> Unit)?,
+) {
+    Row(
+        modifier =
+            if (onReply != null) {
+                Modifier.clickable(role = Role.Button, onClick = onReply).testTag("pulsePostReply_${content.id}")
+            } else {
+                Modifier
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.MessageCircle,
+            contentDescription = null,
+            size = Radii.lg,
+            tint = PantopusColors.appTextSecondary,
+        )
+        Text(
+            text = if (content.commentCount > 0) "Reply ${content.commentCount}" else "Reply",
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Medium,
+            color = PantopusColors.appTextSecondary,
+        )
     }
 }
 
@@ -936,7 +1163,7 @@ private fun quotedA11yPart(quoted: PulseQuotedCard): String =
 private fun buildA11yLabel(content: PulsePostCardContent): String {
     val parts = mutableListOf<String>()
     content.repostedBy?.let { parts.add(it) }
-    parts.add(content.authorName)
+    parts.add(content.bylineName)
     if (content.likePending || content.savePending) parts.add("Pending")
     if (content.chipLabel.isNotEmpty()) parts.add(content.chipLabel)
     if (content.isCurator) parts.add("Pantopus curator")

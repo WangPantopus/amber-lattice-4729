@@ -11,6 +11,11 @@
 //   wall / register / account rates   the ladder itself
 //   by route      the same ladder split by the `?r=` route stamped on
 //                 every beacon (EDDM cards, invite postcards) → CAC per route
+//   lookup steps  the lookup's record taps, Ask opens and visitors who
+//                 reached its end (LOOKUPORDER), per lookup, in the ladder
+//                 and in every route's ladder
+//   by layout     the same ladder split by the order the web drew the
+//                 lookup in (meta.layout v1 | v2), for the side-by-side
 //   plans         Nearby Plans: hosted → viewed → asked → in → went well,
 //                 repeat hosts, auto-rule accepts, the same per plan kind
 //   plan_venues   plans and guests per public place a host chose from the
@@ -19,6 +24,9 @@
 //                 link pages seen, codes, claimed, joined, replies,
 //                 pass-ons, joiners who sent their own, stamp books sold,
 //                 and the loop number; for the window and per UTC day
+//   around_you    Around you (Today's second half): people who opened it
+//                 in the last 7 and 30 days, and the reactions, replies,
+//                 saves and reposts its posts got in those days
 //
 // Rates are per DISTINCT visitor (anon_id) when the beacons carried one,
 // so a visitor who reloads five times is one preview. Event totals are
@@ -40,6 +48,7 @@ const PILOT_DIMENSIONS = ['kind', 'action', 'decision', 'trigger'];
 const MAX_VENUES = 50;
 const WEEK_MS = 7 * 86400000;
 const NO_ROUTE = '(direct)';
+const LAYOUTS = ['v1', 'v2'];
 // Nearby Plans as one ladder (the event → its step). `attended` is a guest
 // saying it went great or ok, the first time they answer.
 const PLAN_STEPS = Object.freeze({
@@ -111,19 +120,28 @@ function finish(ladder) {
   const walls = size(ladder, 't0_wall_viewed');
   const registers = size(ladder, 'register_started');
   const accounts = ladder.events.t1_account_created;
+  const recordOpens = size(ladder, 't0_record_opened');
+  const askOpens = size(ladder, 't0_ask_opened');
+  const endsReached = size(ladder, 't0_end_reached');
   const nonCalmVisitors = ahaViews > 0 && ladder.aha.non_calm + ladder.aha.calm > 0
     ? Math.round(ahaViews * (ladder.aha.non_calm / (ladder.aha.non_calm + ladder.aha.calm)))
     : 0;
   return {
     events: ladder.events,
     visitors: Object.fromEntries(FUNNEL_EVENT_TYPES.map((t) => [t, ladder.visitors[t].size])),
-    ladder: { previews, aha_views: ahaViews, shares, walls, registers, accounts },
+    ladder: {
+      previews, aha_views: ahaViews, shares, walls, registers, accounts,
+      record_opens: recordOpens, ask_opens: askOpens, ends_reached: endsReached,
+    },
     rates: {
       aha: rate(nonCalmVisitors, previews),
       share: rate(shares, previews),
       wall: rate(walls, previews),
       register: rate(registers, previews),
       account: rate(accounts, previews),
+      record: rate(recordOpens, previews),
+      ask: rate(askOpens, previews),
+      end: rate(endsReached, previews),
     },
     aha: { non_calm: ladder.aha.non_calm, calm: ladder.aha.calm, by_tone: ladder.aha.by_tone, by_section: ladder.aha.by_section },
     share: { by_method: ladder.share.by_method },
@@ -311,13 +329,73 @@ async function loadStampBooks(since, now) {
  * Pure: summarize a window of FunnelEvent rows.
  * @param {Array<{event_type:string, anon_id?:string|null, user_id?:string|null, meta?:object}>} rows
  */
+function routeOf(row) {
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  return typeof meta.route === 'string' && meta.route.trim() ? meta.route.trim().slice(0, 64) : NO_ROUTE;
+}
+
+// The order the web drew the lookup in, stamped on its t0_* beacons; null for
+// anything else (the phones' beacons, older web builds, other events).
+function layoutOf(row) {
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  return LAYOUTS.includes(meta.layout) ? meta.layout : null;
+}
+
+/**
+ * The server records a new account (t1_account_created) with the browser's anonymous id but not the code it arrived
+ * with. Such an account counts under the code that same anonymous id last carried on an earlier beacon in the window
+ * (the lookup, the wall, the sign-up form). No earlier coded beacon, or no anonymous id (a card joiner's code sign-in):
+ * it stays under (direct). Only the split by route changes; the overall ladder doesn't.
+ */
+function accountRouteFinder(rows, keyOf = routeOf, none = NO_ROUTE) {
+  const coded = new Map();
+  for (const row of rows || []) {
+    if (row.event_type === 't1_account_created' || !row.anon_id) continue;
+    const route = keyOf(row);
+    if (route === none) continue;
+    const anon = String(row.anon_id);
+    if (!coded.has(anon)) coded.set(anon, []);
+    coded.get(anon).push({ at: timestamp(row.created_at), route });
+  }
+  return (row) => {
+    if (row.event_type !== 't1_account_created' || !row.anon_id) return null;
+    const at = timestamp(row.created_at);
+    let best = null;
+    for (const beacon of coded.get(String(row.anon_id)) || []) {
+      // Undated rows (none come from the database) count as earlier.
+      if (Number.isFinite(at) && Number.isFinite(beacon.at) && beacon.at > at) continue;
+      const when = Number.isFinite(beacon.at) ? beacon.at : -Infinity;
+      if (!best || when >= best.when) best = { when, route: beacon.route };
+    }
+    return best ? best.route : null;
+  };
+}
+
+/**
+ * Pure: the ladder for each order the web drew the lookup in (v1, v2). Rows without a layout are left out; a new
+ * account counts under the layout its anonymous id last carried, as with routes. Only the layouts seen are listed.
+ */
+function summarizeLayouts(rows) {
+  const layouts = new Map(LAYOUTS.map((layout) => [layout, emptyLadder()]));
+  const accountLayout = accountRouteFinder(rows, layoutOf, null);
+  const seen = new Set();
+  for (const row of rows || []) {
+    const layout = layoutOf(row) || accountLayout(row);
+    if (!layout) continue;
+    seen.add(layout);
+    ingest(layouts.get(layout), row);
+  }
+  return LAYOUTS.filter((layout) => seen.has(layout)).map((layout) => ({ layout, ...finish(layouts.get(layout)) }));
+}
+
 function summarizeFunnel(rows) {
   const all = emptyLadder();
   const routes = new Map();
+  const accountRoute = accountRouteFinder(rows);
   for (const row of rows || []) {
     ingest(all, row);
-    const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
-    const route = typeof meta.route === 'string' && meta.route.trim() ? meta.route.trim().slice(0, 64) : NO_ROUTE;
+    let route = routeOf(row);
+    if (route === NO_ROUTE) route = accountRoute(row) || NO_ROUTE;
     if (!routes.has(route)) routes.set(route, emptyLadder());
     ingest(routes.get(route), row);
   }
@@ -327,6 +405,7 @@ function summarizeFunnel(rows) {
   return {
     ...finish(all),
     by_route: byRoute,
+    by_layout: summarizeLayouts(rows),
     plans: summarizePlans(rows),
     rows: (rows || []).length,
     truncated: (rows || []).length >= MAX_ROWS,
@@ -548,21 +627,80 @@ async function loadPlanVenues(since, now) {
   }
 }
 
+/**
+ * Pure: the Around you block. `opens` are around_you_opened rows; `actions` maps reactions | replies | saves | reposts
+ * to their rows' created_at on Around you posts. Counts for the last 7 and 30 days, whatever the report's window;
+ * distinct people for opens. Nobody is listed.
+ */
+function summarizeAroundYou(opens, actions, now = Date.now()) {
+  const within = (at, days) => Number.isFinite(at) && at <= now && now - at <= days * 86400000;
+  const block = {};
+  for (const days of [7, 30]) {
+    const rows = (opens || []).filter((row) => within(Date.parse(row.created_at), days));
+    block[`last_${days}_days`] = {
+      people: new Set(rows.map((row) => row.user_id).filter(Boolean).map(String)).size,
+      opens: rows.length,
+      ...Object.fromEntries(['reactions', 'replies', 'saves', 'reposts'].map((kind) => [kind,
+        (actions?.[kind] || []).filter((row) => within(Date.parse(row.created_at), days)).length])),
+    };
+  }
+  return block;
+}
+
+// Around you's opens and what its posts got, for the last 30 days. A failed read leaves the block out (null) and the
+// rest of the report standing.
+async function loadAroundYou(now) {
+  try {
+    const since = new Date(now - 30 * 86400000).toISOString();
+    const until = new Date(now).toISOString();
+    const [opens, posts] = await Promise.all([
+      readPages(() => supabaseAdmin.from('FunnelEvent').select('user_id, created_at').eq('event_type', 'around_you_opened')
+        .gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }).order('id')),
+      // Posts made in the last 38 days: an older one gets almost nothing in a 30-day window.
+      readPages(() => supabaseAdmin.from('Post').select('id').eq('origin', 'curator')
+        .not('post_metadata->around_you', 'is', null)
+        .gte('created_at', new Date(now - 38 * 86400000).toISOString()).order('id')),
+    ]);
+    const ids = posts.rows.map((post) => post.id);
+    const read = (table, extra = (q) => q, column = 'post_id') => (ids.length === 0 ? { rows: [] }
+      : readForIds(ids, (batch) => extra(supabaseAdmin.from(table).select('id, created_at').in(column, batch)
+        .gte('created_at', since).lte('created_at', until))));
+    const [reactions, replies, saves, reposts, quotes] = await Promise.all([
+      read('PostLike'),
+      read('PostComment', (q) => q.eq('is_deleted', false)),
+      read('PostSave'),
+      read('PostShare', (q) => q.eq('share_type', 'repost')),
+      read('Post', (q) => q, 'quoted_post_id'),
+    ]);
+    return summarizeAroundYou(opens.rows, {
+      reactions: reactions.rows, replies: replies.rows, saves: saves.rows, reposts: [...reposts.rows, ...quotes.rows],
+    }, now);
+  } catch (err) {
+    logger.warn('funnelReport: around you unavailable', { error: err.message });
+    return null;
+  }
+}
+
 async function loadFunnelSummary({ days = 30 } = {}) {
   const d = Math.min(365, Math.max(1, Number(days) || 30));
   const now = Date.now();
   const since = new Date(now - d * 86400000).toISOString();
-  const [events, activation, planVenues, books] = await Promise.all([
+  const [events, activation, planVenues, books, aroundYou] = await Promise.all([
     readPages(() => supabaseAdmin.from('FunnelEvent').select('event_type, anon_id, user_id, meta, created_at')
       .gte('created_at', since).lte('created_at', new Date(now).toISOString())
       .order('created_at', { ascending: false }).order('id')),
     loadActivation(since, now),
     loadPlanVenues(since, now),
     loadStampBooks(since, now),
+    loadAroundYou(now),
   ]);
   const cards = summarizeCards(events.rows, books?.rows || [], { since, now, prices: books?.prices || {} });
   if (!books) for (const block of [cards, ...cards.days]) Object.assign(block, { books: null, refunded: null, sales_cents: null });
-  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues, cards };
+  return { days: d, since, ...summarizeFunnel(events.rows), truncated: events.truncated, activation, plan_venues: planVenues, cards,
+    around_you: aroundYou };
 }
 
-module.exports = { summarizeFunnel, summarizeActivation, summarizePlanVenues, summarizeCards, loadFunnelSummary, MAX_ROWS, NO_ROUTE };
+module.exports = {
+  summarizeFunnel, summarizeLayouts, summarizeActivation, summarizePlanVenues, summarizeCards, summarizeAroundYou, loadFunnelSummary, MAX_ROWS,
+  NO_ROUTE,
+};

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,11 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -50,6 +46,7 @@ import app.pantopus.android.ui.screens.profile.ProfileAvatar
 import app.pantopus.android.ui.screens.profile.ProfileInCommon
 import app.pantopus.android.ui.screens.profile.ProfilePrompt
 import app.pantopus.android.ui.screens.profile.inCommonLines
+import app.pantopus.android.ui.screens.profile.profileLargeText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -68,6 +65,47 @@ internal class SourcesBlockActions(
     val viewerId: String? = null,
     val interactive: Boolean = true,
 )
+
+/** A notice (something waiting on pantopus.com): its words in a row that opens the page in the browser. */
+@Composable
+private fun NoticeRow(
+    block: ProfileBlock.Notice,
+    open: (ProfilePageLink?) -> (() -> Unit)?,
+) {
+    val onOpen = open(ProfilePageLink.Url(block.url, block.site))
+    Row(
+        modifier =
+            Modifier
+                .sourcesCard()
+                .heightIn(min = 48.dp)
+                .then(
+                    if (onOpen != null) {
+                        Modifier.clickable(
+                            onClickLabel = "Open on pantopus.com",
+                            role = Role.Button,
+                            onClick = onOpen,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .semantics(mergeDescendants = true) { },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SourcesTile(PantopusIcon.Bell, PantopusColors.primary50, PantopusColors.primary600)
+        Text(block.text, style = SourcesType.body, modifier = Modifier.weight(1f))
+        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextMuted)
+    }
+}
+
+/** Every piece on the page's tabs (for the work line's dots). */
+internal fun ProfilePage.workPieces(): List<WorkPiece> =
+    tabs
+        .flatMap { it.blocks }
+        .filterIsInstance<ProfileBlock.Pieces>()
+        .flatMap { it.pieces }
 
 /** One block, in its card. A block the app can't draw here draws nothing. */
 @Composable
@@ -93,8 +131,16 @@ internal fun SourcesBlock(
         is ProfileBlock.RecordChart -> RecordChartCard(block, page.header.firstName, actions, month)
         is ProfileBlock.CanDo -> CanDoCard(block)
         is ProfileBlock.Pieces -> if (block.pinned) PinnedPieces(block, open) else PieceList(block, open)
-        is ProfileBlock.WorkRings -> WorkRingsCard(block, page.header.firstName)
+        is ProfileBlock.WorkRings ->
+            WorkLineCard(
+                rings = block,
+                list = null,
+                known = page.workPieces(),
+                firstName = page.header.firstName,
+                open = open,
+            )
         is ProfileBlock.Owns -> OwnsCard(block, open)
+        is ProfileBlock.Notice -> NoticeRow(block, open)
     }
 }
 
@@ -115,7 +161,7 @@ private fun CardColumn(
 
 /** A block's title row: the over-line, and a quiet note or a link on the right. */
 @Composable
-private fun BlockTitle(
+internal fun BlockTitle(
     title: String?,
     color: Color = PantopusColors.appTextSecondary,
     trailing: String? = null,
@@ -123,9 +169,25 @@ private fun BlockTitle(
     onMore: (() -> Unit)? = null,
 ) {
     if (title == null && trailing == null && more == null) return
+    // At the largest text the note goes under the title, so neither is squeezed to a sliver.
+    val stacked = profileLargeText() && more == null
+    if (stacked && title != null && trailing != null) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            SourcesOverline(title, color = color)
+            Text(trailing, style = SourcesType.caption)
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         title?.let { SourcesOverline(it, modifier = Modifier.weight(1f), color = color) } ?: Spacer(Modifier.weight(1f))
-        trailing?.let { Text(it, style = SourcesType.caption) }
+        trailing?.let {
+            Text(
+                it,
+                style = SourcesType.caption,
+                textAlign = TextAlign.End,
+                modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false),
+            )
+        }
         if (more != null) {
             Box(
                 modifier =
@@ -170,7 +232,7 @@ private fun LinesCard(
  * to (a review's gig).
  */
 @Composable
-private fun WrittenLine(
+internal fun WrittenLine(
     line: ProfileLine,
     who: ProfileWho,
     open: (ProfilePageLink?) -> (() -> Unit)?,
@@ -680,33 +742,56 @@ private fun CanDoCard(block: ProfileBlock.CanDo) {
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 if (skill.pieces > 0) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(skill.name, style = SourcesType.title, modifier = Modifier.weight(1f))
-                        Text(inkHow(skill.line.ink, skill.line.how), style = SourcesType.caption)
-                    }
+                    // The count beside the name, and the mix written out under the meter ("1 Seen · 1 Said"), as on the
+                    // web: a meter part solid, part dotted never tells its mix by line style alone.
+                    SkillNameAndInk(
+                        name = skill.name,
+                        how = skill.line.how ?: if (skill.pieces == 1) "1 piece" else "${skill.pieces} pieces",
+                        style = SourcesType.title,
+                    )
                     Box(Modifier.fillMaxWidth(skill.pieces.toFloat() / most)) {
                         InkMeter(ProfileSummary(years = 0, seenMonths = skill.seen, signedMonths = skill.signed, saidMonths = skill.said))
                     }
+                    Text(inkCounts(skill), style = SourcesType.caption)
                 } else {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(
-                            skill.name,
-                            style = if (skill.line.ink == ProfileInk.Said) SourcesType.said else SourcesType.title,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(inkHow(skill.line.ink, skill.line.how), style = SourcesType.caption, textAlign = TextAlign.End)
-                    }
+                    SkillNameAndInk(
+                        name = skill.name,
+                        how = inkHow(skill.line.ink, skill.line.how),
+                        style = if (skill.line.ink == ProfileInk.Said) SourcesType.said else SourcesType.title,
+                    )
                 }
             }
         }
     }
 }
 
-private fun pieceKindWord(kind: String?): String? =
+/** "4 Seen · 3 Signed · 2 Said": a meter's inks in words, every ink that counts (the web's words). */
+private fun inkCounts(skill: CanDoSkill): String =
+    listOf(skill.seen to ProfileInk.Seen, skill.signed to ProfileInk.Signed, skill.said to ProfileInk.Said)
+        .filter { (n, _) -> n > 0 }
+        .joinToString(" · ") { (n, ink) -> "$n ${ink.word}" }
+
+/** A skill's name and its ink note: side by side, the note never wider than half; stacked at the largest text. */
+@Composable
+private fun SkillNameAndInk(
+    name: String,
+    how: String,
+    style: androidx.compose.ui.text.TextStyle,
+) {
+    if (profileLargeText()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(name, style = style)
+            Text(how, style = SourcesType.caption)
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(name, style = style, modifier = Modifier.weight(1f))
+            Text(how, style = SourcesType.caption, textAlign = TextAlign.End, modifier = Modifier.weight(1f, fill = false))
+        }
+    }
+}
+
+internal fun pieceKindWord(kind: String?): String? =
     when (kind) {
         "did" -> "Did"
         "built" -> "Built"
@@ -714,7 +799,7 @@ private fun pieceKindWord(kind: String?): String? =
         else -> null
     }
 
-private fun pieceMedia(piece: WorkPiece): String? =
+internal fun pieceMedia(piece: WorkPiece): String? =
     listOfNotNull(
         piece.photos.takeIf { it > 0 }?.let { if (it == 1) "1 photo" else "$it photos" },
         piece.videos.takeIf { it > 0 }?.let { if (it == 1) "1 video" else "$it videos" },
@@ -733,7 +818,9 @@ private fun PieceCover(
         modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)).background(PantopusColors.businessBg),
     ) {
         PieceImage(piece.coverUrl, iconSize = 32.dp)
-        listOfNotNull(pieceKindWord(piece.kind), piece.whenText).joinToString(" · ").takeIf { it.isNotEmpty() }?.let { tag ->
+        // Board 7: the kind and the year ("Built · 2026").
+        val tagText = listOfNotNull(pieceKindWord(piece.kind), piece.year?.toString() ?: piece.whenText).joinToString(" · ")
+        tagText.takeIf { it.isNotEmpty() }?.let { tag ->
             PictureTag(tag, Modifier.align(Alignment.BottomStart))
         }
         if (withMedia) pieceMedia(piece)?.let { PictureTag(it, Modifier.align(Alignment.BottomEnd)) }
@@ -742,7 +829,7 @@ private fun PieceCover(
 
 /** A piece's picture; with none (or one that doesn't load), the work tile's hammer on its violet tint. */
 @Composable
-private fun PieceImage(
+internal fun PieceImage(
     url: String?,
     iconSize: androidx.compose.ui.unit.Dp,
 ) {
@@ -766,7 +853,7 @@ private fun PieceImage(
 }
 
 @Composable
-private fun PictureTag(
+internal fun PictureTag(
     text: String,
     modifier: Modifier,
 ) {
@@ -862,6 +949,7 @@ private fun PieceList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // A piece with no picture keeps the soft tinted tile with the tool mark (as on iPhone).
                 Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(PantopusColors.businessBg).clearAndSetSemantics { }) {
                     PieceImage(piece.coverUrl, iconSize = 20.dp)
                 }
@@ -892,112 +980,6 @@ private fun PieceList(
                         .then(if (onMore != null) Modifier.clickable(role = Role.Button, onClick = onMore) else Modifier),
                 contentAlignment = Alignment.Center,
             ) { Text(more.text, style = SourcesType.link) }
-        }
-    }
-}
-
-/**
- * The work rings opened flat (board 7, `fan_chart`): a half band a year, months left to right, the work line in its
- * inks, and a dot a piece.
- */
-@Composable
-private fun WorkRingsCard(
-    block: ProfileBlock.WorkRings,
-    firstName: String,
-) {
-    val rings = block.rings
-    val years = rings.years
-    val grid = rings.lane(ProfileLane.Work)
-    val total = block.years.sumOf { it.second }
-    Column(Modifier.sourcesCard().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp)) {
-        Box(Modifier.padding(horizontal = 4.dp)) {
-            BlockTitle(title = block.title, trailing = total.takeIf { it > 0 }?.let { if (it == 1) "1 piece" else "$it pieces" })
-        }
-        Canvas(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(358f / 206f)
-                    .padding(top = 8.dp)
-                    .semantics {
-                        contentDescription =
-                            "$firstName's work rings opened flat: each band is a year from ${years.first()} at the centre to " +
-                            "${years.last()} outside, months run left to right, and each dot is a piece."
-                    },
-        ) {
-            val unit = size.width / 358f
-            val cx = size.width / 2
-            val cy = 184f * unit
-            val r0 = 26f
-            val r1 = 172f
-            val pitch = (r1 - r0) / years.size.coerceAtLeast(1)
-            val color = PantopusColors.business
-            years.forEachIndexed { i, _ ->
-                val r = (r0 + i * pitch + pitch / 2) * unit
-                drawArc(
-                    PantopusColors.appSurfaceSunken,
-                    180f,
-                    180f,
-                    false,
-                    Offset(cx - r, cy - r),
-                    Size(r * 2, r * 2),
-                    style = Stroke(width = (pitch - 2.2f) * unit),
-                )
-            }
-            years.forEachIndexed { i, year ->
-                val r = (r0 + i * pitch + pitch / 2) * unit
-                val growing = year == rings.now.year
-                for (run in ringRuns(grid[i], rings.nowFraction.takeIf { growing })) {
-                    val stroke =
-                        when (run.ink) {
-                            ProfileInk.Seen -> Stroke(width = 3f * unit, cap = StrokeCap.Butt)
-                            ProfileInk.Signed -> Stroke(width = 1.3f * unit, cap = StrokeCap.Butt)
-                            ProfileInk.Said ->
-                                Stroke(
-                                    width = 1.5f * unit,
-                                    cap = StrokeCap.Round,
-                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.01f, 3.5f * unit)),
-                                )
-                        }
-                    drawArc(
-                        color,
-                        180f + run.start * 15f,
-                        (run.end - run.start) * 15f,
-                        false,
-                        Offset(cx - r, cy - r),
-                        Size(r * 2, r * 2),
-                        style = stroke,
-                    )
-                }
-            }
-            block.dots.forEach { (_, year, month) ->
-                val i = years.indexOf(year)
-                if (i < 0) return@forEach
-                val r = (r0 + i * pitch + pitch / 2) * unit
-                val a = Math.toRadians((180.0 + 15.0 * (month + 0.5)))
-                val p = Offset(cx + r * kotlin.math.cos(a).toFloat(), cy + r * kotlin.math.sin(a).toFloat())
-                drawCircle(PantopusColors.appSurface, radius = 4.7f * unit, center = p)
-                drawCircle(color, radius = 3.3f * unit, center = p)
-            }
-            drawLine(
-                PantopusColors.appBorderStrong,
-                Offset(cx - (r1 + 4f) * unit, cy),
-                Offset(cx + (r1 + 4f) * unit, cy),
-                strokeWidth = unit,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ProfileInk.entries.forEach { ink ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    InkGlyph(ink, color = PantopusColors.business)
-                    Text(ink.word, style = SourcesType.caption)
-                }
-            }
-            Text("A dot is a piece", style = SourcesType.caption)
         }
     }
 }

@@ -98,6 +98,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.ui.components.AvatarWithIdentityRing
@@ -115,6 +116,7 @@ import app.pantopus.android.ui.components.VerifiedBadge
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.moments.components.momentsRingFit
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.theme.PantopusColors
@@ -1637,13 +1639,32 @@ private fun MagicArchetypeTileView(leading: RowLeading.MagicArchetypeTile) {
 
 @Composable
 private fun AvatarWithBadgeView(leading: RowLeading.AvatarWithBadge) {
-    val size = leading.size.sizeDp.dp
+    val footprint = leading.size.sizeDp.dp
+    // While a person's rings show, the picture shrinks so the outer ring takes the place the whole picture has without
+    // them: the card keeps its height, padding and text, and the rings keep the card's gap to the name.
+    val size = momentsRingFit(leading.momentsUserId, footprint)
     val initials =
         leading.name
             .split(" ")
             .take(2)
             .mapNotNull { it.firstOrNull()?.uppercase() }
             .joinToString("")
+    Box(modifier = Modifier.size(footprint), contentAlignment = Alignment.Center) {
+        AvatarWithBadgePicture(leading, initials, size, fitted = size < footprint)
+    }
+}
+
+@Composable
+private fun AvatarWithBadgePicture(
+    leading: RowLeading.AvatarWithBadge,
+    initials: String,
+    size: Dp,
+    fitted: Boolean,
+) {
+    // A picture shrunk to make room for its rings keeps its initials centred inside it at any text size (their size
+    // and line follow the picture, not the font scale); a full-size picture's initials grow with the font scale as before.
+    val initialsSize =
+        if (fitted) with(LocalDensity.current) { (size * 0.32f).toSp() } else (size.value * 0.32f).sp
     Box(modifier = Modifier.momentsRing(leading.momentsUserId).size(size)) {
         Box(
             modifier =
@@ -1663,7 +1684,8 @@ private fun AvatarWithBadgeView(leading: RowLeading.AvatarWithBadge) {
                 text = initials,
                 color = PantopusColors.appTextInverse,
                 fontWeight = FontWeight.Bold,
-                fontSize = (size.value * 0.32f).sp,
+                fontSize = initialsSize,
+                lineHeight = if (fitted) initialsSize else TextUnit.Unspecified,
             )
             // The person's photo over their initials, which show while it loads and when they have none.
             if (!leading.imageUrl.isNullOrBlank()) {

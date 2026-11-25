@@ -39,11 +39,16 @@ public struct PulsePostDetailLoadedContent: View {
     private let onCommentReply: (@MainActor (PostCommentRow) -> Void)?
     private let onCommentLike: (@MainActor (String) -> Void)?
     private let onCommentDelete: (@MainActor (String) -> Void)?
+    private let onCommentReport: (@MainActor (String) -> Void)?
     private let onRefresh: (@Sendable () async -> Void)?
     /// "Ask Pantopus" about this post, under its reactions; nil hides it.
     private let onAsk: (@MainActor () -> Void)?
     /// Opens a quote's original from its card (PULSEREPOST contract §8.3).
     private let onOpenQuotedPost: (@MainActor (String) -> Void)?
+    /// Over the reply box: "Post as", or "Posting as …" (made-up names); nil for none.
+    private let aboveComposer: AnyView?
+    /// A made-up name tapped: its id, and whether it was the post's (true) or a reply's.
+    private let onOpenPenName: @MainActor (String, Bool) -> Void
 
     public init(
         detail: PulsePostDetailContent,
@@ -69,10 +74,15 @@ public struct PulsePostDetailLoadedContent: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        onCommentReport: (@MainActor (String) -> Void)? = nil,
         onRefresh: (@Sendable () async -> Void)? = nil,
         onAsk: (@MainActor () -> Void)? = nil,
-        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil
+        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil,
+        onOpenPenName: @escaping @MainActor (String, Bool) -> Void = { _, _ in },
+        aboveComposer: AnyView? = nil
     ) {
+        self.aboveComposer = aboveComposer
+        self.onOpenPenName = onOpenPenName
         self.detail = detail
         self.commentsState = commentsState
         _composerText = composerText
@@ -96,6 +106,7 @@ public struct PulsePostDetailLoadedContent: View {
         self.onCommentReply = onCommentReply
         self.onCommentLike = onCommentLike
         self.onCommentDelete = onCommentDelete
+        self.onCommentReport = onCommentReport
         self.onRefresh = onRefresh
         self.onAsk = onAsk
         self.onOpenQuotedPost = onOpenQuotedPost
@@ -131,6 +142,10 @@ public struct PulsePostDetailLoadedContent: View {
     /// Opens the author's profile, or a business author's page; nil (no tap) when the post came
     /// without its author's id, or from a business with no published page (the web links none).
     private var authorProfileTap: (@MainActor () -> Void)? {
+        // A made-up name opens its small card, never a profile.
+        if let penNameId = detail.post.penNameId {
+            return { onOpenPenName(penNameId, true) }
+        }
         if let creator = detail.post.creator, creator.identityType == "business" {
             guard let businessId = creator.businessPageId else { return nil }
             return { onOpenBusiness(businessId) }
@@ -138,6 +153,56 @@ public struct PulsePostDetailLoadedContent: View {
         let userId = detail.post.userId
         guard !userId.isEmpty else { return nil }
         return { onOpenProfile(userId) }
+    }
+
+    /// A made-up name tapped on a reply: its small card.
+    private var replyPenNameTap: @MainActor (String) -> Void {
+        { onOpenPenName($0, false) }
+    }
+
+    /// A story Today's Around you posted for an outlet: named for the outlet, its headline apart from the summary.
+    private var story: PulseStory? {
+        PulseStory(aroundYou: detail.post.aroundYou, source: detail.post.source, text: detail.post.content)
+    }
+
+    /// The post's kind as its chip names it.
+    private var intentLabel: String? {
+        PulseComposePurpose.allCases.first { $0.postType == detail.post.postType }?.label
+    }
+
+    /// Who the post is from: the outlet that published a story, else its author.
+    @ViewBuilder private var authorHeader: some View {
+        if let story, let outlet = story.outlet {
+            PulseStoryPageHeader(
+                outlet: outlet,
+                via: detail.authorDisplayName,
+                time: detail.timeAndLocality,
+                chipLabel: story.topic ?? intentLabel ?? detail.intent.label,
+                intent: detail.intent
+            )
+        } else {
+            PostAuthorHeader(
+                displayName: detail.authorDisplayName,
+                avatarURL: detail.authorAvatarURL,
+                isVerified: detail.authorVerified,
+                identity: detail.authorIdentity,
+                timeAndLocality: detail.timeAndLocality,
+                intent: detail.intent,
+                intentLabel: intentLabel,
+                onAvatarTap: authorProfileTap,
+                // A made-up name's Moments are never joined to its writer's.
+                momentsUserId: detail.post.penNameId != nil ? nil
+                    : detail.post.creator?.identityType == "business"
+                    ? detail.post.creator?.businessPageId : detail.post.userId,
+                showsMadeUpMark: detail.post.penNameId != nil
+            )
+        }
+    }
+
+    /// The post's title, or a story's headline.
+    private var titleText: String? {
+        let title = (story?.headline ?? detail.post.title)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title?.isEmpty == false ? title : nil
     }
 
     public var body: some View {
@@ -154,24 +219,13 @@ public struct PulsePostDetailLoadedContent: View {
                         RemovedPostNotice()
                             .padding(.horizontal, Spacing.s4)
                     }
-                    PostAuthorHeader(
-                        displayName: detail.authorDisplayName,
-                        avatarURL: detail.authorAvatarURL,
-                        isVerified: detail.authorVerified,
-                        identity: detail.authorIdentity,
-                        timeAndLocality: detail.timeAndLocality,
-                        intent: detail.intent,
-                        intentLabel: PulseComposePurpose.allCases.first { $0.postType == detail.post.postType }?.label,
-                        onAvatarTap: authorProfileTap,
-                        momentsUserId: detail.post.creator?.identityType == "business"
-                            ? detail.post.creator?.businessPageId : detail.post.userId
-                    )
+                    authorHeader
                     // How it ended, or when a Heads-up ends (Pulse S7).
                     if let status = detail.status {
                         PulsePostStatusPill(status: status, postId: detail.post.id)
                             .padding(.horizontal, Spacing.s4)
                     }
-                    if let title = detail.post.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+                    if let title = titleText {
                         Text(title)
                             .pantopusTextStyle(.h3)
                             .foregroundStyle(Theme.Color.appText)
@@ -184,7 +238,7 @@ public struct PulsePostDetailLoadedContent: View {
             },
             body: {
                 BodyReactionsBody(
-                    body: detail.post.content,
+                    body: story?.summary ?? detail.post.content,
                     media: detail.media,
                     intent: detail.intent,
                     reactions: detail.reactions,
@@ -210,9 +264,13 @@ public struct PulsePostDetailLoadedContent: View {
                     onCommentReply: detail.post.isRemovedByModerator ? nil : onCommentReply,
                     onCommentLike: onCommentLike,
                     onCommentDelete: onCommentDelete,
+                    onCommentReport: onCommentReport,
                     aboveReactions: quotedCard,
                     belowReactions: belowReactions,
-                    repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil
+                    repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil,
+                    composerPrompt: story == nil ? nil : "What do you think? People around here can read your reply…",
+                    aboveComposer: aboveComposer,
+                    onCommentPenNameTap: replyPenNameTap
                 ) { userId in
                     onOpenProfile(userId)
                 }

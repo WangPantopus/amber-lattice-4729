@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.place.launch
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,8 +29,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -43,6 +49,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -51,12 +58,15 @@ import app.pantopus.android.BuildConfig
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.routing.PlacePendingStore
 import app.pantopus.android.data.api.models.place.BallotGovernments
+import app.pantopus.android.data.api.models.place.MoneyLeadKind
 import app.pantopus.android.data.api.models.place.PlaceBand
 import app.pantopus.android.data.api.models.place.PlaceGroup
 import app.pantopus.android.data.api.models.place.PlaceMoneyLead
 import app.pantopus.android.data.api.models.place.PlacePreview
 import app.pantopus.android.data.api.models.place.PlacePreviewAha
 import app.pantopus.android.data.api.models.place.PlacePreviewAhaTone
+import app.pantopus.android.data.api.models.place.PlacePreviewFree
+import app.pantopus.android.data.api.models.place.PlacePreviewGlanceRow
 import app.pantopus.android.data.api.models.place.PlacePreviewLockedSection
 import app.pantopus.android.data.api.models.place.PlacePreviewPlaceRef
 import app.pantopus.android.data.api.models.place.PlacePreviewSectionStatus
@@ -88,8 +98,10 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusLockup
 import app.pantopus.android.ui.theme.Spacing
+import kotlinx.coroutines.launch
 
 @Composable
+@Suppress("LongMethod")
 fun PlaceLaunchScreen(
     onSignIn: () -> Unit,
     onCreateAccount: () -> Unit,
@@ -101,6 +113,7 @@ fun PlaceLaunchScreen(
 ) {
     val step by viewModel.step.collectAsStateWithLifecycle()
     val retrying by viewModel.loadingPreview.collectAsStateWithLifecycle()
+    val reading by viewModel.reading.collectAsStateWithLifecycle()
     val browse = {
         if (embedded != null) {
             // The tab's root has nothing under it: back to the address field.
@@ -131,6 +144,19 @@ fun PlaceLaunchScreen(
                 Box(modifier = Modifier.statusBarsPaddingIf(embedded == null)) {
                     // Signed out, the record's "Sign in" keeps the address as the lookup's own Sign in does.
                     val signIn = { if (viewModel.prepareForAuth()) onSignIn() }
+                    // Ask Pantopus (LOOKUPORDER 5.2): the reading of this lookup, in a sheet over it.
+                    var readingOpen by rememberSaveable(current.address) { mutableStateOf(false) }
+                    val openReading = {
+                        readingOpen = true
+                        viewModel.openReading(current.address, current.preview.readingTicket)
+                    }
+                    PreviewReadingSheet(
+                        open = readingOpen,
+                        state = reading,
+                        // Signed out, "Ask your own question" goes where the bar's button goes.
+                        onSignUp = continuePreview.takeIf { onSavePreview == null },
+                        onDismiss = { readingOpen = false },
+                    )
                     WithHomeRecord(current.address, HomeRecordLinks(onSetUpHome, continuePreview, signIn)) { openRecord ->
                         PreviewBody(
                             current.preview,
@@ -148,6 +174,7 @@ fun PlaceLaunchScreen(
                             retrying = retrying,
                             signedInEntry = onSavePreview != null,
                             onOpenRecord = openRecord,
+                            onAsk = openReading,
                         )
                     }
                 }
@@ -286,9 +313,12 @@ private fun Hero(
             Text(
                 when {
                     // The Place tab's first-run root says what an address shows, as the front door does (TABCARD §4b).
-                    embedded != null -> "Your flood risk, today's air, your home's value, and the verified homes near you."
+                    embedded != null ->
+                        "Your flood risk, today's air, home values and taxes where you live, and the verified homes near you."
                     signedInEntry -> "Look up an address, preview its public information, and choose whether to save it privately."
-                    else -> "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
+                    else ->
+                        "Your flood risk, today's air, home values and taxes where you live, and the verified homes near you. " +
+                            "Free, no account."
                 },
                 fontSize = 15.sp,
                 lineHeight = 21.sp,
@@ -519,6 +549,7 @@ private fun PreviewBody(
     retrying: Boolean,
     signedInEntry: Boolean,
     onOpenRecord: () -> Unit,
+    onAsk: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -562,40 +593,34 @@ private fun PreviewBody(
                     modifier = Modifier.clickable(onClick = onSignIn),
                 )
             }
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().placeCard().padding(14.dp).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            // Each answer starts at the top of the page, a new lookup and a Try again alike.
+            val scroll = remember(preview) { ScrollState(0) }
+            val jumps = rememberPreviewJumps(scroll)
+            Column(modifier = Modifier.fillMaxSize().then(jumps.viewport()).verticalScroll(scroll)) {
+                // On a tablet or an unfolded phone the page keeps a readable column in the middle.
+                Column(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .widthIn(max = PREVIEW_MAX_WIDTH)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
                 ) {
-                    Box(
-                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(PantopusColors.homeBg),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        PantopusIconImage(PantopusIcon.Check, null, size = 22.dp, strokeWidth = 2.5f, tint = PantopusColors.home)
-                    }
-                    Text(
-                        "Here's what's public about your address — a free, one-time look.",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = PantopusColors.appText,
+                    // The order is the server's (LOOKUPORDER): the stand-out card first, the record button under
+                    // the glance and the money card, the closed group near the end.
+                    PlacePreviewFindings(
+                        preview,
+                        onFollowUp = onCreateAccount,
+                        onRetry = onRetry,
+                        retrying = retrying,
+                        jumps = jumps,
+                        onOpenRecord = onOpenRecord,
+                        onUnlock = onCreateAccount,
+                        onAsk = onAsk,
                     )
+                    // Room for the bar over the page's end, which grows with the text size.
+                    Spacer(modifier = Modifier.height(FOOTER_ROOM))
                 }
-                HomeRecordEntry(
-                    title = "See this home’s full record",
-                    line = "A few facts now. The rest is free for its owner.",
-                    onClick = onOpenRecord,
-                    testTag = "place.preview.record",
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-                PlacePreviewFindings(preview, onFollowUp = onCreateAccount, onRetry = onRetry, retrying = retrying)
-                preview.locked?.takeIf { it.isNotEmpty() }?.let { locked ->
-                    PlaceGroupLabel(text = "More with a free account", modifier = Modifier.padding(top = 18.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        locked.forEach { LockedPreviewCard(it, onCreateAccount) }
-                    }
-                }
-                Spacer(modifier = Modifier.height(120.dp))
             }
         }
         PreviewSaveFooter(
@@ -616,21 +641,29 @@ private fun PreviewSaveFooter(
 ) {
     Column(
         modifier =
-            modifier.fillMaxWidth().background(PantopusColors.appSurface).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp),
+            modifier
+                .fillMaxWidth()
+                .background(PantopusColors.appSurface)
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                .widthIn(max = PREVIEW_MAX_WIDTH)
+                .padding(horizontal = 16.dp)
+                .padding(top = 14.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // What saving gives (LOOKUPORDER words): the page kept in the app and fresh each day.
         Text(
-            if (signedInEntry) {
-                "Keep this address handy. Choose whether to save it privately."
-            } else {
-                "Keep this address handy. Choose whether to save it privately after sign-in."
-            },
+            "Save this address. It opens fresh every day.",
             fontSize = 14.5.sp,
             fontWeight = FontWeight.SemiBold,
             color = PantopusColors.appText,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
-        PrimaryButton(title = "Continue", onClick = onContinue, modifier = Modifier.fillMaxWidth())
+        PrimaryButton(
+            title = if (signedInEntry) "Continue" else "Save it, free",
+            onClick = onContinue,
+            modifier = Modifier.fillMaxWidth().testTag("place.preview.continue"),
+        )
         Text(
             if (signedInEntry) {
                 "Saving a place does not create or verify a Home."
@@ -684,15 +717,19 @@ private fun ShareAddressLink(place: PlacePreviewPlaceRef) {
  * reader is not sold a county estimate as their own bill.
  */
 @Composable
-private fun MoneyLeadCard(lead: PlaceMoneyLead) {
+private fun MoneyLeadCard(
+    lead: PlaceMoneyLead,
+    modifier: Modifier = Modifier,
+    testTag: String = "place.preview.moneyLead",
+) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .placeCard()
                 .padding(Spacing.s4)
                 .padding(top = 14.dp)
-                .testTag("place.preview.moneyLead"),
+                .testTag(testTag),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -835,8 +872,9 @@ private fun RegionBody(
 
 // ─── Wedge v2 D1: the aha card and the Band-A sections ───────
 
-private val PREVIEW_GROUP_ORDER =
-    listOf(
+/** The groups' labels on the lookup. */
+private val PREVIEW_GROUP_LABELS =
+    mapOf(
         PlaceGroup.TODAY to "Today",
         PlaceGroup.RISK_READINESS to "Risk & readiness",
         PlaceGroup.HEALTH_ENVIRONMENT to "Health & environment",
@@ -896,11 +934,47 @@ private fun AhaCard(
 }
 
 /**
- * What's public about an address: the aha card, the money lead and the section groups. The launch preview shows it
- * between its lead-in card and its locked group; the Place tab's saved-address root shows it under its next-step card.
- * The aha follow-up and the sections' claim and verify buttons call [onFollowUp].
+ * The built-in order of the lookup (LOOKUPORDER 1.1), for a server that sends no `layout`. The same list the server
+ * sends today.
+ */
+private val BUILT_IN_ORDER =
+    listOf(
+        "aha",
+        "glance",
+        "money",
+        "record",
+        "ask",
+        "group:risk_readiness",
+        "group:health_environment",
+        "section:census_context",
+        "group:today",
+        "group:money_signals",
+        "group:civic",
+        "section:block_density",
+        "locked",
+        "not_checked",
+        "privacy",
+    )
+
+/** The lookup's readable column on a tablet or an unfolded phone. */
+private val PREVIEW_MAX_WIDTH = 680.dp
+
+/** Room under the page's last block for the save bar drawn over it. */
+private val FOOTER_ROOM = 200.dp
+
+/** How far below the top edge a glance line leaves its card. */
+private const val JUMP_MARGIN_DP = 12
+
+/**
+ * What's public about an address, in the server's order (LOOKUPORDER 1.1): the stand-out card, the glance, the money
+ * card, the record button, the Ask row ([onAsk]), the groups and the cards named on their own, the closed group and the could-not-check
+ * line. A block this app does not know, or one with nothing to draw, is skipped. The launch preview shows it under its
+ * address; the Place tab's saved-address root under its next-step card, without the record button or the closed
+ * group ([onOpenRecord] and [onUnlock] null there). The aha follow-up and the sections' claim and verify buttons call
+ * [onFollowUp]; a glance line takes the page to its card through [jumps].
  */
 @Composable
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "NestedBlockDepth")
 internal fun PlacePreviewFindings(
     preview: PlacePreview,
     onFollowUp: () -> Unit,
@@ -908,56 +982,161 @@ internal fun PlacePreviewFindings(
     retrying: Boolean,
     modifier: Modifier = Modifier,
     onOpenDetail: ((PlaceDetailGroup) -> Unit)? = null,
+    jumps: PreviewJumps? = null,
+    onOpenRecord: (() -> Unit)? = null,
+    onUnlock: (() -> Unit)? = null,
+    onAsk: (() -> Unit)? = null,
 ) {
-    // Ballot P0 (ballot_p0): the "Your ballot" card under "This season", in
-    // place of the election row, as on the Place dashboard.
-    val ballot = BallotPlacement.ballot(preview.sections.orEmpty())
+    val sections = preview.sections.orEmpty()
+    // Ballot P0 (ballot_p0): the "Your ballot" block in place of the election card. The server places it: where the
+    // order names "ballot", there; otherwise at the top of the Civic group.
+    val ballot = BallotPlacement.ballot(sections)
     var ballotGovernments by remember { mutableStateOf<BallotGovernments?>(null) }
-    Column(modifier = modifier) {
-        // A real dollar band when one exists for this address,
-        // and nothing at all when it does not — the tiles carry
-        // the page as before. Never synthesized client-side.
-        // The aha card leads (Wedge v2 D1): the most surprising ready
-        // fact, in the server's words.
-        preview.aha?.takeIf { it.isRenderable }?.let { AhaCard(it, onFollowUp) }
-        preview.moneyLead?.takeIf { it.isRenderable }?.let { MoneyLeadCard(it) }
-        if (ballot != null) {
+    val order = preview.layout?.order?.takeIf { it.isNotEmpty() }?.distinct() ?: BUILT_IN_ORDER
+    val namedAlone = order.filter { it.startsWith("section:") }.map { it.removePrefix("section:") }.toSet()
+    val ballotPlaced = "ballot" in order
+    val money = preview.money?.takeIf { it.isRenderable }
+    // The flood cost band is the first card of Risk and readiness (`flood_cost`; an older answer has it only as its
+    // dollar card). The dollar card the store apps draw keeps the money slot only when there is no money card.
+    val lead = preview.moneyLead?.takeIf { it.isRenderable }
+    val floodLead =
+        preview.floodCost?.takeIf { it.isRenderable }
+            ?: lead?.takeIf { money == null && it.kind == MoneyLeadKind.FLOOD_PREMIUM }
+    val slotLead = lead?.takeIf { money == null && it.kind != MoneyLeadKind.FLOOD_PREMIUM }
+    val groupItems = { group: PlaceGroup ->
+        sections.filter { env ->
+            env.groupId == group &&
+                env.id !in namedAlone &&
+                !(ballot != null && env.sectionId == PlaceSectionId.CIVIC_ELECTION)
+        }
+    }
+    val aloneSection = { id: String ->
+        sections.firstOrNull { it.id == id }?.takeIf { !(ballot != null && it.sectionId == PlaceSectionId.CIVIC_ELECTION) }
+    }
+    // A card named on its own carries its group's label unless that label is already on the page above it.
+    val labelledAlone = mutableSetOf<String>()
+    run {
+        val shown = mutableSetOf<PlaceGroup>()
+        order.forEach { block ->
+            when {
+                block.startsWith("group:") -> {
+                    val group = PlaceGroup.from(block.removePrefix("group:"))
+                    val draws =
+                        groupItems(group).isNotEmpty() ||
+                            (group == PlaceGroup.CIVIC && ballot != null && !ballotPlaced) ||
+                            (group == PlaceGroup.RISK_READINESS && floodLead != null)
+                    if (draws && group in PREVIEW_GROUP_LABELS) shown += group
+                }
+                block.startsWith("section:") ->
+                    aloneSection(block.removePrefix("section:"))?.let { env ->
+                        if (env.groupId in PREVIEW_GROUP_LABELS && shown.add(env.groupId)) labelledAlone += env.id
+                    }
+            }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val margin = with(LocalDensity.current) { JUMP_MARGIN_DP.dp.toPx() }
+    val onGlanceTap: ((PlacePreviewGlanceRow) -> Unit)? =
+        jumps?.let { j ->
+            { row: PlacePreviewGlanceRow ->
+                row.sectionId?.let { id -> scope.launch { j.jump(id, margin) } }
+                Unit
+            }
+        }
+    val ballotBlock: @Composable (Dp) -> Unit = { top ->
+        ballot?.let { placed ->
             BallotSeasonBlock(
-                placed = ballot,
-                onOpenGovernments = ballot.card.governments?.let { governments -> { ballotGovernments = governments } },
-                modifier = Modifier.padding(top = 18.dp),
+                placed = placed,
+                onOpenGovernments = placed.card.governments?.let { governments -> { ballotGovernments = governments } },
+                modifier = Modifier.padding(top = top).then(jumps?.anchor(PlaceSectionId.CIVIC_ELECTION.raw) ?: Modifier),
             )
         }
-        // Every Band-A section through the dashboard's own cards;
-        // older backends send only `free` and keep the three tiles.
-        val sections = preview.sections.orEmpty()
-        val shown = if (ballot != null) sections.filter { it.sectionId != PlaceSectionId.CIVIC_ELECTION } else sections
-        if (sections.isNotEmpty()) PreviewSections(shown, onFollowUp, onRetry, retrying, onOpenDetail)
-        preview.free?.takeIf { sections.isEmpty() }?.let { free ->
-            PlaceGroupLabel(text = "Risk & readiness", modifier = Modifier.padding(top = 18.dp))
-            PlaceSectionCard(
-                title = "Flood",
-                icon = PantopusIcon.Waves,
-                state =
-                    if (free.flood.status == PlacePreviewSectionStatus.READY) {
-                        PlaceSectionCardState.LOADED
-                    } else {
-                        PlaceSectionCardState.UNAVAILABLE
-                    },
-                value = free.flood.description ?: free.flood.zone?.let { "Zone $it" },
-                chip = free.flood.zone?.let { PlaceChipModel(PlaceChipTone.SUCCESS, free.flood.description ?: "Flood zone") },
-            )
-            PlaceGroupLabel(text = "Your block", modifier = Modifier.padding(top = 18.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PlaceDensityCard(bucket = free.density.bucket, label = free.density.label, ctaTitle = null, onTap = null)
-                if (free.area.status == PlacePreviewSectionStatus.READY) {
-                    PlaceSectionCard(
-                        title = "Homes here",
-                        icon = PantopusIcon.Home,
-                        state = PlaceSectionCardState.LOADED,
-                        value = free.area.medianYearBuilt?.let { "Median built $it" } ?: free.area.note,
-                        caption = free.area.note,
-                    )
+    }
+    val sectionCard: @Composable (PlaceSectionEnvelope) -> Unit = { env ->
+        Box(modifier = jumps?.anchor(env.id) ?: Modifier) {
+            PreviewSectionView(env, onFollowUp, onRetry, retrying, onOpenDetail)
+        }
+    }
+    Column(modifier = modifier) {
+        if (sections.isEmpty()) {
+            // An older server sends only `free`: the three tiles carry the page as before.
+            preview.aha?.takeIf { it.isRenderable }?.let { AhaCard(it, onFollowUp) }
+            lead?.let { MoneyLeadCard(it) }
+            preview.free?.let { LegacyFreeTiles(it) }
+        } else {
+            order.forEach { block ->
+                key<Unit>(block) {
+                    when {
+                        block == "aha" -> preview.aha?.takeIf { it.isRenderable }?.let { AhaCard(it, onFollowUp) }
+                        block == "ballot" -> ballotBlock(18.dp)
+                        block == "glance" ->
+                            preview.glance?.takeIf { it.isNotEmpty() }?.let { rows ->
+                                PreviewGlanceCard(rows = rows, onTap = onGlanceTap, modifier = Modifier.padding(top = 14.dp))
+                            }
+                        block == "money" ->
+                            when {
+                                money != null -> PreviewMoneyCard(money, onOpenRecord, Modifier.padding(top = 14.dp))
+                                slotLead != null -> MoneyLeadCard(slotLead)
+                                else -> Unit
+                            }
+                        block == "record" ->
+                            onOpenRecord?.let {
+                                HomeRecordEntry(
+                                    title = "See this home’s full record",
+                                    line = "A few facts now. The rest is free for its owner.",
+                                    onClick = it,
+                                    testTag = "place.preview.record",
+                                    modifier = Modifier.padding(top = 14.dp),
+                                )
+                            }
+                        block.startsWith("group:") -> {
+                            val group = PlaceGroup.from(block.removePrefix("group:"))
+                            val label = PREVIEW_GROUP_LABELS[group]
+                            val items = groupItems(group)
+                            val ballotHere = group == PlaceGroup.CIVIC && ballot != null && !ballotPlaced
+                            val leadHere = group == PlaceGroup.RISK_READINESS && floodLead != null
+                            val draws = items.isNotEmpty() || ballotHere || leadHere
+                            if (label != null && draws) {
+                                PlaceGroupLabel(text = label, modifier = Modifier.padding(top = 18.dp))
+                                if (leadHere && floodLead != null) {
+                                    MoneyLeadCard(floodLead, Modifier.padding(bottom = 8.dp), testTag = "place.preview.floodCost")
+                                }
+                                if (ballotHere) ballotBlock(4.dp)
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(top = if (ballotHere) 18.dp else 0.dp),
+                                ) { items.forEach { sectionCard(it) } }
+                            }
+                        }
+                        block.startsWith("section:") ->
+                            aloneSection(block.removePrefix("section:"))?.let { env ->
+                                if (env.id in labelledAlone) {
+                                    PlaceGroupLabel(
+                                        text = PREVIEW_GROUP_LABELS.getValue(env.groupId),
+                                        modifier = Modifier.padding(top = 18.dp),
+                                    )
+                                    sectionCard(env)
+                                } else {
+                                    Box(modifier = Modifier.padding(top = 14.dp)) { sectionCard(env) }
+                                }
+                            }
+                        block == "locked" ->
+                            onUnlock?.let { unlock ->
+                                preview.locked?.takeIf { it.isNotEmpty() }?.let { locked ->
+                                    PlaceGroupLabel(text = "More with a free account", modifier = Modifier.padding(top = 18.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        locked.forEach { LockedPreviewCard(it, unlock) }
+                                    }
+                                }
+                            }
+                        block == "not_checked" ->
+                            preview.notChecked?.takeIf { it.isNotEmpty() }?.let {
+                                PreviewNotCheckedLine(it, Modifier.padding(top = 18.dp))
+                            }
+                        block == "ask" -> onAsk?.let { PreviewAskRow(it, Modifier.padding(top = 10.dp)) }
+                        // "privacy": the phones draw no privacy lines on the result.
+                        else -> Unit
+                    }
                 }
             }
         }
@@ -971,35 +1150,56 @@ internal fun PlacePreviewFindings(
     }
 }
 
+/** The page an older server carries with `free` alone: flood, density and the homes here. */
 @Composable
-private fun PreviewSections(
-    sections: List<PlaceSectionEnvelope>,
+private fun LegacyFreeTiles(free: PlacePreviewFree) {
+    PlaceGroupLabel(text = "Risk & readiness", modifier = Modifier.padding(top = 18.dp))
+    PlaceSectionCard(
+        title = "Flood",
+        icon = PantopusIcon.Waves,
+        state =
+            if (free.flood.status == PlacePreviewSectionStatus.READY) {
+                PlaceSectionCardState.LOADED
+            } else {
+                PlaceSectionCardState.UNAVAILABLE
+            },
+        value = free.flood.description ?: free.flood.zone?.let { "Zone $it" },
+        chip = free.flood.zone?.let { PlaceChipModel(PlaceChipTone.SUCCESS, free.flood.description ?: "Flood zone") },
+    )
+    PlaceGroupLabel(text = "Your block", modifier = Modifier.padding(top = 18.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PlaceDensityCard(bucket = free.density.bucket, label = free.density.label, ctaTitle = null, onTap = null)
+        if (free.area.status == PlacePreviewSectionStatus.READY) {
+            PlaceSectionCard(
+                title = "Homes here",
+                icon = PantopusIcon.Home,
+                state = PlaceSectionCardState.LOADED,
+                value = free.area.medianYearBuilt?.let { "Median built $it" } ?: free.area.note,
+                caption = free.area.note,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreviewSectionView(
+    env: PlaceSectionEnvelope,
     onCreateAccount: () -> Unit,
     onRetry: () -> Unit,
     retrying: Boolean,
     onOpenDetail: ((PlaceDetailGroup) -> Unit)?,
 ) {
-    PREVIEW_GROUP_ORDER.forEach { (group, label) ->
-        val items = sections.filter { it.groupId == group }
-        if (items.isNotEmpty()) {
-            PlaceGroupLabel(text = label, modifier = Modifier.padding(top = 18.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items.forEach { env ->
-                    PlaceSectionView(
-                        env = env,
-                        onOpen =
-                            onOpenDetail?.let { open ->
-                                PlaceDetailGroup.forGroup(env.groupId)
-                                    ?.takeIf { it.supportsSavedPlace && env.band == PlaceBand.A }
-                                    ?.let { detail -> { open(detail) } }
-                            },
-                        onVerify = onCreateAccount,
-                        onClaim = onCreateAccount,
-                        onRetry = onRetry,
-                        retrying = retrying,
-                    )
-                }
-            }
-        }
-    }
+    PlaceSectionView(
+        env = env,
+        onOpen =
+            onOpenDetail?.let { open ->
+                PlaceDetailGroup.forGroup(env.groupId)
+                    ?.takeIf { it.supportsSavedPlace && env.band == PlaceBand.A }
+                    ?.let { detail -> { open(detail) } }
+            },
+        onVerify = onCreateAccount,
+        onClaim = onCreateAccount,
+        onRetry = onRetry,
+        retrying = retrying,
+    )
 }

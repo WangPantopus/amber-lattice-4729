@@ -2,6 +2,8 @@
 
 package app.pantopus.android.ui.screens.shared.content_detail.headers
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +15,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -33,6 +37,7 @@ import app.pantopus.android.ui.components.VerifiedBadge
 import app.pantopus.android.ui.screens.moments.components.momentsRing
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 
@@ -87,6 +92,7 @@ enum class PostIntent(
  * identity stack + right-aligned intent chip.
  */
 @Composable
+@Suppress("LongMethod") // The photo, the name and its line, and the kind of post, with the made-up name's slots.
 fun PostAuthorHeader(
     displayName: String,
     avatarUrl: String?,
@@ -98,6 +104,17 @@ fun PostAuthorHeader(
     onAvatarTap: (() -> Unit)? = null,
     /** The author's account: the photo wears their Moments ring while they have Moments to watch. */
     momentsUserId: String? = null,
+    /**
+     * Drawn where the photo goes when the name is not a person's or a business's: the outlet of a story Today's
+     * Around you posted. Null (every other post) draws the photo or the initials.
+     */
+    placeIcon: PantopusIcon? = null,
+    /** A made-up name: its drawn picture in place of the photo (no Moments ring, no identity ring). */
+    avatar: (@Composable () -> Unit)? = null,
+    /** A made-up name: its marks (and the writer's "Only you can see this is you") under the name, with the time. */
+    subline: (@Composable () -> Unit)? = null,
+    /** What a tap on the photo does, read aloud; null says it opens the profile. */
+    avatarTapLabel: String? = null,
 ) {
     Row(
         modifier =
@@ -117,7 +134,7 @@ fun PostAuthorHeader(
                                 .testTag("pulsePostDetail-authorAvatar")
                                 .clickable(onClick = onAvatarTap)
                                 .semantics {
-                                    contentDescription = "Open $displayName's profile"
+                                    contentDescription = avatarTapLabel ?: "Open $displayName's profile"
                                 }
                         } else {
                             Modifier
@@ -125,14 +142,30 @@ fun PostAuthorHeader(
                     ),
             contentAlignment = Alignment.TopStart,
         ) {
-            AvatarWithIdentityRing(
-                name = displayName,
-                modifier = Modifier.momentsRing(momentsUserId),
-                imageUrl = avatarUrl,
-                identity = identity,
-                ringProgress = 1f,
-                size = 44.dp,
-            )
+            if (avatar != null) {
+                avatar()
+            } else if (placeIcon != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(PantopusColors.appSurfaceSunken)
+                            .border(1.dp, PantopusColors.appBorder, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PantopusIconImage(icon = placeIcon, contentDescription = null, size = 20.dp, tint = PantopusColors.appTextSecondary)
+                }
+            } else {
+                AvatarWithIdentityRing(
+                    name = displayName,
+                    modifier = Modifier.momentsRing(momentsUserId),
+                    imageUrl = avatarUrl,
+                    identity = identity,
+                    ringProgress = 1f,
+                    size = 44.dp,
+                )
+            }
             if (isVerified) {
                 Box(
                     modifier = Modifier.size(20.dp).offset(x = 28.dp, y = 28.dp),
@@ -149,11 +182,15 @@ fun PostAuthorHeader(
                 color = PantopusColors.appText,
             )
             Spacer(Modifier.size(2.dp))
-            Text(
-                text = timeAndLocality,
-                fontSize = 12.sp,
-                color = PantopusColors.appTextSecondary,
-            )
+            if (subline != null) {
+                subline()
+            } else {
+                Text(
+                    text = timeAndLocality,
+                    fontSize = 12.sp,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
         }
         // Named by the post's type; the chip's colour tone isn't content ("LOST & FOUND, error"), and
         // "Share post" would read like the top bar's Share button.

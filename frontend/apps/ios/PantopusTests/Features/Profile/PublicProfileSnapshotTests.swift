@@ -21,7 +21,8 @@ final class PublicProfileSnapshotTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // The persona archetype's chip and broadcasts: every first-launch cut switched on.
-        LaunchFeatures.overrideForTesting = Set(LaunchFeature.allCases)
+        // These cover today's profile screen: the profile with sources (its own read and page) stays off.
+        LaunchFeatures.overrideForTesting = Set(LaunchFeature.allCases).subtracting([.profileSources])
     }
 
     override func tearDown() {

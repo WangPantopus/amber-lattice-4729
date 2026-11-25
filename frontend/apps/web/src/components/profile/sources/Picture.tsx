@@ -6,9 +6,9 @@ import { useState } from 'react';
 /**
  * A picture the server sent (a piece's cover, a shelf object, a writer's portrait). A plain image, not next/image:
  * the optimizer accepts only Pantopus's own storage and throws for any other host, which would take the whole profile
- * down for one picture. One that fails to load leaves nothing behind.
+ * down for one picture. One that fails to load leaves nothing behind, and says so (`onFail`) so its frame can go too.
  */
-export default function Picture({ src, alt = '', className = '' }: { src: string; alt?: string; className?: string }) {
+export default function Picture({ src, alt = '', className = '', onFail }: { src: string; alt?: string; className?: string; onFail?: () => void }) {
   const [failed, setFailed] = useState(false);
   if (failed || !/^https?:\/\//i.test(src)) return null;
   return (
@@ -19,7 +19,7 @@ export default function Picture({ src, alt = '', className = '' }: { src: string
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      onError={() => { setFailed(true); onFail?.(); }}
       className={className}
     />
   );

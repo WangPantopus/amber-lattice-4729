@@ -44,11 +44,14 @@ export default function ConversationView({
   initialTopicId,
   returnTo = '/app/chat',
   initialMessageId,
+  initialText,
 }: {
   otherUserId: string;
   initialTopicId?: string;
   returnTo?: string;
   initialMessageId?: string;
+  /** Words for an empty composer, unsent (`?start=`). */
+  initialText?: string;
 }) {
   const router = useRouter();
 
@@ -493,6 +496,7 @@ export default function ConversationView({
       <ChatInput
         key={chat.composerDraft.key}
         draft={chat.composerDraft}
+        initialText={initialText}
         onSend={handleSend}
         sending={chat.sending}
         typingPeerCount={chat.typingPeerCount}

@@ -34,22 +34,28 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -71,6 +77,10 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseEventDetails
 import app.pantopus.android.ui.screens.feed.pulse.PulseReactionPicker
 import app.pantopus.android.ui.screens.feed.pulse.icon
 import app.pantopus.android.ui.screens.moments.components.momentsRing
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNameMarks
+import app.pantopus.android.ui.screens.pennames.PenNameOnlyYouLine
+import app.pantopus.android.ui.screens.pennames.PenNamePicture
 import app.pantopus.android.ui.screens.shared.content_detail.headers.PostIntent
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridWithViewer
@@ -99,6 +109,10 @@ data class PostCommentRow(
     val authorUserId: String?,
     /** True when the signed-in user wrote it — gates the Delete action. */
     val isOwn: Boolean = false,
+    /** Written under a made-up name: [authorUserId] is the name's id, and a tap opens its small card. */
+    val isMadeUp: Boolean = false,
+    /** The signed-in person wrote it under their made-up name: "Night Gardener (you)". */
+    val isMadeUpByYou: Boolean = false,
 )
 
 /** Quick-reply prompt rendered in the empty thread state. */
@@ -181,6 +195,8 @@ fun BodyReactionsBody(
     onCommentReply: ((PostCommentRow) -> Unit)? = null,
     onCommentLike: ((PostCommentRow) -> Unit)? = null,
     onCommentDelete: ((PostCommentRow) -> Unit)? = null,
+    /** "Report" under someone else's reply, under any name; null hides it. */
+    onCommentReport: ((PostCommentRow) -> Unit)? = null,
     /**
      * Optional card rendered between the reaction bar and the comment
      * composer. Pulse post detail passes the "Nearby Providers" card here;
@@ -200,17 +216,40 @@ fun BodyReactionsBody(
     loadingCommentCount: Int = 0,
     /** Drawn under the text and media, above the reaction bar: a quote post's quoted card. Null for none. */
     belowMedia: (@Composable () -> Unit)? = null,
+    /**
+     * A story's headline, set apart over [body] (then the outlet's own summary, in the secondary colour): a post
+     * Today's Around you made for an outlet. Null for every other post, whose text is drawn as before.
+     */
+    headline: String? = null,
+    /** What the reply box says while it is empty and no reply is being answered; null keeps the usual words. */
+    composerPlaceholder: String? = null,
+    /** The page was opened to reply: the reply box takes the keyboard when it first shows. */
+    focusComposer: Boolean = false,
+    /** Drawn just above the reply box: "Post as" (made-up names). Null for none. */
+    aboveComposer: (@Composable () -> Unit)? = null,
+    /** A reply under a made-up name: its photo and name open the name's small card, with the name's id. */
+    onMadeUpAuthorTap: (String) -> Unit = {},
 ) {
     val placeholders = commentsLoading && comments.isEmpty() && loadingCommentCount > 0
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.s4),
     ) {
+        if (!headline.isNullOrEmpty()) {
+            Text(
+                text = headline,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.appText,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(horizontal = Spacing.s4).semantics { heading() }.testTag("pulsePostDetail-headline"),
+            )
+        }
         if (body.isNotEmpty()) {
             Text(
                 text = postLinkedText(body),
                 fontSize = 15.sp,
-                color = PantopusColors.appText,
+                color = if (headline.isNullOrEmpty()) PantopusColors.appText else PantopusColors.appTextSecondary,
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = Spacing.s4),
             )
@@ -307,6 +346,7 @@ fun BodyReactionsBody(
                         .testTag("pulsePostDetail-repliesClosed"),
             )
         } else {
+            aboveComposer?.let { slot -> Box(modifier = Modifier.padding(horizontal = Spacing.s4)) { slot() } }
             CommentComposer(
                 avatarName = composerAvatarName,
                 avatarUrl = composerAvatarUrl,
@@ -315,9 +355,11 @@ fun BodyReactionsBody(
                 placeholder =
                     when {
                         replyingToName != null -> "Reply to $replyingToName..."
+                        composerPlaceholder != null -> composerPlaceholder
                         comments.isEmpty() && !placeholders -> "Be the first to reply..."
                         else -> "Add a comment"
                     },
+                requestFocus = focusComposer,
                 isFocusedPresentation = comments.isEmpty() && !placeholders,
                 isSending = isSending,
                 onSend = onSendTap,
@@ -333,11 +375,12 @@ fun BodyReactionsBody(
                     CommentRow(
                         row = row,
                         onAvatarTap = {
-                            row.authorUserId?.let(onCommentAvatarTap)
+                            row.authorUserId?.let(if (row.isMadeUp) onMadeUpAuthorTap else onCommentAvatarTap)
                         },
                         onReply = onCommentReply?.let { handler -> { handler(row) } },
                         onToggleLike = onCommentLike?.let { handler -> { handler(row) } },
                         onDelete = if (row.isOwn) onCommentDelete?.let { handler -> { handler(row) } } else null,
+                        onReport = if (row.isOwn) null else onCommentReport?.let { handler -> { handler(row) } },
                     )
                 }
                 if (hiddenReplyCount > 0 && onShowMoreReplies != null) {
@@ -565,7 +608,19 @@ private fun CommentComposer(
     isSending: Boolean,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Opened to reply: the box takes the keyboard once, when it first shows. */
+    requestFocus: Boolean = false,
 ) {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(requestFocus) {
+        if (requestFocus && !asked) {
+            asked = true
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     // Send is used while typing, as in chat: a tap on it never puts the keyboard away by itself.
     Row(
         modifier = modifier.fillMaxWidth().keepsKeyboard(),
@@ -603,6 +658,7 @@ private fun CommentComposer(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 44.dp)
+                    .focusRequester(focus)
                     .testTag("pulsePostDetail-composer")
                     .semantics { contentDescription = placeholder },
             decorationBox = { innerTextField ->
@@ -661,6 +717,7 @@ private fun CommentRow(
     onReply: (() -> Unit)? = null,
     onToggleLike: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onReport: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -678,17 +735,24 @@ private fun CommentRow(
                     .sizeIn(minWidth = 28.dp, minHeight = 28.dp)
                     .testTag("pulsePostDetail-commentAvatar-${row.id}")
                     .clickable(onClick = onAvatarTap)
-                    .semantics { contentDescription = "Open ${row.authorName}'s profile" },
+                    .semantics {
+                        contentDescription =
+                            if (row.isMadeUp) "Open the made-up name ${row.authorName}" else "Open ${row.authorName}'s profile"
+                    },
         ) {
-            AvatarWithIdentityRing(
-                name = row.authorName,
-                // The commenter's Moments ring: a tap on a ringed photo plays them.
-                modifier = Modifier.momentsRing(row.authorUserId, stroke = 1.5.dp, gap = 1.5.dp),
-                imageUrl = row.authorAvatarUrl,
-                identity = row.authorIdentity,
-                ringProgress = 1f,
-                size = if (row.indentLevel > 0) 24.dp else 28.dp,
-            )
+            if (row.isMadeUp) {
+                PenNamePicture(url = row.authorAvatarUrl, size = if (row.indentLevel > 0) 24.dp else 28.dp)
+            } else {
+                AvatarWithIdentityRing(
+                    name = row.authorName,
+                    // The commenter's Moments ring: a tap on a ringed photo plays them.
+                    modifier = Modifier.momentsRing(row.authorUserId, stroke = 1.5.dp, gap = 1.5.dp),
+                    imageUrl = row.authorAvatarUrl,
+                    identity = row.authorIdentity,
+                    ringProgress = 1f,
+                    size = if (row.indentLevel > 0) 24.dp else 28.dp,
+                )
+            }
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -713,7 +777,7 @@ private fun CommentRow(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
                 ) {
                     Text(
-                        text = row.authorName,
+                        text = if (row.isMadeUpByYou) PenNameCopy.you(row.authorName) else row.authorName,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PantopusColors.appText,
@@ -724,6 +788,10 @@ private fun CommentRow(
                         fontSize = 10.sp,
                         color = PantopusColors.appTextMuted,
                     )
+                }
+                if (row.isMadeUp) {
+                    PenNameMarks(verifiedHome = true, testTagSuffix = row.id)
+                    if (row.isMadeUpByYou) PenNameOnlyYouLine(testTagSuffix = row.id)
                 }
                 Text(
                     text = row.body,
@@ -794,6 +862,24 @@ private fun CommentRow(
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = PantopusColors.error,
+                        )
+                    }
+                }
+                if (onReport != null) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("pulsePostDetail-commentReport-${row.id}")
+                                .clickable(onClick = onReport)
+                                .semantics { contentDescription = "Report ${row.authorName}'s reply" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Report",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PantopusColors.appTextSecondary,
                         )
                     }
                 }

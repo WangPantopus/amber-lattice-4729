@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/toast-store';
 
 type Summary = api.admin.FunnelSummary;
 type CardCounts = api.admin.FunnelCardCounts;
+type LadderRow = { ladder: api.admin.FunnelLadder; rates: Record<string, number | null> };
 
 const WINDOWS = [7, 30, 90];
 const SIZES = ['5', '20', '50'];
@@ -23,6 +24,34 @@ const dollars = (cents: number | null) =>
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${Math.round(n * 1000) / 10}%`);
 const num = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('en-US'));
 const books = (b: Record<string, number> | null) => (b ? SIZES.map((n) => b[n] ?? 0).join(' / ') : '—');
+
+/**
+ * The lookup's ladder as table columns (By source, By layout): the steps, then the lookup's own record taps, Ask
+ * opens and visitors who reached its end (LOOKUPORDER), each with its rate per lookup.
+ */
+const LADDER_COLUMNS: { label: string; title: string; cell: (r: LadderRow) => string }[] = [
+  { label: 'Lookups', title: 'Visitors who saw a lookup', cell: (r) => num(r.ladder.previews) },
+  { label: 'Aha cards', title: 'Visitors who saw the stand-out card', cell: (r) => num(r.ladder.aha_views) },
+  { label: 'Record', title: 'Visitors who opened the home’s full record from the lookup, and the rate per lookup', cell: (r) => `${num(r.ladder.record_opens)} · ${pct(r.rates.record)}` },
+  { label: 'Ask', title: 'Visitors who opened Ask Pantopus on the lookup, and the rate per lookup', cell: (r) => `${num(r.ladder.ask_opens)} · ${pct(r.rates.ask)}` },
+  { label: 'Reached the end', title: 'Visitors who scrolled to the closed group at the end of the lookup, and the rate per lookup', cell: (r) => `${num(r.ladder.ends_reached)} · ${pct(r.rates.end)}` },
+  { label: 'Shares', title: 'Share this address taps', cell: (r) => num(r.ladder.shares) },
+  { label: 'Walls', title: 'Visitors who reached the sign-in wall', cell: (r) => num(r.ladder.walls) },
+  { label: 'Sign-ups started', title: 'Sign-up forms opened', cell: (r) => num(r.ladder.registers) },
+  { label: 'Accounts', title: 'Accounts made', cell: (r) => num(r.ladder.accounts) },
+  { label: 'Account rate', title: 'Accounts per lookup', cell: (r) => pct(r.rates.account) },
+];
+
+function LadderHead({ first }: { first: string }) {
+  return (
+    <thead>
+      <tr className="text-xs text-app-text-muted border-b border-app-border">
+        <th className="text-left font-normal px-3 py-2 sticky left-0 bg-app-surface">{first}</th>
+        {LADDER_COLUMNS.map((col) => <th key={col.label} title={col.title} className="text-right font-normal px-3 py-2">{col.label}</th>)}
+      </tr>
+    </thead>
+  );
+}
 
 /** The cards table's columns: a heading, what it means (the header's tooltip), and the cell. */
 const CARD_COLUMNS: { label: string; title: string; cell: (c: CardCounts) => string }[] = [
@@ -174,6 +203,19 @@ export default function AdminFunnelPage() {
 
                 {summary && (
                   <>
+                    {summary.around_you && (
+                      <KeyValues
+                        title="Around you (last 7 days · last 30 days)"
+                        testId="admin-funnel-around-you"
+                        rows={([
+                          ['People who opened it', 'people'], ['Opens (at most one an hour per person)', 'opens'],
+                          ['Reactions on its posts', 'reactions'], ['Replies', 'replies'], ['Saves', 'saves'],
+                          ['Reposts', 'reposts'],
+                        ] as const).map(([label, key]): [string, string] => [
+                          label, `${num(summary.around_you?.last_7_days[key])} · ${num(summary.around_you?.last_30_days[key])}`,
+                        ])}
+                      />
+                    )}
                     <KeyValues
                       title="The ladder"
                       testId="admin-funnel-ladder"
@@ -182,8 +224,57 @@ export default function AdminFunnelPage() {
                         ['Shares', `${num(summary.ladder.shares)} · ${pct(summary.rates.share)}`], ['Walls', `${num(summary.ladder.walls)} · ${pct(summary.rates.wall)}`],
                         ['Sign-ups started', `${num(summary.ladder.registers)} · ${pct(summary.rates.register)}`],
                         ['Accounts', `${num(summary.ladder.accounts)} · ${pct(summary.rates.account)}`],
+                        ['Opened the full record', `${num(summary.ladder.record_opens)} · ${pct(summary.rates.record)}`],
+                        ['Opened Ask Pantopus', `${num(summary.ladder.ask_opens)} · ${pct(summary.rates.ask)}`],
+                        ['Reached the end of the lookup', `${num(summary.ladder.ends_reached)} · ${pct(summary.rates.end)}`],
                       ]}
                     />
+                    <section data-testid="admin-funnel-sources">
+                      <h2 className="text-base font-semibold text-app-text">By source</h2>
+                      <p className="text-sm text-app-text-secondary mt-1">
+                        The ladder for each code a visitor arrived with (<code>?r=</code> on a card, a postcard or an ad link;
+                        ad codes start with <code>ad-</code>), most lookups first.
+                      </p>
+                      <div className="mt-3 overflow-x-auto rounded-xl border border-app-border">
+                        <table className="w-full text-sm whitespace-nowrap">
+                          <LadderHead first="Source" />
+                          <tbody>
+                            {(summary.by_route || []).map((r) => (
+                              <tr key={r.route} className="border-b border-app-border last:border-0 text-app-text" data-testid={`admin-funnel-source.${r.route}`}>
+                                <td className="px-3 py-2 sticky left-0 bg-app-surface">{r.route === '(direct)' ? 'No code' : r.route}</td>
+                                {LADDER_COLUMNS.map((col) => <td key={col.label} className="text-right px-3 py-2">{col.cell(r)}</td>)}
+                              </tr>
+                            ))}
+                            {(summary.by_route || []).length === 0 && (
+                              <tr><td colSpan={LADDER_COLUMNS.length + 1} className="px-3 py-4 text-center text-app-text-muted">No lookups in this window.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                    {(summary.by_layout || []).length > 1 && (
+                      <section data-testid="admin-funnel-layouts">
+                        <h2 className="text-base font-semibold text-app-text">By layout</h2>
+                        <p className="text-sm text-app-text-secondary mt-1">
+                          The ladder for each order the web drew the lookup in: v1 the order before November 24, v2 the
+                          new one (stand-out card, at a glance, money, then the groups). Web lookups only; a new account
+                          counts under the order its browser last saw.
+                        </p>
+                        <div className="mt-3 overflow-x-auto rounded-xl border border-app-border">
+                          <table className="w-full text-sm whitespace-nowrap">
+                            <LadderHead first="Layout" />
+                            <tbody>
+                              {(summary.by_layout || []).map((r) => (
+                                <tr key={r.layout} className="border-b border-app-border last:border-0 text-app-text" data-testid={`admin-funnel-layout.${r.layout}`}>
+                                  <td className="px-3 py-2 sticky left-0 bg-app-surface">{r.layout}</td>
+                                  {LADDER_COLUMNS.map((col) => <td key={col.label} className="text-right px-3 py-2">{col.cell(r)}</td>)}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
                     <KeyValues
                       title="Plans"
                       testId="admin-funnel-plans"

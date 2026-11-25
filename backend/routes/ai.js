@@ -103,6 +103,8 @@ const chatSchema = Joi.object({
     surface: Joi.string().max(40).required(),
     id: Joi.string().uuid().optional().allow(null),
     home_id: Joi.string().uuid().optional().allow(null),
+    // A saved address's Place screen (LOOKUPORDER SPEC 5.3); read only if it is the person's own.
+    saved_place_id: Joi.string().uuid().optional().allow(null),
     section: Joi.string().max(40).optional().allow(null),
   }).optional().allow(null),
 });
@@ -223,9 +225,14 @@ router.post('/chat', verifyToken, aiChatLimiter, validate(chatSchema), asyncHand
     if (!res.writableEnded) clientGone.abort();
   });
 
+  // Which app is asking (X-Client-Platform: "web-<build>", "ios-2.1.5", "android-2.1.5"), so an answer says where
+  // things are in that app. Unknown or missing: the assistant isn't told.
+  const platform = String(req.get('x-client-platform') || '').trim().toLowerCase();
+  const client = ['web', 'ios', 'android'].find((kind) => platform.startsWith(kind)) || null;
+
   await agentService.streamChat(
     {
-      userId, conversationId, message, coarseLocation, images, cards, context, sessionScope,
+      userId, conversationId, message, coarseLocation, images, cards, context, sessionScope, client,
       user: { id: userId, role: req.user.role || null }, signal: clientGone.signal,
     },
     sseWriter

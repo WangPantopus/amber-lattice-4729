@@ -3,7 +3,7 @@
  * behind a long random key. At most 10 live links a person (50 kept). A key is the link's only credential: it is never
  * logged (app.js redacts it from the request log; nothing here logs it) and it stops working the moment its link is
  * switched off, ends, or the person turns links off. Opens are a count and the last day, never who (item 9.6).
- * Behind PROFILE_LINKS, beneath PROFILE_SOURCES.
+ * On (SPEC rule 4.12); PROFILE_LINKS=0, or PROFILE_SOURCES=0, is the emergency off.
  */
 
 const crypto = require('crypto');

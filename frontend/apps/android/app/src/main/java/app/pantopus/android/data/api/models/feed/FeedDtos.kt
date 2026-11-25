@@ -89,7 +89,31 @@ data class FeedPost(
     @Json(name = "allow_external_share") val allowExternalShare: Boolean? = null,
     @Json(name = "moderation_state") val moderationState: String? = null,
     val audience: String? = null,
+    /**
+     * Who replied and the latest reply, for a card that shows the conversation before it is opened. Only Today's
+     * Around you sends it, and only on a post with replies (`backend/services/aroundYou/lists.js`).
+     */
+    val conversation: FeedConversation? = null,
+    /**
+     * The identity projection of the author (made-up names read it: [FeedPostCreator.madeUp], its badges and
+     * [FeedPostCreator.isYou]). Older servers and most rows send [creator] only.
+     */
+    val author: FeedPostCreator? = null,
+    /** Written under a made-up name (contract "What the server sends"); older servers leave it out. */
+    @Json(name = "made_up_name") val madeUpName: Boolean? = null,
+    /** True only for the person who wrote it under their made-up name: the card says "(you)". */
+    @Json(name = "viewer_is_author") val viewerIsAuthor: Boolean? = null,
+    /** The reply box may offer "Post as" (a made-up name) on this post; an older server leaves it out (no). */
+    @Json(name = "takes_made_up_name_reply") val takesMadeUpNameReply: Boolean? = null,
 ) {
+    /** A made-up name's post: the card shows the name, its marks and no profile. */
+    val isMadeUp: Boolean
+        get() = madeUpName == true || author?.type == PEN_NAME_TYPE || creator?.type == PEN_NAME_TYPE
+
+    /** The made-up name's id (Mute and Block act on it); null on every other post. */
+    val penNameId: String?
+        get() = if (isMadeUp) (author?.id ?: creator?.id)?.takeIf { it.isNotEmpty() } else null
+
     val canShareExternally: Boolean
         get() =
             !isSeeded && permitsExternalPostShare(readScope, visibility, audience, allowExternalShare, moderationState)
@@ -99,6 +123,9 @@ data class FeedPost(
 
     /** Where the post's story was published (an Around you headline's outlet); null on most posts. */
     val source: PostSource? get() = lifecycleMetadata?.source
+
+    /** A story Today's Around you posted for an outlet, with its topics; null for every other post. */
+    val aroundYou: AroundYouStoryFacts? get() = lifecycleMetadata?.aroundYou
 
     /** Its emoji reactions as the card shows them (an event's are its Going, counted in [likeCount]). */
     val reactionSummary: PostReactionSummary
@@ -117,6 +144,43 @@ data class FeedRepostedBy(
     val count: Int = 0,
     /** The viewer reposted it (then [names] starts with "You"); older servers leave it out. */
     val viewer: Boolean = false,
+)
+
+/**
+ * A post's reply preview: the latest repliers (newest first, at most three) and the latest reply, cut short. A value
+ * that can't be read reads as none, never failing the post that carries it.
+ */
+@JsonClass(generateAdapter = true)
+data class FeedConversation(
+    val people: List<FeedConversationPerson> = emptyList(),
+    val latest: FeedConversationReply? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class FeedConversationPerson(
+    val id: String? = null,
+    val name: String? = null,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class FeedConversationReply(
+    val id: String? = null,
+    @Json(name = "user_id") val userId: String? = null,
+    val name: String? = null,
+    val text: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+)
+
+/**
+ * What a post Today's Around you made says about itself (`post_metadata.around_you`, set only by the server): the
+ * section that took it and its topics (`events`, `kids`, `sports`, `government`, `business`, `safety`). A value that
+ * can't be read reads as none.
+ */
+@JsonClass(generateAdapter = true)
+data class AroundYouStoryFacts(
+    val section: String? = null,
+    val topics: List<String> = emptyList(),
 )
 
 /**
@@ -153,6 +217,12 @@ data class FeedPostCreator(
     val city: String? = null,
     val state: String? = null,
     @Json(name = "account_type") val accountType: String? = null,
+    /** A made-up name (`type: "pen_name"`); older servers leave it out. */
+    val madeUp: Boolean? = null,
+    /** `made_up_name`, `verified_home`: the card's marks under a made-up name. */
+    val badges: List<String>? = null,
+    /** Reaches only the person who wrote it under their made-up name. */
+    val isYou: Boolean? = null,
 ) {
     /** Best-effort display name across legacy and identity-projection fields. */
     fun displayName(): String {
@@ -169,6 +239,9 @@ data class FeedPostCreator(
     val photoUrl: String?
         get() = avatarUrl ?: profilePictureUrl
 }
+
+/** The identity projection's `type` for a made-up name. */
+const val PEN_NAME_TYPE = "pen_name"
 
 /** Paging envelope returned by `GET /api/posts/feed`. */
 @JsonClass(generateAdapter = true)

@@ -1640,6 +1640,10 @@ enum class MoneyLeadKind {
     @Json(name = "rent_band")
     RENT_BAND,
 
+    /** The area's typical home value (LOOKUPORDER 1.5). A client that draws [PlacePreviewMoney] leaves it out. */
+    @Json(name = "home_value")
+    HOME_VALUE,
+
     UNKNOWN,
 }
 
@@ -1736,4 +1740,134 @@ data class PlacePreview(
     val free: PlacePreviewFree? = null,
     val locked: List<PlacePreviewLockedSection>? = null,
     val disclaimer: String? = null,
+    /** LOOKUPORDER 1.1: the order to draw the blocks in. Null from older servers: the built-in order. */
+    val layout: PlacePreviewLayout? = null,
+    /** LOOKUPORDER 1.2: one row per check that has an answer, worst first. */
+    val glance: List<PlacePreviewGlanceRow>? = null,
+    /** LOOKUPORDER 1.3: the checks that could not be made today. */
+    @Json(name = "not_checked") val notChecked: List<PlacePreviewNotChecked>? = null,
+    /** LOOKUPORDER 1.7: the area's money figures and price curve. Every part optional. */
+    val money: PlacePreviewMoney? = null,
+    /** LOOKUPORDER 1.5: the flood cost band (`flood_premium`), sent whenever it is held; first in Risk & readiness. */
+    @Json(name = "flood_cost") val floodCost: PlaceMoneyLead? = null,
+    /** LOOKUPORDER 5.1a: the signed ticket the reading takes beside the address; absent from older servers. */
+    @Json(name = "reading_ticket") val readingTicket: String? = null,
+)
+
+/**
+ * LOOKUPORDER 1.1: the server's order for the lookup. `order` names blocks (`aha`, `glance`, `money`, `record`,
+ * `ask`, `ballot`, `group:<id>`, `section:<id>`, `locked`, `not_checked`, `privacy`); a name a client does not
+ * know is skipped.
+ */
+@JsonClass(generateAdapter = true)
+data class PlacePreviewLayout(
+    val version: String? = null,
+    val order: List<String>? = null,
+)
+
+/** LOOKUPORDER 1.2: one line of the glance card; a tap goes to [sectionId]'s card. */
+@JsonClass(generateAdapter = true)
+data class PlacePreviewGlanceRow(
+    val id: String = "",
+    val label: String = "",
+    val value: String = "",
+    /** `alert`, `watch`, `calm` or `info`, the stand-out card's tones; see [toneEnum]. */
+    val tone: String? = null,
+    @Json(name = "section_id") val sectionId: String? = null,
+) {
+    val toneEnum: PlacePreviewAhaTone get() = PlacePreviewAhaTone.from(tone)
+}
+
+/** LOOKUPORDER 1.3: a section that is `error` or `unavailable` today, by its label. */
+@JsonClass(generateAdapter = true)
+data class PlacePreviewNotChecked(
+    val id: String = "",
+    val label: String = "",
+)
+
+/** LOOKUPORDER 1.7: the money card. Area figures, never this home's own value. */
+@JsonClass(generateAdapter = true)
+data class PlacePreviewMoney(
+    val value: PlaceMoneyFigure? = null,
+    val trend: PlaceMoneyTrend? = null,
+    val tax: PlaceMoneyFigure? = null,
+    @Json(name = "record_line") val recordLine: String? = null,
+) {
+    val isRenderable: Boolean get() = value?.amount != null || tax?.amount != null || trend?.isDrawable == true
+}
+
+/** A typical dollar figure for the area: the home value or the property tax a year. */
+@JsonClass(generateAdapter = true)
+data class PlaceMoneyFigure(
+    val amount: Double? = null,
+    val label: String? = null,
+    val scope: String? = null,
+    val source: String? = null,
+)
+
+/**
+ * The area's home price index over the years (FHFA), as percent change since the first year. A price-change index,
+ * never a home's value: never drawn as dollars.
+ */
+@JsonClass(generateAdapter = true)
+data class PlaceMoneyTrend(
+    /** `zip` or `county`: where [lastChangePct] is from. The curve is always the county's. */
+    val scope: String? = null,
+    /** What [lastChangePct] is about: "ZIP 98607", or the county's name. */
+    @Json(name = "area_name") val areaName: String? = null,
+    /** The county the curve draws, and its own last yearly change. */
+    @Json(name = "county_name") val countyName: String? = null,
+    @Json(name = "county_last_change_pct") val countyLastChangePct: Double? = null,
+    val year: Int? = null,
+    @Json(name = "last_change_pct") val lastChangePct: Double? = null,
+    @Json(name = "since_year") val sinceYear: Int? = null,
+    @Json(name = "since_change_pct") val sinceChangePct: Double? = null,
+    val years: List<Int>? = null,
+    @Json(name = "change_since_first_pct") val changeSinceFirstPct: List<Double>? = null,
+    val source: String? = null,
+) {
+    /** Two points or more make a line. */
+    val isDrawable: Boolean get() = (changeSinceFirstPct?.size ?: 0) >= 2
+}
+
+/** `POST /api/public/place/reading`: the address exactly as the lookup used it. */
+@JsonClass(generateAdapter = true)
+data class PlaceReadingRequest(
+    val address: String,
+    /** The lookup's `reading_ticket`, when it sent one (not sent when null). */
+    val ticket: String? = null,
+)
+
+/** The route's answer: `{ reading }`. */
+@JsonClass(generateAdapter = true)
+data class PlaceReadingResponse(
+    val reading: PlaceReading? = null,
+)
+
+/**
+ * Pantopus AI's reading of the lookup (LOOKUPORDER 5.1), written from the page's public records only: what matters
+ * most, the steps in order with the agency behind each, what the page can't tell, and three questions with answers.
+ */
+@JsonClass(generateAdapter = true)
+data class PlaceReading(
+    val matters: String = "",
+    val steps: List<PlaceReadingStep> = emptyList(),
+    @Json(name = "cannot_tell") val cannotTell: String = "",
+    val questions: List<PlaceReadingQuestion> = emptyList(),
+) {
+    /** Never a half reading: without what matters, what it can't tell and its questions there is none to show. */
+    val isComplete: Boolean get() = matters.isNotBlank() && cannotTell.isNotBlank() && questions.isNotEmpty()
+}
+
+@JsonClass(generateAdapter = true)
+data class PlaceReadingStep(
+    val text: String = "",
+    /** The agency that publishes the fact, e.g. "EPA". */
+    val source: String = "",
+)
+
+@JsonClass(generateAdapter = true)
+data class PlaceReadingQuestion(
+    val q: String = "",
+    val a: String = "",
 )

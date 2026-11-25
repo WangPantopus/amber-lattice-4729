@@ -75,7 +75,7 @@ async function storeFiles(row, prepared) {
     contract: media.STORAGE_CONTRACT,
     bucket,
     upload_sha256: prepared.uploadSha,
-    key: media.keyFor(row.user_id, row.id, 'file', media.sha256(file.buffer), EXTENSIONS[file.mimetype] || 'bin'),
+    key: media.keyFor(media.folderOwner(row), row.id, 'file', media.sha256(file.buffer), EXTENSIONS[file.mimetype] || 'bin'),
     content_type: file.mimetype,
     bytes: file.buffer.length,
     width: file.width || null,
@@ -87,17 +87,17 @@ async function storeFiles(row, prepared) {
   };
   await media.put(bucket, record.key, file.buffer, file.mimetype);
   if (poster) {
-    record.poster_key = media.keyFor(row.user_id, row.id, 'poster', media.sha256(poster.buffer), 'jpg');
+    record.poster_key = media.keyFor(media.folderOwner(row), row.id, 'poster', media.sha256(poster.buffer), 'jpg');
     await media.put(bucket, record.poster_key, poster.buffer, 'image/jpeg');
   }
   for (const [index, frame] of frames.entries()) {
-    const key = media.keyFor(row.user_id, row.id, `frame${index}`, media.sha256(frame.buffer), 'jpg');
+    const key = media.keyFor(media.folderOwner(row), row.id, `frame${index}`, media.sha256(frame.buffer), 'jpg');
     await media.put(bucket, key, frame.buffer, 'image/jpeg');
     record.frame_keys.push(key);
   }
   const thumb = await media.thumbnail(poster ? poster.buffer : file.buffer);
   if (thumb) {
-    record.thumb_key = media.keyFor(row.user_id, row.id, 'thumb', media.sha256(thumb), 'jpg');
+    record.thumb_key = media.keyFor(media.folderOwner(row), row.id, 'thumb', media.sha256(thumb), 'jpg');
     await media.put(bucket, record.thumb_key, thumb, 'image/jpeg');
   }
   return record;

@@ -26,8 +26,18 @@ extension View {
     /// The ring sits outside the circle (`gap` away), so the circle keeps its size and place. `spoken: false` where
     /// the circle is part of a row VoiceOver reads as one element: the tap still plays, and the row keeps its own
     /// label and identifier.
-    func momentsRing(of userId: String?, lineWidth: CGFloat = 2, gap: CGFloat = 2, spoken: Bool = true) -> some View {
-        modifier(MomentsProfileRing(userId: userId, lineWidth: lineWidth, gap: gap, spoken: spoken))
+    ///
+    /// The same circle also wears the outer ring of the person's mark (the profile with sources, board 6) while the
+    /// `profile_sources` launch key is on: it hugs the circle, and the Moments ring sits just outside it.
+    /// `profileMark: false` where the circle already sits inside the whole mark (the profile's own header).
+    func momentsRing(
+        of userId: String?,
+        lineWidth: CGFloat = 2,
+        gap: CGFloat = 2,
+        spoken: Bool = true,
+        profileMark: Bool = true
+    ) -> some View {
+        modifier(MomentsProfileRing(userId: userId, lineWidth: lineWidth, gap: gap, spoken: spoken, profileMark: profileMark))
     }
 }
 
@@ -36,6 +46,7 @@ struct MomentsProfileRing: ViewModifier {
     let lineWidth: CGFloat
     let gap: CGFloat
     let spoken: Bool
+    var profileMark = true
 
     /// This circle's own stage, for a circle on a screen that is itself shown over the app (your own profile, a
     /// sheet): the tabs' stage can't show a viewer over that.
@@ -48,26 +59,50 @@ struct MomentsProfileRing: ViewModifier {
     func body(content: Content) -> some View {
         let people = MomentsPeopleRings.shared
         let ring = people.ring(for: userId)
+        let marks = ProfileMarks.shared
+        let mark = profileMark ? marks.mark(for: userId) : nil
+        // Board 6 counts the mark's ring as part of the avatar: the circle keeps its size, and the room for the ring is
+        // kept beside it from the first frame, so nothing moves when the ring comes in.
+        ProfileMarkRoom(keeps: profileMark && marks.keepsRoom(for: userId)) {
+            ringed(content, ring: ring, mark: mark, people: people, marks: marks)
+        }
+    }
+
+    private func ringed(
+        _ content: Content,
+        ring: MomentRingDTO?,
+        mark: ProfileMarkSummary?,
+        people: MomentsPeopleRings,
+        marks: ProfileMarks
+    ) -> some View {
         content
             .overlay {
+                if let mark {
+                    GeometryReader { proxy in
+                        ProfileAvatarRing(summary: mark, diameter: min(proxy.size.width, proxy.size.height))
+                    }
+                }
+            }
+            .overlay {
                 if let ring {
-                    MomentRingStroke(seen: ring.ringSeen, lineWidth: lineWidth)
-                        .padding(-(gap + lineWidth))
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+                    if let mark {
+                        GeometryReader { proxy in
+                            momentsStroke(ring, outside: markReach(mark, proxy.size))
+                        }
+                    } else {
+                        momentsStroke(ring, outside: 0)
+                    }
                 }
             }
             .overlay {
                 if let ring, plays {
-                    Button { play(ring) } label: {
-                        Circle().fill(Color.clear).contentShape(Circle())
+                    if let mark {
+                        GeometryReader { proxy in
+                            playButton(ring, outside: markReach(mark, proxy.size))
+                        }
+                    } else {
+                        playButton(ring, outside: 0)
                     }
-                    .buttonStyle(.plain)
-                    .padding(-(gap + lineWidth))
-                    .accessibilityLabel(ring.mine ? "Your Moments" : "\(ring.author.name)'s Moments")
-                    .accessibilityHint("Plays them")
-                    .accessibilityIdentifier("moments.profileRing.\(ring.author.id)")
-                    .accessibilityHidden(!spoken)
                 }
             }
             // Asked when the circle comes on screen, and again each minute it stays there.
@@ -77,7 +112,39 @@ struct MomentsProfileRing: ViewModifier {
                     try? await Task.sleep(for: .seconds(MomentsPeopleRings.keepFor + 1))
                 }
             }
+            .task(id: profileMark ? userId : nil) {
+                guard profileMark, ProfileMarks.isOn else { return }
+                while !Task.isCancelled {
+                    marks.want(userId)
+                    try? await Task.sleep(for: .seconds(ProfileMarks.keepFor + 1))
+                }
+            }
             .showsMomentsRingViewer(on: own)
+    }
+
+    private func momentsStroke(_ ring: MomentRingDTO, outside: CGFloat) -> some View {
+        MomentRingStroke(seen: ring.ringSeen, lineWidth: lineWidth)
+            .padding(-(gap + lineWidth + outside))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private func playButton(_ ring: MomentRingDTO, outside: CGFloat) -> some View {
+        Button { play(ring) } label: {
+            Circle().fill(Color.clear).contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(-(gap + lineWidth + outside))
+        .accessibilityLabel(ring.mine ? "Your Moments" : "\(ring.author.name)'s Moments")
+        .accessibilityHint("Plays them")
+        .accessibilityIdentifier("moments.profileRing.\(ring.author.id)")
+        .accessibilityHidden(!spoken)
+    }
+
+    /// How much further out the Moments ring sits when the mark's ring is there: just beyond it, 1 pt clear, in place
+    /// of its own gap (so the pair stays as tight as the Moments ring alone plus the mark).
+    private func markReach(_ mark: ProfileMarkSummary, _ size: CGSize) -> CGFloat {
+        max(0, ProfileAvatarRing.reach(mark, diameter: min(size.width, size.height)) + 1 - gap)
     }
 
     /// Plays the person's Moments from the first one not watched yet. On the open iPhone Duo held sideways they play

@@ -211,6 +211,161 @@ function buildRecipientResult(user, homeId, homeAddress, homeMediaUrl, rank) {
   };
 }
 
+/**
+ * The people a sender's search finds to address mail or a Christmas card to, as the compose screens list them: members
+ * of `homeId` when the household mail rule admits the sender to it, then the sender's connections, then anyone their
+ * name search may find (isFindableBy), at most ten, each by the name they show. `peopleOnly` leaves businesses out.
+ * GET /compose/recipients answers with this, and the assistant's recipient lookup reads the same list. Throws on a
+ * read error.
+ */
+async function searchRecipients(senderId, { query, homeId = null, peopleOnly = false }) {
+  const escapedQuery = escapeIlike(query);
+  const searchPattern = `%${escapedQuery}%`;
+
+  const results = [];
+  const seenUserIds = new Set();
+
+  // --- Priority 1: Household members (if homeId provided and the sender belongs to it) ---
+  const senderHouseholds = homeId ? await getAccessibleHomeIds(senderId) : [];
+  if (homeId && senderHouseholds.includes(homeId.toLowerCase())) {
+    // Fetch home data once, outside the member loop
+    const [householdRes, homeRes] = await Promise.all([
+      supabaseAdmin
+        .from('HomeOccupancy')
+        // Name the user_id FK: HomeOccupancy also references User through
+        // added_by_user_id, and an unqualified embed fails as ambiguous.
+        .select('user_id, role, User!HomeOccupancy_user_id_fkey!inner(id, name, username, verified, profile_picture_url)')
+        .eq('home_id', homeId)
+        .eq('is_active', true)
+        .in('verification_status', MAIL_TRUSTED_VERIFICATION_STATUSES),
+      supabaseAdmin
+        .from('Home')
+        .select('id, address, city, state, primary_photo_url')
+        .eq('id', homeId)
+        .single(),
+    ]);
+
+    const readers = new Set(await mailReaderIdsOrThrow(homeId));
+    const householdRows = (householdRes.data || []).filter((row) => readers.has(row.user_id));
+    const home = homeRes.data;
+    let homeMediaUrl = null;
+
+    if (home) {
+      homeMediaUrl = await getHomeMediaUrl(homeId, home.primary_photo_url);
+    }
+
+    const homeAddress = home ? `${home.address}, ${home.city}, ${home.state}` : null;
+
+    if (householdRows) {
+      // A housemate is found by the name and handle they show (their Local Profile) and, since the household's
+      // mail comes addressed to them by name, by their account's name and username too.
+      const housemates = await loadChatPeople(householdRows.map((row) => row.User?.id));
+      const wanted = query.toLowerCase();
+      for (const row of householdRows) {
+        const user = row.User;
+        if (!user || user.id === senderId) continue;
+        const person = housemates.get(String(user.id));
+        const names = [user.name, user.username, person?.displayName, person?.handle];
+        if (!names.some((name) => (name || '').toLowerCase().includes(wanted))) continue;
+
+        seenUserIds.add(user.id);
+        results.push(buildRecipientResult(user, homeId, homeAddress, homeMediaUrl, 0));
+      }
+    }
+  }
+
+  // --- Priority 2: Connected users (accepted Relationships) ---
+  const connectionIds = await getConnectionUserIds(senderId);
+
+  if (connectionIds.size > 0) {
+    const connectionMatches = await idsFoundByName(searchPattern, { within: Array.from(connectionIds), limit: 10 });
+    const { data: connectedUsers } = connectionMatches.length
+      ? await supabaseAdmin
+        .from('User')
+        .select('id, name, username, verified, profile_picture_url, account_type')
+        .in('id', connectionMatches)
+      : { data: [] };
+
+    if (connectedUsers) {
+      // Batch-fetch home occupancies for all connected users at once
+      const connUserIds = connectedUsers
+        .filter((u) => !seenUserIds.has(u.id))
+        .map((u) => u.id);
+
+      const homesByUserId = {};
+      for (const userId of connUserIds) {
+        const homes = await getAccessibleHomeIds(userId);
+        if (!homes.length) continue;
+        const { data: home, error: homeError } = await supabaseAdmin.from('Home')
+          .select('id, city, state').eq('id', homes[0]).maybeSingle();
+        if (homeError) throw homeError;
+        if (home) homesByUserId[userId] = home;
+      }
+
+      for (const user of connectedUsers) {
+        if (seenUserIds.has(user.id)) continue;
+        if (peopleOnly && user.account_type === 'business') continue;
+        seenUserIds.add(user.id);
+
+        const userHome = homesByUserId[user.id] || null;
+        const homeAddress = userHome ? [userHome.city, userHome.state].filter(Boolean).join(', ') || null : null;
+
+        results.push(buildRecipientResult(user, userHome?.id, homeAddress, null, 1));
+      }
+    }
+  }
+
+  // --- Priority 3: General user search ---
+  if (results.length < 10) {
+    const remaining = 10 - results.length;
+    const excludeIds = [senderId, ...seenUserIds];
+
+    const generalMatches = await idsFoundByName(searchPattern, { exclude: excludeIds, limit: remaining });
+    const { data: generalUsers } = generalMatches.length
+      ? await supabaseAdmin
+        .from('User')
+        .select('id, name, username, verified, profile_picture_url, profile_visibility, account_type')
+        .in('id', generalMatches)
+      : { data: [] };
+
+    if (generalUsers) {
+      const generalUserIds = generalUsers.map((user) => user.id);
+      const unpublishedBusinesses = await unpublishedBusinessIds(generalUserIds);
+      const { data: localProfiles, error: localProfileError } = generalUserIds.length
+        ? await supabaseAdmin.from('LocalProfile').select('user_id, search_visibility, profile_visibility').in('user_id', generalUserIds)
+        : { data: [], error: null };
+      if (localProfileError) throw localProfileError;
+      const localProfileByUserId = new Map((localProfiles || []).map((profile) => [profile.user_id, profile]));
+      // Someone who is neither a housemate nor a connection is matched by name
+      // only: their Home, address and photo stay private.
+      for (const user of generalUsers) {
+        if (results.length >= 10) break;
+        if (seenUserIds.has(user.id)) continue;
+        if (unpublishedBusinesses.has(String(user.id))) continue;
+        if (peopleOnly && user.account_type === 'business') continue;
+        if (!(await isFindableBy(senderId, user, localProfileByUserId.get(user.id)))) continue;
+        seenUserIds.add(user.id);
+        results.push(buildRecipientResult(user, null, null, null, 2));
+      }
+    }
+  }
+
+  // Sort by rank, limit to 10
+  results.sort((a, b) => a._rank - b._rank);
+  // Each person by their Local Profile's name and handle, as neighbors see them (a business, or anyone without one,
+  // by the account); someone who can't be read keeps the account row's name.
+  const shown = results.slice(0, 10);
+  const people = await loadChatPeople(shown.map((result) => result.userId));
+  const recipients = shown.map(({ _rank, ...rest }) => {
+    const person = people.get(String(rest.userId));
+    if (!person) return rest;
+    const { displayName, handle } = person;
+    return { ...rest, name: displayName, username: handle || null };
+  });
+
+  return recipients;
+}
+
 // ─── Route 1: Recipient Search ─────────────────────────────
 
 /**
@@ -239,151 +394,7 @@ router.get('/recipients', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid homeId format.' });
     }
 
-    const escapedQuery = escapeIlike(query);
-    const searchPattern = `%${escapedQuery}%`;
-
-    const results = [];
-    const seenUserIds = new Set();
-
-    // --- Priority 1: Household members (if homeId provided and the sender belongs to it) ---
-    const senderHouseholds = homeId ? await getAccessibleHomeIds(senderId) : [];
-    if (homeId && senderHouseholds.includes(homeId.toLowerCase())) {
-      // Fetch home data once, outside the member loop
-      const [householdRes, homeRes] = await Promise.all([
-        supabaseAdmin
-          .from('HomeOccupancy')
-          // Name the user_id FK: HomeOccupancy also references User through
-          // added_by_user_id, and an unqualified embed fails as ambiguous.
-          .select('user_id, role, User!HomeOccupancy_user_id_fkey!inner(id, name, username, verified, profile_picture_url)')
-          .eq('home_id', homeId)
-          .eq('is_active', true)
-          .in('verification_status', MAIL_TRUSTED_VERIFICATION_STATUSES),
-        supabaseAdmin
-          .from('Home')
-          .select('id, address, city, state, primary_photo_url')
-          .eq('id', homeId)
-          .single(),
-      ]);
-
-      const readers = new Set(await mailReaderIdsOrThrow(homeId));
-      const householdRows = (householdRes.data || []).filter((row) => readers.has(row.user_id));
-      const home = homeRes.data;
-      let homeMediaUrl = null;
-
-      if (home) {
-        homeMediaUrl = await getHomeMediaUrl(homeId, home.primary_photo_url);
-      }
-
-      const homeAddress = home ? `${home.address}, ${home.city}, ${home.state}` : null;
-
-      if (householdRows) {
-        // A housemate is found by the name and handle they show (their Local Profile) and, since the household's
-        // mail comes addressed to them by name, by their account's name and username too.
-        const housemates = await loadChatPeople(householdRows.map((row) => row.User?.id));
-        const wanted = query.toLowerCase();
-        for (const row of householdRows) {
-          const user = row.User;
-          if (!user || user.id === senderId) continue;
-          const person = housemates.get(String(user.id));
-          const names = [user.name, user.username, person?.displayName, person?.handle];
-          if (!names.some((name) => (name || '').toLowerCase().includes(wanted))) continue;
-
-          seenUserIds.add(user.id);
-          results.push(buildRecipientResult(user, homeId, homeAddress, homeMediaUrl, 0));
-        }
-      }
-    }
-
-    // --- Priority 2: Connected users (accepted Relationships) ---
-    const connectionIds = await getConnectionUserIds(senderId);
-
-    if (connectionIds.size > 0) {
-      const connectionMatches = await idsFoundByName(searchPattern, { within: Array.from(connectionIds), limit: 10 });
-      const { data: connectedUsers } = connectionMatches.length
-        ? await supabaseAdmin
-          .from('User')
-          .select('id, name, username, verified, profile_picture_url, account_type')
-          .in('id', connectionMatches)
-        : { data: [] };
-
-      if (connectedUsers) {
-        // Batch-fetch home occupancies for all connected users at once
-        const connUserIds = connectedUsers
-          .filter((u) => !seenUserIds.has(u.id))
-          .map((u) => u.id);
-
-        const homesByUserId = {};
-        for (const userId of connUserIds) {
-          const homes = await getAccessibleHomeIds(userId);
-          if (!homes.length) continue;
-          const { data: home, error: homeError } = await supabaseAdmin.from('Home')
-            .select('id, city, state').eq('id', homes[0]).maybeSingle();
-          if (homeError) throw homeError;
-          if (home) homesByUserId[userId] = home;
-        }
-
-        for (const user of connectedUsers) {
-          if (seenUserIds.has(user.id)) continue;
-          if (peopleOnly && user.account_type === 'business') continue;
-          seenUserIds.add(user.id);
-
-          const userHome = homesByUserId[user.id] || null;
-          const homeAddress = userHome ? [userHome.city, userHome.state].filter(Boolean).join(', ') || null : null;
-
-          results.push(buildRecipientResult(user, userHome?.id, homeAddress, null, 1));
-        }
-      }
-    }
-
-    // --- Priority 3: General user search ---
-    if (results.length < 10) {
-      const remaining = 10 - results.length;
-      const excludeIds = [senderId, ...seenUserIds];
-
-      const generalMatches = await idsFoundByName(searchPattern, { exclude: excludeIds, limit: remaining });
-      const { data: generalUsers } = generalMatches.length
-        ? await supabaseAdmin
-          .from('User')
-          .select('id, name, username, verified, profile_picture_url, profile_visibility, account_type')
-          .in('id', generalMatches)
-        : { data: [] };
-
-      if (generalUsers) {
-        const generalUserIds = generalUsers.map((user) => user.id);
-        const unpublishedBusinesses = await unpublishedBusinessIds(generalUserIds);
-        const { data: localProfiles, error: localProfileError } = generalUserIds.length
-          ? await supabaseAdmin.from('LocalProfile').select('user_id, search_visibility, profile_visibility').in('user_id', generalUserIds)
-          : { data: [], error: null };
-        if (localProfileError) throw localProfileError;
-        const localProfileByUserId = new Map((localProfiles || []).map((profile) => [profile.user_id, profile]));
-        // Someone who is neither a housemate nor a connection is matched by name
-        // only: their Home, address and photo stay private.
-        for (const user of generalUsers) {
-          if (results.length >= 10) break;
-          if (seenUserIds.has(user.id)) continue;
-          if (unpublishedBusinesses.has(String(user.id))) continue;
-          if (peopleOnly && user.account_type === 'business') continue;
-          if (!(await isFindableBy(senderId, user, localProfileByUserId.get(user.id)))) continue;
-          seenUserIds.add(user.id);
-          results.push(buildRecipientResult(user, null, null, null, 2));
-        }
-      }
-    }
-
-    // Sort by rank, limit to 10
-    results.sort((a, b) => a._rank - b._rank);
-    // Each person by their Local Profile's name and handle, as neighbors see them (a business, or anyone without one,
-    // by the account); someone who can't be read keeps the account row's name.
-    const shown = results.slice(0, 10);
-    const people = await loadChatPeople(shown.map((result) => result.userId));
-    const recipients = shown.map(({ _rank, ...rest }) => {
-      const person = people.get(String(rest.userId));
-      if (!person) return rest;
-      const { displayName, handle } = person;
-      return { ...rest, name: displayName, username: handle || null };
-    });
-
-    res.json({ recipients });
+    res.json({ recipients: await searchRecipients(senderId, { query, homeId, peopleOnly }) });
   } catch (err) {
     logger.error('Recipient search error', { error: err.message, userId: req.user.id });
     res.status(500).json({ error: 'Failed to search recipients' });
@@ -561,3 +572,4 @@ router.post('/withdraw/:mailId', verifyToken, async (req, res) => {
 
 module.exports = router;
 module.exports.personFindableBy = personFindableBy;
+module.exports.searchRecipients = searchRecipients;

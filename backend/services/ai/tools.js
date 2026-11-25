@@ -10,12 +10,14 @@
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const noaa = require('../external/noaa');
 const logger = require('../../utils/logger');
-const { listEffectivelyOpenSlots } = require('../supportTrainSlotAvailability');
 const { resolveLocation } = require('../context/locationResolver');
 const { escapeIlike } = require('../../utils/escapeIlike');
 const { draftPickupSchedule } = require('./pickupDraft');
 const { readToolDefinitions, runReadTool, PLACE_POST_TYPES } = require('./readTools');
 const { nearbyReadToolDefinitions, runNearbyReadTool } = require('./readToolsNearby');
+const { aroundReadToolDefinitions, runAroundReadTool } = require('./readToolsAround');
+const { supportTrainReadToolDefinitions, runSupportTrainReadTool } = require('./readToolsSupportTrains');
+const { composeToolDefinitions, runComposeTool, COMPOSE_CLOSINGS } = require('./composeDrafts');
 const { verificationReadToolDefinitions, runVerificationReadTool } = require('./readToolsVerification');
 const { mailReadToolDefinitions, runMailReadTool, MAIL_TOOL_NAMES } = require('./readToolsMail');
 const { chatReadToolDefinitions, runChatReadTool } = require('./readToolsChats');
@@ -233,39 +235,12 @@ const toolDefinitions = [
       additionalProperties: false,
     },
   },
-  {
-    name:'list_user_support_trains',
-    description: 'List Support Trains the current user organizes or participates in.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        status: {
-          type: ['string', 'null'],
-          enum: ['draft', 'published', 'active', 'paused', 'completed', 'archived', null],
-          description: 'Optional filter by Support Train status.',
-        },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name:'get_support_train_summary',
-    description: 'Get a summary of one Support Train, including open slots, recipient summary, and restriction chips.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        support_train_id: {
-          type: 'string',
-          description: 'UUID of the Support Train.',
-        },
-      },
-      required: ['support_train_id'],
-      additionalProperties: false,
-    },
-  },
+  // Support Trains they are part of, ones listed near them, and one in short (readToolsSupportTrains.js).
+  ...supportTrainReadToolDefinitions,
   ...readToolDefinitions,
   ...nearbyReadToolDefinitions,
+  // Around you, Today's second half: what local outlets report near them (readToolsAround.js).
+  ...aroundReadToolDefinitions,
   ...verificationReadToolDefinitions,
   // Their Mail: the Mail tab's lists, search and Sent, and one piece in full (readToolsMail.js).
   ...mailReadToolDefinitions,
@@ -278,6 +253,9 @@ const toolDefinitions = [
   // Their Wallet and payments, read only (readToolsWallet.js).
   ...walletReadToolDefinitions,
   ...actionCardDefinitions,
+  // A Moment, a letter and a Christmas card, drafted for the app's own composer to open; and who a letter or a card
+  // can go to, and the cards there are (composeDrafts.js).
+  ...composeToolDefinitions,
   // Phase 3: what they ask Pantopus to remember (memory.js).
   ...memoryToolDefinitions,
   // Phase 3: what waits on them (needsYou.js), and check-backs (followUps.js).
@@ -302,6 +280,7 @@ const DRAFT_CLOSINGS = {
   create_listing_draft: "Here's a draft listing. Change anything you like, then post it.",
   draft_support_train_from_story: 'I have what I need to start a Support Train. Open the card to set it up.',
   draft_pickup_schedule: 'Here are your pickup days. Check them, then save them to your home.',
+  ...COMPOSE_CLOSINGS,
 };
 
 /**
@@ -332,6 +311,7 @@ const TOOL_TIMEOUT_MS = 5000;
 // Reads that compose several providers, and the plan card's place search, need longer.
 const TOOL_TIMEOUTS_MS = {
   get_place_facts: 12000,
+  get_saved_place_facts: 12000,
   get_today: 12000,
   find_plans: 8000,
   get_plan: 8000,
@@ -340,6 +320,17 @@ const TOOL_TIMEOUTS_MS = {
   // Two feed reads and their replies: as long as Place and Today, and a little more.
   catch_up_nearby: 12000,
   find_recommendations: 15000,
+  // The area's page (cached five minutes) with its posts as the person sees them.
+  find_around_you: 10000,
+  // Their trains in every role, or the nearby list; one train with its open dates.
+  // The compose search's reads, the stamp balance, and the card screen's own look.
+  find_recipients: 10000,
+  find_cards: 8000,
+  draft_letter: 10000,
+  draft_christmas_card: 15000,
+  list_user_support_trains: 8000,
+  find_support_trains_nearby: 8000,
+  get_support_train_summary: 8000,
   list_home_tasks: 8000,
   get_household: 8000,
   draft_plan: 15000,
@@ -390,6 +381,8 @@ function toolContext(userOrCtx) {
     // Calls in one turn share resolved game perspectives despite the context copy below.
     userOrCtx.sportsGames ||= new Map();
     userOrCtx.sportsTeamIds ||= new Set();
+    // The people a recipient search showed in this turn, whom its drafts may address (composeDrafts.js).
+    userOrCtx.recipients ||= new Map();
     return { ...userOrCtx, userId, user: userOrCtx.user || { id: userId } };
   }
   return { userId: userOrCtx, user: { id: userOrCtx } };
@@ -435,6 +428,10 @@ async function _executeToolImpl(name, args, ctx) {
   if (read) return read;
   const nearby = await runNearbyReadTool(name, args, ctx);
   if (nearby) return nearby;
+  const around = await runAroundReadTool(name, args, ctx);
+  if (around) return around;
+  const trains = await runSupportTrainReadTool(name, args, ctx);
+  if (trains) return trains;
   const verification = await runVerificationReadTool(name, args, ctx);
   if (verification) return verification;
   // What the phones keep behind their identity check is read only once the app says it passed (agentService
@@ -452,6 +449,8 @@ async function _executeToolImpl(name, args, ctx) {
   if (wallet) return wallet;
   const drafted = await runCardTool(name, args, ctx);
   if (drafted) return drafted;
+  const composed = await runComposeTool(name, args, ctx);
+  if (composed) return composed;
   const remembered = await runMemoryTool(name, args, ctx);
   if (remembered) return remembered;
   if (name === 'needs_you') return runNeedsYou(ctx);
@@ -556,143 +555,6 @@ async function _executeToolImpl(name, args, ctx) {
     case 'draft_pickup_schedule':
       return draftPickupSchedule(args, userId);
 
-    case 'list_user_support_trains': {
-      try {
-        // Step 1: find support_train_ids where user is a co-organizer
-        const { data: orgRows } = await supabaseAdmin
-          .from('SupportTrainOrganizer')
-          .select('support_train_id')
-          .eq('user_id', userId);
-        const coOrgIds = (orgRows || []).map(r => r.support_train_id);
-
-        // Step 2: query trains where user is primary organizer
-        let query = supabaseAdmin
-          .from('SupportTrain')
-          .select(`
-            id, status, published_at,
-            Activity!inner ( title, summary )
-          `)
-          .eq('organizer_user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        if (args.status) {
-          query = query.eq('status', args.status);
-        }
-
-        const { data: ownedData } = await query;
-        const ownedIds = new Set((ownedData || []).map(st => st.id));
-
-        // Step 3: fetch co-organized trains not already in owned set
-        const missingCoOrgIds = coOrgIds.filter(id => !ownedIds.has(id));
-        let coOrgData = [];
-        if (missingCoOrgIds.length > 0) {
-          let coQuery = supabaseAdmin
-            .from('SupportTrain')
-            .select(`
-              id, status, published_at,
-              Activity!inner ( title, summary )
-            `)
-            .in('id', missingCoOrgIds)
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-          if (args.status) {
-            coQuery = coQuery.eq('status', args.status);
-          }
-
-          const { data } = await coQuery;
-          coOrgData = data || [];
-        }
-
-        // Merge, dedupe, and limit
-        const all = [...(ownedData || []), ...coOrgData].slice(0, 10);
-
-        return {
-          support_trains: all.map(st => ({
-            id: st.id,
-            title: st.Activity?.title || null,
-            status: st.status,
-            published_at: st.published_at,
-          })),
-        };
-      } catch (err) {
-        logger.error('list_user_support_trains error', { userId, error: err.message });
-        return { support_trains: [], error: err.message };
-      }
-    }
-
-    case 'get_support_train_summary': {
-      try {
-        const stId = args.support_train_id;
-
-        // Fetch the support train with activity
-        const { data: st } = await supabaseAdmin
-          .from('SupportTrain')
-          .select(`
-            id, status, organizer_user_id, recipient_user_id, story,
-            Activity!inner ( title, summary )
-          `)
-          .eq('id', stId)
-          .single();
-
-        if (!st) return { error: 'Support Train not found.' };
-
-        // Verify viewer access: organizer, co-organizer, recipient, or has a reservation
-        const isOrganizer = st.organizer_user_id === userId;
-        const isRecipient = st.recipient_user_id === userId;
-
-        let hasAccess = isOrganizer || isRecipient;
-        if (!hasAccess) {
-          const { count: orgCount } = await supabaseAdmin
-            .from('SupportTrainOrganizer')
-            .select('id', { count: 'exact', head: true })
-            .eq('support_train_id', stId)
-            .eq('user_id', userId);
-          hasAccess = (orgCount || 0) > 0;
-        }
-        if (!hasAccess) {
-          const { count: resCount } = await supabaseAdmin
-            .from('SupportTrainReservation')
-            .select('id', { count: 'exact', head: true })
-            .eq('support_train_id', stId)
-            .eq('user_id', userId)
-            .neq('status', 'canceled');
-          hasAccess = (resCount || 0) > 0;
-        }
-
-        if (!hasAccess) return { error: 'NOT_AUTHORIZED' };
-
-        const openSlots = await listEffectivelyOpenSlots({
-          supportTrainId: stId,
-          columns: 'id, support_train_id, slot_date, status, capacity, filled_count',
-        });
-
-        // Fetch recipient profile for summary (no address/phone/private notes)
-        const { data: profile } = await supabaseAdmin
-          .from('SupportTrainRecipientProfile')
-          .select('household_size, dietary_styles, allergies, contactless_preferred')
-          .eq('support_train_id', stId)
-          .single();
-
-        const recipientSummary = profile
-          ? `Household of ${profile.household_size || '?'}${profile.contactless_preferred ? ', contactless preferred' : ''}`
-          : null;
-
-        return {
-          id: st.id,
-          title: st.Activity?.title || null,
-          status: st.status,
-          recipient_summary: recipientSummary,
-          open_slots_count: openSlots.length,
-          summary_chips: [],  // populated from AI draft payload if available
-        };
-      } catch (err) {
-        logger.error('get_support_train_summary error', { userId, error: err.message });
-        return { error: 'Failed to retrieve Support Train summary.' };
-      }
-    }
-
     default:
       // Name the real tools so the model can correct the call on its next round.
       return { error: `Unknown tool: ${name}. The tools are: ${toolDefinitions.map((tool) => tool.name).join(', ')}.` };
@@ -738,6 +600,7 @@ async function _getUserContext(userId) {
         shown_on_today: home.is_default,
       })),
       saved_places: (places || []).map(p => ({
+        saved_place_id: p.id,
         label: p.label,
         type: p.place_type,
         city: p.city,

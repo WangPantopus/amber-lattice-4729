@@ -169,6 +169,7 @@ fun PublicProfileScreen(
     // owner's Preview as on the new page.
     val sourcesState by viewModel.sources.state.collectAsStateWithLifecycle()
     val sourcesMonth by viewModel.sources.month.collectAsStateWithLifecycle()
+    val sourcesPiece by viewModel.sources.piece.collectAsStateWithLifecycle()
     val sourcesPreview by viewModel.sources.preview.collectAsStateWithLifecycle()
     var sourcesTab by rememberSaveable { mutableStateOf<String?>(null) }
     var sourcesPreviewAudience by remember { mutableStateOf<PreviewAudience?>(null) }
@@ -242,6 +243,8 @@ fun PublicProfileScreen(
         viewModel.sources.endPreview()
     }
     BackHandler(enabled = showPersonPosts) { showPersonPosts = false }
+    // Registered last, so an opened piece takes Back before the tab or the page does.
+    BackHandler(enabled = sourcesPiece != null) { viewModel.sources.closePiece() }
     // Your own link on a made-up username offers to pick one first, once (as the ⋯ menu's Share does).
     val shareOwnProfile: (PublicProfileContent) -> Unit = { loaded ->
         if (usernameShare.shouldAsk(loaded.profile.id, loaded.profile.chosenUsername == null)) {
@@ -390,6 +393,7 @@ fun PublicProfileScreen(
                                         pinned = pinnedCards.takeIf { sourcesPreview == null },
                                         selectedTab = sourcesTab,
                                         month = sourcesMonth,
+                                        piece = sourcesPiece,
                                         viewerId = viewerId,
                                         host =
                                             SourcesHostCallbacks(
@@ -411,6 +415,9 @@ fun PublicProfileScreen(
                                                     if (content.isOwner) ownerNavigation.onSeeAllPosts() else showPersonPosts = true
                                                 },
                                                 onPiecesChanged = { viewModel.sources.load(content.profile.id) },
+                                                onOpenPiece = { pieceId, ownerId -> viewModel.sources.openPiece(pieceId, ownerId) },
+                                                onClosePiece = viewModel.sources::closePiece,
+                                                onRetryPiece = { viewModel.sources.retryPiece() },
                                                 onOpenMoments = { userId ->
                                                     MomentRingsHolder.current?.let { entry -> entry.rings.value[userId]?.let(entry.play) }
                                                 },

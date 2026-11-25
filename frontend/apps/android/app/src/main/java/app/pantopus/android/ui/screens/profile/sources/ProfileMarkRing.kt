@@ -85,6 +85,12 @@ internal fun markRingWidthPx(
     return (if (mark.seen) markRingWidth(mark.since) else 1.5f) * scale * density
 }
 
+/** The ring's width for [mark] on a picture [size] across, as [markRingWidthPx] draws it. */
+internal fun markRingWidthDp(
+    mark: ProfileMark,
+    size: Dp,
+): Dp = markRingWidthPx(mark, size.value, 1f).dp
+
 private const val MARK_AVATAR_DP = 40f
 
 /**

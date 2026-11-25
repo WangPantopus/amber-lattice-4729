@@ -51,6 +51,11 @@ PRs, screenshots and chat. Preserve unrelated local work.
   person's repost may show one to their connections in Pulse. The switch shows only
   where there is something to list, and all of it is behind the backend's
   `AROUND_YOU` switch (on for staging, off in production until set).
+  On November 24 the founder asked for topics and scrolling back: a row of
+  chips over Around you (All, Talked about, Events, Kids & schools, Sports,
+  Government, Business, Roads & safety; the server says which a place has), each
+  a list that keeps loading for as long as there are stories, and a card shows
+  who replied and the latest reply.
   On November 21 the founder put Today first for a person with a home: the
   bar starts Today · Place on iOS, Android and phone-width web, and the iOS
   and Android apps open on Today. Until a person has a home it stays

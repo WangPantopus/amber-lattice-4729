@@ -419,7 +419,7 @@ struct PlanHostingSection: View {
                 // team sees a guest's first name only, so nothing opens there.
                 Button { if !card.isBusiness { onOpenProfile(person.userId) } } label: {
                     HStack(spacing: Spacing.s3) {
-                        PlanAvatar(name: person.displayName, url: person.avatarUrl)
+                        PlanAvatar(name: person.displayName, url: person.avatarUrl, userId: card.isBusiness ? nil : person.userId)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(person.partySize > 1 ? "\(person.displayName) + \(person.partySize - 1)" : person.displayName)
                                 .planFont(.rowTitle)

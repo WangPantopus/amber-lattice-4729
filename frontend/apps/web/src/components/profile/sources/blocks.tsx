@@ -1,19 +1,24 @@
 'use client';
 
-import { useId, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeftRight, CalendarDays, ChevronRight, Hammer, Mail, MessageCircle, Users } from 'lucide-react';
 import type {
   ProfileBadgeLine, ProfileBlock, ProfileCanDoBlock, ProfileCircleBlock, ProfileDoor, ProfileDoorsBlock, ProfileInCommonBlock,
-  ProfileInk, ProfileKnownForBlock, ProfileLane, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
+  ProfileCardsBlock, ProfileInk, ProfileKnownForBlock, ProfileOpenDoorsBlock, ProfileKnownForLine, ProfileKnownForWriteBlock, ProfileLane, ProfileLinesForYouBlock, ProfileLink, ProfileLinesBlock, ProfileMore, ProfileMoreCloserBlock,
   ProfileOwnsBlock, ProfilePiece, ProfilePiecesBlock, ProfilePinnedPostsBlock, ProfilePromptsBlock,
-  ProfileRecordChartBlock, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
+  ProfileRecordChartBlock, ProfileRoleLine, ProfileRowsBlock, ProfileSaysBlock, ProfileShelfBlock, ProfileWorkRingsBlock,
 } from '@pantopus/api';
+import * as api from '@pantopus/api';
+import { extractApiError } from '@/lib/auth-utils';
 import PinnedPostsRow from '@/components/profile/public/PinnedPostsRow';
 import { YouAndRows, linesFor } from '@/components/profile/public/YouAndSection';
 import { promptText } from '@/lib/profilePrompts';
 import { HowLine, InkGlyph, InkLine, LineText, Opens, howText, inkOf, type Target } from './ink';
 import { RecordChart, WorkFan } from './RingArt';
 import Picture from './Picture';
+import { CircleFace } from './CircleView';
+import { KnownForLineCard, LineChoices, TakeBack, WhoRow } from './KnownFor';
+import { CardsForYou, dayText } from './Doors';
 import type { FanDot } from './rings';
 
 /** What a block needs to know about the page around it. */
@@ -35,6 +40,20 @@ export interface BlockContext {
   onConnect: () => void;
   /** Each piece's ink and whether it is pinned, for its dot on the work rings. */
   pieces: Map<string, { ink: ProfileInk; pinned: boolean }>;
+  /** The owner: change one of their roles ("Worked and learned"). */
+  onEditRole?: ((role: ProfileRoleLine) => void) | null;
+  /** A signed-in viewer changed a tie of their own on this page (a business's name off a role): read it again. */
+  onReread?: (() => void) | null;
+  /** The owner: open their shelf to add, reorder and remove things (P3.1). */
+  onEditShelf?: (() => void) | null;
+  /** Known for (P3.2): open its screen with the sentence box first ("Write a line about Maria"). */
+  onWriteLine?: (() => void) | null;
+  /** Known for: a line written, taken back, shown or hidden; read the page again. */
+  onLinesChanged?: (() => void) | null;
+  /** Known for: where a line's "Tied to …" opens (a piece this viewer may open), or nothing. */
+  tiedTarget?: ((line: ProfileKnownForLine) => Target | null) | null;
+  /** The owner: open their doors to choose and finish them (P3.3). */
+  onEditDoors?: (() => void) | null;
 }
 
 export const card = 'rounded-[1.25rem] border border-app bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
@@ -125,14 +144,93 @@ function Writer({ line, ctx }: { line: ProfileBadgeLine; ctx: BlockContext }) {
   );
 }
 
+/**
+ * A business's owner reading a role their business signed (p2.11 `mine`): the business's name on pages opened by a
+ * link, changed here, or its signature taken off the role.
+ */
+function BusinessSignature({ role, firstName, onChanged }: { role: ProfileRoleLine; firstName: string; onChanged: () => void }) {
+  const business = role.where?.name?.trim() || 'the business';
+  const [onLinks, setOnLinks] = useState(Boolean(role.mine?.show_name_on_links));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const save = async (checked: boolean) => {
+    setBusy(true); setNote(null);
+    try {
+      const saved = await api.profilePage.updateTie(role.id, { show_name_on_links: checked });
+      setOnLinks(saved.show_name_on_links);
+      setNote('Saved.');
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t save that. Try again.'));
+    }
+    setBusy(false);
+  };
+  const off = async () => {
+    if (!window.confirm(`Take the name ${business} off ${firstName}’s role? The role stays in ${firstName}’s own words, without the name ${business}.`)) return;
+    setBusy(true); setNote(null);
+    try {
+      await api.profilePage.removeTie(role.id);
+      onChanged();
+    } catch (err) {
+      setNote(extractApiError(err, 'Couldn’t take the name off. Try again.'));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-2 rounded-xl bg-app-surface-sunken px-3.5 pt-2 pb-0.5 flex flex-col gap-0.5">
+      <label className="flex items-start gap-3 min-h-[2.75rem] py-1 cursor-pointer">
+        <input type="checkbox" checked={onLinks} disabled={busy} onChange={(e) => save(e.target.checked)} className="mt-0.5 w-5 h-5 shrink-0 accent-[color:var(--color-link)]" />
+        <span className="text-[0.9375rem] leading-5 text-app [overflow-wrap:anywhere]">
+          Show the name {business} on pages opened by a link
+          <span className="block text-xs leading-4 text-app-muted">Off: those pages say “a business on Pantopus”.</span>
+        </span>
+      </label>
+      <button type="button" disabled={busy} onClick={off} aria-label={`Take the name ${business} off this role`} className="self-start min-h-[2.75rem] -ml-1 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline disabled:opacity-60">
+        {busy ? 'Working…' : 'Take the name off'}
+      </button>
+      {note ? <p role="status" className="pb-1 text-xs leading-4 text-app-secondary">{note}</p> : null}
+    </div>
+  );
+}
+
+/** The business-owner controls under a role line, where the server marks the viewer's business as its signer. */
+function signatureFor(line: unknown, ctx: BlockContext): ReactNode {
+  const role = line as unknown as ProfileRoleLine;
+  if (!role.mine || !role.id || ctx.inert || !ctx.viewerId) return null;
+  return <BusinessSignature key={role.id} role={role} firstName={ctx.firstName} onChanged={ctx.onReread ?? (() => {})} />;
+}
+
 function LinesBlock({ block, ctx }: { block: ProfileLinesBlock | ProfileOwnsBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => typeof line?.text === 'string' && line.text.trim());
   if (lines.length === 0) return null;
   const lane = RECORD_LANES[block.id];
+  // "Worked and learned" on the owner's own page: each role can be changed (or removed) from here.
+  if (block.id === 'worked_learned' && ctx.onEditRole) {
+    return (
+      <Section title={block.title}>
+        <ul className="flex flex-col gap-3">
+          {lines.map((line, i) => {
+            const role = line as unknown as ProfileRoleLine;
+            return (
+              <li key={role.id || i} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1"><InkLine line={line} target={ctx.target(line.link)} /></div>
+                {role.id ? (
+                  <button type="button" onClick={() => ctx.onEditRole!(role)} aria-label={`Change ${role.title || line.text}`} className="shrink-0 -mt-1 min-h-[2.75rem] px-2 text-[0.8125rem] font-semibold text-app-link hover:underline">
+                    Change
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+    );
+  }
   return (
     <Section title={block.title} titleClass={lane ? LANE_TITLE[lane] : ''} aside={'more' in block ? <MoreLink more={block.more} ctx={ctx} /> : null}>
       <div className="flex flex-col gap-3">
-        {lines.map((line, i) => <InkLine key={i} line={line} target={ctx.target(line.link)} lead={<Badge badge={line.badge} />} after={<Writer line={line} ctx={ctx} />} />)}
+        {lines.map((line, i) => (
+          <InkLine key={i} line={line} target={ctx.target(line.link)} lead={<Badge badge={line.badge} />} after={<><Writer line={line} ctx={ctx} />{signatureFor(line, ctx)}</>} />
+        ))}
       </div>
     </Section>
   );
@@ -163,28 +261,90 @@ function SaysBlock({ block }: { block: ProfileSaysBlock }) {
   );
 }
 
+/** The "Write a line about Maria" button, only where the server says this viewer may (P3.2). */
+function WriteLineButton({ write, ctx }: { write?: { text: string; left_this_year: number; of: number } | null; ctx: BlockContext }) {
+  if (!write?.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <button type="button" onClick={ctx.onWriteLine} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+      {write.text}
+    </button>
+  );
+}
+
+/**
+ * Known for on the first tab (board 1): two lines (the person's "on top" ones, else the newest), each with who wrote
+ * it and what they did, "All <n> lines" opening board 14, and "Write a line" for a viewer the server lets write.
+ */
 function KnownForBlock({ block, ctx }: { block: ProfileKnownForBlock; ctx: BlockContext }) {
   const lines = (block.lines || []).filter((line) => line?.text?.trim());
   if (lines.length === 0) return null;
   return (
     <Section title={block.title || 'Known for'} aside={<MoreLink more={block.more} ctx={ctx} />}>
       <div className="flex flex-col gap-3.5">
-        {lines.map((line, i) => {
-          const ink = inkOf(line.ink);
-          return (
-            <div key={i} className="flex flex-col gap-1.5">
-              <LineText ink={ink}>{line.text}</LineText>
-              <div className="flex items-center gap-2">
-                {line.who?.portrait_url
-                  ? <Picture src={line.who.portrait_url} className="w-[22px] h-[22px] rounded-full object-cover shrink-0 bg-app-surface-sunken" />
-                  : <InkGlyph ink={ink} inline />}
-                <span className="text-xs leading-4 text-app-muted [overflow-wrap:anywhere]">{howText(ink, line.how)}</span>
-              </div>
-            </div>
-          );
-        })}
+        {lines.map((line, i) => (
+          <div key={line.id || i} className="flex flex-col gap-1.5">
+            <LineText ink={inkOf(line.ink)}>{line.text}</LineText>
+            <WhoRow line={line} size={22} />
+            {line.mine?.take_back && !ctx.inert ? <TakeBack line={line} firstName={ctx.firstName} onDone={ctx.onLinesChanged ?? (() => {})} /> : null}
+          </div>
+        ))}
       </div>
+      <WriteLineButton write={block.write} ctx={ctx} />
     </Section>
+  );
+}
+
+/** No shown lines yet, but this viewer may write one (P3.2's `known_for_write`): the card with only the button. */
+function KnownForWriteBlock({ block, ctx }: { block: ProfileKnownForWriteBlock; ctx: BlockContext }) {
+  if (!block.text || ctx.inert || !ctx.onWriteLine) return null;
+  return (
+    <Section title={block.title || 'Known for'}>
+      <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">One sentence about what {ctx.firstName} did, tied to something you did together.</p>
+      <WriteLineButton write={block} ctx={ctx} />
+    </Section>
+  );
+}
+
+/** The person's own page while lines wait (P3.2): each with "Show it" or "Keep it hidden"; nobody else sees them. */
+function LinesForYouBlock({ block, ctx }: { block: ProfileLinesForYouBlock; ctx: BlockContext }) {
+  const lines = (block.lines || []).filter((line) => line?.id && line.text?.trim());
+  // A line chosen from the keyboard leaves this block: the focus goes to the next line still waiting, or, when none
+  // waits any more and the block goes, to the page's open tab, never to the top of the page.
+  const list = useRef<HTMLUListElement>(null);
+  const landing = useRef<number | null>(null);
+  const ids = lines.map((line) => line.id).join(',');
+  useEffect(() => {
+    if (landing.current === null) return;
+    const items = list.current?.children;
+    if (!items || items.length === 0) return;
+    const at = Math.min(landing.current, items.length - 1);
+    landing.current = null;
+    items[at]?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+  }, [ids]);
+  useEffect(() => () => {
+    if (landing.current === null) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    });
+  }, []);
+  if (lines.length === 0 || ctx.inert) return null;
+  return (
+    <section aria-label={block.title || 'Lines for you'} className="flex flex-col gap-2">
+      <h2 className={`${overline} px-1`}>{block.title || 'Lines for you'}</h2>
+      <ul ref={list} className="flex flex-col gap-3">
+        {lines.map((line, i) => (
+          <KnownForLineCard key={line.id} line={line} tiedTarget={ctx.tiedTarget?.(line) ?? null}>
+            <LineChoices
+              line={{ ...line, status: line.status || 'waiting' }}
+              onTop={false}
+              canTop={false}
+              onDone={(_, fromKeys) => { landing.current = fromKeys ? i : null; ctx.onLinesChanged?.(); }}
+            />
+          </KnownForLineCard>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -197,38 +357,98 @@ function InCommonBlock({ block, ctx }: { block: ProfileInCommonBlock; ctx: Block
   );
 }
 
-function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock; ctx: BlockContext }) {
+/**
+ * "Doors <first name> keeps open" (board 1): the doors the server sends this viewer (P3.3, the new kind `open_doors`).
+ * A visitor's door opens its message or the card flow (signed out: sign in first); the owner's rows only show what
+ * their doors say, with "Change". "Leave your card" below for a signed-in visitor, or the day they left one.
+ */
+function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock | ProfileOpenDoorsBlock; ctx: BlockContext }) {
   const doors = (block.doors || []).filter((door) => door?.text?.trim());
-  if (doors.length === 0 && !block.leave_card) return null;
+  const leave = block.leave_card ?? null;
+  const owner = Boolean(ctx.onEditDoors) && !ctx.inert;
+  if (doors.length === 0 && !leave && !owner) return null;
+  const leftAt = leave && 'left_at' in leave ? dayText(leave.left_at as string | null | undefined) : '';
   return (
-    <Section title={block.title || `Doors ${ctx.firstName} keeps open`} padded={false}>
-      <ul className="divide-y divide-app">
-        {doors.map((door, i) => (
-          <li key={door.key || i}>
-            <button type="button" onClick={() => ctx.onDoor(door)} disabled={ctx.inert} className={rowClass}>
-              <Tile icon={DOOR_ICON[door.key]} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{door.text}</span>
-                {door.note ? <span className="block text-xs leading-4 text-app-muted">{door.note}</span> : null}
-              </span>
-              {chevron}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {block.leave_card || block.sign_in_note ? (
-        <div className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
-          {block.leave_card ? (
-            <button
-              type="button"
-              disabled={ctx.inert}
-              onClick={() => ctx.onDoor({ key: 'leave_card' })}
-              className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60"
-            >
-              {block.leave_card.text}
-            </button>
+    <DoorsSection block={block} ctx={ctx} doors={doors} leave={leave} owner={owner} leftAt={leftAt} />
+  );
+}
+
+function DoorsSection({ block, ctx, doors, leave, owner, leftAt }: {
+  block: ProfileDoorsBlock | ProfileOpenDoorsBlock;
+  ctx: BlockContext;
+  doors: ProfileDoor[];
+  leave: ProfileDoorsBlock['leave_card'] | ProfileOpenDoorsBlock['leave_card'] | null;
+  owner: boolean;
+  leftAt: string;
+}) {
+  // "Leave your card" turns into "You left a card on …" once a card is left: if the keyboard was on the button (or
+  // has nowhere to go), it lands on that line instead of the top of the page. The card sheet looks for this anchor.
+  const leftLine = useRef<HTMLParagraphElement>(null);
+  const hadLeft = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = hadLeft.current;
+    hadLeft.current = Boolean(leftAt);
+    if (was === false && leftAt && (!document.activeElement || document.activeElement === document.body)) leftLine.current?.focus();
+  }, [leftAt]);
+  return (
+    <Section
+      title={block.title || `Doors ${ctx.firstName} keeps open`}
+      padded={false}
+      aside={owner && doors.length > 0 ? <button type="button" onClick={ctx.onEditDoors!} className="min-h-[2.75rem] -my-3 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline">Change</button> : null}
+    >
+      {doors.length > 0 ? (
+        <ul className="divide-y divide-app">
+          {doors.map((door, i) => {
+            const words = (
+              <>
+                <Tile icon={DOOR_ICON[door.key]} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{door.text}</span>
+                  {door.note ? <span className="block text-xs leading-4 text-app-muted">{door.note}</span> : null}
+                </span>
+              </>
+            );
+            return (
+              <li key={door.key || i}>
+                {owner ? (
+                  <div className="flex items-center gap-3 px-4 py-3 min-h-[3rem]">{words}</div>
+                ) : (
+                  <button type="button" onClick={() => ctx.onDoor(door)} disabled={ctx.inert} className={rowClass}>
+                    {words}
+                    {chevron}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : owner ? (
+        <p className="px-4 pt-1 pb-4 text-[0.9375rem] leading-[1.375rem] text-app-secondary">
+          Up to five ways people can reach you: hire you, ask you, borrow, invite you, or send you a card.
+        </p>
+      ) : null}
+      {owner && doors.length === 0 ? (
+        <div className="px-4 pb-4">
+          <button type="button" onClick={ctx.onEditDoors!} className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">Choose your doors</button>
+        </div>
+      ) : null}
+      {leave || block.sign_in_note ? (
+        <div data-focus-anchor="" className="px-4 pt-3 pb-4 border-t border-app flex flex-col gap-2">
+          {leave ? (
+            leftAt ? (
+              <p ref={leftLine} tabIndex={-1} className="min-h-[2.75rem] flex items-center justify-center rounded-xl bg-app-surface-sunken text-[0.9375rem] text-app-secondary">You left a card on {leftAt}</p>
+            ) : (
+              <button
+                type="button"
+                disabled={ctx.inert}
+                onClick={() => ctx.onDoor({ key: 'leave_card' })}
+                className="min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app disabled:opacity-60"
+              >
+                {leave.text}
+              </button>
+            )
           ) : null}
-          {block.leave_card?.note ? <p className="text-center text-xs leading-4 text-app-muted">{block.leave_card.note}</p> : null}
+          {leave?.note && !leftAt ? <p className="text-center text-xs leading-4 text-app-muted">{leave.note}</p> : null}
           {block.sign_in_note ? <p className="text-center text-xs leading-4 text-app-muted">{block.sign_in_note}</p> : null}
         </div>
       ) : null}
@@ -236,22 +456,66 @@ function DoorsBlock({ block, ctx }: { block: ProfileDoorsBlock; ctx: BlockContex
   );
 }
 
-function ShelfBlock({ block }: { block: ProfileShelfBlock }) {
+/** "Cards left for you" (P3.3, the new kind `cards`): the person's own page only, while there are cards. */
+function CardsBlock({ block, ctx }: { block: ProfileCardsBlock; ctx: BlockContext }) {
+  const cards = (block.cards || []).filter((c) => c?.id);
+  if (cards.length === 0 || ctx.inert) return null;
+  return <CardsForYou title={block.title || 'Cards left for you'} cards={cards} onChanged={() => ctx.onReread?.()} />;
+}
+
+/**
+ * "On <first name>'s shelf" (board 1): up to five things on a wooden board, a picture and the person's caption each;
+ * the row scrolls when the screen is too narrow for five. The owner always gets it: empty, it offers "Add to your
+ * shelf"; else "Change" opens their shelf (P3.1).
+ */
+function ShelfBlock({ block, ctx }: { block: ProfileShelfBlock; ctx: BlockContext }) {
   const objects = (block.objects || []).filter((item) => item?.picture_url).slice(0, 5);
-  if (objects.length === 0) return null;
+  const edit = ctx.inert ? null : ctx.onEditShelf ?? null;
+  if (objects.length === 0) {
+    if (!edit) return null;
+    return (
+      <Section title={block.title}>
+        <p className="text-[0.9375rem] leading-[1.375rem] text-app-secondary">Put up to five things on your shelf, each a picture and a few words.</p>
+        <button type="button" onClick={edit} className="mt-3 min-h-[2.75rem] w-full rounded-xl border border-app-strong bg-surface text-[0.9375rem] font-semibold text-app hover-bg-app">
+          Add to your shelf
+        </button>
+      </Section>
+    );
+  }
+  // The words for where these came from, written once when every object has the same ink, else under each caption.
+  const inks = objects.map((item) => inkOf(item.ink ?? 'said'));
+  const oneInk = inks.every((ink) => ink === inks[0]) ? inks[0] : null;
+  const columns = 'grid grid-cols-[repeat(5,minmax(3.5rem,1fr))] gap-1';
   return (
-    <Section title={block.title}>
-      <ul className="grid grid-cols-5 gap-1 items-end">
-        {objects.map((item) => (
-          <li key={item.id} className="flex flex-col items-center">
-            <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
-          </li>
-        ))}
-      </ul>
-      <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
-      <ul className="pt-2.5 grid grid-cols-5 gap-1" aria-hidden="true">
-        {objects.map((item) => <li key={item.id} className="font-serif italic text-xs leading-[0.9375rem] text-center text-app-strong [overflow-wrap:anywhere]">{item.caption}</li>)}
-      </ul>
+    <Section
+      title={block.title}
+      aside={edit ? (
+        <button type="button" onClick={edit} className="min-h-[2.75rem] -my-3 px-1 text-[0.8125rem] font-semibold text-app-link hover:underline">Change</button>
+      ) : null}
+    >
+      <div className="-mx-5 px-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="min-w-[18.5rem]">
+          <ul className={`${columns} items-end`}>
+            {objects.map((item) => (
+              <li key={item.id} className="flex flex-col items-center">
+                <Picture src={item.picture_url} alt={item.caption || ''} className="w-full h-24 object-contain object-bottom" />
+              </li>
+            ))}
+          </ul>
+          <div aria-hidden="true" className="h-[9px] rounded-[3px] bg-[#b98a5a] border-t-[3px] border-[#caa06b]" />
+          <ul className={`pt-2.5 ${columns}`} aria-hidden="true">
+            {objects.map((item, i) => (
+              <li key={item.id} className="flex flex-col items-center gap-1">
+                <LineText ink={inks[i]} className="!text-xs !leading-[0.9375rem] text-center [overflow-wrap:anywhere]">{item.caption}</LineText>
+                {oneInk ? null : <span className="text-[0.6875rem] leading-4 text-app-muted">{howText(inks[i])}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {oneInk ? (
+        <HowLine className="!mt-2.5 flex items-center gap-1.5"><InkGlyph ink={oneInk} inline />{howText(oneInk)}</HowLine>
+      ) : null}
     </Section>
   );
 }
@@ -319,27 +583,49 @@ function InkMeter({ inks, width }: { inks: Partial<Record<ProfileInk, number>>; 
   );
 }
 
+/** "4 Seen · 3 Signed · 2 Said": a meter's inks in words, every ink that counts. */
+function inkCounts(inks: Partial<Record<ProfileInk, number>>): string {
+  return (['seen', 'signed', 'said'] as const)
+    .filter((ink) => (inks[ink] ?? 0) > 0)
+    .map((ink) => `${inks[ink]} ${howText(ink)}`)
+    .join(' · ');
+}
+
+/**
+ * Board 7's Can do: the skill and its count on one row, the meter of its pieces by ink under it, and the inks written
+ * out under the meter. A skill with no pieces is the person's own word: serif, with its Said line beside it.
+ */
 function CanDoBlock({ block, ctx }: { block: ProfileCanDoBlock; ctx: BlockContext }) {
   const skills = (block.skills || []).filter((skill) => (skill?.name || skill?.text || '').trim());
   if (skills.length === 0) return null;
   const most = Math.max(1, ...skills.map((skill) => skill.pieces || 0));
   return (
     <Section title={block.title || 'Can do'} aside={block.subtitle ? <span className="text-xs leading-4 text-app-muted">{block.subtitle}</span> : null}>
-      <ul className="-my-1 divide-y divide-app-subtle">
+      <ul className="-my-1 divide-y divide-app">
         {skills.map((skill, i) => {
           const ink = inkOf(skill.ink);
+          const counted = skill.pieces > 0 && skill.inks ? inkCounts(skill.inks) : '';
           return (
             <li key={i} className="py-2.5 flex flex-col gap-1.5">
               <Opens target={ctx.target(skill.link)} className="min-w-0">
-                <div className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2.5 items-start">
-                  <InkGlyph ink={ink} />
-                  <div className="min-w-0">
+                {counted ? (
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span className="text-[1rem] leading-[1.375rem] font-semibold text-app [overflow-wrap:anywhere]">{skill.name || skill.text}</span>
+                    <span className="text-[0.8125rem] leading-[1.125rem] text-app-secondary">{skill.how || `${skill.pieces} ${skill.pieces === 1 ? 'piece' : 'pieces'}`}</span>
+                  </span>
+                ) : (
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                     <LineText ink={ink} className={ink === 'said' ? '' : 'font-semibold'}>{skill.name || skill.text}</LineText>
-                    <HowLine>{howText(ink, skill.how)}</HowLine>
-                  </div>
-                </div>
+                    <span className="inline-flex items-center gap-1.5 text-xs leading-4 text-app-muted"><InkGlyph ink={ink} inline />{howText(ink, skill.how)}</span>
+                  </span>
+                )}
               </Opens>
-              {skill.pieces > 0 && skill.inks ? <div className="pl-[1.625rem]"><InkMeter inks={skill.inks} width={(skill.pieces / most) * 100} /></div> : null}
+              {counted ? (
+                <>
+                  <InkMeter inks={skill.inks!} width={(skill.pieces / most) * 100} />
+                  <span className="text-xs leading-4 text-app-muted">{counted}</span>
+                </>
+              ) : null}
             </li>
           );
         })}
@@ -360,27 +646,231 @@ const KIND_WORD: Record<string, string> = { did: 'Did', built: 'Built', owns: 'O
 
 function PieceCard({ piece, ctx, big }: { piece: ProfilePiece; ctx: BlockContext; big: boolean }) {
   const ink = inkOf(piece.ink);
-  const tag = [piece.kind ? KIND_WORD[piece.kind] : null, piece.when].filter(Boolean).join(' · ');
+  // No picture, or one that doesn't load: the card without a picture box, never an empty frame.
+  const [coverFailed, setCoverFailed] = useState(false);
+  const cover = piece.cover_url && !coverFailed ? piece.cover_url : null;
+  // Board 7's cards say the year ("Built · 2026"); the list under the work line says the month.
+  const year = [piece.to, piece.from].find((v) => typeof v === 'string' && /^\d{4}/.test(v))?.slice(0, 4) ?? piece.when;
+  const tag = [...ownerFlags(piece), piece.kind ? KIND_WORD[piece.kind] : null, year].filter(Boolean).join(' · ');
   const media = mediaText(piece.media);
   return (
     <Opens target={ctx.target(piece.link)} className="rounded-2xl" label={undefined}>
       <span className="flex flex-col gap-2">
-        {piece.cover_url ? (
-          <span className={`relative block w-full overflow-hidden rounded-2xl bg-app-surface-sunken ${big ? 'aspect-[3/2]' : 'aspect-[4/3]'}`}>
-            <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
+        {cover ? (
+          <span className={`relative block w-full overflow-hidden rounded-2xl bg-app-surface-sunken ${big ? 'aspect-[3/2] lg:aspect-[16/9]' : 'aspect-[4/3]'}`}>
+            <Picture src={cover} onFail={() => setCoverFailed(true)} className="absolute inset-0 w-full h-full object-cover" />
             {tag ? <span className="absolute left-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{tag}</span> : null}
             {big && media ? <span className="absolute right-2 bottom-2 inline-flex items-center min-h-6 px-2 rounded-full bg-gray-900 text-white text-[0.6875rem] leading-4 font-semibold">{media}</span> : null}
           </span>
         ) : null}
-        <span className="block px-1">
+        <span className={`block px-1 ${cover ? '' : 'pt-0.5'}`}>
+          {/* With no picture the card reads kind and year, title, ink line. */}
+          {!cover && tag ? <span className="block mb-0.5 text-xs leading-4 font-semibold text-app-secondary">{tag}</span> : null}
           <span className={`block font-semibold text-app [overflow-wrap:anywhere] ${big ? 'text-[1.0625rem] leading-[1.4375rem]' : 'text-sm leading-5'}`}>{piece.title}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
             <InkGlyph ink={ink} inline />
-            <span className="[overflow-wrap:anywhere]">{[howText(ink, piece.how), piece.cover_url ? null : tag].filter(Boolean).join(' · ')}</span>
+            <span className="[overflow-wrap:anywhere]">{[withWords(piece), howText(ink, piece.how)].filter(Boolean).join(' · ')}</span>
           </span>
         </span>
       </span>
     </Opens>
+  );
+}
+
+const MONTH_WORDS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A piece's month (`YYYY-MM`): when it finished, else started, else its dot on the work line. */
+function pieceMonth(piece: ProfilePiece, dots: Map<string, string>): string | null {
+  const month = [piece.to, piece.from, dots.get(piece.id)].find((v) => typeof v === 'string' && /^\d{4}-\d{2}/.test(v));
+  return month ? month.slice(0, 7) : null;
+}
+
+/** "With Maria Kovács" for a piece signed on someone else's work, unless the server's how already says it. */
+function withWords(piece: ProfilePiece): string | null {
+  const name = piece.with?.name?.trim();
+  if (!name) return null;
+  return (piece.how || '').includes(name) ? null : `With ${name}`;
+}
+
+/** The owner's own flags on a piece only they see (P2.1). */
+function ownerFlags(piece: ProfilePiece): string[] {
+  return [piece.draft ? 'Draft' : null, piece.hidden ? 'Hidden' : null].filter(Boolean) as string[];
+}
+
+/**
+ * One piece in a list (board 7): its cover, title, and a line with its kind, its month (or `when`), and its ink with
+ * how Pantopus knows. A piece signed on someone else's work says whose it is ("With Maria K.").
+ */
+function PieceRow({ piece, ctx, month }: { piece: ProfilePiece; ctx: BlockContext; month?: string | null }) {
+  const ink = inkOf(piece.ink);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const cover = piece.cover_url && !coverFailed ? piece.cover_url : null;
+  const target = ctx.target(piece.link);
+  const flags = ownerFlags(piece);
+  const meta = [
+    ...flags,
+    piece.kind ? KIND_WORD[piece.kind] : null,
+    month !== undefined ? month : piece.when,
+    withWords(piece),
+    howText(ink, piece.how),
+  ].filter(Boolean).join(' · ');
+  return (
+    <Opens target={target} className={`${rowClass} !px-3`}>
+      <span className="flex w-full items-center gap-3">
+        {cover ? (
+          <span className="relative block w-[3.25rem] h-[3.25rem] shrink-0 overflow-hidden rounded-[10px] bg-app-surface-sunken">
+            <Picture src={cover} onFail={() => setCoverFailed(true)} className="absolute inset-0 w-full h-full object-cover" />
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[0.9375rem] leading-5 font-semibold text-app [overflow-wrap:anywhere]">{piece.title}</span>
+          <span className="mt-0.5 flex items-start gap-1.5 text-xs leading-4 text-app-muted">
+            <InkGlyph ink={ink} inline />
+            <span className="[overflow-wrap:anywhere]">{meta}</span>
+          </span>
+        </span>
+        {target ? chevron : null}
+      </span>
+    </Opens>
+  );
+}
+
+const KIND_ORDER = ['did', 'built', 'owns'];
+
+/** Board 7's All / Did / Built: the server's `filters` when sent, else the kinds these pieces have (two or more). */
+function kindOptions(block: ProfilePiecesBlock | null, pieces: ProfilePiece[]): string[] {
+  const present = KIND_ORDER.filter((kind) => pieces.some((piece) => piece.kind === kind));
+  const sent = (block?.filters || []).filter((f) => f !== 'all' && present.includes(f));
+  const kinds = sent.length > 0 ? sent : present;
+  return kinds.length >= 2 ? ['all', ...kinds] : [];
+}
+
+function Segmented({ options, value, onChange, label }: { options: Array<{ key: string; label: string }>; value: string; onChange: (key: string) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="grid gap-1 p-1 rounded-xl bg-app-surface-sunken" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((option) => {
+        const on = option.key === value;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(option.key)}
+            className={`min-h-[2.5rem] px-2 rounded-[0.625rem] text-[0.9375rem] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'bg-surface text-app shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-app-secondary hover:text-app'}`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Board 7's work line: the work rings opened flat with a dot per piece, the years as chips (the newest chosen), the
+ * All / Did / Built switch and the pieces of the chosen year. Either half may come alone: the fan without a list, or
+ * the list (with its switch) without a fan.
+ */
+export function WorkLineBlock({ rings, list, ctx, pinned = null }: {
+  rings: ProfileWorkRingsBlock | null; list: ProfilePiecesBlock | null; ctx: BlockContext;
+  /** The tab's pinned pieces: a year's list holds them too (board 7's 2026 has the pinned porch), each once. */
+  pinned?: ProfilePiece[] | null;
+}) {
+  const pieces = useMemo(() => {
+    const listed = (list?.pieces || []).filter((piece) => piece?.id && piece.title?.trim());
+    const seen = new Set(listed.map((piece) => piece.id));
+    const more = rings ? (pinned || []).filter((piece) => piece?.id && piece.title?.trim() && !seen.has(piece.id)) : [];
+    return [...listed, ...more];
+  }, [list, pinned, rings]);
+  const dated = useMemo(() => {
+    const dots = new Map((rings?.dots || []).filter((d) => d?.piece_id && d.month).map((d) => [d.piece_id, d.month]));
+    return pieces.map((piece) => ({ piece, month: pieceMonth(piece, dots) }));
+  }, [pieces, rings]);
+  // Board 7: one chip for each year the work rings send, with that year's count as sent (its dots), newest first;
+  // the list under it is that year's pieces. Without the rings, the years of the listed pieces. Pieces with no month
+  // get a chip of their own, last.
+  const years = useMemo(() => {
+    const listed = new Map<string, number>();
+    dated.forEach(({ month }) => { const y = month ? month.slice(0, 4) : 'none'; listed.set(y, (listed.get(y) ?? 0) + 1); });
+    const sent = (rings?.years || []).filter((y) => y && y.pieces > 0).map((y) => ({ year: String(y.year), pieces: y.pieces }));
+    const out = sent.length > 0
+      ? sent
+      : [...listed.keys()].filter((y) => y !== 'none').map((year) => ({ year, pieces: listed.get(year)! }));
+    out.sort((a, b) => Number(b.year) - Number(a.year));
+    if (listed.has('none')) out.push({ year: 'none', pieces: listed.get('none')! });
+    return out;
+  }, [dated, rings]);
+  const chips = years.length > 1 || (years.length === 1 && years[0].year !== 'none');
+  const [year, setYear] = useState<string | null>(null);
+  const [kind, setKind] = useState('all');
+  const shownYear = chips ? (years.some((y) => y.year === year) ? year! : years[0]?.year ?? null) : null;
+  const ofYear = dated.filter(({ month }) => !shownYear || (shownYear === 'none' ? !month : month?.startsWith(shownYear)));
+  const kinds = kindOptions(list, ofYear.map(({ piece }) => piece));
+  const shownKind = kinds.includes(kind) ? kind : 'all';
+  const shown = ofYear.filter(({ piece }) => shownKind === 'all' || piece.kind === shownKind);
+  const fanDrawn = Boolean(rings && typeof rings.from === 'number' && Array.isArray(rings.months));
+  if (!fanDrawn && pieces.length === 0) return null;
+
+  const total = (rings?.years || []).reduce((sum, y) => sum + (y?.pieces > 0 ? y.pieces : 0), 0) || pieces.length;
+  let fan: ReactNode = null;
+  if (fanDrawn && rings) {
+    const dots: FanDot[] = (rings.dots || []).map((dot) => ({
+      month: dot.month,
+      ink: dot.ink ? inkOf(dot.ink) : ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
+      pinned: ctx.pieces.get(dot.piece_id)?.pinned ?? false,
+    }));
+    const yearsWords = (rings.years || []).filter((y) => y.pieces > 0).map((y) => `${y.year}: ${y.pieces} ${y.pieces === 1 ? 'piece' : 'pieces'}`).join(', ');
+    const label = `${ctx.firstName}'s work rings opened flat: each band is a year from ${rings.from} at the centre to this year outside, months run left to right, and each dot is a piece.${yearsWords ? ` ${yearsWords}.` : ''}`;
+    fan = <WorkFan from={rings.from} now={rings.now} months={rings.months} dots={dots} label={label} />;
+  }
+  const aside = (
+    <span className="flex items-baseline gap-3">
+      {total > 0 ? <span className="text-xs leading-4 text-app-muted">{total} {total === 1 ? 'piece' : 'pieces'}</span> : null}
+      {!fanDrawn ? <MoreLink more={list?.more} ctx={ctx} /> : null}
+    </span>
+  );
+  return (
+    <Section title={(fanDrawn ? rings?.title : list?.title) || (fanDrawn ? 'Work' : 'All pieces')} className="!px-3" aside={aside}>
+      {fan}
+      {pieces.length > 0 ? (
+        <div className={`flex flex-col gap-3 ${fan ? 'mt-4' : ''}`}>
+          {chips ? (
+            <div role="group" aria-label="Years" className="-mx-3 px-3 flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+              {years.map((y) => {
+                const on = y.year === shownYear;
+                return (
+                  <button
+                    key={y.year}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setYear(y.year)}
+                    className={`shrink-0 min-h-[2.25rem] px-3.5 rounded-full text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-link)] ${on ? 'bg-[rgb(var(--app-text))] text-[rgb(var(--app-surface))]' : 'bg-app-surface-sunken text-app hover:text-app-strong'}`}
+                  >
+                    {y.year === 'none' ? 'No date' : y.year} · {y.pieces}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {kinds.length > 0 ? (
+            <Segmented
+              label="Kind of piece"
+              value={shownKind}
+              onChange={setKind}
+              options={kinds.map((key) => ({ key, label: key === 'all' ? 'All' : KIND_WORD[key] }))}
+            />
+          ) : null}
+          <ul className="-mx-3 divide-y divide-app" aria-live="polite">
+            {shown.map(({ piece, month }) => (
+              <li key={piece.id}>
+                <PieceRow piece={piece} ctx={ctx} month={shownYear && month ? MONTH_WORDS[Number(month.slice(5, 7)) - 1] ?? null : undefined} />
+              </li>
+            ))}
+          </ul>
+          {fanDrawn && list?.more ? <div className="px-1"><MoreLink more={list.more} ctx={ctx} /></div> : null}
+        </div>
+      ) : null}
+    </Section>
   );
 }
 
@@ -411,84 +901,47 @@ function PiecesBlock({ block, ctx }: { block: ProfilePiecesBlock; ctx: BlockCont
       </section>
     );
   }
-  return (
-    <Section title={block.title || 'Pieces'} aside={aside} padded={false}>
-      <ul className="divide-y divide-app-subtle px-1 pb-1">
-        {pieces.map((piece) => {
-          const ink = inkOf(piece.ink);
-          const tag = [piece.kind ? KIND_WORD[piece.kind] : null, piece.when].filter(Boolean).join(' · ');
-          return (
-            <li key={piece.id}>
-              <Opens target={ctx.target(piece.link)} className={`${rowClass} !px-3`}>
-                <span className="flex w-full items-center gap-3">
-                  {piece.cover_url ? (
-                    <span className="relative block w-[3.25rem] h-[3.25rem] shrink-0 overflow-hidden rounded-[10px] bg-app-surface-sunken">
-                      <Picture src={piece.cover_url} className="absolute inset-0 w-full h-full object-cover" />
-                    </span>
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm leading-5 font-semibold text-app [overflow-wrap:anywhere]">{piece.title}</span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-app-muted">
-                      <InkGlyph ink={ink} inline />
-                      <span className="[overflow-wrap:anywhere]">{[howText(ink, piece.how), tag].filter(Boolean).join(' · ')}</span>
-                    </span>
-                  </span>
-                  {ctx.target(piece.link) ? chevron : null}
-                </span>
-              </Opens>
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
-  );
+  return <WorkLineBlock rings={null} list={block} ctx={ctx} />;
 }
 
 function WorkRingsBlock({ block, ctx }: { block: ProfileWorkRingsBlock; ctx: BlockContext }) {
-  if (typeof block.from !== 'number' || !Array.isArray(block.months)) return null;
-  const dots: FanDot[] = (block.dots || []).map((dot) => ({
-    month: dot.month,
-    ink: ctx.pieces.get(dot.piece_id)?.ink ?? 'said',
-    pinned: ctx.pieces.get(dot.piece_id)?.pinned ?? false,
-  }));
-  const years = (block.years || []).filter((y) => y.pieces > 0);
-  const total = years.reduce((sum, y) => sum + y.pieces, 0);
-  const yearsWords = years.map((y) => `${y.year}: ${y.pieces} ${y.pieces === 1 ? 'piece' : 'pieces'}`).join(', ');
-  const label = `${ctx.firstName}'s work rings opened flat: each band is a year from ${block.from} at the centre to this year outside, months run left to right, and each dot is a piece.${yearsWords ? ` ${yearsWords}.` : ''}`;
-  return (
-    <Section title={block.title} className="!px-3" aside={total > 0 ? <span className="text-xs leading-4 text-app-muted">{total} {total === 1 ? 'piece' : 'pieces'}</span> : null}>
-      <WorkFan from={block.from} now={block.now} months={block.months} dots={dots} label={label} />
-    </Section>
-  );
+  return <WorkLineBlock rings={block} list={null} ctx={ctx} />;
 }
 
-function CircleBlock({ block }: { block: ProfileCircleBlock }) {
-  const groups = (block.groups || []).filter((group) => (group?.people || []).length > 0);
+/** Board 7's order for the circle's tiles. */
+const CIRCLE_TILES = ['learned_from', 'works_beside', 'taught_or_led'];
+
+/**
+ * Board 7's work circle card: a few of the faces, the server's sentence ("4 people on Maria's work"), a tile for each
+ * group with its count, and "Open the circle" (board 9). A group with nobody in it has no tile.
+ */
+function CircleBlock({ block, ctx }: { block: ProfileCircleBlock; ctx: BlockContext }) {
+  const groups = (block.groups || []).filter((group) => group && (group.count > 0 || (group.people || []).length > 0));
   if (groups.length === 0) return null;
+  const faces = groups.flatMap((group) => group.people || []).slice(0, 5);
+  const tiles = [...groups].sort((a, b) => CIRCLE_TILES.indexOf(a.key) - CIRCLE_TILES.indexOf(b.key));
+  const opens = ctx.target(block.link);
   return (
-    <Section title={block.title || 'Work circle'}>
-      {block.text ? <p className="-mt-1 mb-3 text-[0.8125rem] leading-[1.125rem] text-app-secondary">{block.text}</p> : null}
-      <div className="flex flex-col gap-4">
-        {groups.map((group) => (
-          <div key={group.key}>
-            <h3 className="text-xs leading-4 font-semibold text-app-secondary">{group.title}</h3>
-            <ul className="mt-2 flex flex-col gap-2">
-              {group.people.map((person, j) => {
-                const ink = inkOf(person.ink);
-                return (
-                  <li key={person.user_id || j} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2.5 items-start">
-                    <InkGlyph ink={ink} />
-                    <div className="min-w-0">
-                      <p className="text-[0.9375rem] leading-[1.3125rem] text-app">{person.name || person.did}</p>
-                      <HowLine>{howText(ink, person.name ? person.did : null)}</HowLine>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+    <Section
+      title={block.title || 'Work circle'}
+      aside={opens ? (
+        <Opens target={opens} className="!w-auto min-h-[2.75rem] -my-3 flex items-center text-[0.8125rem] font-semibold text-app-link hover:underline">Open the circle</Opens>
+      ) : null}
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex shrink-0 -space-x-2" aria-hidden="true">
+          {faces.map((person, i) => <span key={i} className="rounded-full ring-2 ring-[rgb(var(--app-surface))]"><CircleFace person={person} size={36} /></span>)}
+        </span>
+        {block.text ? <p className="min-w-0 text-[0.9375rem] leading-[1.3125rem] text-app">{block.text}</p> : null}
       </div>
+      <ul className="mt-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${tiles.length}, minmax(0, 1fr))` }}>
+        {tiles.map((group) => (
+          <li key={group.key} className="rounded-xl bg-app-surface-sunken px-3 py-2.5">
+            <span className="block text-[1.25rem] leading-7 font-bold text-app">{group.count || (group.people || []).length}</span>
+            <span className="block text-xs leading-4 text-app-secondary">{group.title}</span>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -498,7 +951,9 @@ function RecordChartBlock({ block, ctx }: { block: ProfileRecordChartBlock; ctx:
   const rings = { from: block.from, now: block.now, ...Object.fromEntries(block.lanes.filter((l) => l && Array.isArray(l.months)).map((l) => [l.lane, l.months])) };
   return (
     <Section title={block.title} className="!px-3" aside={block.subtitle ? <span className="text-xs leading-4 text-app-muted">{block.subtitle}</span> : null}>
-      <RecordChart rings={rings} firstName={ctx.firstName} caption={block.note} />
+      {/* The server's note ends "Open a ring to see what happened in it.", but on the web the chart is a picture, not a
+          control (a month opens from its line below), so the web writes the caption without that sentence. */}
+      <RecordChart rings={rings} firstName={ctx.firstName} />
     </Section>
   );
 }
@@ -529,6 +984,30 @@ function MoreCloserBlock({ block, ctx }: { block: ProfileMoreCloserBlock; ctx: B
 }
 
 /** One block, or nothing for a kind this page doesn't know (contract 0: skip it). */
+/**
+ * A tab's blocks in order. Board 7 draws the work rings and the list of every piece as one card, so a `work_rings`
+ * block followed by a list of pieces is drawn together.
+ */
+function pinnedOf(blocks: ProfileBlock[]): ProfilePiece[] {
+  const block = blocks.find((b) => b.kind === 'pieces' && (b as ProfilePiecesBlock).style === 'pinned') as ProfilePiecesBlock | undefined;
+  return block?.pieces || [];
+}
+
+export function Blocks({ blocks, ctx, keyPrefix }: { blocks: ProfileBlock[]; ctx: BlockContext; keyPrefix: string }) {
+  const out: ReactNode[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    const next = blocks[i + 1] as ProfilePiecesBlock | undefined;
+    if (block.kind === 'work_rings' && next?.kind === 'pieces' && next.style !== 'pinned') {
+      out.push(<WorkLineBlock key={`${keyPrefix}-${block.id ?? i}`} rings={block as ProfileWorkRingsBlock} list={next} ctx={ctx} pinned={pinnedOf(blocks)} />);
+      i += 1;
+    } else {
+      out.push(<Block key={`${keyPrefix}-${block.id ?? i}`} block={block} ctx={ctx} />);
+    }
+  }
+  return <>{out}</>;
+}
+
 export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }) {
   switch (block?.kind) {
     case 'lines': return <LinesBlock block={block as ProfileLinesBlock} ctx={ctx} />;
@@ -537,7 +1016,7 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'known_for': return <KnownForBlock block={block as ProfileKnownForBlock} ctx={ctx} />;
     case 'in_common': return ctx.viewerId ? <InCommonBlock block={block as ProfileInCommonBlock} ctx={ctx} /> : null;
     case 'doors': return <DoorsBlock block={block as ProfileDoorsBlock} ctx={ctx} />;
-    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} />;
+    case 'shelf': return <ShelfBlock block={block as ProfileShelfBlock} ctx={ctx} />;
     case 'prompts': return <PromptsBlock block={block as ProfilePromptsBlock} ctx={ctx} />;
     case 'pinned_posts': {
       const id = (block as ProfilePinnedPostsBlock).user_id || ctx.personId;
@@ -549,16 +1028,22 @@ export function Block({ block, ctx }: { block: ProfileBlock; ctx: BlockContext }
     case 'can_do': return <CanDoBlock block={block as ProfileCanDoBlock} ctx={ctx} />;
     case 'pieces': return <PiecesBlock block={block as ProfilePiecesBlock} ctx={ctx} />;
     case 'work_rings': return <WorkRingsBlock block={block as ProfileWorkRingsBlock} ctx={ctx} />;
-    case 'circle': return <CircleBlock block={block as ProfileCircleBlock} />;
+    case 'circle': return <CircleBlock block={block as ProfileCircleBlock} ctx={ctx} />;
     case 'record_chart': return <RecordChartBlock block={block as ProfileRecordChartBlock} ctx={ctx} />;
     case 'more_closer': return <MoreCloserBlock block={block as ProfileMoreCloserBlock} ctx={ctx} />;
+    case 'known_for_write': return <KnownForWriteBlock block={block as ProfileKnownForWriteBlock} ctx={ctx} />;
+    case 'open_doors': return <DoorsBlock block={block as ProfileOpenDoorsBlock} ctx={ctx} />;
+    case 'cards': return <CardsBlock block={block as ProfileCardsBlock} ctx={ctx} />;
+    case 'lines_for_you': return <LinesForYouBlock block={block as ProfileLinesForYouBlock} ctx={ctx} />;
     default: return null;
   }
 }
 
 const KNOWN_KINDS = new Set([
   'lines', 'owns', 'says', 'known_for', 'in_common', 'doors', 'shelf', 'prompts', 'pinned_posts', 'rows', 'can_do',
-  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer',
+  // Not `notice` (CONTRACT "On by default"): a notice sends a phone user to pantopus.com; on the web it could only point
+  // back at the page the person is already on, so the web skips it and names only what it really draws.
+  'pieces', 'work_rings', 'circle', 'record_chart', 'more_closer', 'known_for_write', 'lines_for_you', 'open_doors', 'cards',
 ]);
 
 /** True when this page can draw the block (a known kind). A tab of unknown kinds only is not drawn. */

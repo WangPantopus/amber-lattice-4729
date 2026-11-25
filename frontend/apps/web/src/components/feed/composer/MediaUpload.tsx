@@ -8,6 +8,8 @@ interface MediaUploadProps {
   mediaFiles: File[];
   onAddMedia: (files: File[]) => void;
   onRemoveMedia: (index: number) => void;
+  /** Under a made-up name: the photo button says the post is words only and adds nothing. */
+  wordsOnly?: string | null;
 }
 
 // The types, sizes and count the post-media upload accepts. A file it would
@@ -23,7 +25,7 @@ function sizeLimitMb(type: string) {
   return type === PDF_TYPE ? 25 : 0;
 }
 
-export default function MediaUpload({ mediaFiles, onAddMedia, onRemoveMedia }: MediaUploadProps) {
+export default function MediaUpload({ mediaFiles, onAddMedia, onRemoveMedia, wordsOnly }: MediaUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,13 +50,19 @@ export default function MediaUpload({ mediaFiles, onAddMedia, onRemoveMedia }: M
         </div>
       )}
 
-      {/* Photo picker button */}
+      {/* Photo picker button (words only under a made-up name) */}
+      {wordsOnly ? (
+        <p data-testid="composerWordsOnly" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-app-muted">
+          <Camera className="w-4 h-4 flex-shrink-0 opacity-50" aria-hidden="true" /> {wordsOnly}
+        </p>
+      ) : (
       <button
         onClick={() => fileInputRef.current?.click()}
         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-app-muted hover-bg-app rounded-lg transition"
       >
         <Camera className="w-4 h-4" /> Photo, video, or PDF
       </button>
+      )}
       {error && <p role="alert" className="px-4 text-sm text-red-600">{error}</p>}
       <input
         ref={fileInputRef}

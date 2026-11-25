@@ -207,7 +207,7 @@ function LinkEditor({ open, link, share, onClose, onSaved, onDeleted }: {
         </div>
         <section className={`${card} overflow-hidden`} aria-label="What this link shows">
           <h3 className={`${overline} px-4 pt-3.5 pb-0.5`}>What this link shows</h3>
-          <div className="divide-y divide-app-subtle">
+          <div className="divide-y divide-app">
             <div className="flex items-center gap-3 px-4 py-3 min-h-[3.25rem]">
               <div className="min-w-0 flex-1"><p className="text-sm leading-5 font-semibold text-app">Portrait, name and rings</p><p className="text-xs leading-4 text-app-muted">Always shown</p></div>
             </div>
@@ -315,17 +315,17 @@ export default function LinksSection({ share, onShare, onError }: {
     <section className="flex flex-col gap-2 mt-1.5" aria-label="Links for one purpose">
       <h3 className={`${overline} px-1`}>Links for one purpose</h3>
       <div className={`${card} overflow-hidden`}>
-        {rows ? <ul className="divide-y divide-app-subtle">{rows}</ul> : null}
+        {rows ? <ul className="divide-y divide-app">{rows}</ul> : null}
         {enabled ? (
           <button
             type="button"
             onClick={() => setEditing('new')}
-            className={`flex items-center justify-center gap-1.5 w-full min-h-[3rem] px-4 text-sm font-semibold text-app-link hover-bg-app ${rows ? 'border-t border-app-subtle' : ''}`}
+            className={`flex items-center justify-center gap-1.5 w-full min-h-[3rem] px-4 text-sm font-semibold text-app-link hover-bg-app ${rows ? 'border-t border-app' : ''}`}
           >
             <Plus aria-hidden="true" className="w-4 h-4" />Make a link for one purpose
           </button>
         ) : null}
-        <div className={`flex items-center gap-3 px-4 py-3 min-h-[3.25rem] ${rows || enabled ? 'border-t border-app-subtle' : ''}`}>
+        <div className={`flex items-center gap-3 px-4 py-3 min-h-[3.25rem] ${rows || enabled ? 'border-t border-app' : ''}`}>
           <div className="min-w-0 flex-1">
             <p className="text-sm leading-5 font-semibold text-app">Links for one purpose open</p>
             <p className="text-xs leading-4 text-app-muted">{enabled ? 'Switch off to stop every link at once. They are kept.' : 'None of your links opens. They are kept.'}</p>

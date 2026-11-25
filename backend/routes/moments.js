@@ -28,6 +28,7 @@ const momentWeather = require('../services/moments/momentWeather');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
+const penName = require('../services/penName');
 
 const router = express.Router();
 router.use(verifyToken, requireFeatureFlag('moments', { error: "Moments aren't available.", code: 'MOMENTS_UNAVAILABLE' }));
@@ -255,6 +256,8 @@ router.get('/limits', async (req, res) => {
 // ─── Posting ────────────────────────────────────────────────────────────────
 
 const createSchema = Joi.object({
+  // 'pen_name': under the person's made-up name (services/penName; docs/product/made-up-names/README.md).
+  post_as: Joi.string().valid('personal', 'pen_name').allow(null),
   kind: Joi.string().valid(...store.KINDS).required(),
   hours: Joi.number().valid(...store.HOURS).default(24),
   audience: Joi.string().valid(...store.AUDIENCES).default('nearby'),
@@ -328,8 +331,25 @@ router.post('/', createLimiter, async (req, res) => {
     }
     const id = retryId(req.user.id, body.client_request_id);
     if (id) {
-      const prior = await store.loadMoment(id);
-      if (prior && prior.user_id === req.user.id) return res.status(201).json({ moment: await oneMoment(prior, req.user.id) });
+      const prior = await store.ownMoment(id, req.user.id);
+      if (prior) return res.status(201).json({ moment: await oneMoment(prior, req.user.id) });
+    }
+    // ── Under a made-up name: who may, how often, and what a made-up-name Moment never carries ──
+    // It goes to people nearby from an area or a public place (never with no location, which is for connections),
+    // says nothing of how high or that its writer is there now, and its words are read before it is saved.
+    const underPenName = body.post_as === 'pen_name';
+    let pen = null;
+    if (underPenName) {
+      const refusal = req.user.accountType === 'curator' || body.location.source === 'none' || body.audience !== 'nearby'
+        ? { status: 400, code: 'PEN_NAME_AUDIENCE', message: 'A made-up name can post to people nearby only. The fewer people who see a Moment, the easier it is to guess who made it.' }
+        // A long video's later parts are found by the account that made the first; under a made-up name there is none.
+        : body.series ? { status: 400, code: 'PEN_NAME_NOT_FOR_THIS', message: "A video posted in parts can't go out under a made-up name. Post one of up to a minute." }
+        : await penName.gate.accountRefusal(req.user.id)
+          || await penName.gate.limitRefusal(req.user.id, 'moment')
+          || await penName.gate.wordsRefusal([body.caption, body.text]);
+      if (refusal) throw store.fail(refusal.status, refusal.code, refusal.message);
+      pen = await penName.write.requireName(req.user.id);
+      Object.assign(body, { show_area: false, altitude: null, taken_here: false, show_weather: false });
     }
     // No location: connections only, no area, no place.
     const unplaced = body.location.source === 'none';
@@ -337,7 +357,9 @@ router.post('/', createLimiter, async (req, res) => {
     await store.checkPostingRules(req.user, body);
     // With the Sky on for the author, skyPlacement decides where the Moment goes; off, the rules from before it do.
     const skyFor = await store.skyOn(req.user);
-    const sky = !unplaced && skyFor;
+    // A made-up-name Moment always floats over its area (or sits at a public place with its own picture taken there),
+    // whatever the Sky's switch says for its writer.
+    const sky = !unplaced && (skyFor || underPenName);
     // "Share later" (with the Sky on, a Moment with no place too): the time it shares, worked out now.
     const shareAt = skyFor && body.share_later
       ? momentSchedule.shareAtFor(body.share_later, Date.now(),
@@ -403,8 +425,15 @@ router.post('/', createLimiter, async (req, res) => {
       takenAt: takenAt || body.taken_at || null,
     });
     const weather = marked && body.show_weather ? await momentWeather.weatherAt(latitude, longitude) : null;
+    if (underPenName) {
+      // Never an exact point that isn't a public place, and never where too few verified homes could have made it.
+      if (!area && !venue) throw store.fail(400, 'PEN_NAME_NEEDS_PLACE', 'A Moment under a made-up name needs a place, so it reaches people nearby.');
+      const crowd = await penName.gate.crowdRefusal(area ? area.latitude : latitude, area ? area.longitude : longitude);
+      if (crowd) throw store.fail(crowd.status, crowd.code, crowd.message);
+    }
     const { row, created } = await store.insertMoment(store.newMomentRow({
-      userId: req.user.id,
+      userId: underPenName ? penName.SYSTEM_ACCOUNT_ID : req.user.id,
+      pen,
       accountType: req.user.accountType,
       kind: body.kind,
       hours: body.hours,
@@ -425,7 +454,7 @@ router.post('/', createLimiter, async (req, res) => {
       shareAt,
       takenHere: marked,
       weather,
-    }), id);
+    }), id, underPenName ? { userId: req.user.id, pen } : null);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
       ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}),
       ...(marked ? { taken_here: true, weather: Boolean(weather) } : {}) });
@@ -433,7 +462,8 @@ router.post('/', createLimiter, async (req, res) => {
     // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
     // later at its time, from jobs/momentsShareLater.js). After the answer, and on its own: it never slows or fails the
     // post.
-    if (created && body.kind === 'text') momentNotify.notifyConnections(row);
+    // (Nobody is told a made-up-name Moment is by someone they know.)
+    if (created && body.kind === 'text' && !underPenName) momentNotify.notifyConnections(row);
   } catch (error) {
     sendError(res, error, 'create');
   }
@@ -460,8 +490,8 @@ function receiveFiles(req, res, next) {
 router.post('/:id/media', uploadLimiter, receiveFiles, async (req, res) => {
   try {
     const id = momentId(req);
-    const row = await store.loadMoment(id);
-    if (!row || row.user_id !== req.user.id) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
+    const row = await store.ownMoment(id, req.user.id);
+    if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
     if (store.momentState(row) === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
     const kind = store.meta(row).kind;
     if (kind === 'text') throw store.fail(400, 'MOMENT_INVALID', 'A text card has no file.');
@@ -494,7 +524,8 @@ router.post('/:id/media', uploadLimiter, receiveFiles, async (req, res) => {
     }
 
     const pictures = await Promise.all(momentUpload.checkSources(kind, prepared).map((buffer) => media.checkImage(buffer)));
-    const finished = momentCheck.checkPictures(pictures).then((result) => momentCheck.finishUpload(checking, result));
+    const finished = momentCheck.checkPictures(pictures, { madeUpName: penName.isPenNameRow(checking) })
+      .then((result) => momentCheck.finishUpload(checking, result));
     finished.catch((error) => logger.error('moments.check_finish_failed', { momentId: id, error: error.message }));
     let timer;
     const done = await Promise.race([
@@ -624,7 +655,7 @@ router.get('/:id', async (req, res) => {
 router.post('/:id/view', actionLimiter, async (req, res) => {
   try {
     const row = await store.openMoment(momentId(req), req.user.id);
-    if (row.user_id !== req.user.id) {
+    if (!store.isOwn(row, req.user.id)) {
       const { error } = await supabaseAdmin.rpc('record_post_unique_view', { p_post_id: row.id, p_user_id: req.user.id });
       if (error) throw new Error(`Failed to record the view: ${error.message}`);
     }
@@ -637,10 +668,10 @@ router.post('/:id/view', actionLimiter, async (req, res) => {
 /** GET /:id/viewers — the author's "Seen by": who watched, newest first, with their reaction and whether they replied. */
 router.get('/:id/viewers', async (req, res) => {
   try {
-    const row = await store.loadMoment(momentId(req));
-    if (!row || row.user_id !== req.user.id) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
+    const row = await store.ownMoment(momentId(req), req.user.id);
+    if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
     if (store.momentState(row) === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
-    res.json(await store.viewersOf(row));
+    res.json(await store.viewersOf(row, req.user.id));
   } catch (error) {
     sendError(res, error, 'viewers');
   }
@@ -650,7 +681,7 @@ router.get('/:id/viewers', async (req, res) => {
 
 async function othersMoment(req) {
   const row = await store.openMoment(momentId(req), req.user.id);
-  if (row.user_id === req.user.id) throw store.fail(400, 'MOMENT_OWN', 'This is your own Moment.');
+  if (store.isOwn(row, req.user.id)) throw store.fail(400, 'MOMENT_OWN', 'This is your own Moment.');
   return row;
 }
 
@@ -674,6 +705,10 @@ router.post('/:id/reply', actionLimiter, async (req, res) => {
   try {
     const { text } = parseBody(Joi.object({ text: Joi.string().trim().min(1).max(1000).required() }), req.body);
     const row = await othersMoment(req);
+    // A reply is a direct chat message to the Moment's author, and a made-up name has no chats: reactions only.
+    if (penName.isPenNameRow(row)) {
+      throw store.fail(403, 'MOMENT_REPLY_UNAVAILABLE', 'A Moment under a made-up name takes reactions, not replies.');
+    }
     const author = (await store.loadAuthors([row.user_id])).get(String(row.user_id));
     res.json(await momentChat.replyToMoment({
       row, author, replierId: req.user.id, text, io: req.app.get('io'), requestId: req.requestId,
@@ -702,8 +737,8 @@ router.post('/:id/report', actionLimiter, async (req, res) => {
 /** DELETE /:id — the author deletes their Moment; its files go unless a review holds them. */
 router.delete('/:id', actionLimiter, async (req, res) => {
   try {
-    const row = await store.loadMoment(momentId(req));
-    if (!row || row.user_id !== req.user.id) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
+    const row = await store.ownMoment(momentId(req), req.user.id);
+    if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
     if (!row.archived_at) await store.deleteMoment(row);
     res.status(204).end();
   } catch (error) {
@@ -723,9 +758,26 @@ async function mutedAccount(req) {
   return { id: data.id, type: data.account_type === 'business' ? 'business' : 'user' };
 }
 
+// A made-up name's id rides where an account's would. Muting it hides everything that account makes under any made-up
+// name, Moments and posts alike (services/penName): there is no Moments-only mute of a name.
+async function mutedPenName(req, undo) {
+  const id = String(req.params.userId || '');
+  if (!UUID.test(id) || !await penName.present.isPenNameId(id)) return false;
+  try {
+    if (undo) await penName.present.unhide(req.user.id, id);
+    else await penName.present.hide(req.user.id, id);
+  } catch (error) {
+    if (!error.code) throw error;
+    throw store.fail(error.status, error.code, error.message);
+  }
+  feedService.invalidateFilterCache(req.user.id);
+  return true;
+}
+
 /** PUT /authors/:userId/mute — hide this person's Moments (only their Moments; Settings lists it to undo). */
 router.put('/authors/:userId/mute', actionLimiter, async (req, res) => {
   try {
+    if (await mutedPenName(req, false)) return res.status(204).end();
     const account = await mutedAccount(req);
     const { data: existing, error: readError } = await supabaseAdmin.from('PostMute').select('id')
       .eq('user_id', req.user.id).eq('muted_entity_type', account.type).eq('muted_entity_id', account.id)
@@ -747,6 +799,7 @@ router.put('/authors/:userId/mute', actionLimiter, async (req, res) => {
 /** DELETE /authors/:userId/mute — show this person's Moments again. */
 router.delete('/authors/:userId/mute', actionLimiter, async (req, res) => {
   try {
+    if (await mutedPenName(req, true)) return res.status(204).end();
     const account = await mutedAccount(req);
     const { error } = await supabaseAdmin.from('PostMute').delete()
       .eq('user_id', req.user.id).eq('muted_entity_id', account.id).eq('surface', 'moments');

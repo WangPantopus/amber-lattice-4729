@@ -285,6 +285,19 @@ public final class PulseComposeViewModel {
     /// Author identity. Defaults to `.personal`.
     public var identity: PulseComposeIdentity = .personal
 
+    /// "Post as": the person's own name or their made-up name (contract "What each app builds", 1 and 3). Every new
+    /// post starts on the person's own name.
+    public internal(set) var voice: PenNameVoice = .own
+    /// `GET /api/pen-names/check` for the draft's place while the made-up name is chosen.
+    public internal(set) var penNameCheck: PenNameCheckResponse?
+    /// The made-up name screen is open: the made-up name was chosen before there was one, or the server said
+    /// `PEN_NAME_NEEDED`.
+    public var showsPenNameSetup = false
+    /// The post goes out once the name is taken (`PEN_NAME_NEEDED`).
+    @ObservationIgnored var sendsAfterPenName = false
+    /// Editing a post written under a made-up name: its words change, nothing else (the name it carries is shown).
+    public internal(set) var editedPenName: PenNameDTO?
+
     /// Visibility scope. Defaults to `.neighbors`.
     public var visibility: PulseComposeVisibility = .neighbors
 
@@ -773,7 +786,7 @@ public final class PulseComposeViewModel {
 
     /// True iff every active field passes its validator.
     public var isValid: Bool {
-        fieldsActiveForCurrentIntent().allSatisfy { (fields[$0]?.error) == nil }
+        fieldsActiveForCurrentIntent().allSatisfy { (fields[$0]?.error) == nil } && !penNameBlocksSubmit
     }
 
     public var isSubmitting: Bool {
@@ -955,7 +968,7 @@ public final class PulseComposeViewModel {
 
     /// Send the create or update body. Returns true on success.
     @discardableResult
-    public func submit() async -> Bool {
+    public func submit() async -> Bool { // swiftlint:disable:this cyclomatic_complexity
         if isSubmitting { return false }
         // Earlier answers still on their way would only arrive behind the post.
         earlierAnswersTask?.cancel()
@@ -1061,7 +1074,12 @@ public final class PulseComposeViewModel {
             Analytics.track(.formPulseComposeSubmit(intent: activeIntent.rawValue, result: .success))
             return true
         } catch {
-            let message = quoteRefusal(error) ?? (error as? APIError)?.errorDescription ?? (
+            // No made-up name yet: the name screen opens and the post goes out once a name is taken.
+            if opensPenNameSetup(for: error) {
+                state = .idle
+                return false
+            }
+            let message = quoteRefusal(error) ?? PenNameRefusal.from(error)?.message ?? (error as? APIError)?.errorDescription ?? (
                 isEditing ? "Couldn't save. Try again." : "Couldn't post. Try again."
             )
             state = .error(message)
@@ -1095,6 +1113,9 @@ public final class PulseComposeViewModel {
     /// Seed every field + selector from the saved post. Re-baselines so
     /// the form starts in a non-dirty pose.
     private func apply(prefill post: PostDetailDTO) {
+        if let penNameId = post.penNameId, let author = post.author ?? post.creator {
+            editedPenName = PenNameDTO(id: penNameId, name: author.displayName, avatarURL: author.profilePictureURL)
+        }
         composePurpose = PulseComposePurpose.allCases.first { $0.postType == post.postType }
         let intent = composePurpose?.legacyIntent ?? PulseComposeIntent.from(feedIntent: PulseIntent.from(postType: post.postType))
         if composePurpose == .headsUp {
@@ -1335,6 +1356,8 @@ public final class PulseComposeViewModel {
         if businessAuthorId == nil, audience == "nearby", !draftMediaLocations.isEmpty {
             request.mediaLocations = draftMediaLocations
         }
+        // Under the made-up name: people nearby, words only, no home or place of its own (it floats over an area).
+        applyPenName(to: &request)
         return request
     }
 
@@ -1395,6 +1418,7 @@ public final class PulseComposeViewModel {
 
     var effectiveAudience: String {
         if postingTarget?.isNetworkTarget == true { return "connections" }
+        if penNameChosen != nil { return "nearby" }
         // Place target with the "Connections" radio selected — the post
         // should reach the network, not the neighborhood.
         if isFlowMode, visibility == .connections { return "connections" }

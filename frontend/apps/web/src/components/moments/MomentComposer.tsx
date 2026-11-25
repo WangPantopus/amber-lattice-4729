@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { geo, moments } from '@pantopus/api';
 import type { Audience, Background, Hours, Location, NewMoment } from '@pantopus/api/endpoints/moments';
+import type { MomentChatDraft } from '@pantopus/types';
 import { Camera, Check, Clock3, ImagePlus, LocateFixed, MapPin, Type, Users, X } from 'lucide-react';
 import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/composer/mediaLocation';
 import MomentDialog from './MomentDialog';
@@ -29,10 +30,16 @@ const fallback = { max_seconds: 30, max_parts: 1, max_bytes: 50 * 1024 * 1024 };
 type Placement = 'exact' | 'area' | 'place' | 'none';
 export default function MomentComposer({
   account,
+  draft = null,
   onClose,
   onDone,
 }: {
   account: string;
+  /**
+   * A Moment Pantopus AI wrote in the assistant's chat: the composer opens with its words, colour, how long it stays
+   * up and who sees it. For a photo or video, its caption is filled in once the person adds one here.
+   */
+  draft?: MomentChatDraft | null;
   onClose(): void;
   onDone(msg: string): void;
 }) {
@@ -43,11 +50,13 @@ export default function MomentComposer({
   const [camera, setCamera] = useState(false),
     [capture, setCapture] = useState<CameraCapture | null>(null);
   const [art, setArt] = useState(blankArt),
-    [text, setText] = useState(''),
+    [text, setText] = useState(draft?.kind === 'text' ? draft.text || '' : ''),
     [caption, setCaption] = useState(''),
-    [bg, setBg] = useState<Background>('teal');
-  const [hours, setHours] = useState<Hours>(24),
-    [audience, setAudience] = useState<Audience>('nearby'),
+    [bg, setBg] = useState<Background>(draft?.kind === 'text' && draft.background ? draft.background : 'teal');
+  // The draft's caption waits for the first photo or video (choosing one clears the caption, below).
+  const draftCaption = useRef(draft?.kind === 'photo' ? draft.caption || '' : '');
+  const [hours, setHours] = useState<Hours>(draft?.hours ?? 24),
+    [audience, setAudience] = useState<Audience>(draft?.audience ?? 'nearby'),
     [placement, setPlacement] = useState<Placement>('exact');
   const [fix, setFix] = useState<DeviceFix | null>(null),
     [meta, setMeta] = useState<CaptureMetadata | null>(null),
@@ -122,7 +131,8 @@ export default function MomentComposer({
     setMeta(null);
     setReading(!!file);
     setArt(blankArt());
-    setCaption('');
+    setCaption(file ? draftCaption.current : '');
+    if (file) draftCaption.current = '';
     setVenue('');
     setHeight(false);
     setWeather(false);

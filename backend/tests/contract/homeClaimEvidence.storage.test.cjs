@@ -78,7 +78,8 @@ describe('Private claim evidence through real local storage', {
     assert.ifError(result.error); assert.equal(result.data.ok, true); return result.data.storage;
   }
   before(async () => {
-    assert.equal(sql('SELECT count(*) FROM public."User"'), '0', 'requires an empty disposable app database');
+    // (A fresh installation holds the one system account made-up-name posts are stored under: it isn't app data.)
+    assert.equal(sql(`SELECT count(*) FROM public."User" WHERE account_type IS DISTINCT FROM 'system'`), '0', 'requires an empty disposable app database');
     assert.equal(sql('SELECT count(*) FROM public."HomeClaimEvidenceIntent"'), '0');
     docker('network', 'inspect', network);
     restOrigin = await launch(`pantopus-evidence-rest-${suffix}`, 3000,

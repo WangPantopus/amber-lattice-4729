@@ -218,13 +218,16 @@ function alertKindRefusal(kind, accountType, sourceUrl) {
 
 const BUSINESS_CANNOT_POST_ERROR = "Businesses can't post to Pulse. Your business page and earlier posts are unchanged.";
 
-const POST_AS_TYPES = ['personal', 'business', 'home', 'persona'];
+// 'pen_name': under the person's made-up name (services/penName). The row is still stored with post_as 'personal'.
+const POST_AS_TYPES = ['personal', 'business', 'home', 'persona', 'pen_name'];
 const AUDIENCE_TYPES = ['connections', 'followers', 'network', 'nearby', 'saved_place', 'household', 'neighborhood', 'target_area', 'national', 'public'];
 const LOCAL_AUDIENCES = ['nearby', 'neighborhood', 'saved_place', 'target_area'];
 
 const { PULSE_TOPICS, PULSE_TOPIC_NAMES, isPulseTopic } = require('../services/pulse/topics');
 const pulseLifecycle = require('../services/pulse/lifecycle');
 const pulseCompose = require('../services/pulse/compose');
+const penName = require('../services/penName');
+const postReportService = require('../services/postReportService');
 // The created post as its author's Pulse card (contract §2.5 response).
 async function pulseCard(postId, userId) {
   return (await require('../services/pulse/conversation').read(postId, userId)).post;
@@ -412,6 +415,8 @@ const createCommentSchema = Joi.object({
   comment: Joi.string().allow('').max(2000).required(),
   parentCommentId: Joi.string().uuid().optional(),
   clientRequestId: Joi.string().uuid().optional(),
+  // 'pen_name': under the person's made-up name (services/penName).
+  postAs: Joi.string().valid('personal', 'pen_name').optional(),
 });
 
 const updateCommentSchema = Joi.object({
@@ -634,6 +639,16 @@ async function attachFilesToComments(comments) {
   }));
 }
 
+// Whether this person wrote the row. A post or reply under a made-up name is stored under the system account, and
+// only its own writer's request reads it as theirs (services/penName); `id` is the row's id when the row was read
+// without it.
+async function isWriter(row, userId, kind, id) {
+  if (!row || !userId) return false;
+  if (row.user_id === userId) return true;
+  if (row.user_id !== penName.SYSTEM_ACCOUNT_ID) return false;
+  return (await penName.owner.mine(userId, kind, [row.id || id])).size > 0;
+}
+
 async function loadPersonaCommentAuthors(post, userIds) {
   if (post?.identity_context_type !== 'persona') return null;
   const authors = new Map();
@@ -685,7 +700,8 @@ function serializeCommentForViewer(comment, audienceAuthor, viewerUserId, person
 // business (or anyone without a Local Profile) by the account. A chat names people that way, so its lookup is reused;
 // `id` stays the account id the web's hover card follows and connects by.
 async function loadCommentNames(comments, post, preparedAuthors) {
-  const userIds = comments.map((comment) => comment.user_id);
+  // A reply under a made-up name is named by penName.present, not by the account it is stored under.
+  const userIds = comments.filter((comment) => !penName.isPenNameRow(comment)).map((comment) => comment.user_id);
   const authors = preparedAuthors ?? await loadPersonaCommentAuthors(post, userIds);
   return { authors, people: authors ? null : await loadChatPeople(userIds) };
 }
@@ -695,11 +711,27 @@ async function loadCommentNames(comments, post, preparedAuthors) {
 async function serializeCommentsForViewer(comments, post, viewerUserId, preparedAuthors, prepared = {}) {
   // Comments from users blocked by / blocking the viewer are never shown to them.
   const blocked = prepared.blocked || (viewerUserId ? await blockService.blockedUserIds(viewerUserId) : new Set());
-  const visible = blocked.size ? comments.filter((comment) => !blocked.has(comment.user_id)) : comments;
-  const { authors, people } = prepared.names || await loadCommentNames(visible, post, preparedAuthors);
-  return visible.map((comment) => serializeCommentForViewer(comment,
-    authors ? authors.get(comment.user_id) || { id: '', displayName: 'Fan', href: null } : null,
-    viewerUserId, people?.get(String(comment.user_id))));
+  const unblocked = blocked.size ? comments.filter((comment) => !blocked.has(comment.user_id)) : comments;
+  // Replies under a made-up name: hidden by the made-up names this person muted or blocked (or by the brake), named
+  // by the made-up name, and the viewer's own marked as theirs. Read only when the list holds one.
+  const hasPenNames = unblocked.some(penName.isPenNameRow);
+  const [hiddenPenNames, allPenNamesHidden] = hasPenNames
+    ? await Promise.all([penName.present.hiddenIds(viewerUserId), penName.gate.isHidden()]) : [new Set(), false];
+  const visible = hasPenNames ? unblocked.filter((comment) => !penName.isPenNameRow(comment)
+    || (!allPenNamesHidden && !hiddenPenNames.has(String(comment.identity_context_id)))) : unblocked;
+  const [{ authors, people }, penNames] = await Promise.all([
+    prepared.names || loadCommentNames(visible, post, preparedAuthors),
+    hasPenNames ? penName.present.read('comment', visible, viewerUserId) : null,
+  ]);
+  return visible.map((comment) => {
+    if (penName.isPenNameRow(comment)) {
+      const { author: _storedUnder, ...row } = comment;
+      return penName.present.presentComment(row, viewerUserId, penNames);
+    }
+    return serializeCommentForViewer(comment,
+      authors ? authors.get(comment.user_id) || { id: '', displayName: 'Fan', href: null } : null,
+      viewerUserId, people?.get(String(comment.user_id)));
+  });
 }
 
 function serializeLikeForViewer(like) {
@@ -743,14 +775,24 @@ const READER_POST_FIELDS = [
   'lost_found_type', 'lost_found_contact_pref', 'service_category', 'ref_task_id', 'ref_listing_id',
   'like_count', 'comment_count', 'share_count', 'userHasLiked', 'userHasSaved', 'userHasReposted', 'comments',
   'reactions', 'userReaction', 'quoted_post', 'post_metadata', 'area',
+  // Written under a made-up name (services/penName), and whether this reader is the one who wrote it.
+  'made_up_name', 'viewer_is_author',
+  // Whether a first reply on it may be written under a made-up name (feedService.attachIdentityAuthors).
+  'takes_made_up_name_reply',
 ];
 
 // The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
-// and its name, an Official or curator notice's source). Only the server sets those keys (POST /api/posts,
-// services/aroundYouService.js); the rest of the metadata stays with the author.
+// and its name, an Official or curator notice's source), and for a post Around you made, that it is one and its
+// topics, so its page draws it as its card does (the outlet named, the headline apart from the summary). Only the
+// server sets those keys (POST /api/posts, services/aroundYouService.js); the rest of the metadata stays with the
+// author.
 function sourceMetadata(post) {
-  const { source_url: url, source_name: name } = post?.post_metadata || {};
-  return url ? { source_url: url, ...(name ? { source_name: name } : {}) } : null;
+  const { source_url: url, source_name: name, around_you: around } = post?.post_metadata || {};
+  const story = around && typeof around === 'object'
+    ? { around_you: { section: around.section || null, topics: Array.isArray(around.topics) ? around.topics : [] } }
+    : null;
+  if (!url && !story) return null;
+  return { ...(url ? { source_url: url, ...(name ? { source_name: name } : {}) } : {}), ...(story || {}) };
 }
 
 // "Photo taken here": the author's own photo or video placed the post (set at posting, in post_metadata).
@@ -763,6 +805,8 @@ function photoBasisFields(post) {
 function signedOutPostView(post) {
   const view = Object.fromEntries(SIGNED_OUT_POST_FIELDS.map((field) => [field, post[field] ?? null]));
   view.post_metadata = sourceMetadata(post);
+  // An Around you story's public page says how many replies it has (a number only; who and what stay in the app).
+  if (view.post_metadata?.around_you) view.comment_count = Number(post.comment_count) || 0;
   // The author as the post shows them, without the profile or home id behind it.
   const { id: _creatorId, ...creator } = post.creator || {};
   view.creator = post.creator ? creator : null;
@@ -1055,12 +1099,16 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       dealExpiresAt,
       lostFoundType,
       serviceCategory, refListingId, refTaskId, radiusMiles,
-      postAs: rawPostAs, audience, identityContextId, targetPlaceId, businessId,
+      postAs: bodyPostAs, audience, identityContextId, targetPlaceId, businessId,
       distributionTargets, crossPostToConnections, gpsTimestamp, gpsLatitude, gpsLongitude, mediaLocations,
       purpose, profileVisibilityScope, showOnProfile,
       geocodeProvider, geocodeAccuracy, geocodePlaceId,
       topic, sportsScope, postMetadata, sourceUrl, quotedPostId,
     } = req.body;
+    // Under a made-up name (services/penName): everything below treats the post as the person's own, so every check
+    // of who may post where runs on the real account. Only at the end is the row saved under the system account.
+    const underPenName = bodyPostAs === 'pen_name';
+    const rawPostAs = underPenName ? 'personal' : bodyPostAs;
     // P2.4 / unified-IA §4.1 — defense-in-depth. Persona-context posts
     // must go through the audience-zone composer (P2.5) and the
     // /api/personas/:id/posts (or broadcast) routes, not /api/posts.
@@ -1117,6 +1165,27 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
     const isCurator = req.user.accountType === 'curator';
     if (!isCurator && hasOutsideMedia(req.body)) {
       return res.status(400).json({ error: OUTSIDE_MEDIA_ERROR });
+    }
+
+    // ── A made-up name: who may use one, for what, and how often (the words are read further down) ──
+    let pen = null;
+    if (underPenName) {
+      const refusal = pulseMode || isCurator
+        ? { status: 400, code: 'PEN_NAME_NOT_FOR_THIS', message: "This can't be posted under a made-up name." }
+        : await penName.gate.accountRefusal(userId)
+          || penName.gate.postRefusal({
+            postType, audience: requestedAudience, visibility: requestedVisibility, distributionTargets, postAs,
+            homeId, businessId, quotedPostId, crossPostToConnections, isStory: req.body.isStory === true,
+            hasMedia: [mediaUrls, mediaThumbnails, mediaLiveUrls].some((list) => Array.isArray(list) && list.some(Boolean)),
+          })
+          || await penName.gate.limitRefusal(userId, 'post');
+      if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
+      try {
+        pen = await penName.write.requireName(userId);
+      } catch (nameError) {
+        if (!nameError.code) throw nameError;
+        return res.status(nameError.status).json({ error: nameError.message, code: nameError.code });
+      }
     }
 
     // Origin is server-derived from the caller's account type. It is the
@@ -1441,8 +1510,9 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
     // neighborhood_only or none keeps that. "Were you there" evidence (the GPS fix, the photo's point) was read above
     // and isn't stored.
     const tagKind = taggedPlaceKind(geocodePlaceId, geocodeAccuracy);
+    // A made-up-name post always floats, whatever the flag or the precision asked for.
     const sky = isPlacePost && !isCurator && !pulse && (postAs === 'personal' || postAs === 'home')
-      && !['neighborhood_only', 'none'].includes(locationPrecision) && await skyPlaces.skyOn(req.user);
+      && (underPenName || (!['neighborhood_only', 'none'].includes(locationPrecision) && await skyPlaces.skyOn(req.user)));
     const skyVenue = sky && postAs === 'personal' && tagKind === 'venue' ? await skyPlaces.venueCheck({
       userId, placeId: geocodePlaceId, latitude: Number(effectiveLatitude), longitude: Number(effectiveLongitude),
     }) : null;
@@ -1708,6 +1778,20 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       }
     }
 
+    // ── A made-up name: the place, the crowd, the words, and the row itself ──
+    if (underPenName) {
+      // It reaches people nearby from a place that is an area (or a public venue where its own photo was taken),
+      // never a point that could be the writer's home.
+      const placed = isPlacePost && postData.latitude != null && postData.longitude != null
+        && (skyPin || postData.post_metadata?.area);
+      const refusal = !placed
+        ? { status: 400, code: 'PEN_NAME_NEEDS_PLACE', message: 'A post under a made-up name needs a place, so it reaches people nearby.' }
+        : await penName.gate.crowdRefusal(postData.latitude, postData.longitude)
+          || await penName.gate.wordsRefusal([postData.title, postData.content]);
+      if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
+      Object.assign(postData, penName.write.postFields(pen));
+    }
+
     // A Pulse post's place, audience, window and hold come from the server (pulse/compose.js),
     // never from device coordinates or the client's audience fields.
     if (pulse) {
@@ -1728,12 +1812,13 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
         value && typeof value === 'object' && !Array.isArray(value)
           ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value
       )).digest('hex') : null;
-    const acknowledgeRetry = async (existing) => {
+    const acknowledgeRetry = async (saved) => {
+      const existing = await penName.present.asWriter(saved, userId, 'post');
       if (existing.user_id !== userId || existing.post_metadata?._create_request_hash !== requestHash) {
         return res.status(409).json({ error: 'This post was already saved. Restore the original draft to retry photos, or edit the saved post.' });
       }
       return res.status(201).json({ message: 'Post created successfully', post: await serializePostForViewer({
-        ...existing,
+        ...saved,
         media_urls: normalizeMediaUrls(existing.media_urls),
         media_thumbnails: normalizeAlignedMediaUrls(existing.media_thumbnails),
         media_live_urls: normalizeAlignedMediaUrls(existing.media_live_urls),
@@ -1745,10 +1830,16 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       postData.id = postId;
       postData.post_metadata = { ...postData.post_metadata, _create_request_hash: requestHash };
     }
-    const insert = postId
+    const insertPost = () => (postId
       ? supabaseAdmin.from('Post').upsert(postData, { onConflict: 'id', ignoreDuplicates: true })
-      : supabaseAdmin.from('Post').insert(postData);
-    const { data: post, error } = await insert.select(selection).maybeSingle();
+      : supabaseAdmin.from('Post').insert(postData)).select(selection).maybeSingle();
+    // Under a made-up name the writer is recorded first; the database refuses the row otherwise (penName/write.js).
+    const { data: post, error } = !underPenName ? await insertPost()
+      : await penName.write.sealed({ kind: 'post', id: postId, userId, pen }, async (id) => {
+        postData.id = id;
+        const result = await insertPost();
+        return { ...result, saved: !result.error };
+      });
     if (!error && !post && postId) {
       const existing = await readRetry();
       if (existing) return await acknowledgeRetry(existing);
@@ -1766,7 +1857,8 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
 
     logger.info('Post created', {
       postId: post.id,
-      userId,
+      // A made-up-name post is never logged with its account.
+      ...(underPenName ? { underPenName: true } : { userId }),
       postType,
       postAs,
       audience: requestedAudience,
@@ -1774,7 +1866,8 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
     });
 
     // Fire-and-forget: queue organic business matching if post has a service category + location
-    if (serviceCategory && effectiveLatitude != null && effectiveLongitude != null) {
+    // A made-up-name post never counts for or against a business's record.
+    if (!underPenName && serviceCategory && effectiveLatitude != null && effectiveLongitude != null) {
       setImmediate(() => {
         matchBusinessesForPost(post.id).catch((err) => {
           logger.warn('[organicMatch] Inline match failed (will retry via cron)', { postId: post.id, error: err.message });
@@ -1782,8 +1875,9 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       });
     }
 
-    // A held post notifies no one until it is live (contract §5).
-    if (!pulse?.plan.held) {
+    // A held post notifies no one until it is live (contract §5). A made-up-name post tells nobody that someone they
+    // know posted: it goes to people nearby, who find it in the feed.
+    if (!pulse?.plan.held && !underPenName) {
       runPostCreatedHooks({
         post,
         userId,
@@ -2663,6 +2757,18 @@ router.post('/mute', verifyToken, async (req, res) => {
     }
     // A business post carries the business's id for everyone but its writer, and the web mutes a post's author as a
     // "user": muting a business account mutes the business (its posts), never the person who wrote one.
+    // A made-up name's id rides where an account's would (the apps mute a post's author as a "user"): muting it hides
+    // everything that account writes under any made-up name, and says nothing about their named posts.
+    if (entityType === 'user' && await penName.present.isPenNameId(entityId)) {
+      try {
+        await penName.present.hide(userId, entityId);
+      } catch (hideError) {
+        if (!hideError.code) throw hideError;
+        return res.status(hideError.status).json({ error: hideError.message, code: hideError.code });
+      }
+      feedService.invalidateFilterCache(userId);
+      return res.json({ message: 'user muted successfully' });
+    }
     let mutedType = entityType;
     if (entityType === 'user') {
       const { data: account } = await supabaseAdmin.from('User').select('account_type').eq('id', entityId).maybeSingle();
@@ -2762,7 +2868,18 @@ router.get('/mute', verifyToken, async (req, res) => {
           surface: m.surface,
         };
       });
-    res.json({ muted, topic_mutes: [...topicMutes.values()] });
+    // Muted made-up names, listed as the people they stand in for so today's Settings can undo them.
+    const mutedPenNames = (await penName.present.hiddenList(userId)).filter((row) => !row.blocked).map((row) => ({
+      entity_type: 'user',
+      entity_id: row.id,
+      name: row.name,
+      username: null,
+      avatar_url: row.avatar_url,
+      muted_at: row.created_at,
+      surface: null,
+      made_up_name: true,
+    }));
+    res.json({ muted: [...muted, ...mutedPenNames], topic_mutes: [...topicMutes.values()] });
   } catch (err) {
     logger.error('List mutes error', { error: err.message });
     res.status(500).json({ error: 'Failed to load muted accounts' });
@@ -2781,6 +2898,11 @@ router.delete('/mute', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'entityType and entityId are required' });
     }
 
+    if (entityType === 'user' && await penName.present.isPenNameId(entityId)) {
+      await penName.present.unhide(userId, entityId);
+      feedService.invalidateFilterCache(userId);
+      return res.json({ message: 'Unmuted successfully' });
+    }
     let query = supabaseAdmin
       .from('PostMute')
       .delete()
@@ -2820,7 +2942,7 @@ router.patch('/resolve/:id', verifyToken, async (req, res) => {
       .single();
 
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    if (post.user_id !== userId) return res.status(403).json({ error: 'Only the post author can mark it as resolved' });
+    if (!await isWriter(post, userId, 'post', postId)) return res.status(403).json({ error: 'Only the post author can mark it as resolved' });
     if (post.post_type !== 'ask_local') return res.status(400).json({ error: 'Only questions can be marked as resolved' });
     if (post.resolved_at) return res.status(400).json({ error: 'This question is already resolved' });
 
@@ -3081,6 +3203,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
     const hasAccess = await canViewPost(post, userId, undefined, blocked);
     if (!hasAccess) return res.status(403).json({ error: 'You do not have access to this post' });
 
+    // A made-up-name post stays inside the app: it has no public page.
+    if (!userId && penName.isPenNameRow(post)) return res.status(404).json({ error: 'Post not found' });
     if (!userId) {
       await feedService.refreshSkyEverywhere();
       applyPostLocationPrivacy(post, null);
@@ -3197,7 +3321,15 @@ router.patch('/:id', verifyToken, validate(updatePostSchema), async (req, res) =
         is_story`)
       .eq('id', id).single();
     if (!existing) return res.status(404).json({ error: 'Post not found' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only edit your own posts' });
+    if (!await isWriter(existing, userId, 'post', id)) return res.status(403).json({ error: 'You can only edit your own posts' });
+    // Under a made-up name only the words change (an edit form from before made-up names sends the whole post back:
+    // its other fields are left as they are, so nothing can move the post to a home, a profile or another audience),
+    // and the new words are read as the first ones were.
+    if (existing.user_id === penName.SYSTEM_ACCOUNT_ID) {
+      req.body = Object.fromEntries(Object.entries(req.body).filter(([key]) => ['content', 'title', 'tags'].includes(key)));
+      const refusal = await penName.gate.wordsRefusal([req.body.title, req.body.content]);
+      if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
+    }
     if (isMomentPost(existing)) return res.status(403).json(MOMENT_POST_REFUSAL);
     if (isPlanPost(existing)) return res.status(409).json(PLAN_POST_REFUSAL);
     if (req.body.eventDate !== undefined || req.body.eventEndDate !== undefined) {
@@ -3338,7 +3470,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
     if (lookupError) return res.status(500).json({ error: 'Failed to delete post' });
     // A lost successful reply must not make the desired absence unrecoverable.
     if (!existing) return res.json({ message: 'Post deleted successfully' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only delete your own posts' });
+    if (!await isWriter(existing, userId, 'post', id)) return res.status(403).json({ error: 'You can only delete your own posts' });
     if (isMomentPost(existing)) return res.status(403).json(MOMENT_POST_REFUSAL);
     if (isPlanPost(existing)) return res.status(409).json(PLAN_POST_REFUSAL);
 
@@ -3395,8 +3527,10 @@ router.delete('/:id', verifyToken, async (req, res) => {
         return res.status(503).json({ error: 'Post media could not be removed. Please retry.' });
       }
     }
-    const { error } = await supabaseAdmin.from('Post').delete().eq('id', id).eq('user_id', userId);
+    const { error } = await supabaseAdmin.from('Post').delete().eq('id', id).eq('user_id', existing.user_id);
     if (error) { logger.error('Error deleting post', { error: error.message, postId: id }); return res.status(500).json({ error: 'Failed to delete post' }); }
+    // The record of who wrote a made-up-name post goes with it.
+    if (existing.user_id === penName.SYSTEM_ACCOUNT_ID) await penName.owner.unseal({ kind: 'post', contentId: id, ownerId: userId });
     res.json({ message: 'Post deleted successfully' });
   } catch (err) {
     logger.error('Post delete error', { error: err.message, postId: req.params.id });
@@ -3410,7 +3544,7 @@ router.post('/:id/archive', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { data: existing } = await supabaseAdmin.from('Post').select('user_id, post_metadata, is_story').eq('id', id).single();
     if (!existing) return res.status(404).json({ error: 'Post not found' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only archive your own posts' });
+    if (!await isWriter(existing, userId, 'post', id)) return res.status(403).json({ error: 'You can only archive your own posts' });
     if (isMomentPost(existing)) return res.status(403).json(MOMENT_POST_REFUSAL);
     if (isPlanPost(existing)) return res.status(409).json(PLAN_POST_REFUSAL);
 
@@ -3437,7 +3571,7 @@ router.post('/:id/unarchive', verifyToken, async (req, res) => {
     const { data: existing } = await supabaseAdmin
       .from('Post').select('user_id, archive_reason, post_type, resolution, is_story').eq('id', id).single();
     if (!existing) return res.status(404).json({ error: 'Post not found' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only restore your own posts' });
+    if (!await isWriter(existing, userId, 'post', id)) return res.status(403).json({ error: 'You can only restore your own posts' });
     if (isMomentPost(existing)) return res.status(403).json(MOMENT_POST_REFUSAL);
     if (existing.archive_reason === 'moderation') {
       return res.status(403).json({ error: 'This post was removed for breaking the community guidelines.', code: 'POST_REMOVED' });
@@ -3764,10 +3898,19 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       select: POST_REFS_SELECT,
     });
     if (!post) return;
+    // One voice per conversation (services/penName): which name this person already has here. Read while the checks
+    // below run; it is needed only just before the reply is saved.
+    const voiceRead = penName.owner.voiceIn(userId, postId).then((voice) => ({ voice }), () => ({ failed: true }));
+    // Whether the post's writer blocked this person's made-up name (then this account reaches them under no name).
+    // Asked now, beside the reads below, so it never adds a wait of its own; never asked of a made-up-name post, where
+    // nothing is refused because of a block (a refusal there would say who is behind the name).
+    const postReachRead = penName.isPenNameRow(post) ? Promise.resolve(false)
+      : penName.present.reachRefused(userId, post.user_id);
 
     let parent = null;
     if (parentCommentId) {
-      ({ data: parent } = await supabaseAdmin.from('PostComment').select('id, post_id, user_id, moderation_state')
+      ({ data: parent } = await supabaseAdmin.from('PostComment')
+        .select('id, post_id, user_id, moderation_state, identity_context_type')
         .eq('id', parentCommentId).eq('is_deleted', false).maybeSingle());
       // A held or removed reply is missing for everyone but its author, so nobody else can answer it.
       if (!parent || parent.post_id !== postId || !canReadReply(parent, userId)) {
@@ -3775,12 +3918,53 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       }
       // Blocks hide people from each other in both directions, so nobody replies to someone across one
       // (their comment list already hides that reply, and the reply notification would reach them).
-      if (await blockService.isBlocked(userId, parent.user_id)) {
+      // A reply under a made-up name is stored under the system account, so this never refuses a reply to one: a
+      // refusal there would say who is behind the name. Someone who blocked this person's made-up name is reached
+      // under no name.
+      const [acrossBlock, nameBlocked] = await Promise.all([
+        blockService.isBlocked(userId, parent.user_id),
+        penName.isPenNameRow(parent) || parent.user_id === post.user_id ? false
+          : penName.present.reachRefused(userId, parent.user_id),
+      ]);
+      if (acrossBlock || nameBlocked) {
         return res.status(403).json({ error: "You can't reply to this comment." });
       }
     }
+    if (await postReachRead) {
+      return res.status(403).json({ error: "You can't reply to this post." });
+    }
 
     const normalizedComment = typeof comment === 'string' ? comment.trim() : '';
+
+    // ── Under a made-up name? ──
+    // Where this person is already in the conversation under their made-up name, the reply carries it whatever the
+    // app sent (an app from before made-up names sends nothing): it never falls back to their own name. Where they are
+    // here under their own name, a made-up name is refused.
+    const { voice = null, failed: voiceUnknown = false } = await voiceRead;
+    // Not knowing matters only where a made-up name is in play: there the reply waits, so a writer's own reply in
+    // their made-up-name conversation can never go out under their own name by default.
+    if (voiceUnknown && (penName.isPenNameRow(post) || penName.isPenNameRow(parent) || req.body.postAs === 'pen_name')) {
+      return res.status(503).json({ error: "That didn't go through. Please try again.", code: 'PEN_NAME_VOICE_UNAVAILABLE' });
+    }
+    const underPenName = voice === 'pen_name' || req.body.postAs === 'pen_name';
+    let pen = null;
+    if (underPenName) {
+      const refusal = voice === 'named'
+        ? { status: 409, code: 'PEN_NAME_ONE_VOICE', message: "You're in this conversation under your own name, so your replies here use it too." }
+        // Where the person is already here under their made-up name, the conversation is theirs to go on with; a
+        // first reply under it is only for a post people nearby read.
+        : (voice === 'pen_name' ? null : penName.gate.replyRefusal(post))
+          || await penName.gate.accountRefusal(userId)
+          || await penName.gate.limitRefusal(userId, 'comment')
+          || await penName.gate.wordsRefusal([normalizedComment]);
+      if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
+      try {
+        pen = await penName.write.requireName(userId);
+      } catch (nameError) {
+        if (!nameError.code) throw nameError;
+        return res.status(nameError.status).json({ error: nameError.message, code: nameError.code });
+      }
+    }
     const audienceAuthors = await loadPersonaCommentAuthors(post, [userId]);
     const commentSelection = '*, author:user_id (id, username, name, first_name, last_name, profile_picture_url)';
     // A draft keeps its command ID through uncertain replies. Scope it to the
@@ -3794,7 +3978,8 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       if (error) throw error;
       return data;
     };
-    const acknowledgeRetry = async (existing) => {
+    const acknowledgeRetry = async (saved) => {
+      const existing = await penName.present.asWriter(saved, userId, 'comment');
       if (existing.post_id !== post.id || existing.user_id !== userId ||
           existing.comment !== normalizedComment || existing.parent_comment_id !== (parentCommentId || null)) {
         return res.status(409).json({ error: 'This comment request was already used for a different comment.' });
@@ -3802,7 +3987,7 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       return res.status(201).json({
         message: 'Comment added successfully',
         comment: await require('../services/pulse/conversation').addCreatedReplyFields(
-          (await serializeCommentsForViewer([{ ...existing, attachments: [] }], post, userId, audienceAuthors))[0], post, userId),
+          (await serializeCommentsForViewer([{ ...saved, attachments: [] }], post, userId, audienceAuthors))[0], post, userId),
       });
     };
     if (commentId) {
@@ -3812,7 +3997,8 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
 
     // Rate limit: max 5 comments per user per post within 60 seconds
     const rateLimitWindow = new Date(Date.now() - 60 * 1000).toISOString();
-    const { count: recentCount, error: rlErr } = await supabaseAdmin
+    // (A reply under a made-up name is counted by that name, in the database: enforce_post_comment_rate_limit.)
+    const { count: recentCount, error: rlErr } = pen ? { count: 0, error: null } : await supabaseAdmin
       .from('PostComment')
       .select('id', { count: 'exact', head: true })
       .eq('post_id', postId)
@@ -3822,16 +4008,25 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
       return res.status(429).json({ error: 'You are commenting too quickly. Please wait a moment before posting again.' });
     }
 
-    const commenterName = () => audienceAuthors
+    const commenterName = () => pen ? Promise.resolve(pen.name) : audienceAuthors
       ? Promise.resolve(audienceAuthors.get(userId)?.displayName || 'Fan')
       : getUserDisplayName(userId);
+    // What a notice says about who replied: the made-up name's id, never the account, when the reply carries one.
+    const actorMetadata = pen ? { pen_name_id: pen.id }
+      : audienceAuthors ? { persona_id: post.identity_context_id } : { user_id: userId };
 
     // comment_count auto-incremented by DB trigger
-    const row = { post_id: postId, user_id: userId, comment: normalizedComment, parent_comment_id: parentCommentId || null };
-    const insert = commentId
-      ? supabaseAdmin.from('PostComment').upsert({ ...row, id: commentId }, { onConflict: 'id', ignoreDuplicates: true })
-      : supabaseAdmin.from('PostComment').insert(row);
-    const { data: newComment, error } = await insert.select(commentSelection).maybeSingle();
+    const row = { post_id: postId, user_id: userId, comment: normalizedComment, parent_comment_id: parentCommentId || null,
+      ...(pen ? penName.write.identityFields(pen, 'comment') : {}) };
+    const insertComment = (id) => (id
+      ? supabaseAdmin.from('PostComment').upsert({ ...row, id }, { onConflict: 'id', ignoreDuplicates: true })
+      : supabaseAdmin.from('PostComment').insert(row)).select(commentSelection).maybeSingle();
+    // Under a made-up name the writer is recorded first; the database refuses the row otherwise (penName/write.js).
+    const { data: newComment, error } = !pen ? await insertComment(commentId)
+      : await penName.write.sealed({ kind: 'comment', id: commentId, userId, pen }, async (id) => {
+        const result = await insertComment(id);
+        return { ...result, saved: !result.error };
+      });
 
     if (error?.message?.includes('POST_COMMENT_RATE_LIMIT')) {
       return res.status(429).json({ error: 'You are commenting too quickly. Please wait a moment before posting again.' });
@@ -3843,8 +4038,23 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     }
     if (!newComment) throw new Error('Comment insert returned no row');
 
-    // Notify post owner of new comment (not on own post, and never across a block)
-    if (post.user_id !== userId) {
+    // An Around you story is posted by the curator account, which nobody reads: instead of its "commented on your
+    // post" notice, the people already in the story's thread hear that someone else replied
+    // (services/aroundYou/threadNotices.js). The parent reply's author gets the direct notice below.
+    const aroundYouThread = require('../services/aroundYou/threadNotices');
+    const aroundYouStory = aroundYouThread.isAroundYouPost(post);
+    if (aroundYouStory) {
+      commenterName().then((name) => aroundYouThread.replyCreated({
+        post, reply: newComment, replierName: name, skipUserIds: [parent?.user_id],
+      })).catch(err => {
+        logger.warn('Around you thread notice failed (non-blocking)', { error: err.message, postId });
+      });
+    }
+
+    // Notify post owner of new comment (not on own post, and never across a block). A made-up-name post's notice is
+    // addressed to the system account it is stored under; notificationService sends it to its writer, or to nobody
+    // (services/penName/notices.js), which is why the acting account rides in the metadata below for that case only.
+    if (post.user_id !== userId && !aroundYouStory) {
       blockService.isBlocked(userId, post.user_id).then(blocked => blocked ? null : commenterName().then(name => {
         notificationService.createNotification({
           userId: post.user_id,
@@ -3857,7 +4067,7 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
           metadata: {
             post_id: postId,
             comment_id: newComment.id,
-            ...(audienceAuthors ? { persona_id: post.identity_context_id } : { user_id: userId }),
+            ...actorMetadata,
           },
         });
       })).catch(err => {
@@ -3866,7 +4076,9 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
     }
 
     // Notify parent comment author of reply (if different from commenter and post owner)
-    if (parent && parent.user_id !== userId && parent.user_id !== post.user_id) {
+    // (Every made-up-name row is stored under one account, so two of them never tell their writers apart here: the
+    // notice goes out and penName/notices.js drops it when the post's notice above already reaches the same person.)
+    if (parent && parent.user_id !== userId && (penName.isPenNameRow(parent) || parent.user_id !== post.user_id)) {
       commenterName().then(name => {
         notificationService.createNotification({
           userId: parent.user_id,
@@ -3876,7 +4088,7 @@ router.post('/:id/comments', verifyToken, validate(createCommentSchema), async (
           icon: '💬',
           ...(audienceAuthors ? { context: 'audience' } : {}),
           link: `/posts/${postId}`,
-          metadata: { post_id: postId, comment_id: newComment.id, parent_comment_id: parentCommentId, ...(audienceAuthors ? { persona_id: post.identity_context_id } : { user_id: userId }) },
+          metadata: { post_id: postId, comment_id: newComment.id, parent_comment_id: parentCommentId, ...actorMetadata },
         });
       }).catch(err => {
         logger.warn('Reply notification failed (non-blocking)', { error: err.message, postId });
@@ -4086,7 +4298,12 @@ router.patch('/:postId/comments/:commentId', verifyToken, validate(updateComment
       return res.status(500).json({ error: 'Failed to update comment' });
     }
     if (!existing) return res.status(404).json({ error: 'Comment not found' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only edit your own comments' });
+    if (!await isWriter(existing, userId, 'comment', commentId)) return res.status(403).json({ error: 'You can only edit your own comments' });
+    // A reply under a made-up name: the new words are read as the first ones were.
+    if (existing.user_id === penName.SYSTEM_ACCOUNT_ID) {
+      const refusal = await penName.gate.wordsRefusal([comment]);
+      if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
+    }
     const { data: parentPost, error: postError } = await supabaseAdmin.from('Post')
       .select('user_id, identity_context_type, identity_context_id').eq('id', postId).single();
     if (postError || !parentPost) return res.status(500).json({ error: 'Failed to load comment context' });
@@ -4119,7 +4336,7 @@ router.delete('/:postId/comments/:commentId', verifyToken, async (req, res) => {
     }
     // An already absent target is the desired result of a retried delete.
     if (!existing) return res.json({ message: 'Comment deleted successfully' });
-    if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only delete your own comments' });
+    if (!await isWriter(existing, userId, 'comment', commentId)) return res.status(403).json({ error: 'You can only delete your own comments' });
     // The database cascades descendant comments and File rows, but cannot
     // delete their object bytes. Discover the same subtree before that cascade.
     const subtree = new Set([existing.id]);
@@ -4170,6 +4387,8 @@ router.delete('/:postId/comments/:commentId', verifyToken, async (req, res) => {
     // comment_count auto-decremented by DB trigger
     const { error } = await supabaseAdmin.from('PostComment').delete().eq('id', commentId).eq('post_id', postId);
     if (error) { logger.error('Error deleting comment', { error: error.message, commentId }); return res.status(500).json({ error: 'Failed to delete comment' }); }
+    // The record of who wrote a made-up-name reply goes with it.
+    if (existing.user_id === penName.SYSTEM_ACCOUNT_ID) await penName.owner.unseal({ kind: 'comment', contentId: commentId, ownerId: userId });
     res.json({ message: 'Comment deleted successfully' });
   } catch (err) {
     logger.error('Comment delete error', { error: err.message });
@@ -4499,9 +4718,10 @@ router.post('/:id/report', verifyToken, validate(reportPostSchema), async (req, 
     const userId = req.user.id;
     const post = await requireVisiblePost({ postId, userId, res });
     if (!post) return;
-    // Preserve reports written with the old random IDs, including their review state.
+    // Preserve reports written with the old random IDs, including their review state. A report on one of the post's
+    // replies (comment_id) is not a report on the post.
     const { data: existing, error: readError } = await supabaseAdmin.from('PostReport')
-      .select('id').eq('post_id', post.id).eq('reported_by', userId).limit(1);
+      .select('id').eq('post_id', post.id).eq('reported_by', userId).is('comment_id', null).limit(1);
     if (readError) throw readError;
     if (existing?.length) {
       return res.status(200).json({ message: 'Post reported successfully. We will review it shortly.' });
@@ -4517,10 +4737,42 @@ router.post('/:id/report', verifyToken, validate(reportPostSchema), async (req, 
     if (error) { logger.error('Error reporting post', { error: error.message, postId, userId }); return res.status(500).json({ error: 'Failed to report post' }); }
     // A simultaneous second submit is ignored by the upsert; only the request that wrote the row alerts.
     if (inserted?.length) require('../services/adminAlerts').notifyReportToReview({ kind: 'post', reason, reportId }).catch(() => {});
+    // A made-up-name post that two different people reported is hidden until someone has looked (penName/standing.js).
+    if (inserted?.length) await penName.standing.holdIfReported(post);
     res.status(200).json({ message: 'Post reported successfully. We will review it shortly.' });
   } catch (err) {
     logger.error('Report error', { error: err.message });
     res.status(500).json({ error: 'Failed to report post' });
+  }
+});
+
+// A reply is reported with a post's reasons and lands in the same admin queue (PostReport with its comment_id): one
+// report per person per reply, a retry answers the same (services/postReportService.js). Nobody reports their own
+// reply, including one written under their made-up name.
+router.post('/:postId/comments/:commentId/report', verifyToken, validate(reportPostSchema), async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { reason, details } = req.body;
+    const userId = req.user.id;
+    const reported = { message: 'Reply reported successfully. We will review it shortly.' };
+    if (!UUID_RE.test(String(commentId))) return res.status(404).json({ error: 'Comment not found' });
+    const post = await requireVisiblePost({ postId, userId, res });
+    if (!post) return;
+    const { data: reply, error: replyError } = await supabaseAdmin.from('PostComment')
+      .select('id, post_id, user_id, moderation_state, identity_context_type, identity_context_id')
+      .eq('id', commentId).eq('post_id', post.id).eq('is_deleted', false).maybeSingle();
+    if (replyError) throw replyError;
+    if (!reply || !canReadReply(reply, userId) || (reply.user_id && await blockService.isBlocked(userId, reply.user_id))) {
+      // Two reports can hide a reply; a retry from someone who reported it still gets its answer.
+      if (reply && await postReportService.hasReportedReply({ commentId: reply.id, userId })) return res.status(200).json(reported);
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    if (await isWriter(reply, userId, 'comment')) return res.status(400).json({ error: "You can't report your own reply." });
+    await postReportService.fileReplyReport({ reply, userId, reason, details: details || null });
+    res.status(200).json(reported);
+  } catch (err) {
+    logger.error('Reply report error', { error: err.message });
+    res.status(500).json({ error: 'Failed to report reply' });
   }
 });
 
@@ -4545,7 +4797,7 @@ router.post('/:id/not-helpful', verifyToken, async (req, res) => {
     if (!post) return;
 
     // Prevent flagging own posts
-    if (post.user_id === userId) return res.status(400).json({ error: 'Cannot flag your own post' });
+    if (await isWriter(post, userId, 'post', postId)) return res.status(400).json({ error: 'Cannot flag your own post' });
 
     const { error } = await supabaseAdmin
       .from('PostNotHelpful')
@@ -4602,7 +4854,7 @@ router.patch('/:id/solve', verifyToken, async (req, res) => {
       .from('Post').select('user_id, post_type, state, purpose').eq('id', postId).single();
 
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    if (post.user_id !== userId) return res.status(403).json({ error: 'Only the author can mark a post as solved' });
+    if (!await isWriter(post, userId, 'post', postId)) return res.status(403).json({ error: 'Only the author can mark a post as solved' });
     if (post.post_type !== 'ask_local') {
       return res.status(400).json({ error: 'Only Ask posts can be marked as solved' });
     }
@@ -4723,3 +4975,5 @@ router.post('/seeded/:factId/dismiss', verifyToken, async (req, res) => {
 module.exports = router;
 // The business post route (businesses.js) gives the same answer.
 module.exports.BUSINESS_CANNOT_POST_ERROR = BUSINESS_CANNOT_POST_ERROR;
+// scripts/seedmap.js knows a post it made again by the id its retry key gives.
+module.exports.commandPostId = commandPostId;

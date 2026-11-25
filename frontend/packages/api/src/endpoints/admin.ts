@@ -92,7 +92,7 @@ export async function reviewClaim(
 
 // ── Report review queue ─────────────────────────────────────
 
-export type ReportKind = 'user' | 'post' | 'gig' | 'message';
+export type ReportKind = 'user' | 'post' | 'reply' | 'gig' | 'message';
 export type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed';
 
 export interface ReportPerson {
@@ -110,16 +110,24 @@ export interface AdminReport {
   created_at: string;
   resolved_at: string | null;
   target_id: string;
-  /** The reported person, or a post or neighbor message ({ title, excerpt, author }) or task ({ title, status, poster }). */
+  /**
+   * The reported person, or a post or neighbor message ({ title, excerpt, author }), a reply ({ excerpt, author,
+   * moderation_state, post }) or task ({ title, status, poster }). A post or reply under a made-up name has
+   * `made_up_name` and no author.
+   */
   target: (ReportPerson & Record<string, unknown>) | {
     id: string;
-    title: string | null;
+    title?: string | null;
     excerpt?: string;
     post_type?: string | null;
     archived?: boolean;
     status?: string | null;
     author?: ReportPerson | null;
     poster?: ReportPerson | null;
+    made_up_name?: string;
+    moderation_state?: 'live' | 'held' | 'removed';
+    deleted?: boolean;
+    post?: { id: string; title: string | null; excerpt: string; archived: boolean; missing?: boolean };
   } | null;
   reporter: ReportPerson | null;
   /** False for neighbor-message reports, which have no review status yet. */
@@ -185,6 +193,16 @@ export async function getReportedCardMediaBlob(reportId: string, fileId: string,
     { responseType: 'blob', signal },
   );
   return response.data;
+}
+
+/** Take a reported reply down (moderation) and close every open report on it; its writer is told. */
+export async function removeReportedReply(reportId: string): Promise<{
+  removed: boolean;
+  comment_id: string;
+  post_id: string;
+  reports_closed: number;
+}> {
+  return post(`/api/admin/reports/reply/${reportId}/remove`, {});
 }
 
 /** Take a reported post down (moderation) and close every open report on it. */
@@ -320,20 +338,151 @@ export interface FunnelCardCounts {
   loop: number | null;
 }
 
+/** Around you for the last 7 or 30 days: distinct people who opened it, opens, and what its posts got. */
+export interface FunnelAroundYouCounts {
+  people: number;
+  opens: number;
+  reactions: number;
+  replies: number;
+  saves: number;
+  /** Reposts and reposts with the person's own words. */
+  reposts: number;
+}
+
+export interface FunnelLadder {
+  previews: number; aha_views: number; shares: number; walls: number; registers: number; accounts: number;
+  /** The lookup's record taps, Ask opens and visitors who reached its end (LOOKUPORDER); absent from older servers. */
+  record_opens?: number; ask_opens?: number; ends_reached?: number;
+}
+
 export interface FunnelSummary {
   days: number;
   since: string;
   rows: number;
   truncated: boolean;
-  ladder: { previews: number; aha_views: number; shares: number; walls: number; registers: number; accounts: number };
+  ladder: FunnelLadder;
   rates: Record<string, number | null>;
   events: Record<string, number>;
+  /** The same ladder per `?r=` code the visitor arrived with, most lookups first; `(direct)` is no code. */
+  by_route: { route: string; ladder: FunnelLadder; rates: Record<string, number | null> }[];
+  /** The same ladder per order the web drew the lookup in (v1, v2), only the layouts seen; absent from older servers. */
+  by_layout?: { layout: 'v1' | 'v2'; ladder: FunnelLadder; rates: Record<string, number | null> }[];
   plans: { events: Record<string, number>; rates: Record<string, number | null> };
   activation: { cohort_users: number; activated_users: number; matured_users: number; activated_matured_users: number;
     pending_users: number; matured_rate: number | null; truncated: boolean };
   cards: FunnelCardCounts & { days: (FunnelCardCounts & { day: string })[] };
+  /** Null when it couldn't be read; absent from older servers. */
+  around_you?: { last_7_days: FunnelAroundYouCounts; last_30_days: FunnelAroundYouCounts } | null;
 }
 
 export async function getFunnelSummary(days = 30): Promise<FunnelSummary> {
   return get(`/api/admin/funnel/summary?days=${encodeURIComponent(String(days))}`);
+}
+
+// ── Around you: sources for a new county (platform admins) ─────
+
+/** What the server's own check of one address found (seeder_sources.check_note). */
+export interface AroundSourceNote {
+  /** proposed: it reads. refused: the site refuses automated readers. no_feed / unreadable: nothing to read. */
+  status: 'proposed' | 'refused' | 'no_feed' | 'unreadable' | 'dropped';
+  checked_at: string;
+  kind: string | null;
+  why: string | null;
+  home_page: string | null;
+  reason: string | null;
+  format: string | null;
+  feed_title: string | null;
+  items: number | null;
+  /** Items from the last 7 days (a calendar: events in the next 7 days). */
+  recent_7d: number | null;
+  /** Items from the last 2 days: what the content fetcher keeps today (it reads a story for 48 hours). */
+  recent_2d?: number | null;
+  /** Items naming the city or county (the words are in place_words). */
+  names_place: number | null;
+  place_words: string | null;
+  newest_at: string | null;
+  samples: string[];
+  subscription: { asked: boolean | null; sign: string } | null;
+  tried: string[];
+  reviewed_at?: string;
+}
+
+export interface AroundSource {
+  id: string;
+  source_id: string;
+  source_type: 'rss' | 'ical';
+  url: string | null;
+  display_name: string;
+  category: string;
+  active: boolean;
+  review_state: 'proposed' | 'approved' | 'rejected' | null;
+  proposed_by: 'finder' | 'hand' | null;
+  access: 'free' | 'subscription' | null;
+  keep_hours: number | null;
+  /** An Around you topic id when the source is about one thing; null or absent: general news. */
+  topic?: string | null;
+  note: AroundSourceNote | null;
+}
+
+export interface AroundSourceRun {
+  state: 'running' | 'done' | 'failed';
+  trigger: 'job' | 'button';
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  summary: {
+    claude: { outcome: string; candidates?: number; input?: number; output?: number; cache_read?: number; searches?: number; requests?: number } | null;
+    proposed: number;
+    noted: number;
+    known: number;
+    dropped: { name: string; reason: string }[];
+    ms: number;
+    /** The Claude step gave no answer, so the feeds job will hand this place to the finder again. */
+    retry?: boolean;
+  } | null;
+}
+
+export interface AroundSourceRegion {
+  region: string;
+  display_name: string | null;
+  state: string | null;
+  county_name: string | null;
+  provisioned_by: string;
+  sources_checked_at: string | null;
+  run: AroundSourceRun | null;
+  sources: AroundSource[];
+}
+
+export async function getAroundSources(): Promise<{ finder_on: boolean; kinds: { id: string; label: string }[]; regions: AroundSourceRegion[] }> {
+  return get('/api/admin/around-sources');
+}
+
+/** Runs the finder for one region in the background. */
+export async function findAroundSources(region: string): Promise<{ started: boolean; finder_on: boolean; run: AroundSourceRun | null }> {
+  return post(`/api/admin/around-sources/regions/${encodeURIComponent(region)}/find`, {});
+}
+
+/** Tests one address and proposes it by hand. */
+export async function addAroundSource(region: string, body: { kind: string; name: string; url: string }): Promise<{
+  outcome: 'proposed' | 'noted' | 'known' | 'dropped';
+  result: { status: string; url: string | null; reason: string | null };
+}> {
+  return post(`/api/admin/around-sources/regions/${encodeURIComponent(region)}/sources`, body);
+}
+
+export async function approveAroundSource(
+  id: string,
+  body: {
+    access: 'free' | 'subscription';
+    keep_hours: number | null;
+    display_name?: string | null;
+    /** What the source is about when it is about one thing (an Around you topic id); null: general news. */
+    topic?: string | null;
+  },
+): Promise<{ source: AroundSource }> {
+  return post(`/api/admin/around-sources/sources/${encodeURIComponent(id)}/approve`, body);
+}
+
+export async function rejectAroundSource(id: string): Promise<{ source: AroundSource }> {
+  return post(`/api/admin/around-sources/sources/${encodeURIComponent(id)}/reject`, {});
 }

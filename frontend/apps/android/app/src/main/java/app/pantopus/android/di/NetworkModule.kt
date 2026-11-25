@@ -3,15 +3,25 @@ package app.pantopus.android.di
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.data.api.ApiService
 import app.pantopus.android.data.api.models.common.TolerantJsonAdapterFactory
+import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
+import app.pantopus.android.data.api.models.feed.FeedConversation
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.feed.FeedQuotedPost
 import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.homes.UploadEvidenceRequestJsonAdapter
 import app.pantopus.android.data.api.models.notifications.NotificationDto
+import app.pantopus.android.data.api.models.place.PlaceMoneyFigure
+import app.pantopus.android.data.api.models.place.PlaceMoneyLead
+import app.pantopus.android.data.api.models.place.PlaceMoneyTrend
+import app.pantopus.android.data.api.models.place.PlacePreviewGlanceRow
+import app.pantopus.android.data.api.models.place.PlacePreviewLayout
+import app.pantopus.android.data.api.models.place.PlacePreviewMoney
+import app.pantopus.android.data.api.models.place.PlacePreviewNotChecked
 import app.pantopus.android.data.api.models.posts.MyPostDto
 import app.pantopus.android.data.api.models.posts.PostCommentDto
 import app.pantopus.android.data.api.models.posts.PostDetailDto
 import app.pantopus.android.data.api.net.PlansBizInterceptor
+import app.pantopus.android.data.api.net.ProfilePartsInterceptor
 import app.pantopus.android.data.api.net.RetryInterceptor
 import app.pantopus.android.data.api.net.SafeHttpLoggingInterceptor
 import app.pantopus.android.data.api.net.UtcTimestampInterceptor
@@ -98,6 +108,7 @@ import app.pantopus.android.data.api.services.NotificationsApi
 import app.pantopus.android.data.api.services.OffersApi
 import app.pantopus.android.data.api.services.PaymentHistoryApi
 import app.pantopus.android.data.api.services.PaymentsApi
+import app.pantopus.android.data.api.services.PenNamesApi
 import app.pantopus.android.data.api.services.PersonaDmApi
 import app.pantopus.android.data.api.services.PersonaEditApi
 import app.pantopus.android.data.api.services.PlaceApi
@@ -222,9 +233,25 @@ object NetworkModule {
                         PostCommentDto::class.java,
                         PostDetailDto::class.java,
                         NotificationDto::class.java,
+                        // The lookup's glance lines and could-not-check names (LOOKUPORDER): an odd line is skipped.
+                        PlacePreviewGlanceRow::class.java,
+                        PlacePreviewNotChecked::class.java,
                     ),
                     // A post's quoted post and its "reposted" line read as none when they can't be read (contract §9).
-                    optionalTypes = setOf(FeedQuotedPost::class.java, FeedRepostedBy::class.java),
+                    // The lookup's order and money parts likewise: the lookup still shows in the built-in order.
+                    // So do the reply preview and the story facts Today's Around you sends.
+                    optionalTypes =
+                        setOf(
+                            FeedQuotedPost::class.java,
+                            FeedRepostedBy::class.java,
+                            PlacePreviewLayout::class.java,
+                            PlacePreviewMoney::class.java,
+                            PlaceMoneyFigure::class.java,
+                            PlaceMoneyTrend::class.java,
+                            PlaceMoneyLead::class.java,
+                            FeedConversation::class.java,
+                            AroundYouStoryFacts::class.java,
+                        ),
                 ),
             )
             .add(Instant::class.java, Rfc3339DateJsonAdapter().nullSafe())
@@ -257,6 +284,8 @@ object NetworkModule {
             // `biz=1` and `more=1` on the Plans routes: this build can draw a business's plan (Plans with businesses),
             // an online plan and the four newer kinds (Plans steps 3 and 4).
             .addInterceptor(PlansBizInterceptor())
+            // X-Pantopus-Profile-Parts on the profile page: the parts this build draws (the rest come as `notice` rows).
+            .addInterceptor(ProfilePartsInterceptor())
             // X-Client-Platform + X-Device-Id on every API request (both clients).
             // This client also loads Coil images; other hosts get neither header nor the bearer.
             .addInterceptor(deviceIdentityInterceptor)
@@ -830,6 +859,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideProfilePageApi(retrofit: Retrofit): ProfilePageApi = retrofit.create(ProfilePageApi::class.java)
+
+    /** Made-up names (`/api/pen-names/…`): the person's own, the small card, mute and block. */
+    @Provides
+    @Singleton
+    fun providePenNamesApi(retrofit: Retrofit): PenNamesApi = retrofit.create(PenNamesApi::class.java)
 
     /** Pulse's own routes (`/api/pulse/…`): the asker's keep-open and close (S7). */
     @Provides

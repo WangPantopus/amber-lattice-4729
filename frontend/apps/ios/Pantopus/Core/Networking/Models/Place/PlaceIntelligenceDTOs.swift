@@ -2043,6 +2043,9 @@ public struct PlacePreviewFree: Decodable, Sendable, Hashable {
 /// Which real figure the preview's money lead is built from.
 public enum PlaceMoneyLeadKind: String, Sendable, Hashable {
     case floodPremium = "flood_premium"
+    /// LOOKUPORDER (SPEC 1.5): the area's typical home value. A client that
+    /// draws the `money` block draws the value there instead.
+    case homeValue = "home_value"
     case rentBand = "rent_band"
     case unknown
 }
@@ -2158,10 +2161,197 @@ public struct PlacePreview: Decodable, Sendable, Hashable {
     public let free: PlacePreviewFree?
     public let locked: [PlacePreviewLockedSection]?
     public let disclaimer: String?
+    /// LOOKUPORDER (SPEC 1.1): the order the server draws the page in. nil
+    /// from older servers; the page then keeps `PlacePreviewLayout.builtInOrder`.
+    public let layout: PlacePreviewLayout?
+    /// SPEC 1.2: one row per check that has an answer, worst first.
+    public let glance: [PlacePreviewGlanceRow]?
+    /// SPEC 1.3: the sections that could not be checked today.
+    public let notChecked: [PlacePreviewNotChecked]?
+    /// SPEC 1.7: the area's home value, property tax and price curve.
+    public let money: PlacePreviewMoney?
+    /// SPEC 1.5: the flood cost band, whatever `money_lead` is; the first card of Risk & readiness.
+    public let floodCost: PlaceMoneyLead?
+    /// SPEC 5.1a: a signed ticket for the reading of this lookup, sent back with the reading's request.
+    public let readingTicket: String?
 
     private enum CodingKeys: String, CodingKey {
         case status, tier, region, message, place, aha, sections, free, locked, disclaimer
+        case layout, glance, money
         case moneyLead = "money_lead"
+        case notChecked = "not_checked"
+        case floodCost = "flood_cost"
+        case readingTicket = "reading_ticket"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(PlacePreviewStatus.self, forKey: .status)
+        tier = try container.decode(String.self, forKey: .tier)
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        place = try container.decodeIfPresent(PlacePreviewPlaceRef.self, forKey: .place)
+        moneyLead = try container.decodeIfPresent(PlaceMoneyLead.self, forKey: .moneyLead)
+        aha = try container.decodeIfPresent(PlacePreviewAha.self, forKey: .aha)
+        sections = try container.decodeIfPresent([PlaceSectionEnvelope].self, forKey: .sections)
+        free = try container.decodeIfPresent(PlacePreviewFree.self, forKey: .free)
+        locked = try container.decodeIfPresent([PlacePreviewLockedSection].self, forKey: .locked)
+        disclaimer = try container.decodeIfPresent(String.self, forKey: .disclaimer)
+        // The new blocks never fail the page: a malformed one is left out.
+        layout = try? container.decodeIfPresent(PlacePreviewLayout.self, forKey: .layout)
+        // A malformed glance row is skipped; the rest of the card stays.
+        glance = container.lenient(LossyList<PlacePreviewGlanceRow>.self, forKey: .glance)?.items
+        notChecked = try? container.decodeIfPresent([PlacePreviewNotChecked].self, forKey: .notChecked)
+        money = try? container.decodeIfPresent(PlacePreviewMoney.self, forKey: .money)
+        floodCost = try? container.decodeIfPresent(PlaceMoneyLead.self, forKey: .floodCost)
+        readingTicket = container.lenient(String.self, forKey: .readingTicket)
+    }
+}
+
+// MARK: - LOOKUPORDER: the lookup's order, glance and money (SPEC 1.1-1.7)
+
+/// The order the page is drawn in: `aha`, `glance`, `money`, `record`, `ask`,
+/// `ballot`, `group:<id>`, `section:<id>`, `locked`, `not_checked`, `privacy`.
+/// A block the app does not know, or one with nothing to draw, is skipped.
+public struct PlacePreviewLayout: Decodable, Sendable, Hashable {
+    public let version: String?
+    public let order: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case version, order
+    }
+
+    public init(version: String?, order: [String]) {
+        self.version = version
+        self.order = order
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(String.self, forKey: .version)
+        order = (try? container.decodeIfPresent([String].self, forKey: .order)) ?? []
+    }
+
+    /// An older server's answer is drawn in this order (SPEC 1.1).
+    public static let builtInOrder: [String] = [
+        "aha", "glance", "money", "record", "ask", "group:risk_readiness", "group:health_environment",
+        "section:census_context", "group:today", "group:money_signals", "group:civic",
+        "section:block_density", "locked", "not_checked", "privacy"
+    ]
+}
+
+/// One "At a glance" row: a toned dot, the check and the server's few words.
+public struct PlacePreviewGlanceRow: Decodable, Sendable, Hashable, Identifiable {
+    public let id: String
+    public let label: String
+    public let value: String
+    public let tone: PlacePreviewAhaTone
+    /// The section card a tap scrolls to.
+    public let sectionId: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, value, tone
+        case sectionId = "section_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        tone = (try? container.decodeIfPresent(PlacePreviewAhaTone.self, forKey: .tone)) ?? .info
+        sectionId = try container.decodeIfPresent(String.self, forKey: .sectionId)
+    }
+}
+
+/// A section that could not be checked today, by its label ("Homes here").
+public struct PlacePreviewNotChecked: Decodable, Sendable, Hashable, Identifiable {
+    public let id: String
+    public let label: String
+}
+
+/// "Money here": area figures, never this home's (SPEC 1.7). Every part is optional.
+public struct PlacePreviewMoney: Decodable, Sendable, Hashable {
+    public struct Figure: Decodable, Sendable, Hashable {
+        /// Whole dollars.
+        public let amount: Double
+        public let label: String
+        public let scope: String?
+        public let source: String?
+    }
+
+    /// FHFA's yearly price index for the county, as percent change since the
+    /// first year. Never dollars.
+    public struct Trend: Decodable, Sendable, Hashable {
+        /// `county` or `zip`: where `lastChangePct` is from.
+        public let scope: String?
+        /// "Clark County", or "ZIP 98607" where `scope` is `zip`.
+        public let areaName: String?
+        /// The county the curve is drawn for, and its own last yearly change: the curve's labels are always the county's.
+        public let countyName: String?
+        public let countyLastChangePct: Double?
+        public let year: Int?
+        public let lastChangePct: Double?
+        public let sinceYear: Int?
+        public let sinceChangePct: Double?
+        public let years: [Int]
+        public let changeSinceFirstPct: [Double]
+        public let source: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case scope, year, years, source
+            case areaName = "area_name"
+            case countyName = "county_name"
+            case countyLastChangePct = "county_last_change_pct"
+            case lastChangePct = "last_change_pct"
+            case sinceYear = "since_year"
+            case sinceChangePct = "since_change_pct"
+            case changeSinceFirstPct = "change_since_first_pct"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            scope = try container.decodeIfPresent(String.self, forKey: .scope)
+            areaName = try container.decodeIfPresent(String.self, forKey: .areaName)
+            countyName = try container.decodeIfPresent(String.self, forKey: .countyName)
+            countyLastChangePct = try container.decodeIfPresent(Double.self, forKey: .countyLastChangePct)
+            year = try container.decodeIfPresent(Int.self, forKey: .year)
+            lastChangePct = try container.decodeIfPresent(Double.self, forKey: .lastChangePct)
+            sinceYear = try container.decodeIfPresent(Int.self, forKey: .sinceYear)
+            sinceChangePct = try container.decodeIfPresent(Double.self, forKey: .sinceChangePct)
+            years = (try? container.decodeIfPresent([Int].self, forKey: .years)) ?? []
+            changeSinceFirstPct = (try? container.decodeIfPresent([Double].self, forKey: .changeSinceFirstPct)) ?? []
+            source = try container.decodeIfPresent(String.self, forKey: .source)
+        }
+
+        /// A curve needs two points or more.
+        public var hasCurve: Bool {
+            changeSinceFirstPct.count >= 2
+        }
+    }
+
+    public let value: Figure?
+    public let trend: Trend?
+    public let tax: Figure?
+    public let recordLine: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case value, trend, tax
+        case recordLine = "record_line"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // One malformed part leaves the rest of the card.
+        value = try? container.decodeIfPresent(Figure.self, forKey: .value)
+        trend = try? container.decodeIfPresent(Trend.self, forKey: .trend)
+        tax = try? container.decodeIfPresent(Figure.self, forKey: .tax)
+        recordLine = try? container.decodeIfPresent(String.self, forKey: .recordLine)
+    }
+
+    /// Nothing to draw without a figure or a curve.
+    public var isRenderable: Bool {
+        value != nil || tax != nil || trend?.hasCurve == true
     }
 }
 
@@ -2189,5 +2379,85 @@ extension PlaceIntelligence {
             return block
         }
         return copy
+    }
+}
+
+// MARK: - LOOKUPORDER: the reading (SPEC 5.1)
+
+/// Pantopus AI's reading of a looked-up address's page, written from the
+/// public records the page shows. Never given the street address.
+public struct PlaceReading: Decodable, Sendable, Hashable {
+    public struct Step: Decodable, Sendable, Hashable {
+        public let text: String
+        /// The agency the step comes from ("EPA").
+        public let source: String
+
+        private enum CodingKeys: String, CodingKey {
+            case text, source
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+            source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        }
+    }
+
+    public struct Question: Decodable, Sendable, Hashable {
+        public let question: String
+        public let answer: String
+
+        private enum CodingKeys: String, CodingKey {
+            case question = "q"
+            case answer = "a"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            question = try container.decodeIfPresent(String.self, forKey: .question) ?? ""
+            answer = try container.decodeIfPresent(String.self, forKey: .answer) ?? ""
+        }
+    }
+
+    public let matters: String
+    public let steps: [Step]
+    public let cannotTell: String
+    public let questions: [Question]
+
+    private enum CodingKeys: String, CodingKey {
+        case matters, steps, questions
+        case cannotTell = "cannot_tell"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        matters = try container.decodeIfPresent(String.self, forKey: .matters) ?? ""
+        steps = try container.decodeIfPresent([Step].self, forKey: .steps)?.filter { !$0.text.isEmpty } ?? []
+        cannotTell = try container.decodeIfPresent(String.self, forKey: .cannotTell) ?? ""
+        questions = try container.decodeIfPresent([Question].self, forKey: .questions)?
+            .filter { !$0.question.isEmpty && !$0.answer.isEmpty } ?? []
+    }
+
+    /// Never a half reading: what matters, and something to do or to ask.
+    public var isRenderable: Bool {
+        !matters.isEmpty && (!steps.isEmpty || !questions.isEmpty)
+    }
+}
+
+/// `POST /api/public/place/reading`: the reading itself, or under `reading`.
+public struct PlaceReadingResponse: Decodable, Sendable {
+    public let reading: PlaceReading?
+
+    private enum CodingKeys: String, CodingKey {
+        case reading
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let nested = try? container.decodeIfPresent(PlaceReading.self, forKey: .reading) {
+            reading = nested
+        } else {
+            reading = try? PlaceReading(from: decoder)
+        }
     }
 }

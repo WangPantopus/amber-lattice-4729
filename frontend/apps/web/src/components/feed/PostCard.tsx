@@ -23,7 +23,7 @@ import {
 } from '@pantopus/ui-utils';
 import { chosenUsername } from '@pantopus/utils';
 import { confirmStore } from '@/components/ui/confirm-store';
-import PostMetadata from './PostMetadata';
+import PostMetadata, { aroundStory } from './PostMetadata';
 import { PostReactionPill } from './PostReactions';
 import { canSharePost, sharePostLink } from './sharePostLink';
 import RepostChooser from './RepostChooser';
@@ -34,6 +34,8 @@ import type { AudienceProfile, Post } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 import { canOfferProfilePin } from '@/hooks/useProfilePin';
 import { useHydrated } from '@/hooks/useHydrated';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine } from '@/components/penName/MadeUpName';
+import { isMadeUp, isMadeUpByMe, penNameIdOf } from '@/components/penName/penName';
 
 // ─── Lucide icon lookup (platform-specific JSX — data from shared config) ──
 const LUCIDE_MAP: Record<string, LucideIcon> = {
@@ -184,6 +186,11 @@ function PostCard({
   const ctaSaves = config.ctaIcon === 'bookmark' && Boolean(onSave);
   const authorUserId = post.author_user_id || post.user_id;
   const isOwn = authorUserId === currentUserId;
+  // Under a made-up name: its drawn picture and name open the small card, never a profile; no distance from its writer.
+  const madeUp = isMadeUp(post);
+  const madeUpByMe = madeUp && (isOwn || isMadeUpByMe(post));
+  const penNameId = penNameIdOf(post);
+  const reportFromCard = onReport && !madeUpByMe ? () => onReport(post.id) : undefined;
   // A plan's own post (made by Plans) is changed or cancelled from the plan, which tells everyone; the server
   // refuses editing, deleting or archiving it as a post.
   const isPlanPost = post.post_metadata?.plan === true;
@@ -234,6 +241,11 @@ function PostCard({
   const reposted = Boolean(post.userHasReposted);
   const repostCount = post.share_count > 0 ? post.share_count : 0;
   const quoted = readQuotedPost(post.quoted_post);
+  // A story Today's Around you posted for an outlet: the outlet is who published it, so the card names the outlet
+  // where an author goes, its topic where the post kind goes, and sets the headline apart from the outlet's summary.
+  const story = seeded ? null : aroundStory(post);
+  // Who replied and the latest reply (Around you sends it on a post with replies): the conversation, before the tap.
+  const talk = post.conversation?.latest ? post.conversation : null;
   // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
   const media = useShownMedia(post);
   const repostChooser = (from: 'bar' | 'menu') => chooserFrom === from && (
@@ -284,7 +296,7 @@ function PostCard({
           style={{ background: config.bgLight, color: config.textColor }}
         >
           <span className="flex-shrink-0">{typeIconNode}</span>
-          {config.label}
+          {story?.topic ?? config.label}
         </span>
         {/* A post its author's own photo placed says so instead of Visitor. */}
         {post.location_basis === 'photo' ? (
@@ -323,6 +335,16 @@ function PostCard({
 
       {/* ─── Author row ──────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 py-2">
+        {story?.outlet ? (
+          <div
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-app-muted ring-2 ring-app"
+            aria-hidden="true"
+          >
+            <Newspaper className="h-4 w-4" />
+          </div>
+        ) : madeUp ? (
+          <MadeUpAuthorPicture penNameId={penNameId} name={creatorName} url={creatorAvatar} onReport={reportFromCard} />
+        ) : (
         <UserAvatarLink href={authorHref} momentUserId={authorHref ? momentAuthorId : null} name={creatorName}>
           {creatorAvatar ? (
             <Image
@@ -343,10 +365,18 @@ function PostCard({
             </div>
           )}
         </UserAvatarLink>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             {/* Launch cuts #1 + #2: a Beacon author's name does not link to the hidden persona page. */}
-            {publicAuthor?.type === 'persona' && !(launchFeatures.beacon && launchFeatures.personas) ? (
+            {story?.outlet ? (
+              <>
+                <span className="text-sm font-semibold text-app truncate" data-testid="postStoryOutlet">{story.outlet}</span>
+                <span className="flex-shrink-0 text-[10px] text-app-muted">via {creatorName}</span>
+              </>
+            ) : madeUp ? (
+              <MadeUpAuthorName penNameId={penNameId} name={creatorName} isYou={madeUpByMe} onReport={reportFromCard} />
+            ) : publicAuthor?.type === 'persona' && !(launchFeatures.beacon && launchFeatures.personas) ? (
               <span className="text-sm font-semibold text-app truncate">{creatorName}</span>
             ) : publicAuthor?.href ? (
               // In place, as the photo beside it: a plain <a> loaded a new document and dropped the kept screens.
@@ -374,6 +404,12 @@ function PostCard({
           </div>
           {locationText && (
             <span className="text-[11px] text-app-muted">{locationText}</span>
+          )}
+          {madeUp && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <MadeUpNameMarks badges={publicAuthor?.badges} />
+              {madeUpByMe && <OnlyYouLine />}
+            </div>
           )}
         </div>
 
@@ -489,7 +525,7 @@ function PostCard({
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             {post.location_name || 'Pinned location'}
-            {post.distance_meters != null && post.distance_meters > 0 && (
+            {!madeUp && post.distance_meters != null && post.distance_meters > 0 && (
               <span className="text-app-muted">
                 · {formatDistance(post.distance_meters) === 'nearby' ? 'nearby' : `${formatDistance(post.distance_meters)} away`}
               </span>
@@ -501,6 +537,16 @@ function PostCard({
       {/* ─── Content ─────────────────────────────────── */}
       <div className={`px-4 pb-2${tapClass}`} onClick={openFullPost}>
         {post.title && <h3 className="mb-1 text-sm font-semibold text-app break-words">{post.title}</h3>}
+        {story ? (
+          <>
+            <h3 className="text-[15px] font-semibold leading-snug text-app break-words" data-testid="postStoryHeadline">
+              {story.headline}
+            </h3>
+            {story.summary ? (
+              <p className="mt-1 text-sm leading-relaxed text-app-muted break-words">{story.summary}</p>
+            ) : null}
+          </>
+        ) : (
         <p
           className="text-sm text-app leading-relaxed whitespace-pre-wrap break-words"
         >
@@ -513,10 +559,11 @@ function PostCard({
             <PostLinkContent content={post.content} />
           )}
         </p>
+        )}
       </div>
 
       {/* ─── Link preview ──────────────────────────────── */}
-      {post.content && <LinkPreviewCard content={post.content} />}
+      {post.content && !story && <LinkPreviewCard content={post.content} />}
 
       <PostMetadata post={post} onClick={seeded ? undefined : openFullPost} />
 
@@ -751,6 +798,47 @@ function PostCard({
         )}
       </div>
       )}
+
+      {/* ─── The conversation so far: who replied and the latest reply; a click opens the thread ── */}
+      {talk && !seeded ? (
+        <button
+          type="button"
+          onClick={() => onComment(post.id)}
+          data-testid={`postConversation_${post.id}`}
+          className="flex w-full items-start gap-2.5 border-t border-app bg-surface-muted/60 px-4 py-2.5 text-left transition hover-bg-app"
+        >
+          <span className="flex flex-shrink-0 -space-x-1.5 pt-0.5" aria-hidden="true">
+            {talk.people.slice(0, 3).map((person) => (person.avatar_url ? (
+              <Image
+                key={person.id}
+                src={person.avatar_url}
+                alt=""
+                width={20}
+                height={20}
+                sizes="20px"
+                className="h-5 w-5 rounded-full object-cover ring-2 ring-app"
+              />
+            ) : (
+              <span
+                key={person.id}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white ring-2 ring-app"
+                style={{ background: personColor(person.id) }}
+              >
+                {personInitials(person.name) || person.name[0]?.toUpperCase() || '?'}
+              </span>
+            )))}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-app">
+              <span className="font-semibold">{talk.latest.name}</span>
+              <span className="text-app-muted">
+                {post.comment_count > 1 ? ` · ${post.comment_count} replies` : ' replied'}
+              </span>
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-app-muted">{talk.latest.text}</span>
+          </span>
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -767,6 +855,9 @@ export default React.memo(PostCard, (prev, next) => {
     && prev.post.userHasReposted === next.post.userHasReposted
     && prev.post.share_count === next.post.share_count
     && prev.post.quoted_post === next.post.quoted_post
+    && prev.post.conversation === next.post.conversation
+    && prev.post.content === next.post.content
+    && prev.post.post_metadata === next.post.post_metadata
     && prev.post.profile_pinned === next.post.profile_pinned
     && repostedByText(prev.post.reposted_by) === repostedByText(next.post.reposted_by)
     && prev.isLiking === next.isLiking

@@ -5383,7 +5383,7 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
           title: 'Your Christmas card arrived',
           body: `${byLink ? `${claimerName || 'Someone'} opened your link and has your card.`
             : (claimerName ? `${claimerName} joined Pantopus and has your card.` : 'They joined Pantopus and have your card.')}${
-            rewarded ? ' You have one more free card to send.' : ''}`,
+            rewarded ? ' You gained one more free card to send.' : ''}`,
           icon: '✉️',
           link: `/app/mailbox/sent/${mailId}`,
           metadata: { mail_id: mailId, claimer_id: claimerId, ...(rewarded ? { free_card: true } : {}) },
@@ -6054,3 +6054,6 @@ router.post('/campaigns', verifyToken, validate(createCampaignSchema), async (re
 });
 
 module.exports = router;
+// The card's own checks, for the assistant's card draft (services/ai/composeDrafts.js): the same look the card
+// screen asks before a card is sent.
+module.exports.checkCard = checkCard;

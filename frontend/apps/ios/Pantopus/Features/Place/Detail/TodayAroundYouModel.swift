@@ -7,6 +7,9 @@
 //  The open post's model, where it is shown and what it presents live here,
 //  above the screens, because on the iPhone Duo a fold or a turn makes the
 //  post's screen anew (pushed over the list, or on the page beside it).
+//  The lists behind the first page (founder, 2026-11-24: topics, and scroll
+//  back for as long as there are stories) are read here a page at a time and
+//  drawn by `TodayAroundYouLists.swift`.
 //
 
 import Observation
@@ -43,6 +46,22 @@ final class TodayAroundYouModel {
     /// Counts the times the open post's screen was made once more to give the keyboard back; its identity.
     private(set) var postScreen = 0
     private var placeKey: String?
+    /// The place the page is for, as its reads name it.
+    @ObservationIgnored private var place: AroundYouPlace?
+    /// Which list shows: "all" (the page's sections, then every earlier story) or a chip's own.
+    private(set) var list = AroundYouListDTO.all
+    /// The open list's posts read so far, each once, in the server's order.
+    private(set) var listPosts: [FeedPostDTO] = []
+    /// How the open list's read stands.
+    private(set) var listState: AroundYouListState = .idle
+    /// Counts the list's reads: the list's foot is made anew after each, so reaching it again asks for the next.
+    private(set) var listFoot = 0
+    /// More than one page of the open list was read: its end says so.
+    private(set) var listRanLong = false
+    @ObservationIgnored private var listNext: String?
+    @ObservationIgnored private var listPages = 0
+    /// Bumped when the open list starts over (another chip, another place): a read still out is for the old one.
+    @ObservationIgnored private var listRun = 0
     private let api: APIClient
     private let store: ScreenStore
 
@@ -65,6 +84,18 @@ final class TodayAroundYouModel {
         guard openedPostId != postId else { return }
         postModel = nil
         openedPostId = postId
+    }
+
+    /// Opens a post from its card's Reply, or from its reply preview: its reply box takes the keyboard once the
+    /// post shows. A post already open beside the list gets its screen made once more, which gives it.
+    func openToReply(postId: String) {
+        let alreadyOpen = openedPostId == postId
+        open(postId: postId)
+        let post = model(forPost: postId)
+        post.openedToReply()
+        guard alreadyOpen, postShowsBeside else { return }
+        post.screens.screensMoved()
+        postScreen += 1
     }
 
     /// The open post closed (Back, or its place or account went).
@@ -133,20 +164,24 @@ final class TodayAroundYouModel {
         guard let detail else {
             page = nil
             placeKey = nil
+            place = nil
+            startList(AroundYouListDTO.all)
             closePost()
             return
         }
-        let endpoint = Self.endpoint(for: detail)
+        let place = AroundYouPlace(detail)
         if placeKey != detail.identity {
             placeKey = detail.identity
+            self.place = place
             closePost()
+            startList(AroundYouListDTO.all)
             // The answer kept for this place (on the phone, after a relaunch) shows before any wait, so Today opens
             // with the switch it had last time instead of growing it a moment later.
-            page = endpoint.flatMap { store.peek($0, as: AroundYouDTO.self)?.value }
+            page = place.flatMap { store.peek($0.page, as: AroundYouDTO.self)?.value }
             // A copy never undoes a tap (-1 is no read's revision).
-            if let page { cards.show(page.posts, readRevision: -1) }
+            if page != nil { showCards(readRevision: -1) }
         }
-        guard let endpoint else { return }
+        guard let place else { return }
         let key = detail.identity
         let cards = cards
         // A tap made while this read is out keeps its value over the read's (`ProfilePostCardsModel.show`).
@@ -154,28 +189,130 @@ final class TodayAroundYouModel {
         do {
             // Every look asks the server, as before; the store keeps the answer for the next first look. An area's
             // read is a POST (its point stays out of the URL), which the store sends straight through, keeping nothing.
-            let answer = try await store.load(endpoint, as: AroundYouDTO.self, kind: .today, force: true).value
+            let answer = try await store.load(place.page, as: AroundYouDTO.self, kind: .today, force: true).value
             guard placeKey == key, cards === self.cards else { return }
             page = answer
-            cards.show(answer.posts, readRevision: revision)
-            // A post's page opens at once from its card's copy while the post and its replies load (as from Pulse).
-            for post in answer.posts {
-                store.seed(post, for: PostsEndpoints.detail(id: post.id))
+            // A chip the place no longer offers (a quieter week) falls back to All.
+            if list != AroundYouListDTO.all, !lists.contains(where: { $0.id == list }) {
+                startList(AroundYouListDTO.all)
             }
+            showCards(readRevision: revision)
+            seed(answer.posts)
+            // The open list as it is now: a reply or a reaction made on a post's page shows on its card.
+            await rereadList()
         } catch {
             // The last answer for this place stays.
         }
     }
 
-    private static func endpoint(for detail: PlaceDetailViewModel) -> Endpoint? {
-        if let area = detail.area {
-            AroundYouEndpoints.area(AreaTodayBody(latitude: area.latitude, longitude: area.longitude))
-        } else if let savedPlaceId = detail.savedPlaceId {
-            AroundYouEndpoints.savedPlace(id: savedPlaceId)
-        } else if !detail.homeId.isEmpty {
-            AroundYouEndpoints.home(id: detail.homeId)
-        } else {
-            nil
+    // MARK: - Lists
+
+    /// The chips the page offers, "all" first; empty from a server before the lists, where the page is as it was.
+    var lists: [AroundYouListDTO] {
+        guard let page, page.hasPosts else { return [] }
+        return page.lists
+    }
+
+    /// The open list's posts as they show: under All the earlier stories, without the ones on the first page.
+    var shownListPosts: [FeedPostDTO] {
+        guard list == AroundYouListDTO.all, let page else { return listPosts }
+        let onPage = Set(page.posts.map(\.id))
+        return listPosts.filter { !onPage.contains($0.id) }
+    }
+
+    /// A chip was picked: its list starts from the top (All's earlier stories wait until its end nears).
+    func select(list id: String) {
+        guard id != list else { return }
+        startList(id)
+        showCards(readRevision: cards.actionRevision)
+        if id != AroundYouListDTO.all { Task { await readNextPage() } }
+    }
+
+    /// The list's foot came near the screen: the next page is read (the first, for the stories under All).
+    func listEndNeared() {
+        guard !lists.isEmpty, listState == .idle || listState == .more else { return }
+        Task { await readNextPage() }
+    }
+
+    /// "Try again" under a list that could not be read.
+    func retryList() {
+        guard listState == .failed else { return }
+        Task { await readNextPage() }
+    }
+
+    private func startList(_ id: String) {
+        list = id
+        listPosts = []
+        listNext = nil
+        listPages = 0
+        listRanLong = false
+        listState = .idle
+        listRun += 1
+        listFoot += 1
+    }
+
+    private func readNextPage() async {
+        guard let place, listState != .loading, listState != .ended else { return }
+        let run = listRun
+        let asked = list
+        listState = .loading
+        let revision = cards.actionRevision
+        do {
+            let answer = try await api.request(place.list(asked, before: listNext), as: AroundYouListPageDTO.self)
+            guard run == listRun else { return }
+            var seen = Set(listPosts.map(\.id))
+            listPosts += answer.posts.filter { seen.insert($0.id).inserted }
+            listNext = answer.next
+            listPages += 1
+            listRanLong = listPages > 1
+            listState = answer.next == nil ? .ended : .more
+            listFoot += 1
+            showCards(readRevision: revision)
+            seed(answer.posts)
+        } catch {
+            guard run == listRun else { return }
+            listState = .failed
+        }
+    }
+
+    /// Reads the open list's pages again, as many as were read, and swaps them in whole: each post stays where it
+    /// was, with its counts and its reply preview as they are now. A failed read keeps what shows.
+    private func rereadList() async {
+        guard let place, listPages > 0, listState != .loading else { return }
+        let run = listRun
+        let asked = list
+        let pages = listPages
+        let revision = cards.actionRevision
+        var posts: [FeedPostDTO] = []
+        var seen = Set<String>()
+        var next: String?
+        for index in 0..<pages {
+            guard let answer = try? await api.request(place.list(asked, before: next), as: AroundYouListPageDTO.self),
+                  run == listRun, pages == listPages else { return }
+            posts += answer.posts.filter { seen.insert($0.id).inserted }
+            next = answer.next
+            if next == nil, index < pages - 1 { break }
+        }
+        guard run == listRun, pages == listPages, listState != .loading else { return }
+        listPosts = posts
+        listNext = next
+        listState = next == nil ? .ended : .more
+        listFoot += 1
+        showCards(readRevision: revision)
+        seed(posts)
+    }
+
+    /// The page's and the open list's posts as cards, each post once.
+    private func showCards(readRevision: Int) {
+        var seen = Set<String>()
+        let posts = ((page?.posts ?? []) + listPosts).filter { seen.insert($0.id).inserted }
+        cards.show(posts, readRevision: readRevision)
+    }
+
+    /// A post's page opens at once from its card's copy while the post and its replies load (as from Pulse).
+    private func seed(_ posts: [FeedPostDTO]) {
+        for post in posts {
+            store.seed(post, for: PostsEndpoints.detail(id: post.id))
         }
     }
 

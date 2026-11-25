@@ -249,8 +249,8 @@ export async function createPost(data: {
   geocodeAccuracy?: string;
   radiusMiles?: number;
   tags?: string[];
-  // Feed redesign fields
-  postAs?: PostAs;
+  // Feed redesign fields. 'pen_name': under the person's made-up name (penNames; words only, people nearby).
+  postAs?: PostAs | 'pen_name';
   identityContextId?: string;
   audience?: Audience;
   targetPlaceId?: string;
@@ -465,6 +465,8 @@ export async function addComment(postId: string, data: {
   comment: string;
   parentCommentId?: string;
   clientRequestId?: string;
+  /** Under the person's made-up name (words only). In a conversation they are already in, the server keeps their voice. */
+  postAs?: 'pen_name';
 }): Promise<{ message: string; comment: PostComment }> {
   return post(`/api/posts/${postId}/comments`, data);
 }
@@ -523,6 +525,14 @@ export async function reportPost(postId: string, data: {
   details?: string;
 }): Promise<{ message: string }> {
   return post(`/api/posts/${postId}/report`, data);
+}
+
+/** Report someone else's reply, with a post's reasons: one report per person per reply, a retry answers the same. */
+export async function reportComment(postId: string, commentId: string, data: {
+  reason: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'safety' | 'other';
+  details?: string;
+}): Promise<{ message: string }> {
+  return post(`/api/posts/${postId}/comments/${commentId}/report`, data);
 }
 
 /** Repost or undo a repost; `reposted` is the state the person chose (see toggleLike). */

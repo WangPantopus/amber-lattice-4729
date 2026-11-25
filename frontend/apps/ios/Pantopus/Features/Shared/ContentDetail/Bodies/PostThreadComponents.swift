@@ -112,6 +112,8 @@ struct CommentRow: View {
     var onReply: (@MainActor () -> Void)?
     var onToggleLike: (@MainActor () -> Void)?
     var onDelete: (@MainActor () -> Void)?
+    /// Someone else's reply, under any name: the post's own report reasons.
+    var onReport: (@MainActor () -> Void)?
 
     @State private var attachmentViewerIndex: MediaViewerSelection?
 
@@ -131,7 +133,7 @@ struct CommentRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("pulsePostDetail-commentAvatar-\(comment.id)")
-            .accessibilityLabel("Open \(comment.authorName)'s profile")
+            .accessibilityLabel(authorTapLabel)
             .frame(minWidth: 28, minHeight: 28)
 
             VStack(alignment: .leading, spacing: Spacing.s1) {
@@ -143,7 +145,11 @@ struct CommentRow: View {
                                 .foregroundStyle(Theme.Color.appText)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Open \(comment.authorName)'s profile")
+                        .accessibilityLabel(authorTapLabel)
+                        if comment.penNameId != nil {
+                            PenNameMark()
+                                .accessibilityIdentifier("pulsePostDetail-commentMadeUp-\(comment.id)")
+                        }
                         Text("·")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.Color.appTextMuted)
@@ -210,12 +216,27 @@ struct CommentRow: View {
                             .accessibilityIdentifier("pulsePostDetail-deleteComment-\(comment.id)")
                             .accessibilityLabel("Delete your reply")
                     }
+
+                    if !comment.isOwn, let onReport {
+                        Button("Report") { onReport() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(Theme.Color.appTextSecondary)
+                            .frame(minHeight: 44, alignment: .center)
+                            .accessibilityIdentifier("pulsePostDetail-reportComment-\(comment.id)")
+                            .accessibilityLabel("Report \(comment.authorName)'s reply")
+                    }
                 }
                 .padding(.leading, Spacing.s1)
             }
             Spacer(minLength: Spacing.s0)
         }
         .padding(.vertical, 2)
+    }
+
+    /// A made-up name opens its small card; anyone else's name their profile.
+    private var authorTapLabel: String {
+        comment.penNameId == nil ? "Open \(comment.authorName)'s profile" : "About \(comment.authorName)"
     }
 
     /// Up to four square image attachments inside the bubble. Tapping

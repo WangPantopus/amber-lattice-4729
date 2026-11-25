@@ -67,7 +67,8 @@ private struct MomentsTablePostCard: View {
                 disc: model.skyDisc,
                 me: me,
                 placeholder: model.locating == .unavailable ? "Location is off" : "Finding where you are…",
-                height: mapHeight
+                height: mapHeight,
+                fullMap: MomentsPostFullMap.Place(model: model)
             )
             .frame(width: 290)
             .padding(.top, Spacing.s3)

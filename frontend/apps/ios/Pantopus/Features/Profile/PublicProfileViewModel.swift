@@ -406,6 +406,9 @@ public final class PublicProfileViewModel {
     /// Your own profile's extras (`PublicProfileView+Owner.swift`), kept with
     /// the page through a fold or a turn. Nil in a preview and signed out.
     public let ownerPage: OwnerPageModel?
+    /// The profile with sources (`ProfilePageModel`), read beside the profile while the `profile_sources` launch key
+    /// is on; nil otherwise, and the screen is exactly today's.
+    let sourcesPage: ProfilePageModel?
 
     /// The screens showing this profile (`presentationDidAppear()`).
     private var presentationCount = 0
@@ -459,6 +462,9 @@ public final class PublicProfileViewModel {
         store = ScreenStore.store(for: client)
         postCards = ProfilePostCardsModel(viewerId: currentUserId, client: client, store: store)
         ownerPage = previewAudience == nil ? currentUserId.map { OwnerPageModel(userId: $0, client: client) } : nil
+        sourcesPage = ProfilePageModel.isOn
+            ? ProfilePageModel(identifier: userId, previewAs: previewAudience?.sourcesView, client: client)
+            : nil
         postCards.onToast = { [weak self] message in self?.toastMessage = message }
         // A preview always reads fresh: what the audience sees, not a saved copy.
         if previewAudience == nil { showStoredCopy() }
@@ -973,7 +979,19 @@ public final class PublicProfileViewModel {
         }
     }
 
+    /// The profile and, while the `profile_sources` key is on, the page with sources beside it, never after it
+    /// (SPEC 4.13).
     private func fetch(force: Bool) async {
+        guard let sourcesPage else {
+            await fetchProfile(force: force)
+            return
+        }
+        async let profile: Void = fetchProfile(force: force)
+        await sourcesPage.load()
+        await profile
+    }
+
+    private func fetchProfile(force: Bool) async {
         let started = visit
         readFailed = false
         do {

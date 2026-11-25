@@ -3,6 +3,7 @@ package app.pantopus.android.data.api.services
 import app.pantopus.android.data.api.models.profile.ProfileMarksResponse
 import app.pantopus.android.data.api.models.profile.ProfilePageDto
 import app.pantopus.android.data.api.models.profile.ProfilePageMonthDto
+import app.pantopus.android.data.api.models.profile.ProfilePieceDto
 import app.pantopus.android.data.api.models.profile.ProfileShareDto
 import app.pantopus.android.data.api.models.profile.ProfileShareLinkCreateBody
 import app.pantopus.android.data.api.models.profile.ProfileShareLinkDto
@@ -22,6 +23,7 @@ import retrofit2.http.Query
  * by the server session). Every route answers 404 `PROFILE_SOURCES_OFF` while the backend's `PROFILE_SOURCES` switch is
  * off, and the app then keeps today's profile. `as` is the owner's Preview as: `link`, `member` or `connection`.
  */
+@Suppress("TooManyFunctions")
 interface ProfilePageApi {
     /** `GET /api/profile-page/:username`: the page as this viewer gets it (signed in or not). */
     @GET("api/profile-page/{username}")
@@ -44,6 +46,57 @@ interface ProfilePageApi {
         @Path("month") month: String,
         @Query("as") audience: String? = null,
     ): ProfilePageMonthDto
+
+    /** `GET /api/profile-page/id/:id/piece/:pieceId` (§5, P2.2): one piece opened (board 8). */
+    @GET("api/profile-page/id/{id}/piece/{pieceId}")
+    suspend fun piece(
+        @Path("id") id: String,
+        @Path("pieceId") pieceId: String,
+        @Query("as") audience: String? = null,
+    ): ProfilePieceDto
+
+    /** `GET /api/profile-page/me/pieces` (P2.3): the owner's pieces (drafts and hidden included), offers and counts. */
+    @GET("api/profile-page/me/pieces")
+    suspend fun myPieces(): Map<String, Any?>
+
+    /** `POST /api/profile-page/me/pieces` (P2.3): make a piece. Raw JSON, so an explicit null reaches the server. */
+    @POST("api/profile-page/me/pieces")
+    suspend fun createPiece(
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `POST /api/profile-page/me/pieces/preview` (P2.3): "How this piece will show", nothing saved. */
+    @POST("api/profile-page/me/pieces/preview")
+    suspend fun previewPiece(
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `PATCH /api/profile-page/me/pieces/:id` (P2.3): change any of a piece's fields. */
+    @PATCH("api/profile-page/me/pieces/{id}")
+    suspend fun updatePiece(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): Map<String, Any?>
+
+    /** `DELETE /api/profile-page/me/pieces/:id` (P2.3): remove a piece; its credits end. */
+    @DELETE("api/profile-page/me/pieces/{id}")
+    suspend fun deletePiece(
+        @Path("id") id: String,
+    ): Map<String, Any?>
+
+    /** `POST …/me/pieces/:id/links/:linkId/proof` (P2.4): the line to put on the page. */
+    @POST("api/profile-page/me/pieces/{id}/links/{linkId}/proof")
+    suspend fun linkProof(
+        @Path("id") id: String,
+        @Path("linkId") linkId: String,
+    ): Map<String, Any?>
+
+    /** `POST …/me/pieces/:id/links/:linkId/check` (P2.4): the card, Seen, when the line is on the page. */
+    @POST("api/profile-page/me/pieces/{id}/links/{linkId}/check")
+    suspend fun checkLink(
+        @Path("id") id: String,
+        @Path("linkId") linkId: String,
+    ): Map<String, Any?>
 
     /** `GET /api/profile-page/me/share`: the main link's parts, the link, and the page a visitor would see. */
     @GET("api/profile-page/me/share")

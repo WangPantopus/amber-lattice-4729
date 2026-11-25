@@ -615,6 +615,8 @@ function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }
           data-testid="sendCardPickBar"
           className={`${shelvesBarClass} sticky bottom-0 z-10 -mx-4 mt-5 border-t border-[#e3d8c3] bg-[#f5f0e8] px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_16px_rgba(60,40,10,0.08)] md:-bottom-6 [@media(prefers-color-scheme:dark)]:border-app [@media(prefers-color-scheme:dark)]:bg-app`}
         >
+          {/* On the wide page the chosen card and the button keep the other steps' width, in the middle. */}
+          <div className="mx-auto max-w-[528px]">
           <div className="flex min-h-[48px] items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={cardPicture(picked.id, 'thumb')} alt="" className="w-10 flex-shrink-0 -rotate-2 rounded-[2px] shadow-[0_3px_8px_rgba(60,40,10,0.25)]" />
@@ -629,6 +631,7 @@ function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }
             </button>
           </div>
           <button type="button" data-testid="sendCardWriteOn" onClick={onNext} className={`${primary} mt-2`} style={{ backgroundColor: WAX }}>Write on this card</button>
+          </div>
         </div>
       ) : null}
       {rack ? (
@@ -702,9 +705,23 @@ function TodaysPick({
     return () => window.removeEventListener('resize', reveal);
   }, [shownId]);
 
-  // A picture chosen on a public card page is in sight when the step opens.
+  // A picture chosen before this step (on a public card page, or by the assistant's button) is in sight when it opens.
   useEffect(() => {
-    if (launchFeatures.cardTable && chosen) document.querySelector('[role="radio"][aria-checked="true"]')?.scrollIntoView({ block: 'center' });
+    if (!chosen) return undefined;
+    const reveal = () => document.querySelector('[role="radio"][aria-checked="true"]')?.scrollIntoView({ block: 'center' });
+    reveal();
+    // The pictures above it take their height as they load, which pushes it out of sight again: it is brought back
+    // as each one loads, for a moment, or until the person moves the page themselves.
+    const moves = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    const stop = () => {
+      document.removeEventListener('load', reveal, true);
+      moves.forEach((name) => window.removeEventListener(name, stop));
+      window.clearTimeout(timer);
+    };
+    const timer = window.setTimeout(stop, 2500);
+    document.addEventListener('load', reveal, true);
+    moves.forEach((name) => window.addEventListener(name, stop, { passive: true }));
+    return stop;
     // Only as the step opens: choosing another card doesn't move the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1816,7 +1833,7 @@ function SentCard({
 // ── The flow ─────────────────────────────────────────────────
 
 export default function SendCardFlow({ chosenDesign = null, chosenPerson = null, sendAgain = false }: {
-  /** The picture a public card page sent them here with (launch key card_table). */
+  /** The picture a public card page, or a button under one of the assistant's replies, sent them here with (?design=). */
   chosenDesign?: string | null;
   /** "Send this card to someone else" from Sent (mail-cards-experience Part 6): its picture stays chosen and Pick a card
    *  is skipped. */
@@ -1845,7 +1862,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   const [to, setTo] = useState<Recipient | null>(null);
   // A person's arrivals and day go by their clock, read once they're chosen and again on the last step.
   const theirs = useCardArrivals(to?.kind === 'person' ? to.userId : null);
-  const [designId, setDesignId] = useState<string | null>(launchFeatures.cardTable ? chosenDesign : null);
+  const [designId, setDesignId] = useState<string | null>(chosenDesign);
   // Send this card to someone else (Part 6): the picture is already chosen, so Who it's for goes on to Write on the back.
   const [keepPicture, setKeepPicture] = useState(Boolean(sendAgain && chosenDesign && launchFeatures.cardTable));
   const [message, setMessage] = useState('');
@@ -1994,6 +2011,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   // The card being written comes back after a reload of this tab (memories plan step 4, "Drafts"): who it's for, the
   // picture, the note and signature, the uploaded photo and greeting, the arrival and the request ID, so a retry after
   // a lost answer finds the card it stored. Once, as it opens; not when it opened for someone or a picture on purpose.
+  // A card the assistant put together opens on Look it over (the effect after doLook).
+  const lookOnOpen = useRef(false);
   const draftRead = useRef(false);
   useEffect(() => {
     if (draftRead.current || !data || !me?.id) return;
@@ -2008,7 +2027,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     // A new card starts with their saved signature beside FROM (founder, 2026-11-16); a draft brought back keeps its own.
     const saved = launchFeatures.cardTable ? data.signature?.saved ?? null : null;
     if (saved) setSignature(saved);
-    if (chosenPerson || (launchFeatures.cardTable && chosenDesign)) return;
+    if (chosenPerson || chosenDesign) return;
     const draft = readCardDraft(me.id);
     if (!draft || !data.open) return;
     if (draft.to) {
@@ -2018,7 +2037,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     const designHere = Boolean(draft.designId && data.designs.some((d) => d.id === draft.designId));
     if (designHere) setDesignId(draft.designId);
     setMessage(draft.message.slice(0, data.message_limit));
-    setSignature(draft.signature);
+    // A card from the assistant is a new card: it starts with their saved signature too.
+    setSignature(draft.fromAssistant ? saved : draft.signature);
     if (draft.photo) {
       setPhoto({ status: 'ready', progress: 1, file: null, localUrl: null, ref: draft.photo, error: null });
       setPhotoAlt(draft.photoAlt);
@@ -2029,6 +2049,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     listIds.current = new Map(draft.listIds);
     const at = !draft.to ? 'to' : !designHere ? 'pick' : draft.step;
     setStep(at);
+    // A card from the assistant opens on Look it over, where the person sees all of it (below).
+    lookOnOpen.current = Boolean(draft.fromAssistant) && at === 'seal';
     const shelf = at === 'pick' && fromAddress ? shelves?.find((s) => s.slug === fromAddress || s.id === fromAddress) : undefined;
     if (shelf) openCollection(shelf);
     // Once, as the flow opens.
@@ -2220,6 +2242,21 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       },
     });
   };
+
+  // A card the assistant put together (cardDraft.startAssistantCard) comes back at Seal it for the day with everything
+  // chosen. Once, when its arrival is settled, the flow asks for the look the "Look it over" button asks for, so the
+  // person lands on the whole card with "Seal and send" under it. If the look can't be had, or the card would first
+  // ask where it starts its travels, they stay on Seal it for the day, which says why and has the same button.
+  useEffect(() => {
+    if (!lookOnOpen.current || step !== 'seal' || !design || !to || !arrival || !options.includes(arrival)) return;
+    // A person's arrivals go by their clock: wait for them, so the look asks with the arrival that stays.
+    if (to.kind === 'person' && theirs.isPending) return;
+    lookOnOpen.current = false;
+    if (travelling && !travelOffer?.town) return;
+    doLook();
+    // Once, when the card from the assistant is ready to be looked over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, design, to, arrival, options, theirs.isPending]);
 
   // "Seal and send" on Seal it for the day (mail-cards-experience 5.1): the same check Look it over runs, then straight to
   // the sealing table (without the card table, it sends from here). A refusal shows under the choices. A list with any
@@ -2544,9 +2581,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   // Write on the back, Seal it for the day and Look it over lie on the card's cloth (design plan Part 9, card_table).
   const atTable = launchFeatures.cardTable && Boolean(design) && (step === 'write' || step === 'seal' || step === 'look');
 
+  // "Pick a card" as shelves is a wide page: its title, its headings and each row's first card start on one line, and
+  // the rows end with the page. The other steps keep the narrow column.
+  const widePage = step === 'pick' && Boolean(shelves);
+
   return (
     <div className={`${page} pb-6`}>
-      <div className="mx-auto w-full max-w-[560px]">
+      <div className={`mx-auto w-full ${widePage ? 'max-w-[1240px]' : 'max-w-[560px]'}`}>
       <StepHeader
         step={step}
         title={step === 'sent' && sent?.by_link ? 'Your card is ready.' : openShelf ? 'All collections' : undefined}

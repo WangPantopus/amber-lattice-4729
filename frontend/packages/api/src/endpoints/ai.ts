@@ -19,6 +19,8 @@ import type {
   PlaceBrief,
   NeighborhoodPulse,
   AIConversation,
+  AIConversationMessages,
+  AIActionCardState,
   AIChatRequest,
 } from '@pantopus/types';
 
@@ -36,6 +38,8 @@ export function streamChat(
     onStatus?: (data: { tool: string; message: string }) => void;
     onTextDelta?: (delta: string) => void;
     onDraft?: (data: { type: string; draft: unknown; valid: boolean }) => void;
+    /** A button under the reply that opens a screen in the app (sent only to apps that list "link" in `cards`). */
+    onLink?: (data: { label: string; url: string }) => void;
     onError?: (data: { error: string; message: string }) => void;
     onDone?: (data: { conversationId: string; usage: { inputTokens: number; outputTokens: number }; toolCalls: number }) => void;
   }
@@ -57,6 +61,9 @@ export function streamChat(
           break;
         case 'draft':
           handlers.onDraft?.(parsed);
+          break;
+        case 'link':
+          handlers.onLink?.(parsed);
           break;
         case 'error':
           handlers.onError?.(parsed);
@@ -276,6 +283,26 @@ export async function getNeighborhoodPulse(homeId: string): Promise<Neighborhood
  */
 export async function getConversations(options?: { order: 'oldest' | 'newest' }): Promise<{ conversations: AIConversation[] }> {
   return get<{ conversations: AIConversation[] }>('/api/ai/conversations', options);
+}
+
+/**
+ * A conversation's history, so the assistant page shows it again after the person leaves and comes back. `cards` is
+ * the chat request's list: the server returns only the cards this app can show (phase 1 contract, section 3).
+ */
+export async function getConversationMessages(id: string, cards: string[]): Promise<AIConversationMessages> {
+  return get<AIConversationMessages>(`/api/ai/conversations/${encodeURIComponent(id)}/messages`, { cards: cards.join(',') });
+}
+
+/**
+ * What was done on an action card, so the person's other devices show it (phase 3 contract, section 4.2): `done` with
+ * the button (and its row) after its request went through, `dismissed` after "Not now". 404 CARD_UNKNOWN means the
+ * server kept no record of the card; callers ignore it.
+ */
+export async function reportCardState(
+  cardId: string,
+  report: { status: 'done'; action_id: string; item_id?: string | null; link?: string | null } | { status: 'dismissed' },
+): Promise<{ state: AIActionCardState }> {
+  return post<{ state: AIActionCardState }>(`/api/ai/cards/${encodeURIComponent(cardId)}/state`, report, { suppressDevErrorOverlay: true });
 }
 
 /**

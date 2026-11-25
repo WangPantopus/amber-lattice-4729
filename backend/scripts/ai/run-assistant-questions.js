@@ -191,6 +191,8 @@ function check(question, got) {
   for (const tool of e.tools || []) if (!got.tools.includes(tool)) fails.push(`${tool} was not called (called ${got.tools.join(',') || 'nothing'})`);
   for (const tool of e.noTools || []) if (got.tools.includes(tool)) fails.push(`${tool} was called`);
   if (e.noDraft && got.drafts.length) fails.push(`unexpected draft ${got.drafts.join(',')}`);
+  // A draft the app's own composer opens (composeDrafts.js): "moment", "letter" or "christmas_card".
+  if (e.draft && !got.drafts.includes(e.draft)) fails.push(`no ${e.draft} draft (got ${got.drafts.join(',') || 'none'})`);
   if (e.maxChars && got.text.length > e.maxChars) fails.push(`reply is ${got.text.length} characters (at most ${e.maxChars})`);
   if (e.textMatches && !new RegExp(e.textMatches, 'i').test(got.text)) fails.push(`text lacks /${e.textMatches}/`);
   if (e.textNotMatches && new RegExp(e.textNotMatches, 'im').test(got.text)) fails.push(`text matches /${e.textNotMatches}/`);

@@ -15,6 +15,11 @@
  *   t0_share_clicked   client-side, "Share this address" tapped (meta:
  *                      method share|copy) — the share rate of D5
  *   t0_wall_viewed     client-side, when the soft wall is shown/tapped
+ *   t0_record_opened   client-side, "See this home's full record" tapped on the lookup
+ *   t0_ask_opened      client-side, the Ask Pantopus row opened on the lookup
+ *   t0_end_reached     client-side, the lookup's closed group came into view
+ *                      (every t0_* beacon from the web carries meta.layout v1 | v2:
+ *                      the order the lookup was drawn in)
  *   register_started   client-side, register form mounted
  *   t1_account_created server-side, on successful registration
  *
@@ -75,6 +80,13 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   'card_claimed', //    user: the claimer; meta via, new_account, after lt_1h | lt_1d | lt_7d | later
   'card_reply_sent', // user: the replier
   'card_passed_on', //  user: the passer; meta place 1 | 2 (which of the card's two places), via
+  // Around you (Today's second half), recorded by services/aroundYouService.js on a read that returns sections, at
+  // most once an hour per person. Counts only: no place, region or item.
+  'around_you_opened', // user: the reader; meta sections, rows, hand_made (the region was set up by hand)
+  // The lookup's new order (LOOKUPORDER), browser and app beacons. Counts only; meta layout v1 | v2 and the ?r= code.
+  't0_record_opened',
+  't0_ask_opened',
+  't0_end_reached',
 ]);
 
 // Only these pilot events are accepted from an authenticated app. Delivery
@@ -97,6 +109,9 @@ const CLIENT_POSTABLE_EVENT_TYPES = Object.freeze([
   't0_share_clicked',
   't0_wall_viewed',
   'register_started',
+  't0_record_opened',
+  't0_ask_opened',
+  't0_end_reached',
 ]);
 
 /**

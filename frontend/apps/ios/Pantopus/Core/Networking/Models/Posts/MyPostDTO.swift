@@ -186,16 +186,20 @@ public struct SavedPostsResponse: Decodable, Sendable {
     /// The same posts read as the feed's (the server lists them with the feed's serializer), drawn as Pulse cards.
     public let feedPosts: [FeedPostDTO]
     public let pagination: Pagination?
+    /// `GET /api/pen-names/me/posts` pages by time: where its next page starts; nil at the end and on the others.
+    public let nextBefore: String?
 
     private enum CodingKeys: String, CodingKey {
         case posts
         case pagination
+        case nextBefore = "next_before"
     }
 
     public init(posts: [MyPostDTO], feedPosts: [FeedPostDTO] = [], pagination: Pagination? = nil) {
         self.posts = posts
         self.feedPosts = feedPosts
         self.pagination = pagination
+        nextBefore = nil
     }
 
     public init(from decoder: any Decoder) throws {
@@ -204,6 +208,7 @@ public struct SavedPostsResponse: Decodable, Sendable {
         posts = c.lossyList(MyPostDTO.self, forKey: .posts)
         feedPosts = c.lossyList(FeedPostDTO.self, forKey: .posts)
         pagination = try? c.decodeIfPresent(Pagination.self, forKey: .pagination)
+        nextBefore = c.lenient(String.self, forKey: .nextBefore)
     }
 }
 

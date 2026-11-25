@@ -29,6 +29,12 @@ public struct PostCreatorDTO: Decodable, Sendable, Hashable, Identifiable {
     public let identityType: String?
     private let wireDisplayName: String?
     public let credential: FeedAuthorCredentialDTO?
+    /// A made-up name (`type` `pen_name`, contract "What the server sends"): `id` is the made-up name's.
+    public let madeUp: Bool
+    /// `made_up_name`, `verified_home` on a made-up name.
+    public let badges: [String]
+    /// Sent only to the person who wrote it under their made-up name: the card says "(you)".
+    public let isYou: Bool
 
     private enum CodingKeys: String, CodingKey {
         case id, username, name, handle
@@ -42,6 +48,7 @@ public struct PostCreatorDTO: Decodable, Sendable, Hashable, Identifiable {
         case avatarURLSnake = "avatar_url"
         case city, state
         case accountType = "account_type"
+        case madeUp, badges, isYou
     }
 
     public init(
@@ -68,6 +75,9 @@ public struct PostCreatorDTO: Decodable, Sendable, Hashable, Identifiable {
         self.identityType = identityType
         wireDisplayName = nil
         credential = nil
+        madeUp = identityType == "pen_name"
+        badges = []
+        isYou = false
     }
 
     /// Tolerant (Pulse S2): a field that is missing, null or of another shape
@@ -92,6 +102,14 @@ public struct PostCreatorDTO: Decodable, Sendable, Hashable, Identifiable {
         state = c.lenient(String.self, forKey: .state)
         accountType = c.lenient(String.self, forKey: .accountType)
         identityType = c.lenient(String.self, forKey: .identityType)
+        madeUp = c.lenient(Bool.self, forKey: .madeUp) ?? (identityType == "pen_name")
+        badges = c.lenient([String].self, forKey: .badges) ?? []
+        isYou = c.lenient(Bool.self, forKey: .isYou) ?? false
+    }
+
+    /// The made-up name's id, when this author is one; nil for a person, a business or a home.
+    public var penNameId: String? {
+        madeUp || identityType == "pen_name" ? id : nil
     }
 
     /// Best-effort display name across the various populated fields.
@@ -163,6 +181,10 @@ public struct PostCommentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let likeCount: Int?
     public let author: PostCreatorDTO?
     public let attachments: [CommentAttachmentDTO]?
+    /// Written under a made-up name (contract "What the server sends"); false from an older server.
+    public let madeUpName: Bool
+    /// The viewer wrote it (sent only to them on a made-up-name reply): the row says "(you)".
+    public let viewerIsAuthor: Bool
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -177,6 +199,8 @@ public struct PostCommentDTO: Decodable, Sendable, Hashable, Identifiable {
         case likeCount = "like_count"
         case author
         case attachments
+        case madeUpName = "made_up_name"
+        case viewerIsAuthor = "viewer_is_author"
     }
 
     /// Tolerant (Pulse S2): only `id` is required; a field that is missing,
@@ -195,6 +219,13 @@ public struct PostCommentDTO: Decodable, Sendable, Hashable, Identifiable {
         likeCount = c.lenient(Int.self, forKey: .likeCount)
         author = c.lenient(PostCreatorDTO.self, forKey: .author)
         attachments = c.lenient(LossyList<CommentAttachmentDTO>.self, forKey: .attachments)?.items
+        madeUpName = c.lenient(Bool.self, forKey: .madeUpName) ?? (author?.penNameId != nil)
+        viewerIsAuthor = c.lenient(Bool.self, forKey: .viewerIsAuthor) ?? (author?.isYou == true)
+    }
+
+    /// The made-up name's id, on a reply written under one.
+    public var penNameId: String? {
+        madeUpName ? author?.penNameId : nil
     }
 }
 
@@ -276,6 +307,8 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
     public let keptOpenAt: String?
     /// Where the post's story was published (`post_metadata.source_url`), as on its card.
     public let source: PostSource?
+    /// Set on a story Today's Around you posted for an outlet (`post_metadata.around_you`), as on its card.
+    public let aroundYou: PostAroundYou?
     /// A plan's own post (Plans marks it `post_metadata.plan`): its event
     /// times are real moments, not the composer's wall clock labelled UTC.
     public let isPlanPost: Bool
@@ -286,6 +319,20 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
     public let showOnProfile: Bool?
     /// The post this one quotes ("Repost with your words", PULSEREPOST contract §8); nil for an ordinary post.
     public let quotedPost: FeedQuotedPost?
+    /// The identity projection of the author (`author`): on a made-up-name post it carries the marks and `isYou`.
+    public let author: PostCreatorDTO?
+    /// Written under a made-up name (contract "What the server sends"); false from an older server.
+    public let madeUpName: Bool
+    /// The viewer wrote it: sent only to them on a made-up-name post.
+    public let viewerIsAuthor: Bool
+    /// The reply box offers "Post as" (`takes_made_up_name_reply`): a post people nearby read, or a made-up-name
+    /// post. False from an older server.
+    public let takesMadeUpNameReply: Bool
+
+    /// The made-up name's id, on a post written under one.
+    public var penNameId: String? {
+        madeUpName ? (author?.penNameId ?? creator?.penNameId) : nil
+    }
 
     /// A moderator removed the post: neighbors can't see it or reply.
     public var isRemovedByModerator: Bool {
@@ -337,6 +384,10 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
         case profilePinned = "profile_pinned"
         case showOnProfile = "show_on_profile"
         case quotedPost = "quoted_post"
+        case author
+        case madeUpName = "made_up_name"
+        case viewerIsAuthor = "viewer_is_author"
+        case takesMadeUpNameReply = "takes_made_up_name_reply"
     }
 
     /// Tolerant (Pulse S2): only `id` and `created_at` are required; any
@@ -395,10 +446,16 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
         let metadata = c.lenient(PostLifecycleMetadata.self, forKey: .postMetadata)
         keptOpenAt = metadata?.keptOpenAt
         source = PostSource(url: metadata?.sourceUrl, name: metadata?.sourceName)
+        aroundYou = metadata?.aroundYou
         isPlanPost = metadata?.plan == true
         profilePinned = c.lenient(Bool.self, forKey: .profilePinned)
         showOnProfile = c.lenient(Bool.self, forKey: .showOnProfile)
         quotedPost = c.lenient(FeedQuotedPost.self, forKey: .quotedPost)
+        author = c.lenient(PostCreatorDTO.self, forKey: .author)
+        madeUpName = c.lenient(Bool.self, forKey: .madeUpName)
+            ?? ((author?.penNameId ?? creator?.penNameId) != nil)
+        viewerIsAuthor = c.lenient(Bool.self, forKey: .viewerIsAuthor) ?? (author?.isYou == true)
+        takesMadeUpNameReply = c.lenient(Bool.self, forKey: .takesMadeUpNameReply) ?? false
     }
 }
 
@@ -455,10 +512,15 @@ extension PostDetailDTO {
         claimMode = post.claimMode
         keptOpenAt = post.keptOpenAt
         source = post.source
+        aroundYou = post.aroundYou
         isPlanPost = post.isPlanPost
         profilePinned = post.profilePinned
         showOnProfile = post.showOnProfile
         quotedPost = post.quotedPost
+        author = post.author
+        madeUpName = post.madeUpName
+        viewerIsAuthor = post.viewerIsAuthor
+        takesMadeUpNameReply = post.takesMadeUpNameReply
     }
 }
 

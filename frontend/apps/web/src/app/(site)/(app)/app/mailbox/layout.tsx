@@ -5,8 +5,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getAuthToken } from '@pantopus/api';
 import MailboxHeader, { mailboxHref, mailboxView } from '@/components/mailbox/MailboxHeader';
 import GuidanceScreen from '@/components/guidance/GuidanceScreen';
-import MailboxHero, { deliveryState, sentWaiting } from '@/components/mailbox/MailboxHero';
-import { useEmptyDayCard } from '@/components/mailbox/cards/cardDoors';
+import { deliveryState } from '@/components/mailbox/MailboxHero';
+import MailboxToday, { useMailWide } from '@/components/mailbox/MailboxToday';
 import MailboxErrorBoundary from '@/components/mailbox/MailboxErrorBoundary';
 import { MailboxToastProvider } from '@/components/mailbox/MailboxToast';
 import { MailboxProvider, useMailboxContext } from '@/contexts/MailboxContext';
@@ -15,6 +15,8 @@ import { useMe } from '@/lib/me';
 import { launchFeatures } from '@/lib/featureFlags';
 import { MailboxIcons } from '@/lib/icons';
 import ComposeLetter from './_components/ComposeLetter';
+import type { LetterChatDraft } from '@pantopus/types';
+import { takeLetterDraft } from '@/lib/aiDraftHandoff';
 
 // The delivery moment plays the first time you open Mail after a round,
 // remembered per account in this browser (contract `delivery.last_at`).
@@ -31,14 +33,16 @@ const MOMENT_MS = 1800;
  *   and "…" menu, drawer chips and tabs on the main screens, a back bar on
  *   the others
  * - Your mailbox and today's delivery (MailboxHero) on Incoming, with the
- *   delivery moment once per round
+ *   delivery moment once per round; on a wide window (1280 px and up) the
+ *   pane beside the list shows it instead, while no mail is open
  * - Travel dates banner
  * - Error boundaries around each major section
  * - Children fill the remaining space (nested layouts handle list/detail split)
  *
  * Phones scroll the page like every other tab (and keep the tab's place);
  * from md up the Mailbox fills the window and its list and letter scroll
- * side by side.
+ * side by side. On a wide window the main screens and Sent are a page of
+ * limited width in the middle, not a strip at the left edge.
  */
 export default function MailboxRouteLayout({
   children,
@@ -92,6 +96,16 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Launch cut #8 (Mail extras): writing a letter is hidden.
   const [composeOpen, setComposeOpen] = useState(false);
+  // A letter Pantopus AI wrote, on its way from the assistant's chat ("Open in Mail"): the composer opens with it,
+  // once, as Mail opens. Nothing is sent until the person sends it there.
+  const [letterDraft, setLetterDraft] = useState<LetterChatDraft | null>(null);
+  useEffect(() => {
+    if (!launchFeatures.mailExtras) return;
+    const draft = takeLetterDraft();
+    if (!draft) return;
+    setLetterDraft(draft);
+    setComposeOpen(true);
+  }, []);
 
   // ── Your mailbox and today's delivery ──────────────────
   const { data: drawers } = useMailboxDrawers();
@@ -131,18 +145,17 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
   // opened from one is its own screen on phones.
   const bannerClass = view.kind === 'main' || view.kind === 'sent' ? (view.pushed ? 'hidden md:flex' : 'flex') : 'hidden';
 
-  // The flag is up while a card (Christmas cards on) or a letter (letters on) you sent waits for the 7 a.m. pickup.
-  const { waiting, waitingLetters } = sentWaiting(drawers);
-  // Your own mail (Me) on a day with no mail, while Christmas cards are open: the top card invites you to send one.
-  const emptyDayCard = useEmptyDayCard();
-  const invite = view.kind === 'main' && view.drawer === 'personal' ? emptyDayCard : null;
+  // A wide window: the main screens and Sent sit in the middle, and the pane beside the list shows your mailbox and
+  // today's delivery (the drawer's layout), so it leaves the top.
+  const wide = useMailWide();
+  const centered = view.kind === 'main' || view.kind === 'sent';
 
   return (
-    <div className="bg-app md:flex md:h-[calc(100vh-3.5rem)] md:flex-col md:overflow-hidden">
+    <div className={`bg-app md:flex md:h-[calc(100vh-3.5rem)] md:flex-col md:overflow-hidden${centered ? ' xl:mx-auto xl:w-full xl:max-w-[1200px] xl:border-x xl:border-app-border' : ''}`}>
       <MailboxHeader
         view={view}
         backHref={backHref}
-        hero={drawers ? <MailboxHero delivery={delivery} homes={drawers.homes} opening={deliveryOpening} waiting={waiting} waitingLetters={waitingLetters} invite={invite} /> : null}
+        hero={wide ? null : <MailboxToday personal={view.kind === 'main' && view.drawer === 'personal'} />}
         onWriteLetter={launchFeatures.mailExtras ? () => setComposeOpen(true) : undefined}
       />
 
@@ -166,7 +179,7 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
         </MailboxErrorBoundary>
       </div>
 
-      {composeOpen && <ComposeLetter onClose={() => setComposeOpen(false)} />}
+      {composeOpen && <ComposeLetter letter={letterDraft} onClose={() => { setComposeOpen(false); setLetterDraft(null); }} />}
       {/* Mail's first screen has loaded (and today's delivery has finished opening): its guidance card may show. */}
       {view.kind === 'main' && !view.pushed && drawers && !deliveryOpening ? <GuidanceScreen name="mail" facts={{ sentAny: Boolean(drawers.sent?.any) }} /> : null}
     </div>

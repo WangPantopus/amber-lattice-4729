@@ -47,8 +47,9 @@ describe('Canonical baseline through real SDK, PostgREST JWT roles and Following
     });
   }
   before(async () => {
-    // Refuse an existing app database even when an operator enables the test.
-    assert.equal(sql('SELECT count(*) FROM public."User";'), '0', 'requires an empty canonical installation');
+    // Refuse an existing app database even when an operator enables the test. A fresh installation holds one row
+    // nobody signs in as: the system account made-up-name posts are stored under (20261125083000_pen_names.sql).
+    assert.equal(sql(`SELECT count(*) FROM public."User" WHERE account_type IS DISTINCT FROM 'system';`), '0', 'requires an empty canonical installation');
     assert.equal(sql("SELECT count(*) FROM pg_policies WHERE schemaname='public' AND tablename='Post' AND policyname='post_persona_service_only';"), '1');
     assert.equal(sql("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version IN ('20260908234526','20260908234527');"), '2');
     docker('network', 'inspect', network);

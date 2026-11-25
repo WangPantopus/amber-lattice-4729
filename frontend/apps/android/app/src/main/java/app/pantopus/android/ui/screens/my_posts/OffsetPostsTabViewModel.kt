@@ -151,6 +151,9 @@ abstract class OffsetPostsTabViewModel(
         openPostHandler = onOpenPost
     }
 
+    /** Opens the row's post, as a tap on its card does. */
+    protected fun openPost(dto: MyPostDto) = openPostHandler(dto)
+
     /** A return uses the shared first-page copy while it is fresh. */
     fun load() = read(force = false)
 

@@ -32,6 +32,8 @@ import { usePrimaryHome } from '@/lib/primaryHome';
 import { claimsInReview, myClaimsQuery, myHomesQuery as sharedMyHomesQuery } from '@/lib/myHomes';
 import { PLACE_FRESH_MS, gatedStaleTime, placeCopyGate, useAfterRecheck } from '@/lib/householdCopy';
 import { useVerifyOptions } from './fastVerify/useVerifyOptions';
+import AskPlaceRow from './AskPlaceRow';
+
 
 // Only an account without a home shows its saved addresses here, and they bring the address
 // preview from the start funnel with them: loaded on demand, so a home's dashboard leaves both
@@ -269,6 +271,15 @@ export default function PlaceDashboard({ openVerify = false }: {
         autoOpenVerify={openVerify && !verify.loading}
         onAutoOpened={() => router.replace(`/app/place${placeHomeQuery(switchedHome)}`)}
       />
+      {/* As on the phones: the assistant about this home, at the end of the page (LOOKUPORDER SPEC 2). */}
+      {home ? (
+        <div className="mt-2 mb-4">
+          <AskPlaceRow
+            label="Ask Pantopus about your home"
+            onOpen={() => router.push(`/app/chat/ai-assistant?surface=place&home_id=${encodeURIComponent(home.id)}`)}
+          />
+        </div>
+      ) : null}
     </Shell>
   );
 }

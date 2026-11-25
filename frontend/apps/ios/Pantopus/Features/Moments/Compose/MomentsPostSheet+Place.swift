@@ -130,6 +130,11 @@ extension MomentsPostSheet {
 
     /// What the place row says on its right: "Area" or "Exact" under the Sky.
     private var placeKind: String {
+        Self.placeKind(model)
+    }
+
+    /// What the place row says on its right; the full-screen map's place says the same.
+    static func placeKind(_ model: MomentsComposerModel) -> String {
         if model.noLocationOn { return "Not on the map" }
         if model.sky != nil { return model.floats ? SkyWords.area : SkyWords.exact }
         return model.showArea ? "Area only" : "Exact spot"

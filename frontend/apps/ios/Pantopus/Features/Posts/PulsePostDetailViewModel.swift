@@ -117,15 +117,30 @@ public final class PulsePostDetailViewModel {
     /// The comment box has the keyboard. A new screen for this post after a fold or a turn gives it back. Not
     /// observed.
     @ObservationIgnored var isComposing = false {
-        didSet { if oldValue, !isComposing { composingEndedAt = Date() } }
+        didSet {
+            if oldValue, !isComposing { composingEndedAt = Date() }
+            if isComposing { replyAskedAt = nil }
+        }
     }
+
+    /// A card's Reply opened the post (`openedToReply`): the screen made next gives the comment box the keyboard.
+    @ObservationIgnored private var replyAskedAt: Date?
+    /// How long after Reply a new screen still opens on the comment box: long enough for a slow push.
+    private static let replyWindow: TimeInterval = 8
 
     /// When the comment box last lost the keyboard: closing the iPhone Duo, or half folding it upright, takes the
     /// keyboard away a moment before the screen is rebuilt.
     @ObservationIgnored private var composingEndedAt: Date?
     /// A screen made now gives the comment box the keyboard: it has it, or had it until a moment ago.
     var returnsToComposer: Bool {
-        isComposing || composingEndedAt.map { Date().timeIntervalSince($0) < PulseScreenRebuilds.window } ?? false
+        if let replyAskedAt, Date().timeIntervalSince(replyAskedAt) < Self.replyWindow { return true }
+        return isComposing || composingEndedAt.map { Date().timeIntervalSince($0) < PulseScreenRebuilds.window } ?? false
+    }
+
+    /// The post is being opened to reply (a card's Reply, or its reply preview): its screen opens with the comment
+    /// box ready to type in.
+    func openedToReply() {
+        replyAskedAt = Date()
     }
 
     /// A rebuilt screen is still giving the comment box the keyboard back: a screen made in the next moment (a second
@@ -151,6 +166,15 @@ public final class PulsePostDetailViewModel {
 
     var composerRevision: UInt = 0
     var pendingComment: PostCommentRequest?
+
+    /// "Post as" in the reply box, while the conversation hasn't fixed the name (made-up names, contract 1 and 7).
+    public internal(set) var replyVoice: PenNameVoice = .own
+    /// The made-up name screen, opened from the reply box.
+    public var showsPenNameSetup = false
+    /// The reply goes out once the name is taken (`PEN_NAME_NEEDED`).
+    @ObservationIgnored var sendsReplyAfterPenName = false
+    /// The small card of a made-up name tapped on this page.
+    var penNameCard: PenNameCardTarget?
 
     var conversationReadAt: Date?
     /// The Pulse conversation route doesn't serve this post (a household,
@@ -579,6 +603,20 @@ public final class PulsePostDetailViewModel {
         }
     }
 
+    /// File a report against someone else's reply, with the post's reasons.
+    public func reportComment(commentId: String, reason: String) async {
+        do {
+            _ = try await client.request(
+                PostsEndpoints.reportComment(postId: postId, commentId: commentId, reason: reason),
+                as: PostActionAckResponse.self
+            )
+            toastMessage = "Report submitted. Thanks for flagging."
+        } catch {
+            logger.warning("Reply report failed: \(error)")
+            toastMessage = "Couldn't submit the report"
+        }
+    }
+
     /// Save toggle — optimistic, reconciled with `{saved}`. "Saved." offers
     /// View (contract §5).
     public func toggleSave() async {
@@ -653,8 +691,14 @@ public final class PulsePostDetailViewModel {
         isSendingComment = true
         defer { isSendingComment = false }
         let parentId = replyTarget?.commentId
-        if pendingComment?.comment != body || pendingComment?.parentCommentId != parentId {
-            pendingComment = PostCommentRequest(comment: body, parentCommentId: parentId, clientRequestId: UUID().uuidString)
+        let postAs = effectiveReplyVoice == .penName ? "pen_name" : nil
+        if pendingComment?.comment != body || pendingComment?.parentCommentId != parentId || pendingComment?.postAs != postAs {
+            pendingComment = PostCommentRequest(
+                comment: body,
+                parentCommentId: parentId,
+                clientRequestId: UUID().uuidString,
+                postAs: postAs
+            )
         }
         guard let req = pendingComment else { return }
         do {
@@ -671,6 +715,12 @@ public final class PulsePostDetailViewModel {
             PulsePostsRefresh.notifyPostChanged(commentCountChange)
         } catch {
             logger.warning("Comment send failed: \(error)")
+            // No made-up name yet: the name screen opens, and the reply goes out once a name is kept.
+            if PenNameRefusal.from(error)?.needsName == true {
+                sendsReplyAfterPenName = true
+                showsPenNameSetup = true
+                return
+            }
             // A refusal says why in the server's words (contract §0); the draft stays.
             toastMessage = Self.refusal(in: error) ?? "Couldn't post your comment"
         }
@@ -679,7 +729,9 @@ public final class PulsePostDetailViewModel {
     /// The server's sentence for a refused request (403 or another 4xx);
     /// nil for a failure that isn't a refusal (offline, 5xx).
     static func refusal(in error: any Error) -> String? {
-        switch error as? APIError {
+        // A made-up-name refusal shows its sentence as it is, a 503 (the check can't run, the brake) included.
+        if let refusal = PenNameRefusal.from(error) { return refusal.message }
+        return switch error as? APIError {
         case let .forbidden(message): message
         case let .clientError(_, message): APIError.friendlyClientMessage(message)
         default: nil
@@ -800,7 +852,9 @@ public final class PulsePostDetailViewModel {
     }
 
     private func rebuildContent(from post: PostDetailDTO) -> PulsePostDetailContent {
-        let displayName = post.creator?.displayName ?? "Pantopus user"
+        let creatorName = post.creator?.displayName ?? "Pantopus user"
+        // A made-up name: the writer alone sees "Night Gardener (you)".
+        let displayName = post.penNameId != nil && post.viewerIsAuthor ? "\(creatorName) (you)" : creatorName
         let avatarURL = post.creator?.profilePictureURL.flatMap(URL.init(string:))
         let media = PostMediaItem.items(
             urls: post.mediaURLs,
@@ -809,12 +863,17 @@ public final class PulsePostDetailViewModel {
             liveURLs: post.mediaLiveURLs
         )
         let identity: IdentityPillar = mapAccountType(post.creator?.accountType)
-        let timeAndLocality = formatTimeAndLocality(
+        var timeAndLocality = formatTimeAndLocality(
             createdAt: post.createdAt,
             // The post's own place label wins (A10.4 meta line); creator
             // locality and home city are fallbacks for legacy rows.
             locality: post.locationName ?? post.creator?.locality ?? post.home?.city
         )
+        // A made-up name shows a verified home nearby, never a distance; its writer reads that only they know.
+        if post.penNameId != nil {
+            timeAndLocality = (post.viewerIsAuthor ? "Only you can see this is you" : "Verified home nearby")
+                + " · " + timeAndLocality
+        }
         let intent = PostIntent.from(purpose: post.purpose, postType: post.postType)
         let reactions = PostReactionKind(postType: post.postType) == .going
             ? PostReactionCounts(goingCount: post.likeCount, isGoing: post.userHasLiked)
@@ -897,7 +956,9 @@ public final class PulsePostDetailViewModel {
     }
 
     private func row(from comment: PostCommentDTO, indent: Int) -> PostCommentRow {
-        let name = comment.author?.displayName ?? "Pantopus user"
+        let authorName = comment.author?.displayName ?? "Pantopus user"
+        let penNameId = comment.penNameId
+        let name = penNameId != nil && comment.viewerIsAuthor ? "\(authorName) (you)" : authorName
         let attachments = (comment.attachments ?? []).compactMap { URL(string: $0.fileURL) }
         return PostCommentRow(
             id: comment.id,
@@ -911,7 +972,8 @@ public final class PulsePostDetailViewModel {
             indentLevel: indent,
             authorUserId: comment.author?.id.isEmpty == false ? comment.author?.id : nil,
             attachmentURLs: attachments,
-            isOwn: currentUserId != nil && comment.userId == currentUserId
+            isOwn: currentUserId != nil && comment.userId == currentUserId,
+            penNameId: penNameId
         )
     }
 

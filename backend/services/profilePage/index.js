@@ -11,10 +11,12 @@ const { findPerson, openFor, PageRefusal, cityLimit, handleOthersSee } = require
 const { readRows, sourcesFrom, relationshipStatus, bounded } = require('./sources');
 const { readShare, applyShareChange, PART_KEYS } = require('./parts');
 const links = require('./links');
-const { profileLinksEnabled } = require('../../utils/featureFlags');
-const { buildRecord, composePage, composeMonth, composePiece, partContent, firstWord } = require('./compose');
+const { profileLinksEnabled, profileTiesEnabled, profileKnownForEnabled } = require('../../utils/featureFlags');
+const { buildRecord, composePage, composeMonth, composePiece, composeCircle, composeCirclePieces, partContent, firstWord, knownForLines } = require('./compose');
+const { reaches } = require('./parts');
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+const localDay = (at) => require('./compose').localDate(new Date(at), require('./compose').PACIFIC);
 
 function webBase() {
   const url = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
@@ -60,10 +62,55 @@ async function momentsFor(req, ctx, rows) {
     connected: new Set(ctx.preview === 'connection' || (!ctx.preview && ctx.relationship === 'connected') ? [personId] : []),
   };
   const reported = new Set((ctx.preview ? [] : rows.reported_moments || []).map(String));
-  const shown = rows.moments.filter((row) => store.momentState(row) === 'live' && store.canSee(row, seeCtx)
-    && !reported.has(String(row.id)));
+  const live = rows.moments.filter((row) => store.momentState(row) === 'live' && store.canSee(row, seeCtx));
+  // The rows' reports reach back four days, as long as an app's Moment lasts; a longer one (the seed-the-map tool's)
+  // reads the viewer's reports as far back as Moments themselves do. Only then: it costs a read.
+  if (!ctx.preview && viewerId !== personId && live.some((row) => store.storedHours(row) > store.MAX_HOURS)) {
+    for (const id of await store.reportedIds(viewerId)) reported.add(String(id));
+  }
+  const shown = live.filter((row) => !reported.has(String(row.id)));
   if (!shown.length) return null;
   return { count: shown.length, placed: shown.filter((row) => store.displayedPoint(row).latitude != null).length };
+}
+
+/**
+ * What a person's app can't show yet (CONTRACT "# On by default, and what a phone can't show yet"): on their own page
+ * only, for each thing waiting for them whose part their app did not name in X-Pantopus-Profile-Parts, a `notice` that
+ * opens the web screen for it. No header (a 2.1.5 app) means none. Asks to sign and role asks need one read, made only
+ * when the app leaves `credits` or `roles` out; lines waiting for "Show it" and cards not yet written back come with
+ * the page's own rows.
+ */
+const PARTS_HEADER = 'x-pantopus-profile-parts';
+async function noticesFor(req, ctx, sources = {}) {
+  const header = req.get?.(PARTS_HEADER);
+  if (header === undefined || ctx.view !== 'owner' || ctx.preview) return [];
+  const named = new Set(String(header).split(',').map((p) => p.trim().toLowerCase()).filter(Boolean));
+  const base = webBase();
+  const site = base.replace(/^https?:\/\//, '');
+  const work = `${base}/${encodeURIComponent(ctx.username)}?tab=work`;
+  const out = [];
+  if (profileTiesEnabled() && (!named.has('credits') || !named.has('roles'))) {
+    const { asks } = await require('./ties').listAsks(String(ctx.userData.id));
+    for (const a of asks) {
+      const who = a.from?.name || 'Someone';
+      if (a.kind === 'credit' && !named.has('credits')) {
+        out.push({ id: `notice_${a.id}`, text: `${who} asked you to sign a piece. Open it on ${site}.`, url: work });
+      } else if (a.kind === 'role' && !named.has('roles')) {
+        out.push({ id: `notice_${a.id}`, text: `${who} asked ${a.business?.name || 'your business'} to confirm a role. Open it on ${site}.`, url: work });
+      }
+    }
+  }
+  if (!named.has('known_for')) {
+    for (const t of (sources.knownFor || []).filter((line) => line.status === 'asked')) {
+      out.push({ id: `notice_${t.id}`, text: `${t.party_shown?.name || 'Someone'} wrote a line about you. Open it on ${site}.`, url: ctx.shareUrl });
+    }
+  }
+  if (!named.has('doors')) {
+    for (const c of (ctx.cards || []).filter((card) => !card.written_back)) {
+      out.push({ id: `notice_${c.id}`, text: `${c.from?.name || 'Someone'} left you their card. Open it on ${site}.`, url: ctx.shareUrl });
+    }
+  }
+  return out.map((n) => ({ kind: 'notice', id: n.id, text: n.text, link: { kind: 'url', url: n.url, site } }));
 }
 
 // "You and <name>" (services/profileInCommon.js). GET /api/users/:id/in-common also refuses a personal block either
@@ -115,7 +162,7 @@ function contextFrom(opened, stored, found) {
  * Reads everything for one request. `view` forces a view (the share read's visitor). `keyed` opens a link for one
  * purpose: the link view, with that link's parts.
  */
-async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommon = true } = {}) {
+async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommon = true, notices = false } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
   const userId = found.userData.id;
   const signedIn = req.user?.id ? String(req.user.id) : null;
@@ -132,9 +179,25 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     rowsRead,
     wantsInCommon ? readInCommon(req.user, userId) : null,
   ]);
-  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn });
+  // The viewer whose side the rows carry (none for a preview or a link): an ask shows to the one asked.
+  const viewerId = keyed ? null : rowsViewer;
+  const sources = await sourcesFrom(userId, rows, { pinned: readsForSignedIn, owner: opened.view === 'owner', viewerId });
   const inCommon = inCommonRead && !(rows.blocked_by_them || rows.blocked_by_viewer) ? inCommonRead : null;
   const ctx = contextFrom(opened, rows.share || null, found);
+  ctx.viewerId = viewerId;
+  ctx.shelf = require('./shelf').objectsOf(rows.shelf);
+  ctx.share = rows.share || null;
+  // Doors and cards (phase 3B; no switch of their own: off only with the whole page, PROFILE_SOURCES=0).
+  {
+    const doors = require('./doors');
+    const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
+    ctx.doors = doors.storedDoors(rows.doors);
+    ctx.cards = opened.view === 'owner' ? doors.cardsFrom(rows) : [];
+    ctx.viewerCardAt = rows.viewer_card_at ? localDay(rows.viewer_card_at) : null;
+    ctx.canSendCard = isLaunchFeatureEnabled('mailbox') && isLaunchFeatureEnabled('holiday_cards');
+  }
+  // A block either way between a signed-in viewer and the person: no "Write a line", no doors, no card.
+  ctx.blockedEitherWay = Boolean(viewerId) && String(viewerId) !== String(userId) && blockedEitherWay(rows, viewerId);
   if (keyed) {
     // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).
@@ -151,6 +214,10 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
     ctx.homePlaceState = home.state;
   }
   const record = buildRecord(ctx, sources, { now: new Date() });
+  ctx.notices = !notices ? [] : await noticesFor(req, ctx, sources).catch((err) => {
+    logger.warn('Profile page notices unavailable; left out', { userId, error: err.message });
+    return [];
+  });
   const moments = await momentsFor(req, ctx, rows).catch((err) => {
     logger.warn('Profile page Moments row unavailable; left out', { userId, error: err.message });
     return null;
@@ -159,7 +226,7 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
 }
 
 async function getPage(req, lookup) {
-  const loaded = await loadPage(req, lookup);
+  const loaded = await loadPage(req, lookup, { notices: true });
   const page = composePage(loaded.ctx, loaded.sources, loaded.extras);
   return loaded.ctx.preview ? { ...page, preview_as: loaded.ctx.preview } : page;
 }
@@ -176,29 +243,71 @@ async function getMonth(req, lookup, month) {
 async function getPiece(req, lookup, pieceId, { keyed = null } = {}) {
   const found = keyed ? keyed.found : await findPerson(lookup);
   const viewing = keyed || req.query?.as !== undefined ? null : (req.user?.id || null);
-  const rowsRead = personRows(found.userData.id, viewing);
-  const [opened, rows, pieceRead] = await Promise.all([
+  const signedIn = Boolean(req.user?.id) && !keyed && req.query?.as === undefined;
+  const rowsRead = personRows(found.userData.id, viewing, { reviewers: signedIn });
+  const [opened, rows] = await Promise.all([
     openFor(req, found, keyed ? { viewOverride: 'link', keyed: true, rows: rowsRead } : { rows: rowsRead }),
     rowsRead,
-    supabaseAdmin.from('UserPortfolio')
-      .select('id, user_id, title, description, portfolio_type, media_urls, thumbnail_url, file_ids, skills_used, '
-        + 'external_url, github_url, demo_url, completed_at, created_at, is_visible')
-      .eq('id', pieceId)
-      .eq('user_id', found.userData.id)
-      .eq('is_visible', true)
-      .maybeSingle(),
   ]);
   const missing = () => new PageRefusal(404, 'PIECE_NOT_FOUND', 'That piece isn\'t here.');
-  if (pieceRead.error) {
-    if (pieceRead.error.code === '22P02') throw missing();
-    throw pieceRead.error;
-  }
-  if (!pieceRead.data) throw missing();
   const ctx = contextFrom(opened, rows.share || null, found);
+  ctx.viewerId = viewing ? String(viewing) : null;
   if (keyed) ctx.parts = Object.fromEntries(PART_KEYS.map((key) => [key, keyed.row.parts?.[key] === true ? 'anyone' : 'connections']));
-  const answer = composePiece(ctx, pieceRead.data);
+  // The owner may open their drafts and hidden pieces; nobody else's rows carry them (sources.js).
+  const owner = ctx.view === 'owner';
+  const candidates = owner ? [...(rows.pieces || []), ...(rows.owner_only_pieces || [])] : (rows.pieces || []);
+  const row = candidates.find((r) => String(r.id) === String(pieceId));
+  if (!row) throw missing();
+  const sources = await sourcesFrom(String(found.userData.id), rows, { pinned: false, owner, viewerId: ctx.viewerId });
+  // Someone asked to sign a credit on this piece, or who signed one, may open it (they were shown it when asked);
+  // sources.creditsFrom already left out a block either way and their own switch off.
+  const party = !owner && Boolean(ctx.viewerId) && sources.credits.some((c) => String(c.piece_id) === String(row.id)
+    && String(c.party_user_id) === ctx.viewerId && (c.status === 'asked' || c.status === 'signed'));
+  const { attachmentsOf } = require('./pieces');
+  const tiesOn = profileTiesEnabled();
+  // The owner's piece from a paid job: who hired them, when they could be asked now (a plan suggests nobody).
+  const suggest = owner && tiesOn
+    ? (row.source_kind === 'gig' && row.source_gig_id
+      ? require('./ties').suggestionsFor(String(found.userData.id), [row.source_gig_id]).then((m) => m.get(String(row.source_gig_id)) || [])
+      : Promise.resolve([]))
+    : Promise.resolve(null);
+  const [attachments, suggested] = await Promise.all([attachmentsOf(row), suggest]);
+  const answer = composePiece(ctx, row, {
+    attachments, reviews: sources.reviews?.rows || [], credits: tiesOn ? sources.credits : null, party, suggested,
+  });
   if (!answer) throw missing();
   return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
+}
+
+// ---------- Known for (CONTRACT P3.2) ----------
+
+/** GET …/known-for: every shown line this viewer may see (the writer's own too), on top first. */
+async function getKnownFor(req, lookup, { keyed = null } = {}) {
+  const loaded = await loadPage(req, lookup, { inCommon: false, keyed });
+  const { ctx } = loaded;
+  if (!reaches(ctx.parts, 'known_for', ctx.view)) throw new PageRefusal(404, 'KNOWN_FOR_NOT_FOUND', 'Nothing to show here.');
+  const answer = { v: 1, lines: knownForLines(ctx, loaded.sources, loaded.record, ctx.view) };
+  return ctx.preview ? { ...answer, preview_as: ctx.preview } : answer;
+}
+
+/** The person a writer means, by the page's lookup (their username or account id). */
+async function personIdFor(lookup) {
+  return String((await findPerson(lookup)).userData.id);
+}
+
+// ---------- the work circle (CONTRACT P2.6) ----------
+
+const circleMissing = () => new PageRefusal(404, 'CIRCLE_NOT_FOUND', 'Nothing to show here.');
+const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** GET …/circle (and …/circle/:userId): read like the page, under the same viewer rules; no "You and <name>". */
+async function getCircle(req, lookup, userId = null, { keyed = null } = {}) {
+  if (userId !== null && !ID_RE.test(String(userId))) throw circleMissing();
+  const loaded = await loadPage(req, lookup, { inCommon: false, keyed });
+  const answer = userId === null ? composeCircle(loaded.ctx, loaded.record, loaded.sources)
+    : composeCirclePieces(loaded.ctx, loaded.record, userId);
+  if (!answer) throw circleMissing();
+  return loaded.ctx.preview ? { ...answer, preview_as: loaded.ctx.preview } : answer;
 }
 
 // ---------- share ----------
@@ -224,13 +333,23 @@ async function visitorFrom(loaded) {
     cityByPrivacy: ctx.cityLimit === 'anyone',
     relationship: 'none',
     canMessage: false,
+    viewerId: null,
   };
-  const visitorSources = { ...loaded.sources, pinned: null };
-  return composePage(visitorCtx, visitorSources, { record: loaded.record, inCommon: null });
+  // The visitor's own sources and record: the owner's carry drafts and hidden pieces, a visitor's never do.
+  const visitorSources = await sourcesFrom(String(ctx.userData.id), rows, { pinned: false, owner: false });
+  return composePage(visitorCtx, visitorSources, { record: buildRecord(visitorCtx, visitorSources, { now: new Date() }), inCommon: null });
+}
+
+// The share sheet's Work row (CONTRACT P2.5): "<shown> of your <total> pieces". `total` counts the pieces that are
+// finished and not hidden; `shown`, those whose own "who sees it" is anyone, so the row's setting decides the rest.
+function workPieces(sources) {
+  const live = (sources.pieces || []).filter((row) => row.title && !row.is_draft && row.is_visible !== false);
+  return { shown: live.filter((row) => (row.audience || 'anyone') === 'anyone').length, total: live.length };
 }
 
 async function shareBody(req) {
   const linksOn = profileLinksEnabled();
+  const tiesOn = profileTiesEnabled();
   const [loaded, linkRows] = await Promise.all([
     loadPage(req, { id: req.user.id }),
     linksOn ? links.listRows(req.user.id) : null,
@@ -257,13 +376,19 @@ async function shareBody(req) {
     search_engines: ctx.searchEngines,
     city_limit: ctx.cityLimit,
     visitor: await visitorFrom(loaded),
+    work_pieces: workPieces(loaded.sources),
+    ...(tiesOn ? { ties_enabled: readShare(loaded.rows.share).ties_enabled } : {}),
+    ...(profileKnownForEnabled() ? { known_for_enabled: readShare(loaded.rows.share).known_for_enabled } : {}),
+    cards_enabled: readShare(loaded.rows.share).cards_enabled,
     ...linkFields,
   };
 }
 
 async function putShare(req) {
   const stored = await readShareColumn(req.user.id);
-  const change = applyShareChange(readShare(stored), req.body, new Date(), { links: profileLinksEnabled() });
+  const change = applyShareChange(readShare(stored), req.body, new Date(), {
+    links: profileLinksEnabled(), ties: profileTiesEnabled(), knownFor: profileKnownForEnabled(), doors: true,
+  });
   if (change.error) throw new PageRefusal(400, 'PROFILE_SHARE_INVALID', change.error);
   const { error } = await supabaseAdmin.from('User').update({ profile_share: change.value }).eq('id', req.user.id);
   if (error) throw error;
@@ -343,6 +468,14 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
         if (!MONTH_RE.test(String(arg || ''))) throw new PageRefusal(400, 'MONTH_INVALID', 'Ask for a month as YYYY-MM.');
         answer = composeMonth(loaded.ctx, loaded.record, arg);
         if (!answer) throw new PageRefusal(404, 'MONTH_NOT_FOUND', 'Nothing to show for that month.');
+      } else if (what === 'known_for') {
+        if (!reaches(loaded.ctx.parts, 'known_for', loaded.ctx.view)) throw new PageRefusal(404, 'KNOWN_FOR_NOT_FOUND', 'Nothing to show here.');
+        answer = { v: 1, lines: knownForLines(loaded.ctx, loaded.sources, loaded.record, loaded.ctx.view) };
+      } else if (what === 'circle') {
+        if (arg !== null && !ID_RE.test(String(arg))) throw circleMissing();
+        answer = arg === null ? composeCircle(loaded.ctx, loaded.record, loaded.sources)
+          : composeCirclePieces(loaded.ctx, loaded.record, arg);
+        if (!answer) throw circleMissing();
       } else {
         answer = composePage(loaded.ctx, loaded.sources, loaded.extras);
       }
@@ -359,6 +492,6 @@ async function openByKey(req, username, key, what = 'page', arg = null) {
 }
 
 module.exports = {
-  getPage, getMonth, getPiece, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
+  getPage, getMonth, getPiece, getCircle, getKnownFor, personIdFor, shareBody, putShare, readShareColumn, PageRefusal, cityLimit,
   makeLink, changeLink, removeLink, openByKey, LinkRefusal: links.LinkRefusal,
 };

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.data.api.models.place.PlacePreviewStatus
 import app.pantopus.android.data.api.models.saved_places.SavedPlaceDto
 import app.pantopus.android.ui.components.PrimaryButton
@@ -43,6 +44,8 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.screens.place.components.placeCard
 import app.pantopus.android.ui.screens.place.launch.PlacePreviewFindings
+import app.pantopus.android.ui.screens.place.launch.PreviewJumps
+import app.pantopus.android.ui.screens.place.launch.rememberPreviewJumps
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -74,6 +77,8 @@ fun SavedPlaceRootScreen(
     modifier: Modifier = Modifier,
     /** The Place tab tapped again on this root: back to the top. */
     scrollToTop: Flow<Unit>? = null,
+    /** "Ask Pantopus: what does this mean for me?": the assistant, about this saved address (LOOKUPORDER 5.3). */
+    onAsk: ((AIScreenContext) -> Unit)? = null,
     viewModel: SavedPlaceRootViewModel = hiltViewModel(key = "saved-place-${place.id}"),
 ) {
     LifecycleResumeEffect(place.id) {
@@ -85,6 +90,8 @@ fun SavedPlaceRootScreen(
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val refreshNotice by viewModel.refreshNotice.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    // A glance line takes the list to its card (LOOKUPORDER 1.2).
+    val jumps = rememberPreviewJumps(listState)
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
 
     var pulled by remember { mutableStateOf(false) }
@@ -97,7 +104,7 @@ fun SavedPlaceRootScreen(
         },
         modifier = modifier.fillMaxSize().background(PantopusColors.appBg).testTag(SAVED_PLACE_ROOT_TAG),
     ) {
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().then(jumps.viewport())) {
             item {
                 PlaceDashboardHeader(
                     label = place.label,
@@ -123,6 +130,8 @@ fun SavedPlaceRootScreen(
                     onSetUpHome = onSetUpHome,
                     onRetry = viewModel::refresh,
                     onOpenDetail = onOpenDetail,
+                    jumps = jumps,
+                    onAsk = onAsk?.let { ask -> { ask(AIScreenContext.savedPlace(place.id)) } },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -191,12 +200,15 @@ private fun SavedPlaceNextStep(
 
 /** The public preview of the saved point, as the launch preview renders it, without its account wall. */
 @Composable
+@Suppress("LongParameterList")
 private fun SavedPlacePublicPreview(
     state: SavedPlaceRootUiState,
     retrying: Boolean,
     onSetUpHome: () -> Unit,
     onRetry: () -> Unit,
     onOpenDetail: ((PlaceDetailGroup) -> Unit)?,
+    jumps: PreviewJumps,
+    onAsk: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -234,6 +246,8 @@ private fun SavedPlacePublicPreview(
                         onRetry = onRetry,
                         retrying = retrying,
                         modifier = modifier,
+                        jumps = jumps,
+                        onAsk = onAsk,
                     )
             }
         }

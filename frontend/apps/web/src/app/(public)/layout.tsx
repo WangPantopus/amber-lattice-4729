@@ -13,6 +13,7 @@ import localFont from 'next/font/local';
 import HomeFooter from '../_components/HomeFooter';
 import { IconSprite } from '../_components/HomeIcons';
 import home from '../_components/home.module.css';
+import AdRoute from './_components/AdRoute';
 import PublicNav from './_components/PublicNav';
 import styles from './_components/public.module.css';
 
@@ -39,6 +40,7 @@ export default function PublicLayout({ children }: Readonly<{ children: React.Re
       <a className={styles.skip} href="#content">
         Skip to the page
       </a>
+      <AdRoute />
       <PublicNav />
       <main id="content" className={styles.main}>
         {children}

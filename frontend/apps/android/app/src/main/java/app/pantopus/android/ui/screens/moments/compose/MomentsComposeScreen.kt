@@ -54,11 +54,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -723,6 +725,11 @@ private fun ReviewStep(
     onShowWeather: (Boolean) -> Unit,
     sky: MomentsSkyActions,
 ) {
+    // Over a photo or a video the sheet pulls down to show it as it will post ([MomentsPostLowering]).
+    val lowering = remember { MomentsPostLowering() }.takeIf { state.media != null }
+    // A tap on the sheet's small map opens it full screen; its back button (or Back) returns to the sheet as it was.
+    var fullMap by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = fullMap && state.postMapSpot != null) { fullMap = false }
     // Under the marks editor, TalkBack reads only the editor.
     Box(modifier = Modifier.fillMaxSize().then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier)) {
         when (val media = state.media) {
@@ -752,7 +759,16 @@ private fun ReviewStep(
                     )
                 }
         }
-        if (state.media != null) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clearAndSetSemantics {})
+        // The darkening under the sheet lifts as the sheet lowers (read in the draw step: a drag frame recomposes nothing).
+        if (state.media != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .drawBehind { drawRect(Color.Black.copy(alpha = 0.3f * (1f - (lowering?.progress ?: 0f)))) }
+                        .clearAndSetSemantics {},
+            )
+        }
         // Retake at the left, the pills at the right: a pill that doesn't fit beside Retake drops to a second row.
         val density = LocalDensity.current
         var topRows by remember { mutableStateOf(40.dp) }
@@ -821,7 +837,21 @@ private fun ReviewStep(
             onShowHeight = onShowHeight,
             onShowWeather = onShowWeather,
             sky = sky,
+            lowering = lowering,
+            onOpenMap = { fullMap = true },
         )
+        if (fullMap) {
+            state.postMapSpot?.let { spot ->
+                MomentsPostFullMap(
+                    spot = spot,
+                    avatarUrl = avatarUrl,
+                    placeLabel = state.postPlaceLabel,
+                    placeKind = state.postPlaceKind,
+                    atHome = (state.postAtHome && !state.showArea) || state.skyAtHome,
+                    onBack = { fullMap = false },
+                )
+            }
+        }
     }
 }
 

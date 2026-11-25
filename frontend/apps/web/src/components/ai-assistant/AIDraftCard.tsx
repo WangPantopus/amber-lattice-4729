@@ -23,6 +23,8 @@ import {
   Share2,
   UtensilsCrossed,
   CalendarDays,
+  Camera,
+  Gift,
 } from 'lucide-react';
 import type {
   AIChatDraft,
@@ -32,9 +34,18 @@ import type {
   MailSummary,
   SupportTrainChatDraft,
   PickupScheduleChatDraft,
+  MomentChatDraft,
+  LetterChatDraft,
+  ChristmasCardChatDraft,
+  AIActionCardDraft,
 } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 import { queryKeys } from '@/lib/query-keys';
+import { useMe } from '@/lib/me';
+import { AI_LETTER_DRAFT_KEY, AI_MOMENT_DRAFT_KEY, LETTER_KIND_NAMES, handOffDraft, letterIntentOf } from '@/lib/aiDraftHandoff';
+import { startAssistantCard } from '@/components/mailbox/cards/cardDraft';
+import { cardPicture } from '@/components/mailbox/cards/cardArt';
+import { AIActionCard } from './AIActionCard';
 
 interface AIDraftCardProps {
   draft: AIChatDraft;
@@ -55,6 +66,17 @@ export function AIDraftCard({ draft }: AIDraftCardProps) {
       return <PickupScheduleDraftCard draft={draft.draft as PickupScheduleChatDraft} />;
     case 'mail_summary':
       return <MailSummaryCard summary={draft.draft as MailSummary} />;
+    // Drafts the app's own screens open filled in; the person sends from there. The chat lists "letter" and
+    // "christmas_card" only while this build has those screens (useAIChat), and these follow the same keys.
+    case 'moment':
+      return <MomentDraftCard draft={draft.draft as MomentChatDraft} />;
+    case 'letter':
+      return launchFeatures.mailbox && launchFeatures.mailExtras ? <LetterDraftCard draft={draft.draft as LetterChatDraft} /> : null;
+    case 'christmas_card':
+      return launchFeatures.mailbox && launchFeatures.holidayCards ? <ChristmasCardDraftCard draft={draft.draft as ChristmasCardChatDraft} /> : null;
+    // One tap does it: host or change a plan, add a home task, change notification settings (phase 1, section 4).
+    case 'action':
+      return <AIActionCard card={draft.draft as AIActionCardDraft} state={draft.state} />;
     default:
       return null;
   }
@@ -305,6 +327,183 @@ function SupportTrainDraftCard({ draft }: { draft: SupportTrainChatDraft }) {
         >
           <ExternalLink className="w-3 h-3" />
           Set up the Support Train
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Moment Card ─────────────────────────────────────────────
+
+const MOMENT_STAYS: Record<number, string> = { 1: 'Up for 1 hour', 6: 'Up for 6 hours', 24: 'Up for 24 hours', 48: 'Up for 48 hours' };
+
+// A Moment the assistant wrote. The Moments composer opens with it; where it is pinned and Post are the composer's.
+function MomentDraftCard({ draft }: { draft: MomentChatDraft }) {
+  const router = useRouter();
+  const handleUse = () => {
+    handOffDraft(AI_MOMENT_DRAFT_KEY, draft);
+    router.push('/app/moments');
+  };
+  const words = draft.kind === 'text' ? draft.text : draft.caption;
+
+  return (
+    <div className="w-full rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50/80 to-app-surface dark:from-teal-950/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2 bg-teal-100/50 border-b border-teal-100">
+        <Camera className="w-3.5 h-3.5 text-teal-600" />
+        <span className="text-xs font-semibold text-teal-700 uppercase tracking-wide">
+          Moment Draft
+        </span>
+        <Sparkles className="w-3 h-3 text-teal-400 ml-auto" />
+      </div>
+
+      <div className="px-3.5 py-3 space-y-2">
+        {words ? (
+          <p className="text-sm text-app-text leading-relaxed whitespace-pre-wrap break-words">{words}</p>
+        ) : null}
+        {draft.kind === 'photo' && (
+          <p className="text-xs text-app-text-secondary leading-relaxed">
+            {words ? 'The caption for a photo or video you add in Moments.' : 'You add the photo or video in Moments.'}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          <Chip icon={<Clock className="w-3 h-3" />} label={MOMENT_STAYS[draft.hours] || MOMENT_STAYS[24]} />
+          <Chip label={draft.audience === 'connections' ? 'Your connections' : 'Everyone nearby'} />
+        </div>
+      </div>
+
+      <div className="flex border-t border-teal-100">
+        <button
+          onClick={handleUse}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open in Moments
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Letter Card ─────────────────────────────────────────────
+
+// A letter the assistant wrote. Mail's letter compose opens with who it is to and the letter; it is sent from there.
+function LetterDraftCard({ draft }: { draft: LetterChatDraft }) {
+  const router = useRouter();
+  const handleUse = () => {
+    handOffDraft(AI_LETTER_DRAFT_KEY, draft);
+    router.push('/app/mailbox/personal');
+  };
+  const name = draft.recipient?.name || (draft.recipient?.username ? `@${draft.recipient.username}` : '');
+
+  return (
+    <div className="w-full rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50/80 to-app-surface dark:from-amber-950/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2 bg-amber-100/50 border-b border-amber-100">
+        <Mail className="w-3.5 h-3.5 text-amber-600" />
+        <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+          Letter Draft
+        </span>
+        <Sparkles className="w-3 h-3 text-amber-400 ml-auto" />
+      </div>
+
+      <div className="px-3.5 py-3 space-y-2">
+        {name && (
+          <h4 className="font-semibold text-app-text text-sm leading-snug">To {name}</h4>
+        )}
+        <p className="text-xs text-app-text-secondary leading-relaxed whitespace-pre-wrap break-words line-clamp-[12]">
+          {draft.body}
+        </p>
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          <Chip label={LETTER_KIND_NAMES[letterIntentOf(draft.intent)]} />
+        </div>
+      </div>
+
+      <div className="flex border-t border-amber-100">
+        <button
+          onClick={handleUse}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open in Mail
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Christmas Card ──────────────────────────────────────────
+
+// A Christmas card the assistant put together: the picture, who it is to, the note and when it arrives. The card
+// screen opens with all four set; signing, stamps and "Seal and send" are that screen's.
+function ChristmasCardDraftCard({ draft }: { draft: ChristmasCardChatDraft }) {
+  const router = useRouter();
+  const { data: me } = useMe();
+  const to = draft.to || ({} as ChristmasCardChatDraft['to']);
+  const toName = 'user_id' in to ? to.name : 'email' in to ? to.email : '';
+  const designId = draft.design?.id || '';
+
+  const handleUse = () => {
+    const entry = 'user_id' in to
+      ? { kind: 'person' as const, userId: to.user_id, name: to.name || '' }
+      : 'email' in to ? { kind: 'email' as const, email: to.email } : null;
+    // The card screen keeps the card being written for this tab; the assistant's card goes in as that card. If it
+    // can't be kept (who you are hasn't loaded, or storage is blocked), the screen opens with the picture chosen.
+    const kept = Boolean(me?.id && entry) && startAssistantCard(me!.id, {
+      designId,
+      to: entry!,
+      message: draft.message || '',
+      arrival: draft.arrival,
+    });
+    router.push(kept || !designId ? '/app/mailbox/cards' : `/app/mailbox/cards?design=${encodeURIComponent(designId)}`);
+  };
+
+  return (
+    <div className="w-full rounded-xl border border-red-200 bg-gradient-to-br from-red-50/80 to-app-surface dark:from-red-950/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2 bg-red-100/50 border-b border-red-100">
+        <Gift className="w-3.5 h-3.5 text-red-700" />
+        <span className="text-xs font-semibold text-red-800 uppercase tracking-wide">
+          Christmas Card
+        </span>
+        <Sparkles className="w-3 h-3 text-red-400 ml-auto" />
+      </div>
+
+      <div className="px-3.5 py-3 flex gap-3">
+        {designId && (
+          <div className="w-24 flex-shrink-0">
+            {/* The card's picture ships with the app, by its id. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={cardPicture(designId, 'thumb')}
+              alt={draft.design?.caption ? `The card's picture: ${draft.design.caption}` : "The card's picture"}
+              className="block w-full rounded-[3px] shadow-md"
+            />
+          </div>
+        )}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          {draft.design?.caption && (
+            <p className="text-xs italic text-app-text-secondary leading-snug">{draft.design.caption}</p>
+          )}
+          {toName && (
+            <h4 className="font-semibold text-app-text text-sm leading-snug break-words">To {toName}</h4>
+          )}
+          <p className="text-xs text-app-text-secondary leading-relaxed whitespace-pre-wrap break-words">
+            {draft.message}
+          </p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {draft.arrival_label && <Chip icon={<Clock className="w-3 h-3" />} label={draft.arrival_label} />}
+          </div>
+          {draft.arrival_changed && (
+            <p className="text-xs text-amber-700 leading-snug">{draft.arrival_changed}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex border-t border-red-100">
+        <button
+          onClick={handleUse}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-red-800 hover:bg-red-50 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open the card
         </button>
       </div>
     </div>

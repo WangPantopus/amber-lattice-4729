@@ -30,26 +30,40 @@ function aroundYouEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
-// A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md): GET /api/profile-page/*
-// composes a person's page for each viewer, the person chooses what their link shows, and the old profile reads follow
-// those choices for signed-out callers (rule 4.7). PROFILE_SOURCES is '1' (on) or '0' (off); unset, it is on for
-// hosted staging and off everywhere else. Off, every profile read is exactly as before.
-function profileSourcesEnabled(env = process.env) {
-  const value = String(env.PROFILE_SOURCES || '').trim();
+// Sources for a new county (Around you everywhere layer, piece 4): the source finder asks Claude, with web search, for
+// a county's own news and event sources and proposes them for review on /app/admin/sources. AROUND_YOU_SOURCE_FINDER is
+// '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else. Off, nothing calls Claude. It needs
+// AROUND_YOU on too.
+function aroundYouSourceFinderEnabled(env = process.env) {
+  if (!aroundYouEnabled(env)) return false;
+  const value = String(env.AROUND_YOU_SOURCE_FINDER || '').trim();
   if (value === '1') return true;
   if (value === '0') return false;
   return env.APP_ENV === 'staging';
 }
 
-// Links for one purpose (founder approval 2026-11-23, SPEC item 9.1), the first feature with its own switch beneath
-// PROFILE_SOURCES (rule 4.12). PROFILE_LINKS is '1' (on) or '0' (off); unset, it is on for hosted staging and off
-// everywhere else. It needs PROFILE_SOURCES on too.
+// A profile with sources (founder approval 2026-11-23; ~/pantopus-profile-sources/SPEC.md). No switch: built and
+// merged means available (the founder, 2026-11-24: "do not make a switch to this, this should be automatically turned
+// on, nothing here should be turned off"; SPEC rule 4.12). Each answers true unless its variable is exactly "0", which
+// stays only as an emergency off. PROFILE_SOURCES=0 turns off the whole profile with sources (every profile read is
+// exactly as before); PROFILE_LINKS=0 links for one purpose; PROFILE_TIES=0 credits, signing, roles and the circle.
+const isOn = (env, name) => String(env[name] || '').trim() !== '0';
+
+function profileSourcesEnabled(env = process.env) {
+  return isOn(env, 'PROFILE_SOURCES');
+}
+
 function profileLinksEnabled(env = process.env) {
-  if (!profileSourcesEnabled(env)) return false;
-  const value = String(env.PROFILE_LINKS || '').trim();
-  if (value === '1') return true;
-  if (value === '0') return false;
-  return env.APP_ENV === 'staging';
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_LINKS');
+}
+
+function profileTiesEnabled(env = process.env) {
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_TIES');
+}
+
+// Known for (phase 3A; CONTRACT P3.2): on, as everything built and merged is; PROFILE_KNOWN_FOR=0 is its emergency off.
+function profileKnownForEnabled(env = process.env) {
+  return profileSourcesEnabled(env) && isOn(env, 'PROFILE_KNOWN_FOR');
 }
 
 // Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
@@ -273,8 +287,11 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 
 module.exports = {
   aroundYouEnabled,
+  aroundYouSourceFinderEnabled,
   profileSourcesEnabled,
   profileLinksEnabled,
+  profileTiesEnabled,
+  profileKnownForEnabled,
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,

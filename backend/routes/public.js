@@ -19,6 +19,8 @@ const placeSectionAdapters = require('../services/placeSectionAdapters');
 const { encodeGeohash, encodeGeohash6 } = require('../utils/geohash');
 const { GeoCache } = require('../utils/geoCache');
 const placePreviewService = require('../services/placePreviewService');
+const lookupMoney = require('../services/place/lookupMoney');
+const lookupReading = require('../services/ai/lookupReading');
 const homeRecordService = require('../services/homeRecord');
 const homeRecordAerial = require('../services/homeRecord/aerial');
 const { withinBudget } = require('../services/placeIntelligenceService');
@@ -502,6 +504,49 @@ async function fetchFloodCached(lat, lng) {
 // Census tract teaser — area-level medians only (NOT an exact home record,
 // NOT ATTOM). Same two-layer caching as flood; the tract resolution itself
 // is persistently cached too (geocodeToTractCached — effectively permanent).
+//
+// The teaser also carries the tract's median real estate taxes (B25103_001E,
+// the money card's tax figure), from the same ACS call. A row stored before it
+// did is served as it is, and refreshed once in the background, so no lookup
+// waits on the Census for it.
+const CENSUS_TEASER_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const hasTaxField = (payload) => Boolean(payload) && Object.prototype.hasOwnProperty.call(payload, 'median_real_estate_taxes');
+const censusRefreshing = new Set();
+
+function censusTeaserFetch(lat, lng, resolveTract) {
+  return async () => {
+    const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
+    if (!tract) return null;
+    const { tractId, stateCode, countyCode } = tract;
+    const tractCode = tractId.slice(stateCode.length + countyCode.length);
+    const acs = await fetchCensusACS(stateCode, countyCode, tractCode);
+    if (!acs) return null;
+    const teaser = {
+      median_year_built: acs.median_year_built ?? null,
+      median_home_value: acs.median_home_value ?? null,
+      median_real_estate_taxes: acs.median_real_estate_taxes ?? null,
+    };
+    return teaser.median_year_built != null || teaser.median_home_value != null ? teaser : null;
+  };
+}
+
+function refreshCensusTeaser(lat, lng, key) {
+  const cell = encodeGeohash6(lat, lng);
+  if (censusRefreshing.has(cell)) return;
+  censusRefreshing.add(cell);
+  readThrough({
+    cacheKey: `geo:${cell}`,
+    sectionId: '_census_teaser',
+    ttlMs: CENSUS_TEASER_TTL_MS,
+    // An older row (no tax field) counts as missing here, so this one fetch rewrites it.
+    isUsable: (payload) => hasTaxField(payload),
+    fetch: censusTeaserFetch(lat, lng, null),
+  })
+    .then(({ payload }) => { if (hasTaxField(payload)) previewCache.set(key, payload, AREA_TTL_MS); })
+    .catch((err) => console.warn('[public/place] census teaser refresh failed:', err.message))
+    .finally(() => censusRefreshing.delete(cell));
+}
+
 async function fetchCensusTeaserCached(lat, lng, resolveTract) {
   const key = `census:${encodeGeohash6(lat, lng)}`;
   const cached = previewCache.get(key);
@@ -511,22 +556,13 @@ async function fetchCensusTeaserCached(lat, lng, resolveTract) {
     const { payload } = await readThrough({
       cacheKey: `geo:${encodeGeohash6(lat, lng)}`,
       sectionId: '_census_teaser',
-      ttlMs: 90 * 24 * 60 * 60 * 1000,
-      fetch: async () => {
-        const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
-        if (!tract) return null;
-        const { tractId, stateCode, countyCode } = tract;
-        const tractCode = tractId.slice(stateCode.length + countyCode.length);
-        const acs = await fetchCensusACS(stateCode, countyCode, tractCode);
-        if (!acs) return null;
-        const teaser = {
-          median_year_built: acs.median_year_built ?? null,
-          median_home_value: acs.median_home_value ?? null,
-        };
-        return teaser.median_year_built != null || teaser.median_home_value != null ? teaser : null;
-      },
+      ttlMs: CENSUS_TEASER_TTL_MS,
+      fetch: censusTeaserFetch(lat, lng, resolveTract),
     });
-    if (payload) previewCache.set(key, payload, AREA_TTL_MS);
+    if (payload) {
+      previewCache.set(key, payload, AREA_TTL_MS);
+      if (!hasTaxField(payload) && lookupMoney.enabled()) refreshCensusTeaser(lat, lng, key);
+    }
     return payload;
   } catch (err) {
     console.warn('[public/place] census teaser failed:', err.message);
@@ -564,11 +600,16 @@ async function fetchMoneyLeadCached(lat, lng, resolveTract) {
   try {
     const tract = resolveTract ? await resolveTract() : await geocodeToTractCached(lat, lng);
     if (tract) {
+      // LOOKUPORDER: the county rent figure is no longer the dollar card (it
+      // stays in the Money signals group); the card is the home's area value
+      // (lookupMoney) and, where there is none, the flood premium below. With
+      // LOOKUP_MONEY=off the card is what it was, rent included.
+      const rentLead = !lookupMoney.enabled();
       const [nfip, fmr] = await Promise.all([
         // enqueue: false — an anonymous drive-by must not take a slot in
         // the warm queue ahead of a tract someone actually lives in.
         placeSectionAdapters.nfipBenchmarkAt({ lat, lng, tractId: tract.tractId }, { enqueue: false }).catch(() => null),
-        placeSectionAdapters.hudFmrRow(`${tract.stateCode}${tract.countyCode}`).catch(() => null),
+        rentLead ? placeSectionAdapters.hudFmrRow(`${tract.stateCode}${tract.countyCode}`).catch(() => null) : null,
       ]);
 
       // Flood cost first: it is the most specific to the address (a
@@ -708,7 +749,10 @@ async function buildPlacePreview(place) {
   // retryable error (the money lead just stays out), and its lookup keeps
   // running to fill the caches for the next look.
   const budgetMs = placePreviewService.sectionBudgetMs();
-  const [floodSettled, areaSettled, bucketSettled, moneySettled, remoteSettled, foundingSettled] = await Promise.allSettled([
+  // The area's price index (the money card's curve): one small state file the
+  // index service holds in memory, answering null rather than waiting.
+  const trendFileP = lookupMoney.trendFile(place.state);
+  const [floodSettled, areaSettled, bucketSettled, moneySettled, remoteSettled, foundingSettled, trendSettled] = await Promise.allSettled([
     withinBudget(fetchFloodCached(place.lat, place.lng), budgetMs),
     withinBudget(fetchCensusTeaserCached(place.lat, place.lng, resolveTract), budgetMs),
     readDensityBucket(geohash),
@@ -722,6 +766,7 @@ async function buildPlacePreview(place) {
     // Are Founding Neighbor slots genuinely open in this cell? A boolean,
     // never a count — it only chooses the density card's invitation line.
     foundingSlotsOpen(geohash),
+    trendFileP,
   ]);
 
   const flood = floodSettled.status === 'fulfilled' ? floodSettled.value : null;
@@ -736,8 +781,27 @@ async function buildPlacePreview(place) {
     ...(areaSettled.status === 'rejected' ? ['census_context'] : []),
   ];
 
-  const sections = placePreviewService.assemblePreviewSections({ remote, flood, area, bucket, foundingOpen, late });
-  const aha = placePreviewService.pickAha(sections, { lat: place.lat, lng: place.lng });
+  const allSections = placePreviewService.assemblePreviewSections({ remote, flood, area, bucket, foundingOpen, late });
+  const point = { lat: place.lat, lng: place.lng };
+  // The stand-out card reads every section; the list a client draws, the
+  // glance, the could-not-check line and the order come from the same list.
+  const aha = placePreviewService.pickAha(allSections, point);
+  const shaped = placePreviewService.shapeLookup(allSections, point);
+
+  // The money card: area figures already in hand (the Census teaser, the
+  // index file), and the county the radon layer names.
+  const tract = await resolveTract();
+  const radon = allSections.find((env) => env && env.id === 'lead_radon');
+  const moneyCard = lookupMoney.buildMoney({
+    area,
+    file: trendSettled.status === 'fulfilled' ? trendSettled.value : null,
+    countyFips: tract && tract.stateCode && tract.countyCode ? `${tract.stateCode}${tract.countyCode}` : null,
+    zip: place.zipcode || null,
+    countyName: (radon && radon.data && radon.data.county_name) || null,
+  });
+  // The dollar card the store apps draw: the area's home value, else the flood
+  // premium, else nothing.
+  const moneyLead = lookupMoney.homeValueLead(moneyCard) || money;
 
   const floodSection = flood && flood.flood_zone
     ? {
@@ -784,14 +848,25 @@ async function buildPlacePreview(place) {
     },
     // The lead: a dollar figure when one is genuinely available for
     // this address, else null and the tiles carry the page as before.
-    money_lead: money,
+    money_lead: moneyLead,
+    ...(moneyCard ? { money: moneyCard } : {}),
+    // The flood cost band whenever the benchmark is held, whatever the dollar
+    // card is: in a high-risk zone it must not vanish behind the home value.
+    // New clients draw it first in Risk; the store apps never read it.
+    flood_cost: money && money.kind === 'flood_premium' ? money : null,
     free: {
       flood: floodSection,
       density: densitySection,
       area: areaSection,
     },
     aha,
-    sections,
+    sections: shaped.sections,
+    glance: shaped.glance,
+    not_checked: shaped.not_checked,
+    // The Ask row only where the reading can be opened (its switch, the assistant's, a model key).
+    layout: lookupReading.enabled()
+      ? shaped.layout
+      : { ...shaped.layout, order: shaped.layout.order.filter((block) => block !== 'ask') },
     locked: LOCKED_SECTIONS,
     disclaimer: 'A free, one-time look at what\'s public. Claim this address to save it and get it every morning.',
   };
@@ -951,7 +1026,10 @@ router.get('/place', optionalAuth, classifyPlaceLookup, placeLookupLimiter, shar
     }
 
     if (!req.placeLookup.shareCard) ownRecentLookups.set(ownLookupKey(req, rawAddress), true, GEO_TTL_MS);
-    return res.json(await placePreviewWithBallot(place));
+    const preview = await placePreviewWithBallot(place);
+    // The reading's ticket (SPEC 5.1a): issued only by a lookup a visitor made, never for a share-card render.
+    const ticket = !req.placeLookup.shareCard && lookupReading.enabled() ? lookupReading.issueTicket(place) : null;
+    return res.json(ticket ? { ...preview, reading_ticket: ticket } : preview);
   } catch (err) {
     console.error('[public/place] Error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1143,6 +1221,125 @@ router.get('/residency-letters/:code', async (req, res) => {
   } catch (err) {
     console.error('[public/residency-letters] Error:', err.message);
     return res.status(500).json({ error: 'Verification failed. Try again.' });
+  }
+});
+
+// ── POST /api/public/place/reading ───────────────────────────
+// The lookup's reading (LOOKUPORDER SPEC 5.1): "Ask Pantopus: what does this
+// mean for me?" for someone signed out. One model call over the facts the page
+// already shows; no tools, no memory, no conversation.
+//
+//   - With the lookup's `reading_ticket` (signed, 60 minutes, nothing stored): a
+//     valid one is enough, whoever's network the request comes from. Without
+//     one, only for an address this caller looked up in the last ten minutes.
+//     Either way the reading never asks the geocoder anything. Otherwise 409,
+//     and the client says it couldn't read the page.
+//   - The model is given the page's facts and the city and state
+//     (services/ai/lookupReading.js), never the address, the street, the ZIP,
+//     the coordinates, the map cell or anything about the visitor.
+//   - Kept in the preview's in-memory cache for 24 hours under the map cell and
+//     a hash of the facts. The only thing written is one AIRequestLog row per
+//     model call: no user, endpoint lookup_reading, tokens, latency, status.
+//   - AI_LOOKUP_READING=off, AI_ASSISTANT=off or no model key: 404. Past
+//     AI_LOOKUP_DAILY_READINGS model calls since midnight UTC: 429. A refusal,
+//     a timeout or an answer that fails its checks: 502. The client hides the
+//     row on any of them; a half reading is never shown.
+const READING_TTL_MS = 24 * 60 * 60 * 1000;
+const READING_TIMEOUT_MS = 25_000;
+const READING_MAX_TOKENS = 4096;
+const readingsInFlight = new Map();
+
+async function makeReading(input, placing) {
+  // Required here, not at the top: the model layer is only loaded once someone asks for a reading.
+  const { getAnthropicClient, DRAFT_MODEL, resolveEffort } = require('../config/anthropic');
+  const { complete, AIRefusalError, isTimeoutError } = require('../services/ai/llm');
+  const prompts = require('../services/ai/prompts');
+  const { logRequest } = require('../services/ai/agentService');
+  const client = getAnthropicClient();
+  if (!client) return { status: 404 };
+  const started = Date.now();
+  const log = (fields) => logRequest({
+    userId: null, endpoint: lookupReading.ENDPOINT, model: DRAFT_MODEL, promptVersion: prompts.VERSIONS.lookupReading,
+    latencyMs: Date.now() - started, ...fields,
+  });
+  lookupReading.countCall();
+  try {
+    const response = await complete({
+      client,
+      model: DRAFT_MODEL,
+      system: prompts.LOOKUP_READING_SYSTEM,
+      messages: [{ role: 'user', content: lookupReading.userContent(input) }],
+      schema: lookupReading.readingClaudeSchema,
+      effort: resolveEffort(process.env.ANTHROPIC_DRAFT_EFFORT, 'low'),
+      maxTokens: READING_MAX_TOKENS,
+      timeoutMs: READING_TIMEOUT_MS,
+    });
+    let answer = null;
+    try {
+      answer = JSON.parse(response.text);
+    } catch {
+      answer = null;
+    }
+    const { reading, reason } = lookupReading.checkReading(answer, { input, placing });
+    await log({
+      status: reading ? 'ok' : 'schema_error', schemaValid: Boolean(reading),
+      inputTokens: response.inputTokens, outputTokens: response.outputTokens, errorMessage: reason,
+    });
+    return reading ? { status: 200, reading } : { status: 502 };
+  } catch (err) {
+    const refused = err instanceof AIRefusalError;
+    await log({ status: refused ? 'refusal' : isTimeoutError(err) ? 'timeout' : 'error', errorMessage: err.message });
+    if (!refused) console.warn('[public/place/reading] model call failed:', err.message);
+    return { status: 502 };
+  }
+}
+
+router.post('/place/reading', optionalAuth, express.json({ limit: '4kb' }), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!lookupReading.enabled()) return res.status(404).json({ error: 'NOT_AVAILABLE' });
+    const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
+    if (!address || address.length > 200) return res.status(400).json({ error: 'An address is required.' });
+
+    // A valid ticket from the lookup's answer is enough (SPEC 5.1a): the preview is built for its place, with no
+    // geocoder call and no dependence on this caller's address. Without one (the phone builds before their Ask
+    // PRs), the address must be one this caller looked up in the last ten minutes, as before.
+    let place = lookupReading.readTicket(req.body?.ticket);
+    if (!place) {
+      const cached = previewCache.get(geoKey(address));
+      if (ownRecentLookups.get(ownLookupKey(req, address)) !== true || !cached || !cached.ok) {
+        return res.status(409).json({ error: 'LOOK_UP_FIRST' });
+      }
+      place = cached;
+    }
+
+    const preview = await buildPlacePreview(place);
+    const input = lookupReading.readingInput(preview);
+    const placing = lookupReading.placingWords({ typed: address, place });
+    // A record that happens to carry the street or the ZIP in its own words is not sent anywhere.
+    if (lookupReading.mentionsPlace(JSON.stringify(input), placing)) {
+      console.warn('[public/place/reading] facts name the place; not sent');
+      return res.status(502).json({ error: 'NO_READING' });
+    }
+
+    const digest = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const key = `reading:${encodeGeohash6(place.lat, place.lng)}:${digest}`;
+    const kept = previewCache.get(key);
+    if (kept) return res.json({ reading: kept });
+
+    let call = readingsInFlight.get(key);
+    if (!call) {
+      if (await lookupReading.overDailyCap()) return res.status(429).json({ error: 'AI_BUDGET' });
+      call = makeReading(input, placing).finally(() => readingsInFlight.delete(key));
+      readingsInFlight.set(key, call);
+    }
+    const result = await call;
+    if (result.status !== 200) return res.status(result.status).json({ error: result.status === 404 ? 'NOT_AVAILABLE' : 'NO_READING' });
+    previewCache.set(key, result.reading, READING_TTL_MS);
+    return res.json({ reading: result.reading });
+  } catch (err) {
+    console.error('[public/place/reading] Error:', err.message);
+    return res.status(502).json({ error: 'NO_READING' });
   }
 });
 

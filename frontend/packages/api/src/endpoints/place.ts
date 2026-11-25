@@ -12,7 +12,7 @@
 // wants narrative copy; these wrappers carry the structured contract.
 // ============================================================
 
-import { get, put, RECORD_VOCABULARY } from '../client';
+import { get, post, put, RECORD_VOCABULARY } from '../client';
 import type {
   BallotTeaser,
   PlaceIntelligence,
@@ -90,7 +90,8 @@ export interface PlacePreviewAha {
  * number client-side, and never leave a placeholder where one would be.
  */
 export interface PlacePreviewMoneyLead {
-  kind: 'flood_premium' | 'rent_band';
+  /** `home_value` since LOOKUPORDER (the area's typical home value); a client draws an unknown kind as a dollar figure. */
+  kind: 'flood_premium' | 'rent_band' | 'home_value' | (string & {});
   /** Server-composed sentence with the figure already in it. */
   headline: string;
   /** What the figure is drawn from, and what it is not. */
@@ -100,6 +101,52 @@ export interface PlacePreviewMoneyLead {
   /** The geography the figure describes, e.g. "census tract", "county". */
   scope: string;
   source: string;
+}
+
+/** A tone for a glance row: the stand-out card's four. */
+export type PlacePreviewTone = 'alert' | 'watch' | 'calm' | 'info';
+
+/** One line of the "At a glance" card: one check, worst first (LOOKUPORDER). */
+export interface PlacePreviewGlanceRow {
+  id: string;
+  label: string;
+  /** At most 28 characters, written by the server. */
+  value: string;
+  tone: PlacePreviewTone;
+  /** The section card a tap on the row scrolls to. */
+  section_id: string;
+}
+
+/** The order a client draws the lookup in (LOOKUPORDER). Unknown blocks are skipped. */
+export interface PlacePreviewLayout {
+  version: string;
+  /** 'aha' | 'ballot' | 'glance' | 'money' | 'record' | 'ask' | 'group:<id>' | 'section:<id>' | 'locked' | 'not_checked' | 'privacy' */
+  order: string[];
+  /** The side-by-side test: while on, the web draws the old order for part of its visitors. */
+  split?: { on: boolean; share: number; until: string | null };
+}
+
+/** The money card: area figures, never this home's (LOOKUPORDER, founder 2026-11-24). Every part is optional. */
+export interface PlacePreviewMoney {
+  value?: { amount: number; label: string; scope: string; source: string };
+  tax?: { amount: number; label: string; scope: string; source: string };
+  trend?: {
+    /** What `last_change_pct` is about: the ZIP's own last year, or the county's. */
+    scope: 'zip' | 'county';
+    area_name: string;
+    county_name: string | null;
+    /** The county's own last yearly change: the curve's label. */
+    county_last_change_pct?: number | null;
+    year: number;
+    last_change_pct: number;
+    since_year: number;
+    since_change_pct: number;
+    years: number[];
+    /** The county's price level each year as percent change since the first year (a price index, never dollars). */
+    change_since_first_pct: number[];
+    source: string;
+  };
+  record_line?: string;
 }
 
 /** A gated section descriptor — drives a LockedCard + the soft wall. */
@@ -148,6 +195,18 @@ export interface PlacePreview {
    * Absent while the `ballot_p0` flag is off; null when it timed out.
    */
   ballot_teaser?: BallotTeaser | null;
+  /** The order to draw the lookup in (LOOKUPORDER); absent from older servers. */
+  layout?: PlacePreviewLayout;
+  /** One row per check with an answer, worst first. */
+  glance?: PlacePreviewGlanceRow[];
+  /** The sections that could not be checked today. */
+  not_checked?: { id: string; label: string }[];
+  /** The money card; absent when nothing is held. */
+  money?: PlacePreviewMoney;
+  /** The flood cost band whenever held, whatever `money_lead` is; drawn first in Risk. */
+  flood_cost?: PlacePreviewMoneyLead | null;
+  /** Sent back with the reading request (SPEC 5.1a): signed by the server for this lookup's place, good for an hour. */
+  reading_ticket?: string;
 }
 
 /**
@@ -185,6 +244,26 @@ export async function getPlaceIntelligence(
  */
 export async function getPublicPlacePreview(address: string): Promise<PlacePreview> {
   return get<PlacePreview>('/api/public/place', { address });
+}
+
+/** Pantopus AI's reading of a lookup (LOOKUPORDER SPEC 5): written from the page's public records only. */
+export interface PlaceReading {
+  /** Two or three sentences: what matters most here. */
+  matters: string;
+  /** At most three steps, each from the agency behind the fact. */
+  steps: { text: string; source: string }[];
+  /** What the page can't tell about this home. */
+  cannot_tell: string;
+  /** Exactly three questions, each with its answer. */
+  questions: { q: string; a: string }[];
+}
+
+/**
+ * The reading for an address this browser looked up in the last ten minutes. Any error (switched off, not looked
+ * up, the day's cap, a refused or broken answer) means there is no reading to show: the page hides its Ask row.
+ */
+export async function getPublicPlaceReading(address: string, ticket?: string | null): Promise<{ reading: PlaceReading }> {
+  return post<{ reading: PlaceReading }>('/api/public/place/reading', { address, ...(ticket ? { ticket } : {}) });
 }
 
 /**

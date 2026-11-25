@@ -3,8 +3,11 @@
 package app.pantopus.android.ui.screens.feed.pulse
 
 import app.pantopus.android.core.LaunchFeatures
+import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
+import app.pantopus.android.data.api.models.feed.FeedConversation
 import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.feed.FeedPost
+import app.pantopus.android.data.api.models.feed.FeedPostCreator
 import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
@@ -65,7 +68,9 @@ internal fun pulseCardContent(
     live: PulseCardLiveValues,
 ): PulsePostCardContent {
     val intent = PulseIntent.fromPostType(post.postType)
-    val authorName = post.creator?.displayName() ?: "Pantopus user"
+    // A made-up name's post: its name and drawn picture, its marks, and no profile (contract "The card").
+    val madeUp = pulseMadeUpAuthor(post)
+    val authorName = post.cardAuthor?.displayName() ?: "Pantopus user"
     val isBusiness = post.creator?.accountType == "business" || post.businessAuthorId != null
     val likeCount = live.likeCount
     // An event's reaction is Going; every other post's is an emoji.
@@ -75,6 +80,7 @@ internal fun pulseCardContent(
     val isSolved = live.isSolved
     val openAsk = LaunchFeatures.pulseRedesign && isOwner && isOpenAsk(post, isSolved)
     val topic = PulseTopic.fromKey(post.topic)?.takeIf { LaunchFeatures.pulseRedesign }
+    val story = pulseStory(post.content, post.lifecycleMetadata?.sourceName, post.aroundYou)
     return PulsePostCardContent(
         id = post.id,
         likePending = live.likePending,
@@ -86,10 +92,13 @@ internal fun pulseCardContent(
         // a business isn't being verified).
         authorVerified = surface == FeedSurface.Beacons && post.creator?.credential?.status == "verified",
         avatarTint = if (isBusiness) FeedAvatarTint.Violet else FeedAvatarTint.Sky,
-        authorAvatarUrl = post.creator?.photoUrl,
+        authorAvatarUrl = post.cardAuthor?.photoUrl,
+        madeUp = madeUp,
         meta = metaString(post, topic),
         intent = intent,
-        chipLabel = intent.chipLabelFor(post.lostFoundType),
+        chipLabel = pulseChipLabel(post, intent),
+        story = story,
+        conversation = pulseConversation(post.conversation),
         isVisitor = showsVisitorBadge(post),
         origin = post.origin,
         title = post.title,
@@ -158,12 +167,32 @@ internal fun pulseCardContent(
     )
 }
 
+/** Who the card names: a made-up name's own projection (its name and drawn picture), else the creator. */
+private val FeedPost.cardAuthor: FeedPostCreator?
+    get() = (if (isMadeUp) author else null) ?: creator
+
+/**
+ * A made-up name's author, or null for every other post. Its id is where an author's id goes on the row (`user_id`),
+ * so Mute and Block act on the name; its writer alone gets [PulseMadeUpAuthor.isYou].
+ */
+internal fun pulseMadeUpAuthor(post: FeedPost): PulseMadeUpAuthor? {
+    val id = post.penNameId ?: return null
+    val badges = post.author?.badges
+    return PulseMadeUpAuthor(
+        penNameId = id,
+        isYou = post.viewerIsAuthor == true || post.author?.isYou == true,
+        // An older row without badges still says it: every made-up name needs a verified home nearby.
+        verifiedHome = badges == null || "verified_home" in badges,
+    )
+}
+
 /**
  * Where the author's photo and name lead, as on the post's page: a business's published page or a person's profile. A
  * tip, a creator persona (whose id is not the person's) and a post written as a home lead nowhere.
  */
 internal fun pulseAuthorLink(post: FeedPost): PulseAuthorLink? {
-    val creator = post.creator?.takeUnless { post.isSeeded } ?: return null
+    // A made-up name opens its small card, never a profile.
+    val creator = post.creator?.takeUnless { post.isSeeded || post.isMadeUp } ?: return null
     return when (creator.type) {
         "business" ->
             creator.id
@@ -231,6 +260,63 @@ private fun statusFor(
             goingCount = live.likeCount,
         )
     }
+
+// Around you's topics, as the chips name them (`backend/services/aroundYou/topics.js`).
+private val AROUND_TOPIC_TITLES =
+    mapOf(
+        "events" to "Events",
+        "kids" to "Kids & schools",
+        "sports" to "Sports",
+        "government" to "Government",
+        "business" to "Business",
+        "safety" to "Roads & safety",
+    )
+
+/** The chip's word: a story's topic ("Sports") where it has one, else the post kind's. */
+private fun pulseChipLabel(
+    post: FeedPost,
+    intent: PulseIntent,
+): String = aroundTopicTitle(post.aroundYou) ?: intent.chipLabelFor(post.lostFoundType)
+
+/** The first of a story's topics this build knows, by the chip's name; null when it has none. */
+internal fun aroundTopicTitle(facts: AroundYouStoryFacts?): String? = facts?.topics?.firstNotNullOfOrNull { AROUND_TOPIC_TITLES[it] }
+
+private val SUBSCRIPTION_SUFFIX = Regex("\\s*\\(subscription\\)$", RegexOption.IGNORE_CASE)
+
+/**
+ * A post Today's Around you made for an outlet's story ([facts] present), as its card draws it: the outlet's name
+ * without "(subscription)" (that stays on the link that opens the story), the headline (the text's first line) and
+ * the outlet's summary (the rest). Null for every other post.
+ */
+internal fun pulseStory(
+    content: String?,
+    sourceName: String?,
+    facts: AroundYouStoryFacts?,
+): PulseStory? {
+    if (facts == null) return null
+    val text = content.orEmpty()
+    val cut = text.indexOf('\n')
+    return PulseStory(
+        outlet = sourceName?.trim()?.replace(SUBSCRIPTION_SUFFIX, "")?.takeIf { it.isNotEmpty() },
+        headline = (if (cut < 0) text else text.substring(0, cut)).trim(),
+        summary = if (cut < 0) "" else text.substring(cut + 1).trim(),
+    )
+}
+
+/** The reply preview a card draws; null without a latest reply to show. */
+internal fun pulseConversation(talk: FeedConversation?): PulseConversationPreview? {
+    val latest = talk?.latest ?: return null
+    val text = latest.text?.trim().orEmpty()
+    if (text.isEmpty()) return null
+    return PulseConversationPreview(
+        faces =
+            talk.people.take(3).map { person ->
+                PulseConversationFace(name = person.name?.trim().orEmpty().ifEmpty { "Someone" }, avatarUrl = person.avatarUrl)
+            },
+        latestName = latest.name?.trim().orEmpty().ifEmpty { "Someone" },
+        latestText = text,
+    )
+}
 
 private fun metaString(
     post: FeedPost,

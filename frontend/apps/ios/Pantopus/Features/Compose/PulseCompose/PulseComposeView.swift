@@ -99,8 +99,12 @@ public struct PulseComposeView: View {
             },
             content: {
                 shellContent
-            }
+            },
+            // With "Post as" the button names the one the post will carry ("Post as Night Gardener"), with the
+            // place's warning above it.
+            stickyBottom: viewModel.offersPostAs ? { AnyView(postAsBottomBar) } : nil
         )
+        .modifier(PulseComposePenNameSurfaces(viewModel: viewModel))
         .formShakeOnChange(of: viewModel.shakeTrigger)
         .accessibilityIdentifier("composePulseShell")
         .background(PulseSystemPickersAnchor(pickers: systemPickers))
@@ -340,6 +344,7 @@ public struct PulseComposeView: View {
                 openPhotos()
             },
             onTakePhoto: { showsCamera = true },
+            onSelectVoice: { viewModel.selectVoice($0) },
             onChangeTarget: changeTargetAction
         )
     }
@@ -348,6 +353,41 @@ public struct PulseComposeView: View {
     private var changeTargetAction: (() -> Void)? {
         guard let onChangeTarget else { return nil }
         return { onChangeTarget() }
+    }
+}
+
+extension PulseComposeView {
+    /// The place's note (a refusal, or the few-homes warning) over "Post as …".
+    private var postAsBottomBar: some View {
+        VStack(spacing: Spacing.s0) {
+            if let note = viewModel.penNamePlaceNote {
+                HStack(alignment: .top, spacing: Spacing.s2) {
+                    Icon(.alertCircle, size: 16, strokeWidth: 2, color: note.refused ? Theme.Color.error : Theme.Color.warning)
+                    Text(note.text)
+                        .pantopusTextStyle(.caption)
+                        .foregroundStyle(Theme.Color.appText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: Spacing.s0)
+                }
+                .padding(Spacing.s3)
+                .background(note.refused ? Theme.Color.errorBg : Theme.Color.warningBg)
+                .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s2)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("composePulsePenNameWarning")
+            }
+            FormBottomCTA(
+                label: viewModel.postAsButtonLabel,
+                icon: nil,
+                isEnabled: viewModel.isValid && !isLoadingMedia && !viewModel.isSuggesting && !viewModel.isSubmitting,
+                isSaving: viewModel.isSubmitting
+            ) {
+                Keyboard.close()
+                Task { await viewModel.submit() }
+            }
+        }
+        .background(Theme.Color.appSurface)
     }
 }
 
@@ -390,7 +430,11 @@ public extension PulseComposeViewModel {
             assistPhotoCount: assistPhotoCount,
             assistCanUndo: canUndoSuggestion,
             canTakePhoto: UIImagePickerController.isSourceTypeAvailable(.camera),
-            quoted: isEditing ? nil : quote.map { quotedPostIsGone ? .unavailable : .available($0.card) }
+            quoted: isEditing ? nil : quote.map { quotedPostIsGone ? .unavailable : .available($0.card) },
+            postAs: offersPostAs
+                ? PulseComposePostAs(voice: voice, me: PenNameStore.shared.me, chosen: penNameChosen)
+                // Editing a made-up-name post: "Posting as …" and words only, with no choice.
+                : editedPenName.map { PulseComposePostAs(voice: .penName, me: nil, chosen: $0, showsChoice: false) }
         )
     }
 }

@@ -29,6 +29,7 @@ export {
   del,
   uploadFile,
 } from './client';
+export { PROFILE_PARTS, PROFILE_PARTS_HEADER } from './endpoints/profileParts';
 
 // Export types
 export type { TokenStorage, AuthSessionUpdate, AuthRefreshResult, AuthClientEvent } from './client';
@@ -71,6 +72,8 @@ export * as homeIam from './endpoints/homeIam';
 export * as upload from './endpoints/upload';       // NEW
 export * as reviews from './endpoints/reviews';     // NEW
 export * as moments from './endpoints/moments';
+export * as penNames from './endpoints/penNames';       // Made-up names for Pulse posts and replies
+export type { PenNameMe, OwnPenName, PenNameCard as PenNameCardData, PenNameCheck, PenNameRefusal } from './endpoints/penNames';
 export * as posts from './endpoints/posts';                 // Scoped feeds & posts
 export * as plans from './endpoints/plans';
 export * as businesses from './endpoints/businesses';       // Business profiles
@@ -84,7 +87,9 @@ export * as hub from './endpoints/hub';                     // Hub (Mission Cont
 export * as location from './endpoints/location';           // Viewing Location
 export * as listings from './endpoints/listings';           // Marketplace Listings
 export * as savedPlaces from './endpoints/savedPlaces';    // Saved Places
-export type { AreaToday, TodayArea, AroundYou, AroundYouSection, AroundYouItem } from './endpoints/savedPlaces';
+export type {
+  AreaToday, TodayArea, AroundYou, AroundYouSection, AroundYouItem, AroundYouList, AroundYouListPage, AroundYouListQuery,
+} from './endpoints/savedPlaces';
 export type { RelationshipAction, RelationshipCommand, RelationshipReceipt, RelationshipReview, RelationshipResponse } from './endpoints/homeOwnership';
 export type { ResidencyReviewAction, ResidencyReviewRole, ResidencyReviewCommand, ResidencyReviewReceipt, ResidencyReview, ResidencyReviewResponse } from './endpoints/homes';
 export * as homeOwnership from './endpoints/homeOwnership'; // Home Ownership (claims, owners, quorum, disputes)
@@ -315,7 +320,7 @@ export type { SendMailResponse, RecipientSearchResult, HomeContext, EscrowedMail
 export type { MagicDraftRequest, MagicDraftResponse, MagicTaskDraft, MagicPostRequest, MagicPostResponse, SmartTemplate, SavedTaskTemplate, MagicSettings, ClarifyingQuestion, TaskItem, ScheduleType, PayType, TaskSourceFlow, PrivacyLevel, LocationMode } from '@pantopus/types';
 
 // Types from AI Agent
-export type { GigDraft, ListingDraft, PostDraft, ClarifyingQuestionAI, MailKeyFact, MailRecommendedAction, MailSummary, PlaceBriefHeadline, PlaceBriefSource, PlaceBrief, AIDraftType, AIChatDraft, AIChatMessage, AIConversation, AIStreamEvent, AIChatRequest, AIDraftListingRequest, AIDraftListingResponse, AIDraftPostRequest, AIDraftPostResponse, AISummarizeMailRequest } from '@pantopus/types';
+export type { GigDraft, ListingDraft, PostDraft, ClarifyingQuestionAI, MailKeyFact, MailRecommendedAction, MailSummary, PlaceBriefHeadline, PlaceBriefSource, PlaceBrief, AIDraftType, AIChatDraft, AIChatMessage, AIConversation, AIStreamEvent, AIChatRequest, AIChatContext, AIDraftListingRequest, AIDraftListingResponse, AIDraftPostRequest, AIDraftPostResponse, AISummarizeMailRequest } from '@pantopus/types';
 
 // Types from Home Intelligence
 export type { DimensionScore, HomeHealthScore, SeasonalChecklistItem, SeasonalChecklist, BillTrendData, PropertyValueData, HomeTimelineItem } from '@pantopus/types';
@@ -327,7 +332,7 @@ export type { BusinessSeat, SeatListItem, SeatDetail, MySeat, InviteDetails, Use
 // Place — address-led home intelligence (W1.1)
 // ============================================================
 export * as place from './endpoints/place';                        // Place — PlaceIntelligence dashboard + T0 preview
-export { getPlaceIntelligence, getPublicPlacePreview } from './endpoints/place';
+export { getPlaceIntelligence, getPublicPlacePreview, getPublicPlaceReading } from './endpoints/place';
 export type {
   PlacePreview,
   PlacePreviewStatus,
@@ -338,6 +343,11 @@ export type {
   PlacePreviewAhaTone,
   PlacePreviewLockedSection,
   PlacePreviewMoneyLead,
+  PlacePreviewTone,
+  PlacePreviewGlanceRow,
+  PlacePreviewLayout,
+  PlacePreviewMoney,
+  PlaceReading,
 } from './endpoints/place';
 
 // Address calendar — what recurs at this address (wedge Phase 2, D6)
@@ -359,6 +369,7 @@ export type {
 // Funnel — pre-account instrumentation beacons (wedge Phase 1)
 export * as funnel from './endpoints/funnel';
 export { recordFunnelEvent, rememberFunnelRoute, getFunnelRoute, getFunnelAnonId } from './endpoints/funnel';
+export type { FunnelLayout } from './endpoints/funnel';
 export type { ClientFunnelEventType } from './endpoints/funnel';
 
 // Place — server-attested residency letters (Phase 1, #11)
@@ -413,10 +424,13 @@ export type {
   ProfilePage, ProfilePageHeader, ProfilePageSummary, ProfilePageTab, ProfilePageAction, ProfileBlock, ProfileKnownBlock,
   ProfileLine, ProfileBadgeLine, ProfileInk, ProfileLane, ProfileView, ProfilePreviewView, ProfileLink, ProfileMore,
   ProfileRings, ProfilePlace, ProfileShare, ProfileSharePart, ProfileSharePartKey, ProfilePartSetting,
-  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileInCommonBlock, ProfileDoorsBlock,
-  ProfileDoor, ProfileShelfBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
+  ProfileLinesBlock, ProfileSaysBlock, ProfileKnownForBlock, ProfileKnownForLine, ProfileKnownForWrite, ProfileKnownForWriteBlock, ProfileLinesForYouBlock, ProfileKnownForRead, ProfileKnownForSheet, ProfileOpenDoorsBlock, ProfileLeaveCard, ProfileCardSheet, ProfileCard, ProfileCardsBlock, ProfileDoorSetting, ProfileInCommonBlock, ProfileDoorsBlock,
+  ProfileDoor, ProfileShelfBlock, ProfileNoticeBlock, ProfilePromptsBlock, ProfilePinnedPostsBlock, ProfileRowsBlock, ProfileCanDoBlock,
   ProfileSkill, ProfilePiecesBlock, ProfilePiece, ProfileWorkRingsBlock, ProfileCircleBlock, ProfileCirclePerson,
   ProfileOwnsBlock, ProfileRecordChartBlock, ProfileMoreCloserBlock, ProfilePieceRead, ProfileMonthRead, ProfileShareLink, ProfileMark,
+  ProfileLinkCard, ProfileCredit, ProfileAttachment, ProfilePieceOffer, ProfilePieceFields, ProfileMyPieces,
+  ProfileAsk, ProfileSuggestedCredit, ProfileRoleLine, ProfileRoleFields,
+  ProfileCircleRead, ProfileCircleGroup, ProfileShelfObject,
 } from './endpoints/profilePage';
 export type { RecordWatch, RecordWatchEvaluation } from './endpoints/recordWatch';
 

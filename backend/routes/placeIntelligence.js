@@ -31,7 +31,7 @@ const homeListService = require('../services/homeListService');
 const homeChanges = require('../services/place/homeChanges');
 const { stableEtag } = require('../utils/stableEtag');
 const supabaseAdmin = require('../config/supabaseAdmin');
-const { aroundYou } = require('../services/aroundYouService');
+const { aroundYou, listQuery } = require('../services/aroundYouService');
 
 const VALID_SECTION_IDS = new Set(PLACE_SECTION_IDS);
 
@@ -114,7 +114,7 @@ router.get('/:id/intelligence', verifyToken, async (req, res) => {
 
 // GET /api/homes/:id/around — Around you (Today's second half) for this Home: local headlines that link to their
 // outlets (services/aroundYouService.js). Anyone who can read the Home's Today can read it; `available` false means
-// the apps show no switch.
+// the apps show no switch. ?list=<all|talked|a topic>&before=<next> reads a list behind the first page.
 router.get('/:id/around', verifyToken, async (req, res) => {
   const { id } = req.params;
   if (!isHomeId(id)) return res.status(400).json({ error: 'Invalid Home id' });
@@ -129,6 +129,7 @@ router.get('/:id/around', verifyToken, async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     return res.json(await aroundYou({
       latitude: home.data.map_center_lat, longitude: home.data.map_center_lng, userId: req.user.id,
+      ...listQuery(req.query),
     }));
   } catch (err) {
     logger.error('Around you error', { error: err.message, homeId: id });

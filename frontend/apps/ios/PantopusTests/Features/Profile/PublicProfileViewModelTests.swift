@@ -21,7 +21,8 @@ final class PublicProfileViewModelTests: XCTestCase {
         SequencedURLProtocol.reset()
         authProviders = []
         // The persona chip and Gigs tab: every first-launch cut switched on.
-        LaunchFeatures.overrideForTesting = Set(LaunchFeature.allCases)
+        // These cover today's profile screen: the profile with sources (its own read and page) stays off.
+        LaunchFeatures.overrideForTesting = Set(LaunchFeature.allCases).subtracting([.profileSources])
     }
 
     override func tearDown() {

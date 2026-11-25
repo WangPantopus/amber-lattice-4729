@@ -33,6 +33,12 @@ import PostAssist, { usePostAssist } from './composer/PostAssist';
 import { mediaTakenNear, nearestMediaLocation, readMediaLocations, useMediaLocations, type MediaLocation } from './composer/mediaLocation';
 import { PURPOSE_TO_POST_TYPE, getPostTypeConfig } from '@pantopus/ui-utils';
 import QuotedPostCard from './QuotedPostCard';
+import PostAsChoice, { PostingAsBar } from '@/components/penName/PostAsChoice';
+import { PenNameAvatar } from '@/components/penName/MadeUpName';
+import { PEN_NAME_POST_TYPES, isMadeUp, usePenNameMe } from '@/components/penName/penName';
+
+// What the photo button says under a made-up name (the server's own sentence, PEN_NAME_WORDS_ONLY).
+const PEN_NAME_WORDS_ONLY = 'A post or reply under a made-up name is words only for now. Take the photo off, or post under your own name.';
 
 const POST_TYPE_TO_API_PURPOSE: Record<PostType, string> = {
   ask_local: 'ask',
@@ -72,6 +78,22 @@ function storedWallClockToInput(value: string | null | undefined, kind: 'datetim
   const iso = date.toISOString();
   return kind === 'date' ? iso.slice(0, 10) : iso.slice(0, 16);
 }
+
+/**
+ * An event time from the assistant's post draft as the date and time input shows it. The draft carries the moment
+ * itself (the person's local time turned to UTC), so it is shown on this browser's clock, where the person reads it.
+ */
+function draftTimeToInput(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.trim())) return value.trim();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}T${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+// What a heads-up can be about (SafetyAlertFields), as the assistant's draft names them.
+const DRAFT_SAFETY_KINDS = ['road_hazard', 'power_outage', 'weather_damage', 'missing_pet', 'hazard', 'other'];
 
 function parseTags(value: string): string[] {
   return [...new Set(value.split(',').map((t) => t.trim()).filter(Boolean))];
@@ -175,7 +197,8 @@ export interface PostComposerSubmitData {
   postType: PostType;
   visibility: PostVisibility;
   audience?: Audience;
-  postAs?: PersonalPostAs;
+  /** 'pen_name': under the person's made-up name (words only, people nearby, one of four kinds). */
+  postAs?: PersonalPostAs | 'pen_name';
   identityContextId?: string;
   homeId?: string;
   businessId?: string;
@@ -247,6 +270,11 @@ interface PostComposerProps {
   quotedPost?: Post | null;
   /** Cancel closes the composer (instead of clearing it back to the post types). */
   onCancel?: () => void;
+  /**
+   * False for a composer that stays on the page behind the one "Create Post" opens (the feed's own box): it leaves
+   * the assistant's post draft for that one, which would otherwise open empty on top of it.
+   */
+  takesAssistantDraft?: boolean;
 }
 
 function visibilityForAudience(audience: Audience): PostVisibility {
@@ -297,6 +325,7 @@ export default function PostComposer({
   quotedPost = null,
   onCancel,
   textBoxTestId,
+  takesAssistantDraft = true,
 }: PostComposerProps) {
   const isEdit = editPost != null;
   // An edit never quotes: the edit screen keeps working as it did and sends no quotedPostId.
@@ -372,7 +401,21 @@ export default function PostComposer({
   // selectedIdentity is filtered to personal-zone identities only (see
   // useEffect below), so the type narrows to PersonalPostAs.
   const activePostAs: PersonalPostAs = (selectedIdentity?.type as PersonalPostAs | undefined) || 'personal';
-  const globalAudienceOptions = GLOBAL_AUDIENCE_OPTIONS[activePostAs];
+
+  // Made-up names (components/penName): "Post as" the person's own name or their made-up name, on a new post to people
+  // nearby (the global composer's personal identity, or the Place feed's own box). Every new post starts on their name.
+  const penNameOffered = !isEdit && !quoting && !isNetworkSurface
+    && (isGlobalComposer ? selectedIdentity?.type === 'personal' : activeSurface === 'place');
+  const penMeQuery = usePenNameMe(penNameOffered && f.expanded);
+  const penMe = penNameOffered ? penMeQuery.data : undefined;
+  const [postAsPen, setPostAsPen] = useState(false);
+  const ownPen = penMe?.allowed ? penMe.pen_name : null;
+  const penMode = penNameOffered && postAsPen && ownPen != null;
+  const [penCheck, setPenCheck] = useState<api.PenNameCheck | null>(null);
+  const penPlaceRefused = penMode && penCheck?.allowed === false;
+  const globalAudienceOptions = penMode
+    ? GLOBAL_AUDIENCE_OPTIONS.personal.filter((option) => option.value === 'nearby')
+    : GLOBAL_AUDIENCE_OPTIONS[activePostAs];
   // A tagged place's neighbors are the people near that place, not near the author.
   const taggedPlaceAudience = f.location?.source === 'search' ? `People near ${f.location.locationName}` : undefined;
   const selectedAudienceLabel = (selectedAudience === 'nearby' && taggedPlaceAudience)
@@ -382,7 +425,9 @@ export default function PostComposer({
   const PLACE_POST_TYPES = ['ask_local', 'recommendation', 'event', 'lost_found', 'alert', 'deal', 'local_update', 'neighborhood_win', 'visitor_guide'];
   const HOME_PLACE_TYPES = ['ask_local', 'recommendation', 'event', 'lost_found', 'alert', 'deal', 'local_update', 'neighborhood_win', 'visitor_guide'];
   const BUSINESS_PLACE_TYPES = ['event', 'deal', 'local_update'];
-  const allowedPostTypes = activePostAs === 'home'
+  const allowedPostTypes = penMode
+    ? PEN_NAME_POST_TYPES as string[]
+    : activePostAs === 'home'
     ? HOME_PLACE_TYPES
     : activePostAs === 'business'
     ? BUSINESS_PLACE_TYPES
@@ -512,6 +557,7 @@ export default function PostComposer({
     setSubmitError(null);
     setShowPurposePicker(false);
     setShowTargetPicker(false);
+    setPostAsPen(false);
     if (!isGlobalComposer || identities.length === 0) return;
     const fallbackIdentity = identities.find((identity) => identity.type === 'personal') || identities[0] || null;
     setSelectedIdentity(fallbackIdentity);
@@ -591,7 +637,7 @@ export default function PostComposer({
 
   useEffect(() => {
     // A pending AI draft belongs to the next new post, not to one being edited.
-    if (isEdit) return;
+    if (isEdit || !takesAssistantDraft) return;
     try {
       const raw = sessionStorage.getItem('ai_post_draft');
       if (!raw) return;
@@ -600,11 +646,23 @@ export default function PostComposer({
       if (draft.content) setField('content', draft.content);
       if (draft.title) setField('title', draft.title);
       if (draft.postType) selectIntent(draft.postType);
+      // What belongs to the kind of post: an event's time and place, a deal's last day, lost or found, and what a
+      // heads-up is about. Each shows only for its kind, so one the draft doesn't use changes nothing.
+      const startsAt = draftTimeToInput(draft.eventDate);
+      if (startsAt) setField('eventDate', startsAt);
+      const endsAt = draftTimeToInput(draft.eventEndDate);
+      if (startsAt && endsAt) setField('eventEndDate', endsAt);
+      if (typeof draft.eventVenue === 'string' && draft.eventVenue.trim()) setField('eventVenue', draft.eventVenue.trim());
+      if (typeof draft.dealExpiresAt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(draft.dealExpiresAt)) {
+        setField('dealExpires', draft.dealExpiresAt.slice(0, 10));
+      }
+      if (draft.lostFoundType === 'lost' || draft.lostFoundType === 'found') setField('lostFoundType', draft.lostFoundType);
+      if (DRAFT_SAFETY_KINDS.includes(draft.safetyAlertKind)) setField('safetyKind', draft.safetyAlertKind);
       setField('expanded', true);
     } catch {
       // ignore parse errors
     }
-  }, [isEdit, setField, selectIntent]);
+  }, [isEdit, takesAssistantDraft, setField, selectIntent]);
 
   useEffect(() => {
     if (f.selectedIntent && textareaRef.current) textareaRef.current.focus();
@@ -615,6 +673,8 @@ export default function PostComposer({
     if (isEdit || quoting) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
+      // The made-up name's screen opens over the page, outside the composer: it belongs to the composer.
+      if (target instanceof Element && target.closest('[data-pen-name-dialog]')) return;
       if (composerRef.current && !composerRef.current.contains(target)) {
         if (!f.content.trim()) {
           setField('expanded', false);
@@ -668,11 +728,35 @@ export default function PostComposer({
 
   // When identity changes, reset intent if it's not allowed for the new identity
   useEffect(() => {
-    if (!canUseGlobalAudience || !f.selectedIntent) return;
+    if ((!canUseGlobalAudience && !penMode) || !f.selectedIntent) return;
     if (!allowedPostTypes.includes(f.selectedIntent)) {
       setShowPurposePicker(true);
     }
-  }, [canUseGlobalAudience, activePostAs, f.selectedIntent, allowedPostTypes]);
+  }, [canUseGlobalAudience, penMode, activePostAs, f.selectedIntent, allowedPostTypes]);
+
+  // A composer that closes starts the next post on the person's own name.
+  useEffect(() => {
+    if (!f.expanded) setPostAsPen(false);
+  }, [f.expanded]);
+
+  // Under a made-up name the audience is people nearby.
+  useEffect(() => {
+    if (!penMode) return;
+    if (canUseGlobalAudience && selectedAudience !== 'nearby') setSelectedAudience('nearby');
+    if (!canUseGlobalAudience && f.visibility !== 'neighborhood') setField('visibility', 'neighborhood');
+  }, [penMode, canUseGlobalAudience, selectedAudience, f.visibility, setField]);
+
+  // Whether a post made at the picked place may carry a made-up name, and the warning to show above the button.
+  const penCheckLocation = penMode ? f.location : null;
+  useEffect(() => {
+    setPenCheck(null);
+    if (!penCheckLocation) return;
+    let current = true;
+    api.penNames.check(penCheckLocation.latitude, penCheckLocation.longitude)
+      .then((r) => { if (current) setPenCheck(r); })
+      .catch(() => { /* Posting checks again. */ });
+    return () => { current = false; };
+  }, [penCheckLocation]);
 
   const userInitial =
     user?.first_name?.[0]?.toUpperCase() ||
@@ -752,6 +836,18 @@ export default function PostComposer({
 
     if (requiresExplicitLocation(targetPostAs, targetAudience) && placeRefused) return;
 
+    if (penMode) {
+      if (!f.location) {
+        setSubmitError('Choose a location before posting there.');
+        return;
+      }
+      if (f.mediaFiles.length > 0) {
+        setSubmitError(PEN_NAME_WORDS_ONLY);
+        return;
+      }
+      if (penPlaceRefused) return;
+    }
+
     const contactPhoneDigits = f.contactPhone.replace(/\D/g, '');
     if (f.selectedIntent === 'lost_found' && f.contactPref === 'phone') {
       if (!contactPhoneDigits) {
@@ -771,22 +867,23 @@ export default function PostComposer({
     }
     setConfirmingAIPost(false);
 
-    const shouldIncludeLocation = Boolean(f.location && showLocationControl(targetPostAs, targetAudience));
+    const shouldIncludeLocation = Boolean(f.location && (penMode || showLocationControl(targetPostAs, targetAudience)));
     const parsedTags = parseTags(f.tags);
     createCommand.current ??= crypto.randomUUID();
     // Read here too: a post sent right after attaching doesn't wait for the screen to catch up.
-    const placeEvidence = requiresExplicitLocation(targetPostAs, targetAudience) ? await readMediaLocations(f.mediaFiles) : [];
+    const placeEvidence = !penMode && requiresExplicitLocation(targetPostAs, targetAudience) ? await readMediaLocations(f.mediaFiles) : [];
     const saved = await onPost({
       clientRequestId: createCommand.current,
       content: f.content.trim(),
       title: f.title.trim() || undefined,
       postType: targetPostType,
-      visibility: targetVisibility,
-      audience: targetAudience,
-      postAs: targetPostAs,
+      // Under a made-up name: people nearby, words only, no home, business, quote or profile.
+      visibility: penMode ? 'neighborhood' : targetVisibility,
+      audience: penMode ? 'nearby' : targetAudience,
+      postAs: penMode ? 'pen_name' : targetPostAs,
       identityContextId,
-      homeId,
-      businessId,
+      homeId: penMode ? undefined : homeId,
+      businessId: penMode ? undefined : businessId,
       ...(shouldIncludeLocation && f.location
         ? {
             latitude: f.location.latitude,
@@ -816,11 +913,10 @@ export default function PostComposer({
           ? f.serviceCategory || undefined
           : undefined,
       tags: parsedTags.length > 0 ? parsedTags : undefined,
-      crossPostToConnections: !isNetworkSurface && !canUseGlobalAudience ? (f.crossPostConnections || undefined) : undefined,
-      mediaFiles: f.mediaFiles.length > 0 ? f.mediaFiles : undefined,
+      crossPostToConnections: !penMode && !isNetworkSurface && !canUseGlobalAudience ? (f.crossPostConnections || undefined) : undefined,
+      mediaFiles: !penMode && f.mediaFiles.length > 0 ? f.mediaFiles : undefined,
       purpose: apiPurposeForPostType(targetPostType),
-      profileVisibilityScope: f.profileVisibilityScope,
-      showOnProfile: true,
+      ...(penMode ? {} : { profileVisibilityScope: f.profileVisibilityScope, showOnProfile: true }),
       ...(quoting && quotedPost ? { quotedPostId: quotedPost.id } : {}),
       ...(composeTopic === 'sports'
         ? {
@@ -871,6 +967,11 @@ export default function PostComposer({
   }, [selectedIdentity]);
 
   const sportsTopicActive = composeTopic === 'sports';
+  // The button always names the one the post will carry, once there is a choice ("Post as Night Gardener").
+  const ownName = selectedIdentity?.type === 'personal' && selectedIdentity.name
+    ? selectedIdentity.name
+    : user?.name || user?.first_name || user?.username || 'your name';
+  const postAsLabel = penNameOffered && penMe ? `Post as ${penMode && ownPen ? ownPen.name : ownName}` : null;
 
   return (
     <div ref={composerRef} className="relative">
@@ -915,6 +1016,7 @@ export default function PostComposer({
           className="overflow-hidden rounded-2xl border border-app bg-surface shadow-lg transition-all duration-300"
           style={{ borderColor: `${activeIntent.color}30` }}
         >
+          {penMode && ownPen && <PostingAsBar name={ownPen.name} avatarUrl={ownPen.avatar_url} />}
           <div className="flex items-center justify-between px-4 py-2.5" style={{ background: activeIntent.bgLight }}>
             <div className="flex items-center gap-2">
               <span>{activeIntent.icon}</span>
@@ -946,7 +1048,7 @@ export default function PostComposer({
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-surface-muted px-3 py-2 text-sm">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   <span className="text-app-secondary">
-                    Posting as: <span className="font-medium text-app">{selectedIdentity.name}</span>
+                    Posting as: <span className="font-medium text-app">{penMode && ownPen ? ownPen.name : selectedIdentity.name}</span>
                   </span>
                   <span className="text-app-secondary">
                     Visible to: <span className="font-medium text-app">{selectedAudienceLabel}</span>
@@ -1054,9 +1156,22 @@ export default function PostComposer({
             </div>
           )}
 
+          {penNameOffered && penMe && (
+            <div className="border-b border-app px-4 py-3">
+              <PostAsChoice
+                ownName={ownName}
+                me={penMe}
+                value={penMode ? 'pen_name' : 'personal'}
+                onChange={(value) => { setPostAsPen(value === 'pen_name'); setSubmitError(null); }}
+              />
+            </div>
+          )}
+
           <div className="p-4">
             <div className="flex gap-3" data-testid={textBoxTestId}>
-              {user?.profile_picture_url ? (
+              {penMode && ownPen ? (
+                <PenNameAvatar url={ownPen.avatar_url} name={ownPen.name} size={32} className="mt-0.5" />
+              ) : user?.profile_picture_url ? (
                 <Image
                   src={user.profile_picture_url}
                   alt=""
@@ -1095,7 +1210,7 @@ export default function PostComposer({
             )}
           </div>
 
-          {!isEdit && (
+          {!isEdit && !penMode && (
             <div className="px-4 pb-2">
               <PostAssist
                 assist={postAssist.assist}
@@ -1123,7 +1238,7 @@ export default function PostComposer({
             />
           )}
 
-          {f.selectedIntent && !isEdit && (
+          {f.selectedIntent && !isEdit && !penMode && (
             <div className="flex items-center gap-2 px-4 pb-2 text-sm">
               {/* This sets who sees the post on the author's profile; who gets it in the feed is the audience picker below. */}
               <span className="text-xs font-medium text-app-muted">Shown on your profile to:</span>
@@ -1153,7 +1268,25 @@ export default function PostComposer({
                 {sportsTopicActive && !isNetworkSurface ? 'What kind of sports post?' : 'What is this post for?'}
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {sportsTopicActive && !isNetworkSurface
+                {/* Under a made-up name: the four kinds it may carry. */}
+                {penMode
+                  ? INTENTS.filter((intent) => PEN_NAME_POST_TYPES.includes(intent.key)).map((intent) => (
+                      <button
+                        key={intent.key}
+                        type="button"
+                        onClick={() => {
+                          setField('selectedIntent', intent.key);
+                          setShowPurposePicker(false);
+                          setSubmitError(null);
+                        }}
+                        className="flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition-all hover:scale-[1.02] active:scale-95"
+                        style={{ background: intent.bgLight, color: intent.textColor, borderColor: `${intent.color}30` }}
+                      >
+                        <span className="text-base">{intent.icon}</span>
+                        {intent.label}
+                      </button>
+                    ))
+                  : sportsTopicActive && !isNetworkSurface
                   ? SPORTS_COMPOSER_INLINE_INTENTS.map((item) => (
                       <button
                         key={item.starter_key}
@@ -1260,7 +1393,8 @@ export default function PostComposer({
               contactLocked={editPost ? (editPost.lost_found_contact_pref || 'dm') : undefined}
             />
           )}
-          {['service_offer', 'ask_local', 'recommendation'].includes(f.selectedIntent || '') && (
+          {/* A made-up-name post's edit changes the words only. */}
+          {['service_offer', 'ask_local', 'recommendation'].includes(f.selectedIntent || '') && !(isEdit && isMadeUp(editPost)) && (
             <ServiceOfferFields
               serviceCategory={f.serviceCategory}
               onServiceCategoryChange={(v) => setField('serviceCategory', v)}
@@ -1279,7 +1413,7 @@ export default function PostComposer({
             />
           </div>
 
-          {!isNetworkSurface && !canUseGlobalAudience && !isEdit && f.visibility === 'neighborhood' && (
+          {!isNetworkSurface && !canUseGlobalAudience && !isEdit && !penMode && f.visibility === 'neighborhood' && (
             <div className="flex gap-3 border-t border-app px-4 py-2">
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-app-muted">
                 <input
@@ -1293,7 +1427,14 @@ export default function PostComposer({
             </div>
           )}
 
-          {!isEdit && <MediaUpload mediaFiles={f.mediaFiles} onAddMedia={addMedia} onRemoveMedia={removeMedia} />}
+          {!isEdit && (
+            <MediaUpload
+              mediaFiles={f.mediaFiles}
+              onAddMedia={addMedia}
+              onRemoveMedia={removeMedia}
+              wordsOnly={penMode ? 'A post or reply under a made-up name is words only for now.' : null}
+            />
+          )}
 
           <div className="space-y-2 border-t border-app bg-surface-muted/60 px-4 py-3">
             {submitError && (
@@ -1378,6 +1519,17 @@ export default function PostComposer({
               </p>
             )}
 
+            {penPlaceRefused && penCheck?.refusal && (
+              <div role="status" data-testid="penNameCheckRefusal" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {penCheck.refusal.message}
+              </div>
+            )}
+            {penMode && !penPlaceRefused && penCheck?.warning && (
+              <p role="status" data-testid="penNameCheckWarning" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {penCheck.warning}
+              </p>
+            )}
+
             {/* Wraps when it doesn't fit: on one line it can be wider than the card, which clips it (at phone width, Post was off the screen). */}
             <div className="flex flex-wrap items-center justify-between gap-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -1389,7 +1541,13 @@ export default function PostComposer({
                   </span>
                 )}
 
-                {!canUseGlobalAudience && !isNetworkSurface && !isEdit && (
+                {penMode && !canUseGlobalAudience && (
+                  <span className="flex items-center gap-1.5 px-1 text-xs font-medium text-app-muted">
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" /> Nearby
+                  </span>
+                )}
+
+                {!canUseGlobalAudience && !isNetworkSurface && !isEdit && !penMode && (
                   <VisibilityPicker
                     visibility={f.visibility}
                     neighborhoodCaption={taggedPlaceAudience}
@@ -1438,11 +1596,12 @@ export default function PostComposer({
                 ) : (
                   <button
                     onClick={() => void handlePost()}
-                    disabled={!f.content.trim() || isPosting || placeRefused || postAssist.assist.kind === 'writing'}
-                    className="rounded-lg px-4 py-1.5 text-xs font-semibold text-white transition-all hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ background: activeIntent.color }}
+                    data-testid="composerPostButton"
+                    disabled={!f.content.trim() || isPosting || placeRefused || penPlaceRefused || postAssist.assist.kind === 'writing'}
+                    className="max-w-full truncate rounded-lg px-4 py-1.5 text-xs font-semibold text-white transition-all hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ background: penMode ? '#1e293b' : activeIntent.color }}
                   >
-                    {isPosting ? 'Posting…' : activeIntent.cta}
+                    {isPosting ? 'Posting…' : postAsLabel ?? activeIntent.cta}
                   </button>
                 )}
               </div>

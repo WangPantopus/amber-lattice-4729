@@ -78,6 +78,9 @@ object MyPostsTab {
 
     /** The posts you reposted (after Saved); its list lives in [RepostedPostsViewModel]. */
     const val REPOSTS = "reposts"
+
+    /** Your posts under your made-up name, which only you can open; its list lives in [MadeUpPostsViewModel]. */
+    const val MADE_UP = "made_up"
 }
 
 /** Lightweight presentation contract for the per-row kebab action sheet. */

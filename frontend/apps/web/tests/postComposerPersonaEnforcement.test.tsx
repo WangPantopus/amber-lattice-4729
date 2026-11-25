@@ -57,12 +57,16 @@ const PERSONA  = { type: 'persona',  id: 'persona-1', name: '@mayabuilds', role:
 
 function renderComposer() {
   const PostComposer = require('../src/components/feed/PostComposer').default;
+  const { QueryClient, QueryClientProvider } = require('@tanstack/react-query');
+  // The composer reads the made-up name (/api/pen-names/me) through the query client.
   return render(
-    <PostComposer
-      onPost={jest.fn().mockResolvedValue(undefined)}
-      isPosting={false}
-      user={{ name: 'Maya', username: 'mayabuilds' }}
-    />,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <PostComposer
+        onPost={jest.fn().mockResolvedValue(undefined)}
+        isPosting={false}
+        user={{ name: 'Maya', username: 'mayabuilds' }}
+      />
+    </QueryClientProvider>,
   );
 }
 

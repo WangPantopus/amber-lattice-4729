@@ -133,9 +133,6 @@ async function provisionInstantRegion({ latitude, longitude, city, state }) {
     ? slugify(`${city}_${state || ''}`)
     : slugify(`region_${latitude.toFixed(1)}_${longitude.toFixed(1)}`);
   const timezone = timezoneFromLng(latitude, longitude);
-  const newsQuery = city
-    ? `${city} ${state || ''} local news`.trim()
-    : `${latitude.toFixed(2)} ${longitude.toFixed(2)} local news`;
   // Wikipedia's "On This Day" keeps only events naming one of these, as the
   // pilot's source does ("Oregon,Washington,Portland,Vancouver"). With no
   // place name it would post the world's history, so the region gets none.
@@ -179,7 +176,6 @@ async function provisionInstantRegion({ latitude, longitude, city, state }) {
         active_sources: [
           `nws_alerts:${regionId}`,
           `usgs_earthquakes:${regionId}`,
-          `google_news:${regionId}`,
           `seasonal:${regionId}`,
           ...(historyKeywords ? [`on_this_day:${regionId}`] : []),
         ],
@@ -222,17 +218,8 @@ async function provisionInstantRegion({ latitude, longitude, city, state }) {
       active: true,
       priority: 1,
     },
-    // P2: Core — always active
-    {
-      source_id: `google_news:${regionId}`,
-      source_type: 'google_news',
-      url: newsQuery,
-      category: 'local_news',
-      display_name: `Google News (${displayName})`,
-      region: regionId,
-      active: true,
-      priority: 2,
-    },
+    // P2: Core — always active. No Google News search (2026-11-24): its feed is for personal readers and Around you
+    // no longer shows it; a new region's own outlets come from the source finder (services/aroundYou/sourceFinder.js).
     {
       source_id: `seasonal:${regionId}`,
       source_type: 'seasonal',

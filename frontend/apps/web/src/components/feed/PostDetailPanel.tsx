@@ -19,7 +19,7 @@ import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from './PostMe
 import PostMediaLightbox from './PostMediaLightbox';
 import { PostLinkContent } from './LinkPreviewCard';
 import LinkPreviewCard from './LinkPreviewCard';
-import PostMetadata from './PostMetadata';
+import PostMetadata, { aroundStory } from './PostMetadata';
 import { canSharePost, sharePostLink } from './sharePostLink';
 import RepostChooser from './RepostChooser';
 import QuotedPostCard from './QuotedPostCard';
@@ -35,6 +35,8 @@ import { patchPostInFeedCaches, removePostFromFeedCaches } from '@/hooks/useFeed
 import { usePostDetail } from '@/hooks/usePostDetail';
 import type { Post, PostComment as PostCommentType } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
+import { MadeUpAuthorName, MadeUpAuthorPicture, MadeUpNameMarks, OnlyYouLine } from '@/components/penName/MadeUpName';
+import { isMadeUp, isMadeUpByMe, penNameIdOf } from '@/components/penName/penName';
 
 const LUCIDE_MAP: Record<string, LucideIcon> = {
   MessageCircle, Star, CalendarDays, Search, Megaphone, AlertTriangle,
@@ -56,6 +58,8 @@ interface PostDetailPanelProps {
   onPostChange?: (postId: string, patch: Partial<Post>) => void;
   canComment?: boolean;
   commentDisabledMessage?: string | null;
+  /** Opened to reply (the card's Reply): the reply box is ready to type in once the post shows. */
+  focusReply?: boolean;
 }
 
 export default function PostDetailPanel({
@@ -67,6 +71,7 @@ export default function PostDetailPanel({
   onPostChange,
   canComment = true,
   commentDisabledMessage = null,
+  focusReply = false,
 }: PostDetailPanelProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -143,7 +148,7 @@ export default function PostDetailPanel({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose, lightboxIndex, post?.media_urls]);
 
-  const handleAddComment = async ({ text, parentId, files = [], clientRequestId }: { text: string; parentId?: string; files?: File[]; clientRequestId: string }) => {
+  const handleAddComment = async ({ text, parentId, files = [], clientRequestId, postAs }: { text: string; parentId?: string; files?: File[]; clientRequestId: string; postAs?: 'pen_name' }) => {
     if (!postId) return false;
     const target = targetVersion.current;
     setCommentPosting(true);
@@ -152,6 +157,7 @@ export default function PostDetailPanel({
         comment: text,
         parentCommentId: parentId,
         clientRequestId,
+        ...(postAs ? { postAs } : {}),
       });
 
       let nextComment = res.comment;
@@ -173,7 +179,29 @@ export default function PostDetailPanel({
         ? prev.map((comment) => comment.id === nextComment.id ? nextComment : comment)
         : [...prev, nextComment]);
       setPost((prev) => prev ? { ...prev, comment_count: nextCommentCount } : prev);
-      onPostChange?.(postId, { comment_count: nextCommentCount });
+      // A card that shows the conversation (Today's Around you) shows this reply at once: its writer first among the
+      // repliers, and its words as the latest.
+      const replier = {
+        id: nextComment.user_id || currentUserId || '',
+        name: nextComment.author?.displayName || chosenUsername(nextComment.author?.handle) || 'You',
+        avatar_url: nextComment.author?.avatarUrl ?? null,
+      };
+      const words = (nextComment.comment || '').replace(/\s+/g, ' ').trim();
+      onPostChange?.(postId, {
+        comment_count: nextCommentCount,
+        ...(post?.post_metadata?.around_you && words ? {
+          conversation: {
+            people: [replier, ...(post.conversation?.people ?? []).filter((person) => person.id !== replier.id)].slice(0, 3),
+            latest: {
+              id: nextComment.id,
+              user_id: replier.id,
+              name: replier.name,
+              text: words.length > 140 ? `${words.slice(0, 139).trimEnd()}…` : words,
+              created_at: nextComment.created_at,
+            },
+          },
+        } : {}),
+      });
       void refreshCommentState();
       showToast(uploadFailed ? 'Comment posted; images not confirmed. Send to retry or Clear to discard draft.' : 'Comment posted');
       return !uploadFailed;
@@ -344,6 +372,8 @@ export default function PostDetailPanel({
   const config = getPostTypeConfig(post?.post_type || 'general');
   const isEvent = postReaction(post?.post_type) === 'going';
   const quoted = readQuotedPost(post?.quoted_post);
+  // A story Today's Around you posted for an outlet: named for the outlet, its headline apart from the summary.
+  const story = post ? aroundStory(post) : null;
   // P0.4 audit follow-up: prefer post.author (typed identity) over the
   // legacy post.creator slot. Both are populated today; new code reads
   // the new shape so the legacy slot can retire.
@@ -367,6 +397,10 @@ export default function PostDetailPanel({
   const creatorUserId = publicAuthor?.type === 'local'
     ? post?.author_user_id || post?.user_id
     : post?.creator?.id || post?.user_id;
+  // Under a made-up name: the small card instead of a profile, and "(you)" for its writer.
+  const madeUp = isMadeUp(post);
+  const madeUpByMe = madeUp && (post?.user_id === currentUserId || isMadeUpByMe(post));
+  const penNameId = penNameIdOf(post);
 
   if (!mounted) return null;
   // Match SlidePanel: keep the existing overlay above the app shell's stacking context.
@@ -436,7 +470,15 @@ export default function PostDetailPanel({
           ) : post ? (
             <div>
               <div className="flex items-center gap-3 px-5 py-4">
-                {/* The photo opens the page the name links to. */}
+                {/* A story Around you posted for an outlet names the outlet, as its card does. */}
+                {story?.outlet ? (
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-app-muted" aria-hidden="true">
+                    <Newspaper className="h-4 w-4" />
+                  </div>
+                ) : madeUp ? (
+                  <MadeUpAuthorPicture penNameId={penNameId} name={creatorName} url={creatorAvatarUrl} size={40} />
+                ) : (
+                /* The photo opens the page the name links to. */
                 <UserAvatarLink
                   href={publicAuthor?.type === 'persona'
                     ? (publicAuthor.href && launchFeatures.beacon && launchFeatures.personas ? publicAuthor.href : null)
@@ -461,8 +503,18 @@ export default function PostDetailPanel({
                     </div>
                   )}
                 </UserAvatarLink>
+                )}
                 <div className="min-w-0 flex-1">
-                  {publicAuthor?.type === 'persona' ? (
+                  {story?.outlet ? (
+                    <div className="text-sm font-semibold text-app">
+                      {story.outlet} <span className="text-[11px] font-normal text-app-muted">via {creatorName}</span>
+                    </div>
+                  ) : madeUp ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <MadeUpAuthorName penNameId={penNameId} name={creatorName} isYou={madeUpByMe} />
+                      <MadeUpNameMarks badges={publicAuthor?.badges} />
+                    </div>
+                  ) : publicAuthor?.type === 'persona' ? (
                   // Launch cuts #1 + #2: no link to the hidden persona page.
                   publicAuthor.href && launchFeatures.beacon && launchFeatures.personas ? (
                     <a href={publicAuthor.href} className="text-sm font-semibold text-app hover:underline">
@@ -486,6 +538,7 @@ export default function PostDetailPanel({
                     {timeAgo(post.created_at)}
                     {post.is_edited && ' · edited'}
                   </div>
+                  {madeUpByMe && <OnlyYouLine />}
                 </div>
               </div>
 
@@ -503,9 +556,18 @@ export default function PostDetailPanel({
 
               <div className="px-5 pb-4">
                 {post.title && <h3 className="mb-2 text-base font-semibold text-app break-words">{post.title}</h3>}
+                {story ? (
+                  <>
+                    <h3 className="break-words text-base font-semibold leading-snug text-app">{story.headline}</h3>
+                    {story.summary ? (
+                      <p className="mt-1.5 break-words text-sm leading-relaxed text-app-muted">{story.summary}</p>
+                    ) : null}
+                  </>
+                ) : (
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-app">
                   <PostLinkContent content={post.content} />
                 </p>
+                )}
               </div>
 
               <PostMetadata post={post} spacing="mx-5 mb-3" />
@@ -520,7 +582,7 @@ export default function PostDetailPanel({
                 </div>
               )}
 
-              {post.content && <LinkPreviewCard content={post.content} />}
+              {post.content && !story && <LinkPreviewCard content={post.content} />}
 
               {media.shown.length > 0 && (
                 <div className="space-y-2 px-5 pb-4">
@@ -656,7 +718,11 @@ export default function PostDetailPanel({
                   isPosting={commentPosting}
                   canCompose={canComment}
                   composeDisabledMessage={commentDisabledMessage}
-                  emptyText={detail.commentsFailed || commentsQuery.isPending ? null : undefined}
+                  emptyText={detail.commentsFailed || commentsQuery.isPending ? null
+                    : story ? 'No replies yet. Say what you think; people around here will see it.' : undefined}
+                  placeholder={story ? 'What do you think? People around here can read your reply…' : undefined}
+                  autoFocus={focusReply}
+                  post={post}
                 />
               </div>
             </div>

@@ -152,12 +152,12 @@ describe('StartFunnel — T0 preview', () => {
     expect(screen.getByText('Home details & value')).toBeInTheDocument();
     // …the privacy promise sits above the wall…
     expect(screen.getByText(/never a house number or unit/i)).toBeInTheDocument();
-    // …and the wall is pinned underneath.
-    expect(screen.getByText(/keep this address handy/i)).toBeInTheDocument();
+    // …and the wall is pinned underneath, saying what saving gives (LOOKUPORDER).
+    expect(screen.getByText(/save this address\. it opens fresh every day\./i)).toBeInTheDocument();
 
     // The wall routes to register and stashes the pending place. (The
     // wall bar's button is last in the document.)
-    const ctas = screen.getAllByRole('button', { name: /^continue$/i });
+    const ctas = screen.getAllByRole('button', { name: /^save it, free$/i });
     fireEvent.click(ctas[ctas.length - 1]);
     expect(push).toHaveBeenCalledWith(expect.stringContaining('/register'));
     expect(localStorage.length).toBeGreaterThan(0);
@@ -171,10 +171,11 @@ describe('StartFunnel — T0 preview', () => {
     await selectAddressAndSubmit();
     await screen.findByText(/high wildfire hazard around this address/i);
 
-    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_preview_viewed', { status: 'ready' });
-    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_aha_viewed', { section_id: 'wildfire', tone: 'alert', grade: 'High' });
+    // Every beacon says which order the lookup was drawn in (LOOKUPORDER): v2 unless the side-by-side is on.
+    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_preview_viewed', { status: 'ready', layout: 'v2' });
+    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_aha_viewed', { section_id: 'wildfire', tone: 'alert', grade: 'High', layout: 'v2' });
     fireEvent.click(screen.getByRole('button', { name: /share this address/i }));
-    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_share_clicked', { method: 'copy' });
+    expect(api.recordFunnelEvent).toHaveBeenCalledWith('t0_share_clicked', { method: 'copy', layout: 'v2' });
     for (const [, meta] of api.recordFunnelEvent.mock.calls) {
       expect(JSON.stringify(meta ?? {})).not.toMatch(/tacoma/i);
     }

@@ -5,6 +5,10 @@
  * declarations for the region's county (FEMA), state road projects (the federal work zone registry) and the region's
  * calendar files (seeder_sources rows of type 'ical').
  *
+ * The same run keeps Around you's topics and history (November 24, 2026): it reads each news outlet's own labels for
+ * the stories the fetcher has (services/aroundYou/feeds/outletTags.js), then makes sure every story is a post with its
+ * region and topics, opened or not (archivePass in services/aroundYouService.js), so people can scroll back.
+ *
  * Each country-wide or state-wide feed is read once a run for all regions. A feed that fails is skipped for this run
  * and logged by host, never with a point. A run never throws and never overlaps the next. Nothing runs while Around
  * you is off (AROUND_YOU). Earthquakes and weather alerts stay with the seeder Lambda.
@@ -19,8 +23,17 @@ const wildfire = require('../services/aroundYou/feeds/wildfire');
 const fema = require('../services/aroundYou/feeds/fema');
 const roadwork = require('../services/aroundYou/feeds/roadwork');
 const ical = require('../services/aroundYou/feeds/ical');
+const { writeChecked } = require('../services/aroundYou/checked');
+const { runNextRegion } = require('../services/aroundYou/sourceFinder');
+const outletTags = require('../services/aroundYou/feeds/outletTags');
+const { archivePass } = require('../services/aroundYouService');
 
 let running = false;
+// The history pass looks back a month the first time this process runs it (a new release, a restart), then only
+// over what the fetcher added since.
+const FIRST_HISTORY_HOURS = 30 * 24;
+const HISTORY_HOURS = 3;
+let historyKept = false;
 
 function hostOf(link) {
   try { return new URL(link).host; } catch { return 'unknown'; }
@@ -72,6 +85,7 @@ async function run() {
   }
 
   // State road feeds: each feed once, for every region in its states.
+  const roadStatesRead = new Set();
   if (registry) {
     const states = new Set(regions.map((region) => String(region.state || '').toUpperCase()).filter(Boolean));
     for (const entry of registry.filter((feed) => feed.states.some((state) => states.has(state)))) {
@@ -82,6 +96,7 @@ async function run() {
         failed(`roadwork ${hostOf(entry.url)}`, err);
         continue;
       }
+      entry.states.forEach((state) => roadStatesRead.add(state));
       for (const region of regions.filter((r) => entry.states.includes(String(r.state || '').toUpperCase()))) {
         add(region, roadwork.roadworkRows(region, entry, features));
       }
@@ -102,6 +117,13 @@ async function run() {
     }
   }
 
+  // What was really checked for each region, for the On watch card (services/aroundYou/checked.js).
+  await writeChecked(Object.fromEntries(regions.map((region) => [region.region, {
+    wildfire: Boolean(fires),
+    fema: Boolean(declarations) && /^\d{5}$/.test(String(region.county_fips || '')),
+    roads: roadStatesRead.has(String(region.state || '').toUpperCase()),
+  }]))).catch((err) => logger.warn('Around you feeds: checks not recorded', { error: err.message }));
+
   for (const region of regions) {
     try {
       const { added, refreshed } = await writeRows(region.region, rowsByRegion.get(region.region));
@@ -111,6 +133,28 @@ async function run() {
       logger.warn('Around you feeds: rows not written for a region', { region: region.region, error: err.message });
     }
   }
+
+  // The outlets' own labels for their stories, then the history: a post for every story, with its region and topics.
+  stats.labels = await outletTags.run(regions).catch((err) => {
+    logger.warn('Around you feeds: the outlets\' labels were not read', { error: err.message });
+    return null;
+  });
+  stats.history = await archivePass({ sinceHours: historyKept ? HISTORY_HOURS : FIRST_HISTORY_HOURS })
+    .then((kept) => {
+      historyKept = true;
+      return kept;
+    })
+    .catch((err) => {
+      logger.warn('Around you feeds: the history was not kept', { error: err.message });
+      return null;
+    });
+
+  // Sources for a new county (piece 4): one region a run whose own sources were never looked for goes to the source
+  // finder, which proposes them for review (nothing while AROUND_YOU_SOURCE_FINDER is off).
+  stats.source_finder = await runNextRegion().catch((err) => {
+    logger.warn('Around you feeds: the source finder failed', { error: err.message });
+    return null;
+  });
   return stats;
 }
 

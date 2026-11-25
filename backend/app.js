@@ -497,10 +497,11 @@ app.use('/api/scout', require('./routes/scout')); // Before-You-Sign Scout (T1, 
 app.use('/api/homes/:homeId/scheduling', require('./routes/scheduling')); // Calendarly home-scoped (before catch-all /:id)
 app.use('/api/homes', homeRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/pen-names', require('./routes/penNames'));  // Made-up names (docs/product/made-up-names/README.md)
 app.use('/api/pulse', require('./routes/pulse'));  // Pulse (docs/product/pulse-build/02-contract.md)
 app.use('/api/plans', require('./routes/plans'));  // Nearby Plans (404 while the `plans` flag is off)
 app.use('/api/moments', require('./routes/moments'));  // Moments (404 MOMENTS_UNAVAILABLE while the `moments` flag is off)
-app.use('/api/profile-page', require('./routes/profilePage'));  // A profile with sources (404 PROFILE_SOURCES_OFF while PROFILE_SOURCES is off)
+app.use('/api/profile-page', require('./routes/profilePage'));  // A profile with sources (on; 404 PROFILE_SOURCES_OFF only after the emergency off, PROFILE_SOURCES=0)
 app.use('/api/sports', require('./routes/sports'));  // Sports topic lane (active events)
 app.use('/api/files', fileRoutes);
 app.use('/api/chat', chatRoutes);
@@ -577,6 +578,7 @@ app.use('/api/admin', require('./routes/admin'));             // Platform admin
 app.use('/api/admin/verification', require('./routes/adminVerification')); // Admin verification queue
 app.use('/api/admin/reports', require('./routes/adminReports')); // Admin report review queue
 app.use('/api/admin/payment-ops', require('./routes/paymentOps')); // Payment ops (stuck detection, manual triggers)
+app.use('/api/admin/around-sources', require('./routes/adminAroundSources')); // Around you: sources for a new county (review)
 app.use('/api/internal/briefing', require('./routes/internalBriefing')); // Lambda briefing scheduler (must be before /api/internal)
 app.use('/api/internal', require('./routes/internal'));       // Internal/cron triggers
 app.use('/api/ai', aiRoutes);                                // AI Agent (chat, drafts, place brief)

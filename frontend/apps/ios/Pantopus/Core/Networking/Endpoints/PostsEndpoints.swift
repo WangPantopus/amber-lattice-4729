@@ -244,6 +244,17 @@ public enum PostsEndpoints {
         Endpoint(method: .post, path: "/api/posts/\(id)/report", body: PostReportRequest(reason: reason, details: details))
     }
 
+    /// `POST /api/posts/:postId/comments/:commentId/report` — reports someone
+    /// else's reply with the same reasons as a post; one report per person
+    /// per reply, a retry answers the same.
+    public static func reportComment(postId: String, commentId: String, reason: String, details: String? = nil) -> Endpoint {
+        Endpoint(
+            method: .post,
+            path: "/api/posts/\(postId)/comments/\(commentId)/report",
+            body: PostReportRequest(reason: reason, details: details)
+        )
+    }
+
     /// `POST /api/posts/:id/save` — saves the post for the viewer (or takes
     /// it out of Saved); returns `{saved}`. Route `backend/routes/posts.js:4354`.
     public static func toggleSave(id: String, saved: Bool? = nil) -> Endpoint {

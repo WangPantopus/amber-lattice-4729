@@ -10,6 +10,7 @@ const { getAnthropicClient, resolveModel, CHAT_MODEL } = require('../../config/a
 const { complete, AIRefusalError } = require('../ai/llm');
 const store = require('./momentStore');
 const media = require('./momentMedia');
+const penName = require('../penName');
 
 const MODEL = resolveModel(process.env.ANTHROPIC_MOMENTS_CHECK_MODEL, CHAT_MODEL);
 const TIMEOUT_MS = 20 * 1000;
@@ -43,7 +44,11 @@ Everything else is "ok" with no reasons: everyday scenes, people in ordinary clo
  * Checks base64 JPEGs from one Moment: { status: 'passed' | 'flagged' | 'unchecked', reasons }.
  * 'unchecked' means the check couldn't run; it never throws.
  */
-async function checkPictures(images) {
+// A Moment under a made-up name (services/penName) hides who made it, so its pictures are also checked for what would
+// point at a private person or a home.
+const MADE_UP_NAME_NOTE = ' This Moment is posted under a made-up name, so the people who see it cannot tell who made it. For this one, also answer "hold" with the reason "other" when a picture shows a readable license plate, a house number or a street address on a home, mail or a document or screen with a person\'s name or address, or a close-up of one private person\'s face.';
+
+async function checkPictures(images, { madeUpName = false } = {}) {
   const blocks = (images || []).filter(Boolean)
     .map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   if (!blocks.length) return { status: 'unchecked', reasons: [], error: 'no pictures' };
@@ -54,7 +59,8 @@ async function checkPictures(images) {
       client,
       model: MODEL,
       system: SYSTEM,
-      messages: [{ role: 'user', content: [...blocks, { type: 'text', text: 'Check the pictures of this one Moment.' }] }],
+      messages: [{ role: 'user', content: [...blocks,
+        { type: 'text', text: `Check the pictures of this one Moment.${madeUpName ? MADE_UP_NAME_NOTE : ''}` }] }],
       effort: 'low',
       schema: SCHEMA,
       maxTokens: 1024,
@@ -119,6 +125,17 @@ function checkRecord(row, result) {
 /** The first check's answer, when the upload finishes: the Moment goes live, held first if the check flagged it. */
 async function finishUpload(row, result) {
   const check = checkRecord(row, result);
+  // Under a made-up name a picture nothing could look at never shows: the Moment waits (the cleanup job tries again
+  // every couple of minutes) and, once the check has given up, ends with its files.
+  if (penName.isPenNameRow(row) && result.status === 'unchecked') {
+    if (check.status === 'unavailable') {
+      await store.deleteMoment(row);
+      logger.info('moments.checked', { momentId: row.id, status: 'ended_unchecked' });
+      return null;
+    }
+    logger.info('moments.checked', { momentId: row.id, status: 'waiting_unchecked' });
+    return store.updateMoment(row, { moment: { check, checking_since: new Date().toISOString() } }, { archived_at: null });
+  }
   if (result.status === 'flagged') {
     await store.hold(row, 'moment_picture_check', 'Hidden while Pantopus reviews it after the automatic picture check.');
   }
@@ -128,7 +145,9 @@ async function finishUpload(row, result) {
   // Live now, unless the check held it: the author's connections hear of it (never of a held one, nor later when a
   // hold is released). On its own, after this answer. A long video's later parts say nothing: its first part did.
   const laterPart = Number(store.meta(row).series?.index) > 1;
-  if (updated && result.status !== 'flagged' && !laterPart) require('./momentNotify').notifyConnections(updated);
+  if (updated && result.status !== 'flagged' && !laterPart && !penName.isPenNameRow(row)) {
+    require('./momentNotify').notifyConnections(updated);
+  }
   return updated;
 }
 
