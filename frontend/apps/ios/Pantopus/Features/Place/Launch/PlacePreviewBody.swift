@@ -53,7 +53,7 @@ struct PlacePreviewBody: View {
         .overlay(alignment: .bottom) { wall }
         .sheet(item: $reading) { request in
             PlaceReadingSheet(
-                address: request.address,
+                request: request,
                 // Signed out, "Ask your own question" goes where Continue goes, once the sheet is down.
                 onSignUp: signedInEntry ? nil : {
                     reading = nil
@@ -69,7 +69,8 @@ struct PlacePreviewBody: View {
 
     private var askAction: (() -> Void)? {
         guard let address = readingAddress else { return nil }
-        return { reading = PlaceReadingRequest(address: address) }
+        let ticket = preview.readingTicket
+        return { reading = PlaceReadingRequest(address: address, ticket: ticket) }
     }
 
     private var header: some View {
