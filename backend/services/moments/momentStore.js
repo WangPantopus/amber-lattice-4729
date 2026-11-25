@@ -1,6 +1,9 @@
 // Moments (build brief and CONTRACT in ~/pantopus-moments/coord, approved 2026-11-08): a photo, a video of up to 30 s
 // or a text card, pinned where it was posted, for 1, 6, 24 or 48 hours. Each one is a Post row with is_story = true and
-// story_expires_at, and its own details in post_metadata.moment:
+// story_expires_at, and its own details in post_metadata.moment. A Moment the seed-the-map tool posts
+// (scripts/seedmap.js, founder 2026-11-24) may last longer, up to LONG_MAX_HOURS; the apps' route never offers that
+// (HOURS), and every read answers a long Moment's time as at most MAX_HOURS ahead (answeredEnd), so today's apps read
+// "48h left" for it, never "1440h left".
 //   { v: 1, kind, hours, background, show_area, at_home, location_source,
 //     state: 'uploading' | 'checking' | 'live', media: {...} | null, check: {...} | null, purged_at,
 //     label_kind, notify: { sent_at } | { skipped } (services/moments/momentNotify.js),
@@ -43,6 +46,10 @@ const momentWeather = require('./momentWeather');
 
 const KINDS = ['photo', 'video', 'text'];
 const HOURS = [1, 6, 24, 48];
+// The longest an app's Moment lasts, and the longest one the seed-the-map tool may post (60 days). Only that tool asks
+// for more than MAX_HOURS: POST /api/moments takes HOURS alone.
+const MAX_HOURS = Math.max(...HOURS);
+const LONG_MAX_HOURS = 60 * 24;
 const BACKGROUNDS = ['teal', 'sky', 'green', 'amber', 'rose', 'slate'];
 const AUDIENCES = ['nearby', 'connections'];
 const DAILY_LIMIT = 20;
@@ -86,6 +93,8 @@ const MAX_MAP_ROWS = 2000;
 // A box wider than this (the whole state and beyond) shows no rings; the map asks again closer in.
 const MAX_MAP_SPAN_DEGREES = 5;
 const REPORTS_TO_HOLD = 2;
+// How far back a viewer's reports hide Moments from them: the longest a Moment lasts, and a day more.
+const REPORTS_LOOKBACK_MS = (LONG_MAX_HOURS + 24) * HOUR_MS;
 
 const MOMENT_SELECT = [
   'id', 'user_id', 'content', 'latitude', 'longitude', 'location_name', 'location_precision', 'audience',
@@ -116,6 +125,29 @@ async function readInBatches(ids, read, what) {
 }
 
 const meta = (row) => row?.post_metadata?.moment || {};
+
+/** Whether `hours` is a length a stored Moment may have: one of HOURS, or a whole number up to LONG_MAX_HOURS. */
+function validHours(hours) {
+  return Number.isInteger(hours) && hours >= 1 && hours <= LONG_MAX_HOURS;
+}
+
+/** How many hours the Moment lasts, as stored (24 for a row that says nothing sound). */
+function storedHours(row) {
+  const { hours } = meta(row);
+  return validHours(hours) ? hours : 24;
+}
+
+/**
+ * The end time the apps read (`expires_at`): the stored one, except that a long Moment (more than MAX_HOURS, from the
+ * seed-the-map tool) answers at most MAX_HOURS from now, so every app's "22h left" stays in the range it was made
+ * for. Its stored end still decides when it ends.
+ */
+function answeredEnd(row, now = Date.now()) {
+  if (storedHours(row) <= MAX_HOURS || !row.story_expires_at) return row.story_expires_at;
+  const ends = Date.parse(row.story_expires_at);
+  return Number.isFinite(ends) && ends > now + MAX_HOURS * HOUR_MS
+    ? new Date(now + MAX_HOURS * HOUR_MS).toISOString() : row.story_expires_at;
+}
 
 /** Ended: its time ran out, its author deleted it (archived) or a moderator removed it. */
 function hasEnded(row, now = Date.now()) {
@@ -376,7 +408,7 @@ async function flagOnFor(name, viewer) {
 }
 
 function briefOf(row, seen) {
-  return { id: row.id, kind: meta(row).kind, created_at: shownAt(row), expires_at: row.story_expires_at, seen };
+  return { id: row.id, kind: meta(row).kind, created_at: shownAt(row), expires_at: answeredEnd(row), seen };
 }
 
 /**
@@ -416,11 +448,12 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       ? { radius_m: row.post_metadata.area.radius_m } : null,
     audience: row.audience === 'connections' ? 'connections' : 'nearby',
     created_at: shownAt(row),
-    expires_at: row.story_expires_at,
+    expires_at: answeredEnd(row),
     // Shared later (the Sky): apps say "Earlier today"; its author also reads when it shares.
     earlier: Boolean(m.share_at),
     share_at: own ? (m.share_at || null) : null,
-    hours: m.hours,
+    // A long Moment (the seed-the-map tool) says MAX_HOURS, the longest the apps know, as its expires_at does.
+    hours: Math.min(storedHours(row), MAX_HOURS),
     // A part of a longer video posted as several Moments: which one, of how many (null for any other Moment).
     series: m.series ? { id: m.series.id, index: m.series.index, count: m.series.count } : null,
     taken_at: m.kind === 'text' ? null : (m.taken_at || null),
@@ -523,13 +556,14 @@ async function openMoments(ids, viewerId) {
 }
 
 /**
- * The posts `viewerId` reported in the last few days (a Moment lasts two at most): a Moment someone reported leaves
- * their map and their tab's dot for good, whatever becomes of the report. A failed read hides nothing: this is for
+ * The posts `viewerId` reported as long back as a Moment can last (the seed-the-map tool's 60 days, and a day more): a
+ * Moment someone reported leaves their map and their tab's dot for good, whatever becomes of the report. A failed read hides nothing: this is for
  * the reporter's comfort, not a rule about who may see what.
  */
 async function reportedIds(viewerId) {
   const { data, error } = await supabaseAdmin.from('PostReport').select('post_id').eq('reported_by', viewerId)
-    .gte('created_at', new Date(Date.now() - 4 * 24 * HOUR_MS).toISOString()).limit(500);
+    .gte('created_at', new Date(Date.now() - REPORTS_LOOKBACK_MS).toISOString())
+    .order('created_at', { ascending: false }).limit(500);
   if (error) {
     logger.warn('moments.reported_read_failed', { error: error.message });
     return new Set();
@@ -761,8 +795,7 @@ async function peopleRings(viewerId, userIds) {
 
 /** When a Moment went live: its end time less its hours (a photo's or video's time starts when its upload finishes). */
 function wentLiveAt(row) {
-  const hours = HOURS.includes(meta(row).hours) ? meta(row).hours : 24;
-  return Date.parse(row.story_expires_at) - hours * HOUR_MS;
+  return Date.parse(row.story_expires_at) - storedHours(row) * HOUR_MS;
 }
 
 /**
@@ -839,6 +872,7 @@ async function viewersOf(row) {
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
   location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
   area = null, shareAt = null, takenHere: sentTakenHere = false, weather = null }) {
+  if (!validHours(hours)) throw fail(400, 'MOMENT_INVALID', 'A Moment lasts from 1 hour to 60 days.');
   const now = createdAt ? new Date(createdAt) : new Date();
   // A Moment shared later counts its hours from its time.
   const starts = shareAt ? new Date(shareAt) : now;
@@ -1024,7 +1058,7 @@ async function updateMoment(row, { moment, ...columns }, expect = {}) {
  * shared later whose time hasn't come.
  */
 function goLive(row, check) {
-  const hours = HOURS.includes(meta(row).hours) ? meta(row).hours : 24;
+  const hours = storedHours(row);
   const starts = Math.max(Date.now(), Date.parse(meta(row).share_at || '') || 0);
   return updateMoment(row, {
     story_expires_at: new Date(starts + hours * HOUR_MS).toISOString(),
@@ -1121,9 +1155,9 @@ async function deleteMoment(row) {
 }
 
 module.exports = {
-  KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
+  KINDS, HOURS, MAX_HOURS, LONG_MAX_HOURS, validHours, storedHours, answeredEnd, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
-  serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
+  serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
 };
