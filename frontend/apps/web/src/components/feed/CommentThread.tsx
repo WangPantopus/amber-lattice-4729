@@ -7,6 +7,9 @@ import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
 import EmojiPickerPopover from '@/components/chat/EmojiPickerPopover';
 import { confirmStore } from '@/components/ui/confirm-store';
+import ReportModal from '@/components/ui/ReportModal';
+import { toast } from '@/components/ui/toast-store';
+import * as api from '@pantopus/api';
 import FeedMediaImage from './FeedMediaImage';
 import { formatTimeAgo as timeAgo } from '@pantopus/ui-utils';
 import type { Post, PostComment } from '@pantopus/types';
@@ -92,6 +95,8 @@ export default function CommentThread({
   );
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  /** The reply someone is reporting (its post's own report sheet, with the reply's id). */
+  const [reporting, setReporting] = useState<PostComment | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
@@ -231,6 +236,20 @@ export default function CommentThread({
     setNewComment((prev) => `${prev}${emoji}`);
     setEmojiOpen(false);
     inputRef.current?.focus();
+  };
+
+  const reportReply = async (reason: string, details?: string) => {
+    if (!reporting) return;
+    try {
+      await api.posts.reportComment(reporting.post_id, reporting.id, {
+        reason: reason as 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'safety' | 'other',
+        details,
+      });
+      toast.success("Reply reported — we'll review it");
+    } catch (err) {
+      toast.error('Failed to report reply');
+      throw err;
+    }
   };
 
   const renderComment = (comment: PostComment, depth = 0) => {
@@ -388,6 +407,16 @@ export default function CommentThread({
                   Reply
                 </button>
               )}
+              {/* Someone else's reply, under any name: the post's own report sheet. */}
+              {!isOwn && currentUserId && (
+                <button
+                  type="button"
+                  onClick={() => setReporting(comment)}
+                  className="text-[10px] font-semibold text-app-muted hover:text-red-500 transition"
+                >
+                  Report
+                </button>
+              )}
               {isOwn && (
                 <button
                   onClick={async () => {
@@ -451,6 +480,12 @@ export default function CommentThread({
 
   return (
     <div>
+      <ReportModal
+        open={reporting !== null}
+        onClose={() => setReporting(null)}
+        onSubmit={reportReply}
+        entityType="reply"
+      />
       {comments.length === 0 ? (
         emptyText ? (
           <div className="text-center py-6">
