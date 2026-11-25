@@ -209,6 +209,8 @@ data class WorkPiece(
     val hidden: Boolean = false,
     /** The owner's view only: who sees it, anyone | members | connections. */
     val audience: String? = null,
+    /** A piece this person signed on someone else's Work ("With Maria Kovács", p2.5): that owner's name. */
+    val withName: String? = null,
 ) {
     /** The year the piece belongs to: its finished month, else its started month, else the year in its "when". */
     val year: Int?

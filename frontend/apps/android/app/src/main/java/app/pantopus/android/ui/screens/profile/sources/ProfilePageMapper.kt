@@ -371,6 +371,7 @@ private fun mapPiece(map: Map<String, Any?>): WorkPiece? {
         draft = map["draft"] == true,
         hidden = map["hidden"] == true,
         audience = map.str("audience")?.takeIf { it in AUDIENCES },
+        withName = map.obj("with")?.str("name"),
     )
 }
 

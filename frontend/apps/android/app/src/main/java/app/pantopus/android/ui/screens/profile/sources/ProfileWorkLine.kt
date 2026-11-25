@@ -411,6 +411,7 @@ private fun WorkLineRow(
                             piece.line.ink.word,
                             pieceKindWord(piece.kind),
                             if (byYear) piece.monthWord else piece.whenText,
+                            piece.withName?.let { "With $it" },
                             // Only the owner is sent these: the piece reaches nobody else yet.
                             "Draft".takeIf { piece.draft },
                             "Hidden".takeIf { piece.hidden },
