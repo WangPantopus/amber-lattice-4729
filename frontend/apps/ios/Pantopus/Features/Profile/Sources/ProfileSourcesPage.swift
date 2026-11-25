@@ -154,6 +154,10 @@ struct ProfileSourcesPage<Actions: View, OwnerTop: View, OwnerBottom: View>: Vie
             }
             ProfileBlockList(blocks: tabBlocks(selected), context: context)
                 .padding(.horizontal, Spacing.s4)
+            if selected.key == .work, let editRole = context.editRole, !selected.blocks.contains(where: { $0.id == "worked_learned" }) {
+                ProfileOwnerRolesBlock(title: nil, lines: [], onEdit: editRole)
+                    .padding(.horizontal, Spacing.s4)
+            }
             if let onManagePieces, model.ownerPieces == nil,
                selected.key == .work || (selected.key == .person && content.tab(.work) == nil) {
                 ProfileBlockCard(padded: false) {

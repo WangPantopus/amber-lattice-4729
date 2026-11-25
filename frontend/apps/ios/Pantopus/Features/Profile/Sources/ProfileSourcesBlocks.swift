@@ -29,6 +29,8 @@ struct ProfileBlockContext {
     let pieceInk: (String) -> ProfileInk?
     /// The month open over Record, marked on the chart (board 13).
     var openedMonth: ProfileRingMonth?
+    /// Your own page with the server's ties on: add and change roles and schools ("Worked and learned").
+    var editRole: ((ProfileRoleEditorStart) -> Void)?
 }
 
 /// A run of blocks, with Says and Known for sharing one card when they come together (board 1), and the work line
@@ -120,7 +122,11 @@ struct ProfileBlockView: View {
     @ViewBuilder private var content: some View {
         switch block.content {
         case let .lines(lines, more):
-            ProfileLinesBlock(title: block.title, titleColor: laneColor, lines: lines, more: more, context: context)
+            if block.id == "worked_learned", let editRole = context.editRole {
+                ProfileOwnerRolesBlock(title: block.title, lines: lines, onEdit: editRole)
+            } else {
+                ProfileLinesBlock(title: block.title, titleColor: laneColor, lines: lines, more: more, context: context)
+            }
         case let .says(line):
             card { ProfileSaysBlock(title: block.title ?? "Says", line: line) }
         case let .knownFor(lines, more):
