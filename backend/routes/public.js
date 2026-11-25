@@ -1229,9 +1229,11 @@ router.get('/residency-letters/:code', async (req, res) => {
 // mean for me?" for someone signed out. One model call over the facts the page
 // already shows; no tools, no memory, no conversation.
 //
-//   - Only for an address this caller looked up in the last ten minutes: its
-//     geocode is still in the preview's cache, so the reading never asks the
-//     geocoder anything. Otherwise 409, and the client hides the row.
+//   - With the lookup's `reading_ticket` (signed, 60 minutes, nothing stored): a
+//     valid one is enough, whoever's network the request comes from. Without
+//     one, only for an address this caller looked up in the last ten minutes.
+//     Either way the reading never asks the geocoder anything. Otherwise 409,
+//     and the client says it couldn't read the page.
 //   - The model is given the page's facts and the city and state
 //     (services/ai/lookupReading.js), never the address, the street, the ZIP,
 //     the coordinates, the map cell or anything about the visitor.
