@@ -138,6 +138,7 @@ async function loadPage(req, lookup, { view, keyed = null, inCommon: withInCommo
   const inCommon = inCommonRead && !(rows.blocked_by_them || rows.blocked_by_viewer) ? inCommonRead : null;
   const ctx = contextFrom(opened, rows.share || null, found);
   ctx.viewerId = viewerId;
+  ctx.shelf = require('./shelf').objectsOf(rows.shelf);
   if (keyed) {
     // A part the link shows reaches the link view; every other part reaches no one outside (connections is the
     // narrowest setting, and a link is never a connection). Never listed (item 9.5).

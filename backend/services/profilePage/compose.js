@@ -709,7 +709,7 @@ function partContent(ctx, record) {
   return {
     says: Boolean(String(ctx.shown.bio || '').trim()),
     prompts: ctx.prompts.length > 0,
-    shelf: false,
+    shelf: (ctx.shelf || []).length > 0,
     city: Boolean(ctx.placeLabel || ctx.homePlaceLabel),
     work: record.pieces.length > 0 || record.skills.length > 0 || has('owns'),
     known_for: false,
@@ -796,6 +796,15 @@ function composePage(ctx, sources, extras, { now = new Date() } = {}) {
         action: ctx.relationship === 'none' ? { kind: 'connect' } : null,
       });
     }
+  }
+  // The shelf (phase 3C), only when it holds something, the owner's view included: `shelf` is a v1 block kind that a
+  // released app may draw, so it never arrives empty. The owner's own screens offer "Add" from GET /me/shelf.
+  const shelf = ctx.shelf || [];
+  if (shelf.length && (view === 'owner' || on('shelf'))) {
+    person.push({
+      kind: 'shelf', id: 'shelf', title: `On ${ctx.firstName}'s shelf`,
+      objects: shelf.map((o) => ({ id: o.id, picture_url: o.picture_url, caption: o.caption, ink: 'said' })),
+    });
   }
   if (ctx.prompts.length && on('prompts')) {
     person.push({

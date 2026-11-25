@@ -24,6 +24,7 @@ const { profileSourcesEnabled, profileLinksEnabled, profileTiesEnabled } = requi
 const profilePage = require('../services/profilePage');
 const pieces = require('../services/profilePage/pieces');
 const ties = require('../services/profilePage/ties');
+const shelf = require('../services/profilePage/shelf');
 
 const router = express.Router();
 
@@ -39,7 +40,7 @@ function handle(label, run, status = 200) {
       return res.status(status).json(await run(req));
     } catch (err) {
       if (err instanceof profilePage.PageRefusal || err instanceof profilePage.LinkRefusal || err instanceof pieces.PieceRefusal
-        || err instanceof ties.TieRefusal) {
+        || err instanceof ties.TieRefusal || err instanceof shelf.ShelfRefusal) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }
       logger.error('Profile page read failed', { route: label, error: err.message, errorCode: err.code || null });
@@ -58,6 +59,9 @@ router.put('/me/share', verifyToken, handle('share-save', (req) => profilePage.p
 
 // The owner's pieces (CONTRACT "Phase 2: Work", P2.3).
 router.put('/me/work', verifyToken, handle('work-save', (req) => pieces.saveWork(String(req.user.id), req.body)));
+// The shelf (CONTRACT P3.1).
+router.get('/me/shelf', verifyToken, handle('shelf', (req) => shelf.getShelf(String(req.user.id))));
+router.put('/me/shelf', verifyToken, handle('shelf-save', (req) => shelf.putShelf(String(req.user.id), req.body)));
 router.get('/me/pieces', verifyToken, handle('pieces', (req) => pieces.listMine(String(req.user.id))));
 router.post('/me/pieces/preview', verifyToken, handle('piece-preview', (req) => pieces.previewPiece(String(req.user.id), req.body)));
 router.post('/me/pieces', verifyToken, handle('piece-make', (req) => pieces.createPiece(String(req.user.id), req.body), 201));

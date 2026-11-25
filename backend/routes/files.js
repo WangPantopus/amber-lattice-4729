@@ -86,6 +86,9 @@ const STANDALONE_FILE_PURPOSES = {
   general: 'other', voice_postscript: 'other', business_verification: 'other',
   gig_photo: 'gig_attachment', gig_completion: 'gig_attachment',
   mailbox_unboxing: 'mailbox_attachment',
+  // A picture on a person's profile shelf (services/profilePage/shelf.js). Kept as `other`, a kind the public
+  // portfolio grid never lists.
+  profile_shelf: 'other',
 };
 const standaloneUploadSchema = Joi.object({
   file_type: Joi.string().valid(
