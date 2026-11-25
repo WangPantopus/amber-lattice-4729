@@ -7,6 +7,7 @@ import app.pantopus.android.data.api.models.feed.AroundYouStoryFacts
 import app.pantopus.android.data.api.models.feed.FeedConversation
 import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.feed.FeedPost
+import app.pantopus.android.data.api.models.feed.FeedPostCreator
 import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
@@ -67,7 +68,9 @@ internal fun pulseCardContent(
     live: PulseCardLiveValues,
 ): PulsePostCardContent {
     val intent = PulseIntent.fromPostType(post.postType)
-    val authorName = post.creator?.displayName() ?: "Pantopus user"
+    // A made-up name's post: its name and drawn picture, its marks, and no profile (contract "The card").
+    val madeUp = pulseMadeUpAuthor(post)
+    val authorName = post.cardAuthor?.displayName() ?: "Pantopus user"
     val isBusiness = post.creator?.accountType == "business" || post.businessAuthorId != null
     val likeCount = live.likeCount
     // An event's reaction is Going; every other post's is an emoji.
@@ -89,7 +92,8 @@ internal fun pulseCardContent(
         // a business isn't being verified).
         authorVerified = surface == FeedSurface.Beacons && post.creator?.credential?.status == "verified",
         avatarTint = if (isBusiness) FeedAvatarTint.Violet else FeedAvatarTint.Sky,
-        authorAvatarUrl = post.creator?.photoUrl,
+        authorAvatarUrl = post.cardAuthor?.photoUrl,
+        madeUp = madeUp,
         meta = metaString(post, topic),
         intent = intent,
         chipLabel = pulseChipLabel(post, intent),
@@ -163,12 +167,32 @@ internal fun pulseCardContent(
     )
 }
 
+/** Who the card names: a made-up name's own projection (its name and drawn picture), else the creator. */
+private val FeedPost.cardAuthor: FeedPostCreator?
+    get() = (if (isMadeUp) author else null) ?: creator
+
+/**
+ * A made-up name's author, or null for every other post. Its id is where an author's id goes on the row (`user_id`),
+ * so Mute and Block act on the name; its writer alone gets [PulseMadeUpAuthor.isYou].
+ */
+internal fun pulseMadeUpAuthor(post: FeedPost): PulseMadeUpAuthor? {
+    val id = post.penNameId ?: return null
+    val badges = post.author?.badges
+    return PulseMadeUpAuthor(
+        penNameId = id,
+        isYou = post.viewerIsAuthor == true || post.author?.isYou == true,
+        // An older row without badges still says it: every made-up name needs a verified home nearby.
+        verifiedHome = badges == null || "verified_home" in badges,
+    )
+}
+
 /**
  * Where the author's photo and name lead, as on the post's page: a business's published page or a person's profile. A
  * tip, a creator persona (whose id is not the person's) and a post written as a home lead nowhere.
  */
 internal fun pulseAuthorLink(post: FeedPost): PulseAuthorLink? {
-    val creator = post.creator?.takeUnless { post.isSeeded } ?: return null
+    // A made-up name opens its small card, never a profile.
+    val creator = post.creator?.takeUnless { post.isSeeded || post.isMadeUp } ?: return null
     return when (creator.type) {
         "business" ->
             creator.id

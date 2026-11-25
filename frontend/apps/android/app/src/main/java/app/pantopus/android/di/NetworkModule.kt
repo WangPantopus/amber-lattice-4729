@@ -108,6 +108,7 @@ import app.pantopus.android.data.api.services.NotificationsApi
 import app.pantopus.android.data.api.services.OffersApi
 import app.pantopus.android.data.api.services.PaymentHistoryApi
 import app.pantopus.android.data.api.services.PaymentsApi
+import app.pantopus.android.data.api.services.PenNamesApi
 import app.pantopus.android.data.api.services.PersonaDmApi
 import app.pantopus.android.data.api.services.PersonaEditApi
 import app.pantopus.android.data.api.services.PlaceApi
@@ -858,6 +859,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideProfilePageApi(retrofit: Retrofit): ProfilePageApi = retrofit.create(ProfilePageApi::class.java)
+
+    /** Made-up names (`/api/pen-names/…`): the person's own, the small card, mute and block. */
+    @Provides
+    @Singleton
+    fun providePenNamesApi(retrofit: Retrofit): PenNamesApi = retrofit.create(PenNamesApi::class.java)
 
     /** Pulse's own routes (`/api/pulse/…`): the asker's keep-open and close (S7). */
     @Provides

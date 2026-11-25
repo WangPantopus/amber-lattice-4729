@@ -480,6 +480,10 @@ private fun FeedPost.detailSeed(): PostDetailResponse? {
             lostFoundType = lostFoundType,
             lifecycleMetadata = lifecycleMetadata,
             quotedPost = quotedPost,
+            // A made-up name's card opens on its page as the name, with the writer's "(you)".
+            madeUpName = madeUpName,
+            viewerIsAuthor = viewerIsAuthor,
+            takesMadeUpNameReply = takesMadeUpNameReply,
         ),
     )
 }

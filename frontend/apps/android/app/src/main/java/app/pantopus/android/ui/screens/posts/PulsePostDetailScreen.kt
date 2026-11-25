@@ -71,6 +71,16 @@ import app.pantopus.android.ui.screens.feed.pulse.aroundTopicTitle
 import app.pantopus.android.ui.screens.feed.pulse.pulseEventDetails
 import app.pantopus.android.ui.screens.feed.pulse.pulseStory
 import app.pantopus.android.ui.screens.feed.pulse.toastButton
+import app.pantopus.android.ui.screens.pennames.PenNameCardSheet
+import app.pantopus.android.ui.screens.pennames.PenNameChoiceViewModel
+import app.pantopus.android.ui.screens.pennames.PenNameCopy
+import app.pantopus.android.ui.screens.pennames.PenNameMarks
+import app.pantopus.android.ui.screens.pennames.PenNameOnlyYouLine
+import app.pantopus.android.ui.screens.pennames.PenNamePicture
+import app.pantopus.android.ui.screens.pennames.PenNamePostAsRow
+import app.pantopus.android.ui.screens.pennames.PenNamePostAsUi
+import app.pantopus.android.ui.screens.pennames.PenNameSetupSheet
+import app.pantopus.android.ui.screens.pennames.PenNameVoice
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailTopBar
@@ -201,6 +211,29 @@ fun PulsePostDetailScreen(
     var commentPendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
     var commentPendingReportId by rememberSaveable { mutableStateOf<String?>(null) }
     var showsRepostChooser by rememberSaveable { mutableStateOf(false) }
+    // Made-up names: the small card a name opens (its id; whether it is the post's own, which Report covers), and the
+    // reply box's "Post as".
+    var openPenNameId by rememberSaveable { mutableStateOf<String?>(null) }
+    var penNameIsPostAuthor by rememberSaveable { mutableStateOf(false) }
+    val replyChoice: PenNameChoiceViewModel = hiltViewModel(key = "replyPenName")
+    val replyPostAs by replyChoice.postAs.collectAsStateWithLifecycle()
+    val replySetupOpen by replyChoice.setupOpen.collectAsStateWithLifecycle()
+    val penNameNeeded by viewModel.penNameNeeded.collectAsStateWithLifecycle()
+    LaunchedEffect(state) {
+        val loaded = (state as? PulsePostDetailUiState.Loaded)?.content ?: return@LaunchedEffect
+        // The server says where a reply may carry a made-up name (`takes_made_up_name_reply`).
+        if (loaded.post.isRemovedByModerator || loaded.post.takesMadeUpNameReply != true) return@LaunchedEffect
+        replyChoice.load()
+        // One voice per conversation: once the person is in it, the reply box keeps that name.
+        replyChoice.fixVoice(loaded.replyVoice)
+    }
+    LaunchedEffect(replyPostAs) { viewModel.setReplyUnderPenName(replyPostAs?.isMadeUp == true) }
+    LaunchedEffect(penNameNeeded) {
+        if (penNameNeeded) {
+            replyChoice.needName()
+            viewModel.consumePenNameNeeded()
+        }
+    }
 
     LifecycleResumeEffect(Unit) {
         viewModel.load()
@@ -317,6 +350,13 @@ fun PulsePostDetailScreen(
                         onOpenPost(quotedId)
                     },
                     focusReply = focusReply,
+                    // Already in the conversation under their own name: replies go out under it, as before.
+                    replyPostAs = replyPostAs?.takeIf { it.fixedBy != PenNameVoice.Own && content.post.takesMadeUpNameReply == true },
+                    onChooseReplyPostAs = replyChoice::choose,
+                    onOpenPenName = { id, isPostAuthor ->
+                        penNameIsPostAuthor = isPostAuthor
+                        openPenNameId = id
+                    },
                 )
             }
         }
@@ -434,6 +474,18 @@ fun PulsePostDetailScreen(
                 }
             }
         }
+    }
+
+    openPenNameId?.let { id ->
+        PenNameCardSheet(
+            penNameId = id,
+            // Report is the post's own; replies have no report under any name.
+            onReport = if (penNameIsPostAuthor && !viewModel.isOwner) ({ showsReportReasons = true }) else null,
+            onDismiss = { openPenNameId = null },
+        )
+    }
+    if (replySetupOpen) {
+        PenNameSetupSheet(replace = false, onDone = replyChoice::onTaken, onDismiss = replyChoice::dismissSetup)
     }
 
     if (showsReportReasons) {
@@ -617,6 +669,11 @@ fun PulsePostDetailLoadedContent(
     onOpenQuoted: ((String) -> Unit)? = null,
     /** Opened to reply: the reply box takes the keyboard when it first shows. */
     focusReply: Boolean = false,
+    /** "Post as" above the reply box (made-up names); null hides it. */
+    replyPostAs: PenNamePostAsUi? = null,
+    onChooseReplyPostAs: (PenNameVoice) -> Unit = {},
+    /** A made-up name's photo or name was tapped: its id, and whether it is the post's own author. */
+    onOpenPenName: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     // A story Today's Around you posted for an outlet: the page names the outlet and sets the headline apart from the
     // outlet's summary, as its card does. Null for every other post.
@@ -636,8 +693,13 @@ fun PulsePostDetailLoadedContent(
                 }
                 val businessAuthor = content.post.creator?.takeIf { it.identityType == "business" }
                 val outlet = story?.outlet
+                val madeUp = content.madeUp
                 PostAuthorHeader(
-                    displayName = outlet ?: content.authorDisplayName,
+                    // The writer's own made-up name says "(you)".
+                    displayName =
+                        outlet
+                            ?: madeUp?.takeIf { it.isYou }?.let { PenNameCopy.you(content.authorDisplayName) }
+                            ?: content.authorDisplayName,
                     avatarUrl = content.authorAvatarUrl,
                     isVerified = content.authorVerified,
                     identity = content.authorIdentity,
@@ -651,7 +713,10 @@ fun PulsePostDetailLoadedContent(
                             ?: content.intent.label,
                     // A business author opens its page, and only while it has a published one (the web links none).
                     onAvatarTap =
-                        if (outlet != null) {
+                        if (madeUp != null) {
+                            // A made-up name opens its small card, never a profile.
+                            { onOpenPenName(madeUp.penNameId, true) }
+                        } else if (outlet != null) {
                             null
                         } else if (businessAuthor != null) {
                             businessAuthor.businessPageId?.let { businessId -> { onOpenBusiness(businessId) } }
@@ -660,11 +725,22 @@ fun PulsePostDetailLoadedContent(
                         },
                     momentsUserId =
                         when {
-                            outlet != null -> null
+                            madeUp != null || outlet != null -> null
                             businessAuthor != null -> businessAuthor.businessPageId
                             else -> content.post.userId
                         },
                     placeIcon = PantopusIcon.FileText.takeIf { outlet != null },
+                    avatar = madeUp?.let { { PenNamePicture(url = content.authorAvatarUrl, size = 44.dp) } },
+                    subline =
+                        madeUp?.let {
+                            {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    PenNameMarks(verifiedHome = it.verifiedHome, testTagSuffix = "detail", meta = content.timeAndLocality)
+                                    if (it.isYou) PenNameOnlyYouLine(testTagSuffix = "detail")
+                                }
+                            }
+                        },
+                    avatarTapLabel = madeUp?.let { "Open the made-up name ${content.authorDisplayName}" },
                 )
                 content.status?.let { status ->
                     PostStatusPill(
@@ -729,6 +805,8 @@ fun PulsePostDetailLoadedContent(
                 repliesClosedNote = if (content.post.isRemovedByModerator) "Replies are off for this post." else null,
                 commentsLoading = commentsLoading,
                 loadingCommentCount = content.post.commentCount,
+                aboveComposer = replyPostAs?.let { row -> { PenNamePostAsRow(state = row, onChoose = onChooseReplyPostAs) } },
+                onMadeUpAuthorTap = { id -> onOpenPenName(id, false) },
                 // The post it quotes, under its own text and media (contract §8.3).
                 belowMedia =
                     content.quoted?.let { quoted ->

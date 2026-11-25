@@ -2,6 +2,7 @@ package app.pantopus.android.data.api.models.posts
 
 import app.pantopus.android.core.identity.MadeUpUsername
 import app.pantopus.android.data.api.models.feed.FeedQuotedPost
+import app.pantopus.android.data.api.models.feed.PEN_NAME_TYPE
 import app.pantopus.android.data.api.models.pulse.PostLifecycleMetadata
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -27,7 +28,16 @@ data class PostCreatorDto(
     val avatarUrl: String? = null,
     /** The identity projection's kind: `business` for a post written as a business, whose [id] is then the business's. */
     @Json(name = "type") val identityType: String? = null,
+    /** A made-up name; older servers leave it out. */
+    val madeUp: Boolean? = null,
+    /** `made_up_name`, `verified_home` under a made-up name. */
+    val badges: List<String>? = null,
+    /** Reaches only the person who wrote it under their made-up name. */
+    val isYou: Boolean? = null,
 ) {
+    /** A made-up name's projection (`type: "pen_name"`). */
+    val isPenName: Boolean get() = madeUp == true || identityType == PEN_NAME_TYPE
+
     /**
      * The page a business author opens: its id, while the business is published (the identity carries its
      * handle only then, as the web's `/b/` link). Null for other authors and for a business without a page.
@@ -84,7 +94,14 @@ data class PostCommentDto(
     val userHasLiked: Boolean? = null,
     @Json(name = "like_count") val likeCount: Int? = null,
     val author: PostCreatorDto? = null,
-)
+    /** Written under a made-up name; older servers leave it out. */
+    @Json(name = "made_up_name") val madeUpName: Boolean? = null,
+    /** True only for the person who wrote it under their made-up name. */
+    @Json(name = "viewer_is_author") val viewerIsAuthor: Boolean? = null,
+) {
+    /** A reply under a made-up name. */
+    val isMadeUp: Boolean get() = madeUpName == true || author?.isPenName == true
+}
 
 /** `GET /api/posts/:id` envelope — see `backend/routes/posts.js:2142`. */
 @JsonClass(generateAdapter = true)
@@ -159,7 +176,24 @@ data class PostDetailDto(
     @Json(name = "post_metadata") val lifecycleMetadata: PostLifecycleMetadata? = null,
     /** "Repost with your words": the post this one quotes, or why it can't be shown; null on an ordinary post. */
     @Json(name = "quoted_post") val quotedPost: FeedQuotedPost? = null,
+    /** The identity projection of the author: a made-up name's carries its marks and, for its writer, `isYou`. */
+    val author: PostCreatorDto? = null,
+    /** Written under a made-up name; older servers leave it out. */
+    @Json(name = "made_up_name") val madeUpName: Boolean? = null,
+    /** True only for the person who wrote it under their made-up name. */
+    @Json(name = "viewer_is_author") val viewerIsAuthor: Boolean? = null,
+    /**
+     * The reply box offers "Post as" exactly where this is true (contract item 1): any post people nearby read and any
+     * made-up-name post; an older server leaves it out, which reads as no.
+     */
+    @Json(name = "takes_made_up_name_reply") val takesMadeUpNameReply: Boolean? = null,
 ) {
+    /** A post under a made-up name: its page shows the name, its marks and no profile. */
+    val isMadeUp: Boolean get() = madeUpName == true || author?.isPenName == true || creator?.isPenName == true
+
+    /** The made-up name's id (Mute and Block act on it); null on every other post. */
+    val penNameId: String? get() = if (isMadeUp) (author?.id ?: creator?.id)?.takeIf { it.isNotEmpty() } else null
+
     /** A moderator removed the post: neighbors can't see it or reply. */
     val isRemovedByModerator: Boolean get() = archiveReason == "moderation"
 

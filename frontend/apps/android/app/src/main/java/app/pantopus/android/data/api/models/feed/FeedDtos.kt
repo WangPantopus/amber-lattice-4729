@@ -94,7 +94,26 @@ data class FeedPost(
      * Around you sends it, and only on a post with replies (`backend/services/aroundYou/lists.js`).
      */
     val conversation: FeedConversation? = null,
+    /**
+     * The identity projection of the author (made-up names read it: [FeedPostCreator.madeUp], its badges and
+     * [FeedPostCreator.isYou]). Older servers and most rows send [creator] only.
+     */
+    val author: FeedPostCreator? = null,
+    /** Written under a made-up name (contract "What the server sends"); older servers leave it out. */
+    @Json(name = "made_up_name") val madeUpName: Boolean? = null,
+    /** True only for the person who wrote it under their made-up name: the card says "(you)". */
+    @Json(name = "viewer_is_author") val viewerIsAuthor: Boolean? = null,
+    /** The reply box may offer "Post as" (a made-up name) on this post; an older server leaves it out (no). */
+    @Json(name = "takes_made_up_name_reply") val takesMadeUpNameReply: Boolean? = null,
 ) {
+    /** A made-up name's post: the card shows the name, its marks and no profile. */
+    val isMadeUp: Boolean
+        get() = madeUpName == true || author?.type == PEN_NAME_TYPE || creator?.type == PEN_NAME_TYPE
+
+    /** The made-up name's id (Mute and Block act on it); null on every other post. */
+    val penNameId: String?
+        get() = if (isMadeUp) (author?.id ?: creator?.id)?.takeIf { it.isNotEmpty() } else null
+
     val canShareExternally: Boolean
         get() =
             !isSeeded && permitsExternalPostShare(readScope, visibility, audience, allowExternalShare, moderationState)
@@ -198,6 +217,12 @@ data class FeedPostCreator(
     val city: String? = null,
     val state: String? = null,
     @Json(name = "account_type") val accountType: String? = null,
+    /** A made-up name (`type: "pen_name"`); older servers leave it out. */
+    val madeUp: Boolean? = null,
+    /** `made_up_name`, `verified_home`: the card's marks under a made-up name. */
+    val badges: List<String>? = null,
+    /** Reaches only the person who wrote it under their made-up name. */
+    val isYou: Boolean? = null,
 ) {
     /** Best-effort display name across legacy and identity-projection fields. */
     fun displayName(): String {
@@ -214,6 +239,9 @@ data class FeedPostCreator(
     val photoUrl: String?
         get() = avatarUrl ?: profilePictureUrl
 }
+
+/** The identity projection's `type` for a made-up name. */
+const val PEN_NAME_TYPE = "pen_name"
 
 /** Paging envelope returned by `GET /api/posts/feed`. */
 @JsonClass(generateAdapter = true)

@@ -92,6 +92,7 @@ enum class PostIntent(
  * identity stack + right-aligned intent chip.
  */
 @Composable
+@Suppress("LongMethod") // The photo, the name and its line, and the kind of post, with the made-up name's slots.
 fun PostAuthorHeader(
     displayName: String,
     avatarUrl: String?,
@@ -108,6 +109,12 @@ fun PostAuthorHeader(
      * Around you posted. Null (every other post) draws the photo or the initials.
      */
     placeIcon: PantopusIcon? = null,
+    /** A made-up name: its drawn picture in place of the photo (no Moments ring, no identity ring). */
+    avatar: (@Composable () -> Unit)? = null,
+    /** A made-up name: its marks (and the writer's "Only you can see this is you") under the name, with the time. */
+    subline: (@Composable () -> Unit)? = null,
+    /** What a tap on the photo does, read aloud; null says it opens the profile. */
+    avatarTapLabel: String? = null,
 ) {
     Row(
         modifier =
@@ -127,7 +134,7 @@ fun PostAuthorHeader(
                                 .testTag("pulsePostDetail-authorAvatar")
                                 .clickable(onClick = onAvatarTap)
                                 .semantics {
-                                    contentDescription = "Open $displayName's profile"
+                                    contentDescription = avatarTapLabel ?: "Open $displayName's profile"
                                 }
                         } else {
                             Modifier
@@ -135,7 +142,9 @@ fun PostAuthorHeader(
                     ),
             contentAlignment = Alignment.TopStart,
         ) {
-            if (placeIcon != null) {
+            if (avatar != null) {
+                avatar()
+            } else if (placeIcon != null) {
                 Box(
                     modifier =
                         Modifier
@@ -173,11 +182,15 @@ fun PostAuthorHeader(
                 color = PantopusColors.appText,
             )
             Spacer(Modifier.size(2.dp))
-            Text(
-                text = timeAndLocality,
-                fontSize = 12.sp,
-                color = PantopusColors.appTextSecondary,
-            )
+            if (subline != null) {
+                subline()
+            } else {
+                Text(
+                    text = timeAndLocality,
+                    fontSize = 12.sp,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
         }
         // Named by the post's type; the chip's colour tone isn't content ("LOST & FOUND, error"), and
         // "Share post" would read like the top bar's Share button.

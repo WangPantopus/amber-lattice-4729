@@ -18,6 +18,7 @@ import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
 import app.pantopus.android.data.analytics.AnalyticsResult
 import app.pantopus.android.data.api.models.ai.AIPostSuggestionDto
+import app.pantopus.android.data.api.models.pennames.PenNameDto
 import app.pantopus.android.data.api.models.posts.EarlierPostDto
 import app.pantopus.android.data.api.models.posts.PostCreateRequest
 import app.pantopus.android.data.api.models.posts.PostDetailDto
@@ -32,6 +33,7 @@ import app.pantopus.android.data.businesses.BusinessPostsRepository
 import app.pantopus.android.data.location.LocationProvider
 import app.pantopus.android.data.location.UserCoordinate
 import app.pantopus.android.data.network.NetworkMonitor
+import app.pantopus.android.data.pennames.PenNameRefusal
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.posts.PostPrecheckRepository
 import app.pantopus.android.data.posts.PostsRepository
@@ -500,6 +502,60 @@ class PulseComposeViewModel
         init {
             quotedPostId?.let(::loadQuotedPost)
         }
+
+        // Made-up names (contract docs/product/made-up-names/README.md).
+
+        private val _penName = MutableStateFlow<PenNameDto?>(null)
+
+        /**
+         * The made-up name the post goes out under: chosen in "Post as" (a new post), or the one an edited made-up-name
+         * post carries. Null: the person's own name.
+         */
+        val penName: StateFlow<PenNameDto?> = _penName.asStateFlow()
+
+        private val _penNameNeeded = MutableStateFlow(false)
+
+        /** The server answered `PEN_NAME_NEEDED`: the screen opens the name screen. */
+        val penNameNeeded: StateFlow<Boolean> = _penNameNeeded.asStateFlow()
+
+        /** "Post as" is offered: a new post of the person's own to a place nearby (not a business's, not a quote). */
+        val offersPostAs: Boolean
+            get() = !isEditing && !isBusinessAuthored && quotedPostId == null && postingTarget?.isPlaceTarget == true
+
+        /** The post type the draft goes out as, which decides whether a made-up name may carry it. */
+        val draftPostType: String get() = effectivePostType()
+
+        /** Where the post would go, for `GET /api/pen-names/check`; null when it isn't going to a place. */
+        val penNameCheckPoint: Pair<Double, Double>?
+            get() {
+                val target = postingTarget?.takeIf { it.isPlaceTarget } ?: return null
+                val lat = target.targetLatitude ?: return null
+                val lng = target.targetLongitude ?: return null
+                return lat to lng
+            }
+
+        /** "Post as" chose the made-up name ([pen]) or the person's own (null). A made-up name goes to people nearby. */
+        fun setPenName(pen: PenNameDto?) {
+            if (isEditing || _penName.value == pen) return
+            _penName.value = pen
+            if (pen != null) {
+                _visibility.value = PulseComposeVisibility.Neighbors
+                // A place tag could name a spot; a made-up-name post floats over its area.
+                _selectedPlaceTag.value = null
+            }
+        }
+
+        private val _penNameRefusal = MutableStateFlow<String?>(null)
+
+        /** The server's sentence for the last made-up-name refusal, shown above the button until the next try. */
+        val penNameRefusal: StateFlow<String?> = _penNameRefusal.asStateFlow()
+
+        fun consumePenNameNeeded() {
+            _penNameNeeded.value = false
+        }
+
+        /** A made-up-name post is words only: an attachment must come off first. */
+        val penNameBlockedByPhotos: Boolean get() = _penName.value != null && _photos.value.isNotEmpty()
 
         /**
          * The quoted card from the post's stored copy (the card it was quoted from) at once, then from its page. A post
@@ -1005,7 +1061,7 @@ class PulseComposeViewModel
             }
 
         val isValid: Boolean
-            get() = activeIntentFields().all { _fields.value[it]?.error == null }
+            get() = activeIntentFields().all { _fields.value[it]?.error == null } && !penNameBlockedByPhotos
 
         val isSubmitting: Boolean
             get() = _state.value is PulseComposeUiState.Submitting
@@ -1222,6 +1278,7 @@ class PulseComposeViewModel
             }
             // A live posting restriction refuses the draft; words the AI suggested wait for "Post this?" once per draft.
             if (isBlockedByPrecheck() || needsAIConfirmation()) return
+            _penNameRefusal.value = null
             _state.value = PulseComposeUiState.Submitting
             // Earlier answers still on their way would only arrive behind the post.
             earlierAnswersJob?.cancel()
@@ -1589,8 +1646,14 @@ class PulseComposeViewModel
                     )
                 }
                 is NetworkResult.Failure -> {
+                    // A made-up-name refusal's sentence shows as it is; PEN_NAME_NEEDED opens the name screen.
+                    val refusal = PenNameRefusal.from(result.error)
+                    if (refusal?.code == PenNameRefusal.NEEDED) _penNameNeeded.value = true
+                    _penNameRefusal.value = refusal?.message
                     val message =
-                        if (request.quotedPostId != null && result.error == NetworkError.NotFound) {
+                        if (refusal != null) {
+                            refusal.message
+                        } else if (request.quotedPostId != null && result.error == NetworkError.NotFound) {
                             // 404 QUOTED_POST_UNAVAILABLE: the quoted post went away while this was being written.
                             _quotedPost.value = PulseQuotedCard.Unavailable
                             PulsePostCopy.QUOTED_GONE
@@ -1632,7 +1695,8 @@ class PulseComposeViewModel
                     )
                 }
                 is NetworkResult.Failure -> {
-                    val message = result.error.message.ifBlank { "Couldn't save. Try again." }
+                    val message =
+                        PenNameRefusal.from(result.error)?.message ?: result.error.message.ifBlank { "Couldn't save. Try again." }
                     _state.value = PulseComposeUiState.Error(message)
                     _toast.value = PulseComposeToast(message, isError = true)
                     Analytics.track(
@@ -1672,6 +1736,12 @@ class PulseComposeViewModel
         /** Seed every field + selector from the saved post + rebaseline. */
         @Suppress("CyclomaticComplexMethod", "LongMethod")
         private fun applyPrefill(post: PostDetailDto) {
+            // Editing a made-up-name post changes its words only; the composer keeps its name's look.
+            _penName.value =
+                post.penNameId?.let { id ->
+                    val author = post.author ?: post.creator
+                    PenNameDto(id = id, name = author?.displayName.orEmpty(), avatarUrl = author?.avatarUrl)
+                }
             composePurpose = PulseComposePurpose.entries.firstOrNull { it.postType == post.postType }
             val intent = composePurpose?.legacyIntent ?: PulseComposeIntent.fromFeedIntent(PulseIntent.fromPostType(post.postType))
             if (composePurpose == PulseComposePurpose.HeadsUp) {
@@ -2008,7 +2078,35 @@ class PulseComposeViewModel
                     }
                 }
             // "Repost with your words": the post it quotes (a new post only; [quotedPostId] is null on an edit).
-            return withMediaLocations(applyPlaceTag(mergeTargetContext(base))).copy(quotedPostId = quotedPostId)
+            val request = withMediaLocations(applyPlaceTag(mergeTargetContext(base))).copy(quotedPostId = quotedPostId)
+            return underPenName(request)
+        }
+
+        /**
+         * A post under the made-up name (contract "Writing"): `postAs: "pen_name"`, people nearby, a place's point, and
+         * nothing that could say who or where the writer is: no home, no business, no place tag, no attachments' places,
+         * no quote. The server floats it over its area.
+         */
+        private fun underPenName(request: PostCreateRequest): PostCreateRequest {
+            if (_penName.value == null) return request
+            return request.copy(
+                postAs = PEN_NAME_POST_AS,
+                visibility = PulseComposeVisibility.Neighbors.key,
+                audience = "nearby",
+                homeId = null,
+                businessId = null,
+                locationName = null,
+                locationAddress = null,
+                geocodeProvider = null,
+                geocodeAccuracy = null,
+                geocodePlaceId = null,
+                mediaLocations = null,
+                mediaUrls = null,
+                quotedPostId = null,
+                crossPostToConnections = null,
+                showOnProfile = null,
+                profileVisibilityScope = null,
+            )
         }
 
         /** A Place post carries where its attachments were taken: evidence that the author was there, like the GPS fix. */
@@ -2159,6 +2257,9 @@ class PulseComposeViewModel
             "%04d-%02d-%02d %02d:%02d".format(value.year, value.monthValue, value.dayOfMonth, value.hour, value.minute)
 
         companion object {
+            /** `postAs` for a post under the person's made-up name. */
+            const val PEN_NAME_POST_AS = "pen_name"
+
             const val INTENT_KEY = "intent"
             const val POST_ID_KEY = "postId"
 

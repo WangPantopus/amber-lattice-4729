@@ -18,6 +18,7 @@ import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.api.net.refusesStoredCopy
 import app.pantopus.android.data.auth.AuthRepository
+import app.pantopus.android.data.pennames.PenNameRefusal
 import app.pantopus.android.data.posts.MatchedBusinessesRepository
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.posts.PulsePostsRefreshNotifier
@@ -26,11 +27,13 @@ import app.pantopus.android.data.store.StoreKind
 import app.pantopus.android.ui.components.IdentityPillar
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.screens.feed.pulse.PostStatus
+import app.pantopus.android.ui.screens.feed.pulse.PulseMadeUpAuthor
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
 import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedCard
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastActionFor
 import app.pantopus.android.ui.screens.feed.pulse.pulseQuotedCard
+import app.pantopus.android.ui.screens.pennames.PenNameVoice
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.PostCommentRow
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.PostReactionCounts
@@ -79,7 +82,35 @@ data class PulsePostDetailContent(
     val status: PostStatus? = null,
     /** "Repost with your words": the quoted post's compact card under the text and media; null on an ordinary post. */
     val quoted: PulseQuotedCard? = null,
+    /** Written under a made-up name: its name opens the small card, never a profile. Null on every other post. */
+    val madeUp: PulseMadeUpAuthor? = null,
+    /**
+     * The voice the signed-in person already has in this conversation (one voice per conversation): the made-up name
+     * when they wrote the post or a reply under it, their own name when they wrote either under it; null when they
+     * haven't written here yet.
+     */
+    val replyVoice: PenNameVoice? = null,
 )
+
+/**
+ * The voice [viewerId] already has in a conversation, from the thread as loaded (contract "One voice per
+ * conversation"): a row with `viewer_is_author` (and `made_up_name`) is the made-up voice; a row whose `user_id` is the
+ * viewer's with no `made_up_name` is the named one.
+ */
+internal fun conversationVoice(
+    post: PostDetailDto,
+    viewerId: String?,
+): PenNameVoice? {
+    val me = viewerId?.takeIf { it.isNotEmpty() }
+    return when {
+        post.isMadeUp && post.viewerIsAuthor == true -> PenNameVoice.MadeUp
+        post.comments.any { it.isMadeUp && it.viewerIsAuthor == true } -> PenNameVoice.MadeUp
+        me == null -> null
+        !post.isMadeUp && post.userId == me -> PenNameVoice.Own
+        post.comments.any { !it.isMadeUp && it.userId == me } -> PenNameVoice.Own
+        else -> null
+    }
+}
 
 /** Observed UI state for the Pulse post detail screen. */
 sealed interface PulsePostDetailUiState {
@@ -90,6 +121,9 @@ sealed interface PulsePostDetailUiState {
     /** [retryable] is false when the post is gone or hidden (Try again can't help). */
     data class Error(val message: String, val retryable: Boolean = true) : PulsePostDetailUiState
 }
+
+/** `postAs` for a reply under the person's made-up name. */
+private const val PEN_NAME_POST_AS = "pen_name"
 
 internal const val POST_REPORT_SUBMITTED_TOAST = "Report submitted"
 internal const val ASK_KEPT_OPEN_TOAST = "Kept open for 7 more days."
@@ -709,14 +743,32 @@ class PulsePostDetailViewModel
             }
         }
 
+        /** The reply box's "Post as" chose the made-up name. */
+        private var replyUnderPenName = false
+
+        private val _penNameNeeded = MutableStateFlow(false)
+
+        /** The server answered `PEN_NAME_NEEDED`: the screen opens the name screen. */
+        val penNameNeeded: StateFlow<Boolean> = _penNameNeeded.asStateFlow()
+
+        /** "Post as" in the reply box: the reply goes out under the made-up name ([on]) or the person's own. */
+        fun setReplyUnderPenName(on: Boolean) {
+            replyUnderPenName = on
+        }
+
+        fun consumePenNameNeeded() {
+            _penNameNeeded.value = false
+        }
+
         /** Submit the composer's current text — threaded under the reply target when set. */
         fun sendComment() {
             val body = _composerText.value.trim()
             if (body.isEmpty() || _isSendingComment.value) return
             val parentId = _replyTarget.value?.commentId
+            val postAs = PEN_NAME_POST_AS.takeIf { replyUnderPenName }
             val req =
-                pendingComment?.takeIf { it.comment == body && it.parentCommentId == parentId }
-                    ?: PostCommentRequest(body, parentId, java.util.UUID.randomUUID().toString())
+                pendingComment?.takeIf { it.comment == body && it.parentCommentId == parentId && it.postAs == postAs }
+                    ?: PostCommentRequest(body, parentId, java.util.UUID.randomUUID().toString(), postAs = postAs)
             pendingComment = req
             val submittedRevision = composerRevision
             _isSendingComment.value = true
@@ -731,7 +783,10 @@ class PulsePostDetailViewModel
                         fetch(force = true)
                     }
                     is NetworkResult.Failure -> {
-                        _toastMessage.value = result.error.displayMessage("Couldn't post your comment. Try again.")
+                        // A made-up-name refusal's sentence shows as it is; PEN_NAME_NEEDED opens the name screen.
+                        val refusal = PenNameRefusal.from(result.error)
+                        if (refusal?.code == PenNameRefusal.NEEDED) _penNameNeeded.value = true
+                        _toastMessage.value = refusal?.message ?: result.error.displayMessage("Couldn't post your comment. Try again.")
                     }
                 }
                 _isSendingComment.value = false
@@ -813,10 +868,23 @@ class PulsePostDetailViewModel
         private fun rebuildContent(post: PostDetailDto): PulsePostDetailContent {
             val (rows, hidden) = buildCommentRows(post.comments)
             val identity = mapAccountType(post.creator?.accountType)
+            // A made-up name's post: its name and drawn picture (the identity projection), and the writer's "(you)".
+            val madeUp =
+                post.penNameId?.let { id ->
+                    val badges = post.author?.badges
+                    PulseMadeUpAuthor(
+                        penNameId = id,
+                        isYou = post.viewerIsAuthor == true || post.author?.isYou == true,
+                        verifiedHome = badges == null || "verified_home" in badges,
+                    )
+                }
+            val author = if (madeUp != null) post.author ?: post.creator else post.creator
             return PulsePostDetailContent(
                 post = post,
-                authorDisplayName = post.creator?.displayName ?: "Pantopus user",
-                authorAvatarUrl = post.creator?.avatarUrl ?: post.creator?.profilePictureUrl,
+                madeUp = madeUp,
+                replyVoice = conversationVoice(post, signedInUserId),
+                authorDisplayName = author?.displayName ?: "Pantopus user",
+                authorAvatarUrl = author?.avatarUrl ?: author?.profilePictureUrl,
                 authorIdentity = identity,
                 // TODO(backend): backend `CREATOR_SELECT` for posts does
                 // not include the `verified` column today, so the post
@@ -927,6 +995,8 @@ class PulsePostDetailViewModel
                 indentLevel = indent,
                 authorUserId = comment.author?.id?.takeIf { it.isNotBlank() },
                 isOwn = comment.userId != null && comment.userId == signedInUserId,
+                isMadeUp = comment.isMadeUp,
+                isMadeUpByYou = comment.isMadeUp && (comment.viewerIsAuthor == true || comment.author?.isYou == true),
             )
 
         private fun formatTimeAndLocality(

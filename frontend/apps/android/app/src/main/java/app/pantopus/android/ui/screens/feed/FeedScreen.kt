@@ -126,6 +126,7 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseSportsStarterRow
 import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
 import app.pantopus.android.ui.screens.feed.pulse.PulseTopicChipRow
 import app.pantopus.android.ui.screens.feed.pulse.toastButton
+import app.pantopus.android.ui.screens.pennames.PenNameChoiceViewModel
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.feed.FeedChipItem
 import app.pantopus.android.ui.screens.shared.feed.FeedChipRow
@@ -192,6 +193,9 @@ fun FeedScreen(
 ) {
     val context = LocalContext.current
     app.pantopus.android.ui.components.RefreshOnStoreChange(viewModel::load)
+    // Made-up names: read the person's made-up name while Pulse shows, so the first composer opens in its final shape.
+    val penNamePrefetch: PenNameChoiceViewModel = hiltViewModel(key = "penNamePrefetch")
+    LaunchedEffect(Unit) { penNamePrefetch.prefetch() }
     val newPostCount by viewModel.newPostCount.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     // The bar's Pulse tab (the side menu marks it), for the guidance cards: card 5 and pointers 13 and 14.
@@ -584,6 +588,7 @@ fun FeedScreen(
                                         onToggleRepost = viewModel::openRepostChooser,
                                         onOpenAuthor = onOpenAuthor,
                                         onChooseReaction = viewModel::chooseReaction,
+                                        onReport = viewModel::beginReport,
                                     ),
                             )
                         is PulseFeedUiState.Error ->
@@ -874,6 +879,8 @@ internal data class PulseFeedRowActions(
     val onOpenAuthor: ((PulseAuthorLink) -> Unit)? = null,
     /** The emoji picked in a card's reaction picker, with the post's id. */
     val onChooseReaction: (String, PostReactionEmoji) -> Unit = { _, _ -> },
+    /** Report post, from a made-up name's small card, with the post's id. */
+    val onReport: (String) -> Unit = {},
 )
 
 /**
@@ -1804,5 +1811,6 @@ private fun FeedPostRow(
         onOpenAuthor = row.authorLink?.let { link -> rowActions.onOpenAuthor?.let { open -> { open(link) } } },
         // The quoted card opens the original's page, as a tap on its own card would.
         onOpenQuoted = onTapPost,
+        onReport = if (seeded || row.actions.isOwner) null else ({ rowActions.onReport(row.id) }),
     )
 }
