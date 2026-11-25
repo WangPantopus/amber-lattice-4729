@@ -396,7 +396,10 @@ async function readPosts(ids, viewerId) {
   if (failed) throw failed.error;
   const shown = answers.flatMap((answer) => answer.data || []).map((row) => normalizeFeedPostRow(row))
     .filter((post) => !filters || (!filters.hiddenPostIds.has(post.id) && !filters.blockedUserIds.has(post.user_id)));
-  const hiddenPeople = new Set([...(filters?.blockedUserIds || []), ...(filters?.mutedUserIds || [])]);
+  // People this viewer blocked or muted, and the made-up names they did (services/penName): a reply under a made-up
+  // name is keyed by that name, never by the account it is stored under.
+  const hiddenPeople = new Set([...(filters?.blockedUserIds || []), ...(filters?.mutedUserIds || []),
+    ...(filters?.hiddenPenNameIds || [])]);
   const [posts, talk] = await Promise.all([
     enrichFeedPosts(shown, viewerId),
     // A card without its preview is still the card.
