@@ -16,19 +16,19 @@ import SwiftUI
 /// face for every number of people in each group).
 private enum CircleGeometry {
     static let width: CGFloat = 360
-    static let height: CGFloat = 560
-    static let centre = CGPoint(x: 180, y: 270)
+    static let height: CGFloat = 596
+    static let centre = CGPoint(x: 180, y: 282)
     static let centreRadius: CGFloat = 34
     static let radius: CGFloat = 24
-    /// Room for a two-line name and two lines of words at the largest size the drawing is used at.
-    static let labelHeight: CGFloat = 68
-    static let topY: CGFloat = 124
-    static let bottomY: CGFloat = 456
+    /// Room for a two-line name, what they did and the ink's word at the largest size the drawing is used at.
+    static let labelHeight: CGFloat = 80
+    static let topY: CGFloat = 136
+    static let bottomY: CGFloat = 480
     /// Where a line to the row below bends: under the words of the people beside the person.
-    static let turnY: CGFloat = 372
+    static let turnY: CGFloat = 396
     /// Beside: the nearer place on the left, the nearer on the right, then the farther ones.
     static let besideXs: [CGFloat] = [110, 250, 36, 324]
-    static let titleYs: [String: CGFloat] = ["taught_or_led": 6, "works_beside": 190, "learned_from": 374]
+    static let titleYs: [String: CGFloat] = ["taught_or_led": 6, "works_beside": 202, "learned_from": 398]
 
     static func rowXs(_ count: Int) -> [CGFloat] {
         switch count {
