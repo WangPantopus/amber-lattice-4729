@@ -170,7 +170,7 @@ function floodEnvelope(flood) {
     data: {
       zone: flood.flood_zone,
       zone_label: `Zone ${flood.flood_zone}`,
-      risk_level: placeIntelligenceService.floodRiskLevel(flood.flood_zone),
+      risk_level: placeIntelligenceService.floodRiskLevel(flood.flood_zone, flood.flood_zone_subtype),
       in_sfha: inSfha,
       insurance_required: inSfha,
       plain_meaning: flood.flood_zone_description || '',
@@ -299,12 +299,14 @@ const AHA_BUILDERS = {
   },
   flood(d) {
     const level = d.risk_level;
-    const score = level === 'high' ? 95 : level === 'moderate' ? 65 : 6;
+    const score = level === 'high' ? 95 : level === 'moderate' ? 65 : level === 'undetermined' ? 50 : 6;
     const headline = level === 'high'
       ? 'This address sits in a FEMA high-risk flood zone'
       : level === 'moderate'
         ? 'This address sits in a moderate flood-risk zone'
-        : 'Minimal flood risk on FEMA\'s map';
+        : level === 'undetermined'
+          ? 'FEMA hasn\'t determined the flood risk here'
+          : 'Minimal flood risk on FEMA\'s map';
     return {
       score,
       grade: d.zone_label || (d.zone ? `Zone ${d.zone}` : null),
@@ -716,7 +718,7 @@ function glanceRows(sections, point = null) {
     }, score);
   });
   with_('flood', (d, score) => {
-    const value = { high: 'High-risk zone', moderate: 'Moderate', minimal: 'Minimal' }[d.risk_level];
+    const value = { high: 'High-risk zone', moderate: 'Moderate', minimal: 'Minimal', undetermined: 'Not determined' }[d.risk_level];
     if (value) add('flood', 'Flood', 'flood', { value, tone: toneOf(score, d.risk_level === 'minimal') }, score);
   });
   with_('seismic', (d, score) => {

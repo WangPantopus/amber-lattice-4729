@@ -41,6 +41,40 @@ const FLOOD_ZONE_DESC = {
   D: 'Undetermined flood risk',
 };
 
+// FEMA's ZONE_SUBTY for Zone X: the shaded X of the flood map (between the 1% and 0.2% annual chance floods, or behind
+// a levee) is moderate risk; only "AREA OF MINIMAL FLOOD HAZARD" (unshaded X) is minimal.
+const MODERATE_SUBTYPE = /0\.2\s*PCT|1 PCT|LEVEE/i;
+const FLOODWAY_SUBTYPE = /FLOODWAY/i;
+
+/** The point's zones from FEMA's features: `{ zone, subtype }`, without "AREA NOT INCLUDED" (a place FEMA hasn't mapped). */
+function mappedZones(features) {
+  return (Array.isArray(features) ? features : []).map((feature) => {
+    const zone = String(feature?.attributes?.FLD_ZONE || '').trim();
+    const subtype = String(feature?.attributes?.ZONE_SUBTY || '').trim();
+    return { zone, subtype: subtype && subtype !== '<Null>' ? subtype : null };
+  }).filter(({ zone }) => zone && zone.toUpperCase() !== 'AREA NOT INCLUDED');
+}
+
+function zoneWeight({ zone, subtype }) {
+  const z = zone.toUpperCase();
+  if (z.startsWith('V')) return 6;
+  if (z.startsWith('A')) return FLOODWAY_SUBTYPE.test(subtype || '') ? 5.5 : 5;
+  if (MODERATE_SUBTYPE.test(subtype || '') || /^(B|X500|SHADED X)$/.test(z)) return 3;
+  if (z === 'D') return 2;
+  return 1;
+}
+
+function zoneDescription(zone, subtype) {
+  const z = zone.toUpperCase();
+  if ((z.startsWith('A') || z.startsWith('V')) && FLOODWAY_SUBTYPE.test(subtype || '')) {
+    return 'High-risk flood area: the floodway, where floodwater runs';
+  }
+  if (z === 'X' && /LEVEE/i.test(subtype || '')) return 'Moderate flood risk: a levee lowers the risk here';
+  if (z === 'X' && MODERATE_SUBTYPE.test(subtype || '')) return 'Moderate flood risk: inside the 0.2% annual chance (500-year) floodplain';
+  if (z === 'OPEN WATER') return 'Open water on FEMA\'s flood map';
+  return FLOOD_ZONE_DESC[z] || 'Unknown flood zone';
+}
+
 // ── Fetch helpers ────────────────────────────────────────────────────────
 
 /**
@@ -373,13 +407,15 @@ async function fetchFloodZone(lat, lng, { throwOnFailure = false } = {}) {
         return body;
       },
     });
-    const features = data?.features;
-    if (!features || features.length === 0) return null;
+    const mapped = mappedZones(data?.features);
+    if (!mapped.length) return null;
 
-    const zone = features[0].attributes?.FLD_ZONE || null;
+    // Where shapes meet (a floodway inside its floodplain, a zone's edge), the one that says most about the risk.
+    const { zone, subtype } = mapped.sort((a, b) => zoneWeight(b) - zoneWeight(a))[0];
     return {
       flood_zone: zone,
-      flood_zone_description: FLOOD_ZONE_DESC[zone] || 'Unknown flood zone',
+      flood_zone_subtype: subtype,
+      flood_zone_description: zoneDescription(zone, subtype),
       fetched_at: fetchedAt || null,
     };
   } catch (err) {

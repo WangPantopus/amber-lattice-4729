@@ -156,6 +156,7 @@ async function forAddress(place, { flood, signedIn = false, saved = false }) {
       above,
       open.factsBlock(copy),
       open.metersBlock(read),
+      open.servesBlock(read, copy),
       ...open.lookupClosed(open.closedItems(copy, { ...extras, years, ground: under }), {
         countyOpen,
         // No Home yet, so no id: each app opens Add Home at the looked-up address when signed in, and the lookup's own
@@ -185,6 +186,7 @@ async function forAddress(place, { flood, signedIn = false, saved = false }) {
     ground.groundBlock(under, { title: 'Ground under the home' }),
     countyOpen ? lotBlock(copy) : null,
     open.metersBlock(read),
+    open.servesBlock(read, copy),
     ...open.buyerClosed(open.closedItems(copy, { ...extras, ground: under }), { countyOpen }),
   ], buyerActions(place, { saved }));
 }
@@ -264,7 +266,7 @@ const pointOf = (row) => {
   return row.map_center_lat != null && row.map_center_lng != null && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 };
 
-const noReadings = { flood: null, seismic: null, wildfire: null, air: null, nri: null, water: null, noise: null };
+const noReadings = { flood: null, seismic: null, wildfire: null, air: null, nri: null, water: null, noise: null, school: null, electric: null };
 
 /** The Home's copy of its county record, as its other screens get it (a lookup kept on the Home when it has none yet). */
 async function copyForHome(row) {
@@ -307,7 +309,7 @@ async function forHome({ homeId, userId, flood }) {
       const row = await readRow(homeId);
       const { copy, read, extras, above } = await openFor(row, flood, { owner: true });
       const place = subtitleOf(row);
-      const blocks = await ownerBlocks({ row, copy, extras, above, open: [open.factsBlock(copy), open.metersBlock(read)] });
+      const blocks = await ownerBlocks({ row, copy, extras, above, open: [open.factsBlock(copy), open.metersBlock(read), open.servesBlock(read, copy)] });
       return answer('owner', header(row, { tone: 'success', text: 'Confirmed owner' }, place ? `${place} · everything in its record` : null), blocks);
     });
   }
@@ -318,6 +320,7 @@ async function forHome({ homeId, userId, flood }) {
     above,
     open.factsBlock(copy),
     open.metersBlock(read),
+    open.servesBlock(read, copy),
     ...open.memberClosed(open.closedItems(copy, extras), steps),
   ]);
 }
