@@ -171,7 +171,9 @@ fun PublicProfileScreen(
     val sourcesMonth by viewModel.sources.month.collectAsStateWithLifecycle()
     val sourcesPiece by viewModel.sources.piece.collectAsStateWithLifecycle()
     val sourcesPreview by viewModel.sources.preview.collectAsStateWithLifecycle()
-    var sourcesTab by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourcesTab by rememberSaveable {
+        mutableStateOf(viewModel.initialTab?.takeIf { it in KNOWN_SOURCES_TABS })
+    }
     var sourcesPreviewAudience by remember { mutableStateOf<PreviewAudience?>(null) }
     var showSourcesShare by rememberSaveable { mutableStateOf(false) }
     var showPersonPosts by rememberSaveable { mutableStateOf(false) }
@@ -235,8 +237,14 @@ fun PublicProfileScreen(
     BackHandler(enabled = preview != null) { viewModel.endPreview() }
     // The profile with sources: Back closes the person's posts, ends a preview, then returns from Work or Record to
     // the first tab before it leaves the page.
-    val sourcesFirstTab = (sourcesState as? ProfileSourcesState.Ready)?.page?.tabs?.firstOrNull()?.key
-    BackHandler(enabled = sourcesTab != null && sourcesTab != sourcesFirstTab && !showPersonPosts) { sourcesTab = null }
+    val sourcesTabs = (sourcesState as? ProfileSourcesState.Ready)?.page?.tabs.orEmpty()
+    val sourcesFirstTab = sourcesTabs.firstOrNull()?.key
+    val isOwnerWorkTab = sourcesTab == "work" && (state as? PublicProfileUiState.Loaded)?.content?.isOwner == true
+    val isOnNonFirstSourcesTab =
+        sourcesTab != null &&
+            sourcesTab != sourcesFirstTab &&
+            (sourcesTabs.any { it.key == sourcesTab } || isOwnerWorkTab)
+    BackHandler(enabled = isOnNonFirstSourcesTab && !showPersonPosts) { sourcesTab = null }
     BackHandler(enabled = sourcesPreviewAudience != null) {
         sourcesPreviewAudience = null
         sourcesTab = null
@@ -1492,3 +1500,5 @@ internal fun ErrorLayout(
         )
     }
 }
+
+private val KNOWN_SOURCES_TABS = setOf("person", "work", "record")

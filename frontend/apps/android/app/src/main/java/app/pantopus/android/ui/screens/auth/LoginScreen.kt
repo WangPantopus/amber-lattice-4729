@@ -933,7 +933,11 @@ fun AuthTrustFooter() {
 @Composable
 private fun LoginWaitingLinkNote() {
     val parked by DeepLinkRouter.parkedArrivals.collectAsStateWithLifecycle()
-    val text = remember(parked) { waitingLinkLine(PendingDeepLinkStore.peek()) } ?: return
+    var text by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(parked) {
+        text = waitingLinkLine(PendingDeepLinkStore.peekAsync())
+    }
+    val line = text ?: return
     Row(
         modifier =
             Modifier
@@ -951,7 +955,7 @@ private fun LoginWaitingLinkNote() {
             size = Radii.xl,
             tint = PantopusColors.primary600,
         )
-        Text(text = text, style = PantopusTextStyle.small, color = PantopusColors.appText)
+        Text(text = line, style = PantopusTextStyle.small, color = PantopusColors.appText)
     }
     Box(modifier = Modifier.height(Spacing.s3))
 }

@@ -54,6 +54,9 @@ import javax.inject.Inject
 /** Nav-arg key for the user ID. */
 const val PUBLIC_PROFILE_USER_ID_KEY = "userId"
 
+/** Optional nav-arg key for `?tab=` (e.g. `work` from `/u/:id?tab=work`). */
+const val PUBLIC_PROFILE_TAB_KEY = "tab"
+
 /**
  * P6.5 — Profile-kind discriminator that swaps the chrome between the
  * Persona (creator) and Local (verified neighbor) variants. Persona is
@@ -322,9 +325,24 @@ class PublicProfileViewModel
         private val _selectedNeighborTab = MutableStateFlow(NeighborProfileTab.About)
         val selectedNeighborTab: StateFlow<NeighborProfileTab> = _selectedNeighborTab.asStateFlow()
 
+        /** Optional initial tab requested by a deep link (e.g. `?tab=work`). */
+        val initialTab: String? =
+            savedStateHandle
+                .get<String>(PUBLIC_PROFILE_TAB_KEY)
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf(String::isNotBlank)
+
         // A21.2 — selected tab on the Local Beacon profile archetype
-        // (Posts · About). Switching is local; no refetch.
-        private val _selectedLocalTab = MutableStateFlow(LocalProfileTab.Posts)
+        // (Posts · About · Work). Switching is local; no refetch.
+        private val _selectedLocalTab =
+            MutableStateFlow(
+                when (initialTab) {
+                    "work" -> LocalProfileTab.Work
+                    "about" -> LocalProfileTab.About
+                    else -> LocalProfileTab.Posts
+                },
+            )
         val selectedLocalTab: StateFlow<LocalProfileTab> = _selectedLocalTab.asStateFlow()
 
         private val _toastMessage = MutableStateFlow<String?>(null)

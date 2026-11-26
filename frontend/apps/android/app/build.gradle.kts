@@ -43,6 +43,7 @@ val apiBaseUrl = envOr("PANTOPUS_API_BASE_URL", "http://10.0.2.2:8000")
 val socketUrl = envOr("PANTOPUS_SOCKET_URL", "http://10.0.2.2:8000")
 val stripeKey = envOr("STRIPE_PUBLISHABLE_KEY", "pk_test_REPLACE_ME")
 val sentryDsn = envOr("SENTRY_DSN", "")
+val mapsApiKey = envOr("MAPS_API_KEY", "")
 // PANTOPUS_ENV tags Sentry + tunes trace sampling. Debug defaults to `local`,
 // release to `production`; an explicit value (e.g. `staging`) overrides both.
 val pantopusEnvDebug = envOr("PANTOPUS_ENV", "local")
@@ -113,7 +114,7 @@ android {
 
         // Google Maps API key — read from gradle.properties, ~/.gradle/gradle.properties,
         // or the env. Never hard-code a real key here.
-        manifestPlaceholders["MAPS_API_KEY"] = envOr("MAPS_API_KEY", "")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     // Release signing: read from .env / ~/.gradle/gradle.properties / env vars.
@@ -298,11 +299,32 @@ if (buildingRelease) {
                     "set PANTOPUS_ALLOW_TEST_PAYMENTS=true to ship Stripe test mode (decision D4)"
             }
     }
+    val googleServicesFile = file("src/release/google-services.json").takeIf { it.isFile } ?: file("google-services.json")
+    val googleServicesText = if (googleServicesFile.isFile) googleServicesFile.readText() else ""
+    if (!googleServicesFile.isFile ||
+        googleServicesText.contains("pantopus-placeholder") ||
+        googleServicesText.contains("000000000000")
+    ) {
+        problems +=
+            "google-services.json (${googleServicesFile.relativeTo(projectDir)}) is missing or still a placeholder; " +
+            "supply a real Firebase config at app/src/release/google-services.json"
+    }
+    if (mapsApiKey.isBlank()) {
+        problems += "MAPS_API_KEY must be set for release builds"
+    }
+    val injectedStoreFile = (project.findProperty("android.injected.signing.store.file") as? String)?.trim().orEmpty()
+    val hasInjectedSigning = injectedStoreFile.isNotEmpty() && file(injectedStoreFile).isFile
+    val hasReleaseSigning = android.signingConfigs.findByName("release") != null || hasInjectedSigning
+    if (!hasReleaseSigning) {
+        problems +=
+            "Release signing is falling back to the debug keystore; " +
+            "supply PANTOPUS_KEYSTORE_FILE or android.injected.signing.store.file"
+    }
     if (problems.isNotEmpty()) {
         val detail = problems.joinToString("\n  - ", prefix = "\n  - ")
         val message =
             "Release build is using non-production config:$detail" +
-                "\nSupply PANTOPUS_API_BASE_URL / STRIPE_PUBLISHABLE_KEY via .env or CI secrets."
+                "\nSupply production values via .env, app/src/release/google-services.json, or CI secrets."
         if (requireProdConfig) {
             throw GradleException(message)
         } else {

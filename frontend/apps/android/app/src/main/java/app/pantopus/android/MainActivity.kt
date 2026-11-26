@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.core.routing.InstallReferrerLink
+import app.pantopus.android.core.routing.PendingDeepLinkStore
 import app.pantopus.android.core.routing.WebLinkFallback
 import app.pantopus.android.core.security.AppLockManager
 import app.pantopus.android.core.security.SecureWindowController
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -215,7 +217,7 @@ class MainActivity : FragmentActivity() {
         // for the on-screen conversation is skipped only while visible.
         activeChatThread.isForeground = true
         chatOutbox.foregrounded()
-        socketManager.reconnectNow()
+        socketManager.foregrounded()
         pilotEvents.enterForeground()
         appLockManager.appDidBecomeActive()
         storeSync.foregrounded()
@@ -233,6 +235,7 @@ class MainActivity : FragmentActivity() {
         // lock the app in the user's hands on every rotation.
         appLockManager.appDidEnterBackground(isConfigurationChange = isChangingConfigurations)
         if (!isChangingConfigurations) {
+            socketManager.backgrounded()
             pilotEvents.enterBackground()
             guidance.backgrounded()
             storeSync.backgrounded()
@@ -269,9 +272,12 @@ class MainActivity : FragmentActivity() {
         val destination = DeepLinkRouter.resolve(uri) as? DeepLinkRouter.Destination.HomeTask
         if (recipient == null || session == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return true
         if (destination == null || !destination.openDueDateEdit) return true
-        // Existing encrypted pending-route storage binds the cold login replay.
-        DeepLinkRouter.handle(uri.toString(), expectedUserId = recipient)
+        // Existing encrypted pending-route storage binds the cold login replay (off Main thread).
         intent.removeExtra(ReminderActionReceiver.ACTION)
+        val linkText = uri.toString()
+        lifecycleScope.launch(PendingDeepLinkStore.ioDispatcher) {
+            DeepLinkRouter.handle(linkText, expectedUserId = recipient)
+        }
         lifecycleScope.launch {
             val hydrated = authRepository.state.first { it != AuthRepository.State.Unknown }
             if ((hydrated as? AuthRepository.State.SignedIn)?.user?.id != recipient) return@launch
@@ -307,7 +313,11 @@ class MainActivity : FragmentActivity() {
         val handled =
             forwardWebOnlyLink(intent, uri) || forwardOpenLink(intent, uri) ||
                 forwardReminderAction(intent, uri) || forwardAccountScopedPush(intent, uri)
-        if (!handled) DeepLinkRouter.handle(uri)
+        if (!handled) {
+            lifecycleScope.launch(PendingDeepLinkStore.ioDispatcher) {
+                DeepLinkRouter.handle(uri)
+            }
+        }
     }
 
     /**
@@ -337,7 +347,8 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             val state = authRepository.state.first { it != AuthRepository.State.Unknown }
             when {
-                state is AuthRepository.State.SignedIn -> DeepLinkRouter.handle(uri)
+                state is AuthRepository.State.SignedIn ->
+                    withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle(uri) }
                 !fromHistory -> WebLinkFallback.open(this@MainActivity, uri)
             }
         }
@@ -351,7 +362,10 @@ class MainActivity : FragmentActivity() {
     ): Boolean {
         val recipient = intent.getStringExtra(ASSISTANT_RECIPIENT) ?: return false
         intent.removeExtra(ASSISTANT_RECIPIENT)
-        DeepLinkRouter.handle(uri.toString(), expectedUserId = recipient)
+        val linkText = uri.toString()
+        lifecycleScope.launch(PendingDeepLinkStore.ioDispatcher) {
+            DeepLinkRouter.handle(linkText, expectedUserId = recipient)
+        }
         return true
     }
 

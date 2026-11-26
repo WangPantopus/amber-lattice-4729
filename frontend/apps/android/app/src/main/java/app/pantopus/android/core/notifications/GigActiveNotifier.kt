@@ -73,7 +73,7 @@ class GigActiveNotifierImpl
             val built =
                 NotificationCompat
                     .Builder(appContext, CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setColor(category.color.toArgb())
                     .setContentTitle(notification.title)
                     .setContentText(notification.phaseLine)

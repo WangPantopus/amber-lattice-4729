@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome white-on-transparent Pantopus perforation mark for Android
+     status-bar notifications (matches PantopusMark 64-unit design grid). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M17,4 H19 A4.5,4.5 0 0,0 28,4 H36 A4.5,4.5 0 0,0 45,4 H47 A13,13 0 0,1 60,17 V19 A4.5,4.5 0 0,0 60,28 V36 A4.5,4.5 0 0,0 60,45 V47 A13,13 0 0,1 47,60 H45 A4.5,4.5 0 0,0 36,60 H28 A4.5,4.5 0 0,0 19,60 H17 A13,13 0 0,1 4,47 V45 A4.5,4.5 0 0,0 4,36 V28 A4.5,4.5 0 0,0 4,19 V17 A13,13 0 0,1 17,4 Z M24,20 H40 A4,4 0 0,1 44,24 V40 A4,4 0 0,1 40,44 H24 A4,4 0 0,1 20,40 V24 A4,4 0 0,1 24,20 Z" />
+    <path
+        android:pathData="M26,32.4 L30.2,36.6 L38.2,26.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="4.4" />
+</vector>

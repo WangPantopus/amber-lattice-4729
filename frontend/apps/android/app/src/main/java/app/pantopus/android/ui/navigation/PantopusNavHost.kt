@@ -39,6 +39,7 @@ import app.pantopus.android.ui.screens.profile.NamePromptHost
 import app.pantopus.android.ui.screens.root.ProvideScrollAwayHeaders
 import app.pantopus.android.ui.screens.root.RootTabScreen
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlinx.coroutines.withContext
 
 /** Mirrors iOS `auth.welcomeBackToast`; present only while the toast is up. */
 const val WELCOME_BACK_TOAST_TAG = "auth.welcomeBackToast"
@@ -89,17 +90,19 @@ fun PantopusNavHost(viewModel: RootViewModel = hiltViewModel()) {
         val signedIn = authState as? AuthRepository.State.SignedIn
         if (signedIn != null && prev !is AuthRepository.State.SignedIn) {
             DeepLinkRouter.acknowledgeLoginPresentation()
-            val parked = PendingDeepLinkStore.take(userId = signedIn.user.id)
+            val parked = PendingDeepLinkStore.takeAsync(userId = signedIn.user.id)
             if (parked != null) {
-                DeepLinkRouter.handle(parked)
+                withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle(parked) }
             } else if (prev is AuthRepository.State.SignedOut || prev is AuthRepository.State.Resumable) {
                 // Signing in or up (not a session restored at launch) may also open a household invitation emailed
                 // to this address before it had an account, else a plan invitation.
                 val homeInvite = viewModel.unopenedHomeInvite()
                 if (homeInvite != null) {
-                    DeepLinkRouter.handle("/invite/$homeInvite")
+                    withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle("/invite/$homeInvite") }
                 } else {
-                    viewModel.unopenedPlanInvite()?.let { planId -> DeepLinkRouter.handle("/plans/$planId") }
+                    viewModel.unopenedPlanInvite()?.let { planId ->
+                        withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle("/plans/$planId") }
+                    }
                 }
             }
         }

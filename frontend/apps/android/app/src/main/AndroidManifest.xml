@@ -60,9 +60,11 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:manageSpaceActivity="app.pantopus.android.ui.screens.settings.storage.ManageSpaceActivity"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Pantopus"
+        android:usesCleartextTraffic="false"
         tools:targetApi="31">
 
         <meta-data
@@ -165,6 +167,11 @@
         <receiver
             android:name=".push.AssistantActionReceiver"
             android:exported="false" />
+
+        <!-- Default monochrome status-bar icon for system-tray FCM notifications. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
 
         <!-- Google Maps API key -->
         <meta-data

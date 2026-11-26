@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strict release network policy: HTTPS only, including API 26-27 where
+     Android otherwise defaults cleartextTrafficPermitted to true.
+     Debug builds override this resource in src/debug/res/xml/. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

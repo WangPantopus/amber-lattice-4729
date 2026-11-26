@@ -17,7 +17,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import timber.log.Timber
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.ProviderException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -88,6 +93,8 @@ class TokenStorage
         @VisibleForTesting
         internal var prefsOverride: SharedPreferences? = null
 
+        private val prefsLock = Any()
+
         @Volatile
         private var cachedPrefs: SharedPreferences? = null
 
@@ -121,24 +128,23 @@ class TokenStorage
 
         private suspend fun <T> withPrefs(block: (SharedPreferences) -> T): T =
             withContext(Dispatchers.IO) {
-                val prefs = prefsOverride ?: cachedPrefs ?: openEncryptedPrefs().also { cachedPrefs = it }
+                val prefs = prefsOverride ?: openEncryptedPrefs()
                 maybeMigrateLegacy(prefs)
                 block(prefs)
             }
 
         private fun openEncryptedPrefs(): SharedPreferences {
-            val masterKey =
-                MasterKey
-                    .Builder(context)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build()
-            return EncryptedSharedPreferences.create(
-                context,
-                SECURE_PREFS_FILE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            cachedPrefs?.let { return it }
+            return synchronized(prefsLock) {
+                cachedPrefs?.let { return@synchronized it }
+                val opened =
+                    attemptEncryptedPrefs(
+                        open = { createEncryptedPrefs(context) },
+                        onFailure = { firstError -> recoverEncryptedPrefs(context, firstError) },
+                    )
+                cachedPrefs = opened
+                opened
+            }
         }
 
         private suspend fun maybeMigrateLegacy(prefs: SharedPreferences) {
@@ -313,4 +319,65 @@ class TokenStorage
             storedSessionId = null
             _accessTokenFlow.value = null
         }
+    }
+
+private fun createEncryptedPrefs(context: Context): SharedPreferences {
+    val masterKey =
+        MasterKey
+            .Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+    return EncryptedSharedPreferences.create(
+        context,
+        SECURE_PREFS_FILE,
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+}
+
+/**
+ * Recover from Android Keystore / Tink keyset corruption without trapping the
+ * user in a permanent launch crash loop: first wipe only this prefs file
+ * (preserving the shared MasterKey for other stores); if that still fails,
+ * reset the MasterKey alias and retry; if Keystore itself refuses to
+ * initialize, fall back to a volatile in-memory store (signed out, never
+ * plaintext on disk).
+ */
+private fun recoverEncryptedPrefs(
+    context: Context,
+    firstError: Throwable,
+): SharedPreferences {
+    Timber.e(firstError, "secure_auth_tokens open failed; clearing encrypted prefs and retrying")
+    runCatching { context.deleteSharedPreferences(SECURE_PREFS_FILE) }
+    return attemptEncryptedPrefs(open = { createEncryptedPrefs(context) }) { secondError ->
+        Timber.e(secondError, "secure_auth_tokens retry failed; resetting MasterKey alias and retrying")
+        runCatching {
+            KeyStore.getInstance(KeystoreBacking.ANDROID_KEYSTORE).apply {
+                load(null)
+                deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+            }
+        }
+        runCatching { context.deleteSharedPreferences(SECURE_PREFS_FILE) }
+        attemptEncryptedPrefs(open = { createEncryptedPrefs(context) }) { thirdError ->
+            Timber.e(thirdError, "secure_auth_tokens unavailable after Keystore reset; falling back to volatile store")
+            VolatileSharedPreferences()
+        }
+    }
+}
+
+private inline fun attemptEncryptedPrefs(
+    open: () -> SharedPreferences,
+    onFailure: (Throwable) -> SharedPreferences,
+): SharedPreferences =
+    try {
+        open()
+    } catch (e: GeneralSecurityException) {
+        onFailure(e)
+    } catch (e: IOException) {
+        onFailure(e)
+    } catch (e: SecurityException) {
+        onFailure(e)
+    } catch (e: ProviderException) {
+        onFailure(e)
     }
