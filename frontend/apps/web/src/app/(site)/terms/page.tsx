@@ -37,7 +37,7 @@ export default function TermsPage() {
               Plain language, no tricks. Here is what you agree to when you use Pantopus and what we commit to in return.
             </p>
             <p className="text-sm text-app-text-muted dark:text-app-text-secondary">
-              Last updated: February 2026
+              Last updated: November 2026
             </p>
           </div>
         </section>
@@ -95,7 +95,7 @@ export default function TermsPage() {
               <a href="mailto:support@pantopus.com" className="text-rose-600 dark:text-rose-400 underline underline-offset-2 hover:decoration-2">support@pantopus.com</a>.
             </p>
             <p>
-              You may not create accounts on behalf of others, impersonate another person, or use a name that is misleading or deceptive. Pantopus is built on real identity — please treat it that way.
+              You may not create accounts on behalf of others or impersonate another person. Your account uses your own name. You may post in Pulse under a made-up name as described in section 6; it is still you, and these Terms still apply.
             </p>
           </TermsSection>
 
@@ -129,7 +129,22 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="6. Tasks, offers, and payments">
+          <TermsSection title="6. Posting under a made-up name">
+            <p>
+              In Pulse, a person with a verified home may post and reply under one made-up name. Others see the name and that the writer has a verified home nearby, not who you are.
+            </p>
+            <TermsList items={[
+              "Pantopus knows it's you. Every made-up name belongs to one account, and we keep a private record of who wrote each post and reply under it.",
+              'These Terms apply in full. You may not use a made-up name to harass, threaten, accuse or expose anyone, or to pretend to be a particular person, business or official.',
+              'We check every post, reply and edit before it appears, and refuse one that names or points to a private person; shares an address, phone number or license plate; accuses a recognizable person or business of wrongdoing; or is threatening, abusive or sexually explicit.',
+              "Reports from two different people hide a post or reply until we've reviewed it. When we remove one, your account gets a strike: a warning first, then no made-up name for 30 days if it happens again within 90 days, or permanently for a serious breach. Other breaches can still lead to suspension (section 10).",
+              'Our staff see only the made-up name on a reported post. A staff member can look up who wrote it only to handle a report or a legal request, must record a reason, and every lookup is logged.',
+              'We will say who wrote something when the law requires it, for example a valid court order or subpoena.',
+              "You're responsible for what you post under a made-up name as for anything else you post. A photo, a detail only you would know, or the way you write can still give you away.",
+            ]} />
+          </TermsSection>
+
+          <TermsSection title="7. Tasks, offers, and payments">
             <p>
               Pantopus may support posting tasks, placing bids, accepting offers, and processing payments between users. When you post or accept a task, you are entering into an agreement with another user — not with Pantopus.
             </p>
@@ -145,7 +160,7 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="7. Home claims and verification">
+          <TermsSection title="8. Home claims and verification">
             <p>
               Pantopus allows users to claim a home address and verify residency. Verification signals help build community trust, but claiming a home does not grant any legal rights to a property. You must only claim homes where you actually reside or have authorization to represent.
             </p>
@@ -154,7 +169,7 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="8. Safety and moderation">
+          <TermsSection title="9. Safety and moderation">
             <p>
               Pantopus includes tools for reporting harmful content, disputing verification claims, and flagging unsafe behavior. We take these reports seriously and investigate them to the best of our ability.
             </p>
@@ -163,7 +178,7 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="9. Termination">
+          <TermsSection title="10. Termination">
             <p>
               You may close your account at any time from account settings or by contacting us.
             </p>
@@ -172,7 +187,7 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="10. Disclaimers">
+          <TermsSection title="11. Disclaimers">
             <p>
               Pantopus is provided &quot;as is&quot; without warranties of any kind, to the maximum extent permitted by applicable law. We do not warrant that the platform will be uninterrupted, error-free, or meet every requirement you may have.
             </p>
@@ -181,19 +196,19 @@ export default function TermsPage() {
             </p>
           </TermsSection>
 
-          <TermsSection title="11. Limitation of liability">
+          <TermsSection title="12. Limitation of liability">
             <p>
               To the maximum extent permitted by law, Pantopus and its affiliates will not be liable for indirect, incidental, special, consequential, or punitive damages arising from your use of the platform.
             </p>
           </TermsSection>
 
-          <TermsSection title="12. Changes to these Terms">
+          <TermsSection title="13. Changes to these Terms">
             <p>
               We may update these Terms as the platform evolves. When we make material changes, we will notify you through the platform or by email with reasonable advance notice. Continued use of Pantopus after the effective date constitutes acceptance of the updated Terms.
             </p>
           </TermsSection>
 
-          <TermsSection title="13. Contact">
+          <TermsSection title="14. Contact">
             <p>
               Questions about these Terms? Reach us at{' '}
               <a href="mailto:support@pantopus.com" className="text-rose-600 dark:text-rose-400 underline underline-offset-2 hover:decoration-2 font-medium">

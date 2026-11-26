@@ -118,6 +118,10 @@ export default function PrivacyPage() {
                 <p className="text-app-text-secondary dark:text-app-text-muted text-sm">When you post, you choose the audience: Nearby, Followers, Household, or Connections. Household posts are only visible to verified household members.</p>
               </div>
               <div className="bg-app-surface-raised/60 border border-app-border-subtle rounded-xl p-5">
+                <p className="font-semibold text-app-text dark:text-white text-sm mb-1">Posting under a made-up name.</p>
+                <p className="text-app-text-secondary dark:text-app-text-muted text-sm">Others see the made-up name and that you have a verified home nearby. They don&apos;t see your name, photo, profile, home or how far away you are. We keep who wrote each post and reply in a separate, locked record that the app&apos;s ordinary screens can&apos;t read. Our staff can look it up only to handle a report or a legal request, and each lookup is logged with its reason. We disclose it only when the law requires it.</p>
+              </div>
+              <div className="bg-app-surface-raised/60 border border-app-border-subtle rounded-xl p-5">
                 <p className="font-semibold text-app-text dark:text-white text-sm mb-1">We do not sell your data.</p>
                 <p className="text-app-text-secondary dark:text-app-text-muted text-sm">We do not sell, rent, or trade your personal information to third parties for advertising or any commercial purpose.</p>
               </div>
@@ -143,6 +147,7 @@ export default function PrivacyPage() {
               { label: 'What you asked it to remember', detail: 'Facts you saved, added to a request when they help answer it (private ones only when the request is about them), and your check-backs and standing rules when you ask about them.' },
               { label: 'Your general area', detail: 'Your city and, if you share your location with the app, an approximate location, so answers fit where you are.' },
               { label: 'Help writing a Christmas card', detail: "When you tap Help me write it on a card: the first names of the people the card is to, anything you ask it to mention, what you have written so far and the caption of the picture you picked. Pantopus does not keep the notes it suggests; the note you send is kept with your card like any note you type." },
+              { label: 'Posts under a made-up name', detail: "The words of each post, reply and edit you write under a made-up name, and a name you type yourself, are checked by AI before they show. If the check can't run, nothing is posted under a made-up name." },
             ]} />
             <p>
               The assistant reads a chat only when you ask it about that chat, and only a chat you are part of. It never reads chats in the background, and chats are never used for briefings or suggestions. When someone you chat with asks the assistant about your conversation, the messages you sent them, which they can already read, are part of what it reads. Mail, chats, Moments and the Wallet are read-only for the assistant: it cannot send a message or mail, pay, withdraw or refund. It does not look up your home&apos;s emergency and medical details or anyone else&apos;s mail. Pantopus does not supply it with your password or payment credentials; information you choose to include in an assistant message or attachment is processed as described above. When Suggestions is on, Pantopus can prepare a morning brief and up to two nudges a day using information available to your account. You can turn Suggestions off in notification settings or choose “Fewer like this” on a suggestion. Saving or sending something the assistant prepares requires you to review and confirm its card. The one exception is a standing rule you turned on, described below.
@@ -174,7 +179,7 @@ export default function PrivacyPage() {
               We keep your data for as long as your account is active and as needed to provide services, comply with legal obligations, resolve disputes, and enforce agreements.
             </p>
             <p>
-              When you delete your account, we begin the process of removing your personal information from our systems. Some data may be retained in anonymized or aggregated form for platform safety and analytics purposes.
+              When you delete your account, we begin the process of removing your personal information from our systems. Some data may be retained in anonymized or aggregated form for platform safety and analytics purposes. Deleting your account deletes your made-up-name posts, empties your made-up-name replies and retires your name.
             </p>
             <p>
               You can delete your assistant conversation in the app; this also removes earlier assistant chats for your account. Deleting a conversation does not undo posts, tasks or other records you already chose to save. Conversations are also deleted with your account. You can request deletion at{' '}
