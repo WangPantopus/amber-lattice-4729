@@ -183,22 +183,34 @@ function envFlagEnabled(name, defaultValue = true) {
   return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
-const runningJobs = new Set();
+// Job name → when its run in this process started.
+const runningJobs = new Map();
 const activeCronTasks = [];
+// A run older than this no longer holds its job back: a run that never settles (a call
+// that hangs with no timeout) would otherwise keep the job from running until a restart.
+const MAX_OVERLAP_HOLD_MS = 60 * 60 * 1000;
 
 /**
  * Wraps a job function with overlap protection, error handling, and timing.
  * Prevents one job crash from killing the whole process and prevents a slow
- * cron tick from overlapping itself inside the same process.
+ * cron tick from overlapping itself inside the same process. The API and each
+ * worker hold their own list, so this does not stop two processes running the
+ * same job at once.
  */
 function wrapJob(name, fn) {
   const wrapped = async () => {
-    if (runningJobs.has(name)) {
-      logger.warn(`[CRON] Skipping overlapping run: ${name}`);
-      return;
-    }
-    runningJobs.add(name);
     const start = Date.now();
+    const runningSince = runningJobs.get(name);
+    if (runningSince !== undefined) {
+      if (start - runningSince < MAX_OVERLAP_HOLD_MS) {
+        logger.warn(`[CRON] Skipping overlapping run: ${name}`);
+        return;
+      }
+      logger.error(`[CRON] Previous run still not finished, starting anyway: ${name}`, {
+        running_ms: start - runningSince,
+      });
+    }
+    runningJobs.set(name, start);
     // The job's database calls (count, time, slowest), so its load on the database shows in the log.
     const ledger = dbTiming.open();
     logger.info(`[CRON] Starting: ${name}`);
@@ -215,7 +227,7 @@ function wrapJob(name, fn) {
         ...dbTiming.fields(ledger),
       });
     } finally {
-      runningJobs.delete(name);
+      if (runningJobs.get(name) === start) runningJobs.delete(name);
     }
   };
   wrapped.jobName = name;
