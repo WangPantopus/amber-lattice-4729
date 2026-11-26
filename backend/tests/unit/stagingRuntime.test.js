@@ -117,7 +117,9 @@ describe('provider-free local Stripe startup', () => {
     process.env.STRIPE_SECRET_KEY = staging.STRIPE_SECRET_KEY;
     const { getStripeClient } = require('../../stripe/getStripeClient');
     expect(getStripeClient()).toBe(client);
-    expect(constructor).toHaveBeenCalledWith(staging.STRIPE_SECRET_KEY);
+    // One client per key, with a bounded wait and retries, however often it is asked for.
+    expect(getStripeClient()).toBe(client);
+    expect(constructor).toHaveBeenCalledWith(staging.STRIPE_SECRET_KEY, { timeout: 15000, maxNetworkRetries: 2 });
     expect(constructor).toHaveBeenCalledTimes(1);
   });
 

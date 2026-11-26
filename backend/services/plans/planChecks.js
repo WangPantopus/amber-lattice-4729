@@ -102,7 +102,7 @@ async function loadFor(user, postId, { staff = false } = {}) {
     return { viewer, plan };
   }
   const { data: request } = await supabaseAdmin.from('PlanRequest')
-    .select('id, user_id, status, way_in, fee_basis, deal_used_at, deal_cents, party_size, kids_count')
+    .select('id, user_id, status, way_in, fee_basis, deal_used_at, deal_cents, deal_check_id, party_size, kids_count')
     .eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
   if (!request || request.status !== 'accepted') fail(403, 'not_in', 'Only people who are in can pay here.');
   return { viewer, plan, request };
@@ -139,11 +139,13 @@ function checkedAmount(value, field = 'amount_cents') {
 
 /**
  * What a check comes to with a tip: { discountCents, tipCents, totalCents, lines, tip_choices, no_tip }. The deal comes
- * off once a guest: a check paid with it, or any check after the guest used it, carries no discount.
+ * off once a guest: a check paid with it, or any check after the guest used it, carries no discount. A check whose
+ * payment is being confirmed holds the deal itself (deal_check_id, see finalize), so it keeps its price until then.
  */
 async function pricedCheck(plan, check, request, { tipCents = 0, tipLabel = null } = {}) {
   const deal = await billDealOf(plan);
-  const usedElsewhere = Boolean(request?.deal_used_at) && !(check.status === 'paid' && check.discount_cents > 0);
+  const heldHere = Boolean(request?.deal_check_id) && String(request.deal_check_id) === String(check.id);
+  const usedElsewhere = Boolean(request?.deal_used_at) && !heldHere && !(check.status === 'paid' && check.discount_cents > 0);
   const discount = check.status === 'paid' ? check.discount_cents
     : (deal && !usedElsewhere ? planDeals().billOffCents(deal, check.subtotal_cents, check.no_deal_cents) : 0);
   const amount = check.subtotal_cents;
@@ -368,60 +370,48 @@ async function pay(user, postId, checkId, body = {}) {
   };
 }
 
-/** The payment went through: the check is paid, the deal used, the receipt filed. Safe to call twice. */
+/**
+ * The payment went through: the check is paid, the deal used, the receipt filed. Safe to call twice: the app's confirm
+ * and the payment's webhook both come here for the same check, often at the same moment.
+ */
 async function finalize(checkId) {
   const { data: check } = await supabaseAdmin.from('BusinessInvoice').select(CHECK_COLUMNS).eq('id', checkId).maybeSingle();
   if (!check?.payment_id) return 'gone';
   if (check.status === 'paid') return 'paid';
   const stamp = new Date().toISOString();
-  // Atomically reserve the single-use deal BEFORE capturing so two concurrent discounted
-  // checks for the same guest can never both capture with the deal applied.
-  let claimedDeal = false;
-  if (check.discount_cents > 0 && check.plan_request_id) {
-    const { data: claimed, error: claimErr } = await supabaseAdmin
-      .from('PlanRequest')
-      .update({ deal_used_at: stamp, deal_cents: check.discount_cents, updated_at: stamp })
-      .eq('id', check.plan_request_id)
-      .is('deal_used_at', null)
-      .select('id');
-    if (claimErr) throw new Error(`Failed to reserve deal: ${claimErr.message}`);
-    if (!claimed || claimed.length === 0) {
-      await require('../../stripe/stripeService').cancelAuthorization(check.payment_id).catch(() => null);
-      await supabaseAdmin
-        .from('BusinessInvoice')
-        .update({ payment_id: null, stripe_payment_intent_id: null, discount_cents: 0 })
-        .eq('id', check.id)
-        .neq('status', 'paid');
-      return 'deal_already_used';
-    }
-    claimedDeal = true;
-  }
-  const releaseDealClaim = async () => {
-    if (!claimedDeal) return;
-    await supabaseAdmin
-      .from('PlanRequest')
-      .update({ deal_used_at: null, deal_cents: null, updated_at: new Date().toISOString() })
-      .eq('id', check.plan_request_id)
-      .eq('deal_used_at', stamp);
+  // The deal comes off once a guest, so a check priced with it takes the guest's deal once its card hold is there and
+  // before the money moves: of two such checks paid at once, only one is captured. deal_check_id names the check that
+  // has it, so a second call for the same check (or a retry after a failed capture) takes it again instead of being
+  // turned away. It is never handed back: a check that took the deal keeps its price until it is paid.
+  let deal = null;
+  const takeDeal = async () => {
+    const { data: taken, error } = await supabaseAdmin.from('PlanRequest')
+      .update({ deal_used_at: stamp, deal_cents: check.discount_cents, deal_check_id: check.id, updated_at: stamp })
+      .eq('id', check.plan_request_id).or(`deal_used_at.is.null,deal_check_id.eq.${check.id}`).select('id');
+    if (error) throw new Error(`Failed to take the deal: ${error.message}`);
+    deal = taken && taken.length > 0 ? 'taken' : 'gone';
+    return deal === 'taken';
   };
-  let status;
-  try {
-    status = await planPaid().captureNow(check.payment_id);
-  } catch (err) {
-    await releaseDealClaim().catch(() => null);
-    throw err;
+  const withDeal = check.discount_cents > 0 && Boolean(check.plan_request_id);
+  const status = await planPaid().captureNow(check.payment_id, withDeal ? { beforeCapture: takeDeal } : {});
+  if (deal === 'gone') {
+    // Another check used the guest's deal. This hold is for the price with the deal off, so it is let go and the
+    // guest pays the check again at its price now. The check forgets the payment only once the payment company
+    // confirms the hold is gone: a throw here (it can't be let go yet) leaves everything as it was for the retry.
+    await require('../../stripe/stripeService').cancelAuthorization(check.payment_id);
+    await supabaseAdmin.from('BusinessInvoice').update({ payment_id: null, stripe_payment_intent_id: null, discount_cents: 0 })
+      .eq('id', check.id).eq('payment_id', check.payment_id).neq('status', 'paid');
+    return 'deal_already_used';
   }
-  if (!CAPTURED.includes(status)) {
-    await releaseDealClaim().catch(() => null);
-    return 'not_paid';
-  }
+  if (!CAPTURED.includes(status)) return 'not_paid';
   const { data: moved } = await supabaseAdmin.from('BusinessInvoice').update({ status: 'paid', paid_at: stamp })
     .eq('id', check.id).neq('status', 'paid').select(CHECK_COLUMNS);
   if (!moved || moved.length === 0) return 'paid';
   const paid = moved[0];
   const plan = await require('./planService').loadPlanRow(check.plan_post_id);
-  if (paid.discount_cents > 0 && !claimedDeal) {
-    await supabaseAdmin.from('PlanRequest').update({ deal_used_at: stamp, deal_cents: paid.discount_cents, updated_at: stamp })
+  if (paid.discount_cents > 0 && deal !== 'taken') {
+    // The hold was captured by a call that never got this far: the deal is used all the same.
+    await supabaseAdmin.from('PlanRequest').update({ deal_used_at: stamp, deal_cents: paid.discount_cents, deal_check_id: paid.id, updated_at: stamp })
       .eq('id', paid.plan_request_id).is('deal_used_at', null);
   }
   const svc = require('../../stripe/stripeService');

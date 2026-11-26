@@ -245,6 +245,8 @@ async function claim(user, postId, body = {}, { io = null } = {}) {
     p_way_in: wayIn,
     p_room: room,
   });
+  // The same person joining another way at the same moment (another link, the Join button) got their row in first.
+  if (claimError?.code === '23505') fail(409, 'already_in', "You're already on this plan.");
   if (claimError) throw new Error(`Failed to take the spot: ${claimError.message}`);
   if (claimed?.error === 'link_stopped') fail(409, 'link_stopped', 'This link isn’t taking anyone now.');
   if (claimed?.error === 'already_in') fail(409, 'already_in', "You're already on this plan.");

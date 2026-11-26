@@ -27,12 +27,8 @@ async function rpc(name, args) {
   if (error || !data) throw fail('Refund progress could not be saved. Retry the same request.', 503, 'refund_save_pending');
   if (data.error) {
     const status = data.error === 'NOT_FOUND' ? 404 : ['FORBIDDEN', 'SUPPORT_REQUIRED'].includes(data.error) ? 403 : 409;
-    const supportMsg = data.reason === 'GIG_FEE'
-      ? FEE_REFUND_MESSAGE
-      : data.reason === 'PAYMENT_TYPE_NOT_SELF_REFUNDABLE'
-        ? NON_GIG_REFUND_MESSAGE
-        : 'Payment has been released to the worker. Contact support for a refund.';
-    const err = fail(data.error === 'SUPPORT_REQUIRED' ? supportMsg :
+    const err = fail(data.error === 'SUPPORT_REQUIRED' ? (data.reason === 'GIG_FEE' ? FEE_REFUND_MESSAGE
+      : 'Payment has been released to the worker. Contact support for a refund.') :
       `Refund could not continue (${data.error}).`, status, data.error);
     if (data.request) { err.refundRequest = publicRequest(data.request); err.refundRow = data.request; }
     throw err;
@@ -239,7 +235,7 @@ function legacyRequestId(paymentId, amount, reason, actorId, actorMode) {
   const h = createHash('sha256').update(JSON.stringify(['refund-v1', paymentId, amount ?? null, reason, actorId, actorMode])).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
-async function create({ paymentId, amount = null, reason, description = null, actorId, actorMode = 'payer', requestId }) {
+async function create({ paymentId, amount = null, reason, description = null, actorId, actorMode = 'payer', requestId, selfService = false }) {
   let request;
   try {
     if (amount !== null && (!Number.isSafeInteger(amount) || amount <= 0)) throw fail('Refund amount must be a positive integer.', 400);
@@ -250,10 +246,11 @@ async function create({ paymentId, amount = null, reason, description = null, ac
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw fail('Invalid refund request ID.', 400);
     let payment = await paymentById(paymentId);
     await assertActor(payment, actorId, actorMode);
-    // Only genuine gig payments can be self-refunded by the payer through the generic
-    // /refund route; invoices, plans, bookings, packages, tips, and marketplace orders
-    // follow their own policy/cancellation or support flows (also enforced in SQL).
-    if (actorMode === 'payer' && !isPayerSelfRefundable(payment)) {
+    // A payer asking through POST /api/payments/:paymentId/refund (`selfService`) gets back a task payment only.
+    // Invoices, plans, bookings, packages, tips and marketplace orders are returned by their own flows, which
+    // decide what is owed: a plan guest leaving inside the refund window (planPaid.onLeave) is refunded as the
+    // payer too, so the refusal can't sit on the actor mode alone, or in reserve_payment_refund.
+    if (selfService && actorMode === 'payer' && !isPayerSelfRefundable(payment)) {
       throw fail(NON_GIG_REFUND_MESSAGE, 403, 'SUPPORT_REQUIRED');
     }
     // An invoice is billed and paid as one amount, so it is refunded in full (which voids it), never in part: a

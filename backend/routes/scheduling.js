@@ -1449,28 +1449,25 @@ router.get('/my-packages', asyncHandler(async (req, res) => {
   const { data } = await supabaseAdmin.from('PackageCredit')
     .select('*, BookingPackage:package_id ( name, sessions_count, owner_type, owner_id, event_type_id ), Payment:payment_id ( payment_status, refunded_amount, dispute_id )')
     .eq('buyer_user_id', req.user.id).order('purchased_at', { ascending: false });
-  const visible = [];
-  for (const row of data || []) {
+  // Checked together: a recent unpaid checkout costs one Stripe read, and several must not queue behind each other.
+  const shown = await Promise.all((data || []).map(async (row) => {
     const { Payment: payment, ...credit } = row;
-    if (!credit.payment_id) {
-      visible.push(credit);
-      continue;
-    }
+    if (!credit.payment_id) return credit;
     if (payment && !payment.dispute_id && !(payment.refunded_amount > 0)
       && packages.PAID_PAYMENT_STATES.includes(payment.payment_status)) {
-      visible.push(credit);
-      continue;
+      return credit;
     }
     // Reconcile recent pending checkouts in case the buyer opened My Packages before the Stripe webhook arrived.
     if (payment && packages.OWED_PAYMENT_STATES.includes(payment.payment_status)) {
       const purchasedMs = Date.parse(credit.purchased_at || '');
       if (Number.isFinite(purchasedMs) && Date.now() - purchasedMs < 15 * 60 * 1000) {
         const check = await packages.verifyCreditPayment(credit);
-        if (check.paid) visible.push(credit);
+        if (check.paid) return credit;
       }
     }
-  }
-  res.json({ credits: visible });
+    return null;
+  }));
+  res.json({ credits: shown.filter(Boolean) });
 }));
 
 // ============================================================

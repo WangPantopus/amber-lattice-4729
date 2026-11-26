@@ -345,11 +345,14 @@ async function paymentSheet(paymentId, amount, clientSecret) {
   };
 }
 
-/** Only the payment company can say a payment went through: sync it, capture a hold, answer its status. */
-async function captureNow(paymentId) {
+/**
+ * Only the payment company can say a payment went through: sync it, capture a hold, answer its status. `beforeCapture`
+ * runs once the hold is there and before the money moves; when it answers false the hold is left as it is.
+ */
+async function captureNow(paymentId, { beforeCapture = null } = {}) {
   const svc = stripeService();
   const synced = await svc.syncPaymentAuthorizationStatus(paymentId);
-  if (synced?.payment_status === 'authorized') await svc.capturePayment(paymentId);
+  if (synced?.payment_status === 'authorized' && (!beforeCapture || (await beforeCapture()) !== false)) await svc.capturePayment(paymentId);
   const { data } = await supabaseAdmin.from('Payment').select('payment_status').eq('id', paymentId).maybeSingle();
   return data?.payment_status || null;
 }

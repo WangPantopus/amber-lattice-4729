@@ -9,7 +9,6 @@ const { createHash } = require('node:crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const stripeService = require('../../stripe/stripeService');
-const { getStripeClient } = require('../../stripe/getStripeClient');
 const { PAYMENT_STATES } = require('../../stripe/paymentStateMachine');
 
 // A retried purchase offers a priced pack's checkout again only while the buyer still owes it.
@@ -124,8 +123,8 @@ async function purchasePackage({ pkg, buyerUserId, clientRequestId }) {
 /**
  * Verify that a package credit is either free (payment_id is null) or backed by a
  * confirmed, un-refunded, un-disputed Stripe payment. When the local row is still
- * in an owed state (e.g., webhook lag right after checkout), check Stripe once and
- * reconcile before refusing.
+ * waiting on its hold (webhook lag right after checkout), ask Stripe once and record
+ * a placed hold the way its webhook does before refusing.
  */
 async function verifyCreditPayment(credit) {
   if (!credit?.payment_id) return { paid: true };
@@ -143,20 +142,11 @@ async function verifyCreditPayment(credit) {
   if (PAID_PAYMENT_STATES.includes(payment.payment_status)) {
     return { paid: true };
   }
-  if (OWED_PAYMENT_STATES.includes(payment.payment_status) && payment.stripe_payment_intent_id) {
+  if (payment.payment_status === PAYMENT_STATES.AUTHORIZE_PENDING && payment.stripe_payment_intent_id) {
     try {
-      const intent = await getStripeClient().paymentIntents.retrieve(payment.stripe_payment_intent_id);
-      if (intent?.status === 'requires_capture' || intent?.status === 'succeeded') {
-        const nextStatus = intent.status === 'succeeded'
-          ? PAYMENT_STATES.CAPTURED_HOLD
-          : PAYMENT_STATES.AUTHORIZED;
-        await supabaseAdmin
-          .from('Payment')
-          .update({ payment_status: nextStatus, updated_at: new Date().toISOString() })
-          .eq('id', payment.id)
-          .in('payment_status', OWED_PAYMENT_STATES);
-        return { paid: true };
-      }
+      // The payment state machine's own step (hold expiry and charge recorded, the intent checked against the row).
+      const synced = await stripeService.syncPaymentAuthorizationStatus(payment.id);
+      if (PAID_PAYMENT_STATES.includes(synced?.payment_status)) return { paid: true };
     } catch (err) {
       logger.warn('[packageService] Stripe reconcile failed while verifying package credit', {
         creditId: credit.id,

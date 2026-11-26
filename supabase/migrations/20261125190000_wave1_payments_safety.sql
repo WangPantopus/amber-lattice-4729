@@ -1,14 +1,15 @@
 -- Wave 1 payment safety hardening:
---   1. Restrict payer self-refunds in reserve_payment_refund to genuine gig payments.
---   2. Add StripeWebhookEvent.locked_until for atomic concurrent-redelivery leasing.
+--   1. Add StripeWebhookEvent.locked_until for atomic concurrent-redelivery leasing.
+--   2. Add PlanRequest.deal_check_id: the check that holds the guest's single-use deal while its
+--      payment is confirmed, so two discounted checks paid at once can't both be captured
+--      (services/plans/planChecks.js finalize). No foreign key: it is only compared with a check's id.
 --   3. Serialize group-pay spot claims and unused-spot settlement under a row lock
 --      on the buyer's PlanRequest (claim_plan_group_spot, settle_plan_group_spots).
 --   4. Atomically record confirmed Support Train gift fund contributions and totals
 --      (record_support_train_contribution_succeeded).
 --
--- Backwards compatible: yes. Adds one nullable column (locked_until) and three new
--- service-only RPC functions; replaces reserve_payment_refund with the same signature
--- and keeps admin/policy refund flows unchanged.
+-- Backwards compatible: yes. Adds two nullable columns (locked_until, deal_check_id) and three new
+-- service-only RPC functions. Code that doesn't know the columns leaves them null.
 
 SET LOCAL lock_timeout = '5s';
 
@@ -16,72 +17,9 @@ SET LOCAL lock_timeout = '5s';
 ALTER TABLE public."StripeWebhookEvent"
   ADD COLUMN IF NOT EXISTS locked_until timestamptz;
 
--- 2. Restrict payer self-refunds to genuine gig payments (policy/admin modes unchanged).
-CREATE OR REPLACE FUNCTION public.reserve_payment_refund(
-  p_payment_id uuid,
-  p_request_key text,
-  p_actor_id uuid,
-  p_actor_mode text,
-  p_amount integer,
-  p_reason text,
-  p_description text,
-  p_expected jsonb,
-  p_operation text
-) RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-SET lock_timeout = '5s'
-AS $$
-DECLARE
-  r public."GigStopRequest";
-  d jsonb;
-BEGIN
-  IF p_actor_mode = 'payer' AND EXISTS (
-    SELECT 1 FROM public."Payment"
-    WHERE id = p_payment_id
-      AND (
-        payment_type IS DISTINCT FROM 'gig_payment'
-        OR gig_id IS NULL
-        OR (sold_type IS NOT NULL AND sold_type <> 'task')
-        OR coalesce(metadata->>'type', '') IN ('invoice_payment', 'listing_offer_checkout', 'support_train_gift_fund')
-      )
-  ) THEN
-    RETURN jsonb_build_object('error', 'SUPPORT_REQUIRED', 'reason', 'PAYMENT_TYPE_NOT_SELF_REFUNDABLE');
-  END IF;
-
-  IF p_actor_mode = 'payer' AND EXISTS (
-    SELECT 1 FROM public."Payment"
-    WHERE id = p_payment_id AND metadata->'gig_fee'->>'state' = 'captured'
-  ) THEN
-    RETURN jsonb_build_object('error', 'SUPPORT_REQUIRED', 'reason', 'GIG_FEE');
-  END IF;
-
-  SELECT * INTO r FROM public."GigStopRequest"
-  WHERE payment_id = p_payment_id AND state <> 'completed';
-  IF FOUND THEN
-    d := public.check_gig_stop_current(r.id, p_actor_id);
-    IF d ? 'error' THEN RETURN d; END IF;
-    IF r.id::text IS DISTINCT FROM p_request_key
-      OR r.financial_action <> 'refund'
-      OR r.state <> 'pending'
-      OR p_actor_mode IS DISTINCT FROM 'policy'
-      OR p_operation IS DISTINCT FROM 'refund'
-      OR p_amount IS NOT NULL
-      OR p_reason IS DISTINCT FROM 'requested_by_customer'
-      OR p_description IS NOT NULL THEN
-      RETURN jsonb_build_object('error', 'STOP_REQUEST_CHANGED');
-    END IF;
-  END IF;
-
-  RETURN public.reserve_payment_refund_before_stop_fence(
-    p_payment_id, p_request_key, p_actor_id, p_actor_mode,
-    p_amount, p_reason, p_description, p_expected, p_operation
-  );
-END $$;
-
-REVOKE ALL ON FUNCTION public.reserve_payment_refund(uuid, text, uuid, text, integer, text, text, jsonb, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reserve_payment_refund(uuid, text, uuid, text, integer, text, text, jsonb, text) TO service_role;
+-- 2. The check holding a guest's deal (metadata-only add).
+ALTER TABLE public."PlanRequest"
+  ADD COLUMN IF NOT EXISTS deal_check_id uuid;
 
 -- 3. Atomic group-pay spot claim and unused-spot settlement (serialized on buyer row lock).
 CREATE OR REPLACE FUNCTION public.claim_plan_group_spot(

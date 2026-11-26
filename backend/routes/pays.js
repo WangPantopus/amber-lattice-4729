@@ -946,7 +946,7 @@ router.post('/:paymentId/refund', verifyToken, validate(createRefundSchema), asy
   try {
     const result = await require('../services/paymentRefundService').create({
       amount: req.body.amount, reason: req.body.reason, description: req.body.description, requestId: req.body.requestId,
-      paymentId: req.params.paymentId, actorId: req.user.id, actorMode: 'payer',
+      paymentId: req.params.paymentId, actorId: req.user.id, actorMode: 'payer', selfService: true,
     });
     return res.status(result.success ? 200 : 202).json(result);
   } catch (err) { return refundError(res, err); }
