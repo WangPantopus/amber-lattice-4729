@@ -197,6 +197,10 @@ final class MomentsMapViewModel {
             await load()
             return
         }
+        // The map's first pass finishes before anything here changes. With the homes already read and location not
+        // allowed nothing below waits, so the phase changed while the tab was still being drawn and that redraw was
+        // sometimes dropped: no "Show my location", no + and no card until something else redrew the map.
+        await Task.yield()
         homeCenter = await Self.homeCoordinate(store: store)
         if location.canLocateWithoutAsking {
             if let fix = await location.requestCurrent(timeoutSeconds: passiveLocationTimeoutSeconds) {
