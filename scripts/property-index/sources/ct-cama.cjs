@@ -5,6 +5,10 @@
 // assessment is by law 70% of that, so they're kept apart. Towns name their property uses their own way.
 //
 // Owner, co-owner, mailing and grantor columns aren't asked for.
+//
+// Recorded history comes from the same office's list of every sale of $2,000 or more since October 2001, by grand list
+// year (CGS 10-261a and 10-261b): each sale joins the record its town and exact address (and unit) name, or none. The
+// list has no names in it; its free-text remarks aren't asked for.
 
 const path = require('node:path');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
@@ -12,12 +16,32 @@ const { getJson, socrataRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
-const { isHomeSale } = require('../lib/sales.cjs');
+const { isHomeSale, historyLine, recordedHistory, countyWord } = require('../lib/sales.cjs');
+const { hold } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const DOMAIN = 'data.ct.gov';
 const DATASET = 'ibe8-9i3q';
 const DATASET_YEAR = 2026;
+// Real Estate Sales 2001-2024 GL: its first grand list year began October 1, 2001.
+const SALES = '5mzw-sjtu';
+const SALES_SINCE = '2001';
+const SALE_COLUMNS = ['serialnumber', 'listyear', 'daterecorded', 'town', 'address', 'saleamount', 'propertytype', 'residentialtype', 'nonusecode'];
+// The state's non-use codes, in the words the list itself pairs them with ("08 - Part Interest"); later rows give the bare
+// number. A code marks a sale the state leaves out of its sales-ratio study. A sale stays a sale for a family, a will, a
+// foreclosure, a court, an auction or two towns (lib/sales.cjs); these lines aren't this home changing hands at that price:
+// a gift, a transfer between companies, a correction, part of the property or of an interest, an easement, a swap for
+// other property, nothing paid. They show as the state's word, without a price.
+const NON_USE = {
+  1: 'Family', 2: 'Love and Affection', 3: 'Inter Corporation', 4: 'Correcting Deed', 5: 'Deed Date', 6: 'Portion of Property', 7: 'Change in Property',
+  8: 'Part Interest', 9: 'Tax', 10: 'A Will', 11: 'Court Order', 12: 'Non Buildable Lot', 13: 'Bankruptcy', 14: 'Foreclosure', 15: 'Government Agency',
+  16: 'Charitable Group', 17: 'Two Towns', 18: 'In Lieu Of Foreclosure', 19: 'Easement', 20: 'Cemetery', 21: 'Personal Property Exchange',
+  22: 'Money and Personal Property', 23: 'Zoning', 24: 'Plottage', 25: 'Other', 26: 'Rehabilitation Deferred', 27: 'Crumbling Foundation Assessment Reduction',
+  28: 'Use Assessment', 29: 'No Consideration', 30: 'Auction',
+};
+const NOT_SOLD = new Set([2, 3, 4, 6, 8, 19, 21, 29]);
+// A town's last sale and a sale on the list at the same price this close are one deed.
+const SAME_SALE_DAYS = 92;
 
 // The Census Bureau's 2024 county subdivisions: towns by planning region.
 const REGIONS = {
@@ -186,6 +210,109 @@ function fromRow(row, fips, county, town) {
   };
 }
 
+/** Where a record's address meets a sale's: its town and exact street address, unit and building. */
+const addressKey = (town, { number, pre, name, suffix, post, unit, building }) => [town, number, pre, name, suffix, post, building || '', unit || ''].join('|');
+const streetKey = (town, address) => addressKey(town, { ...address, unit: '', building: '' });
+
+/**
+ * Each region's records gain the state's sales list as recorded history (facts.js `recorded_history`), held off the live
+ * regions' screens until their new_columns switch is on (lib/held.cjs). A sale joins only the one record at its town and
+ * exact address and unit; one with no unit at an address with units, an address two records share, or a condo sale at a
+ * record that isn't a unit joins none. Counts only in the log.
+ */
+async function addSales(work, byRegion, asOf) {
+  const byKey = new Map();
+  const unitStreets = new Set();
+  for (const records of byRegion.values()) {
+    for (const record of records) {
+      if (record.restricted) continue;
+      const town = record.address.city;
+      const key = addressKey(town, record.address);
+      byKey.set(key, byKey.has(key) ? null : record);
+      if (record.address.unit) unitStreets.add(streetKey(town, record.address));
+    }
+  }
+  const lines = new Map();
+  const count = { read: 0, noTown: 0, noAddress: 0, badDate: 0, condoNotUnit: 0, unitStreet: 0, shared: 0, missed: 0, joined: 0, sales: 0, notSold: 0, token: 0, noLegend: 0 };
+  const rows = cached(path.join(work, 'ct-cama', 'sales.jsonl.gz'), () => socrataRows(DOMAIN, SALES, SALE_COLUMNS));
+  for await (const row of rows) {
+    count.read += 1;
+    const town = String(row.town ?? '').trim().toUpperCase();
+    if (!REGION_OF.has(town)) {
+      count.noTown += 1;
+      continue;
+    }
+    const date = isoDate(row.daterecorded);
+    if (!date || date < `${SALES_SINCE}-01-01` || date > asOf) {
+      count.badDate += 1;
+      continue;
+    }
+    const address = parse(wholeHouse(row.address));
+    if (!address) {
+      count.noAddress += 1;
+      continue;
+    }
+    if (!address.unit && unitStreets.has(streetKey(town, address))) {
+      count.unitStreet += 1;
+      continue;
+    }
+    const record = byKey.get(addressKey(town, address));
+    if (record === null) count.shared += 1;
+    if (!record) {
+      if (record === undefined) count.missed += 1;
+      continue;
+    }
+    // A sale the state calls a condo's is a unit's: a condo with its own street number has a unit record with no unit.
+    if (record.kind !== 'unit' && /CONDO/i.test(`${row.propertytype || ''} ${row.residentialtype || ''}`)) {
+      count.condoNotUnit += 1;
+      continue;
+    }
+    count.joined += 1;
+    const code = /^\s*(\d{1,2})\b/.exec(String(row.nonusecode ?? ''));
+    const legend = code ? NON_USE[Number(code[1])] : null;
+    if (code && !legend) count.noLegend += 1;
+    const price = positive(row.saleamount);
+    const notSold = Boolean(legend && NOT_SOLD.has(Number(code[1])));
+    const sale = !notSold && isHomeSale(price, legend);
+    if (notSold) count.notSold += 1;
+    else if (!sale) count.token += 1;
+    else count.sales += 1;
+    if (!lines.has(record)) lines.set(record, new Map());
+    // The same sale listed twice (a town's correction in a later year) is one line.
+    // A line under the token price with a code that doesn't say why isn't kept.
+    const line = historyLine({ date, sale, word: notSold ? countyWord(legend) : null, price });
+    if (line) lines.get(record).set(`${line.date}|${line.sale}|${line.price || ''}|${line.word || ''}`, line);
+  }
+  const gained = {};
+  let withSale = 0;
+  let added = 0;
+  for (const [record, list] of lines) {
+    // The town's own last sale, where it's newer than every sale on the list and not one of them a few days apart (the list
+    // dates a deed when it was recorded), so the newest sale in the history is the Last sale row.
+    const { sale_date: soldOn, sale_price: soldFor } = record.facts;
+    const sales = [...list.values()].filter((line) => line.sale);
+    const near = (line) => line.price === soldFor && Math.abs(Date.parse(line.date) - Date.parse(soldOn)) <= SAME_SALE_DAYS * 864e5;
+    if (soldOn && soldFor && sales.every((line) => line.date < soldOn && !near(line))) {
+      const line = historyLine({ date: soldOn, sale: true, price: soldFor });
+      if (line) {
+        list.set('town', line);
+        added += 1;
+      }
+    }
+    const history = recordedHistory([...list.values()], { since: SALES_SINCE });
+    if (!history) continue;
+    hold(record, 'recorded_history', history);
+    if (!record.held?.new_columns?.recorded_history) continue;
+    const kind = record.home_type || record.kind;
+    gained[kind] = (gained[kind] || 0) + 1;
+    if (history.lines.some((line) => line.sale)) withSale += 1;
+  }
+  log(`sales: ${count.read} read, ${count.joined} joined (${count.sales} sales, ${count.notSold} not a sale by the state's code, ${count.token} under the token price), `
+    + `left out: ${count.noTown} with no town, ${count.badDate} with no date in range, ${count.noAddress} without a street number, ${count.condoNotUnit} condo sales at a record that isn't a unit, `
+    + `${count.unitStreet} with no unit at an address with units, ${count.shared} at an address two records share, ${count.missed} with no record at the address; `
+    + `${count.noLegend} codes with no word; ${added} with the town's newer last sale added; recorded history for ${Object.entries(gained).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `${n} ${kind}`).join(', ') || 'none'}; ${withSale} with a sale`);
+}
+
 async function* build({ work }) {
   const only = (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
   const about = await getJson(`https://${DOMAIN}/api/views/${DATASET}.json`, 'The dataset\'s description');
@@ -232,6 +359,7 @@ async function* build({ work }) {
     }
   }
   log(`${seen.size} records, ${noTown} with no town, ${noAddress} without a street number, ${strays} with a ZIP their town barely uses left off`);
+  await addSales(work, byRegion, asOf);
 
   for (const [fips, records] of byRegion) {
     if (only.length && !only.includes(fips)) continue;
