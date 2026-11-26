@@ -5,8 +5,14 @@
 // is its billing lot, a building, and its units have no record here.
 //
 // Owner and mailing columns aren't asked for from either service.
+//
+// When the state's parcel service fails (it answered every request with an error from November 14, 2026), the same table
+// comes from the state's download, NYS-Tax-Parcels.zip, read the way PR #4662 reads Erie's: same columns, same order, map
+// acres as the service gives them.
 
+const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const fgdb = require('../lib/fgdb.cjs');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
@@ -16,8 +22,11 @@ const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { markMapLot } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
+const { download } = require('../lib/tables.cjs');
 
 const LAYER = 'https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/FeatureServer/1';
+const ARCHIVE = 'https://gisdata.ny.gov/GISData/State/Parcels/NYS-Tax-Parcels.zip';
+const ARCHIVE_TABLE = 'NYS_Tax_Parcels_Public';
 const COUNTIES = {
   Albany: '36001', Broome: '36007', Cayuga: '36011', Chautauqua: '36013', Cortland: '36023', Erie: '36029', Genesee: '36037', Greene: '36039', Hamilton: '36041', Lewis: '36049', Livingston: '36051',
   Montgomery: '36057', Oneida: '36065', Onondaga: '36067', Ontario: '36069', Orange: '36071', Oswego: '36075', Otsego: '36077', Putnam: '36079', Rensselaer: '36083', Rockland: '36087', Schuyler: '36097',
@@ -132,14 +141,37 @@ async function publishedOn() {
   return publicationDate(info.description || '');
 }
 
+/** Map acres as the state's service gives them: 15 significant digits, then eight decimal places, halves rounded up.
+ * Shared-shape detection compares these values for equality. Matches all 644,836 rows of the six counties compared. */
+function serviceAcres(acres) {
+  const text = acres.toPrecision(15);
+  if (acres < 0 || text.includes('e')) return Number(acres.toFixed(8));
+  const [whole, fraction = ''] = text.split('.');
+  const digits = (whole + fraction.padEnd(9, '0').slice(0, 8)).split('').map(Number);
+  if (fraction.padEnd(9, '0')[8] >= '5') {
+    let at = digits.length - 1;
+    while (at >= 0 && digits[at] === 9) digits[at--] = 0;
+    if (at < 0) digits.unshift(1);
+    else digits[at] += 1;
+  }
+  const joined = digits.join('');
+  return Number(`${joined.slice(0, -8)}.${joined.slice(-8)}`);
+}
+
+/** One county's rows from the state's file, as its service gives them. */
+function* archiveRows(table, name) {
+  for (const row of fgdb.rows(table, ['COUNTY_NAME', ...COLUMNS])) {
+    if (row.COUNTY_NAME !== name) continue;
+    if (row.CALC_ACRES != null) row.CALC_ACRES = serviceAcres(row.CALC_ACRES);
+    yield row;
+  }
+}
+
 // The state's May 2026 ZIP and the stored Erie REST extract agree on these columns, including row order
 // where a parcel key repeats. Check the projected rows before countyRelease can return a release.
 function* erieRows(table) {
   const digest = createHash('sha256');
-  for (const row of fgdb.rows(table, ['COUNTY_NAME', ...COLUMNS])) {
-    if (row.COUNTY_NAME !== 'Erie') continue;
-    // REST gives map acres to eight decimal places. Shared-shape detection compares those values for equality.
-    if (row.CALC_ACRES != null) row.CALC_ACRES = Number(row.CALC_ACRES.toFixed(8));
+  for (const row of archiveRows(table, 'Erie')) {
     digest.update(JSON.stringify(COLUMNS.map((column) => row[column] ?? null)) + '\n');
     yield row;
   }
@@ -148,19 +180,58 @@ function* erieRows(table) {
   }
 }
 
-/** Read the extracted .gdb directory from the state's NYS-Tax-Parcels.zip. */
-function erieArchive(dir) {
+/** The parcel table and its publication date, from the extracted .gdb directory of the state's NYS-Tax-Parcels.zip. */
+function archiveTable(dir) {
   const tables = fgdb.catalog(dir);
-  const name = 'NYS_Tax_Parcels_Public';
-  const table = tables.get(name);
+  const table = tables.get(ARCHIVE_TABLE);
   if (!table || !tables.has('GDB_Items')) throw new Error('The state archive lacks its public parcel table or metadata');
   for (const item of fgdb.rows(tables.get('GDB_Items'), ['Name', 'Documentation'])) {
-    if (item.Name !== name) continue;
-    const asOf = publicationDate(item.Documentation || '');
-    if (asOf !== '2026-05-01') throw new Error('The Erie archive publication date has not been verified');
-    return { asOf, rows: erieRows(table) };
+    if (item.Name === ARCHIVE_TABLE) return { asOf: publicationDate(item.Documentation || ''), table };
   }
   throw new Error('The state archive lacks publication metadata for its parcel table');
+}
+
+/** Read the extracted .gdb directory from the state's NYS-Tax-Parcels.zip. */
+function erieArchive(dir) {
+  const { asOf, table } = archiveTable(dir);
+  if (asOf !== '2026-05-01') throw new Error('The Erie archive publication date has not been verified');
+  return { asOf, rows: erieRows(table) };
+}
+
+function geodatabase(folder) {
+  for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.endsWith('.gdb')) return path.join(folder, entry.name);
+    const found = geodatabase(path.join(folder, entry.name));
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The state's download, unzipped in `dir`. */
+function stateArchive(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  if (!geodatabase(dir)) {
+    const zip = path.join(dir, 'parcels.zip');
+    download(ARCHIVE, zip);
+    execFileSync('unzip', ['-q', '-o', zip, '-d', dir], { maxBuffer: 1e9 });
+    fs.rmSync(zip, { force: true });
+  }
+  const gdb = geodatabase(dir);
+  if (!gdb) throw new Error('The state archive has no geodatabase');
+  return archiveTable(gdb);
+}
+
+/** The state's publication date and each county's rows: from its parcel service, or from its download when the service fails.
+ * The download goes in the connector's own work folder, which the build loop removes after that connector. */
+async function stateRows(work, connector) {
+  try {
+    return { asOf: await publishedOn(), rows: () => undefined };
+  } catch (error) {
+    log(`The state's parcel service failed (${error.message}); reading the state's download instead`);
+    const { asOf, table } = stateArchive(path.join(work, connector, 'state-file'));
+    return { asOf, rows: (name) => archiveRows(table, name) };
+  }
 }
 
 /** One county's release from the state's file. `name` is the state's county name (a key of COUNTIES). */
@@ -209,11 +280,11 @@ const OWN_CONNECTOR = new Set(['36029', '36057', '36083', '36107', '36113']);
 
 async function* build({ work }) {
   const only = (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
-  const asOf = await publishedOn();
+  const state = await stateRows(work, 'ny-parcels');
 
   for (const [name, fips] of Object.entries(COUNTIES)) {
     if (OWN_CONNECTOR.has(fips) || (only.length && !only.includes(fips))) continue;
-    yield await countyRelease(work, name, asOf);
+    yield await countyRelease(work, name, state.asOf, state.rows(name));
   }
 
   const pluto = await getJson(`https://${PLUTO[0]}/api/views/${PLUTO[1]}.json`, 'PLUTO\'s description');
@@ -237,4 +308,4 @@ async function* build({ work }) {
   }
 }
 
-module.exports = { build, CLASSES, COUNTIES, publishedOn, countyRelease, erieArchive };
+module.exports = { build, CLASSES, COUNTIES, publishedOn, countyRelease, erieArchive, stateRows };
