@@ -26,6 +26,13 @@ const fcmClient = require('./push/fcmClient');
 const expoClient = require('./push/expoClient');
 
 const senders = { apns: apnsClient, fcm: fcmClient, expo: expoClient };
+const IN_CHUNK_SIZE = 100;
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 /**
  * Save or update a device push token, tagged with its platform + provider.
@@ -117,12 +124,14 @@ async function deliver(rows, message) {
   const { invalidTokens } = await dispatchToTokens(rows, senders, message);
 
   if (invalidTokens.length > 0) {
-    const { error } = await supabaseAdmin
-      .from('PushToken')
-      .delete()
-      .in('token', invalidTokens);
-    if (error) {
-      logger.warn('Failed to prune invalid push tokens', { error: error.message, count: invalidTokens.length });
+    for (const tokenChunk of chunkArray(invalidTokens, IN_CHUNK_SIZE)) {
+      const { error } = await supabaseAdmin
+        .from('PushToken')
+        .delete()
+        .in('token', tokenChunk);
+      if (error) {
+        logger.warn('Failed to prune invalid push tokens', { error: error.message, count: tokenChunk.length });
+      }
     }
   }
 }
@@ -193,12 +202,22 @@ async function sendToDevice(userId, deviceId, { title, body, data }) {
 async function sendToUsers(userIds, { title, body, data }) {
   if (!userIds || userIds.length === 0) return;
 
-  const { data: rows, error } = await supabaseAdmin
-    .from('PushToken')
-    .select('token, platform, provider')
-    .in('user_id', userIds);
+  const uniqueIds = [...new Set(userIds)];
+  const rows = [];
+  for (const idChunk of chunkArray(uniqueIds, IN_CHUNK_SIZE)) {
+    const { data: chunkRows, error } = await supabaseAdmin
+      .from('PushToken')
+      .select('token, platform, provider')
+      .in('user_id', idChunk);
 
-  if (error || !rows || rows.length === 0) return;
+    if (error) {
+      logger.warn('Failed to read push tokens for batch', { error: error.message, count: idChunk.length });
+      continue;
+    }
+    if (chunkRows && chunkRows.length > 0) rows.push(...chunkRows);
+  }
+
+  if (rows.length === 0) return;
   await deliver(rows, { title, body, data });
 }
 

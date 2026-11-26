@@ -265,19 +265,22 @@ const MAIL_TYPES = new Set([
   'mail_new', 'mail_summary', 'mail_urgent', 'mail_interrupt',
 ]);
 
+function prefFieldForType(type) {
+  if (GIG_TYPES.has(type)) return 'gig_updates_enabled';
+  if (HOME_TYPES.has(type)) return 'home_reminders_enabled';
+  if (MAIL_TYPES.has(type)) return 'mail_summary_enabled';
+  if (type === 'persona_broadcast') return 'beacon_push_enabled';
+  return null;
+}
+
 /**
  * Check whether a specific notification type is enabled for the user
  * via granular UserNotificationPreferences toggles.
  * Returns true by default if no preferences row exists.
  */
 async function isTypeEnabled(userId, type) {
-  const isBeacon = type === 'persona_broadcast';
   try {
-    let prefField = null;
-    if (GIG_TYPES.has(type)) prefField = 'gig_updates_enabled';
-    else if (HOME_TYPES.has(type)) prefField = 'home_reminders_enabled';
-    else if (MAIL_TYPES.has(type)) prefField = 'mail_summary_enabled';
-    else if (isBeacon) prefField = 'beacon_push_enabled';
+    const prefField = prefFieldForType(type);
 
     // If not a categorized type, allow by default
     if (!prefField) return true;
@@ -510,25 +513,83 @@ async function createBulkNotifications(notifications, { sendPush = true } = {}) 
       }
     }
 
-    // Send push notifications to all affected users' devices (respecting preferences)
+    // Send push notifications to all affected users' devices (respecting preferences).
+    // Batch preference lookups in chunks of 100 and dispatch with bounded concurrency
+    // instead of firing 3*N individual DB queries and unbounded parallel pushes.
     if (sendPush && readable.length > 0) {
-      for (const notif of readable) {
-        Promise.all([isPushEnabled(notif.user_id), isTypeEnabled(notif.user_id, notif.type)])
-          .then(async ([pushEnabled, typeEnabled]) => {
-            if (!pushEnabled || !typeEnabled) return;
-            if (!(await readableNotifications([notif])).length) return;
+      const CHUNK_SIZE = 100;
+      const PUSH_CONCURRENCY = 25;
+      (async () => {
+        const pushEnabledByUser = new Map();
+        const typePrefsByUser = new Map();
+        const neededPrefFields = new Set(readable.map((n) => prefFieldForType(n.type)).filter(Boolean));
+        const typePrefSelect = ['user_id', ...neededPrefFields].join(', ');
+
+        for (let i = 0; i < uniqueUserIds.length; i += CHUNK_SIZE) {
+          const idChunk = uniqueUserIds.slice(i, i + CHUNK_SIZE);
+          const [mailRes, typeRes] = await Promise.all([
+            supabaseAdmin
+              .from('MailPreferences')
+              .select('user_id, push_notifications')
+              .in('user_id', idChunk),
+            neededPrefFields.size > 0
+              ? supabaseAdmin
+                .from('UserNotificationPreferences')
+                .select(typePrefSelect)
+                .in('user_id', idChunk)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+
+          if (mailRes.error) {
+            // Fail closed on read failure so opted-out users are never pushed.
+            for (const uid of idChunk) pushEnabledByUser.set(String(uid), false);
+          } else {
+            const rowByUser = new Map((mailRes.data || []).map((r) => [String(r.user_id), r]));
+            for (const uid of idChunk) pushEnabledByUser.set(String(uid), pushSwitchOn(rowByUser.get(String(uid))));
+          }
+
+          if (neededPrefFields.size > 0) {
+            if (typeRes.error) {
+              for (const uid of idChunk) typePrefsByUser.set(String(uid), null);
+            } else {
+              const rowByUser = new Map((typeRes.data || []).map((r) => [String(r.user_id), r]));
+              for (const uid of idChunk) typePrefsByUser.set(String(uid), rowByUser.get(String(uid)) || {});
+            }
+          }
+        }
+
+        const eligible = readable.filter((notif) => {
+          const uid = String(notif.user_id);
+          if (!pushEnabledByUser.get(uid)) return false;
+          const prefField = prefFieldForType(notif.type);
+          if (!prefField) return true;
+          const prefRow = typePrefsByUser.get(uid);
+          if (prefRow === null) return false; // fail closed on read error
+          return !prefRow || prefRow[prefField] !== false;
+        });
+
+        for (let i = 0; i < eligible.length; i += PUSH_CONCURRENCY) {
+          const batch = eligible.slice(i, i + PUSH_CONCURRENCY);
+          await Promise.allSettled(batch.map((notif) => {
             emitDesktopAlert(notif);
             return pushService.sendToUser(notif.user_id, {
               title: notif.title,
               body: notif.body || '',
-              data: { notificationId: notif.id, type: notif.type, link: notif.link || null, ...(notif.metadata || {}),
-                recipient_user_id: notif.user_id },
+              data: {
+                notificationId: notif.id,
+                type: notif.type,
+                link: notif.link || null,
+                ...(notif.metadata || {}),
+                recipient_user_id: notif.user_id,
+              },
+            }).catch((err) => {
+              logger.warn('Bulk push delivery failed (non-blocking)', { error: err.message });
             });
-          })
-          .catch((err) => {
-            logger.warn('Bulk push delivery failed (non-blocking)', { error: err.message });
-          });
-      }
+          }));
+        }
+      })().catch((err) => {
+        logger.warn('Bulk push delivery batch failed (non-blocking)', { error: err.message });
+      });
     }
 
     return readable;

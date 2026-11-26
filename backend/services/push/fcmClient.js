@@ -26,46 +26,62 @@ const logger = require('../../utils/logger');
 const TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_CONCURRENCY = 50;
 
 let _cachedAccessToken = null; // { token, expiresAt }
+let _inflightTokenPromise = null;
+let _cachedSa = null; // { key, value }
 
-/** Resolve the service-account credentials from whichever env slot is set. */
+function serviceAccountEnvKey() {
+  return [
+    process.env.FCM_PROJECT_ID || '',
+    process.env.FCM_CLIENT_EMAIL || '',
+    process.env.FCM_PRIVATE_KEY || '',
+    process.env.FCM_SERVICE_ACCOUNT_JSON || '',
+    process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+  ].join('\0');
+}
+
+/** Resolve the service-account credentials from whichever env slot is set (memoized per env config). */
 function getServiceAccount() {
+  const envKey = serviceAccountEnvKey();
+  if (_cachedSa && _cachedSa.key === envKey) return _cachedSa.value;
+
+  let resolved = null;
   if (process.env.FCM_PROJECT_ID && process.env.FCM_CLIENT_EMAIL && process.env.FCM_PRIVATE_KEY) {
     const key = process.env.FCM_PRIVATE_KEY;
-    return {
+    resolved = {
       projectId: process.env.FCM_PROJECT_ID,
       clientEmail: process.env.FCM_CLIENT_EMAIL,
       privateKey: key.includes('-----BEGIN') ? key.replace(/\\n/g, '\n') : key,
     };
-  }
+  } else {
+    const fromJson = (json) => ({
+      projectId: json.project_id,
+      clientEmail: json.client_email,
+      privateKey: json.private_key,
+    });
 
-  const fromJson = (json) => ({
-    projectId: json.project_id,
-    clientEmail: json.client_email,
-    privateKey: json.private_key,
-  });
-
-  if (process.env.FCM_SERVICE_ACCOUNT_JSON) {
-    try {
-      return fromJson(JSON.parse(process.env.FCM_SERVICE_ACCOUNT_JSON));
-    } catch (err) {
-      logger.error('FCM_SERVICE_ACCOUNT_JSON is not valid JSON', { error: err.message });
-      return null;
+    if (process.env.FCM_SERVICE_ACCOUNT_JSON) {
+      try {
+        resolved = fromJson(JSON.parse(process.env.FCM_SERVICE_ACCOUNT_JSON));
+      } catch (err) {
+        logger.error('FCM_SERVICE_ACCOUNT_JSON is not valid JSON', { error: err.message });
+        return null;
+      }
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      try {
+        const fs = require('fs');
+        resolved = fromJson(JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8')));
+      } catch (err) {
+        logger.error('Failed to read GOOGLE_APPLICATION_CREDENTIALS', { error: err.message });
+        return null;
+      }
     }
   }
 
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    try {
-      const fs = require('fs');
-      return fromJson(JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8')));
-    } catch (err) {
-      logger.error('Failed to read GOOGLE_APPLICATION_CREDENTIALS', { error: err.message });
-      return null;
-    }
-  }
-
-  return null;
+  _cachedSa = { key: envKey, value: resolved };
+  return resolved;
 }
 
 /** True when a usable service account is available. */
@@ -120,36 +136,46 @@ async function fetchWithTimeout(url, options) {
   return fetch(url, { ...options, signal });
 }
 
-/** Exchange the service-account assertion for a cached OAuth2 access token. */
+/** Exchange the service-account assertion for a cached OAuth2 access token (coalesced across concurrent callers). */
 async function getAccessToken() {
   const now = Date.now();
   if (_cachedAccessToken && now < _cachedAccessToken.expiresAt - 60_000) {
     return _cachedAccessToken.token;
   }
-  const sa = getServiceAccount();
-  const assertion = jwt.sign(
-    { scope: SCOPE },
-    sa.privateKey,
-    { algorithm: 'RS256', issuer: sa.clientEmail, audience: TOKEN_URI, expiresIn: '1h' },
-  );
-
-  const res = await fetchWithTimeout(TOKEN_URI, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion,
-    }).toString(),
-  });
-  if (!res.ok) {
-    throw new Error(`FCM OAuth token request failed: ${res.status}`);
+  if (_inflightTokenPromise) {
+    return _inflightTokenPromise;
   }
-  const json = await res.json();
-  _cachedAccessToken = {
-    token: json.access_token,
-    expiresAt: now + (json.expires_in || 3600) * 1000,
-  };
-  return _cachedAccessToken.token;
+
+  _inflightTokenPromise = (async () => {
+    const sa = getServiceAccount();
+    const assertion = jwt.sign(
+      { scope: SCOPE },
+      sa.privateKey,
+      { algorithm: 'RS256', issuer: sa.clientEmail, audience: TOKEN_URI, expiresIn: '1h' },
+    );
+
+    const res = await fetchWithTimeout(TOKEN_URI, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+      }).toString(),
+    });
+    if (!res.ok) {
+      throw new Error(`FCM OAuth token request failed: ${res.status}`);
+    }
+    const json = await res.json();
+    _cachedAccessToken = {
+      token: json.access_token,
+      expiresAt: Date.now() + (json.expires_in || 3600) * 1000,
+    };
+    return _cachedAccessToken.token;
+  })().finally(() => {
+    _inflightTokenPromise = null;
+  });
+
+  return _inflightTokenPromise;
 }
 
 async function sendOne(url, accessToken, token, message) {
@@ -166,6 +192,10 @@ async function sendOne(url, accessToken, token, message) {
   } catch (err) {
     logger.warn('FCM request error', { error: err.message });
     return { token, action: 'retry' };
+  }
+  if (res.status === 401) {
+    // Evict cached OAuth token if revoked or prematurely expired so subsequent sends re-auth.
+    if (_cachedAccessToken?.token === accessToken) _cachedAccessToken = null;
   }
   let body = null;
   try {
@@ -202,15 +232,22 @@ async function sendMany(tokens, message) {
 
   const sa = getServiceAccount();
   const url = `https://fcm.googleapis.com/v1/projects/${sa.projectId}/messages:send`;
-  const results = await Promise.all(tokens.map((token) => sendOne(url, accessToken, token, message)));
+  const results = [];
+  for (let i = 0; i < tokens.length; i += MAX_CONCURRENCY) {
+    const batch = tokens.slice(i, i + MAX_CONCURRENCY);
+    const batchResults = await Promise.all(batch.map((token) => sendOne(url, accessToken, token, message)));
+    results.push(...batchResults);
+  }
   const invalidTokens = results.filter((r) => r.action === 'invalid').map((r) => r.token);
   const acceptedTokens = results.filter((r) => r.action === 'ok').map((r) => r.token);
   return { invalidTokens, acceptedTokens };
 }
 
-/** Clear the cached OAuth2 access token (used on shutdown / tests). */
+/** Clear cached credentials & OAuth2 access token (used on shutdown / tests). */
 function close() {
   _cachedAccessToken = null;
+  _inflightTokenPromise = null;
+  _cachedSa = null;
 }
 
 module.exports = {

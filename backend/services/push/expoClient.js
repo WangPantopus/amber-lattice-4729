@@ -13,7 +13,15 @@ const { isExpoToken } = require('./tokenRouting');
 const logger = require('../../utils/logger');
 
 const RECEIPT_BATCH_SIZE = 300; // Expo recommends max ~300 per request
+const MAX_PENDING_RECEIPTS = 10_000;
 const _pendingReceiptIds = [];
+
+function enqueueReceiptId(id) {
+  if (_pendingReceiptIds.length >= MAX_PENDING_RECEIPTS) {
+    _pendingReceiptIds.splice(0, _pendingReceiptIds.length - MAX_PENDING_RECEIPTS + 1);
+  }
+  _pendingReceiptIds.push(id);
+}
 
 let _expo = null;
 function getExpo() {
@@ -63,7 +71,7 @@ async function sendMany(tokens, message) {
       const tickets = await expo.sendPushNotificationsAsync(chunk);
       tickets.forEach((ticket, i) => {
         if (ticket.status === 'ok' && ticket.id) {
-          _pendingReceiptIds.push(ticket.id);
+          enqueueReceiptId(ticket.id);
           acceptedTokens.push(chunk[i].to);
         } else if (ticket.status === 'error') {
           const detail = ticket.details && ticket.details.error;
@@ -98,7 +106,7 @@ async function checkReceipts() {
       }
     }
   } catch (err) {
-    _pendingReceiptIds.unshift(...batch);
+    for (const id of batch) enqueueReceiptId(id);
     logger.error('Failed to check Expo receipts', { error: err.message });
   }
 }
