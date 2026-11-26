@@ -479,14 +479,16 @@ async function geocodeUsAddress(address, { signedOut = false } = {}) {
 // (§4 anti-leak + Mapbox temporary-result terms).
 async function fetchFloodCached(lat, lng) {
   const gh = encodeGeohash(lat, lng, FLOOD_GEOHASH_PRECISION);
-  const key = `flood:${gh}`;
+  // v2: the zone's subtype (shaded or unshaded Zone X) is kept since Nov 26, so older copies without it aren't served.
+  const key = `flood:v2:${gh}`;
   const cached = previewCache.get(key);
   if (cached) return cached;
 
   try {
     const { payload } = await readThrough({
       cacheKey: `geo:${gh}`,
-      sectionId: '_flood_zone',
+      // v2 since Nov 26: rows now keep FEMA's zone subtype; only flood rows move (the key is per section).
+      sectionId: '_flood_zone_v2',
       ttlMs: 90 * 24 * 60 * 60 * 1000,
       fetch: async () => {
         const flood = await fetchFloodZone(lat, lng);
