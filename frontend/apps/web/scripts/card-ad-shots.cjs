@@ -179,7 +179,7 @@ const takes = {
 const W = {
   open: ['A Christmas card', 'they open by hand.'],
   phone: ['On their phone.'],
-  pick: ['Pick from 67 cards.'],
+  pick: ['Pick from 105 cards.'],
   write: ['Write a few words.'],
   sign: ['Sign it yourself.'],
   seal: ['Seal it by hand.'],
