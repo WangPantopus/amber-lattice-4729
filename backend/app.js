@@ -75,7 +75,7 @@ const { getSnapshot: getAddressVerificationMetrics } = require('./services/addre
 const chatSocketio = require('./socket/chatSocketio');
 
 // Import background jobs
-const { startJobs } = require('./jobs');
+const { startJobs, stopJobs } = require('./jobs');
 const { initPgBoss, stopPgBoss } = require('./jobs/pgBossManager');
 const { registerPgBossJobs } = require('./jobs/pgBossJobs');
 
@@ -745,28 +745,40 @@ server.listen(PORT, HOST, async () => {
 // agent turn takes up to 45 s, a storage upload up to 60 s.
 const SHUTDOWN_GRACE_MS = 60_000;
 
+let shuttingDown = false;
 const gracefulShutdown = async (signal) => {
+  if (shuttingDown) {
+    logger.info(`${signal} received while shutdown already in progress`);
+    return;
+  }
+  shuttingDown = true;
   logger.info(`${signal} received, starting graceful shutdown`);
 
   // Force shutdown if requests are still running after the grace period
-  setTimeout(() => {
+  const forceTimer = setTimeout(() => {
     logger.error('Forced shutdown due to timeout');
     process.exit(1);
   }, SHUTDOWN_GRACE_MS);
+  forceTimer.unref?.();
 
-  // Stop pg-boss workers first (allows in-flight jobs to complete)
+  // Stop scheduled cron ticks and pg-boss workers first (allows in-flight jobs to complete)
+  stopJobs();
   await stopPgBoss().catch((err) => {
     logger.error('[pg-boss] Error during shutdown:', { error: err.message });
   });
   require('./services/chatPushDelivery').stop();
   await require('./services/syncChangedService').stop();
   await require('./services/propertyRecords/counts').flush();
+  require('./services/push/apnsClient').close();
+  require('./services/push/fcmClient').close();
+  await require('./config/directDb').close();
 
   // Disconnect Socket.io clients first: an open socket would keep the HTTP
   // server from closing until the timeout. They reconnect, to the new process
   // during a release. io.close() then closes the HTTP server, which stops
   // accepting connections and lets running requests finish.
   io.close(() => {
+    clearTimeout(forceTimer);
     logger.info('Socket.io and HTTP server closed');
     process.exit(0);
   });

@@ -22,12 +22,13 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const addressConfig = require('../config/addressVerification');
 const { usesGooglePostal } = require('./addressValidation/postalAdapter');
+const { GeoCache } = require('../utils/geoCache');
 
 // A failed re-check waits this long before an open screen tries again.
 const RECHECK_RETRY_MS = 10 * 60 * 1000;
 // Google usually answers in under 200 ms, so a screen can open on the new answer.
 const RECHECK_WAIT_MS = 1500;
-const recheckTriedAt = new Map();
+const recheckTriedAt = new GeoCache(5000);
 
 // severity: ok < info < attention < problem
 const SEVERITY_RANK = { ok: 0, info: 1, attention: 2, problem: 3 };
@@ -76,9 +77,8 @@ function checkedOnSentence(iso) {
  * @returns {Promise<boolean>} true when the stored answer changed in time for this response
  */
 function recheckBriefly(addressId, homeId) {
-  const triedAt = recheckTriedAt.get(addressId);
-  if (triedAt && Date.now() - triedAt < RECHECK_RETRY_MS) return Promise.resolve(false);
-  recheckTriedAt.set(addressId, Date.now());
+  if (recheckTriedAt.get(addressId)) return Promise.resolve(false);
+  recheckTriedAt.set(addressId, true, RECHECK_RETRY_MS);
 
   const recheck = (async () => {
     const { data: address, error } = await supabaseAdmin

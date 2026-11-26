@@ -18,6 +18,8 @@
  */
 
 const zlib = require('zlib');
+const { promisify } = require('util');
+const gunzipAsync = promisify(zlib.gunzip);
 const config = require('../../config/floorPlanSheets');
 const logger = require('../../utils/logger');
 const { changeNicheData } = require('../homeNicheData');
@@ -38,7 +40,7 @@ function reader() {
 }
 
 const parseJson = (bytes) => JSON.parse(bytes.toString('utf8'));
-const gunzipJson = (bytes) => JSON.parse(zlib.gunzipSync(bytes).toString('utf8'));
+const gunzipJson = async (bytes) => JSON.parse((await gunzipAsync(bytes)).toString('utf8'));
 const stateFile = (state) => reader().file(format.statePath(state), parseJson);
 const sheetFile = (id, release) => reader().file(format.sheetPath(id, release), gunzipJson);
 

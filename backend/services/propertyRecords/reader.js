@@ -16,10 +16,13 @@
 
 const dns = require('dns');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const https = require('https');
 const path = require('path');
 const zlib = require('zlib');
+const { promisify } = require('util');
 const { fileURLToPath } = require('url');
+const gunzipAsync = promisify(zlib.gunzip);
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
@@ -107,16 +110,20 @@ function fileStorage(url) {
   const root = fileURLToPath(url);
   return async (name, { range } = {}) => {
     const file = path.join(root, name);
-    if (!fs.existsSync(file)) return null;
-    if (!range) return { bytes: fs.readFileSync(file), etag: null };
-    const bytes = Buffer.alloc(range[1]);
-    const fd = fs.openSync(file, 'r');
     try {
-      fs.readSync(fd, bytes, 0, range[1], range[0]);
-    } finally {
-      fs.closeSync(fd);
+      if (!range) return { bytes: await fsp.readFile(file), etag: null };
+      const fh = await fsp.open(file, 'r');
+      try {
+        const bytes = Buffer.alloc(range[1]);
+        await fh.read(bytes, 0, range[1], range[0]);
+        return { bytes, etag: null };
+      } finally {
+        await fh.close();
+      }
+    } catch (err) {
+      if (err.code === 'ENOENT') return null;
+      throw err;
     }
-    return { bytes, etag: null };
   };
 }
 
@@ -238,12 +245,12 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
       const now = Date.now();
       if (!job && (heldAt === 0 || now - heldAt >= freshMs)) {
         job = read(name, { etag })
-          .then((result) => {
+          .then(async (result) => {
             if (!result) {
               held = null;
               etag = null;
             } else if (!result.notModified) {
-              held = parse(result.bytes);
+              held = await parse(result.bytes);
               etag = result.etag;
             }
             heldAt = Date.now();
@@ -313,11 +320,11 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
     if (job) {
       manifests.delete(name);
     } else {
-      job = read(name).then((result) => {
+      job = read(name).then(async (result) => {
         if (!result) throw new StorageUnavailable('A release named by its state file is missing');
         let data;
         try {
-          data = JSON.parse(zlib.gunzipSync(result.bytes).toString('utf8'));
+          data = JSON.parse((await gunzipAsync(result.bytes)).toString('utf8'));
         } catch (_) {
           throw badBytes('manifest');
         }
@@ -346,10 +353,10 @@ function createReader(storage = createStorage(), { keptFiles = KEPT_FILES } = {}
       blocks.delete(key);
     } else {
       job = read(`${releasePath(fips, release)}/data.bin`, { range: [current.offsets[index], current.lengths[index]] })
-        .then((result) => {
+        .then(async (result) => {
           if (!result || result.bytes.length !== current.lengths[index]) throw new StorageUnavailable('A short read');
           try {
-            return JSON.parse(zlib.gunzipSync(result.bytes).toString('utf8'));
+            return JSON.parse((await gunzipAsync(result.bytes)).toString('utf8'));
           } catch (_) {
             throw badBytes('block');
           }

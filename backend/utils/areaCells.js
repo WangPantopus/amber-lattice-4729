@@ -33,7 +33,9 @@
 
 const path = require('path');
 const zlib = require('zlib');
+const { promisify } = require('util');
 const { pathToFileURL } = require('url');
+const gunzipAsync = promisify(zlib.gunzip);
 
 // Loaded on first use, so the build script (scripts/area-cells/build.cjs) runs with no packages installed.
 const logger = () => require('./logger');
@@ -150,8 +152,8 @@ async function currentManifest(src) {
   return src.manifest;
 }
 
-function parseTile(bytes) {
-  const cells = zlib.gunzipSync(bytes);
+async function parseTile(bytes) {
+  const cells = await gunzipAsync(bytes);
   if (cells.length !== TILE_BYTES) throw new Error('An area cells tile is the wrong size');
   for (let at = 0; at < cells.length; at += 1) {
     if (cells[at] > LARGEST_STEP) throw new Error('An area cells tile holds a step this server does not know');

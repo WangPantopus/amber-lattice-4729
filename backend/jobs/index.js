@@ -183,12 +183,21 @@ function envFlagEnabled(name, defaultValue = true) {
   return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
+const runningJobs = new Set();
+const activeCronTasks = [];
+
 /**
- * Wraps a job function with error handling and timing.
- * Prevents one job crash from killing the whole process.
+ * Wraps a job function with overlap protection, error handling, and timing.
+ * Prevents one job crash from killing the whole process and prevents a slow
+ * cron tick from overlapping itself inside the same process.
  */
 function wrapJob(name, fn) {
   const wrapped = async () => {
+    if (runningJobs.has(name)) {
+      logger.warn(`[CRON] Skipping overlapping run: ${name}`);
+      return;
+    }
+    runningJobs.add(name);
     const start = Date.now();
     // The job's database calls (count, time, slowest), so its load on the database shows in the log.
     const ledger = dbTiming.open();
@@ -205,10 +214,26 @@ function wrapJob(name, fn) {
         elapsed_ms: elapsed,
         ...dbTiming.fields(ledger),
       });
+    } finally {
+      runningJobs.delete(name);
     }
   };
   wrapped.jobName = name;
   return wrapped;
+}
+
+/**
+ * Stop all scheduled node-cron tasks (used on graceful shutdown).
+ */
+function stopJobs() {
+  while (activeCronTasks.length > 0) {
+    const task = activeCronTasks.pop();
+    try {
+      task?.stop?.();
+    } catch (err) {
+      logger.warn('[CRON] Error stopping cron task', { error: err.message });
+    }
+  }
 }
 
 /**
@@ -241,7 +266,9 @@ function startJobs(options = {}) {
       return null;
     }
     scheduledJobs.push(jobName);
-    return cron.schedule(expression, task, cronOptions);
+    const scheduled = cron.schedule(expression, task, cronOptions);
+    if (scheduled) activeCronTasks.push(scheduled);
+    return scheduled;
   };
 
   // ─── Authorize Upcoming Gigs ───
@@ -908,6 +935,12 @@ function startJobs(options = {}) {
     timezone: 'UTC',
   });
 
+  // Legacy Expo push receipt drain — every 15 minutes (no-op when PUSH_EXPO_ENABLED=false or queue empty).
+  scheduleCron('6,21,36,51 * * * *', wrapJob('pushCheckReceipts', () => require('../services/pushService').checkReceipts()), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+
   logger.info('[CRON] Background jobs initialized', {
     scheduled_count: scheduledJobs.length,
     skipped_count: skippedJobs.length,
@@ -916,4 +949,4 @@ function startJobs(options = {}) {
   });
 }
 
-module.exports = { startJobs };
+module.exports = { startJobs, stopJobs };

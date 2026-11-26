@@ -13,6 +13,7 @@
 
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
+const { GeoCache } = require('../utils/geoCache');
 
 // ── Feature unlock tiers ──────────────────────────────────────────
 
@@ -25,20 +26,17 @@ const FEATURE_TIERS = [
 
 const FEATURE_KEYS = FEATURE_TIERS.map((t) => t.key);
 
-// ── In-memory cache (TTL = 5 minutes) ─────────────────────────────
+// ── In-memory LRU cache (TTL = 5 minutes, bounded) ────────────────
 
-const _cache = new Map(); // userId -> { data, expiresAt }
+const _cache = new GeoCache(5000);
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function getCached(userId) {
-  const entry = _cache.get(userId);
-  if (entry && entry.expiresAt > Date.now()) return entry.data;
-  _cache.delete(userId);
-  return null;
+  return _cache.get(userId) ?? null;
 }
 
 function setCache(userId, data) {
-  _cache.set(userId, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+  _cache.set(userId, data, CACHE_TTL_MS);
 }
 
 /** Drop a cached count once someone joins with the user's link, so their next read shows it. */

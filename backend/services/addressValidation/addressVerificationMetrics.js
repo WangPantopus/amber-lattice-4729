@@ -1,5 +1,7 @@
 const WINDOW_MS = 5 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 60 * 1000;
+const MAX_SAMPLES_PER_BUCKET = 2000;
+const MAX_LABEL_BUCKETS = 200;
 
 const counters = new Map();
 const histograms = new Map();
@@ -25,6 +27,7 @@ function incCounter(name, labels = {}) {
   if (!counters.has(name)) counters.set(name, new Map());
   const bucket = counters.get(name);
   const key = labelsKey(labels);
+  if (!bucket.has(key) && bucket.size >= MAX_LABEL_BUCKETS) return;
   bucket.set(key, (bucket.get(key) || 0) + 1);
 }
 
@@ -36,22 +39,38 @@ function recordHistogram(name, value, labels = {}) {
   const metric = histograms.get(name);
   const key = labelsKey(labels);
   if (!metric.has(key)) {
-    metric.set(key, { values: [], timestamps: [] });
+    if (metric.size >= MAX_LABEL_BUCKETS) return;
+    metric.set(key, {
+      values: new Float64Array(MAX_SAMPLES_PER_BUCKET),
+      timestamps: new Float64Array(MAX_SAMPLES_PER_BUCKET),
+      head: 0,
+      count: 0,
+    });
   }
 
   const bucket = metric.get(key);
-  bucket.values.push(parsed);
-  bucket.timestamps.push(Date.now());
+  const idx = (bucket.head + bucket.count) % MAX_SAMPLES_PER_BUCKET;
+  bucket.values[idx] = parsed;
+  bucket.timestamps[idx] = Date.now();
+  if (bucket.count < MAX_SAMPLES_PER_BUCKET) {
+    bucket.count += 1;
+  } else {
+    bucket.head = (bucket.head + 1) % MAX_SAMPLES_PER_BUCKET;
+  }
+}
+
+function evictExpired(bucket, cutoff) {
+  while (bucket.count > 0 && bucket.timestamps[bucket.head] < cutoff) {
+    bucket.head = (bucket.head + 1) % MAX_SAMPLES_PER_BUCKET;
+    bucket.count -= 1;
+  }
 }
 
 function cleanupHistograms() {
   const cutoff = Date.now() - WINDOW_MS;
   for (const metric of histograms.values()) {
     for (const bucket of metric.values()) {
-      while (bucket.timestamps.length > 0 && bucket.timestamps[0] < cutoff) {
-        bucket.timestamps.shift();
-        bucket.values.shift();
-      }
+      evictExpired(bucket, cutoff);
     }
   }
 }
@@ -59,6 +78,7 @@ function cleanupHistograms() {
 setInterval(cleanupHistograms, CLEANUP_INTERVAL_MS).unref();
 
 function getSnapshot() {
+  const cutoff = Date.now() - WINDOW_MS;
   const snapshot = {
     counters: {},
     histograms: {},
@@ -74,13 +94,18 @@ function getSnapshot() {
   for (const [name, metric] of histograms.entries()) {
     snapshot.histograms[name] = {};
     for (const [key, bucket] of metric.entries()) {
-      const sorted = [...bucket.values].sort((left, right) => left - right);
+      evictExpired(bucket, cutoff);
+      const active = new Array(bucket.count);
+      for (let i = 0; i < bucket.count; i += 1) {
+        active[i] = bucket.values[(bucket.head + i) % MAX_SAMPLES_PER_BUCKET];
+      }
+      active.sort((left, right) => left - right);
       snapshot.histograms[name][key] = {
-        count: sorted.length,
-        p50_ms: Math.round(percentile(sorted, 50)),
-        p95_ms: Math.round(percentile(sorted, 95)),
-        p99_ms: Math.round(percentile(sorted, 99)),
-        max_ms: Math.round(sorted[sorted.length - 1] || 0),
+        count: active.length,
+        p50_ms: Math.round(percentile(active, 50)),
+        p95_ms: Math.round(percentile(active, 95)),
+        p99_ms: Math.round(percentile(active, 99)),
+        max_ms: Math.round(active[active.length - 1] || 0),
       };
     }
   }

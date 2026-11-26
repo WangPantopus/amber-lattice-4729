@@ -11,6 +11,8 @@
  */
 
 const zlib = require('zlib');
+const { promisify } = require('util');
+const gunzipAsync = promisify(zlib.gunzip);
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
 const { createReader, createStorage, StorageUnavailable } = require('./reader');
@@ -30,7 +32,7 @@ function reader() {
   return shared;
 }
 
-const gunzipJson = (bytes) => JSON.parse(zlib.gunzipSync(bytes).toString('utf8'));
+const gunzipJson = async (bytes) => JSON.parse((await gunzipAsync(bytes)).toString('utf8'));
 
 /** A state's file, or null if it can't be read in time or there's no index to read. */
 function stateFile(state) {

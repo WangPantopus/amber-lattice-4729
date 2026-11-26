@@ -187,4 +187,15 @@ function compared(name, { error, differs = [], directMs, apiMs }) {
   }
 }
 
-module.exports = { mode, read, fellBack, compared, warmUp };
+async function close() {
+  if (!pool) return;
+  const current = pool;
+  pool = null;
+  try {
+    await current.end();
+  } catch (error) {
+    logger.warn('directDb: pool close error', { error: error.message });
+  }
+}
+
+module.exports = { mode, read, fellBack, compared, warmUp, close };
