@@ -1134,25 +1134,29 @@ router.get('/discovery', verifyToken, async (req, res) => {
         // Discovery = OTHER users' published businesses near the current user.
         // 1) Get the set of business IDs the current user owns or has a seat in — exclude those.
         // 2) Only include businesses with a published BusinessProfile (paginated past 1,000 rows).
-        const { data: myTeams } = await supabaseAdmin
-          .from('BusinessTeam')
-          .select('business_user_id')
-          .eq('user_id', userId)
-          .eq('is_active', true);
-
-        const publishedProfiles = [];
         const PROFILE_PAGE_SIZE = 1000;
-        for (let offset = 0; ; offset += PROFILE_PAGE_SIZE) {
-          const { data: pageProfiles, error: profErr } = await supabaseAdmin
-            .from('BusinessProfile')
-            .select('business_user_id, categories')
-            .eq('is_published', true)
-            .order('business_user_id', { ascending: true })
-            .range(offset, offset + PROFILE_PAGE_SIZE - 1);
-          if (profErr || !pageProfiles?.length) break;
-          publishedProfiles.push(...pageProfiles);
-          if (pageProfiles.length < PROFILE_PAGE_SIZE) break;
-        }
+        const [{ data: myTeams }, publishedProfiles] = await Promise.all([
+          supabaseAdmin
+            .from('BusinessTeam')
+            .select('business_user_id')
+            .eq('user_id', userId)
+            .eq('is_active', true),
+          (async () => {
+            const profiles = [];
+            for (let offset = 0; ; offset += PROFILE_PAGE_SIZE) {
+              const { data: pageProfiles, error: profErr } = await supabaseAdmin
+                .from('BusinessProfile')
+                .select('business_user_id, categories')
+                .eq('is_published', true)
+                .order('business_user_id', { ascending: true })
+                .range(offset, offset + PROFILE_PAGE_SIZE - 1);
+              if (profErr || !pageProfiles?.length) break;
+              profiles.push(...pageProfiles);
+              if (pageProfiles.length < PROFILE_PAGE_SIZE) break;
+            }
+            return profiles;
+          })(),
+        ]);
 
         const myBusinessIds = new Set(
           (myTeams || []).map((t) => t.business_user_id).filter(Boolean)

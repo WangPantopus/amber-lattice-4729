@@ -75,6 +75,7 @@ async function computeAvgResponseTime() {
           .select('room_id')
           .eq('user_id', bizId)
           .eq('is_active', true)
+          .order('id', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1);
         if (partErr || !pageParts?.length) break;
         participations.push(...pageParts);

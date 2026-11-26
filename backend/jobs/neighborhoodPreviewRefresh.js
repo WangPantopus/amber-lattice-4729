@@ -120,6 +120,7 @@ module.exports = async function neighborhoodPreviewRefresh() {
         .in('home_id', homeChunk)
         .eq('is_active', true)
         .eq('verification_status', 'verified')
+        .order('id', { ascending: true })
         .range(from, to),
     );
     if (occErr) {
@@ -240,6 +241,7 @@ module.exports = async function neighborhoodPreviewRefresh() {
           .select('user_id')
           .in('home_id', homeChunk)
           .eq('is_active', true)
+          .order('id', { ascending: true })
           .range(from, to),
       );
       if (occErr) {
