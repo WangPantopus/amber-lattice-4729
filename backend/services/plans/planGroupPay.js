@@ -234,48 +234,27 @@ async function claim(user, postId, body = {}, { io = null } = {}) {
   // As any join: only someone the plan exists for (a business's plan needs its switch and an app that draws it).
   if (!planService().isVisibleTo(plan, viewer, { involved: false })) fail(404, 'not_found', "This plan isn't available.");
   if (!rules.isAskingOpen(plan, plan.post.event_date, plan.post.event_end_date)) fail(409, 'ended', 'Asking has closed for this plan.');
-  const { data: mine, error: mineError } = await supabaseAdmin.from('PlanRequest').select(planService().REQUEST_COLUMNS)
-    .eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
-  if (mineError) throw new Error(`Failed to read your request: ${mineError.message}`);
-  if (mine && planService().ACTIVE_REQUEST_STATUSES.includes(mine.status)) fail(409, 'already_in', "You're already on this plan.");
-  if (mine?.status === 'removed') fail(403, 'removed', "You can't join this plan again.");
-  const requests = await actions()._activeRequests(postId);
-  if (spotsLeft(plan, buyer, requests) <= 0) fail(409, 'spots_taken', 'All the spots on this link are taken.');
-
-  const stamp = nowIso();
-  const row = {
-    status: 'accepted', decided_by: 'rule', decided_at: stamp, party_size: 1, kids_count: null,
-    distance_band: null, paid_by_request_id: buyer.id, spots_bought: null, spots_token: null,
-    way_in: await require('./planBusiness').wayInFor(plan, viewer.id, null, {}),
-    unit_price_cents: null, payment_id: null, paid_cents: null, refunded_cents: 0, refund_until: null, hold_expires_at: null,
-    queued_at: stamp, reconfirm_requested_at: null, reconfirmed: null, reconfirm_reason: null, on_my_way_at: null, updated_at: stamp,
-  };
-  let request;
-  if (mine) {
-    const { data, error } = await supabaseAdmin.from('PlanRequest').update(row).eq('id', mine.id)
-      .in('status', ['withdrawn', 'left', 'expired', 'declined']).select(planService().REQUEST_COLUMNS);
-    if (error) throw new Error(`Failed to take the spot: ${error.message}`);
-    if (!data || data.length === 0) fail(409, 'already_in', "You're already on this plan.");
-    request = data[0];
-  } else {
-    const { data, error } = await supabaseAdmin.from('PlanRequest')
-      .insert({ ...row, post_id: postId, user_id: viewer.id, ask_count: 1, created_at: stamp }).select(planService().REQUEST_COLUMNS).single();
-    if (error) {
-      if (error.code === '23505') fail(409, 'already_in', "You're already on this plan.");
-      throw new Error(`Failed to take the spot: ${error.message}`);
-    }
-    request = data;
-  }
-  // Two people on the last spot: the later one gives it back.
-  const after = claimersOf(buyer, await actions()._activeRequests(postId))
-    .sort((a, b) => (new Date(a.decided_at) - new Date(b.decided_at)) || String(a.id).localeCompare(String(b.id)));
-  const room = buyer.spots_bought - ownSeats(plan, buyer);
-  if (after.findIndex((r) => r.id === request.id) >= room) {
-    await supabaseAdmin.from('PlanRequest').update({ status: 'withdrawn', updated_at: nowIso() }).eq('id', request.id).eq('status', 'accepted');
-    fail(409, 'spots_taken', 'All the spots on this link are taken.');
-  }
+  const room = Math.max(0, (buyer.spots_bought || 0) - ownSeats(plan, buyer));
+  if (room <= 0) fail(409, 'spots_taken', 'All the spots on this link are taken.');
+  const wayIn = await require('./planBusiness').wayInFor(plan, viewer.id, null, {});
+  const { data: claimed, error: claimError } = await supabaseAdmin.rpc('claim_plan_group_spot', {
+    p_post_id: postId,
+    p_buyer_request_id: buyer.id,
+    p_token: body.token,
+    p_user_id: viewer.id,
+    p_way_in: wayIn,
+    p_room: room,
+  });
+  if (claimError) throw new Error(`Failed to take the spot: ${claimError.message}`);
+  if (claimed?.error === 'link_stopped') fail(409, 'link_stopped', 'This link isn’t taking anyone now.');
+  if (claimed?.error === 'already_in') fail(409, 'already_in', "You're already on this plan.");
+  if (claimed?.error === 'removed') fail(403, 'removed', "You can't join this plan again.");
+  if (claimed?.error === 'spots_taken') fail(409, 'spots_taken', 'All the spots on this link are taken.');
+  const request = claimed?.request;
+  if (!request) throw new Error('Failed to take the spot: missing request row');
+  const stamp = request.decided_at || nowIso();
   await require('../businessCustomers').recordBusinessContact({ businessUserId: plan.business_user_id, userId: viewer.id,
-    feature: 'plan', wayIn: row.way_in, basis: planPaid().basisOf(row.way_in), at: stamp }).catch(() => null);
+    feature: 'plan', wayIn, basis: planPaid().basisOf(wayIn), at: stamp }).catch(() => null);
   await actions()._admit(plan, request, { byRule: true, hostFirst: await actions()._hostFirstOf(plan), io, rule: 'invite' });
   const { body: planBody } = await planService().getForViewer(postId, viewer);
   return planBody;
@@ -285,16 +264,18 @@ async function claim(user, postId, body = {}, { io = null } = {}) {
 
 /**
  * The spots nobody took go back to the buyer's card in one refund and the link stops: at refund_until (the tick), or
- * earlier when the buyer gives them back. The token is cleared first, so nobody takes a spot being refunded; a refund
- * that can't complete now is kept as owed and sent by a later tick (planPaid.refund). Answers the cents returned.
+ * earlier when the buyer gives them back. The token is cleared and active claimers are counted atomically under a row
+ * lock on the buyer's request (settle_plan_group_spots), so a concurrent claim_plan_group_spot can never claim a spot
+ * that is being refunded. A refund that can't complete now is kept as owed and sent by a later tick (planPaid.refund).
  */
 async function settle(plan, buyer, { reason }) {
-  const requests = await actions()._activeRequests(plan.post_id);
-  const { data: stopped, error } = await supabaseAdmin.from('PlanRequest').update({ spots_token: null, updated_at: nowIso() })
-    .eq('id', buyer.id).not('spots_token', 'is', null).select('id');
+  const { data: settled, error } = await supabaseAdmin.rpc('settle_plan_group_spots', {
+    p_post_id: plan.post_id,
+    p_buyer_request_id: buyer.id,
+  });
   if (error) throw new Error(`Failed to stop the link: ${error.message}`);
-  if (!stopped || stopped.length === 0) return 0;
-  const left = spotsLeft(plan, buyer, requests);
+  if (!settled?.stopped) return 0;
+  const left = Math.max(0, (buyer.spots_bought || 0) - ownSeats(plan, buyer) - Number(settled.claimed || 0));
   if (left <= 0) return 0;
   const amount = left * perSpot(plan, buyer);
   const back = await planPaid().refund(plan, buyer, { reason, actorMode: 'policy', amount, spots: left });

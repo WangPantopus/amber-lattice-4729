@@ -6,6 +6,28 @@
  * - an object namespace with `.default` constructor
  * - an already-instantiated mock client object in tests
  */
+const STRIPE_CLIENT_OPTIONS = {
+  timeout: 15_000,
+  maxNetworkRetries: 2,
+};
+
+// Reuse one Stripe SDK client (and its underlying keep-alive HTTP agent) per
+// constructor + secret key instead of rebuilding a fresh client on every call.
+const clientCacheByCtor = new WeakMap();
+
+function getCachedClient(stripeCtor, secretKey) {
+  const cacheKey = secretKey || '';
+  let byKey = clientCacheByCtor.get(stripeCtor);
+  if (!byKey) {
+    byKey = new Map();
+    clientCacheByCtor.set(stripeCtor, byKey);
+  }
+  if (!byKey.has(cacheKey)) {
+    byKey.set(cacheKey, stripeCtor(secretKey, STRIPE_CLIENT_OPTIONS));
+  }
+  return byKey.get(cacheKey);
+}
+
 function getStripeClient() {
   const stripeModule = require('stripe');
 
@@ -44,14 +66,14 @@ function getStripeClient() {
     let client;
     return new Proxy({}, {
       get(_target, property) {
-        if (!client) client = stripeCtor(process.env.STRIPE_SECRET_KEY);
+        if (!client) client = getCachedClient(stripeCtor, process.env.STRIPE_SECRET_KEY);
         const value = Reflect.get(client, property, client);
         return typeof value === 'function' ? value.bind(client) : value;
       },
     });
   }
 
-  return stripeCtor(process.env.STRIPE_SECRET_KEY);
+  return getCachedClient(stripeCtor, process.env.STRIPE_SECRET_KEY);
 }
 
 module.exports = { getStripeClient };

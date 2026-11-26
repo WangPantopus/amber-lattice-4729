@@ -373,15 +373,54 @@ async function finalize(checkId) {
   const { data: check } = await supabaseAdmin.from('BusinessInvoice').select(CHECK_COLUMNS).eq('id', checkId).maybeSingle();
   if (!check?.payment_id) return 'gone';
   if (check.status === 'paid') return 'paid';
-  const status = await planPaid().captureNow(check.payment_id);
-  if (!CAPTURED.includes(status)) return 'not_paid';
   const stamp = new Date().toISOString();
+  // Atomically reserve the single-use deal BEFORE capturing so two concurrent discounted
+  // checks for the same guest can never both capture with the deal applied.
+  let claimedDeal = false;
+  if (check.discount_cents > 0 && check.plan_request_id) {
+    const { data: claimed, error: claimErr } = await supabaseAdmin
+      .from('PlanRequest')
+      .update({ deal_used_at: stamp, deal_cents: check.discount_cents, updated_at: stamp })
+      .eq('id', check.plan_request_id)
+      .is('deal_used_at', null)
+      .select('id');
+    if (claimErr) throw new Error(`Failed to reserve deal: ${claimErr.message}`);
+    if (!claimed || claimed.length === 0) {
+      await require('../../stripe/stripeService').cancelAuthorization(check.payment_id).catch(() => null);
+      await supabaseAdmin
+        .from('BusinessInvoice')
+        .update({ payment_id: null, stripe_payment_intent_id: null, discount_cents: 0 })
+        .eq('id', check.id)
+        .neq('status', 'paid');
+      return 'deal_already_used';
+    }
+    claimedDeal = true;
+  }
+  const releaseDealClaim = async () => {
+    if (!claimedDeal) return;
+    await supabaseAdmin
+      .from('PlanRequest')
+      .update({ deal_used_at: null, deal_cents: null, updated_at: new Date().toISOString() })
+      .eq('id', check.plan_request_id)
+      .eq('deal_used_at', stamp);
+  };
+  let status;
+  try {
+    status = await planPaid().captureNow(check.payment_id);
+  } catch (err) {
+    await releaseDealClaim().catch(() => null);
+    throw err;
+  }
+  if (!CAPTURED.includes(status)) {
+    await releaseDealClaim().catch(() => null);
+    return 'not_paid';
+  }
   const { data: moved } = await supabaseAdmin.from('BusinessInvoice').update({ status: 'paid', paid_at: stamp })
     .eq('id', check.id).neq('status', 'paid').select(CHECK_COLUMNS);
   if (!moved || moved.length === 0) return 'paid';
   const paid = moved[0];
   const plan = await require('./planService').loadPlanRow(check.plan_post_id);
-  if (paid.discount_cents > 0) {
+  if (paid.discount_cents > 0 && !claimedDeal) {
     await supabaseAdmin.from('PlanRequest').update({ deal_used_at: stamp, deal_cents: paid.discount_cents, updated_at: stamp })
       .eq('id', paid.plan_request_id).is('deal_used_at', null);
   }
@@ -461,6 +500,9 @@ async function confirm(user, postId, checkId) {
   } catch (err) {
     logger.warn('plans.check.confirm_failed', { checkId, error: err.message });
     fail(503, 'payment_check_failed', "We couldn't confirm this payment yet. Please try again in a moment.");
+  }
+  if (outcome === 'deal_already_used') {
+    fail(409, 'deal_already_used', 'Your deal was already used on another check. Open this check again for the updated total.');
   }
   if (outcome === 'not_paid') fail(409, 'payment_not_complete', "This payment hasn't gone through yet.");
   const { data: fresh } = await supabaseAdmin.from('BusinessInvoice').select(CHECK_COLUMNS).eq('id', check.id).maybeSingle();

@@ -1444,12 +1444,33 @@ router.post('/packages/:id/buy', validate(buyPackageSchema), asyncHandler(async 
   if (!result.success) return res.status(400).json({ error: result.error, message: result.message });
   res.status(201).json({ credit: result.credit, clientSecret: result.clientSecret || null });
 }));
-// Customer's remaining credits.
+// Customer's remaining paid (or free) credits — excludes abandoned unpaid checkouts and refunded/disputed packs.
 router.get('/my-packages', asyncHandler(async (req, res) => {
   const { data } = await supabaseAdmin.from('PackageCredit')
-    .select('*, BookingPackage:package_id ( name, sessions_count, owner_type, owner_id, event_type_id )')
+    .select('*, BookingPackage:package_id ( name, sessions_count, owner_type, owner_id, event_type_id ), Payment:payment_id ( payment_status, refunded_amount, dispute_id )')
     .eq('buyer_user_id', req.user.id).order('purchased_at', { ascending: false });
-  res.json({ credits: data || [] });
+  const visible = [];
+  for (const row of data || []) {
+    const { Payment: payment, ...credit } = row;
+    if (!credit.payment_id) {
+      visible.push(credit);
+      continue;
+    }
+    if (payment && !payment.dispute_id && !(payment.refunded_amount > 0)
+      && packages.PAID_PAYMENT_STATES.includes(payment.payment_status)) {
+      visible.push(credit);
+      continue;
+    }
+    // Reconcile recent pending checkouts in case the buyer opened My Packages before the Stripe webhook arrived.
+    if (payment && packages.OWED_PAYMENT_STATES.includes(payment.payment_status)) {
+      const purchasedMs = Date.parse(credit.purchased_at || '');
+      if (Number.isFinite(purchasedMs) && Date.now() - purchasedMs < 15 * 60 * 1000) {
+        const check = await packages.verifyCreditPayment(credit);
+        if (check.paid) visible.push(credit);
+      }
+    }
+  }
+  res.json({ credits: visible });
 }));
 
 // ============================================================

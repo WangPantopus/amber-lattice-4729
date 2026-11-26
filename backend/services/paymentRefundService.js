@@ -11,13 +11,28 @@ const fail = (message, statusCode = 409, code = 'refund_conflict') => Object.ass
 const { snapshot, readProjection } = require('./walletSettlementService');
 const logger = require('../utils/logger');
 const FEE_REFUND_MESSAGE = "Cancellation and no-show fees can't be refunded in the app. Contact support.";
+const NON_GIG_REFUND_MESSAGE = "This payment can't be refunded directly here. Use its cancellation flow or contact support.";
+const NON_SELF_REFUNDABLE_META_TYPES = new Set(['invoice_payment', 'listing_offer_checkout', 'support_train_gift_fund']);
+function isPayerSelfRefundable(payment) {
+  return Boolean(
+    payment
+    && payment.payment_type === 'gig_payment'
+    && payment.gig_id
+    && (!payment.sold_type || payment.sold_type === 'task')
+    && !NON_SELF_REFUNDABLE_META_TYPES.has(payment.metadata?.type),
+  );
+}
 async function rpc(name, args) {
   const { data, error } = await db.rpc(name, args);
   if (error || !data) throw fail('Refund progress could not be saved. Retry the same request.', 503, 'refund_save_pending');
   if (data.error) {
     const status = data.error === 'NOT_FOUND' ? 404 : ['FORBIDDEN', 'SUPPORT_REQUIRED'].includes(data.error) ? 403 : 409;
-    const err = fail(data.error === 'SUPPORT_REQUIRED' ? (data.reason === 'GIG_FEE' ? FEE_REFUND_MESSAGE
-      : 'Payment has been released to the worker. Contact support for a refund.') :
+    const supportMsg = data.reason === 'GIG_FEE'
+      ? FEE_REFUND_MESSAGE
+      : data.reason === 'PAYMENT_TYPE_NOT_SELF_REFUNDABLE'
+        ? NON_GIG_REFUND_MESSAGE
+        : 'Payment has been released to the worker. Contact support for a refund.';
+    const err = fail(data.error === 'SUPPORT_REQUIRED' ? supportMsg :
       `Refund could not continue (${data.error}).`, status, data.error);
     if (data.request) { err.refundRequest = publicRequest(data.request); err.refundRow = data.request; }
     throw err;
@@ -235,6 +250,12 @@ async function create({ paymentId, amount = null, reason, description = null, ac
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw fail('Invalid refund request ID.', 400);
     let payment = await paymentById(paymentId);
     await assertActor(payment, actorId, actorMode);
+    // Only genuine gig payments can be self-refunded by the payer through the generic
+    // /refund route; invoices, plans, bookings, packages, tips, and marketplace orders
+    // follow their own policy/cancellation or support flows (also enforced in SQL).
+    if (actorMode === 'payer' && !isPayerSelfRefundable(payment)) {
+      throw fail(NON_GIG_REFUND_MESSAGE, 403, 'SUPPORT_REQUIRED');
+    }
     // An invoice is billed and paid as one amount, so it is refunded in full (which voids it), never in part: a
     // partial refund would leave the rest stuck in the hold (the release job only takes a payment still held)
     // and the invoice reading "paid" for an amount that was not.
