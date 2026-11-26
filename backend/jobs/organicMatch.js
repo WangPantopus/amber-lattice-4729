@@ -139,12 +139,14 @@ async function matchBusinessesForPost(postId) {
 async function organicMatch() {
   const thirtyDaysAgo = new Date(Date.now() - MAX_POST_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  // ── Pass 1: Match new posts that have service_category but no matches yet ──
+  // ── Pass 1: Match new posts that have service_category and have never been matched yet ──
+  // Posts already checked with 0 matches hold `matched_business_ids = []` and are
+  // refreshed weekly by Pass 2 rather than re-queried every 2 minutes.
   const { data: unmatchedPosts, error: findErr } = await supabaseAdmin
     .from('Post')
     .select('id')
     .not('service_category', 'is', null)
-    .or('matched_business_ids.is.null,matched_business_ids.eq.{}')
+    .is('matched_business_ids', null)
     .gte('created_at', thirtyDaysAgo)
     .neq('is_archived', true)
     .order('created_at', { ascending: false })
