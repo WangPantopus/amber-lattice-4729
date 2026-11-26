@@ -3,6 +3,7 @@ import { API_BASE_URL } from '@pantopus/utils';
 import { isLaunchCutPath } from '@/lib/featureFlags';
 import { fetchPublicCardDesigns, publicShelvesOn } from '@/lib/publicShare';
 import { GUIDE_PAGES } from '@/lib/site/guidePages';
+import { GUIDES } from '@/lib/site/guides';
 import { PILLAR_PAGES } from '@/lib/site/pillarPages';
 
 // The pages search engines may read, at the address every page's canonical link uses. robots.ts points to this file
@@ -15,7 +16,15 @@ export const dynamic = 'force-dynamic';
 const SITE_URL = 'https://pantopus.com';
 
 // Public pages anyone can read, signed in or not (robots.ts keeps the private paths out).
-const PUBLIC_PAGES = ['/', '/start', '/tax-check', '/cards', '/about', '/about/data-sources', '/contact', '/privacy', '/terms', '/child-safety'];
+const PUBLIC_PAGES = [
+  '/', '/start', '/tax-check', '/cards', '/download', '/pricing', '/help', '/register', '/login',
+  '/about', '/about/data-sources', '/contact', '/privacy', '/terms', '/child-safety', '/delete-account',
+];
+
+// The day each guide's facts were last read again (its own `checked` date, printed on the page): the one "last
+// changed" date the site can state truthfully. Other pages carry none; a date that only says "today" teaches a search
+// engine to ignore the field.
+const GUIDE_CHECKED = new Map(GUIDES.map((guide) => [`/guides/${guide.slug}`, guide.checked]));
 
 type GuideIndex = {
   states: { slug: string }[];
@@ -45,22 +54,34 @@ async function countyPages(): Promise<string[]> {
 
 // Every Christmas card's page and, with the shelves on, each collection's page: from the one answer /cards itself
 // reads (cached a minute), never a call per card. The backend answers 404 while Christmas cards are off.
-async function cardPages(): Promise<string[]> {
+// A card's entry names its picture too, so the card can be found in a picture search.
+async function cardPages(): Promise<{ paths: string[]; pictures: Map<string, string> }> {
   const { data } = await fetchPublicCardDesigns();
-  if (!data?.designs?.length) return [];
+  if (!data?.designs?.length) return { paths: [], pictures: new Map() };
   const collections = publicShelvesOn(data) ? (data.collections ?? []).map((c) => `/cards/collection/${c.slug}`) : [];
-  return [...data.designs.filter((d) => d.slug).map((d) => `/cards/${d.slug}`), ...collections];
+  const cards = data.designs.filter((d) => d.slug);
+  return {
+    paths: [...cards.map((d) => `/cards/${d.slug}`), ...collections],
+    pictures: new Map(cards.map((d) => [`/cards/${d.slug}`, `${SITE_URL}/holiday-cards/${d.id}.jpg`])),
+  };
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const [cards, counties] = await Promise.all([cardPages(), countyPages()]);
   const pages = [
     ...PUBLIC_PAGES,
     ...PILLAR_PAGES.map((page) => page.path),
     ...GUIDE_PAGES.map((page) => page.path),
-    ...(await cardPages()),
-    ...(await countyPages()),
+    ...cards.paths,
+    ...counties,
   ];
   // A page listed twice (a pillar page also named in PUBLIC_PAGES) is listed once; a switched-off feature's pages,
   // which redirect home, not at all.
-  return [...new Set(pages)].filter((path) => !isLaunchCutPath(path)).map((path) => ({ url: `${SITE_URL}${path}` }));
+  return [...new Set(pages)]
+    .filter((path) => !isLaunchCutPath(path))
+    .map((path) => {
+      const checked = GUIDE_CHECKED.get(path);
+      const picture = cards.pictures.get(path);
+      return { url: `${SITE_URL}${path}`, ...(checked ? { lastModified: checked } : {}), ...(picture ? { images: [picture] } : {}) };
+    });
 }

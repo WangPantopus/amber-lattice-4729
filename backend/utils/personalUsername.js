@@ -23,7 +23,7 @@ const PERSONAL_RESERVED_USERNAMES = new Set([
   'privacy', 'profile', 'register', 'session', 'shared', 'start', 'status', 'terms', 'u', 'unlisted',
   'local', 'me', 'you', 'user', 'users', 'www', 'root', 'null', 'undefined', 'system', 'staff', 'official',
   'moderator', 'everyone', 'anonymous', 'neighbor', 'neighbors', 'household', 'place', 'today', 'nearby',
-  'moments', 'plans', 'guides',
+  'moments', 'plans', 'guides', 'download', 'pricing', 'faq', 'get', 'open',
 ]);
 
 function buildGeneratedUsername(bytes = 6) {

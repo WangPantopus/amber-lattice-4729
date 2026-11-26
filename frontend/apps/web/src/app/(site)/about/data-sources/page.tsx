@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
 import credits from './credits.json';
 import { publicPageMetadata } from '@/lib/site/pageMetadata';
+import SiteFooter from '@/components/site/SiteFooter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /about/data-sources
@@ -117,23 +118,5 @@ function SiteNav() {
         </div>
       </div>
     </nav>
-  );
-}
-
-function SiteFooter() {
-  return (
-    <footer className="bg-gray-900 text-slate-400 py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-center gap-6 mb-8 text-sm">
-          <Link href="/about" className="hover:text-white transition">About</Link>
-          <Link href="/contact" className="hover:text-white transition">Contact</Link>
-          <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
-          <Link href="/terms" className="hover:text-white transition">Terms</Link>
-        </div>
-        <div className="border-t border-gray-800 pt-8 text-center text-sm text-slate-400">
-          <p>© 2026 Pantopus. All rights reserved.</p>
-        </div>
-      </div>
-    </footer>
   );
 }

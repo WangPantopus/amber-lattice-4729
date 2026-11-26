@@ -1668,3 +1668,12 @@ Your decision of November 25: a person may write a Pulse post or a reply under o
   2. Blocking the "Anonymous sender" of a note to an address stores an ordinary block (`backend/routes/neighborMessages.js`), and the feeds hide posts by anyone in that table. The person who blocked can see whose posts vanished and work out who sent the note.
   3. The writer of a made-up-name post that two reports hid isn't told, and can't open it meanwhile.
 - [ ] Not checked: the real Claude checks (the local stack has no key; a stand-in answered), staging and production, the iPhone and Android apps on a device (only the web was opened, as a second person), and the database's own lint outside CI.
+
+## Search: being found by name, and the links under the result (added November 25)
+
+You asked on November 25 why a search for "Pantopus" shows a bare result, and for the links other brands have under
+theirs. What was found, what the website now has and what only Google decides are in [the search guide](docs/seo/README.md).
+
+- [ ] **The website** (this pull request): Sign up and Sign in pages a search engine can read under their own names; new pages Get the app (`/download`), Pricing (`/pricing`) and Help (`/help`); every public page's footer links the same main sections under the same words; each Christmas card has its own description, and `/cards` says "digital Christmas cards and ecards to send online"; the address lookup and the tax check carry the name Pantopus in their titles.
+- [ ] **Yours:** the eight steps under "The founder's steps" in [the search guide](docs/seo/README.md), each with where to click: promote, ask Google and Bing to read the new pages, the brand's profiles, the repository's website field, the store listings, the Business Profile (only if Pantopus has an office that receives people), and links from other sites.
+- [ ] Not checked: what Google and Bing hold today (only you can open Search Console and Bing Webmaster Tools), staging and production after the merge, and how fast the pages load for real visitors (Google's field data needs more visits than the site has).

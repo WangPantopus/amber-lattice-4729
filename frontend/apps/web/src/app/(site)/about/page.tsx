@@ -4,6 +4,7 @@ import { ANDROID_PLAY_STORE_URL, IOS_APP_STORE_URL } from '@pantopus/utils';
 import { breadcrumbLd, jsonLd } from '@/lib/site/jsonLd';
 import { publicPageMetadata } from '@/lib/site/pageMetadata';
 import { PILLAR_PAGES } from '@/lib/site/pillarPages';
+import SiteFooter from '@/components/site/SiteFooter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /about
@@ -336,53 +337,5 @@ function SiteNav() {
         </div>
       </div>
     </nav>
-  );
-}
-
-// ── Shared Footer ─────────────────────────────────────────────────────────────
-function SiteFooter() {
-  return (
-    <footer className="bg-gray-900 text-slate-400 py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid md:grid-cols-5 gap-8 mb-12">
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-2.5 mb-3">
-              <LayoutDashboard className="w-5 h-5 text-primary-600" />
-              <span className="text-lg font-bold text-white">Pantopus</span>
-            </div>
-            <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
-              Real life, connected. Every account starts at a real home.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-white font-semibold mb-4 text-sm">Product</h3>
-            <ul className="space-y-2.5 text-sm">
-              <li><Link href="/#how-it-works" className="hover:text-white transition">How it works</Link></li>
-              <li><Link href="/start" className="hover:text-white transition">See your place</Link></li>
-              <li><Link href="/property-records" className="hover:text-white transition">Property records</Link></li>
-              <li><Link href="/tax-check" className="hover:text-white transition">Property tax check</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-white font-semibold mb-4 text-sm">Company</h3>
-            <ul className="space-y-2.5 text-sm">
-              <li><Link href="/about" className="hover:text-white transition">About</Link></li>
-              <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
-              <li><Link href="/about/data-sources" className="hover:text-white transition">Data sources</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-white font-semibold mb-4 text-sm">Legal</h3>
-            <ul className="space-y-2.5 text-sm">
-              <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
-              <li><Link href="/terms" className="hover:text-white transition">Terms</Link></li>
-            </ul>
-          </div>
-        </div>
-        <div className="border-t border-gray-800 pt-8 text-center text-sm text-slate-400">
-          <p>© 2026 Pantopus. All rights reserved.</p>
-        </div>
-      </div>
-    </footer>
   );
 }

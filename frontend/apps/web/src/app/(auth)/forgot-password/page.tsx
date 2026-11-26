@@ -54,9 +54,9 @@ function ForgotPasswordContent({ searchParams: params }: SearchParamsProps) {
         <div className="flex justify-center">
           <PantopusBadge />
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
+        <h1 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
           Forgot your password?
-        </h2>
+        </h1>
         <p className="mt-2 text-center text-sm text-app-text-secondary">
           Enter your email and we&apos;ll send a reset link.
         </p>

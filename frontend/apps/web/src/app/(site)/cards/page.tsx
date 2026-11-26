@@ -20,19 +20,33 @@ import { cardListLd, cardsInPageOrder, cardsJsonLd } from './_lib/structuredData
 // stay that way until the next web deploy (production, November 9).
 export const dynamic = 'force-dynamic';
 
+// TITLE and DESCRIPTION are the shared link's card; the page's own title and description say what people search for
+// ("digital Christmas cards", "Christmas ecards", "send online") and count the cards from the list the page draws.
 const TITLE = 'Christmas cards you can send on Pantopus';
 const DESCRIPTION = 'Pick a card and send it to someone. It arrives with their morning mail, and they open it like real mail.';
+const PAGE_TITLE = 'Digital Christmas cards and ecards to send online | Pantopus';
 const IMAGE = { url: '/holiday-cards/share/christmas-2026-08-link.jpg', width: 1200, height: 630, alt: 'A Christmas card lying on its open envelope' };
 
-export const metadata: Metadata = {
-  metadataBase: new URL(APP_WEB_URL),
-  title: TITLE,
-  description: DESCRIPTION,
-  alternates: { canonical: '/cards' },
-  robots: { index: true, follow: true },
-  openGraph: { type: 'website', url: '/cards', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION, images: [IMAGE] },
-  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: [IMAGE.url] },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // The same answer the page draws, kept a minute (fetchPublicCardDesigns).
+  const { data } = await fetchPublicCardDesigns();
+  const cards = data?.designs?.length ?? 0;
+  const collections = data && publicShelvesOn(data) ? (data.collections ?? []).length : 0;
+  const description = cards
+    ? `${cards} Christmas cards${collections > 1 ? ` in ${collections} collections` : ''} to send online. Pick one, write a few words and sign it.${
+        data?.free_cards ? ` Your first ${data.free_cards} are free.` : ''
+      } It arrives with their morning mail.`
+    : DESCRIPTION;
+  return {
+    metadataBase: new URL(APP_WEB_URL),
+    title: { absolute: PAGE_TITLE },
+    description,
+    alternates: { canonical: '/cards' },
+    robots: { index: true, follow: true },
+    openGraph: { type: 'website', url: '/cards', siteName: 'Pantopus', title: TITLE, description: DESCRIPTION, images: [IMAGE] },
+    twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: [IMAGE.url] },
+  };
+}
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#171e2d' };
 

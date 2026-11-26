@@ -8,9 +8,12 @@
 
 import type { Metadata, Viewport } from 'next';
 import StartFunnel from '@/components/place/StartFunnel';
+import SiteFooter from '@/components/site/SiteFooter';
 import { shareImage } from '@/lib/site/pageMetadata';
 
+// The share card keeps its own words; the browser and search title says what the page is, with the name.
 const TITLE = "Know what matters for your home, and stay on top of it";
+const PAGE_TITLE = 'Address lookup: see what’s true about your home | Pantopus';
 const DESCRIPTION =
   "Public records, local risks, and who's verified nearby — free, no account. Look up any U.S. address, then save your place to get daily updates.";
 
@@ -24,7 +27,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const address = (Array.isArray(raw) ? raw[0] : raw ?? '').trim().slice(0, 200);
   const base: Metadata = {
     metadataBase: new URL('https://pantopus.com'),
-    title: TITLE,
+    title: PAGE_TITLE,
     description: DESCRIPTION,
     alternates: { canonical: '/start' },
     robots: { index: true, follow: true },
@@ -37,7 +40,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const url = `/start?address=${encodeURIComponent(address)}`;
   return {
     ...base,
-    title: shareTitle,
+    title: `${shareTitle} | Pantopus`,
     alternates: { canonical: '/start' },
     robots: { index: false, follow: true },
     openGraph: { type: 'website', url, siteName: 'Pantopus', title: shareTitle, description: DESCRIPTION, images: [{ url: image, width: 1200, height: 630 }] },
@@ -52,5 +55,10 @@ export const viewport: Viewport = {
 };
 
 export default function StartPage() {
-  return <StartFunnel />;
+  return (
+    <>
+      <StartFunnel />
+      <SiteFooter />
+    </>
+  );
 }

@@ -52,6 +52,15 @@ const createNextConfig = (phase) => ({
     (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next'),
   output: 'standalone',
   reactStrictMode: true,
+  // Search engines and link-preview fetchers get a page's title, description, canonical and robots tags in <head>.
+  // On a page rendered per request, Next sends those tags inside <body> whenever they are ready after the page's
+  // first bytes, and it does so for any crawler it expects to run script, Googlebot among them (seen on /start, the
+  // card pages and /property-records); a search engine may not read them there. Setting this replaces Next's own
+  // list (next/dist/shared/lib/router/utils/html-bots.js), so that list is repeated here with Googlebot, the AI
+  // assistants' fetchers and anything that calls itself a bot, crawler or spider added. A person's browser is not
+  // matched and loads as before.
+  htmlLimitedBots:
+    /Googlebot|GoogleOther|[\w-]+-Google|Google-[\w-]+|Chrome-Lighthouse|Slurp|DuckDuckBot|baiduspider|yandex|sogou|bitlybot|tumblr|vkShare|quora link preview|redditbot|ia_archiver|Bingbot|BingPreview|applebot|facebookexternalhit|facebookcatalog|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|SkypeUriPreview|Yeti|googleweblight|ChatGPT-User|Claude-User|Perplexity-User|meta-external|bot\b|crawler|spider/i,
   experimental: {
     // Moments accepts a 50 MiB video plus its JPEG poster and two moderation frames.
     middlewareClientMaxBodySize: '56mb',
