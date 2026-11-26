@@ -12,6 +12,7 @@ const syncChangedService = require('../services/syncChangedService');
 const chatRealtime = require('../services/chatRealtime');
 const chatPresence = require('../services/chatPresence');
 const { isBlocked } = require('../services/blockService');
+const { isUuid } = require('../utils/pagingValues');
 const { closedGigRoomIds, gigRoomRecipients, isGigRoomClosedTo, isRoomClosedForWrites } = require('../services/chatGigRoomAccess');
 const { chatAccessUnavailable, actingBusinessInRoom, UNPUBLISHED_BUSINESS_REFUSAL } = require('../services/chatBusinessAccess');
 const { unpublishedBusinessIds } = require('../utils/visibilityPolicy');
@@ -911,16 +912,25 @@ module.exports = (io) => {
     /**
      * Create direct chat
      */
-    on('chat:create_direct', async ({ otherUserId }, callback) => {
+    on('chat:create_direct', async ({ otherUserId: rawOtherUserId }, callback) => {
+      // Compared as the database returns ids (lower case); anything that isn't an id reaches no query.
+      const otherUserId = isUuid(rawOtherUserId) ? rawOtherUserId.toLowerCase() : null;
       try {
-        // Block check: prevent direct chat creation between blocked users
-        if (await isBlocked(userId, otherUserId)) {
-          return callback({ error: 'Unable to message this user' });
-        }
-        // As POST /api/chat/direct: a draft or closed business neither starts a conversation as itself nor is reached.
-        const unpublished = await unpublishedBusinessIds([userId, otherUserId]);
+        if (!otherUserId) return callback({ error: 'User not found' });
+        // As POST /api/chat/direct, read together: no block either way, a curator account neither messages nor is
+        // messaged, and a draft or closed business neither starts a conversation as itself nor is reached.
+        const [blocked, unpublished, { data: accounts, error: accountsError }] = await Promise.all([
+          isBlocked(userId, otherUserId),
+          unpublishedBusinessIds([userId, otherUserId]),
+          supabaseAdmin.from('User').select('id, account_type').in('id', [userId, otherUserId]),
+        ]);
+        if (blocked) return callback({ error: 'Unable to message this user' });
+        if (accountsError) return callback({ error: 'Failed to create chat' });
+        const accountType = new Map((accounts || []).map((row) => [String(row.id), row.account_type]));
+        if (accountType.get(String(userId)) === 'curator') return callback({ error: 'This account cannot send messages' });
         if (unpublished.has(String(userId))) return callback(UNPUBLISHED_BUSINESS_REFUSAL);
-        if (unpublished.has(String(otherUserId))) return callback({ error: 'User not found' });
+        if (!accountType.has(otherUserId) || unpublished.has(otherUserId)) return callback({ error: 'User not found' });
+        if (accountType.get(otherUserId) === 'curator') return callback({ error: 'This account does not accept messages' });
 
         const { data: roomId, error } = await supabaseAdmin.rpc('get_or_create_direct_chat', {
           p_user_id_1: userId,

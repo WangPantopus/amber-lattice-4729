@@ -18,7 +18,7 @@ const {
   serializeUserIdentityForViewer,
 } = require('../serializers/identitySerializers');
 const { verifiedResidentUserIds } = require('../utils/identityProfiles');
-const { isUnpublishedBusiness } = require('../utils/visibilityPolicy');
+const { isUnpublishedBusiness, unpublishedBusinessIds } = require('../utils/visibilityPolicy');
 const {
   chatAccessUnavailable,
   UNPUBLISHED_BUSINESS_REFUSAL,
@@ -1675,21 +1675,21 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
       return res.status(403).json({ error: 'This account cannot send messages' });
     }
 
-    const otherParticipantIds = [...new Set(participantIds.map(String))]
+    // Ids are compared as the database returns them (lower case).
+    const otherParticipantIds = [...new Set(participantIds.map((id) => String(id).toLowerCase()))]
       .filter((id) => id !== String(userId));
 
-    // Fail-closed block check across all invited participants
+    // Fail-closed checks across all invited participants, read together: no block either way, and every target
+    // exists, is not a curator account, and is not an unpublished business.
     if (otherParticipantIds.length > 0) {
-      const blocked = await blockedUserIds(userId);
+      const [blocked, { data: targetUsers, error: targetUsersError }, unpublished] = await Promise.all([
+        blockedUserIds(userId),
+        supabaseAdmin.from('User').select('id, account_type').in('id', otherParticipantIds),
+        unpublishedBusinessIds(otherParticipantIds),
+      ]);
       if (otherParticipantIds.some((id) => blocked.has(id))) {
         return res.status(403).json({ error: 'Unable to message one or more selected users' });
       }
-
-      // Verify all targets exist, are not curator accounts, and are not unpublished businesses
-      const { data: targetUsers, error: targetUsersError } = await supabaseAdmin
-        .from('User')
-        .select('id, account_type')
-        .in('id', otherParticipantIds);
       if (targetUsersError) {
         logger.error('Error verifying group chat participants', { requestId: req.requestId, userId, error: targetUsersError.message });
         return res.status(500).json({ error: 'Failed to create group chat' });
@@ -1697,7 +1697,7 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
       const userById = new Map((targetUsers || []).map((u) => [String(u.id), u]));
       for (const targetId of otherParticipantIds) {
         const target = userById.get(targetId);
-        if (!target || await isUnpublishedBusiness(targetId)) {
+        if (!target || unpublished.has(targetId)) {
           return res.status(404).json({ error: 'One or more users were not found' });
         }
         if (target.account_type === 'curator') {
@@ -3032,6 +3032,9 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     if (!newUserId) {
       return res.status(400).json({ error: 'userId required' });
     }
+    if (!isUuid(newUserId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
     if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
@@ -3052,16 +3055,16 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
       return res.status(403).json({ error: 'This account cannot send messages' });
     }
 
-    // Fail-closed block, curator, and unpublished-business checks before adding/reactivating.
-    if (await isBlocked(userId, newUserId)) {
+    // Fail-closed block, curator, and unpublished-business checks before adding/reactivating, read together.
+    const [blocked, { data: targetUser, error: targetUserError }, unpublished] = await Promise.all([
+      isBlocked(userId, newUserId),
+      supabaseAdmin.from('User').select('id, account_type').eq('id', newUserId).maybeSingle(),
+      isUnpublishedBusiness(newUserId),
+    ]);
+    if (blocked) {
       return res.status(403).json({ error: 'Unable to message this user' });
     }
-    const { data: targetUser, error: targetUserError } = await supabaseAdmin
-      .from('User')
-      .select('id, account_type')
-      .eq('id', newUserId)
-      .maybeSingle();
-    if (targetUserError || !targetUser || await isUnpublishedBusiness(newUserId)) {
+    if (targetUserError || !targetUser || unpublished) {
       return res.status(404).json({ error: 'User not found' });
     }
     if (targetUser.account_type === 'curator') {
@@ -3344,26 +3347,31 @@ router.get('/unified-conversations', verifyToken, async (req, res) => {
 router.post('/conversations/:otherUserId/topics', verifyToken, validate(createTopicSchema), async (req, res) => {
   try {
     const userId = req.user.id;
-    const { otherUserId } = req.params;
     const { topicType, topicRefId, title } = req.body;
 
     if (req.user.accountType === 'curator') {
       return res.status(403).json({ error: 'This account cannot send messages' });
     }
 
-    if (String(userId) === String(otherUserId)) {
+    if (!isUuid(req.params.otherUserId)) {
+      return res.status(400).json({ error: 'Invalid user' });
+    }
+    // Compared and ordered as the database returns ids (lower case).
+    const otherUserId = req.params.otherUserId.toLowerCase();
+    if (String(userId) === otherUserId) {
       return res.status(400).json({ error: 'Cannot create topic with yourself' });
     }
 
-    if (await isBlocked(userId, otherUserId)) {
+    // Read together: this runs each time a chat about a task or listing opens.
+    const [blocked, { data: otherUser, error: otherUserError }, unpublished] = await Promise.all([
+      isBlocked(userId, otherUserId),
+      supabaseAdmin.from('User').select('id, account_type').eq('id', otherUserId).maybeSingle(),
+      isUnpublishedBusiness(otherUserId),
+    ]);
+    if (blocked) {
       return res.status(403).json({ error: 'Unable to message this user' });
     }
-    const { data: otherUser, error: otherUserError } = await supabaseAdmin
-      .from('User')
-      .select('id, account_type')
-      .eq('id', otherUserId)
-      .maybeSingle();
-    if (otherUserError || !otherUser || await isUnpublishedBusiness(otherUserId)) {
+    if (otherUserError || !otherUser || unpublished) {
       return res.status(404).json({ error: 'User not found' });
     }
     if (otherUser.account_type === 'curator') {

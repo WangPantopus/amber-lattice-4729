@@ -524,7 +524,8 @@ async function unpublishedBusinessIds(userIds) {
 }
 
 async function isUnpublishedBusiness(userId) {
-  return (await unpublishedBusinessIds([userId])).has(String(userId));
+  // The set holds ids as the database returns them (lower case); a caller's id may arrive in upper case.
+  return (await unpublishedBusinessIds([userId])).has(String(userId).toLowerCase());
 }
 
 
