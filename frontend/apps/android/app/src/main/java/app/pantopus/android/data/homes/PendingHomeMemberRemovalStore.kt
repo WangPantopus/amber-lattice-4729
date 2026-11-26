@@ -2,8 +2,7 @@ package app.pantopus.android.data.homes
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -104,14 +103,7 @@ class PersistentPendingHomeMemberRemovalStore
             }
 
         private fun open(): SharedPreferences {
-            val master = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-            return EncryptedSharedPreferences.create(
-                context,
-                "private_home_member_removal_v1",
-                master,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            return EncryptedPrefsRecovery.open(context, "private_home_member_removal_v1")
         }
 
         private fun key(scope: HomeCreationScope): String {

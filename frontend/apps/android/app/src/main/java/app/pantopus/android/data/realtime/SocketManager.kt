@@ -89,6 +89,8 @@ class SocketManager
         private var connectionGeneration = 0L
         private var stoppedForRevocation = false
         private var backgrounded = false
+        private var backgroundDisconnectJob: Job? = null
+        private var pausedInBackground = false
 
         // At most one auth refresh until a socket actually authenticates, so a
         // rejected replacement token cannot spin an unbounded refresh/reconnect loop.
@@ -116,6 +118,8 @@ class SocketManager
                     socket = null
                     authToken = token
                     stoppedForRevocation = false
+                    // A revocation signal for the old token must not send a later collector to /refresh.
+                    _sessionRevoked.resetReplayCache()
                     if (freshSession) {
                         attemptedAuthRecovery = false
                         transientRecoveryRetries = 0
@@ -140,31 +144,58 @@ class SocketManager
          * Pause the socket transport while the app is in the background to
          * avoid idle keepalive / reconnect battery drain. Keeps the session
          * token and registered event listeners intact for [foregrounded].
+         * Waits [BACKGROUND_GRACE_MS] first, so a short trip out (photo picker,
+         * camera, a browser tab, a payment sheet) keeps the live connection.
          */
         fun backgrounded() {
-            val toDisconnect =
-                synchronized(stateLock) {
-                    backgrounded = true
-                    authRecoveryJob?.cancel()
-                    authRecoveryJob = null
-                    _connectionState.value = ConnectionState.Disconnected
-                    socket
-                }
-            toDisconnect?.disconnect()
+            synchronized(stateLock) {
+                backgrounded = true
+                authRecoveryJob?.cancel()
+                authRecoveryJob = null
+                backgroundDisconnectJob?.cancel()
+                backgroundDisconnectJob =
+                    scope.launch {
+                        delay(BACKGROUND_GRACE_MS)
+                        synchronized(stateLock) {
+                            if (!backgrounded) return@launch
+                            backgroundDisconnectJob = null
+                            pausedInBackground = true
+                            _connectionState.value = ConnectionState.Disconnected
+                            // Queued on socket.io's event thread under the lock, so a later
+                            // foregrounded() connect() is always queued after it.
+                            socket?.disconnect()
+                        }
+                    }
+            }
         }
 
         /** Resume the socket when the app returns to the foreground. */
         fun foregrounded() {
+            var pausedSocket: Socket? = null
             val tokenForFreshSocket =
                 synchronized(stateLock) {
                     backgrounded = false
+                    backgroundDisconnectJob?.cancel()
+                    backgroundDisconnectJob = null
+                    val wasPaused = pausedInBackground
+                    pausedInBackground = false
                     attemptedAuthRecovery = false
                     transientRecoveryRetries = 0
                     if (stoppedForRevocation) return
-                    if (socket == null) authToken else null
+                    if (socket == null) {
+                        authToken
+                    } else {
+                        // Its disconnect may still be queued, so connected() can read true: connect it regardless.
+                        if (wasPaused) pausedSocket = socket
+                        null
+                    }
                 }
+            val paused = pausedSocket
             if (tokenForFreshSocket != null) {
                 connect(tokenForFreshSocket)
+            } else if (paused != null) {
+                _connectionState.value = ConnectionState.Connecting
+                paused.connect()
             } else {
                 reconnectNow()
             }
@@ -343,7 +374,7 @@ class SocketManager
                 on(EVENT_SESSION_REVOKED) { args ->
                     if (synchronized(stateLock) { connectionGeneration != generation }) return@on
                     Timber.i("Socket session revoked: ${args.joinToString()}")
-                    stopForRevocation(reason = EVENT_SESSION_REVOKED, emitRevokedSignal = true)
+                    stopForRevocation(reason = EVENT_SESSION_REVOKED, emitRevokedSignal = true, generation = generation)
                 }
             }
         }
@@ -354,7 +385,7 @@ class SocketManager
         ) {
             val lower = message.lowercase()
             if (TERMINAL_AUTH_ERROR_MARKERS.any { lower.contains(it) }) {
-                stopForRevocation(reason = message, emitRevokedSignal = true)
+                stopForRevocation(reason = message, emitRevokedSignal = true, generation = generation)
                 return
             }
             if (REFRESHABLE_AUTH_ERROR_MARKERS.none { lower.contains(it) }) return
@@ -412,39 +443,52 @@ class SocketManager
                         stopForRevocation(
                             reason = "refresh_rejected:${outcome.reason.code.orEmpty()}",
                             emitRevokedSignal = false,
+                            generation = generation,
                         )
                         authRepository.get().signOut(reason = outcome.reason)
                     }
                 }
-                AuthRepository.RefreshOutcome.Transient -> {
-                    Timber.i("Socket auth error — refresh transient failure; backing off before retry")
-                    val canRetry =
-                        synchronized(stateLock) {
-                            connectionGeneration == generation &&
-                                !stoppedForRevocation &&
-                                !backgrounded &&
-                                transientRecoveryRetries < MAX_TRANSIENT_RECOVERY_RETRIES
-                        }
-                    if (canRetry) {
-                        delay(TRANSIENT_RECOVERY_BACKOFF_MS)
-                        synchronized(stateLock) {
-                            if (connectionGeneration == generation && !stoppedForRevocation && !backgrounded) {
-                                transientRecoveryRetries += 1
-                                attemptedAuthRecovery = false
-                            }
-                        }
-                    }
+                AuthRepository.RefreshOutcome.Transient -> retryAfterTransientFailure(generation)
+            }
+        }
+
+        private suspend fun retryAfterTransientFailure(generation: Long) {
+            Timber.i("Socket auth error — refresh transient failure; backing off before retry")
+            val canRetry =
+                synchronized(stateLock) {
+                    connectionGeneration == generation &&
+                        !stoppedForRevocation &&
+                        !backgrounded &&
+                        transientRecoveryRetries < MAX_TRANSIENT_RECOVERY_RETRIES
                 }
+            if (canRetry) {
+                delay(TRANSIENT_RECOVERY_BACKOFF_MS)
+                val retry =
+                    synchronized(stateLock) {
+                        val stillCurrent = connectionGeneration == generation && !stoppedForRevocation && !backgrounded
+                        if (stillCurrent) {
+                            transientRecoveryRetries += 1
+                            attemptedAuthRecovery = false
+                            // This job is done: the retry's connect error may start the next recovery.
+                            authRecoveryJob = null
+                        }
+                        stillCurrent
+                    }
+                // The server refused the handshake, so socket.io won't retry on its own: reconnect, and a
+                // second auth error refreshes again (at most MAX_TRANSIENT_RECOVERY_RETRIES times).
+                if (retry) reconnectNow()
             }
         }
 
         private fun stopForRevocation(
             reason: String,
             emitRevokedSignal: Boolean,
+            generation: Long,
         ) {
             val toDisconnect =
                 synchronized(stateLock) {
-                    if (stoppedForRevocation) return
+                    // Checked under the same lock as the stop, so a socket replaced meanwhile can't stop the new one.
+                    if (stoppedForRevocation || connectionGeneration != generation) return
                     stoppedForRevocation = true
                     authRecoveryJob?.cancel()
                     authRecoveryJob = null
@@ -463,6 +507,7 @@ class SocketManager
             private const val RECONNECTION_DELAY_MS = 2_000L
             private const val RECONNECTION_DELAY_MAX_MS = 5_000L
             private const val TRANSIENT_RECOVERY_BACKOFF_MS = 10_000L
+            private const val BACKGROUND_GRACE_MS = 30_000L
             private const val MAX_TRANSIENT_RECOVERY_RETRIES = 3
 
             /**

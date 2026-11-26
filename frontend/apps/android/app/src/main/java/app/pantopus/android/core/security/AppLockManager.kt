@@ -11,8 +11,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -103,20 +101,8 @@ class AppLockManager
         private fun openPrefs(): SharedPreferences {
             val legacy = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
             val secure =
-                runCatching {
-                    val masterKey =
-                        MasterKey
-                            .Builder(context)
-                            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                            .build()
-                    EncryptedSharedPreferences.create(
-                        context,
-                        SECURE_PREFS_FILE,
-                        masterKey,
-                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-                    )
-                }.onFailure { Timber.w(it, "app-lock: encrypted prefs unavailable, keeping the plain file") }
+                runCatching { EncryptedPrefsRecovery.open(context, SECURE_PREFS_FILE) }
+                    .onFailure { Timber.w(it, "app-lock: encrypted prefs unavailable, keeping the plain file") }
                     .getOrNull() ?: return legacy
             migrateLegacyPrefs(from = legacy, to = secure)
             return secure

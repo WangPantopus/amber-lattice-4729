@@ -6,8 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Looper
 import androidx.annotation.VisibleForTesting
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineDispatcher
@@ -17,10 +16,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.io.IOException
-import java.security.GeneralSecurityException
-import java.security.KeyStore
-import java.security.ProviderException
 
 @JsonClass(generateAdapter = true)
 internal data class PendingContentArrival(
@@ -193,7 +188,6 @@ object PendingDeepLinkStore {
 private const val ARRIVAL_TTL_MS = 24L * 60L * 60L * 1000L
 private const val LEGACY_PREFS_FILE = "pantopus_pending_deep_link"
 private const val PROTECTED_PREFS_FILE = "private_pending_deep_link_v1"
-private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
 private fun PendingContentArrival.isFresh(now: Long): Boolean = timestampMs > 0L && now - timestampMs <= ARRIVAL_TTL_MS
 
@@ -298,35 +292,10 @@ private class PendingContentArrivalPreferences {
         }
     }
 
-    private fun openProtectedWithRecovery(app: Context): SharedPreferences =
-        attemptProtected(open = { createProtected(app) }) { firstError ->
-            Timber.e(firstError, "%s open failed; clearing encrypted prefs and retrying", PROTECTED_PREFS_FILE)
-            runCatching { app.deleteSharedPreferences(PROTECTED_PREFS_FILE) }
-            attemptProtected(open = { createProtected(app) }) { secondError ->
-                Timber.e(secondError, "%s retry failed; resetting MasterKey alias and retrying", PROTECTED_PREFS_FILE)
-                runCatching {
-                    KeyStore.getInstance(ANDROID_KEYSTORE).apply {
-                        load(null)
-                        deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-                    }
-                }
-                runCatching { app.deleteSharedPreferences(PROTECTED_PREFS_FILE) }
-                // If recreation still fails, let the exception propagate to PendingDeepLinkStore.safely()
-                // so writes fail closed without falling back to plaintext storage or crashing.
-                createProtected(app)
-            }
-        }
-
-    private fun createProtected(app: Context): SharedPreferences {
-        val master = MasterKey.Builder(app).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        return EncryptedSharedPreferences.create(
-            app,
-            PROTECTED_PREFS_FILE,
-            master,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-    }
+    // A damaged or unreadable file is cleared and made again; if Keystore still refuses, the exception reaches
+    // PendingDeepLinkStore.safely() so writes fail closed. The shared MasterKey is TokenStorage's to reset: resetting it
+    // here would leave the saved sign-in unreadable on the next launch.
+    private fun openProtectedWithRecovery(app: Context): SharedPreferences = EncryptedPrefsRecovery.open(app, PROTECTED_PREFS_FILE)
 
     fun bindForTesting(
         protected: SharedPreferences,
@@ -341,19 +310,3 @@ private class PendingContentArrivalPreferences {
         }
     }
 }
-
-private inline fun attemptProtected(
-    open: () -> SharedPreferences,
-    onFailure: (Throwable) -> SharedPreferences,
-): SharedPreferences =
-    try {
-        open()
-    } catch (e: GeneralSecurityException) {
-        onFailure(e)
-    } catch (e: IOException) {
-        onFailure(e)
-    } catch (e: SecurityException) {
-        onFailure(e)
-    } catch (e: ProviderException) {
-        onFailure(e)
-    }

@@ -22,7 +22,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
@@ -73,6 +72,7 @@ class PantopusMessagingService : FirebaseMessagingService() {
 
     // FCM invokes Service callbacks on the main thread. Hop off it
     // before doing IO so the binder thread is freed quickly.
+    // Not cancelled in onDestroy: a token registration or sign-in refresh cut half-way can lose a rotated token.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
@@ -136,11 +136,6 @@ class PantopusMessagingService : FirebaseMessagingService() {
             momentsDot.get().read()
         }
         dispatcher.dispatch(message)
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
     }
 
     private companion object {
