@@ -40,6 +40,7 @@ def _mock_supabase():
         chain.update.return_value = chain
         chain.select.return_value = chain
         chain.eq.return_value = chain
+        chain.in_.return_value = chain
         chain.lt.return_value = chain
         chain.filter.return_value = chain
         chain.is_.return_value = chain
@@ -108,7 +109,7 @@ def _standard_patches(regions=None):
         "get_sources_from_db": patch(f"{_HANDLER}.get_sources_from_db"),
         "filter_item": patch(f"{_HANDLER}.filter_item"),
         "compute_hash": patch(f"{_HANDLER}.compute_dedup_hash", return_value="hash123"),
-        "is_dup": patch(f"{_HANDLER}.is_duplicate", return_value=False),
+        "is_dup": patch(f"{_HANDLER}.find_duplicate_hashes", return_value=set()),
         "publish": patch(f"{_HANDLER}._publish_metric"),
     }
 
@@ -231,7 +232,7 @@ class TestFetcherHandler:
             # Verify insert was called with status='queued'
             insert_call = sb.table.return_value.insert
             assert insert_call.called
-            inserted_row = insert_call.call_args[0][0]
+            inserted_row = insert_call.call_args[0][0][0]
             assert inserted_row["status"] == "queued"
             assert inserted_row["raw_title"] == "Community garden opens next week in downtown"
 
@@ -262,7 +263,7 @@ class TestFetcherHandler:
 
             assert result["total_filtered"] == 1
             insert_call = sb.table.return_value.insert
-            inserted_row = insert_call.call_args[0][0]
+            inserted_row = insert_call.call_args[0][0][0]
             assert inserted_row["status"] == "filtered_out"
             assert inserted_row["failure_reason"] == "blocklist:arrested"
 
@@ -277,7 +278,7 @@ class TestFetcherHandler:
             patches["get_sources_from_db"] as mock_get_src,
             patches["filter_item"] as mock_filter,
             patches["compute_hash"],
-            patch(f"{_HANDLER}.is_duplicate", return_value=True),
+            patch(f"{_HANDLER}.find_duplicate_hashes", return_value={"hash123"}),
             patches["publish"],
         ):
             sb = _mock_supabase()
@@ -338,7 +339,7 @@ class TestFetcherHandler:
             patches["load_sources"],
             patches["get_sources_from_db"] as mock_get_src,
             patches["filter_item"] as mock_filter,
-            patches["compute_hash"],
+            patch(f"{_HANDLER}.compute_dedup_hash", side_effect=["hash1", "hash2"]),
             patches["is_dup"],
             patches["publish"],
         ):
@@ -402,7 +403,7 @@ class TestFetcherHandler:
             handler({}, None)
 
             insert_call = sb.table.return_value.insert
-            inserted_row = insert_call.call_args[0][0]
+            inserted_row = insert_call.call_args[0][0][0]
             assert inserted_row["media_urls"] == ["https://example.com/hero.jpg"]
             assert inserted_row["media_types"] == ["image"]
 
@@ -433,7 +434,7 @@ class TestFetcherHandler:
             handler({}, None)
 
             insert_call = sb.table.return_value.insert
-            inserted_row = insert_call.call_args[0][0]
+            inserted_row = insert_call.call_args[0][0][0]
             assert inserted_row["media_urls"] == []
             assert inserted_row["media_types"] == []
 

@@ -32,6 +32,7 @@ log = logging.getLogger("seeder.handlers.discovery")
 
 # Maximum new regions to create per invocation (safety limit)
 _MAX_NEW_REGIONS_PER_RUN = 3
+_LOCATION_PAGE_SIZE = 1000
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -131,16 +132,24 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def _load_user_locations(supabase) -> list[UserPoint]:
-    """Load user viewing locations from the UserViewingLocation table."""
+    """Load user viewing locations from UserViewingLocation (paginated past 1,000 rows)."""
     try:
-        result = (
-            supabase.table("UserViewingLocation")
-            .select("user_id, latitude, longitude")
-            .execute()
-        )
+        rows: list[dict[str, Any]] = []
+        while True:
+            result = (
+                supabase.table("UserViewingLocation")
+                .select("user_id, latitude, longitude")
+                .order("user_id")
+                .range(len(rows), len(rows) + _LOCATION_PAGE_SIZE - 1)
+                .execute()
+            )
+            page = result.data or []
+            rows.extend(page)
+            if len(page) < _LOCATION_PAGE_SIZE:
+                break
 
         points = []
-        for row in result.data or []:
+        for row in rows:
             lat = row.get("latitude")
             lng = row.get("longitude")
             uid = row.get("user_id")

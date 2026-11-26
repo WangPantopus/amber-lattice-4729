@@ -40,6 +40,14 @@ def is_missing_table_error(exc: Exception, table_name: str) -> bool:
     )
 
 
+def is_unique_violation_error(exc: Exception) -> bool:
+    """Return True when a Supabase/PostgREST error indicates a unique constraint violation (23505)."""
+    if get_supabase_error_code(exc) == "23505":
+        return True
+    message = get_supabase_error_message(exc).lower()
+    return "duplicate key value violates unique constraint" in message
+
+
 def log_missing_table_once(logger: Any, table_name: str, feature: str, exc: Exception) -> None:
     """Log a missing-table warning only once per process/feature."""
     key = (str(table_name), str(feature))

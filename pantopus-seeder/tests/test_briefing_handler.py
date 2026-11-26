@@ -55,6 +55,7 @@ def _mock_supabase():
         chain.gte.return_value = chain
         chain.lt.return_value = chain
         chain.filter.return_value = chain
+        chain.or_.return_value = chain
         chain.order.return_value = chain
         chain.limit.return_value = chain
         chain.range.return_value = chain
@@ -386,6 +387,8 @@ class TestEndToEnd:
             return resp
 
         now_pacific = datetime(2026, 4, 6, 7, 30, 0, tzinfo=PACIFIC)
+        mock_http_client = MagicMock()
+        mock_http_client.__enter__.return_value.post.side_effect = mock_post_side_effect
 
         with (
             patch(f"{_HANDLER}.get_briefing_secrets", return_value=secrets),
@@ -395,7 +398,7 @@ class TestEndToEnd:
                 {"user_id": "skip-user", "timezone": "America/Los_Angeles", "briefing_kind": "morning"},
                 {"user_id": "fail-user", "timezone": "America/Los_Angeles", "briefing_kind": "morning"},
             ]),
-            patch(f"{_HANDLER}.httpx.post", side_effect=mock_post_side_effect),
+            patch(f"{_HANDLER}.httpx.Client", return_value=mock_http_client),
             patch(f"{_HANDLER}._publish_metrics") as mock_metrics,
         ):
             # handler() raises on a failed delivery; the accounting is _run's.
@@ -453,7 +456,8 @@ class TestEndToEnd:
             )),
             patch(f"{reminder_module}._get_home_members", return_value={"home-1": ["creator", "member", "excluded", "withdrawn", "tomorrow", "next-day"]}),
             patch(f"{reminder_module}._send_reminder", return_value="sent") as send,
-            patch(f"{reminder_module}._record_sent") as record,
+            patch(f"{reminder_module}._claim_sent", return_value="claimed") as claim,
+            patch(f"{reminder_module}._release_sent", return_value=True) as release,
         ):
             mock_dt.now.return_value = now
             mock_dt.fromisoformat.side_effect = datetime.fromisoformat
@@ -462,7 +466,8 @@ class TestEndToEnd:
             task_query.filter.assert_called_with("status", "not.in", '("done","canceled")')
             assert task_stats["tasks_notified"] == 2
             assert [item.args[1] for item in send.call_args_list] == ["creator", "member"]
-            assert record.call_args_list == [call(reminder_db, "task_task-1_creator_2026-04-07", 1), call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+            assert claim.call_args_list == [call(reminder_db, "task_task-1_creator_2026-04-07", 1), call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+            release.assert_not_called()
             payload = send.call_args_list[0].args[-1]
             assert payload == {"entityId": "task-1", "category": "TASK_REMINDER", "taskId": "task-1", "homeId": "home-1", "link": "/app/homes/home-1/tasks/task-1", "route": "/app/homes/home-1/tasks/task-1"}
             assert all("category" not in item.args[-1] for item in send.call_args_list[1:])
@@ -470,9 +475,9 @@ class TestEndToEnd:
 
             # Assignee-first remains private and is rechecked at delivery time.
             task_query.execute.return_value.data = [{**task, "assigned_to": "withdrawn"}]
-            send.reset_mock(); record.reset_mock()
+            send.reset_mock(); claim.reset_mock(); release.reset_mock()
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
-            send.assert_not_called(); record.assert_not_called()
+            send.assert_not_called(); claim.assert_not_called(); release.assert_not_called()
             task_query.execute.return_value.data = [{**task, "assigned_to": "member"}]
             task_capabilities["member"] = {"can_edit": False, "can_complete": True}
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
@@ -480,7 +485,7 @@ class TestEndToEnd:
             assert send.call_args.args[-1] == {**payload, "category": "TASK_REMINDER_DONE_ONLY"}
 
             # Only explicit supported capabilities advertise actions. Keep the
-            # exact task route and successful-send dedup for body-only reminders.
+            # exact task route and claim-before-send dedup for body-only reminders.
             body_payload = {key: value for key, value in payload.items() if key != "category"}
             for capabilities, category in [
                 ({"can_edit": True, "can_complete": True}, "TASK_REMINDER"),
@@ -494,25 +499,29 @@ class TestEndToEnd:
                 ({"can_edit": False, "can_complete": 1}, None),
             ]:
                 task_capabilities["member"] = capabilities
-                send.reset_mock(); record.reset_mock()
+                send.reset_mock(); claim.reset_mock(); release.reset_mock()
                 home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
                 assert [item.args[1] for item in send.call_args_list] == ["member"]
                 expected = {**body_payload, "category": category} if category else body_payload
                 assert send.call_args.args[-1] == expected
-                assert record.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+                assert claim.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+                release.assert_not_called()
             task_capabilities["member"] = {"can_edit": False, "can_complete": True}
 
-            # Skipped/failed recipients do not suppress a later successful send.
-            send.reset_mock(); record.reset_mock(); send.return_value = "skipped"
+            # Skipped/failed recipients release their pre-send dedup claim so a later send succeeds.
+            send.reset_mock(); claim.reset_mock(); release.reset_mock(); send.return_value = "skipped"
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
-            record.assert_not_called()
-            send.reset_mock(); send.return_value = "failed"
+            assert claim.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+            assert release.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07")]
+            send.reset_mock(); claim.reset_mock(); release.reset_mock(); send.return_value = "failed"
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
-            record.assert_not_called()
-            send.reset_mock(); send.return_value = "sent"
+            assert claim.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+            assert release.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07")]
+            send.reset_mock(); claim.reset_mock(); release.reset_mock(); send.return_value = "sent"
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
-            assert record.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
-            record.reset_mock()
+            assert claim.call_args_list == [call(reminder_db, "task_task-1_member_2026-04-07", 1)]
+            release.assert_not_called()
+            claim.reset_mock(); release.reset_mock()
             send.reset_mock(); send.return_value = "sent"
             history_query.execute.side_effect = RuntimeError("history unavailable")
             home_reminders._process_tasks_due(reminder_db, secrets, task_stats)
@@ -572,14 +581,18 @@ class TestEndToEnd:
             process_count[0] += 1
             return {"outcome": "sent"}
 
+        mock_http_client = MagicMock()
+        mock_http_client.__enter__.return_value.post.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(return_value={"timezones": {f"user-{i}": "America/Los_Angeles" for i in range(150)}}),
+        )
+
         with (
             patch(f"{_HANDLER}.get_briefing_secrets", return_value=secrets),
             patch("supabase.create_client", return_value=sb),
             patch(f"{_HANDLER}.datetime") as mock_dt,
             patch(f"{_HANDLER}._process_user", side_effect=mock_process),
-            patch(f"{_HANDLER}.httpx.post", return_value=MagicMock(
-                json=MagicMock(return_value={"timezones": {f"user-{i}": "America/Los_Angeles" for i in range(150)}}),
-            )),
+            patch(f"{_HANDLER}.httpx.Client", return_value=mock_http_client),
             patch(f"{_HANDLER}._publish_metrics"),
         ):
             mock_dt.now.return_value = now_pacific

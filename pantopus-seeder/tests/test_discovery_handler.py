@@ -29,6 +29,8 @@ def _mock_supabase():
             chain.upsert.return_value = chain
             chain.update.return_value = chain
             chain.eq.return_value = chain
+            chain.order.return_value = chain
+            chain.range.return_value = chain
             chain.limit.return_value = chain
 
             result = MagicMock()
@@ -103,6 +105,8 @@ class TestDiscoveryHandler:
             {"user_id": "bad_range", "latitude": 123.0, "longitude": -122.6},
         ]
         user_chain.select.return_value = user_chain
+        user_chain.order.return_value = user_chain
+        user_chain.range.return_value = user_chain
         user_chain.execute.return_value = user_result
         sb._chains["UserViewingLocation"] = user_chain
 
@@ -146,6 +150,8 @@ class TestDiscoveryHandler:
             user_result = MagicMock()
             user_result.data = _seattle_user_rows(10)
             user_chain.select.return_value = user_chain
+            user_chain.order.return_value = user_chain
+            user_chain.range.return_value = user_chain
             user_chain.execute.return_value = user_result
             sb._chains["UserViewingLocation"] = user_chain
 
@@ -189,6 +195,8 @@ class TestDiscoveryHandler:
             user_result = MagicMock()
             user_result.data = portland_users
             user_chain.select.return_value = user_chain
+            user_chain.order.return_value = user_chain
+            user_chain.range.return_value = user_chain
             user_chain.execute.return_value = user_result
             sb._chains["UserViewingLocation"] = user_chain
 
@@ -216,6 +224,8 @@ class TestDiscoveryHandler:
             user_result = MagicMock()
             user_result.data = _seattle_user_rows(3)
             user_chain.select.return_value = user_chain
+            user_chain.order.return_value = user_chain
+            user_chain.range.return_value = user_chain
             user_chain.execute.return_value = user_result
             sb._chains["UserViewingLocation"] = user_chain
 
@@ -253,6 +263,8 @@ class TestDiscoveryHandler:
             user_result = MagicMock()
             user_result.data = _seattle_user_rows(10)
             user_chain.select.return_value = user_chain
+            user_chain.order.return_value = user_chain
+            user_chain.range.return_value = user_chain
             user_chain.execute.return_value = user_result
             sb._chains["UserViewingLocation"] = user_chain
 
@@ -289,6 +301,8 @@ class TestDiscoveryHandler:
             user_result = MagicMock()
             user_result.data = _seattle_user_rows(10)
             user_chain.select.return_value = user_chain
+            user_chain.order.return_value = user_chain
+            user_chain.range.return_value = user_chain
             user_chain.execute.return_value = user_result
             sb._chains["UserViewingLocation"] = user_chain
 

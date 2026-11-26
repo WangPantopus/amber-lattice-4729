@@ -14,7 +14,7 @@ from src.config.constants import (
 )
 from src.config.region_registry import load_active_regions, load_sources_for_region
 from src.config.secrets import get_secrets
-from src.pipeline.dedup import compute_dedup_hash, is_duplicate
+from src.pipeline.dedup import compute_dedup_hash, find_duplicate_hashes
 from src.pipeline.relevance_filter import filter_item
 from src.pipeline.topic_dedup import (
     find_duplicate_topic,
@@ -23,6 +23,7 @@ from src.pipeline.topic_dedup import (
 )
 from src.sources.registry import get_sources_from_db
 from src.utils.run_metrics import publish_run_outcome
+from src.utils.supabase_errors import is_unique_violation_error
 
 # Configure logging for Lambda (root logger must be set to INFO)
 logging.basicConfig(level=logging.INFO, force=True)
@@ -30,6 +31,8 @@ logging.basicConfig(level=logging.INFO, force=True)
 # ids; keep them out of CloudWatch.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("seeder.handlers.fetcher")
+
+INSERT_BATCH_SIZE = 100
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -66,6 +69,10 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
         log.warning("No active regions found in seeder_config")
         return {"error": "no_active_regions", "regions_processed": 0}
 
+    # Run hygiene BEFORE fetching so a slow source or Lambda timeout never leaves
+    # stale queued items or expired rows uncleaned.
+    _run_queue_hygiene(supabase)
+
     grand_totals = {
         "regions_processed": 0,
         "total_queued": 0,
@@ -90,8 +97,6 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
         grand_totals["total_deduped"] += stats["deduped"]
         grand_totals["total_errors"] += stats["errors"]
 
-    _run_queue_hygiene(supabase)
-
     queue_depth = _get_queue_depth(supabase)
     grand_totals["queue_depth"] = queue_depth
 
@@ -101,13 +106,16 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def _process_region(region: str, sources, supabase) -> dict[str, int]:
-    """Fetch, filter, dedup, and enqueue content for one region."""
+    """Fetch, filter, batch-dedup, and bulk-enqueue content for one region."""
     stats = {"fetched": 0, "queued": 0, "filtered": 0, "deduped": 0, "errors": 0}
 
     # Load token sets of recent posted/queued items so we can reject retellings
     # of the same story even when the URL hash differs.  Loaded once per region
     # and extended in-memory as this pass queues new items.
     recent_topics = load_recent_topics(supabase, region)
+    # Track dedup hashes already accepted for queuing in this run so two sources
+    # cannot collide on idx_seeder_queue_dedup during bulk insert.
+    seen_active_hashes: set[str] = set()
 
     for source in sources:
         try:
@@ -122,13 +130,36 @@ def _process_region(region: str, sources, supabase) -> dict[str, int]:
             log.warning("Source %s completed with fetch error: %s", source.source_id, fetch_error)
             stats["errors"] += 1
 
+        if not items:
+            continue
+
+        hashed_items: list[tuple[Any, str]] = []
         for item in items:
             stats["fetched"] += 1
-
             try:
                 dedup_hash = compute_dedup_hash(item)
+                hashed_items.append((item, dedup_hash))
+            except Exception:
+                log.exception(
+                    "Failed to compute dedup hash for item '%s' from %s",
+                    item.title[:60],
+                    item.source_id,
+                )
+                stats["errors"] += 1
 
-                if is_duplicate(dedup_hash, supabase):
+        if not hashed_items:
+            continue
+
+        # Batch duplicate check once per source (chunked .in_()) instead of per item.
+        hashes_to_check = [h for _, h in hashed_items if h not in seen_active_hashes]
+        existing_hashes = find_duplicate_hashes(hashes_to_check, supabase)
+
+        rows_to_insert: list[dict[str, Any]] = []
+        fetched_at = datetime.now(timezone.utc).isoformat()
+
+        for item, dedup_hash in hashed_items:
+            try:
+                if dedup_hash in existing_hashes or dedup_hash in seen_active_hashes:
                     stats["deduped"] += 1
                     continue
 
@@ -148,14 +179,14 @@ def _process_region(region: str, sources, supabase) -> dict[str, int]:
 
                 passed, reason = filter_item(item)
 
-                row = {
+                row: dict[str, Any] = {
                     "source": item.source_id,
                     "source_url": item.source_url,
                     "raw_title": item.title,
                     "raw_body": item.body,
                     "region": item.region,
                     "category": item.category,
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "fetched_at": fetched_at,
                     "dedup_hash": dedup_hash,
                     "media_urls": item.media_urls,
                     "media_types": item.media_types,
@@ -164,23 +195,17 @@ def _process_region(region: str, sources, supabase) -> dict[str, int]:
 
                 if passed:
                     row["status"] = "queued"
-                    stats["queued"] += 1
-                else:
-                    row["status"] = "filtered_out"
-                    row["failure_reason"] = reason
-                    stats["filtered"] += 1
-
-                supabase.table("seeder_content_queue").insert(row).execute()
-
-                # Track newly-queued items so later sources in the same pass
-                # can't re-queue the same story under a different URL.  The
-                # dedup_hash is a stable identifier for log breadcrumbs — we
-                # don't need the row's UUID here.
-                if passed:
+                    seen_active_hashes.add(dedup_hash)
+                    # Track newly-queued items so later items/sources in the same pass
+                    # can't re-queue the same story under a different URL.
                     tokens = normalize_title(item.title, item.body)
                     if tokens:
                         recent_topics.append((dedup_hash, tokens))
+                else:
+                    row["status"] = "filtered_out"
+                    row["failure_reason"] = reason
 
+                rows_to_insert.append(row)
             except Exception:
                 log.exception(
                     "Failed to process item '%s' from %s",
@@ -188,6 +213,9 @@ def _process_region(region: str, sources, supabase) -> dict[str, int]:
                     item.source_id,
                 )
                 stats["errors"] += 1
+
+        if rows_to_insert:
+            _bulk_insert_queue_rows(supabase, rows_to_insert, stats)
 
     log.info(
         "Region %s: fetched=%d queued=%d filtered=%d deduped=%d errors=%d",
@@ -199,6 +227,46 @@ def _process_region(region: str, sources, supabase) -> dict[str, int]:
         stats["errors"],
     )
     return stats
+
+
+def _bulk_insert_queue_rows(
+    supabase,
+    rows: list[dict[str, Any]],
+    stats: dict[str, int],
+) -> None:
+    """Bulk-insert queue rows in chunks, falling back per-row only if a batch collides/errors."""
+    for offset in range(0, len(rows), INSERT_BATCH_SIZE):
+        batch = rows[offset:offset + INSERT_BATCH_SIZE]
+        try:
+            supabase.table("seeder_content_queue").insert(batch).execute()
+            for row in batch:
+                if row["status"] == "queued":
+                    stats["queued"] += 1
+                else:
+                    stats["filtered"] += 1
+        except Exception:
+            log.warning(
+                "Bulk insert of %d queue rows failed; falling back to per-row inserts",
+                len(batch),
+                exc_info=True,
+            )
+            for row in batch:
+                try:
+                    supabase.table("seeder_content_queue").insert(row).execute()
+                    if row["status"] == "queued":
+                        stats["queued"] += 1
+                    else:
+                        stats["filtered"] += 1
+                except Exception as exc:
+                    if is_unique_violation_error(exc):
+                        stats["deduped"] += 1
+                    else:
+                        log.exception(
+                            "Failed to insert item '%s' from %s",
+                            str(row.get("raw_title") or "")[:60],
+                            row.get("source"),
+                        )
+                        stats["errors"] += 1
 
 
 def _run_queue_hygiene(supabase) -> None:

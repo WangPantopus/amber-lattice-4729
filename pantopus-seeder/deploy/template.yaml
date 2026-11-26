@@ -13,9 +13,9 @@ Parameters:
     Description: Deployment environment — controls resource naming and scheduling
   SchedulesEnabled:
     Type: String
-    Default: 'true'
+    Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Keep all scheduled jobs paused while validating a deployment.
+    Description: Enable all scheduled jobs at once (legacy catch-all). Defaults to false so deployments opt in to individual job switches explicitly.
   BriefingsEnabled:
     Type: String
     Default: 'false'
@@ -379,9 +379,32 @@ Resources:
     Condition: RunHostMonitoring
     Properties:
       AlarmName: !Sub pantopus-backend-status-${Environment}
-      AlarmDescription: 'Backend EC2 instance or system status check failed in two of three minutes. Notification only: no automatic reboot, recovery or replacement. API health separately detects missing service.'
+      AlarmDescription: 'Backend EC2 system status check failed in two of three minutes. Triggers automatic EC2 host recovery and notifies the alarm topic. API health separately detects missing service.'
       Namespace: AWS/EC2
-      MetricName: StatusCheckFailed
+      MetricName: StatusCheckFailed_System
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref BackendInstanceId
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        - !Ref JobAlarmTopic
+        - !Sub arn:aws:automate:${AWS::Region}:ec2:recover
+      OKActions: [!Ref JobAlarmTopic]
+
+  BackendInstanceStatusAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: RunHostMonitoring
+    Properties:
+      AlarmName: !Sub pantopus-backend-instance-status-${Environment}
+      AlarmDescription: 'Backend EC2 instance status check failed in two of three minutes (OS/guest issue). Notification only; system hardware failures are recovered by BackendStatusAlarm.'
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_Instance
       Dimensions:
         - Name: InstanceId
           Value: !Ref BackendInstanceId
@@ -421,6 +444,7 @@ Resources:
   # ---------------------------------------------------------------------------
   SeederFetcherFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SeederFetcherLogGroup
     Properties:
       FunctionName: !Sub pantopus-seeder-fetcher-${Environment}
       Handler: src.handlers.fetcher.handler
@@ -450,11 +474,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/Seeder/${Environment}
 
+  SeederFetcherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-seeder-fetcher-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Poster Lambda — humanizes and posts content from the queue
   # ---------------------------------------------------------------------------
   SeederPosterFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SeederPosterLogGroup
     Properties:
       FunctionName: !Sub pantopus-seeder-poster-${Environment}
       ReservedConcurrentExecutions: !If [RunSeeder, 1, !Ref 'AWS::NoValue']
@@ -477,6 +508,12 @@ Resources:
                 - secretsmanager:GetSecretValue
               Resource: !Ref SeederSecret
 
+  SeederPosterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-seeder-poster-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Sports National Fetcher Lambda — pulls Google News items for each active
   # major event into the seeder queue with scope='national', so the Sports
@@ -485,6 +522,7 @@ Resources:
   # ---------------------------------------------------------------------------
   SeederSportsNationalFetcherFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SeederSportsNationalFetcherLogGroup
     Properties:
       FunctionName: !Sub pantopus-seeder-sports-national-fetcher-${Environment}
       Handler: src.handlers.sports_national_fetcher.handler
@@ -517,6 +555,12 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/SportsSeeder/${Environment}
 
+  SeederSportsNationalFetcherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-seeder-sports-national-fetcher-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Sports Poster Lambda — posts national Sports topic threads during major events
   # (NBA Playoffs, Super Bowl, World Cup). Event-gated via sports_events; cap,
@@ -524,6 +568,7 @@ Resources:
   # ---------------------------------------------------------------------------
   SeederSportsPosterFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SeederSportsPosterLogGroup
     Properties:
       FunctionName: !Sub pantopus-seeder-sports-poster-${Environment}
       Handler: src.handlers.sports_poster.handler
@@ -571,11 +616,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/SportsSeeder/${Environment}
 
+  SeederSportsPosterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-seeder-sports-poster-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Discovery Lambda — detects user clusters and provisions new regions
   # ---------------------------------------------------------------------------
   SeederDiscoveryFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SeederDiscoveryLogGroup
     Properties:
       FunctionName: !Sub pantopus-seeder-discovery-${Environment}
       Handler: src.handlers.discovery.handler
@@ -598,11 +650,18 @@ Resources:
                 - secretsmanager:GetSecretValue
               Resource: !Ref SeederSecret
 
+  SeederDiscoveryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-seeder-discovery-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Briefing Scheduler Lambda — finds eligible users and sends daily briefings
   # ---------------------------------------------------------------------------
   BriefingSchedulerFunction:
     Type: AWS::Serverless::Function
+    DependsOn: BriefingSchedulerLogGroup
     Properties:
       FunctionName: !Sub pantopus-briefing-scheduler-${Environment}
       ReservedConcurrentExecutions: !If [RunBriefings, 1, !Ref 'AWS::NoValue']
@@ -634,11 +693,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/Briefing/${Environment}
 
+  BriefingSchedulerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-briefing-scheduler-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Briefing Cleanup Lambda — purges old delivery logs and resets stale attempts
   # ---------------------------------------------------------------------------
   BriefingCleanupFunction:
     Type: AWS::Serverless::Function
+    DependsOn: BriefingCleanupLogGroup
     Properties:
       FunctionName: !Sub pantopus-briefing-cleanup-${Environment}
       Handler: src.handlers.briefing_cleanup.handler
@@ -661,11 +727,18 @@ Resources:
                 - secretsmanager:GetSecretValue
               Resource: !Ref SeederSecret
 
+  BriefingCleanupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-briefing-cleanup-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Alert Checker Lambda — real-time weather/AQI alert push notifications
   # ---------------------------------------------------------------------------
   AlertCheckerFunction:
     Type: AWS::Serverless::Function
+    DependsOn: AlertCheckerLogGroup
     Properties:
       FunctionName: !Sub pantopus-alert-checker-${Environment}
       Handler: src.handlers.alert_checker.handler
@@ -696,11 +769,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/Alerts/${Environment}
 
+  AlertCheckerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-alert-checker-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Home Reminders Lambda — bill/task/calendar push notifications
   # ---------------------------------------------------------------------------
   HomeRemindersFunction:
     Type: AWS::Serverless::Function
+    DependsOn: HomeRemindersLogGroup
     Properties:
       FunctionName: !Sub pantopus-home-reminders-${Environment}
       ReservedConcurrentExecutions: !If [RunHomeReminders, 1, !Ref 'AWS::NoValue']
@@ -736,11 +816,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/Reminders/${Environment}
 
+  HomeRemindersLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-home-reminders-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Mail Notifications Lambda — urgent mail + daily summary push
   # ---------------------------------------------------------------------------
   MailNotificationsFunction:
     Type: AWS::Serverless::Function
+    DependsOn: MailNotificationsLogGroup
     Properties:
       FunctionName: !Sub pantopus-mail-notifications-${Environment}
       Handler: src.handlers.mail_notifications.handler
@@ -771,11 +858,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/MailNotifications/${Environment}
 
+  MailNotificationsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-mail-notifications-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # No-Bid Nudge Lambda — sends nudges to gig posters without bids
   # ---------------------------------------------------------------------------
   NoBidNudgeFunction:
     Type: AWS::Serverless::Function
+    DependsOn: NoBidNudgeLogGroup
     Properties:
       FunctionName: !Sub pantopus-no-bid-nudge-${Environment}
       Handler: src.handlers.no_bid_nudge.handler
@@ -809,11 +903,18 @@ Resources:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/NoBidNudge/${Environment}
 
+  NoBidNudgeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-no-bid-nudge-${Environment}
+      RetentionInDays: 30
+
   # ---------------------------------------------------------------------------
   # Job Trigger Lambda — generic cron job trigger via EventBridge
   # ---------------------------------------------------------------------------
   JobTriggerFunction:
     Type: AWS::Serverless::Function
+    DependsOn: JobTriggerLogGroup
     Properties:
       FunctionName: !Sub pantopus-job-trigger-${Environment}
       Handler: src.handlers.job_trigger.handler
@@ -924,6 +1025,12 @@ Resources:
               Condition:
                 StringEquals:
                   cloudwatch:namespace: !Sub Pantopus/Jobs/${Environment}
+
+  JobTriggerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/pantopus-job-trigger-${Environment}
+      RetentionInDays: 30
 
   # ---------------------------------------------------------------------------
   # Job-failure alarms — a failed run of a reminder or job function (secrets,
@@ -1186,6 +1293,85 @@ Resources:
       AlarmActions:
         - !Ref JobAlarmTopic
 
+  NoBidNudgeErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-no-bid-nudge-errors-${Environment}
+      AlarmDescription: 'A scheduled no-bid nudge run crashed or reported a caught/partial failure. Check CloudWatch logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Metrics:
+        - Id: failures
+          Expression: FILL(crashes, 0) + FILL(outcomes, 0)
+          ReturnData: true
+        - Id: crashes
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref NoBidNudgeFunction
+            Period: 900
+            Stat: Sum
+        - Id: outcomes
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: !Sub Pantopus/ScheduledJobs/${Environment}
+              MetricName: RunFailures
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref NoBidNudgeFunction
+            Period: 900
+            Stat: Sum
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  SeederSportsNationalFetcherErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-seeder-sports-national-fetcher-errors-${Environment}
+      AlarmDescription: !Sub 'pantopus-seeder-sports-national-fetcher-${Environment} failed: national sports news fetching. Check its CloudWatch logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SeederSportsNationalFetcherFunction
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  SeederSportsPosterErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-seeder-sports-poster-errors-${Environment}
+      AlarmDescription: !Sub 'pantopus-seeder-sports-poster-${Environment} failed: national sports posting. Check its CloudWatch logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SeederSportsPosterFunction
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
   # Missing invocations detect stopped schedules, regardless of eligible recipients.
   # Actions follow the same switches as the schedules; intentional pauses are silent.
   FetcherMissingRunsAlarm:
@@ -1341,6 +1527,86 @@ Resources:
           Value: !Ref JobTriggerFunction
       Statistic: Sum
       Period: 10800
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  MailMissingRunsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-mail-notifications-missing-runs-${Environment}
+      AlarmDescription: 'No scheduled invocation in the expected window. Check schedule state, invocation permissions, throttles and Lambda logs.'
+      ActionsEnabled: !If [RunMail, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MailNotificationsFunction
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  NoBidNudgeMissingRunsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-no-bid-nudge-missing-runs-${Environment}
+      AlarmDescription: 'No scheduled invocation in the expected window. Check schedule state, invocation permissions, throttles and Lambda logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref NoBidNudgeFunction
+      Statistic: Sum
+      Period: 21600
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  SportsNationalFetcherMissingRunsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-seeder-sports-national-fetcher-missing-runs-${Environment}
+      AlarmDescription: 'No scheduled invocation in the expected window. Check schedule state, invocation permissions, throttles and Lambda logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SeederSportsNationalFetcherFunction
+      Statistic: Sum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref JobAlarmTopic
+
+  SportsPosterMissingRunsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub pantopus-seeder-sports-poster-missing-runs-${Environment}
+      AlarmDescription: 'No scheduled invocation in the expected window. Check schedule state, invocation permissions, throttles and Lambda logs.'
+      ActionsEnabled: !If [RunSchedules, true, false]
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SeederSportsPosterFunction
+      Statistic: Sum
+      Period: 86400
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: LessThanThreshold
