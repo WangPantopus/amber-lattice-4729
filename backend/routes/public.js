@@ -486,8 +486,9 @@ async function fetchFloodCached(lat, lng) {
 
   try {
     const { payload } = await readThrough({
-      cacheKey: `geo:v2:${gh}`,
-      sectionId: '_flood_zone',
+      cacheKey: `geo:${gh}`,
+      // v2 since Nov 26: rows now keep FEMA's zone subtype; only flood rows move (the key is per section).
+      sectionId: '_flood_zone_v2',
       ttlMs: 90 * 24 * 60 * 60 * 1000,
       fetch: async () => {
         const flood = await fetchFloodZone(lat, lng);

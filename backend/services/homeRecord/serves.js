@@ -65,9 +65,9 @@ async function schoolsAt(point) {
 
 /** The utilities whose territories cover a point (names, wholesale sellers left out where a retail one is there). */
 async function electricAt(point) {
-  // Rounded to about 11 m: the territories are drawn far coarser, and a cached answer never holds an exact point.
+  // Rounded to about 110 m: the territories are drawn far coarser, and neither the service nor the cache sees an exact point.
   const params = new URLSearchParams({
-    geometry: `${point.lng.toFixed(4)},${point.lat.toFixed(4)}`,
+    geometry: `${point.lng.toFixed(3)},${point.lat.toFixed(3)}`,
     geometryType: 'esriGeometryPoint',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
