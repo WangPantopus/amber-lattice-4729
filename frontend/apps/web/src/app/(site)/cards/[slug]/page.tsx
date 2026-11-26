@@ -14,7 +14,7 @@ import { tableEdge } from '@/components/mailbox/cards/cardArt';
 import { PublicCardPage, PublicCardsTrouble } from '@/components/mailbox/cards/PublicCards';
 import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
-import { cardLd, cardsJsonLd, collectionOf } from '../_lib/structuredData';
+import { cardDescription, cardLd, cardTrailLd, cardsJsonLd, collectionOf, hasTwin } from '../_lib/structuredData';
 
 // Rendered on every request. A build or a first visit that met the server with
 // cards off (or down) would otherwise be saved as a fixed "not found" page, and
@@ -30,17 +30,18 @@ async function designFor(slug: string) {
   const { data, status } = await fetchPublicCardDesigns();
   const design = data?.designs.find((candidate) => candidate.slug === slug) ?? null;
   const collection = data && design ? collectionOf(design, data.collections ?? []) : null;
-  return { design, collection, shelves: data ? publicShelvesOn(data) : false, year: data?.year ?? new Date().getFullYear(), status };
+  const twin = data && design ? hasTwin(design, data.designs) : false;
+  return { design, collection, twin, shelves: data ? publicShelvesOn(data) : false, year: data?.year ?? new Date().getFullYear(), status };
 }
 
 export async function generateMetadata({ params }: CardPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { design } = await designFor(slug);
+  const { design, collection, twin } = await designFor(slug);
   if (!design) return { metadataBase: new URL(APP_WEB_URL), title: 'Christmas cards on Pantopus', robots: { index: false, follow: true } };
   // A caption ends with a full stop, or a question mark; the First Christmas ones end with their verse's reference.
   const sentence = /[.!?]$/.test(design.caption) ? design.caption : `${design.caption}.`;
-  const title = `${sentence} A Christmas card on Pantopus`;
-  const description = 'A Christmas card you can send on Pantopus. It arrives with their morning mail, and they open it like real mail.';
+  const title = `${sentence} A Christmas card on Pantopus${twin ? ` (card ${design.number})` : ''}`;
+  const description = cardDescription(design, collection, twin);
   const url = `/cards/${design.slug}`;
   const image = { url: `/holiday-cards/share/${design.id}-link.jpg`, width: 1200, height: 630, alt: `A Christmas card: ${design.caption}` };
   return {
@@ -62,7 +63,7 @@ export async function generateViewport({ params }: CardPageProps): Promise<Viewp
 
 export default async function OneCardPage({ params, searchParams }: CardPageProps) {
   const { slug } = await params;
-  const { design, collection, shelves, year, status } = await designFor(slug);
+  const { design, collection, twin, shelves, year, status } = await designFor(slug);
   if (!design) {
     // Not one of the cards, or the feature is off (the server says 404). Anything else: the server didn't answer.
     if (status === 200 || status === 404) notFound();
@@ -74,7 +75,18 @@ export default async function OneCardPage({ params, searchParams }: CardPageProp
     <>
       <PublicCardPage design={design} year={year} inviteCode={inviteCode} store={store} />
       {/* For search engines, what this card is (data only; nothing drawn). */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: cardsJsonLd(cardLd({ design, collection, shelves })) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: cardsJsonLd(cardLd({ design, collection, shelves, twin })) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: cardsJsonLd(
+            cardTrailLd([
+              ...(shelves && collection?.slug ? [{ name: collection.name, path: `/cards/collection/${collection.slug}` }] : []),
+              { name: design.caption, path: `/cards/${design.slug}` },
+            ]),
+          ),
+        }}
+      />
     </>
   );
 }

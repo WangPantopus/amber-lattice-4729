@@ -6,6 +6,8 @@ const { DateTime } = require("luxon");
 const { areLaunchFeaturesEnabled } = require("../utils/featureFlags");
 const holidayCards = require("./holidayCards");
 const mailDelivery = require("./mailDelivery");
+// The web's pricing page prints these prices and FREE_CARDS (frontend/apps/web/src/app/(public)/pricing/page.tsx):
+// change them there in the same PR.
 const BOOKS = [
   [5, 299],
   [20, 799],

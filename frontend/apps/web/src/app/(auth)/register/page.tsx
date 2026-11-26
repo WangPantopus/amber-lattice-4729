@@ -209,9 +209,9 @@ function RegisterContent({ searchParams }: SearchParamsProps) {
           <PantopusBadge />
         </div>
 
-        <h2 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
+        <h1 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
           Create your free account
-        </h2>
+        </h1>
 
         <p className="mt-2 text-center text-sm text-app-text-secondary">
           {/* Launch cut #1 (Beacon): the copy leaves Beacons out. */}

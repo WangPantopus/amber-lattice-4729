@@ -15,7 +15,7 @@ import { APP_WEB_URL } from '@pantopus/utils';
 import { PublicCardsTrouble, PublicCollectionPage } from '@/components/mailbox/cards/PublicCards';
 import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
-import { cardListLd, cardsInPageOrder, cardsJsonLd } from '../../_lib/structuredData';
+import { cardListLd, cardTrailLd, cardsInPageOrder, cardsJsonLd, collectionDescription } from '../../_lib/structuredData';
 
 // Rendered on every request, as /cards is: the switch lives on the server.
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: CollectionPageProps): Promise
   const { data, collection } = await collectionFor(slug);
   if (!data || !collection) return { metadataBase: new URL(APP_WEB_URL), title: 'Christmas cards on Pantopus', robots: { index: false, follow: true } };
   const title = `${collection.name}: Christmas cards on Pantopus`;
-  const description = collection.line || 'Christmas cards you can send on Pantopus.';
+  const description = collectionDescription(collection);
   const url = `/cards/collection/${collection.slug}`;
   const pick = data.designs.find((d) => d.id === collection.pick) ?? data.designs.find((d) => d.id === collection.designs[0]);
   const image = pick ? { url: `/holiday-cards/share/${pick.id}-link.jpg`, width: 1200, height: 630, alt: `A Christmas card: ${pick.caption}` } : null;
@@ -73,6 +73,10 @@ export default async function CollectionPage({ params, searchParams }: Collectio
         dangerouslySetInnerHTML={{
           __html: cardsJsonLd(cardListLd({ name: `${collection.name}: Christmas cards on Pantopus`, path: `/cards/collection/${collection.slug}`, designs })),
         }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: cardsJsonLd(cardTrailLd([{ name: collection.name, path: `/cards/collection/${collection.slug}` }])) }}
       />
     </>
   );

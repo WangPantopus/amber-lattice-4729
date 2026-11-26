@@ -29,3 +29,11 @@ export function publicPageMetadata({ path, title, description }: { path: string;
     twitter: { card: 'summary_large_image', title: fullTitle, description, images: [image.url] },
   };
 }
+
+/**
+ * The tags of a page search engines should not list (a password reset, an email confirmation): its own title, so a
+ * browser tab and a history entry say what it is, and no indexing.
+ */
+export function unlistedPageMetadata(title: string): Metadata {
+  return { title: { absolute: `${title} | Pantopus` }, robots: { index: false, follow: true } };
+}

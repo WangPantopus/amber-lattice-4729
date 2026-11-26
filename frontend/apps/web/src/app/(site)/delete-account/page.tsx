@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import SiteFooter from '@/components/site/SiteFooter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantopus — /delete-account
@@ -13,6 +14,7 @@ import { LayoutDashboard } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'Delete your Pantopus account',
   description: 'How to delete your Pantopus account in the app or on the web, and what is deleted or kept.',
+  alternates: { canonical: 'https://pantopus.com/delete-account' },
 };
 
 const SUPPORT_EMAIL = 'support@pantopus.com';
@@ -136,20 +138,5 @@ function SiteNav() {
         </div>
       </div>
     </nav>
-  );
-}
-
-function SiteFooter() {
-  return (
-    <footer className="bg-gray-900 text-slate-400 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row gap-6 justify-between text-sm">
-        <p>&copy; 2026 Pantopus. All rights reserved.</p>
-        <ul className="flex flex-wrap gap-x-6 gap-y-2">
-          <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
-          <li><Link href="/terms" className="hover:text-white transition">Terms</Link></li>
-          <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
-        </ul>
-      </div>
-    </footer>
   );
 }

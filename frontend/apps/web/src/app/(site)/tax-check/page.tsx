@@ -8,15 +8,18 @@
 
 import type { Metadata, Viewport } from 'next';
 import StartFunnel from '@/components/place/StartFunnel';
+import SiteFooter from '@/components/site/SiteFooter';
 import { shareImage } from '@/lib/site/pageMetadata';
 
+// The share card keeps its own words; the browser and search title says what the page is, with the name.
 const TITLE = 'Does the county value your home above similar homes on your street?';
+const PAGE_TITLE = 'Property tax check: is your home valued too high? | Pantopus';
 const DESCRIPTION =
   "Where county records allow it, Pantopus compares the county's value for your home, per square foot, with similar houses on your street. Look up your address free.";
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://pantopus.com'),
-  title: TITLE,
+  title: PAGE_TITLE,
   description: DESCRIPTION,
   alternates: { canonical: '/tax-check' },
   robots: { index: true, follow: true },
@@ -31,5 +34,10 @@ export const viewport: Viewport = {
 };
 
 export default function TaxCheckPage() {
-  return <StartFunnel topic="tax" />;
+  return (
+    <>
+      <StartFunnel topic="tax" />
+      <SiteFooter />
+    </>
+  );
 }

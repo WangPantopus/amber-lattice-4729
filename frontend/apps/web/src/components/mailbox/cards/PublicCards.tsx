@@ -74,8 +74,20 @@ function TablePage({ table, children }: { table?: string | null; children: React
   );
 }
 
+// Under it, the way on from a card to the rest of Pantopus: the guide to sending one, what it costs, the app and help.
 function Foot({ className = '' }: { className?: string }) {
-  return <p className={`${styles.foot} ${className}`}>Pantopus — your household, organized. <Link href="/start">What is Pantopus?</Link></p>;
+  return (
+    <div className={`${styles.foot} ${className}`}>
+      <p>Pantopus — your household, organized. <Link href="/start">What is Pantopus?</Link></p>
+      <nav className={styles.footLinks} aria-label="More of Pantopus">
+        <Link href="/guides/how-to-send-a-christmas-card-online">How to send a Christmas card online</Link>
+        <Link href="/mail">Mail</Link>
+        <Link href="/pricing">Pricing</Link>
+        <Link href="/download">Get the app</Link>
+        <Link href="/help">Help</Link>
+      </nav>
+    </div>
+  );
 }
 
 /** Signed in, straight to the sending flow with this picture chosen; otherwise through sign-up, which keeps whoever shared the link. */

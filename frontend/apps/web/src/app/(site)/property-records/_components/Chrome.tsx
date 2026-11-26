@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { LayoutDashboard } from 'lucide-react';
+import SharedFooter from '@/components/site/SiteFooter';
 import { breadcrumbLd, jsonLd } from '../_lib/guide';
 
-// The county pages' frame: the public pages' own top bar and footer (as on /about/data-sources), and the breadcrumb
-// with its structured data. Server-rendered, no script of its own.
+// The county pages' frame: the public pages' own top bar, the footer every company page draws (with these pages' own
+// closing line), and the breadcrumb with its structured data. Server-rendered, no script of its own.
 
 export function SiteNav() {
   return (
@@ -14,7 +15,7 @@ export function SiteNav() {
             <LayoutDashboard className="w-7 h-7 text-primary-600" />
             <div className="flex flex-col leading-none">
               <span className="text-xl font-bold tracking-tight text-primary-700 dark:text-primary-400">Pantopus</span>
-              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Your real-world network</span>
+              <span className="hidden sm:block text-[10px] font-medium text-app-text-muted dark:text-app-text-secondary tracking-wide uppercase">Real life, connected</span>
             </div>
           </Link>
           <div className="flex items-center gap-3">
@@ -29,22 +30,7 @@ export function SiteNav() {
 }
 
 export function SiteFooter() {
-  return (
-    <footer className="bg-gray-900 text-slate-400 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-center gap-6 mb-6 text-sm">
-          <Link href="/property-records" className="hover:text-white transition">Property records by state</Link>
-          <Link href="/about/data-sources" className="hover:text-white transition">Data sources</Link>
-          <Link href="/about" className="hover:text-white transition">About</Link>
-          <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
-          <Link href="/terms" className="hover:text-white transition">Terms</Link>
-        </div>
-        <p className="text-center text-sm text-slate-400">
-          Pantopus is not a government office. Each office and source on these pages is named where its facts appear.
-        </p>
-      </div>
-    </footer>
-  );
+  return <SharedFooter note="Pantopus is not a government office. Each office and source on these pages is named where its facts appear." />;
 }
 
 export function Breadcrumb({ items }: { items: { name: string; path: string }[] }) {

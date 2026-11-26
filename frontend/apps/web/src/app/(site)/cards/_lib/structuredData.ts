@@ -44,13 +44,55 @@ export function cardListLd({ name, path, designs }: { name: string; path: string
   };
 }
 
+/** `text` cut at a word, with an ellipsis, when it is longer than `max` characters. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).replace(/[\s,;:.]+\S*$/, '')}…`;
+}
+
+/** Another card with the same words on it (two of the verse cards share a verse): its title and description add the card's number. */
+export function hasTwin(design: Design, designs: Design[]): boolean {
+  return designs.some((other) => other.id !== design.id && other.caption === design.caption);
+}
+
+/**
+ * One card's description for search engines: the card's own words (a verse card's reference and the start of its
+ * verse), the collection it is in, and how it is sent. Each card's is its own, where every card once shared one line.
+ */
+export function cardDescription(design: Design, collection: Collection | null, twin = false): string {
+  const words = design.verse ? `${design.caption}: “${clip(design.verse, 50)}”` : `“${design.caption}”`;
+  const from = collection ? ` from the ${collection.name} collection` : '';
+  // A verse card's own words fill the line; the others also say how the card arrives.
+  return `${words} A Christmas card${from}${twin ? ` (card ${design.number})` : ''} to send online on Pantopus.${design.verse ? '' : ' It arrives with their morning mail.'}`;
+}
+
+/** One collection's description: how many cards it holds, and its own line. */
+export function collectionDescription(collection: Collection): string {
+  const count = collection.designs.length;
+  return `${collection.name}: ${count} Christmas ${count === 1 ? 'card' : 'cards'} to send online on Pantopus.${collection.line ? ` ${collection.line}` : ''}`;
+}
+
+/** The trail to a card or a collection: Pantopus › Christmas cards › its collection (while the shelves are on) › the card. */
+export function cardTrailLd(steps: { name: string; path: string }[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [{ name: 'Pantopus', path: '/' }, { name: 'Christmas cards', path: '/cards' }, ...steps].map((step, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: step.name,
+      item: step.path === '/' ? APP_WEB_URL : abs(step.path),
+    })),
+  };
+}
+
 /** What one card is: a Christmas card by Pantopus, its picture, and the collection it belongs to. */
-export function cardLd({ design, collection, shelves }: { design: Design; collection: Collection | null; shelves: boolean }) {
+export function cardLd({ design, collection, shelves, twin = false }: { design: Design; collection: Collection | null; shelves: boolean; twin?: boolean }) {
   return {
     '@context': 'https://schema.org',
     '@type': 'CreativeWork',
     name: design.caption,
-    description: 'A Christmas card you can send on Pantopus. It arrives with their morning mail, and they open it like real mail.',
+    description: cardDescription(design, collection, twin),
     url: abs(`/cards/${design.slug}`),
     image: abs(`/holiday-cards/${design.id}.jpg`),
     thumbnailUrl: abs(`/holiday-cards/${design.id}-thumb.jpg`),

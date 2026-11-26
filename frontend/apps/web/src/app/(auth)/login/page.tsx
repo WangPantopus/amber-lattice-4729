@@ -206,9 +206,9 @@ function LoginContent({ searchParams }: SearchParamsProps) {
           <PantopusBadge />
         </div>
 
-        <h2 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
+        <h1 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
           {arrivedConfirmed ? 'Email confirmed' : 'Welcome back'}
-        </h2>
+        </h1>
 
         <p className="mt-2 text-center text-sm text-app-text-secondary">
           {arrivedConfirmed ? 'Log in to finish' : 'Sign in to Pantopus'}

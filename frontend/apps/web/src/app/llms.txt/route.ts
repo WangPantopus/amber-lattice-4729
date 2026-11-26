@@ -16,12 +16,18 @@ const SITE_PAGES: [string, string, string][] = [
   ['/tax-check', 'Property tax check', 'Where county records allow it, compare the county value of a home with similar houses on its street.'],
   ['/property-records', 'Property records', "Each county's own property offices, the federal hazard ratings for the area and a lookup for any U.S. home, with every source named."],
   ['/cards', 'Christmas cards', 'Pick a card and send it to someone. It arrives with their morning mail, and they open it like real mail.'],
+  ['/download', 'Get the app', 'Pantopus is free on the App Store for iPhone and on Google Play for Android, and works in a browser.'],
+  ['/pricing', 'Pricing', 'What is free (the app, an account, looking up an address) and what costs money.'],
+  ['/help', 'Help', 'Where to find an answer: your account, your home, each part of the app, and how to reach support.'],
+  ['/register', 'Sign up', 'Create a free account. It asks for no card.'],
+  ['/login', 'Sign in', 'Sign in to Pantopus on the web.'],
   ['/about', 'About Pantopus', 'The Verified home, each part of the app, who it is for and how to reach the company.'],
   ['/about/data-sources', 'Data sources', 'The publishers of the public files behind address and property records.'],
   ['/contact', 'Contact', 'Support, business and privacy email addresses.'],
   ['/privacy', 'Privacy policy', 'What Pantopus collects, why, and your rights and choices.'],
   ['/terms', 'Terms of service', 'The terms for using Pantopus.'],
   ['/child-safety', 'Child safety standards', 'How Pantopus prevents and reports child sexual abuse and exploitation.'],
+  ['/delete-account', 'Delete your account', 'How to delete a Pantopus account in the app or on the web, and what is deleted or kept.'],
 ];
 
 function body(): string {

@@ -91,9 +91,9 @@ function ResetPasswordPageContent({ searchParams }: SearchParamsProps) {
         <div className="flex justify-center">
           <PantopusBadge />
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
+        <h1 className="mt-6 text-center text-3xl font-bold text-app-text dark:text-white">
           Set a new password
-        </h2>
+        </h1>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
