@@ -1133,24 +1133,32 @@ router.get('/discovery', verifyToken, async (req, res) => {
       case 'businesses': {
         // Discovery = OTHER users' published businesses near the current user.
         // 1) Get the set of business IDs the current user owns or has a seat in — exclude those.
-        // 2) Only include businesses with a published BusinessProfile.
-        const [{ data: myTeams }, { data: publishedProfiles }] = await Promise.all([
-          supabaseAdmin
-            .from('BusinessTeam')
-            .select('business_user_id')
-            .eq('user_id', userId)
-            .eq('is_active', true),
-          supabaseAdmin
+        // 2) Only include businesses with a published BusinessProfile (paginated past 1,000 rows).
+        const { data: myTeams } = await supabaseAdmin
+          .from('BusinessTeam')
+          .select('business_user_id')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+
+        const publishedProfiles = [];
+        const PROFILE_PAGE_SIZE = 1000;
+        for (let offset = 0; ; offset += PROFILE_PAGE_SIZE) {
+          const { data: pageProfiles, error: profErr } = await supabaseAdmin
             .from('BusinessProfile')
             .select('business_user_id, categories')
-            .eq('is_published', true),
-        ]);
+            .eq('is_published', true)
+            .order('business_user_id', { ascending: true })
+            .range(offset, offset + PROFILE_PAGE_SIZE - 1);
+          if (profErr || !pageProfiles?.length) break;
+          publishedProfiles.push(...pageProfiles);
+          if (pageProfiles.length < PROFILE_PAGE_SIZE) break;
+        }
 
         const myBusinessIds = new Set(
           (myTeams || []).map((t) => t.business_user_id).filter(Boolean)
         );
         const profileById = new Map(
-          (publishedProfiles || [])
+          publishedProfiles
             .filter((p) => p.business_user_id && !myBusinessIds.has(p.business_user_id))
             .map((p) => [p.business_user_id, p])
         );
@@ -1161,17 +1169,30 @@ router.get('/discovery', verifyToken, async (req, res) => {
           break;
         }
 
-        let query = supabaseAdmin
-          .from('User')
-          .select('id, username, name, profile_picture_url, average_rating, city, state, bio, created_at')
-          .eq('account_type', 'business')
-          .in('id', publishedIds)
-          .order('average_rating', { ascending: false, nullsFirst: false })
-          .limit(parsedLimit);
-        if (sinceToday) query = query.gte('created_at', todayCutoff);
-        const { data: bizUsers } = await query;
+        // Chunk .in('id', ...) to <=100 UUIDs to stay safely under PostgREST URL length limits.
+        const IN_CHUNK = 100;
+        const bizUsers = [];
+        for (let i = 0; i < publishedIds.length; i += IN_CHUNK) {
+          const idChunk = publishedIds.slice(i, i + IN_CHUNK);
+          let query = supabaseAdmin
+            .from('User')
+            .select('id, username, name, profile_picture_url, average_rating, city, state, bio, created_at')
+            .eq('account_type', 'business')
+            .in('id', idChunk)
+            .order('average_rating', { ascending: false, nullsFirst: false })
+            .limit(parsedLimit);
+          if (sinceToday) query = query.gte('created_at', todayCutoff);
+          const { data: chunkUsers } = await query;
+          if (chunkUsers?.length) bizUsers.push(...chunkUsers);
+        }
 
-        items = (bizUsers || []).map((b) => {
+        bizUsers.sort((a, b) => {
+          const ra = a.average_rating ?? -Infinity;
+          const rb = b.average_rating ?? -Infinity;
+          return rb - ra;
+        });
+
+        items = bizUsers.slice(0, parsedLimit).map((b) => {
           const profile = profileById.get(b.id);
           // BusinessProfile stores a `categories` array; the rail shows the first.
           const category = (Array.isArray(profile?.categories) && profile.categories[0]) || null;

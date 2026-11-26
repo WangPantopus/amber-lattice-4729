@@ -32,6 +32,14 @@ const MAX_RESPONSE_MINUTES = 7 * 24 * 60;
 const BATCH_SIZE = 150;
 // Safety cap on messages fetched per business (guards hyper-active businesses).
 const MAX_MESSAGES_PER_BUSINESS = 10000;
+const IN_CHUNK_SIZE = 100;
+const PAGE_SIZE = 1000;
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 async function computeAvgResponseTime() {
   // 1. Get all published business user IDs
@@ -59,50 +67,61 @@ async function computeAvgResponseTime() {
   for (const { business_user_id: bizId } of profiles) {
     processedIds.push(bizId);
     try {
-      // 2. Get rooms this business participates in
-      const { data: participations } = await supabaseAdmin
-        .from('ChatParticipant')
-        .select('room_id')
-        .eq('user_id', bizId)
-        .eq('is_active', true);
+      // 2. Get rooms this business participates in (paginated past 1,000 rows)
+      const participations = [];
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const { data: pageParts, error: partErr } = await supabaseAdmin
+          .from('ChatParticipant')
+          .select('room_id')
+          .eq('user_id', bizId)
+          .eq('is_active', true)
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (partErr || !pageParts?.length) break;
+        participations.push(...pageParts);
+        if (pageParts.length < PAGE_SIZE) break;
+      }
 
-      if (!participations?.length) {
+      if (!participations.length) {
         skippedCount++;
         continue;
       }
 
-      const roomIds = participations.map(p => p.room_id);
+      const roomIds = [...new Set(participations.map(p => p.room_id))];
 
-      // 3. Get room creation times (recent rooms only)
-      const { data: rooms } = await supabaseAdmin
-        .from('ChatRoom')
-        .select('id, created_at')
-        .in('id', roomIds)
-        .gte('created_at', cutoffDate);
+      // 3. Get room creation times (recent rooms only, chunked <=100 UUIDs per .in())
+      const rooms = [];
+      for (const roomChunk of chunkArray(roomIds, IN_CHUNK_SIZE)) {
+        const { data: chunkRooms } = await supabaseAdmin
+          .from('ChatRoom')
+          .select('id, created_at')
+          .in('id', roomChunk)
+          .gte('created_at', cutoffDate);
+        if (chunkRooms?.length) rooms.push(...chunkRooms);
+      }
 
-      if (!rooms?.length) {
+      if (!rooms.length) {
         skippedCount++;
         continue;
       }
 
       const recentRoomIds = rooms.map(r => r.id);
-      const roomCreatedMap = new Map(rooms.map(r => [r.id, new Date(r.created_at)]));
 
-      // 4. Get all messages in these rooms, oldest first, to determine:
-      //    a) who sent the first message (skip if business initiated)
-      //    b) when the business first replied
-      //    We fetch room_id + user_id + created_at only, limited to first 5 per room
-      //    (we only need the first few to determine initiator + first biz reply).
-      //    Since Supabase doesn't support per-group limits, fetch all and group in JS.
-      const { data: messages } = await supabaseAdmin
-        .from('ChatMessage')
-        .select('room_id, user_id, created_at')
-        .in('room_id', recentRoomIds)
-        .eq('deleted', false)
-        .order('created_at', { ascending: true })
-        .limit(MAX_MESSAGES_PER_BUSINESS);
+      // 4. Get messages in these rooms, oldest first (chunked <=100 room IDs per .in(), bounded total)
+      const messages = [];
+      for (const roomChunk of chunkArray(recentRoomIds, IN_CHUNK_SIZE)) {
+        if (messages.length >= MAX_MESSAGES_PER_BUSINESS) break;
+        const remaining = MAX_MESSAGES_PER_BUSINESS - messages.length;
+        const { data: chunkMsgs } = await supabaseAdmin
+          .from('ChatMessage')
+          .select('room_id, user_id, created_at')
+          .in('room_id', roomChunk)
+          .eq('deleted', false)
+          .order('created_at', { ascending: true })
+          .limit(Math.min(PAGE_SIZE, remaining));
+        if (chunkMsgs?.length) messages.push(...chunkMsgs);
+      }
 
-      if (!messages?.length) {
+      if (!messages.length) {
         skippedCount++;
         continue;
       }
@@ -171,14 +190,17 @@ async function computeAvgResponseTime() {
   }
 
   // Stamp calc time for every processed business so the next run rotates to the
-  // least-recently-computed profiles (fair rotation, no starvation).
+  // least-recently-computed profiles (chunked <=100 UUIDs per .in()).
   if (processedIds.length > 0) {
-    const { error: touchErr } = await supabaseAdmin
-      .from('BusinessProfile')
-      .update({ avg_response_calc_at: new Date().toISOString() })
-      .in('business_user_id', processedIds);
-    if (touchErr) {
-      logger.error('[computeAvgResponseTime] Failed to stamp avg_response_calc_at', { error: touchErr.message });
+    const nowIso = new Date().toISOString();
+    for (const idChunk of chunkArray(processedIds, IN_CHUNK_SIZE)) {
+      const { error: touchErr } = await supabaseAdmin
+        .from('BusinessProfile')
+        .update({ avg_response_calc_at: nowIso })
+        .in('business_user_id', idChunk);
+      if (touchErr) {
+        logger.error('[computeAvgResponseTime] Failed to stamp avg_response_calc_at', { error: touchErr.message });
+      }
     }
   }
 

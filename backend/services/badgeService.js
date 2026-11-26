@@ -66,10 +66,15 @@ async function computeBadgeCounts(userId) {
       const { data: gigs, error } = await supabaseAdmin.from('Gig').select('id').eq('user_id', userId);
       if (error || !Array.isArray(gigs)) throw new Error('Offer badges unavailable');
       if (!gigs.length) return { count: 0 };
-      const result = await supabaseAdmin.from('GigBid').select('id', { count: 'exact', head: true })
-        .in('gig_id', gigs.map((gig) => gig.id)).eq('status', 'pending');
-      if (result.error || result.count == null) throw new Error('Offer badges unavailable');
-      return result;
+      const gigIds = gigs.map((gig) => gig.id);
+      let totalCount = 0;
+      for (let i = 0; i < gigIds.length; i += 100) {
+        const result = await supabaseAdmin.from('GigBid').select('id', { count: 'exact', head: true })
+          .in('gig_id', gigIds.slice(i, i + 100)).eq('status', 'pending');
+        if (result.error || result.count == null) throw new Error('Offer badges unavailable');
+        totalCount += result.count;
+      }
+      return { count: totalCount };
     })(),
     readablePost(withoutBlocked(excludeHiddenLaunchNotifications(supabaseAdmin.from('Notification')
       .select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_read', false)))),

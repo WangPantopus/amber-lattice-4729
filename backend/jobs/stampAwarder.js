@@ -97,35 +97,60 @@ async function stampAwarder(options = {}) {
   // Launch cut #10 (Mailbox): mailbox jobs don't run while the mailbox is off.
   if (skipForLaunchCut('mailbox', 'stampAwarder')) return;
   logger.info('[StampAwarder] Starting stamp award check');
-  const only = Array.isArray(options?.userIds) ? options.userIds : null;
+  const only = Array.isArray(options?.userIds) ? [...new Set(options.userIds)] : null;
 
   let awarded = 0;
   let scanned = 0;
-  let lastId = null;
-  for (;;) {
-    let query = supabaseAdmin.from('User').select('id').order('id', { ascending: true }).limit(USER_PAGE_SIZE);
-    if (only) query = query.in('id', only);
-    if (lastId) query = query.gt('id', lastId);
-    // eslint-disable-next-line no-await-in-loop
-    const { data: users, error: userErr } = await query;
-
-    if (userErr) {
-      logger.error('[StampAwarder] Failed to query users', { error: userErr.message });
-      return;
-    }
-    if (!users || users.length === 0) break;
-
-    for (const user of users) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        awarded += await awardForUser(user.id);
-      } catch (err) {
-        logger.error('[StampAwarder] Error processing user', { userId: user.id, error: err.message });
+  if (only) {
+    // Chunk targeted .in() queries to <=100 UUIDs to avoid PostgREST URL length limits.
+    for (let i = 0; i < only.length; i += 100) {
+      const idChunk = only.slice(i, i + 100);
+      // eslint-disable-next-line no-await-in-loop
+      const { data: users, error: userErr } = await supabaseAdmin
+        .from('User')
+        .select('id')
+        .in('id', idChunk)
+        .order('id', { ascending: true });
+      if (userErr) {
+        logger.error('[StampAwarder] Failed to query users', { error: userErr.message });
+        return;
       }
+      for (const user of users || []) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          awarded += await awardForUser(user.id);
+        } catch (err) {
+          logger.error('[StampAwarder] Error processing user', { userId: user.id, error: err.message });
+        }
+      }
+      scanned += (users || []).length;
     }
-    scanned += users.length;
-    lastId = users[users.length - 1].id;
-    if (users.length < USER_PAGE_SIZE) break;
+  } else {
+    let lastId = null;
+    for (;;) {
+      let query = supabaseAdmin.from('User').select('id').order('id', { ascending: true }).limit(USER_PAGE_SIZE);
+      if (lastId) query = query.gt('id', lastId);
+      // eslint-disable-next-line no-await-in-loop
+      const { data: users, error: userErr } = await query;
+
+      if (userErr) {
+        logger.error('[StampAwarder] Failed to query users', { error: userErr.message });
+        return;
+      }
+      if (!users || users.length === 0) break;
+
+      for (const user of users) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          awarded += await awardForUser(user.id);
+        } catch (err) {
+          logger.error('[StampAwarder] Error processing user', { userId: user.id, error: err.message });
+        }
+      }
+      scanned += users.length;
+      lastId = users[users.length - 1].id;
+      if (users.length < USER_PAGE_SIZE) break;
+    }
   }
 
   logger.info(`[StampAwarder] Complete: ${awarded} stamps awarded across ${scanned} accounts`);
