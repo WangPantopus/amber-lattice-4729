@@ -6,6 +6,7 @@
  * (heicDecodeWorker.js) and stored as a JPEG, which every browser and app can show. A photo that can't be cleaned
  * is refused: it is never stored as it was sent. Videos follow the same rule, cleaned by videoMetadata.js.
  */
+const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const sharp = require('sharp');
@@ -119,8 +120,14 @@ async function removePhotoMetadata(buffer, options = {}) {
 async function cleanUploadedPhoto(file, options) {
   if (!file?.mimetype?.startsWith('image/')) return file;
   try {
-    const cleaned = await removePhotoMetadata(file.buffer, options);
-    file.buffer = cleaned.buffer;
+    const onDisk = Boolean(file.path && !Buffer.isBuffer(file.buffer));
+    const input = onDisk ? await fsp.readFile(file.path) : file.buffer;
+    const cleaned = await removePhotoMetadata(input, options);
+    if (onDisk) {
+      await fsp.writeFile(file.path, cleaned.buffer, { mode: 0o600 });
+    } else {
+      file.buffer = cleaned.buffer;
+    }
     file.size = cleaned.buffer.length;
     if (cleaned.mimetype !== file.mimetype) {
       const name = file.originalname || '';

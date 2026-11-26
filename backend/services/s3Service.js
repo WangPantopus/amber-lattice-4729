@@ -146,14 +146,14 @@ async function removeDeletedChatFile(file) {
   return { currentObjectAbsent: true, versionHistoryVerified: false };
 }
 
-async function uploadProfilePicture(buffer, originalFilename, userId, mimeType) {
+async function uploadProfilePicture(buffer, originalFilename, userId, mimeType, opts) {
   const key = generateS3Key('profiles', originalFilename, userId);
-  return uploadToS3(buffer, key, mimeType);
+  return uploadToS3(buffer, key, mimeType, undefined, opts);
 }
 
-async function uploadGigMedia(buffer, originalFilename, userId, gigId, mimeType) {
+async function uploadGigMedia(buffer, originalFilename, userId, gigId, mimeType, opts) {
   const key = generateS3Key(`gigs/${gigId}`, originalFilename, userId);
-  return uploadToS3(buffer, key, mimeType);
+  return uploadToS3(buffer, key, mimeType, undefined, opts);
 }
 
 // Completion proof uses the existing Supabase private-bucket mechanism. The
@@ -258,7 +258,9 @@ async function completionFileCommand(name, args) {
 }
 async function createPrivateGigCompletionFile(gigId, userId, file) {
   if (![gigId, userId].every(id => typeof id === 'string' && COMPLETION_UUID.test(id))) throw completionStorageError(400);
-  const buffer = file?.buffer, mime = file?.mimetype, category = categorizeFile(mime);
+  const fsp = require('node:fs/promises');
+  const buffer = Buffer.isBuffer(file?.buffer) ? file.buffer : (file?.path ? await fsp.readFile(file.path) : null);
+  const mime = file?.mimetype, category = categorizeFile(mime);
   if (!Buffer.isBuffer(buffer) || !buffer.length || !category || buffer.length > MAX_FILE_SIZES[category]) throw completionStorageError(400);
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
   // Retry discovery survives an unknown upload HTTP reply without another table
@@ -383,14 +385,14 @@ async function uploadReviewMedia(buffer, originalFilename, userId, mimeType) {
   return uploadToS3(buffer, key, mimeType);
 }
 
-async function uploadListingMedia(buffer, originalFilename, userId, listingId, mimeType) {
+async function uploadListingMedia(buffer, originalFilename, userId, listingId, mimeType, opts) {
   const key = generateS3Key(`listings/${listingId}`, originalFilename, userId);
-  return uploadToS3(buffer, key, mimeType);
+  return uploadToS3(buffer, key, mimeType, undefined, opts);
 }
 
-async function uploadGeneral(buffer, originalFilename, userId, folder, mimeType) {
+async function uploadGeneral(buffer, originalFilename, userId, folder, mimeType, opts) {
   const key = generateS3Key(folder, originalFilename, userId);
-  return uploadToS3(buffer, key, mimeType);
+  return uploadToS3(buffer, key, mimeType, undefined, opts);
 }
 
 async function deleteFromS3(key, bucket = S3_BUCKET) {

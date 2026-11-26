@@ -159,8 +159,9 @@ test('the legacy Home listing excludes byte-contract documents with separate vis
 
 
 describe('Existing standalone upload types', () => {
-  // Photos are real images: the upload refuses one it can't clean of its metadata.
+  // Photos and audio carry real headers: the upload checks magic bytes and strips photo metadata.
   let jpeg;
+  const m4a = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20, 0, 0, 0, 0, 0x4d, 0x34, 0x41, 0x20]);
   beforeAll(async () => {
     jpeg = await require('sharp')({ create: { width: 2, height: 2, channels: 3, background: '#888888' } }).jpeg().toBuffer();
   });
@@ -182,7 +183,7 @@ describe('Existing standalone upload types', () => {
   ])('stores existing caller type %s within the existing File schema', async (requested, stored, context, mime, name) => {
     let req = request(app).post('/api/files/upload');
     if (requested) req = req.field('file_type', requested);
-    const bytes = mime.startsWith('image/') ? jpeg : Buffer.from('synthetic standalone attachment');
+    const bytes = mime.startsWith('image/') ? jpeg : mime.startsWith('audio/') ? m4a : Buffer.from('synthetic standalone attachment');
     const response = await req.attach('file', bytes, { filename: name, contentType: mime });
     expect(response.status).toBe(201);
     expect(db.getTable('File').at(-1)).toMatchObject({

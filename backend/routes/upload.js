@@ -30,6 +30,14 @@ const { actingBusinessInRoom, canActAsBusiness } = require('../services/chatBusi
 const { isGigRoomClosedTo, isRoomClosedForWrites } = require('../services/chatGigRoomAccess');
 const blockService = require('../services/blockService');
 const gigBrowseCache = require('../services/gig/browseCacheService');
+const {
+  createDiskUpload,
+  allUploadedFiles,
+  readFileBuffer,
+  fileUploadBody,
+  hashUploadedFile,
+  readHeaderBytes,
+} = require('../services/diskUploadStorage');
 
 function publishGigMediaChange(req, gigId) {
   gigBrowseCache.clear();
@@ -55,15 +63,23 @@ try {
 
 // ============ MIME VALIDATION & EXIF STRIPPING ============
 
-// Lazy-load ESM-only file-type module
-let _fileTypeFromBuffer;
-let _fileTypeFromFile;
-async function getFileTypeFromBuffer() {
-  if (!_fileTypeFromBuffer) {
-    const mod = await import('file-type');
-    _fileTypeFromBuffer = mod.fileTypeFromBuffer;
+// Lazy-load ESM-only file-type module.
+// Prefer Node 22.12+'s native require(esm) via Node's real builtin module loader
+// so magic-byte detection runs identically in production and CommonJS test
+// runners (Jest), falling back to dynamic import() on older Node runtimes.
+let _fileTypeMod;
+async function getFileTypeModule() {
+  if (!_fileTypeMod) {
+    try {
+      const builtinModule = typeof process.getBuiltinModule === 'function'
+        ? process.getBuiltinModule('node:module')
+        : require('node:module');
+      _fileTypeMod = builtinModule.createRequire(__filename)('file-type');
+    } catch {
+      _fileTypeMod = await import('file-type');
+    }
   }
-  return _fileTypeFromBuffer;
+  return _fileTypeMod;
 }
 
 // ZIP-based Office formats share the same magic bytes as generic ZIP
@@ -73,12 +89,12 @@ const ZIP_BASED_MIMES = new Set([
 ]);
 
 /**
- * Validate that the file buffer's actual content matches the claimed MIME type.
+ * Validate that the file's actual content matches the claimed MIME type.
  * Returns { valid: true } or { valid: false, detected, declared }.
- * On detection errors (e.g. file-type throws), allows upload and returns { valid: true }.
- * Images, videos and audio always carry recognizable magic bytes, so a media
- * upload whose content isn't identified at all is rejected; other types (plain
- * text, CSV) may stay unidentified.
+ * Fails closed on detection errors so unreadable or malformed payloads cannot
+ * slip past MIME verification. Images, videos and audio always carry
+ * recognizable magic bytes, so a media upload whose content isn't identified at
+ * all is rejected; other types (plain text, CSV) may stay unidentified.
  */
 async function validateFileMime(file) {
   if (!file || (!Buffer.isBuffer(file.buffer) && !file.path)) {
@@ -88,24 +104,21 @@ async function validateFileMime(file) {
   const declaredMedia = /^(image|video|audio)\//.test(file.mimetype || '');
   let detected;
   try {
+    const fileType = await getFileTypeModule();
     if (file.path) {
-      if (!_fileTypeFromFile) _fileTypeFromFile = (await import('file-type')).fileTypeFromFile;
-      detected = await _fileTypeFromFile(file.path);
+      detected = await fileType.fileTypeFromFile(file.path);
     } else {
-      const fileTypeFromBuffer = await getFileTypeFromBuffer();
-      detected = await fileTypeFromBuffer(file.buffer);
+      detected = await fileType.fileTypeFromBuffer(file.buffer);
     }
   } catch (err) {
-    // The streamed chat path refuses unreadable/malformed content. Other upload
-    // callers retain their existing behavior until their own validation pass.
-    if (file.path) return { valid: false, detected: null, declared: file.mimetype };
-    // file-type can throw on edge cases (e.g. tiny buffers, certain formats)
-    logger.warn('MIME detection threw — allowing upload', {
+    // Fail closed when magic-byte inspection throws so malformed or unreadable uploads
+    // cannot slip past MIME verification into storage.
+    logger.warn('MIME detection threw — rejecting upload', {
       originalname: file.originalname,
       declared: file.mimetype,
       error: err.message,
     });
-    return { valid: true };
+    return { valid: false, detected: null, declared: file.mimetype };
   }
 
   if (!detected) {
@@ -135,6 +148,21 @@ async function validateFileMime(file) {
     return { valid: true };
   }
 
+  // Audio/video container MIME aliases where clients and file-type use different IANA/vendor labels
+  // for the same container magic bytes (e.g. iOS/Android voice memos declared audio/m4a -> audio/x-m4a
+  // or video/mp4, MediaRecorder audio/webm -> video/webm, AVI video/x-msvideo -> video/vnd.avi).
+  const mp4AudioDeclared = new Set(['audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/aac']);
+  const mp4AudioDetected = new Set(['audio/x-m4a', 'audio/mp4', 'audio/aac', 'video/mp4']);
+  if (mp4AudioDeclared.has(declaredMime) && mp4AudioDetected.has(detectedMime)) {
+    return { valid: true };
+  }
+  if (declaredMime === 'audio/webm' && (detectedMime === 'video/webm' || detectedMime === 'video/matroska')) {
+    return { valid: true };
+  }
+  if (declaredMime === 'video/x-msvideo' && detectedMime === 'video/vnd.avi') {
+    return { valid: true };
+  }
+
   return { valid: false, detected: detectedMime, declared: declaredMime };
 }
 
@@ -145,12 +173,12 @@ async function validateFileMime(file) {
  * Must run AFTER multer and AFTER enforceFileSizeLimits.
  */
 async function validateAndStripUploads(req, res, next) {
-  const files = req.files || (req.file ? [req.file] : []);
+  const files = allUploadedFiles(req);
   if (files.length === 0) return next();
 
   try {
     for (const file of files) {
-      if (!file || !file.buffer) {
+      if (!file || (!Buffer.isBuffer(file.buffer) && !file.path)) {
         return res.status(400).json({ error: 'Invalid file: no data received' });
       }
 
@@ -187,11 +215,16 @@ async function validateAndStripUploads(req, res, next) {
   }
 }
 
-// ============ MULTER CONFIG ============
+// ============ MULTER CONFIG (DISK-BACKED STREAMING) ============
 
-const upload = multer({
-  storage: multer.memoryStorage(),
+const maxBytesByCategory = (_req, file) => {
+  const category = s3.categorizeFile(file.mimetype);
+  return category ? s3.MAX_FILE_SIZES[category] : s3.MAX_FILE_SIZES.document;
+};
+
+const upload = createDiskUpload({
   limits: { fieldNameSize: 100, fieldNestingDepth: 3, fieldArrayIndexLimit: 32, fileSize: 100 * 1024 * 1024, files: 10, fields: 32, parts: 42, fieldSize: 32768 },
+  maxBytesForFile: maxBytesByCategory,
   fileFilter: (req, file, cb) => {
     if (s3.isAllowedType(file.mimetype)) {
       cb(null, true);
@@ -203,9 +236,9 @@ const upload = multer({
 
 // Nine logical attachments may contain eighteen files when every attachment
 // is a Live Photo (a still plus its companion clip).
-const postMediaUpload = multer({
-  storage: multer.memoryStorage(),
+const postMediaUpload = createDiskUpload({
   limits: { fieldNameSize: 100, fieldNestingDepth: 3, fieldArrayIndexLimit: 32, fileSize: 100 * 1024 * 1024, files: 18, fields: 32, parts: 50, fieldSize: 4096 },
+  maxBytesForFile: maxBytesByCategory,
   fileFilter: (_req, file, cb) => {
     const allowed = s3.ALLOWED_IMAGE_TYPES.includes(file.mimetype)
       || s3.ALLOWED_VIDEO_TYPES.includes(file.mimetype) || file.mimetype === 'application/pdf';
@@ -215,11 +248,11 @@ const postMediaUpload = multer({
 
 /**
  * Middleware to enforce per-category file size limits after multer accepts the file.
- * Multer's global limit is 100MB (video max), but images should be capped at 10MB
- * and documents at 25MB.
+ * Disk streaming enforces these while receiving bytes; this keeps the exact per-category
+ * guard for any buffered/test inputs as well.
  */
 function enforceFileSizeLimits(req, res, next) {
-  const files = req.files || (req.file ? [req.file] : []);
+  const files = allUploadedFiles(req);
   for (const file of files) {
     const category = s3.categorizeFile(file.mimetype);
     const maxSize = category ? s3.MAX_FILE_SIZES[category] : s3.MAX_FILE_SIZES.document;
@@ -274,15 +307,16 @@ router.post('/profile-picture', uploadLimiter, verifyToken, upload.single('file'
     }
 
     // Process image (resize if sharp available)
-    let processedBuffer = file.buffer;
+    const rawBuffer = await readFileBuffer(file);
+    let processedBuffer = rawBuffer;
     if (sharp) {
       try {
-        processedBuffer = await sharp(file.buffer)
+        processedBuffer = await sharp(rawBuffer)
           .resize(800, 800, { fit: 'cover' })
           .webp({ quality: 85 })
           .toBuffer();
       } catch {
-        processedBuffer = file.buffer;
+        processedBuffer = rawBuffer;
       }
     }
 
@@ -291,7 +325,8 @@ router.post('/profile-picture', uploadLimiter, verifyToken, upload.single('file'
       processedBuffer,
       file.originalname,
       userId,
-      sharp ? 'image/webp' : file.mimetype
+      sharp ? 'image/webp' : file.mimetype,
+      { abortSignal: req._uploadAbortSignal },
     );
 
     // The photo as it was: the Local Profile's copy of it follows the upload, a photo the person chose to show
@@ -359,17 +394,18 @@ router.post('/local-profile-picture', requireIdentityFirewallEnabled, uploadLimi
     const profile = await ensureLocalProfile(userId);
     if (!profile) return res.status(404).json({ error: 'Local profile not found' });
 
-    let processedBuffer = file.buffer;
+    const rawBuffer = await readFileBuffer(file);
+    let processedBuffer = rawBuffer;
     let finalMimeType = file.mimetype;
     if (sharp) {
       try {
-        processedBuffer = await sharp(file.buffer)
+        processedBuffer = await sharp(rawBuffer)
           .resize(800, 800, { fit: 'cover' })
           .webp({ quality: 85 })
           .toBuffer();
         finalMimeType = 'image/webp';
       } catch {
-        processedBuffer = file.buffer;
+        processedBuffer = rawBuffer;
       }
     }
 
@@ -417,10 +453,28 @@ router.post('/local-profile-picture', requireIdentityFirewallEnabled, uploadLimi
  * Upload avatar or banner for a Beacon.
  * Query param: type = "avatar" | "banner"
  */
-router.post('/persona-media/:personaId', requirePersonaEnabled, uploadLimiter, verifyToken, upload.single('file'), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizePersonaMediaUpload(req, res, next) {
+  try {
+    const { data: persona, error: personaErr } = await supabaseAdmin
+      .from('PublicPersona')
+      .select('id, user_id, handle, avatar_url, banner_url, status')
+      .eq('id', req.params.personaId)
+      .single();
+    if (personaErr || !persona) return res.status(404).json({ error: 'Beacon not found' });
+    if (persona.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'You do not have permission to edit this Beacon' });
+    }
+    req._uploadTarget = persona;
+    return next();
+  } catch (err) {
+    logger.error('Persona media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Could not verify Beacon access. Please retry.' });
+  }
+}
+
+router.post('/persona-media/:personaId', requirePersonaEnabled, uploadLimiter, verifyToken, authorizePersonaMediaUpload, upload.single('file'), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { personaId } = req.params;
     const mediaType = req.query.type || req.body.type;
 
     if (!['avatar', 'banner'].includes(mediaType)) {
@@ -434,32 +488,20 @@ router.post('/persona-media/:personaId', requirePersonaEnabled, uploadLimiter, v
       return res.status(400).json({ error: 'Beacon media must be an image' });
     }
 
-    const { data: persona, error: personaErr } = await supabaseAdmin
-      .from('PublicPersona')
-      .select('id, user_id, handle, avatar_url, banner_url, status')
-      .eq('id', personaId)
-      .single();
-
-    if (personaErr || !persona) {
-      return res.status(404).json({ error: 'Beacon not found' });
-    }
-
-    if (persona.user_id !== userId) {
-      return res.status(403).json({ error: 'You do not have permission to edit this Beacon' });
-    }
-
-    let processedBuffer = file.buffer;
+    const persona = req._uploadTarget;
+    const rawBuffer = await readFileBuffer(file);
+    let processedBuffer = rawBuffer;
     let finalMimeType = file.mimetype;
     if (sharp) {
       try {
         const resize =
           mediaType === 'avatar'
-            ? sharp(file.buffer).resize(800, 800, { fit: 'cover' })
-            : sharp(file.buffer).resize(1600, 600, { fit: 'cover' });
+            ? sharp(rawBuffer).resize(800, 800, { fit: 'cover' })
+            : sharp(rawBuffer).resize(1600, 600, { fit: 'cover' });
         processedBuffer = await resize.webp({ quality: 85 }).toBuffer();
         finalMimeType = 'image/webp';
       } catch {
-        processedBuffer = file.buffer;
+        processedBuffer = rawBuffer;
       }
     }
 
@@ -517,7 +559,22 @@ router.post('/persona-media/:personaId', requirePersonaEnabled, uploadLimiter, v
  * POST /api/upload/gig-media/:gigId
  * Upload media files for a gig (up to 10)
  */
-router.post('/gig-media/:gigId', uploadLimiter, verifyToken, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeGigMediaUpload(req, res, next) {
+  try {
+    const { data: gig, error: gigErr } = await supabaseAdmin.from('Gig')
+      .select('id, user_id').eq('id', req.params.gigId).maybeSingle();
+    if (gigErr) return res.status(503).json({ error: 'Task could not be checked. Please retry.' });
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    if (gig.user_id !== req.user.id) return res.status(403).json({ error: 'Only the gig owner can upload media' });
+    req._uploadTarget = gig;
+    return next();
+  } catch (err) {
+    logger.error('Gig media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Task could not be checked. Please retry.' });
+  }
+}
+
+router.post('/gig-media/:gigId', uploadLimiter, verifyToken, authorizeGigMediaUpload, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   const stagedKeys = [];
   let keepStagedFiles = false;
   try {
@@ -525,22 +582,23 @@ router.post('/gig-media/:gigId', uploadLimiter, verifyToken, upload.array('files
     const { gigId } = req.params;
     const files = req.files;
     if (!files?.length) return res.status(400).json({ error: 'No files provided' });
-    const { data: gig, error: gigErr } = await supabaseAdmin.from('Gig')
-      .select('id, user_id').eq('id', gigId).maybeSingle();
-    if (gigErr) return res.status(503).json({ error: 'Task could not be checked. Please retry.' });
-    if (!gig) return res.status(404).json({ error: 'Gig not found' });
-    if (gig.user_id !== userId) return res.status(403).json({ error: 'Only the gig owner can upload media' });
 
     const prepared = [];
     for (const file of files) {
-      const { url, key } = await s3.uploadGigMedia(file.buffer, file.originalname, userId, gigId, file.mimetype);
+      const { body, contentLength } = fileUploadBody(file);
+      const { url, key } = await s3.uploadGigMedia(body, file.originalname, userId, gigId, file.mimetype, {
+        contentLength,
+        abortSignal: req._uploadAbortSignal,
+      });
       stagedKeys.push(key);
       let thumbnailUrl = null;
-      const thumbBuffer = await generateThumbnail(file.buffer, file.mimetype);
+      const thumbBuffer = file.mimetype.startsWith('image/')
+        ? await generateThumbnail(await readFileBuffer(file), file.mimetype)
+        : null;
       if (thumbBuffer) {
         const thumbKey = key.replace(/(\.[^.]+)$/, '_thumb.webp');
         stagedKeys.push(thumbKey);
-        thumbnailUrl = (await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp')).url;
+        thumbnailUrl = (await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp', undefined, { abortSignal: req._uploadAbortSignal })).url;
       }
       prepared.push({ file_url: url, file_key: key, file_name: file.originalname,
         file_type: s3.categorizeFile(file.mimetype) || 'document', mime_type: file.mimetype,
@@ -676,7 +734,7 @@ async function authorizeChatUpload(req, res, next) {
     }
     next();
   } catch (error) {
-    logger.warn('Chat upload access unavailable', { code: error.code });
+    logger.warn('Chat upload access unavailable', { errorCode: error.code });
     res.status(503).json({ error: 'Attachment access is temporarily unavailable. Please retry.' });
   }
 }
@@ -858,7 +916,33 @@ router.post('/chat-media/:roomId', verifyToken, chatUploadLimiter, authorizeChat
  * Upload files used in gig Q&A (questions/answers).
  * Returns file URLs so callers can attach them to GigQuestion records.
  */
-router.post('/gig-question-media/:gigId', uploadLimiter, verifyToken, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeGigQuestionUpload(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { data: gig, error: gigErr } = await supabaseAdmin
+      .from('Gig')
+      .select('id, user_id, status')
+      .eq('id', req.params.gigId)
+      .maybeSingle();
+    if (gigErr) return res.status(503).json({ error: 'Question uploads are temporarily unavailable. Please retry.' });
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    const [blocked, canAct] = await Promise.all([
+      blockService.isBlocked(gig.user_id, userId),
+      String(gig.user_id) === String(userId) ? Promise.resolve(true) : canActAsBusiness(gig.user_id, userId),
+    ]);
+    if (blocked) return res.status(403).json({ error: 'Cannot upload question files for this task' });
+    if (!canAct && !['open', 'assigned', 'in_progress'].includes(gig.status)) {
+      return res.status(409).json({ error: 'This task is closed to new questions' });
+    }
+    req._uploadTarget = { gig, isPoster: canAct };
+    return next();
+  } catch (err) {
+    logger.error('Gig question media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Question uploads are temporarily unavailable. Please retry.' });
+  }
+}
+
+router.post('/gig-question-media/:gigId', uploadLimiter, verifyToken, authorizeGigQuestionUpload, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const userId = req.user.id;
     const { gigId } = req.params;
@@ -868,25 +952,7 @@ router.post('/gig-question-media/:gigId', uploadLimiter, verifyToken, upload.arr
       return res.status(400).json({ error: 'No files provided' });
     }
 
-    // Ensure gig exists.
-    const { data: gig, error: gigErr } = await supabaseAdmin
-      .from('Gig')
-      .select('id, user_id, status')
-      .eq('id', gigId)
-      .maybeSingle();
-
-    if (gigErr) return res.status(503).json({ error: 'Question uploads are temporarily unavailable. Please retry.' });
-    if (!gig) {
-      return res.status(404).json({ error: 'Gig not found' });
-    }
-    if (await blockService.isBlocked(gig.user_id, userId)) {
-      return res.status(403).json({ error: 'Cannot upload question files for this task' });
-    }
-    const isPoster = String(gig.user_id) === String(userId) || await canActAsBusiness(gig.user_id, userId);
-    // A poster may still answer an existing question after closing the task.
-    if (!isPoster && !['open', 'assigned', 'in_progress'].includes(gig.status)) {
-      return res.status(409).json({ error: 'This task is closed to new questions' });
-    }
+    const { gig, isPoster } = req._uploadTarget;
 
     // A business's owner and staff answer its task's questions as the business, and these files' addresses are public:
     // they go under the business, so an address never names the person behind it.
@@ -894,20 +960,24 @@ router.post('/gig-question-media/:gigId', uploadLimiter, verifyToken, upload.arr
 
     const uploadedFiles = [];
     for (const file of files) {
+      const { body, contentLength } = fileUploadBody(file);
       const { url, key } = await s3.uploadGigMedia(
-        file.buffer,
+        body,
         file.originalname,
         keyOwner,
         gigId,
-        file.mimetype
+        file.mimetype,
+        { contentLength, abortSignal: req._uploadAbortSignal },
       );
       const category = s3.categorizeFile(file.mimetype) || 'document';
 
       let thumbnailUrl = null;
-      const thumbBuffer = await generateThumbnail(file.buffer, file.mimetype);
+      const thumbBuffer = file.mimetype.startsWith('image/')
+        ? await generateThumbnail(await readFileBuffer(file), file.mimetype)
+        : null;
       if (thumbBuffer) {
         const thumbKey = key.replace(/(\.[^.]+)$/, '_thumb.webp');
-        const thumbResult = await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp');
+        const thumbResult = await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp', undefined, { abortSignal: req._uploadAbortSignal });
         thumbnailUrl = thumbResult.url;
       }
 
@@ -936,7 +1006,29 @@ router.post('/gig-question-media/:gigId', uploadLimiter, verifyToken, upload.arr
  * POST /api/upload/gig-completion-media/:gigId
  * Upload proof files for completion submissions (assigned worker or gig owner).
  */
-router.post('/gig-completion-media/:gigId', uploadLimiter, verifyToken, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeGigCompletionUpload(req, res, next) {
+  try {
+    const actorUserId = req.user.id;
+    const { data: gig, error: gigErr } = await supabaseAdmin
+      .from('Gig')
+      .select('id, user_id, accepted_by')
+      .eq('id', req.params.gigId)
+      .single();
+    if (gigErr || !gig) return res.status(404).json({ error: 'Gig not found' });
+    const isOwner = String(gig.user_id) === String(actorUserId);
+    const isWorker = gig.accepted_by && String(gig.accepted_by) === String(actorUserId);
+    if (!isOwner && !isWorker) {
+      return res.status(403).json({ error: 'Only the assigned worker or owner can upload completion files' });
+    }
+    req._uploadTarget = gig;
+    return next();
+  } catch (err) {
+    logger.warn('Gig completion media authz unavailable', { error: err.message });
+    return res.status(503).json({ error: 'Completion proof could not be saved. Please retry.' });
+  }
+}
+
+router.post('/gig-completion-media/:gigId', uploadLimiter, verifyToken, authorizeGigCompletionUpload, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const actorUserId = req.user.id;
     const { gigId } = req.params;
@@ -944,20 +1036,6 @@ router.post('/gig-completion-media/:gigId', uploadLimiter, verifyToken, upload.a
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
-    }
-
-    const { data: gig, error: gigErr } = await supabaseAdmin
-      .from('Gig')
-      .select('id, user_id, accepted_by')
-      .eq('id', gigId)
-      .single();
-
-    if (gigErr || !gig) return res.status(404).json({ error: 'Gig not found' });
-
-    const isOwner = String(gig.user_id) === String(actorUserId);
-    const isWorker = gig.accepted_by && String(gig.accepted_by) === String(actorUserId);
-    if (!isOwner && !isWorker) {
-      return res.status(403).json({ error: 'Only the assigned worker or owner can upload completion files' });
     }
 
     const uploadedFiles = [];
@@ -986,26 +1064,15 @@ router.post('/gig-completion-media/:gigId', uploadLimiter, verifyToken, upload.a
  * POST /api/upload/comment-media/:commentId
  * Upload image files for a post comment (up to 4).
  */
-router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.array('files', 4), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeCommentMediaUpload(req, res, next) {
   try {
     const userId = req.user.id;
-    const { commentId } = req.params;
-    const files = req.files || [];
-
-    if (files.length === 0) {
-      return res.status(400).json({ error: 'No files provided' });
-    }
-
     const { data: comment, error: commentErr } = await supabaseAdmin
       .from('PostComment')
       .select('id, user_id, post_id, identity_context_type')
-      .eq('id', commentId)
+      .eq('id', req.params.commentId)
       .single();
-
-    if (commentErr || !comment) {
-      return res.status(404).json({ error: 'Comment not found' });
-    }
-
+    if (commentErr || !comment) return res.status(404).json({ error: 'Comment not found' });
     // A reply under a made-up name is words only (services/penName/gate.js).
     if (comment.identity_context_type === 'pen_name') {
       // eslint-disable-next-line global-require
@@ -1017,6 +1084,24 @@ router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.arra
     if (String(comment.user_id) !== String(userId)) {
       return res.status(403).json({ error: 'Only the comment author can upload media' });
     }
+    req._uploadTarget = comment;
+    return next();
+  } catch (err) {
+    logger.error('Comment media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Comment images could not be checked. Please retry.' });
+  }
+}
+
+router.post('/comment-media/:commentId', uploadLimiter, verifyToken, authorizeCommentMediaUpload, upload.array('files', 4), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const files = req.files || [];
+
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'No files provided' });
+    }
+
+    const comment = req._uploadTarget;
 
     const attachmentFields = 'id, comment_id, file_url, original_filename, mime_type, file_size, file_type, created_at';
     const { data: existingFiles, error: existingErr } = await supabaseAdmin
@@ -1035,9 +1120,10 @@ router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.arra
       if (s3.categorizeFile(file.mimetype) !== 'image') {
         return res.status(400).json({ error: 'Comment media only supports images' });
       }
-      const hash = crypto.createHash('sha256')
-        .update(JSON.stringify(['comment-media-v1', comment.id, userId, file.mimetype]))
-        .update(file.buffer).digest('hex');
+      const hashBuilder = crypto.createHash('sha256')
+        .update(JSON.stringify(['comment-media-v1', comment.id, userId, file.mimetype]));
+      await hashUploadedFile(file, hashBuilder);
+      const hash = hashBuilder.digest('hex');
       const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
       pending.set(id, file);
     }
@@ -1051,7 +1137,11 @@ router.post('/comment-media/:commentId', uploadLimiter, verifyToken, upload.arra
     for (const [id, file] of pending) {
       if (existingIds.has(id)) continue;
       const key = `comments/${comment.id}/${userId}/${id}`;
-      const { url } = await s3.uploadToS3(file.buffer, key, file.mimetype);
+      const { body, contentLength } = fileUploadBody(file);
+      const { url } = await s3.uploadToS3(body, key, file.mimetype, undefined, {
+        contentLength,
+        abortSignal: req._uploadAbortSignal,
+      });
       const ext = (path.extname(file.originalname || '').replace('.', '') || '').toLowerCase();
       const { data: saved, error: saveErr } = await supabaseAdmin
         .from('File')
@@ -1116,7 +1206,7 @@ const POST_VIDEO_EXTENSIONS = {
 
 /** Validate optional slot descriptors before storing anything. Old clients send
  * files alone; new clients associate a Live Photo's still and clip by index. */
-function postMediaSlots(files, raw) {
+async function postMediaSlots(files, raw) {
   const slots = raw == null ? files.map((_, fileIndex) => ({ fileIndex })) : JSON.parse(raw);
   if (!Array.isArray(slots) || !slots.length || slots.length > 9) throw new Error('Choose up to 9 attachments');
   const used = new Set();
@@ -1125,7 +1215,8 @@ function postMediaSlots(files, raw) {
     used.add(index);
     return files[index];
   };
-  const result = slots.map(slot => {
+  const result = [];
+  for (const slot of slots) {
     if (!slot || typeof slot !== 'object') throw new Error('Invalid attachment');
     const file = take(slot.fileIndex);
     const category = s3.categorizeFile(file.mimetype);
@@ -1133,33 +1224,24 @@ function postMediaSlots(files, raw) {
       throw new Error('Choose an image, video, or PDF');
     }
     // PDFs must have a PDF signature, including when MIME detection is inconclusive.
-    if (file.mimetype === 'application/pdf' && file.buffer.subarray(0, 5).toString() !== '%PDF-') {
-      throw new Error('This file is not a PDF');
+    if (file.mimetype === 'application/pdf') {
+      const header = await readHeaderBytes(file, 5);
+      if (header.toString() !== '%PDF-') throw new Error('This file is not a PDF');
     }
     const clip = slot.liveVideoIndex == null ? null : take(slot.liveVideoIndex);
     if (clip && (category !== 'image' || s3.categorizeFile(clip.mimetype) !== 'video')) {
       throw new Error('A Live Photo needs both a still image and a video');
     }
-    return { file, clip, category, type: clip ? 'live_photo' : category };
-  });
+    result.push({ file, clip, category, type: clip ? 'live_photo' : category });
+  }
   if (used.size !== files.length) throw new Error('Every uploaded file must belong to an attachment');
   return result;
 }
 
-/**
- * POST /api/upload/post-media/:postId
- * Upload up to nine images, videos, Live Photos or PDFs for a feed post
- */
-router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.array('files', 18), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizePostMediaUpload(req, res, next) {
   try {
     const userId = req.user.id;
     const { postId } = req.params;
-    const files = req.files;
-
-    if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No files provided' });
-    }
-
     const { data: postRecord, error: postErr } = await supabaseAdmin
       .from('Post')
       .select('id, user_id, media_urls, media_types, media_thumbnails, media_live_urls, is_story, identity_context_type')
@@ -1186,6 +1268,28 @@ router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.a
     if (postRecord.is_story === true) {
       return res.status(403).json({ error: 'You do not have access to this post' });
     }
+    req._uploadTarget = postRecord;
+    return next();
+  } catch (err) {
+    logger.error('Post media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Post could not be checked. Please retry.' });
+  }
+}
+
+/**
+ * POST /api/upload/post-media/:postId
+ * Upload up to nine images, videos, Live Photos or PDFs for a feed post
+ */
+router.post('/post-media/:postId', uploadLimiter, verifyToken, authorizePostMediaUpload, postMediaUpload.array('files', 18), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files provided' });
+    }
+
+    const postRecord = req._uploadTarget;
 
     // Match the accepted comment upload contract: multipart filenames can
     // change after a lost reply, but sanitized bytes and MIME remain stable.
@@ -1196,16 +1300,19 @@ router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.a
     // the writer's id in them would name the person behind the business.
     let slots;
     try {
-      slots = postMediaSlots(files, req.body.media);
+      slots = await postMediaSlots(files, req.body.media);
     } catch (error) {
       return res.status(400).json({ error: error instanceof SyntaxError ? 'Invalid attachment pairing' : error.message });
     }
     const pending = new Map();
     for (const { file, clip, category, type } of slots) {
       const hashBuilder = crypto.createHash('sha256')
-        .update(JSON.stringify([`post-${clip ? 'live-photo' : category}-v2`, postId, file.mimetype]))
-        .update(file.buffer);
-      if (clip) hashBuilder.update(clip.mimetype).update(clip.buffer);
+        .update(JSON.stringify([`post-${clip ? 'live-photo' : category}-v2`, postId, file.mimetype]));
+      await hashUploadedFile(file, hashBuilder);
+      if (clip) {
+        hashBuilder.update(clip.mimetype);
+        await hashUploadedFile(clip, hashBuilder);
+      }
       const hash = hashBuilder.digest('hex');
       const ext = category === 'document' ? 'pdf' : category === 'image'
         ? file.mimetype.split('/')[1].replace(/[^a-z0-9]/g, '')
@@ -1237,18 +1344,31 @@ router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.a
     const liveUrls = [];
 
     for (const [key, { file, clip, clipKey, category, type }] of remaining) {
-      const { url } = await s3.uploadToS3(file.buffer, key, file.mimetype);
+      const { body, contentLength } = fileUploadBody(file);
+      const { url } = await s3.uploadToS3(body, key, file.mimetype, undefined, {
+        contentLength,
+        abortSignal: req._uploadAbortSignal,
+      });
 
       uploadedUrls.push(url);
       uploadedTypes.push(type);
-      liveUrls.push(clip ? (await s3.uploadToS3(clip.buffer, clipKey, clip.mimetype)).url : '');
+      if (clip) {
+        const clipUpload = fileUploadBody(clip);
+        liveUrls.push((await s3.uploadToS3(clipUpload.body, clipKey, clip.mimetype, undefined, {
+          contentLength: clipUpload.contentLength,
+          abortSignal: req._uploadAbortSignal,
+        })).url);
+      } else {
+        liveUrls.push('');
+      }
 
       // Posts only store/use the thumb. Avoid encoding and uploading the
       // marketplace card/detail/full variants on every foreground post upload.
       let thumbnailUrl = '';
       if (category === 'image') {
         try {
-          const variants = await imageResizeService.processListingImage(file.buffer, key, { thumbnailOnly: true });
+          const imgBuffer = await readFileBuffer(file);
+          const variants = await imageResizeService.processListingImage(imgBuffer, key, { thumbnailOnly: true });
           if (variants && variants.thumb) {
             thumbnailUrl = variants.thumb;
           }
@@ -1309,7 +1429,26 @@ router.post('/post-media/:postId', uploadLimiter, verifyToken, postMediaUpload.a
  * POST /api/upload/listing-media/:listingId
  * Upload media files for a marketplace listing (up to 10)
  */
-router.post('/listing-media/:listingId', uploadLimiter, verifyToken, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeListingMediaUpload(req, res, next) {
+  try {
+    const { data: listing, error: listingErr } = await supabaseAdmin
+      .from('Listing')
+      .select('id, user_id, media_urls, media_types, media_thumbnails')
+      .eq('id', req.params.listingId)
+      .single();
+    if (listingErr || !listing) return res.status(404).json({ error: 'Listing not found' });
+    if (listing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the listing owner can upload media' });
+    }
+    req._uploadTarget = listing;
+    return next();
+  } catch (err) {
+    logger.error('Listing media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Listing could not be checked. Please retry.' });
+  }
+}
+
+router.post('/listing-media/:listingId', uploadLimiter, verifyToken, authorizeListingMediaUpload, upload.array('files', 10), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const userId = req.user.id;
     const { listingId } = req.params;
@@ -1319,19 +1458,7 @@ router.post('/listing-media/:listingId', uploadLimiter, verifyToken, upload.arra
       return res.status(400).json({ error: 'No files provided' });
     }
 
-    // Verify listing ownership
-    const { data: listing, error: listingErr } = await supabaseAdmin
-      .from('Listing')
-      .select('id, user_id, media_urls, media_types, media_thumbnails')
-      .eq('id', listingId)
-      .single();
-
-    if (listingErr || !listing) {
-      return res.status(404).json({ error: 'Listing not found' });
-    }
-    if (listing.user_id !== userId) {
-      return res.status(403).json({ error: 'Only the listing owner can upload media' });
-    }
+    const listing = req._uploadTarget;
 
     const existingCount = (listing.media_urls || []).length;
     if (existingCount + files.length > 10) {
@@ -1343,12 +1470,14 @@ router.post('/listing-media/:listingId', uploadLimiter, verifyToken, upload.arra
     const thumbnailUrls = [];
 
     for (const file of files) {
+      const { body, contentLength } = fileUploadBody(file);
       const { url, key } = await s3.uploadListingMedia(
-        file.buffer,
+        body,
         file.originalname,
         userId,
         listingId,
-        file.mimetype
+        file.mimetype,
+        { contentLength, abortSignal: req._uploadAbortSignal },
       );
 
       uploadedUrls.push(url);
@@ -1357,7 +1486,8 @@ router.post('/listing-media/:listingId', uploadLimiter, verifyToken, upload.arra
       // Generate resized variants (non-blocking on failure)
       if (s3.categorizeFile(file.mimetype) === 'image') {
         try {
-          const variants = await imageResizeService.processListingImage(file.buffer, key);
+          const imgBuffer = await readFileBuffer(file);
+          const variants = await imageResizeService.processListingImage(imgBuffer, key);
           if (variants && variants.thumb) {
             thumbnailUrls.push(variants.thumb);
           }
@@ -1499,7 +1629,8 @@ router.post('/mail-attachments', uploadLimiter, verifyToken, upload.array('files
 
     const uploaded = [];
     for (const file of files) {
-      const stored = await mailEnclosures.store({ buffer: file.buffer, name: file.originalname, mimeType: file.mimetype,
+      const buffer = await readFileBuffer(file);
+      const stored = await mailEnclosures.store({ buffer, name: file.originalname, mimeType: file.mimetype,
         uploaderId: req.user.id });
       uploaded.push({
         url: stored.ref,
@@ -1559,9 +1690,20 @@ router.delete('/file', verifyToken, async (req, res) => {
     const { key, table, recordId } = req.body;
     if (typeof key !== 'string' || !key) return res.status(400).json({ error: 'S3 key is required' });
     if (!isOwnFileKey(key, userId)) return res.status(403).json({ error: 'Not authorized to delete this file' });
-    const allowedTables = ['GigMedia', 'ListingMedia', 'ReviewMedia', 'PostMedia', 'ChatAttachment'];
+    // Evidentiary chat attachments and completion proofs follow their own domain deletion
+    // flows; never allow wiping their underlying objects through the generic key-delete route.
+    if (key.startsWith('chat/') || key.startsWith('gig-completion/')) {
+      return res.status(403).json({ error: 'Use the domain endpoint to delete this file' });
+    }
+    const allowedTables = ['GigMedia', 'ListingMedia', 'ReviewMedia', 'PostMedia'];
     if (Boolean(table) !== Boolean(recordId) || (table && !allowedTables.includes(table))) {
       return res.status(400).json({ error: 'A supported media table and record are required together' });
+    }
+    // Domain-owned object prefixes must always supply their matching DB record so
+    // underlying objects cannot be removed behind active gig/listing/review/post rows.
+    const domainPrefixRequiringRecord = /^(gigs|listings|reviews|posts)\//;
+    if (!table && domainPrefixRequiringRecord.test(key)) {
+      return res.status(400).json({ error: 'Media table and recordId are required to delete this file' });
     }
     let thumbnailKey = null;
     let mediaGigId = null;
@@ -1595,7 +1737,26 @@ router.delete('/file', verifyToken, async (req, res) => {
  * Upload photos/files to attach to a review.
  * Only the review author can upload. Max 5 files.
  */
-router.post('/review-media/:reviewId', uploadLimiter, verifyToken, upload.array('files', 5), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeReviewMediaUpload(req, res, next) {
+  try {
+    const { data: review, error: reviewErr } = await supabaseAdmin
+      .from('Review')
+      .select('id, reviewer_id, media_urls')
+      .eq('id', req.params.reviewId)
+      .single();
+    if (reviewErr || !review) return res.status(404).json({ error: 'Review not found' });
+    if (String(review.reviewer_id) !== String(req.user.id)) {
+      return res.status(403).json({ error: 'Only the review author can upload media' });
+    }
+    req._uploadTarget = review;
+    return next();
+  } catch (err) {
+    logger.error('Review media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Review could not be checked. Please retry.' });
+  }
+}
+
+router.post('/review-media/:reviewId', uploadLimiter, verifyToken, authorizeReviewMediaUpload, upload.array('files', 5), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const userId = req.user.id;
     const { reviewId } = req.params;
@@ -1605,20 +1766,7 @@ router.post('/review-media/:reviewId', uploadLimiter, verifyToken, upload.array(
       return res.status(400).json({ error: 'No files provided' });
     }
 
-    // Verify the review exists and belongs to the user
-    const { data: review, error: reviewErr } = await supabaseAdmin
-      .from('Review')
-      .select('id, reviewer_id, media_urls')
-      .eq('id', reviewId)
-      .single();
-
-    if (reviewErr || !review) {
-      return res.status(404).json({ error: 'Review not found' });
-    }
-
-    if (String(review.reviewer_id) !== String(userId)) {
-      return res.status(403).json({ error: 'Only the review author can upload media' });
-    }
+    const review = req._uploadTarget;
 
     const uploadedUrls = [];
 
@@ -1628,12 +1776,14 @@ router.post('/review-media/:reviewId', uploadLimiter, verifyToken, upload.array(
         continue; // Skip unsupported types silently
       }
 
+      const { body, contentLength } = fileUploadBody(file);
       const { url } = await s3.uploadGeneral(
-        file.buffer,
+        body,
         file.originalname,
         userId,
         `reviews/${reviewId}`,
-        file.mimetype
+        file.mimetype,
+        { contentLength, abortSignal: req._uploadAbortSignal },
       );
 
       uploadedUrls.push(url);
@@ -1687,7 +1837,20 @@ const {
  * Upload logo or banner for a business profile.
  * Query param: type = "logo" | "banner"
  */
-router.post('/business-media/:businessId', uploadLimiter, verifyToken, upload.single('file'), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
+async function authorizeBusinessMediaUpload(req, res, next) {
+  try {
+    const access = await checkBusinessPermission(req.params.businessId, req.user.id, 'profile.edit');
+    if (!access.hasAccess) {
+      return res.status(403).json({ error: 'You do not have permission to edit this business profile' });
+    }
+    return next();
+  } catch (err) {
+    logger.error('Business media authz error', { error: err.message });
+    return res.status(503).json({ error: 'Business access could not be checked. Please retry.' });
+  }
+}
+
+router.post('/business-media/:businessId', uploadLimiter, verifyToken, authorizeBusinessMediaUpload, upload.single('file'), enforceFileSizeLimits, validateAndStripUploads, async (req, res) => {
   try {
     const userId = req.user.id;
     const { businessId } = req.params;
@@ -1704,32 +1867,27 @@ router.post('/business-media/:businessId', uploadLimiter, verifyToken, upload.si
       return res.status(400).json({ error: 'Business media must be an image' });
     }
 
-    // Permission check
-    const access = await checkBusinessPermission(businessId, userId, 'profile.edit');
-    if (!access.hasAccess) {
-      return res.status(403).json({ error: 'You do not have permission to edit this business profile' });
-    }
-
     // Process image
-    let processedBuffer = file.buffer;
+    const rawBuffer = await readFileBuffer(file);
+    let processedBuffer = rawBuffer;
     let finalMimeType = file.mimetype;
     if (sharp) {
       try {
         if (mediaType === 'logo') {
-          processedBuffer = await sharp(file.buffer)
+          processedBuffer = await sharp(rawBuffer)
             .resize(800, 800, { fit: 'cover' })
             .webp({ quality: 85 })
             .toBuffer();
         } else {
           // Banner: 16:9 aspect, max 1600px wide
-          processedBuffer = await sharp(file.buffer)
+          processedBuffer = await sharp(rawBuffer)
             .resize(1600, 900, { fit: 'cover' })
             .webp({ quality: 85 })
             .toBuffer();
         }
         finalMimeType = 'image/webp';
       } catch {
-        processedBuffer = file.buffer;
+        processedBuffer = rawBuffer;
       }
     }
 
@@ -1845,7 +2003,7 @@ router.post('/ai-media', uploadLimiter, verifyToken, upload.array('files', 5), e
       if (file.size > MAX_PDF_BYTES) {
         return res.status(413).json({ error: 'That PDF is over 10 MB. Try a smaller one, or photos of the pages that matter.', code: 'PDF_TOO_LARGE' });
       }
-      const facts = pdfFacts(file.buffer);
+      const facts = pdfFacts(await readFileBuffer(file));
       if (!facts || facts.pages === 0) {
         return res.status(400).json({ error: "That PDF can't be read. Try saving it again as a PDF, or send photos of the pages.", code: 'PDF_UNREADABLE' });
       }
@@ -1862,12 +2020,14 @@ router.post('/ai-media', uploadLimiter, verifyToken, upload.array('files', 5), e
       // The stored name becomes the reference, so keep only a plain extension from the phone's file name.
       const extension = /^\.[a-z0-9]{1,10}$/.exec(path.extname(file.originalname || '').toLowerCase())?.[0] || '';
       const pdf = file.mimetype === 'application/pdf';
+      const { body, contentLength } = fileUploadBody(file);
       const { key } = await s3.uploadGeneral(
-        file.buffer,
+        body,
         pdf ? 'document.pdf' : `photo${extension}`,
         userId,
         'ai-chat',
-        file.mimetype
+        file.mimetype,
+        { contentLength, abortSignal: req._uploadAbortSignal },
       );
 
       uploaded.push({
@@ -1960,6 +2120,23 @@ router.post(
         });
       }
 
+      // ── Magic-byte MIME validation ──
+      for (const f of [imageFile, videoFile]) {
+        const mimeCheck = await validateFileMime(f);
+        if (!mimeCheck.valid) {
+          logger.warn('Live photo MIME mismatch rejected', {
+            originalname: f.originalname,
+            declared: mimeCheck.declared,
+            detected: mimeCheck.detected,
+          });
+          return res.status(400).json({
+            error: mimeCheck.detected
+              ? `File "${f.originalname}" content does not match its declared type (declared: ${mimeCheck.declared}, detected: ${mimeCheck.detected})`
+              : `File "${f.originalname}" isn't a valid image or video file.`,
+          });
+        }
+      }
+
       // The still and the clip are stored without their metadata (a HEIC as a JPEG), or not at all.
       try {
         await cleanUploadedMedia(imageFile);
@@ -1971,7 +2148,6 @@ router.post(
 
       // ── Generate linked S3 keys ──
       // Use a shared base so the two files are visually linked in S3.
-      const crypto = require('crypto');
       const ts = Date.now();
       const rand = crypto.randomBytes(8).toString('hex');
       const base = `posts/${ts}_${rand}`;
@@ -1982,19 +2158,29 @@ router.post(
       const imageKey = `${base}${imageExt}`;
       const videoKey = `${base}_live${videoExt}`;
 
-      // ── Upload both to S3 in parallel ──
+      // ── Upload both to S3 in parallel (streamed from disk) ──
+      const imageBody = fileUploadBody(imageFile);
+      const videoBody = fileUploadBody(videoFile);
       const [imageResult, videoResult] = await Promise.all([
-        s3.uploadToS3(imageFile.buffer, imageKey, imageFile.mimetype),
-        s3.uploadToS3(videoFile.buffer, videoKey, videoFile.mimetype),
+        s3.uploadToS3(imageBody.body, imageKey, imageFile.mimetype, undefined, {
+          contentLength: imageBody.contentLength,
+          abortSignal: req._uploadAbortSignal,
+        }),
+        s3.uploadToS3(videoBody.body, videoKey, videoFile.mimetype, undefined, {
+          contentLength: videoBody.contentLength,
+          abortSignal: req._uploadAbortSignal,
+        }),
       ]);
 
       // ── Thumbnail generation (non-blocking — best-effort) ──
       let thumbnailUrl = null;
-      const thumbBuffer = await generateThumbnail(imageFile.buffer, imageFile.mimetype);
+      const thumbBuffer = await generateThumbnail(await readFileBuffer(imageFile), imageFile.mimetype);
       if (thumbBuffer) {
         try {
           const thumbKey = `${base}_thumb.webp`;
-          const thumbResult = await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp');
+          const thumbResult = await s3.uploadToS3(thumbBuffer, thumbKey, 'image/webp', undefined, {
+            abortSignal: req._uploadAbortSignal,
+          });
           thumbnailUrl = thumbResult.url;
         } catch (thumbErr) {
           logger.warn('Live photo thumbnail upload failed (non-blocking)', { error: thumbErr.message });
@@ -2026,3 +2212,4 @@ module.exports = router;
 // The middleware (validateAndStripUploads) runs the same cleaner
 // for every multipart upload so the same code path runs in production.
 module.exports.stripImageMetadata = cleanUploadedPhoto;
+module.exports.validateFileMime = validateFileMime;

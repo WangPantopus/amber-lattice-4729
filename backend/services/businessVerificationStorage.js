@@ -2,6 +2,7 @@
 // private Home documents bucket under business-verification/, with their own storage contract. The
 // Home recovery jobs select File rows by contract and never list the bucket, so they leave these
 // alone. Nothing here hands out a public URL: admins review a document through a short-lived link.
+const fsp = require('node:fs/promises');
 const crypto = require('crypto');
 const path = require('path');
 const db = require('../config/supabaseAdmin');
@@ -25,7 +26,8 @@ async function privateBucket(expected) {
 
 // Stores the bytes under a new key and returns what the File row records about them.
 async function store(userId, file) {
-  if (typeof userId !== 'string' || !UUID.test(userId) || !Buffer.isBuffer(file?.buffer) || !file.buffer.length) {
+  const bytes = Buffer.isBuffer(file?.buffer) ? file.buffer : (file?.path ? await fsp.readFile(file.path) : null);
+  if (typeof userId !== 'string' || !UUID.test(userId) || !Buffer.isBuffer(bytes) || !bytes.length) {
     throw failure('Invalid verification document.', 400);
   }
   const bucket = await privateBucket();
@@ -33,7 +35,7 @@ async function store(userId, file) {
   const key = `${PREFIX}${userId.toLowerCase()}/${crypto.randomUUID()}${ext}`;
   let result;
   try {
-    result = await db.storage.from(bucket).upload(key, file.buffer, { contentType: file.mimetype, cacheControl: '0', upsert: false });
+    result = await db.storage.from(bucket).upload(key, bytes, { contentType: file.mimetype, cacheControl: '0', upsert: false });
   } catch (_) { result = null; }
   if (!result || result.error) throw failure('Failed to upload file. Please retry.');
   return { url: '', key, metadata: { storage_contract: STORAGE_CONTRACT, storage_bucket: bucket } };

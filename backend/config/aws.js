@@ -9,12 +9,20 @@ const S3_ENDPOINT = process.env.AWS_S3_ENDPOINT || undefined;
 const S3_FORCE_PATH_STYLE =
   String(process.env.AWS_S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true';
 
+const S3_CONNECT_TIMEOUT_MS = 5_000;
+const S3_REQUEST_TIMEOUT_MS = 60_000;
+
 const s3Client = new S3Client({
   region: S3_REGION,
   endpoint: S3_ENDPOINT,
   forcePathStyle: S3_FORCE_PATH_STYLE,
   // Automatically retry against the bucket's home region on 301/PermanentRedirect.
   followRegionRedirects: true,
+  // Bound socket connect & request duration so stalled storage calls never hang indefinitely.
+  requestHandler: {
+    connectionTimeout: S3_CONNECT_TIMEOUT_MS,
+    requestTimeout: S3_REQUEST_TIMEOUT_MS,
+  },
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
