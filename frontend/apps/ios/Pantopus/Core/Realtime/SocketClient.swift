@@ -58,10 +58,21 @@ final class SocketClient {
     /// In-flight auth-error recovery, so a burst of `error` frames from one
     /// stale token triggers one refresh + reconnect, not a storm.
     private var authRecoveryTask: Task<Void, Never>?
-    /// One refresh until the socket authenticates successfully. A rejected
-    /// replacement token must not start an unbounded refresh/reconnect loop.
+    /// One refresh until the socket authenticates successfully (or receives a
+    /// fresh external token). A rejected replacement token must not start an
+    /// unbounded refresh/reconnect loop.
     private var attemptedAuthRecovery = false
+    /// Cooldown after a transient refresh failure so an offline blip doesn't
+    /// storm `/refresh`, without permanently latching recovery off.
+    private var nextAuthRecoveryAllowedAt: Date?
+    static let transientRecoveryCooldown: TimeInterval = 15
+    var now: () -> Date = Date.init
     private var connectionGeneration = 0
+    private var lifecycleGeneration = 0
+    /// True while the app is backgrounded: tears down Socket.IO so it doesn't
+    /// hammer the backend in the background, and suppresses reconnects until
+    /// `completeForegroundResume(generation:token:)` runs on `.active`.
+    private(set) var isSuspendedForBackground = false
     /// True while Socket.IO retries (its backoff): after an unexpected drop,
     /// or after a first connection attempt failed (the app opened offline).
     private var isRetrying = false
@@ -77,6 +88,9 @@ final class SocketClient {
     /// connects again. Push / socket frames are never the authority — the
     /// session is only ended by `AuthManager` after a rejected refresh.
     private(set) var stoppedForRevocation = false
+    /// Token that triggered `stoppedForRevocation`, so a foreground resume
+    /// with the same revoked token cannot bypass the stop.
+    private var revokedToken: String?
 
     /// Server-side auth failures that mean "renew the token and try again"
     /// (`backend/socket/chatSocketio.js` `io.use` middleware:
@@ -96,14 +110,29 @@ final class SocketClient {
     // MARK: - Lifecycle
 
     func connect(token: String) {
+        connectTransport(token: token, preserveRecoveryGuard: false)
+    }
+
+    private func connectTransport(token: String, preserveRecoveryGuard: Bool) {
+        if stoppedForRevocation, token == revokedToken { return }
         if authToken == token, socket != nil {
-            // The server declared this session revoked; only a *new* token
-            // may reconnect.
             if stoppedForRevocation { return }
             if connectionState == .disconnected {
                 socket?.connect(withPayload: ["token": token])
                 setConnectionState(.connecting)
             }
+            return
+        }
+        if !preserveRecoveryGuard {
+            authRecoveryTask?.cancel()
+            authRecoveryTask = nil
+            attemptedAuthRecovery = false
+            nextAuthRecoveryAllowedAt = nil
+        }
+        if isSuspendedForBackground {
+            authToken = token
+            stoppedForRevocation = false
+            revokedToken = nil
             return
         }
         if socket != nil {
@@ -112,6 +141,7 @@ final class SocketClient {
         authToken = token
         // A fresh token (post-login / post-refresh) lifts a revocation stop.
         stoppedForRevocation = false
+        revokedToken = nil
         setConnectionState(.connecting)
 
         let manager = SocketManager(
@@ -135,7 +165,14 @@ final class SocketClient {
             socket.on(subscription.event) { data, _ in subscription.callback(data) }
         }
         let generation = connectionGeneration
+        attachLifecycleHandlers(to: socket, generation: generation)
 
+        // Socket.IO namespace auth is read as handshake.auth on the server.
+        // Engine.IO query parameters and HTTP headers do not populate it.
+        socket.connect(withPayload: ["token": token])
+    }
+
+    private func attachLifecycleHandlers(to socket: SocketIOClient, generation: Int) {
         socket.on(clientEvent: .connect) { [weak self] _, _ in
             Task { @MainActor in
                 guard let self, self.connectionGeneration == generation else { return }
@@ -186,25 +223,57 @@ final class SocketClient {
                 self.stopForRevocation(reason: "auth:session_revoked")
             }
         }
-
-        // Socket.IO namespace auth is read as handshake.auth on the server.
-        // Engine.IO query parameters and HTTP headers do not populate it.
-        socket.connect(withPayload: ["token": token])
     }
 
     func disconnect() {
         authRecoveryTask?.cancel()
         authRecoveryTask = nil
         attemptedAuthRecovery = false
+        nextAuthRecoveryAllowedAt = nil
         retriedSinceConnected = false
         disconnectTransport()
+    }
+
+    /// Tear down the live transport on `.background` so Socket.IO's reconnect
+    /// loop doesn't hammer the backend while suspended.
+    func enterBackground() {
+        lifecycleGeneration += 1
+        isSuspendedForBackground = true
+        authRecoveryTask?.cancel()
+        authRecoveryTask = nil
+        attemptedAuthRecovery = false
+        nextAuthRecoveryAllowedAt = nil
+        if socket != nil {
+            disconnectTransport()
+        }
+    }
+
+    /// Stamp a foreground transition before awaiting proactive token refresh.
+    func beginForegroundResume() -> Int {
+        lifecycleGeneration += 1
+        return lifecycleGeneration
+    }
+
+    /// Reconnect (or wake backoff) once proactive refresh completes, provided
+    /// the app hasn't re-entered the background in the meantime.
+    func completeForegroundResume(generation: Int, token: String?) {
+        guard lifecycleGeneration == generation else { return }
+        let wasBackgrounded = isSuspendedForBackground
+        isSuspendedForBackground = false
+        guard let token else { return }
+        if wasBackgrounded || socket == nil || authToken != token {
+            connect(token: token)
+        } else {
+            reconnectNowIfWaiting()
+        }
     }
 
     /// Try at once when the app returns to the foreground or the network
     /// comes back, instead of waiting out the rest of Socket.IO's backoff
     /// (up to `reconnectWaitMax` between attempts).
     func reconnectNowIfWaiting() {
-        guard isRetrying, !stoppedForRevocation, let token = authToken else { return }
+        guard !isSuspendedForBackground, isRetrying, !stoppedForRevocation, let token = authToken else { return }
+        nextAuthRecoveryAllowedAt = nil
         disconnectTransport()
         connect(token: token)
     }
@@ -233,6 +302,7 @@ final class SocketClient {
         retriedSinceConnected = false
         isRetrying = false
         attemptedAuthRecovery = false
+        nextAuthRecoveryAllowedAt = nil
         setConnectionState(.connected)
         logger.info("Socket connected")
     }
@@ -261,21 +331,27 @@ final class SocketClient {
         }
         guard Self.refreshableAuthErrorMarkers.contains(where: { lower.contains($0) }) else { return }
         guard authRecoveryTask == nil, !attemptedAuthRecovery, !stoppedForRevocation, socket != nil else { return }
+        if let allowedAt = nextAuthRecoveryAllowedAt, now() < allowedAt { return }
         attemptedAuthRecovery = true
         authRecoveryTask = Task { [weak self] in
             guard let self else { return }
             defer { self.authRecoveryTask = nil }
             let staleToken = authToken
             guard let fresh = await tokenRefresher(), !Task.isCancelled else {
-                // Refresh did not rotate: either transient (Socket.IO keeps
-                // retrying with the current token, which is fine) or the
-                // session is dead — `AuthManager` disconnects us in that case.
-                logger.info("Socket auth error — refresh did not rotate; leaving reconnect to Socket.IO")
+                // Transient failure — avoid storming `/refresh`, but do not
+                // permanently latch recovery off for this connection.
+                attemptedAuthRecovery = false
+                nextAuthRecoveryAllowedAt = now().addingTimeInterval(Self.transientRecoveryCooldown)
+                logger.info("Socket auth error — refresh did not rotate; cooling down before next recovery")
                 return
             }
-            guard fresh != staleToken else { return }
+            guard fresh != staleToken else {
+                attemptedAuthRecovery = false
+                nextAuthRecoveryAllowedAt = now().addingTimeInterval(Self.transientRecoveryCooldown)
+                return
+            }
             logger.info("Socket auth error — token refreshed, reconnecting")
-            connect(token: fresh)
+            connectTransport(token: fresh, preserveRecoveryGuard: true)
         }
     }
 
@@ -285,6 +361,7 @@ final class SocketClient {
     func stopForRevocation(reason: String) {
         guard !stoppedForRevocation else { return }
         stoppedForRevocation = true
+        revokedToken = authToken
         logger.warning("Socket stopped — session/device revoked", metadata: ["reason": .string(reason)])
         authRecoveryTask?.cancel()
         authRecoveryTask = nil
@@ -297,8 +374,17 @@ final class SocketClient {
         Task { await confirm() }
     }
 
-    // MARK: - Events
+    private func setConnectionState(_ state: ConnectionState) {
+        connectionState = state
+        for continuation in connectionContinuations.values {
+            continuation.yield(state)
+        }
+    }
+}
 
+// MARK: - Events
+
+extension SocketClient {
     func connectionStates() -> AsyncStream<ConnectionState> {
         AsyncStream { continuation in
             guard reportsConnectionStates else { return }
@@ -329,7 +415,7 @@ final class SocketClient {
         AsyncStream { continuation in
             let subscriptionId = UUID()
             let callback: ([Any]) -> Void = { data in
-                guard let first = data.first else { return }
+                guard let first = data.first, JSONSerialization.isValidJSONObject(first) else { return }
                 do {
                     let jsonData = try JSONSerialization.data(withJSONObject: first, options: [])
                     let decoder = JSONDecoder()
@@ -372,7 +458,9 @@ final class SocketClient {
         guard let socket else { return nil }
         return await withCheckedContinuation { continuation in
             socket.emitWithAck(event, payload).timingOut(after: timeout) { data in
-                guard let first = data.first else {
+                guard let first = data.first,
+                      (first as? String) != "NO ACK",
+                      JSONSerialization.isValidJSONObject(first) else {
                     continuation.resume(returning: nil)
                     return
                 }
@@ -386,13 +474,6 @@ final class SocketClient {
                     continuation.resume(returning: nil)
                 }
             }
-        }
-    }
-
-    private func setConnectionState(_ state: ConnectionState) {
-        connectionState = state
-        for continuation in connectionContinuations.values {
-            continuation.yield(state)
         }
     }
 }

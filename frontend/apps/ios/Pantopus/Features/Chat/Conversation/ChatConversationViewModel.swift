@@ -109,29 +109,27 @@ final class AIChatStreamClient: AIChatStreaming, @unchecked Sendable {
     private let environment: AppEnvironment
     private let session: URLSession
 
-    init(environment: AppEnvironment = .current, session: URLSession = .shared) {
+    init(environment: AppEnvironment = .current, session: URLSession? = nil) {
         self.environment = environment
-        self.session = session
+        if let session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 60
+            self.session = URLSession(configuration: config)
+        }
     }
 
     func streamChat(_ request: AIChatStreamRequest) -> AsyncThrowingStream<AIChatStreamEvent, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    // This stream bypasses APIClient, so renew a lapsing token first, as it does;
-                    // otherwise the first message after the token expires fails.
-                    await AuthManager.shared.refreshIfExpiringSoon()
-                    let token = await AuthManager.shared.accessToken
+                    let body = try JSONEncoder().encode(request)
                     let url = environment.apiBaseURL.appendingPathComponent("/api/ai/chat")
-                    var urlRequest = URLRequest(url: url)
-                    urlRequest.httpMethod = "POST"
-                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    if let token {
-                        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    guard let (bytes, response) = try await openStream(url: url, body: body) else {
+                        continuation.finish()
+                        return
                     }
-                    urlRequest.httpBody = try JSONEncoder().encode(request)
-                    let (bytes, response) = try await session.bytes(for: urlRequest)
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                         let status = (response as? HTTPURLResponse)?.statusCode
                         // The day's budget and the off switch say so in their own words.
@@ -170,6 +168,62 @@ final class AIChatStreamClient: AIChatStreaming, @unchecked Sendable {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Open the SSE request, renewing an expiring token beforehand and replaying
+    /// once on HTTP 401 via single-flight `AuthManager.shared.refreshIfPossible()`.
+    /// Ends the session only when refresh returns `.authRejected`.
+    private func openStream(url: URL, body: Data) async throws -> (URLSession.AsyncBytes, URLResponse)? {
+        let auth = await MainActor.run { AuthManager.shared }
+        let (sessionGeneration, shouldProactivelyRefresh): (Int, Bool) = await MainActor.run {
+            let expiring: Bool = if case .signedIn = auth.state { auth.isAccessTokenExpiringSoon } else { false }
+            return (auth.requestSessionGeneration, expiring)
+        }
+        var didAttemptRefresh = false
+        if shouldProactivelyRefresh {
+            let outcome = await auth.refreshIfPossible()
+            guard await auth.requestSessionGeneration == sessionGeneration else { return nil }
+            if outcome == .authRejected {
+                await auth.handleUnauthorized()
+                return nil
+            }
+            didAttemptRefresh = outcome == .rotated
+        }
+
+        let firstRequest = await makeURLRequest(url: url, body: body, auth: auth)
+        var (bytes, response) = try await session.bytes(for: firstRequest)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401, !didAttemptRefresh {
+            guard await auth.requestSessionGeneration == sessionGeneration else { return nil }
+            let outcome = await auth.refreshIfPossible()
+            guard await auth.requestSessionGeneration == sessionGeneration else { return nil }
+            switch outcome {
+            case .rotated:
+                let retryRequest = await makeURLRequest(url: url, body: body, auth: auth)
+                (bytes, response) = try await session.bytes(for: retryRequest)
+            case .authRejected:
+                await auth.handleUnauthorized()
+            case .transient:
+                break
+            }
+        }
+        return (bytes, response)
+    }
+
+    private func makeURLRequest(url: URL, body: Data, auth: AuthManager) async -> URLRequest {
+        let (token, deviceId) = await MainActor.run { (auth.accessToken, auth.deviceId) }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        urlRequest.setValue(APIClient.clientPlatformValue, forHTTPHeaderField: APIClient.clientPlatformHeader)
+        if let deviceId {
+            urlRequest.setValue(deviceId, forHTTPHeaderField: APIClient.deviceIdHeader)
+        }
+        if let token {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = body
+        return urlRequest
     }
 
     private static func dispatch(
@@ -4116,7 +4170,7 @@ public final class ChatConversationViewModel {
             didEmitTypingStart = false
             lastTypingEmitAt = nil
         }
-        updateFallbackPolling(isConnected: state == .connected)
+        updateFallbackPolling(isConnected: state == .connected || socket.isSuspendedForBackground)
     }
 
     private func subscribeToReadReceipts() {

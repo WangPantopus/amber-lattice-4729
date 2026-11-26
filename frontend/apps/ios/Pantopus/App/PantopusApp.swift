@@ -33,9 +33,13 @@ struct PantopusApp: App {
                 .environment(socketClient)
                 .environment(appLock)
                 .task {
+                    #if DEBUG
                     if !ProcessInfo.processInfo.isUITestSeededAuthSession {
                         await authManager.restoreSession()
                     }
+                    #else
+                    await authManager.restoreSession()
+                    #endif
                     PilotEvents.shared.authChanged()
                     if scenePhase == .active { PilotEvents.shared.enterForeground() }
                     #if DEBUG
@@ -73,7 +77,6 @@ struct PantopusApp: App {
                     switch phase {
                     case .active:
                         PilotEvents.shared.enterForeground()
-                        SocketClient.shared.reconnectNowIfWaiting()
                         ChatOutbox.shared.enteredForeground()
                         capturePrivacy.coversAppSwitcher = false
                         appLock.appDidBecomeActive()
@@ -81,8 +84,18 @@ struct PantopusApp: App {
                         // Proactive DPoP refresh when < 120 s of access-token
                         // life remain, so the first request after a long
                         // background never pays the 401 + replay tax
-                        // (CONTRACT "Client behaviour").
-                        Task { await authManager.refreshIfExpiringSoon() }
+                        // (CONTRACT "Client behaviour"), then reconnect the
+                        // realtime socket with the fresh token.
+                        let resumeGeneration = SocketClient.shared.beginForegroundResume()
+                        Task {
+                            await authManager.refreshIfExpiringSoon()
+                            let token: String? = if case .signedIn = authManager.state {
+                                authManager.accessToken
+                            } else {
+                                nil
+                            }
+                            SocketClient.shared.completeForegroundResume(generation: resumeGeneration, token: token)
+                        }
                     case .inactive:
                         // Transient interruption — Control Centre, the
                         // notification shade, an incoming call, or the
@@ -95,6 +108,7 @@ struct PantopusApp: App {
                         capturePrivacy.coversAppSwitcher = !appLock.isPrompting
                     case .background:
                         PilotEvents.shared.enterBackground()
+                        SocketClient.shared.enterBackground()
                         ChatOutbox.shared.enteredBackground()
                         capturePrivacy.coversAppSwitcher = true
                         appLock.appDidEnterBackground()
@@ -111,17 +125,18 @@ struct PantopusApp: App {
     private static func bootAuthManager() -> AuthManager {
         #if DEBUG
         if UITestArrivalFixture.enabled { return UITestArrivalFixture.makeAuthManager() }
-        #endif
         if ProcessInfo.processInfo.isUITestSignedInSession {
             return AuthManager.previewSignedIn
         }
         if ProcessInfo.processInfo.isUITestSignedOutSession {
             return AuthManager.previewSignedOut
         }
+        #endif
         return AuthManager.shared
     }
 }
 
+#if DEBUG
 private extension ProcessInfo {
     /// True when the process was launched by a UI test that wants a
     /// seeded signed-in session.
@@ -137,6 +152,7 @@ private extension ProcessInfo {
         isUITestSignedInSession || isUITestSignedOutSession
     }
 }
+#endif
 
 /// Top-level router — shows auth or main content based on session state.
 struct RootView: View {

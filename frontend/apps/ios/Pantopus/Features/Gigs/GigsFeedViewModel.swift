@@ -624,9 +624,9 @@ public final class GigsFeedViewModel {
     public func startRealtime() {
         guard realtimeTask == nil else { return }
         realtimeTask = Task { [weak self] in
-            guard let self else { return }
-            let stream = gigEventsProvider()
+            guard let stream = self?.gigEventsProvider() else { return }
             for await event in stream {
+                guard let self, !Task.isCancelled else { return }
                 handleGigEvent(event)
             }
         }

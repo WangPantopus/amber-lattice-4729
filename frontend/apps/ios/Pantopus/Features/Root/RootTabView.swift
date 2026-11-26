@@ -1136,8 +1136,9 @@ final class ChatBadgeStore {
     private func subscribeIfNeeded() {
         if badgeTask == nil {
             badgeTask = Task { [weak self] in
-                guard let self else { return }
-                for await update in socket.events(named: "badge:update", as: ChatBadgeUpdate.self) {
+                guard let stream = self?.socket.events(named: "badge:update", as: ChatBadgeUpdate.self) else { return }
+                for await update in stream {
+                    guard let self, !Task.isCancelled else { return }
                     countGeneration += 1
                     hasAuthoritativeCount = true
                     serverTotalUnread = update.totalUnread
@@ -1148,8 +1149,9 @@ final class ChatBadgeStore {
         }
         if reconnectTask == nil {
             reconnectTask = Task { [weak self] in
-                guard let self else { return }
-                for await state in socket.connectionStates() where state == .connected {
+                guard let stream = self?.socket.connectionStates() else { return }
+                for await state in stream where state == .connected {
+                    guard let self, !Task.isCancelled else { return }
                     // Just read (the launch's own read, a moment before the socket
                     // connects): the server also sends the count on connect.
                     if let countReadAt, Date().timeIntervalSince(countReadAt) < Self.justReadWindow { continue }
