@@ -23,7 +23,7 @@ const { positive, word } = require('../lib/values.cjs');
 const { fillHomes, bathFacts, describe } = require('../lib/fill.cjs');
 const { keepSplit } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
-const { COUNTIES, publishedOn, countyRelease, erieArchive } = require('./ny-parcels.cjs');
+const { COUNTIES, countyRelease, erieArchive, stateRows } = require('./ny-parcels.cjs');
 
 // The Assessor's Manual's one-family classes: a year-round house, a rural residence, an estate, a seasonal home, a mobile home. A file
 // gives the class's code ("210") or the manual's short words for it ("1 Family Res").
@@ -118,10 +118,12 @@ async function* build({ work }) {
     throw new Error('PROPERTY_INDEX_NY_ERIE_GDB requires PROPERTY_INDEX_ONLY=36029');
   }
   const archive = dir ? erieArchive(dir) : null;
-  const asOf = archive?.asOf ?? await publishedOn();
+  // Otherwise the state's parcel service, or its download when the service fails (ny-parcels.cjs).
+  const state = archive ? null : await stateRows(work, 'ny-county-files');
+  const asOf = archive?.asOf ?? state.asOf;
   for (const [name, file] of Object.entries(FILES)) {
     if (only.length && !only.includes(COUNTIES[name])) continue;
-    const release = await countyRelease(work, name, asOf, archive?.rows);
+    const release = await countyRelease(work, name, asOf, archive?.rows ?? state.rows(name));
     const files = [].concat(file);
     for (const each of files) {
       const dwellings = new Map();
