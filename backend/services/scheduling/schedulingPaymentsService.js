@@ -185,7 +185,7 @@ async function cancellationPayment(booking, retry = false) {
     let request = (requests || []).find(r => r.id === decision?.request_id && decision?.booking_id === booking.id);
     if (retry && request && ['pending', 'requires_action'].includes(request.status)) {
       try { await refunds.recoverRequest(request); }
-      catch (err) { logger.warn('[schedulingPaymentsService] cancellation payment remains pending', { bookingId: booking.id, code: err.code }); }
+      catch (err) { logger.warn('[schedulingPaymentsService] cancellation payment remains pending', { bookingId: booking.id, errorCode: err.code }); }
       return cancellationPayment(booking);
     }
     // Preserve verified legacy successes, but do not invent a missing historic
@@ -209,7 +209,7 @@ async function cancellationPayment(booking, retry = false) {
     return { status: request.status === 'succeeded' ? 'succeeded' : pending ? 'pending' : 'needs_review',
       operation: request.operation, amount_cents: request.amount_cents, can_retry: pending, message };
   } catch (err) {
-    logger.warn('[schedulingPaymentsService] cancellation payment lookup unavailable', { bookingId: booking.id, code: err.code });
+    logger.warn('[schedulingPaymentsService] cancellation payment lookup unavailable', { bookingId: booking.id, errorCode: err.code });
     return unavailable;
   }
 }

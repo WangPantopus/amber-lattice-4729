@@ -134,7 +134,7 @@ async function deliver(job) {
     await finish(job, receipt.unresolvedCount > 0 ? 'pending' : 'done', accepted);
   } catch (error) {
     // No payload, device token, private staff identity or provider error body in logs.
-    logger.warn('chat_push_attempt_deferred', { code: error.code || 'UNAVAILABLE' });
+    logger.warn('chat_push_attempt_deferred', { errorCode: error.code || 'UNAVAILABLE' });
     await finish(job, 'pending', accepted).catch(() => {}); // expired leases are recovered by another worker
   } finally { clearInterval(heartbeat); }
 }
@@ -150,7 +150,7 @@ async function drain() {
     }
     wake(250);
   } catch (error) {
-    logger.warn('chat_push_claim_deferred', { code: error.code || 'UNAVAILABLE' });
+    logger.warn('chat_push_claim_deferred', { errorCode: error.code || 'UNAVAILABLE' });
   } finally { running = false; }
 }
 

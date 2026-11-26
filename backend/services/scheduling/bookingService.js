@@ -293,7 +293,7 @@ async function createBooking({ eventType, page, startIso, durationMin, invitee =
     if (/GROUP_SLOT_FULL/.test(error.message || '')) {
       throw new BookingError('This time is fully booked.', 409, 'SLOT_FULL');
     }
-    logger.error('[bookingService] insert failed', { error: error.message, code: error.code });
+    logger.error('[bookingService] insert failed', { error: error.message, errorCode: error.code });
     throw new BookingError('Could not create the booking.', 500, 'CREATE_FAILED');
   }
 
@@ -423,7 +423,7 @@ async function createResourceBooking({ resource, startIso, durationMin, booker =
   const { data, error } = await supabaseAdmin.from('Booking').insert(row).select('*').single();
   if (error) {
     if (isOverlapViolation(error)) throw new BookingError('That resource is already booked for an overlapping time.', 409, 'RESOURCE_TAKEN');
-    logger.error('[bookingService] resource booking insert failed', { error: error.message, code: error.code });
+    logger.error('[bookingService] resource booking insert failed', { error: error.message, errorCode: error.code });
     throw new BookingError('Could not book the resource.', 500, 'CREATE_FAILED');
   }
   return data;

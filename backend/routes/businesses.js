@@ -1787,7 +1787,7 @@ router.delete('/:businessId', verifyToken, async (req, res) => {
       if (error.code === '42501') {
         return res.status(403).json({ error: 'Only the owner can delete a business' });
       }
-      logger.warn('Business deletion unavailable', { businessId, code: error.code });
+      logger.warn('Business deletion unavailable', { businessId, errorCode: error.code });
       return res.status(503).json({
         error: 'Business closure is temporarily unavailable. Please try again.',
         code: 'BUSINESS_DELETE_UNAVAILABLE',

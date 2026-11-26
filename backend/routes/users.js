@@ -2152,7 +2152,7 @@ router.post('/login', signInNetworkLimiters, validate(loginSchema), signInAccoun
         logger.error('Login failed - Supabase Auth refused or unreachable', {
           email,
           status: authError.status,
-          code: authError.code,
+          errorCode: authError.code,
           error: authError.message,
         });
         return res.status(503).json({
@@ -2750,7 +2750,7 @@ router.post('/refresh', refreshLimiter, refreshDpop, async (req, res) => {
       if (authSessionService.isAuthServiceBusy(error)) {
         logger.error('Token refresh failed - Supabase Auth refused or unreachable', {
           status: error.status,
-          code: error.code,
+          errorCode: error.code,
           error: error.message,
         });
         return res.status(503).json({ error: 'Could not verify this session right now. Please try again.', code: 'AUTH_UNAVAILABLE' });
@@ -4235,7 +4235,7 @@ router.get('/:id/in-common', verifyToken, async (req, res) => {
 
     return res.json(await inCommon(req.user, target.id));
   } catch (err) {
-    logger.warn('Profile in-common unavailable', { error: err.message, code: err.code || null, id: req.params.id });
+    logger.warn('Profile in-common unavailable', { error: err.message, errorCode: err.code || null, id: req.params.id });
     return res.status(503).json({
       error: 'What you have in common can\'t be loaded right now.',
       code: 'IN_COMMON_UNAVAILABLE',
@@ -4483,7 +4483,7 @@ router.get('/public/join/:code', async (req, res) => {
       ...(referral.source === creatorLinks.CREATOR_SOURCE ? { creator: true } : {}),
     });
   } catch (err) {
-    logger.error('public join lookup error', { error: err.message, code: req.params.code });
+    logger.error('public join lookup error', { error: err.message, errorCode: req.params.code });
     res.status(500).json({ valid: false });
   }
 });
@@ -4693,7 +4693,7 @@ router.post('/verify-email', verifyEmailNetworkLimiter, validate(verifyEmailSche
       logger.error('Email verification failed - Supabase Auth refused or unreachable', {
         type,
         status: error.status,
-        code: error.code,
+        errorCode: error.code,
         error: error.message,
       });
       return res.status(503).json({
@@ -4787,7 +4787,7 @@ router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mail
     const authClient = createAuthClient();
     const { data, error } = await authClient.auth.verifyOtp({ email: address, token: code, type: 'email' });
     if (authSessionService.isAuthServiceBusy(error)) {
-      logger.error('Mail code check failed - Supabase Auth refused or unreachable', { status: error.status, code: error.code });
+      logger.error('Mail code check failed - Supabase Auth refused or unreachable', { status: error.status, errorCode: error.code });
       await mailClaimCode.giveBackTry(turn.tryId);
       return res.status(503).json({ error: 'Sign-in is busy right now. Your code still works: try again in a minute.', code: 'AUTH_BUSY' });
     }
@@ -5105,11 +5105,11 @@ router.post('/reset-password', resetPasswordLimiter, validate(resetPasswordSchem
     // The recovery check reads the session registry before anything changes (the
     // link still works); the sign-out-everywhere step runs after the new password is saved.
     if (err.authBusy && !passwordChanged) {
-      logger.warn('Reset password unavailable - session registry unreadable', { code: err.code });
+      logger.warn('Reset password unavailable - session registry unreadable', { errorCode: err.code });
       return res.status(503).json({ error: RESET_BUSY_LINK_KEPT, code: 'AUTH_BUSY' });
     }
     if (err.authBusy) {
-      logger.warn('Reset password saved, sign-out everywhere incomplete', { code: err.code });
+      logger.warn('Reset password saved, sign-out everywhere incomplete', { errorCode: err.code });
       return res.status(503).json({
         error: 'Your new password was saved, but signing out your other devices didn\'t finish. Sign in with it, then choose "Sign out everywhere" in Security settings.',
         code: 'SIGN_OUT_INCOMPLETE',
@@ -6045,7 +6045,7 @@ async function requireStrongestStepUpForDeletion(req, res, next) {
     }
     return next();
   } catch (err) {
-    logger.warn('auth.stepup.strongest_check_failed', { userId: req.user?.id, code: err.code });
+    logger.warn('auth.stepup.strongest_check_failed', { userId: req.user?.id, errorCode: err.code });
     return res.status(503).json({
       error: 'Account verification is temporarily unavailable. Please try again.',
       code: 'AUTH_UNAVAILABLE',
@@ -6203,7 +6203,7 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
         if (businesses?.length) return res.status(409).json(businessOwnershipRequired);
       }
     } catch (err) {
-      logger.warn('Account deletion ownership check unavailable', { userId, code: err.code });
+      logger.warn('Account deletion ownership check unavailable', { userId, errorCode: err.code });
       return res.status(503).json(ACCOUNT_DELETE_UNAVAILABLE_REPLY);
     }
 

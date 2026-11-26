@@ -492,7 +492,7 @@ async function browseListings({
       error: error.message,
       details: error.details,
       hint: error.hint,
-      code: error.code,
+      errorCode: error.code,
       sort,
       search,
     });

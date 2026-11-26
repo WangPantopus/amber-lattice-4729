@@ -1,3 +1,5 @@
+const os = require('node:os');
+const path = require('node:path');
 const winston = require('winston');
 const { redactLogMeta, redactBearerPath } = require('./redactLogMeta');
 
@@ -8,30 +10,36 @@ const redactFormat = winston.format((info) => {
   return Object.assign(info, redactLogMeta(meta));
 });
 
+const isProd = process.env.NODE_ENV === 'production';
+const logToFile = !isProd && String(process.env.LOG_TO_FILE || '').toLowerCase() === 'true';
+
+const outputFormat = isProd
+  ? winston.format.json()
+  : winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
+      const metaString = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+      const stackString = stack ? `\n${stack}` : '';
+      return `${timestamp} [${level}]: ${message}${metaString}${stackString}`;
+    });
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
     redactFormat(),
-    winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-      const metaString = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-      const stackString = stack ? `\n${stack}` : '';
-      return `${timestamp} [${level}]: ${message}${metaString}${stackString}`;
-    })
+    outputFormat,
   ),
   transports: [
     new winston.transports.Console(),
-    // Hosted containers log to stdout only: Docker keeps and rotates those
-    // logs, while a file inside the container would vanish on each release.
-    ...(process.env.NODE_ENV === 'production' ? [] : [
+    // Opt-in local file logging only (writes to tmpdir, never into the workspace or /app).
+    ...(logToFile ? [
       new winston.transports.File({
-        filename: 'combined.log',
+        filename: path.join(os.tmpdir(), 'pantopus-combined.log'),
         maxsize: 52428800,  // 50MB per file
         maxFiles: 5,        // keep 5 rotated files
         tailable: true,
       }),
-    ]),
+    ] : []),
   ],
 });
 

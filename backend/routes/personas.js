@@ -317,7 +317,7 @@ router.post('/', verifyToken, validate(createPersonaSchema), async (req, res) =>
     } catch (identityErr) {
       logger.warn('personas.create.audience_identity_sync_failed', {
         error: identityErr.message,
-        code: identityErr.code,
+        errorCode: identityErr.code,
         personaId: persona.id,
         userId,
       });
@@ -387,7 +387,7 @@ router.get('/audience-identity/me',
     } catch (err) {
       logger.error('personas.audience_identity.me.error', {
         error: err.message,
-        code: err.code,
+        errorCode: err.code,
         userId: req.user?.id,
       });
       const status = err.code === 'fan_handle_taken' ? 409 : 500;
@@ -840,7 +840,7 @@ router.patch('/:id', verifyToken, validate(updatePersonaSchema), async (req, res
       } catch (identityErr) {
         logger.warn('personas.patch.audience_identity_sync_failed', {
           error: identityErr.message,
-          code: identityErr.code,
+          errorCode: identityErr.code,
           personaId: persona.id,
           userId: req.user.id,
         });
@@ -1194,7 +1194,7 @@ async function getAudienceIdentityForHandshake(req, res, {
   } catch (identityErr) {
     logger.error('persona_membership.audience_identity_error', {
       error: identityErr.message,
-      code: identityErr.code,
+      errorCode: identityErr.code,
       personaId,
       userId: req.user.id,
     });
@@ -1387,7 +1387,7 @@ async function handleLegacyFollow(req, res, persona) {
   } catch (identityErr) {
     logger.error('personas.follow.audience_identity_error', {
       error: identityErr.message,
-      code: identityErr.code,
+      errorCode: identityErr.code,
       personaId: persona.id,
       userId: req.user.id,
     });

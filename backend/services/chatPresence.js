@@ -52,7 +52,7 @@ function drain() {
       if (Date.now() - change.at < 5000 && online(change.u) === change.online) {
         return emit(io, { ...change, isCurrent: () => online(change.u) === change.online });
       }
-    }).catch((error) => logger.warn('Chat presence unavailable', { code: error.code }))
+    }).catch((error) => logger.warn('Chat presence unavailable', { errorCode: error.code }))
       .finally(() => { running.delete(key); drain(); });
   }
 }

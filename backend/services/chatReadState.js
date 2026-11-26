@@ -88,7 +88,7 @@ async function applyDirectReadReceipts(messages, viewerId, { required = false, i
         // A rolling deployment may reach an older schema. Its room boundaries
         // remain truthful; never infer a topic read from a missing function.
         if (['42883', 'PGRST202'].includes(error.code)) { legacy = true; break; }
-        logger.warn('chat_read_receipts_unavailable', { code: error.code });
+        logger.warn('chat_read_receipts_unavailable', { errorCode: error.code });
         if (required) throw error;
         return;
       }
@@ -104,7 +104,7 @@ async function applyDirectReadReceipts(messages, viewerId, { required = false, i
       .select('room_id, user_id, last_read_at, last_read_message_at, last_read_message_id, room:room_id!inner(type)')
       .in('room_id', ids).eq('room.type', 'direct').eq('is_active', true));
   } catch (error) {
-    logger.warn('chat_read_receipts_unavailable', { code: error.code });
+    logger.warn('chat_read_receipts_unavailable', { errorCode: error.code });
     if (required) throw error;
     return;
   }

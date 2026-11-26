@@ -369,7 +369,7 @@ router.get('/', verifyToken, previewLimiter, async (req, res) => {
     return res.json(await pending);
   } catch (err) {
     // URLs can contain private query strings; never put them in operator logs.
-    logger.warn('link-preview fetch failed', { code: err.code || 'PREVIEW_FAILED', status: err.status || 502 });
+    logger.warn('link-preview fetch failed', { errorCode: err.code || 'PREVIEW_FAILED', status: err.status || 502 });
     return res.status(err.status || 502).json({ error: err.status ? err.message : 'Failed to fetch URL' });
   }
 });

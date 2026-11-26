@@ -711,7 +711,7 @@ async function deliverNewMessage(io, { room, message, actorUserId, senderUserId 
   } catch (error) {
     // The message is already committed. Its durable push and realtime records
     // recover independently; a badge lookup must not turn acceptance into 500.
-    logger.warn('chat_badge_recipients_unavailable', { requestId, roomId, code: error.code });
+    logger.warn('chat_badge_recipients_unavailable', { requestId, roomId, errorCode: error.code });
     return;
   }
   const participantUserIds = Array.from(new Set((participantRows || []).map((row) => String(row.user_id)).filter(Boolean)));
@@ -734,7 +734,7 @@ async function deliverNewMessage(io, { room, message, actorUserId, senderUserId 
       for (const row of participantRows || []) if (row.notifications_enabled === false) muted.add(String(row.user_id));
       return muted;
     }).catch((error) => {
-      logger.warn('chat_mute_preferences_unavailable', { requestId, code: error.code });
+      logger.warn('chat_mute_preferences_unavailable', { requestId, errorCode: error.code });
       return new Set(recipientUserIds); // no push while the recipient's preference is unreadable
     });
 
@@ -1019,7 +1019,7 @@ async function respondWithChatChanges(req, res, roomIds, identityUserId, snapsho
 
 function chatChangesFailure(req, res, error) {
   if (error.status) return res.status(error.status).json({ error: error.message });
-  logger.warn('chat_changes_unavailable', { requestId: req.requestId, code: error.code });
+  logger.warn('chat_changes_unavailable', { requestId: req.requestId, errorCode: error.code });
   return res.status(503).json({ error: 'Chat updates are temporarily unavailable', code: 'CHAT_UNAVAILABLE' });
 }
 
@@ -2662,7 +2662,7 @@ router.post('/messages', verifyToken, messageSendLimiter, messageBurstLimiter, v
     // Realtime delivery is announced synchronously inside deliverNewMessage; the sender's
     // acceptance doesn't also wait for the badge-recipient read and push hand-off after it.
     deliverNewMessage(req.app.get('io'), { room, message, actorUserId: userId, senderUserId, requestId, people })
-      .catch((deliveryError) => logger.warn('chat_delivery_after_accept_failed', { requestId, roomId, code: deliveryError.code }));
+      .catch((deliveryError) => logger.warn('chat_delivery_after_accept_failed', { requestId, roomId, errorCode: deliveryError.code }));
 
     const sendDurationMs = Date.now() - sendStartMs;
     incCounter('chat.message.sent', { room_type: room?.type || 'unknown' });
@@ -2915,7 +2915,7 @@ router.get('/conversations/:otherUserId/preferences', verifyToken, async (req, r
     res.set('Cache-Control', 'private, no-store');
     return res.json({ notificationsEnabled: !muted && participants.some((p) => p.notifications_enabled !== false), roomIds });
   } catch (error) {
-    logger.warn('chat_preferences_read_failed', { requestId: req.requestId, code: error.code });
+    logger.warn('chat_preferences_read_failed', { requestId: req.requestId, errorCode: error.code });
     return res.status(error.status || 503).json({ error: 'Could not load chat preferences' });
   }
 });
@@ -2934,7 +2934,7 @@ router.get('/rooms/:roomId/preferences', verifyToken, async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     return res.json({ notificationsEnabled: participant.notifications_enabled !== false, roomIds: [roomId] });
   } catch (error) {
-    logger.warn('chat_preferences_read_failed', { requestId: req.requestId, code: error.code });
+    logger.warn('chat_preferences_read_failed', { requestId: req.requestId, errorCode: error.code });
     return res.status(503).json({ error: 'Could not load chat preferences' });
   }
 });
@@ -2955,7 +2955,7 @@ router.patch('/conversations/:otherUserId/preferences', verifyToken, validate(ch
     if (error) throw error;
     return res.json({ notificationsEnabled, roomIds });
   } catch (error) {
-    logger.warn('chat_preferences_failed', { requestId: req.requestId, code: error.code });
+    logger.warn('chat_preferences_failed', { requestId: req.requestId, errorCode: error.code });
     return res.status(error.status || (error.code === '42501' ? 403 : 500)).json({ error: 'Could not save chat preferences' });
   }
 });
@@ -2976,7 +2976,7 @@ router.patch('/rooms/:roomId/preferences', verifyToken, validate(chatPreferences
     if (error) throw error;
     return res.json({ notificationsEnabled, roomIds: [roomId] });
   } catch (error) {
-    logger.warn('chat_preferences_failed', { requestId: req.requestId, code: error.code });
+    logger.warn('chat_preferences_failed', { requestId: req.requestId, errorCode: error.code });
     return res.status(error.code === '42501' ? 403 : 500).json({ error: 'Could not save chat preferences' });
   }
 });
@@ -3168,7 +3168,7 @@ router.get('/stats', verifyToken, async (req, res) => {
     const stats = await badgeService.getChatStatistics(req.user.id);
     res.json({ stats });
   } catch (error) {
-    logger.warn('Chat statistics unavailable', { requestId: req.requestId, code: error.code });
+    logger.warn('Chat statistics unavailable', { requestId: req.requestId, errorCode: error.code });
     res.status(503).json({ error: 'Chat statistics are temporarily unavailable', code: 'CHAT_UNAVAILABLE' });
   }
 });

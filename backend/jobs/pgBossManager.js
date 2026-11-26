@@ -40,7 +40,7 @@ function protectQueueDatabase(db) {
         const delayMs = Math.min(120000, 30000 * (2 ** Math.min(failures - 1, 2)));
         retryAt = Date.now() + delayMs;
         logger.warn('[pg-boss] Database unavailable; queue polling backed off', {
-          code: error.code || 'CONNECTION_ERROR', retryInMs: delayMs,
+          errorCode: error.code || 'CONNECTION_ERROR', retryInMs: delayMs,
         });
       } else if (probe && !transient(error) && generation === startedGeneration) {
         // A constraint/programming error still proves the database is reachable.

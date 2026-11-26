@@ -448,7 +448,7 @@ async function answerFloorPlan(homeId, actorId, answer) {
       if (!canEdit || !Object.keys(columns).length) return [];
       const { data, error } = await db.rpc('update_home_settings', { p_home_id: homeId, p_actor_id: actorId, p_fields: columns, p_preferences: {} });
       if (error || !data?.ok) {
-        logger.warn('Home floor plan facts not written', { homeId, code: data?.code || null });
+        logger.warn('Home floor plan facts not written', { homeId, errorCode: data?.code || null });
         return [];
       }
       return Object.keys(columns);

@@ -183,7 +183,7 @@ router.get('/landlord/authority/setup', verifyToken, async (req, res) => {
     if (error) throw error;
     return res.json({ ...data, session: getRequestSessionScope(req) });
   } catch (err) {
-    logger.warn('Rental setup unavailable', { code: err.code });
+    logger.warn('Rental setup unavailable', { errorCode: err.code });
     return res.status(503).json({ error: 'Could not load rental verification. Please retry.' });
   }
 });
@@ -210,7 +210,7 @@ router.post('/landlord/authority/setup', verifyToken, ownershipClaimLimiter, val
     if (error) throw error;
     return res.json(data);
   } catch (err) {
-    logger.warn('Rental authority decision unavailable', { code: err.code });
+    logger.warn('Rental authority decision unavailable', { errorCode: err.code });
     return res.status(503).json({ error: 'Could not confirm the change. Reload to see its status.' });
   }
 });
