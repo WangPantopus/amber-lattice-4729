@@ -1336,9 +1336,15 @@ async function movedToHome(plan, rows, asks = []) {
  * Nothing moves when the account already answered this plan in the app, holds another invitation to it, or the host
  * said no to or removed it: their own standing stays as it is. Answers whether it moved.
  */
-async function adoptAnswer(plan, row, userId, { io = null } = {}) {
+async function adoptAnswer(plan, row, userId, { io = null, blocked = null } = {}) {
   if (!plan || !isGuest(row) || !['accepted', 'maybe', 'declined'].includes(row.status)) return false;
   if (String(plan.host_user_id) === String(userId)) return false;
+  // Fail-closed block check: a blocked account never enters the host's or business's plan/chat via guest RSVP adoption.
+  const blockService = require('../blockService');
+  const blockedIds = blocked || await blockService.blockedUserIds(userId);
+  if (blockedIds.has(String(plan.host_user_id)) || (plan.business_user_id && blockedIds.has(String(plan.business_user_id)))) {
+    return false;
+  }
   const [{ data: request, error: requestError }, { data: others, error: otherError }] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(planService.REQUEST_COLUMNS).eq('post_id', plan.post_id).eq('user_id', userId).maybeSingle(),
     supabaseAdmin.from('PlanInvite').select('id').eq('post_id', plan.post_id).eq('invitee_user_id', userId).limit(1),
@@ -1413,19 +1419,25 @@ async function adoptAnswer(plan, row, userId, { io = null } = {}) {
  * Browser answers (rows of guests without an account) whose address is this account's verified email, from any
  * plans: each moves where its host has the switch. Answers how many moved.
  */
-async function adoptAnswers(rows, userId, { io = null } = {}) {
+async function adoptAnswers(rows, userId, { io = null, blocked = null } = {}) {
   const guestsRows = (rows || []).filter(isGuest);
   if (guestsRows.length === 0) return 0;
-  const plans = new Map((await planService.loadPlanRows(guestsRows.map((r) => r.post_id))).map((p) => [p.post_id, p]));
+  const blockService = require('../blockService');
+  const [planRows, blockedIds] = await Promise.all([
+    planService.loadPlanRows(guestsRows.map((r) => r.post_id)),
+    blocked ? Promise.resolve(blocked) : blockService.blockedUserIds(userId),
+  ]);
+  const plans = new Map(planRows.map((p) => [p.post_id, p]));
   const switches = await switchByHost([...plans.values()].map((p) => p.host_user_id));
   let moved = 0;
   for (const row of guestsRows) {
     const plan = plans.get(row.post_id);
     if (!plan || !switches.get(String(plan.host_user_id)) || !takesAnswers(plan)) continue;
+    if (blockedIds.has(String(plan.host_user_id)) || (plan.business_user_id && blockedIds.has(String(plan.business_user_id)))) continue;
     try {
       // The row as it is now, with every column the move keeps or restores.
       const { data: fresh } = await supabaseAdmin.from('PlanInvite').select(`${GUEST_COLUMNS}, claimed_at`).eq('id', row.id).maybeSingle();
-      if (fresh && (await adoptAnswer(plan, fresh, userId, { io }))) moved += 1;
+      if (fresh && (await adoptAnswer(plan, fresh, userId, { io, blocked: blockedIds }))) moved += 1;
     } catch (err) {
       logger.warn('plans.guests.adopt_failed', { inviteId: row.id, error: err.message });
     }

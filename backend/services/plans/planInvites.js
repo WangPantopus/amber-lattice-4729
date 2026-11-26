@@ -1059,12 +1059,25 @@ async function attachEmailInvites(user, { postId = null } = {}) {
       && String(row.invitee_user_id || '') !== String(user.id));
     const mine = others.filter((row) => (row.invitee_user_id ? row.channel === 'email' : row.status === 'pending' && !row.guest_name));
     const answered = others.filter((row) => !row.invitee_user_id && row.guest_name && ['accepted', 'maybe', 'declined'].includes(row.status));
-    if ((mine.length === 0 && answered.length === 0) || !(await hasVerifiedEmail(user, email))) return 0;
+    if (mine.length === 0 && answered.length === 0) return 0;
+    const blockService = require('../blockService');
+    const minePostIds = [...new Set(mine.map((r) => r.post_id))];
+    const [verified, blocked, planRowsResult] = await Promise.all([
+      hasVerifiedEmail(user, email),
+      blockService.blockedUserIds(user.id),
+      minePostIds.length > 0
+        ? supabaseAdmin.from('Plan').select('post_id, business_user_id').in('post_id', minePostIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (!verified) return 0;
+    if (planRowsResult.error) throw planRowsResult.error;
+    const businessByPost = new Map((planRowsResult.data || []).map((p) => [String(p.post_id), p.business_user_id]));
     let taken = 0;
     for (const row of mine) {
-      if (await takeInvite(row, user.id)) taken += 1;
+      const businessUserId = businessByPost.get(String(row.post_id)) || null;
+      if (await takeInvite(row, user.id, { blocked, businessUserId })) taken += 1;
     }
-    if (answered.length > 0) taken += await require('./planGuests').adoptAnswers(answered, user.id);
+    if (answered.length > 0) taken += await require('./planGuests').adoptAnswers(answered, user.id, { blocked });
     return taken;
   } catch (err) {
     logger.warn('plans.invites.attach_failed', { userId: user?.id, error: err.message });
@@ -1076,7 +1089,13 @@ async function attachEmailInvites(user, { postId = null } = {}) {
  * The invited address's verified owner takes an email invitation: from nobody, or from an account that opened a
  * forwarded copy (which keeps only an ordinary ask the host answers). Their own answer starts fresh.
  */
-async function takeInvite(row, userId) {
+async function takeInvite(row, userId, { blocked = null, businessUserId = null } = {}) {
+  const blockService = require('../blockService');
+  const isHostBlocked = blocked
+    ? blocked.has(String(row.host_user_id)) || (businessUserId && blocked.has(String(businessUserId)))
+    : (await blockService.isBlocked(row.host_user_id, userId))
+      || (businessUserId ? await blockService.isBlocked(businessUserId, userId) : false);
+  if (isHostBlocked) return false;
   const patch = { invitee_user_id: userId, needs_host_ok: false, claimed_at: nowIso(), updated_at: nowIso() };
   let query = supabaseAdmin.from('PlanInvite');
   if (row.invitee_user_id) {
