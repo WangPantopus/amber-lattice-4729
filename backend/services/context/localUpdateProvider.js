@@ -138,7 +138,8 @@ async function summarizeUpdates(items, locationLabel, briefingKind = 'morning') 
     return { summary: deterministic, tokens_used: 0 };
   }
 
-  const cacheKey = `${briefingKind}:${items.map((item) => item.id).sort().join(',')}`;
+  // The area's name is part of the prompt, so it is part of the key: a sentence written for one town is never read out in another.
+  const cacheKey = `${briefingKind}:${String(locationLabel || 'nearby').trim().toLowerCase()}:${items.map((item) => item.id).sort().join(',')}`;
   const cached = summaryCache.get(cacheKey);
   if (cached !== undefined) {
     return { summary: cached, tokens_used: 0 };
