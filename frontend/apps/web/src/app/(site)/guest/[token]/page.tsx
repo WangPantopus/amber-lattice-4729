@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import * as api from '@pantopus/api';
 import type { GuestPassView } from '@pantopus/api';
 import { sharedDocumentLabel } from '@/components/home/share/sharedDocumentLabel';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 // ============================================================
 // Guest View Page — /guest/:token
@@ -382,26 +383,40 @@ export default function GuestViewPage() {
         {sections.docs && sections.docs.length > 0 && (
           <GuestCard icon="📄" title="Shared Documents">
             <div className="space-y-2">
-              {sections.docs.map((doc: { url?: string; mime_type?: string; doc_type?: string; title?: string; filename?: string; description?: string }, i: number) => (
-                <a
-                  key={i}
-                  href={doc.url || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-app-hover transition"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-app-surface-sunken flex items-center justify-center text-app-text-secondary text-xs font-bold shrink-0">
-                    {sharedDocumentLabel(doc)}
+              {sections.docs.map((doc: { url?: string; mime_type?: string; doc_type?: string; title?: string; filename?: string; description?: string }, i: number) => {
+                const safeDocUrl = safeHttpUrl(doc.url);
+                const content = (
+                  <>
+                    <div className="w-8 h-8 rounded-lg bg-app-surface-sunken flex items-center justify-center text-app-text-secondary text-xs font-bold shrink-0">
+                      {sharedDocumentLabel(doc)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-app-text truncate">{doc.title || doc.filename || 'Document'}</div>
+                      {doc.description && <div className="text-xs text-app-text-secondary truncate">{doc.description}</div>}
+                    </div>
+                    {safeDocUrl && (
+                      <svg className="w-4 h-4 text-app-text-muted shrink-0 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    )}
+                  </>
+                );
+                return safeDocUrl ? (
+                  <a
+                    key={i}
+                    href={safeDocUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-app-hover transition"
+                  >
+                    {content}
+                  </a>
+                ) : (
+                  <div key={i} className="flex items-center gap-3 p-2 rounded-lg opacity-70">
+                    {content}
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-app-text truncate">{doc.title || doc.filename || 'Document'}</div>
-                    {doc.description && <div className="text-xs text-app-text-secondary truncate">{doc.description}</div>}
-                  </div>
-                  <svg className="w-4 h-4 text-app-text-muted shrink-0 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </a>
-              ))}
+                );
+              })}
             </div>
           </GuestCard>
         )}

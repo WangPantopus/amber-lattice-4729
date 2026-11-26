@@ -8,13 +8,14 @@ import { headers } from 'next/headers';
 import type { ProfilePage } from '@pantopus/api';
 import { PROFILE_PARTS, PROFILE_PARTS_HEADER } from '@pantopus/api/endpoints/profileParts';
 import { normalizePublicProfileIdentifier, type PublicFetchResult } from '@/lib/publicShare';
+import { extractClientIpFromForwardedFor, extractTrustedClientIp } from './clientIp';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 /** The visitor's address and the edge secret, for a read made on the visitor's behalf. */
-export function visitorHeaders(forwardedFor: string | null | undefined): Record<string, string> {
+export function visitorHeaders(forwardedFor: string | null | undefined, trustedIp?: string | null): Record<string, string> {
   const edgeSecret = process.env.EDGE_PROXY_SECRET;
-  const address = forwardedFor?.split(',')[0]?.trim();
+  const address = trustedIp?.trim() || extractClientIpFromForwardedFor(forwardedFor);
   return edgeSecret ? { 'x-pantopus-edge': edgeSecret, ...(address ? { 'x-forwarded-for': address } : {}) } : {};
 }
 
@@ -38,15 +39,19 @@ export const fetchLinkPage = cache(async (username: string, key: string): Promis
 
 async function readSignedOut(path: string): Promise<PublicFetchResult<ProfilePage>> {
   let forwardedFor: string | null = null;
+  let trustedIp: string | null = null;
   try {
-    forwardedFor = (await headers()).get('x-forwarded-for');
+    const requestHeaders = await headers();
+    forwardedFor = requestHeaders.get('x-forwarded-for');
+    trustedIp = extractTrustedClientIp(requestHeaders);
   } catch {
     forwardedFor = null; // outside a request (a build): no visitor to speak for
+    trustedIp = null;
   }
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       cache: 'no-store',
-      headers: { accept: 'application/json', [PROFILE_PARTS_HEADER]: PROFILE_PARTS, ...visitorHeaders(forwardedFor) },
+      headers: { accept: 'application/json', [PROFILE_PARTS_HEADER]: PROFILE_PARTS, ...visitorHeaders(forwardedFor, trustedIp) },
     });
     if (!response.ok) return { data: null, status: response.status };
     return { data: (await response.json()) as ProfilePage, status: response.status };

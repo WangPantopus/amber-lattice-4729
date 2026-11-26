@@ -75,6 +75,10 @@ export async function GET(req: NextRequest) {
   const aha = preview?.aha ?? null;
   const tone = TONE[aha?.tone ?? 'info'] ?? TONE.info;
 
+  const cacheControl = !address || preview
+    ? 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
+    : 'public, max-age=60, s-maxage=300';
+
   return new ImageResponse(
     (
       <div
@@ -129,6 +133,6 @@ export async function GET(req: NextRequest) {
         </div>
       </div>
     ),
-    { width: 1200, height: 630 },
+    { width: 1200, height: 630, headers: { 'Cache-Control': cacheControl } },
   );
 }

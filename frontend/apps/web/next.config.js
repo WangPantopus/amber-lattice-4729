@@ -111,18 +111,111 @@ const createNextConfig = (phase) => ({
   // Deploy this app on BOTH https://www.pantopus.com and https://pantopus.com (or ensure
   // apex serves these URLs with 200 + same JSON — redirects on /.well-known can break verification).
   async headers() {
+    const isDev = phase === PHASE_DEVELOPMENT_SERVER;
+    const mediaSources = mediaCspSources();
+    const devHttp = isDev ? ['http://localhost:*', 'http://127.0.0.1:*'] : [];
+    const devWs = isDev ? ['ws://localhost:*', 'ws://127.0.0.1:*'] : [];
+
+    // Include configured API origin (and its WebSocket counterpart) when external.
+    const apiConnectSources = [];
+    try {
+      const parsedApi = new URL(defaultApiUrl);
+      const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsedApi.hostname);
+      if (!isLoopback || isDev) {
+        apiConnectSources.push(parsedApi.origin);
+        apiConnectSources.push(`${parsedApi.protocol === 'https:' ? 'wss:' : 'ws:'}//${parsedApi.host}`);
+      }
+    } catch { /* fallback to 'self' */ }
+
     // Every page: no plugin content and no <base> pointing elsewhere. The only
     // <object>s are PDF viewers (a post's attachment in the lightbox, private
     // claim evidence as checked in-memory bytes), so object-src admits this
     // site, blob: and Pantopus's own storage rather than 'none', which would
     // blank them; the fallback link inside <object> is what Android Chrome shows.
-    const objectSources = [
+    const objectSources = ["'self'", 'blob:', ...mediaSources, ...devHttp];
+    const scriptSources = [
+      "'self'",
+      "'unsafe-inline'",
+      "'wasm-unsafe-eval'",
+      'https://js.stripe.com',
+      ...(isDev ? ["'unsafe-eval'"] : []),
+    ];
+    const styleSources = [
+      "'self'",
+      "'unsafe-inline'",
+      'https://api.mapbox.com',
+      'https://fonts.googleapis.com',
+    ];
+    const imgSources = [
+      "'self'",
+      'data:',
+      'blob:',
+      'https://pantopus.com',
+      'https://www.pantopus.com',
+      'https://api.mapbox.com',
+      'https://*.tiles.mapbox.com',
+      'https://*.tile.openstreetmap.org',
+      'https://*.stripe.com',
+      ...mediaSources,
+      ...devHttp,
+    ];
+    const fontSources = ["'self'", 'data:', 'https://fonts.gstatic.com'];
+    const connectSources = [
       "'self'",
       'blob:',
-      ...mediaCspSources(),
-      ...(phase === PHASE_DEVELOPMENT_SERVER ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
+      'wss:',
+      ...apiConnectSources,
+      'https://api.mapbox.com',
+      'https://*.tiles.mapbox.com',
+      'https://events.mapbox.com',
+      'https://api.stripe.com',
+      'https://r.stripe.com',
+      'https://m.stripe.network',
+      'https://q.stripe.com',
+      'https://checkout.stripe.com',
+      ...mediaSources,
+      ...devHttp,
+      ...devWs,
     ];
-    const pageCsp = `object-src ${objectSources.join(' ')}; base-uri 'self'`;
+    const mediaDirectiveSources = ["'self'", 'blob:', 'data:', ...mediaSources, ...devHttp];
+    const frameSources = [
+      "'self'",
+      'blob:',
+      'https://js.stripe.com',
+      'https://hooks.stripe.com',
+      'https://checkout.stripe.com',
+      'https://www.youtube-nocookie.com',
+      'https://player.vimeo.com',
+      ...mediaSources,
+      ...devHttp,
+    ];
+
+    const pageCsp = [
+      "default-src 'self'",
+      `script-src ${scriptSources.join(' ')}`,
+      `style-src ${styleSources.join(' ')}`,
+      `img-src ${imgSources.join(' ')}`,
+      `font-src ${fontSources.join(' ')}`,
+      `connect-src ${connectSources.join(' ')}`,
+      `media-src ${mediaDirectiveSources.join(' ')}`,
+      "worker-src 'self' blob:",
+      "child-src 'self' blob:",
+      `frame-src ${frameSources.join(' ')}`,
+      `object-src ${objectSources.join(' ')}`,
+      "base-uri 'self'",
+      "form-action 'self' https://checkout.stripe.com",
+    ].join('; ');
+
+    const permissionsPolicy = [
+      'camera=(self)',
+      'microphone=(self)',
+      'geolocation=(self)',
+      'payment=(self "https://js.stripe.com")',
+      'usb=()',
+      'bluetooth=()',
+      'interest-cohort=()',
+    ].join(', ');
+
     return [
       {
         source: '/chat-offline',
@@ -154,6 +247,10 @@ const createNextConfig = (phase) => ({
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: permissionsPolicy },
+          ...(!isDev
+            ? [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]
+            : []),
         ],
       },
       {

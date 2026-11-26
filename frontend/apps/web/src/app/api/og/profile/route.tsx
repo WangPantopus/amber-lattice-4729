@@ -15,6 +15,7 @@ import { isPantopusMediaUrl } from '@/lib/media-hosts';
 import { personColor, personInitials } from '@/lib/personColor';
 import { howText } from '@/components/profile/sources/inks';
 import { markDataUri } from '../_mark';
+import { extractTrustedClientIp } from '@/lib/server/clientIp';
 
 export const runtime = 'edge';
 
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
       // For whoever fetched the picture (a link-preview crawler): their address with the edge secret, so signed-out
       // reads keep each visitor's own limit (as the page's read does).
       const edgeSecret = process.env.EDGE_PROXY_SECRET;
-      const address = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+      const address = extractTrustedClientIp(req.headers);
       const path = `/api/profile-page/${encodeURIComponent(username)}${key ? `/v/${encodeURIComponent(key)}` : ''}`;
       const res = await fetch(`${API_BASE}${path}`, {
         // `x-pantopus-share-card`: a picture for a link preview, not someone opening the page (a link for one purpose

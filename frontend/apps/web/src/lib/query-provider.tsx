@@ -36,22 +36,61 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// What this browser keeps for the signed-in account: the private Place inputs
-// (your rent, mortgage balance and rate), refund recovery and the map tiles
-// around where you live. None of it may outlive the account's session.
-const ACCOUNT_STORAGE_PREFIXES = ['place:rent:', 'place:equity:', 'pantopus:refund:v1:'];
+// What this browser keeps for the signed-in account: private Place inputs
+// (rent, mortgage balance and rate), refund/stop recovery, AI action cards,
+// listing drafts, Today area, JustMoved ticks/dismissals and map tiles around
+// where you live. None of it may outlive the account's session or leak across
+// accounts on a shared browser.
+const ACCOUNT_STORAGE_MARKER = 'pantopus:has_account_device_data';
+const ACCOUNT_STORAGE_PREFIXES = [
+  'place:rent:',
+  'place:equity:',
+  'pantopus:refund:v1:',
+  'pantopus_today_area:',
+  'pantopus_just_moved_dismissed:',
+  'pantopus_just_moved_done:',
+  'pantopus:gig-stop:v1:',
+];
+const ACCOUNT_STORAGE_KEYS = [
+  'pantopus.ai.actionCards.v1',
+  'pantopus_listing_draft',
+];
 // A booking's manage token can belong to a signed-out invitee too, so only an
 // ending session clears it.
 const BOOKING_TOKEN_PREFIX = 'pantopus.calendarly.manageToken.';
 
-function clearAccountDeviceData(sessionEnded: boolean) {
-  clearMomentUploads();
+function markAccountDeviceData() {
+  try {
+    window.localStorage.setItem(ACCOUNT_STORAGE_MARKER, '1');
+  } catch { /* storage disabled */ }
+}
+
+function hasAccountDeviceData(): boolean {
+  try {
+    if (window.localStorage.getItem(ACCOUNT_STORAGE_MARKER) === '1') return true;
+    return Object.keys(window.localStorage).some(
+      (key) =>
+        ACCOUNT_STORAGE_KEYS.includes(key) ||
+        ACCOUNT_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function clearAccountLocalStorage(sessionEnded: boolean) {
   const prefixes = sessionEnded ? [...ACCOUNT_STORAGE_PREFIXES, BOOKING_TOKEN_PREFIX] : ACCOUNT_STORAGE_PREFIXES;
   try {
     Object.keys(window.localStorage)
-      .filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))
+      .filter((key) => ACCOUNT_STORAGE_KEYS.includes(key) || prefixes.some((prefix) => key.startsWith(prefix)))
       .forEach((key) => window.localStorage.removeItem(key));
+    window.localStorage.removeItem(ACCOUNT_STORAGE_MARKER);
   } catch { /* storage disabled: nothing was kept */ }
+}
+
+function clearAccountDeviceData(sessionEnded: boolean) {
+  clearMomentUploads();
+  clearAccountLocalStorage(sessionEnded);
   clearCachedMapTiles();
   // Ends the chat session at once, then clears the store.
   void clearChatDevice().catch(() => {});
@@ -125,8 +164,17 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     // A visit without a session keeps nothing from an account whose session
     // lapsed while the browser was closed; every sign-out clears the rest.
-    if (getAuthToken() === null) clearAccountDeviceData(false);
-    return onTokenChange((token) => { if (token === null) clearAccountDeviceData(true); });
+    // Anonymous visitors on public/SEO pages who have no prior account data on
+    // this device skip IndexedDB and Cache Storage wipes.
+    if (getAuthToken() === null) {
+      if (hasAccountDeviceData()) clearAccountDeviceData(false);
+    } else {
+      markAccountDeviceData();
+    }
+    return onTokenChange((token) => {
+      if (token === null) clearAccountDeviceData(true);
+      else markAccountDeviceData();
+    });
   }, []);
   const [queryClient, setQueryClient] = useState(createQueryClient);
   const [sessionGeneration, setSessionGeneration] = useState(0);
@@ -182,7 +230,14 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const retire = () => {
       suspendChatSession();
-      if (getAuthToken() === null) void clearChatDevice().catch(() => {});
+      const signedOut = getAuthToken() === null;
+      if (signedOut) clearAccountDeviceData(true);
+      else {
+        // Switching directly between accounts: purge previous user's local keys
+        // while marking the device for the newly active session.
+        clearAccountLocalStorage(false);
+        markAccountDeviceData();
+      }
       try { window.sessionStorage.removeItem('pantopus_pending_withdrawal'); } catch {}
       // Retire both cached queries and component-local state belonging to the
       // previous account. A fresh client cannot accept an old pending result.

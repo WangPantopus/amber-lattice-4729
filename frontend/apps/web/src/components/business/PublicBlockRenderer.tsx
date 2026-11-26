@@ -82,16 +82,8 @@ export function PublicBlock({ block, ctx }: { block: BlockData; ctx: BusinessCon
 
 // ─── Button actions ───────────────────────────
 
-/** An owner-entered link, only if it is a plain http(s) web address. */
-export function safeHttpUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
-  } catch {
-    return null;
-  }
-}
+import { safeHttpUrl } from '@/utils/safeUrl';
+export { safeHttpUrl };
 
 /**
  * A YouTube or Vimeo video's player address (their privacy-enhanced players), from an owner-entered link.

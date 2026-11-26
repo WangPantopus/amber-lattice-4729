@@ -16,6 +16,7 @@ import { trackIdentityEvent } from '@/lib/identityAnalytics';
 import { identityCopy } from '@/lib/identityLabels';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { webFeatureFlags } from '@/lib/featureFlags';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 type StoreCta = {
   href: string;
@@ -352,20 +353,24 @@ export default function AudienceProfileClient({
                       Profile: {persona.bridges.localProfile.displayName}
                     </Link>
                   )}
-                  {persona.publicLinks.map((link) => (
-                    <a
-                      key={link.url}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
-                      aria-label={`Open ${link.label} ${displayUrl(link.url)}`}
-                      className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-app bg-surface px-3 py-1.5 text-xs font-semibold text-app transition hover:bg-surface-muted"
-                    >
-                      <LinkIcon className="h-3.5 w-3.5 text-app-secondary" />
-                      <span>{link.label}</span>
-                      <span className="max-w-32 truncate text-app-secondary">{displayUrl(link.url)}</span>
-                    </a>
-                  ))}
+                  {persona.publicLinks.map((link) => {
+                    const safeLinkUrl = safeHttpUrl(link.url);
+                    if (!safeLinkUrl) return null;
+                    return (
+                      <a
+                        key={link.url}
+                        href={safeLinkUrl}
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        aria-label={`Open ${link.label} ${displayUrl(safeLinkUrl)}`}
+                        className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-app bg-surface px-3 py-1.5 text-xs font-semibold text-app transition hover:bg-surface-muted"
+                      >
+                        <LinkIcon className="h-3.5 w-3.5 text-app-secondary" />
+                        <span>{link.label}</span>
+                        <span className="max-w-32 truncate text-app-secondary">{displayUrl(safeLinkUrl)}</span>
+                      </a>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -652,7 +657,7 @@ function PublicProfileNav({
           )}
         </div>
       </nav>
-      {storeCta ? (
+      {storeCta && safeHttpUrl(storeCta.href) ? (
         <div className="border-t border-app bg-primary-50 px-4 py-2 sm:hidden">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="min-w-0">
@@ -660,7 +665,9 @@ function PublicProfileNav({
               <p className="truncate text-[11px] text-primary-700">Follow updates and open links faster in the app.</p>
             </div>
             <a
-              href={storeCta.href}
+              href={safeHttpUrl(storeCta.href)!}
+              target="_blank"
+              rel="noopener noreferrer"
               className="shrink-0 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white"
             >
               {storeCta.label.replace(/^Download on |^Get it on /, '')}

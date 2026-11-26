@@ -17,6 +17,8 @@ import UrgencyIndicator from './UrgencyIndicator';
 import DrawerBadge from './DrawerBadge';
 import AIElfStrip from './AIElfStrip';
 import { launchFeatures } from '@/lib/featureFlags';
+import { isPantopusMediaUrl } from '@/lib/media-hosts';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 // Launch cuts: mail actions of hidden features are not offered — a package's
 // task post (#4 + #7), bill payment (#7), certified signing, translation, RSVP
@@ -75,30 +77,74 @@ const SANITIZE_CONFIG: DOMPurifyConfig = {
   ALLOW_DATA_ATTR: false,
 };
 
+function isTrustedMailImageUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  // Allow same-origin relative media paths (e.g. /api/...), never protocol-relative //host
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return true;
+  if (isPantopusMediaUrl(trimmed)) return true;
+  try {
+    const url = new URL(trimmed);
+    if (typeof window !== 'undefined' && url.origin === window.location.origin) return true;
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function safeMailHref(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  const http = safeHttpUrl(trimmed);
+  if (http) return http;
+  if (/^(mailto|tel):/i.test(trimmed)) return trimmed;
+  return null;
+}
+
 // DOMPurify needs a DOM. On the server it is an instance without methods (isSupported is false), so
 // registering the hook at module load threw on every Mail page the server rendered. The hook is added on
 // first use in the browser, nothing is sanitized without a DOM, and SanitizedHtml fills its block only
 // after mounting, so the server and the first client render agree (an empty block).
-let javascriptUriHookAdded = false;
+let mailSanitizeHookAdded = false;
 function sanitizeHtml(dirty: string): string {
   if (typeof window === 'undefined' || !DOMPurify.isSupported) return '';
-  if (!javascriptUriHookAdded) {
-    // Strip javascript: URIs from href/src after sanitization
+  if (!mailSanitizeHookAdded) {
+    // Enforce http(s)/mailto/tel links with noopener noreferrer, and block untrusted remote image URLs (tracking pixels).
     DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       if (node.hasAttribute('href')) {
         const val = node.getAttribute('href') || '';
-        if (/^\s*javascript\s*:/i.test(val)) {
+        const safe = safeMailHref(val);
+        if (!safe) {
           node.removeAttribute('href');
+        } else {
+          node.setAttribute('href', safe);
+          if (node.tagName === 'A' && safeHttpUrl(safe)) {
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+          }
         }
       }
       if (node.hasAttribute('src')) {
         const val = node.getAttribute('src') || '';
-        if (/^\s*javascript\s*:/i.test(val)) {
+        if (!isTrustedMailImageUrl(val)) {
           node.removeAttribute('src');
+          if (node.tagName === 'IMG') {
+            node.parentNode?.removeChild(node);
+          }
         }
       }
     });
-    javascriptUriHookAdded = true;
+    mailSanitizeHookAdded = true;
   }
   return DOMPurify.sanitize(dirty, SANITIZE_CONFIG) as unknown as string;
 }
@@ -119,6 +165,7 @@ function TextBlockView({ block }: { block: InsideBlock & { type: 'text' } }) {
 }
 
 function ImageBlockView({ block }: { block: InsideBlock & { type: 'image' } }) {
+  if (!isTrustedMailImageUrl(block.url)) return null;
   return (
     <figure className="my-3">
       <img
@@ -215,9 +262,11 @@ function TrackingBlockView({ block }: { block: InsideBlock & { type: 'tracking' 
 }
 
 function DocumentBlockView({ block }: { block: InsideBlock & { type: 'document' } }) {
+  const safeUrl = safeMailHref(block.document_url);
+  if (!safeUrl) return null;
   return (
     <a
-      href={block.document_url}
+      href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="my-3 flex items-center gap-3 p-3 rounded-lg border border-app-border hover:bg-app-hover dark:hover:bg-gray-800 transition-colors"
@@ -284,21 +333,25 @@ function AttachmentList({ attachments }: { attachments: MailAttachment[] }) {
         Attachments ({attachments.length})
       </p>
       <div className="space-y-1.5">
-        {attachments.map((a) => (
-          <a
-            key={a.id}
-            href={a.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded border border-app-border hover:bg-app-hover dark:hover:bg-gray-800 transition-colors text-sm"
-          >
-            <svg className="w-4 h-4 text-app-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-            <span className="truncate flex-1 text-app-text-strong">{a.filename}</span>
-            <span className="flex-shrink-0 text-xs text-app-text-muted">{formatBytes(a.size_bytes)}</span>
-          </a>
-        ))}
+        {attachments.map((a) => {
+          const safeUrl = safeMailHref(a.url);
+          if (!safeUrl) return null;
+          return (
+            <a
+              key={a.id}
+              href={safeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded border border-app-border hover:bg-app-hover dark:hover:bg-gray-800 transition-colors text-sm"
+            >
+              <svg className="w-4 h-4 text-app-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span className="truncate flex-1 text-app-text-strong">{a.filename}</span>
+              <span className="flex-shrink-0 text-xs text-app-text-muted">{formatBytes(a.size_bytes)}</span>
+            </a>
+          );
+        })}
       </div>
     </div>
   );

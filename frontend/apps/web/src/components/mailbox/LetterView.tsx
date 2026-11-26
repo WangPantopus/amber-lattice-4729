@@ -16,6 +16,7 @@ import MailPiece, { pieceKind, pieceOutside, pieceTrust } from './MailPiece';
 import { mailLoadMessage } from './mailLoadMessage';
 import MailContentRenderer from '@/app/(site)/(app)/app/mailbox/_components/MailContentRenderer';
 import BookletViewer from './BookletViewer';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 const SERIF = "'Iowan Old Style', 'Hoefler Text', Charter, Georgia, serif";
 
@@ -56,8 +57,14 @@ function EnclosureRow({ itemId, enclosure }: { itemId: string; enclosure: Enclos
     if (tab) tab.opener = null;
     try {
       const { url } = await getEnclosureLink(itemId, enclosure.id);
-      if (tab) tab.location.href = url;
-      else window.location.assign(url);
+      const safeUrl = safeHttpUrl(url);
+      if (!safeUrl) {
+        tab?.close();
+        setError(`Couldn't open ${enclosure.name}.`);
+        return;
+      }
+      if (tab) tab.location.href = safeUrl;
+      else window.location.assign(safeUrl);
     } catch (err) {
       tab?.close();
       setError(`Couldn't open ${enclosure.name}. ${mailLoadMessage(err as MailboxApiError)}`);
@@ -230,16 +237,21 @@ export default function LetterView({
                 Enclosed
               </p>
               <ul>
-                {enclosures.map((enclosure) => ('url' in enclosure
-                  ? (
-                    <li key={enclosure.id} className="py-1">
-                      <a href={(enclosure as Enclosure & { url: string }).url} target="_blank" rel="noopener noreferrer" className="flex min-h-[44px] items-center gap-3 rounded-lg border border-[#e2dccd] bg-white/70 px-3 py-2 text-sm font-semibold text-[#0369a1] hover:underline">
-                        <FileText className="h-5 w-5 flex-shrink-0 text-[#475569]" aria-hidden />
-                        <span className="truncate">Open {enclosure.name}</span>
-                      </a>
-                    </li>
-                  )
-                  : <EnclosureRow key={enclosure.id} itemId={piece.id} enclosure={enclosure} />))}
+                {enclosures.map((enclosure) => {
+                  if ('url' in enclosure) {
+                    const safeUrl = safeHttpUrl((enclosure as Enclosure & { url: string }).url);
+                    if (!safeUrl) return null;
+                    return (
+                      <li key={enclosure.id} className="py-1">
+                        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-[44px] items-center gap-3 rounded-lg border border-[#e2dccd] bg-white/70 px-3 py-2 text-sm font-semibold text-[#0369a1] hover:underline">
+                          <FileText className="h-5 w-5 flex-shrink-0 text-[#475569]" aria-hidden />
+                          <span className="truncate">Open {enclosure.name}</span>
+                        </a>
+                      </li>
+                    );
+                  }
+                  return <EnclosureRow key={enclosure.id} itemId={piece.id} enclosure={enclosure} />;
+                })}
               </ul>
             </section>
           ) : null}

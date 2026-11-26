@@ -10,6 +10,7 @@ import { cookies, headers } from 'next/headers';
 // out to the browser with the page (importing it here added up to 5 KB gz to each tab).
 import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from '@tanstack/query-core';
 import { FIRST_CONTENT_ENABLED, FIRST_CONTENT_HEADER, firstContentTag } from '@/lib/firstContent';
+import { extractTrustedClientIp } from './clientIp';
 
 // The API the web's rewrites forward to (next.config.js), read directly from here.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -40,7 +41,7 @@ export async function firstContentSession(): Promise<FirstContentSession | null>
   if (requestHeaders.get(FIRST_CONTENT_HEADER) !== '1') return null;
   const access = requestCookies.get('pantopus_access')?.value;
   if (!access || requestCookies.get('pantopus_session')?.value !== '1') return null;
-  const forwarded = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() || null;
+  const forwarded = extractTrustedClientIp(requestHeaders);
   return {
     access,
     tag: firstContentTag(requestCookies.get('pantopus_csrf')?.value),

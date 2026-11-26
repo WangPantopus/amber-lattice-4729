@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { detailPath, planTime } from '@/components/plans/PlansWorkspace';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 /**
  * BusinessPublicProfile — full public-facing business profile page.
@@ -456,13 +457,16 @@ export default function BusinessPublicProfile({ username, currentUser, initialSl
                   businessOwnerId={String(business.id)}
                 />
               </div>
-              {profile.website && (
-                <InfoCard icon="🌐" label="Website">
-                  <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline text-sm truncate">
-                    {profile.website.replace(/^https?:\/\//, '')}
-                  </a>
-                </InfoCard>
-              )}
+              {(() => {
+                const safeWebsite = safeHttpUrl(profile.website);
+                return safeWebsite ? (
+                  <InfoCard icon="🌐" label="Website">
+                    <a href={safeWebsite} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline text-sm truncate">
+                      {safeWebsite.replace(/^https?:\/\//, '')}
+                    </a>
+                  </InfoCard>
+                ) : null;
+              })()}
               {profile.public_email && (
                 <InfoCard icon="✉️" label="Email">
                   <a href={`mailto:${profile.public_email}`} className="text-violet-600 hover:underline text-sm">

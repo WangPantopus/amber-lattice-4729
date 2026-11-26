@@ -6,6 +6,7 @@ import { plans } from '@pantopus/api';
 import { useRouter } from 'next/navigation';
 import type { PublicPlan, PublicPlanBring, PublicPlanChipIn, PublicPlanDates, PublicPlanGift, PublicPlanGuestState } from '@/lib/publicShare';
 import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 // Plans for the holidays, H1: the plan's page for a guest without an account (docs/product/plans-holidays/
 // 06-screens.md, W1 to W3). W1 is the invitation and its form; W2 the wait after "I'm in" (for the host's yes, or for
@@ -484,14 +485,19 @@ export function ChipInCard({ planId, initial, onChanged }: { planId: string; ini
           >
             {busy ? <Spinner /> : null}I’ve paid
           </button>
-          <a
-            href={chip.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex min-h-[44px] items-center justify-center rounded-xl bg-primary-600 px-2 text-center text-[15px] font-semibold text-white"
-          >
-            {chip.pay_text}
-          </a>
+          {(() => {
+            const safeChipLink = safeHttpUrl(chip.link);
+            return safeChipLink ? (
+              <a
+                href={safeChipLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[44px] items-center justify-center rounded-xl bg-primary-600 px-2 text-center text-[15px] font-semibold text-white"
+              >
+                {chip.pay_text}
+              </a>
+            ) : null;
+          })()}
         </div>
       ))}
       <p className="text-[13px] leading-[18px] text-app-text-secondary">{chip.straight_text}</p>
@@ -1077,9 +1083,12 @@ function GuestAnswerPage(props: GuestAnswerProps) {
               {place.address ? ` · ${place.address}` : null}
             </span>
           </p>
-          {place.link ? (
-            <a href={place.link} target="_blank" rel="noopener noreferrer" className="break-all text-sm font-semibold text-app-link">{place.link}</a>
-          ) : null}
+          {(() => {
+            const safePlaceLink = safeHttpUrl(place.link);
+            return safePlaceLink ? (
+              <a href={safePlaceLink} target="_blank" rel="noopener noreferrer" className="break-all text-sm font-semibold text-app-link">{safePlaceLink}</a>
+            ) : null;
+          })()}
           <div className="grid grid-cols-2 gap-[10px] pt-1">
             {directions ? (
               <a href={directions} target="_blank" rel="noopener noreferrer" className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-app-surface-sunken text-[15px] font-semibold text-app-text">

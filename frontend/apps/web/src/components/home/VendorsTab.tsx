@@ -11,6 +11,7 @@ import { confirmStore } from '@/components/ui/confirm-store';
 import ErrorState from '@/components/ui/ErrorState';
 import { failureMessage } from './share/shareFailure';
 import { useHomePermissions } from './useHomePermissions';
+import { safeHttpUrl } from '@/utils/safeUrl';
 
 export default function VendorsTab({ homeId }: { homeId: string }) {
   type BusinessLinkKind = HomeBusinessLink['kind'];
@@ -333,9 +334,12 @@ export default function VendorsTab({ homeId }: { homeId: string }) {
                       {v.email && (
                         <a href={`mailto:${v.email}`} className="text-violet-600 hover:underline">{v.email}</a>
                       )}
-                      {v.website && (
-                        <a href={v.website} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Website</a>
-                      )}
+                      {(() => {
+                        const safeWebsite = safeHttpUrl(v.website);
+                        return safeWebsite ? (
+                          <a href={safeWebsite} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Website</a>
+                        ) : null;
+                      })()}
                     </div>
                     {v.notes && (
                       <div className="text-xs text-app-muted mt-1">{v.notes}</div>
