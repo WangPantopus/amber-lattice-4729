@@ -30,7 +30,12 @@ async function locate() {
   if (!rolls.length) throw new Error('The Data Downloads tab no longer lists a certified roll');
   const newest = rolls.sort((a, b) => Number(b.reportYear) - Number(a.reportYear) || String(b.createDt).localeCompare(String(a.createDt)))[0];
   const s3 = newest.reportS3ID;
-  return { url: `${API}/public/filedownload/${s3.split('/').map(encodeURIComponent).join('/')}`, name: `${newest.reportYear}-${s3.split('/').pop()}`, headers };
+  const name = `${newest.reportYear}-${s3.split('/').pop()}`;
+  // Since November 2026 the file service answers with a short-lived signed link to the file, which the page then opens; the link
+  // carries its own signature, so it's fetched without the visitor token.
+  const file = await call(`${API}/public/filedownload/${s3.split('/').map(encodeURIComponent).join('/')}`, { headers });
+  if (!/^https:\/\/[^/]+\.amazonaws\.com\//.test(file?.url || '')) throw new Error('The portal\'s file service no longer answers with a link to the roll');
+  return { url: file.url, name, headers: {} };
 }
 
 module.exports = pacsCounty({
