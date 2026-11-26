@@ -386,10 +386,14 @@ function floodInSfha(zone) {
   const z = String(zone || '').toUpperCase();
   return z.startsWith('A') || z.startsWith('V');
 }
-function floodRiskLevel(zone) {
-  const z = String(zone || '').toUpperCase();
+// `subtype`: FEMA's ZONE_SUBTY. Zone X is shaded (moderate) or not (minimal) only by its subtype; Zone D is a place FEMA
+// hasn't studied, and open water is neither, so both are 'undetermined' (the apps draw an unknown level as the zone).
+function floodRiskLevel(zone, subtype = null) {
+  const z = String(zone || '').trim().toUpperCase();
   if (floodInSfha(z)) return 'high';
-  if (z.includes('0.2') || z.includes('X500') || z.includes('SHADED')) return 'moderate';
+  if (z === 'D' || z === 'OPEN WATER') return 'undetermined';
+  if (z.includes('0.2') || z.includes('X500') || z.includes('SHADED') || z === 'B') return 'moderate';
+  if (z === 'X' && /0\.2\s*PCT|1 PCT|LEVEE/i.test(String(subtype || ''))) return 'moderate';
   return 'minimal';
 }
 
@@ -971,7 +975,7 @@ async function composeFlood(home, budgetMs = null) {
     data: {
       zone: zone.flood_zone,
       zone_label: `Zone ${zone.flood_zone}`,
-      risk_level: floodRiskLevel(zone.flood_zone),
+      risk_level: floodRiskLevel(zone.flood_zone, zone.flood_zone_subtype),
       in_sfha: floodInSfha(zone.flood_zone),
       insurance_required: floodInSfha(zone.flood_zone),
       plain_meaning: zone.flood_zone_description || '',

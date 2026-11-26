@@ -24,6 +24,7 @@ const riskIndex = require('./riskIndex');
 const pfas = require('./pfas');
 const noise = require('./noise');
 const recordingAlerts = require('./recordingAlerts');
+const serves = require('./serves');
 const { positive, grouped, countWord, dateLabel, plural, HOME_TYPES, AREA_NOTE, PRIVACY_NOTE, PROMISE, OWNER_PROMISE } = require('./words');
 
 // The open facts (rule 4). Anything else on the record stays on the server.
@@ -84,9 +85,13 @@ const NBSP = '\u00a0';
 function floodRow(flood) {
   if (!flood?.flood_zone) return null;
   const zone = String(flood.flood_zone);
-  const risk = placeIntelligenceService.floodRiskLevel(zone);
-  if (risk === 'high') return row('Flood', 5, `High · Zone${NBSP}${zone}`);
+  const subtype = flood.flood_zone_subtype || null;
+  const risk = placeIntelligenceService.floodRiskLevel(zone, subtype);
+  if (risk === 'high') return row('Flood', 5, `High · ${/FLOODWAY/i.test(subtype || '') ? 'Floodway · ' : ''}Zone${NBSP}${zone}`);
   if (risk === 'moderate') return row('Flood', 3, `Moderate · Zone${NBSP}${zone}`);
+  // Zone D: FEMA mapped the place but didn't study its flood risk; the word says so, drawn at the middle (a meter row
+  // needs a level). Open water has no home's row.
+  if (risk === 'undetermined') return zone.toUpperCase() === 'D' ? row('Flood', 3, `Not determined · Zone${NBSP}D`) : null;
   return row('Flood', 1, `Minimal · Zone${NBSP}${zone}`);
 }
 
@@ -164,7 +169,7 @@ async function readings(point, { flood }) {
   // The adapters take a "home": a point named by its ~1 km cell, never by an address.
   const home = { id: `record:${encodeGeohash(point.lat, point.lng, 6)}`, map_center_lat: point.lat, map_center_lng: point.lng };
   const { fetchAQI } = require('../context/aqiProvider');
-  const [floodReading, seismic, wildfire, air, nri, water, loud] = await Promise.all([
+  const [floodReading, seismic, wildfire, air, nri, water, loud, servers] = await Promise.all([
     within(Promise.resolve().then(() => flood(point.lat, point.lng))),
     within(adapters.composeSeismic(home)),
     within(adapters.composeWildfire(home)),
@@ -172,8 +177,9 @@ async function readings(point, { flood }) {
     within(geocodeToTractCached(point.lat, point.lng).then((tract) => (tract ? riskIndex.forTract(tract.tractId) : null))),
     within(waterAt(home)),
     within(noise.bandAt(point)),
+    serves.readingsAt(point, within),
   ]);
-  return { flood: floodReading, seismic, wildfire, air, nri, water, noise: loud };
+  return { flood: floodReading, seismic, wildfire, air, nri, water, noise: loud, school: servers.school, electric: servers.electric };
 }
 
 /** The `meters` block from the area's readings. Null when no source answered in time. */
@@ -445,4 +451,4 @@ function lotOutline(copy) {
   return { ring: copy.lot_ring, from: `${countyName(copy) || copy.publisher || 'the county'}'s parcel map` };
 }
 
-module.exports = { lotChip, lotOutline, permitLines, factsBlock, readings, metersBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };
+module.exports = { lotChip, lotOutline, permitLines, factsBlock, readings, metersBlock, servesBlock: serves.servesBlock, closedItems, memberClosed, lookupClosed, buyerClosed, extrasFor, foundChip, recordSource, OPEN_FACTS };
