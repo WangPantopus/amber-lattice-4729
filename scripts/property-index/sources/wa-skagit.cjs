@@ -16,12 +16,20 @@ const COUNTY = 'Skagit County';
 const LAYER = 'https://gis.skagitcountywa.gov/arcgis/rest/services/OpenData/AssessorDataParcels/MapServer/0';
 const COLUMNS = ['OBJECTID', 'PARCELID', 'SitusStNo', 'SitusStName', 'SitusCSZ', 'Unit', 'LandUse', 'BuildingStyle', 'YearBuilt', 'EffYearBuilt', 'LivingArea', 'NoOfBedrooms', 'Plumbing', 'Foundation', 'ExteriorWalls', 'RoofCovering', 'HeatAirCond', 'GarageSqFt', 'FinishedBasement', 'UnfinishedBasement', 'Acres', 'TotalMktValue', 'AssessedValue', 'BuildingValue', 'UnimprLandValue', 'ImprLandValue', 'SaleDate', 'SalePrice', 'TaxYear'];
 
-function useOf(landUse, style, unit) {
-  const code = Number(/^\((\d+)\)/.exec(landUse || '')?.[1]);
-  const words = String(style || '').toUpperCase();
+// A household or cabin use whose building style is a manufactured one ("DOUBLE WIDE", "PARK MODEL MOBILE") is a mobile home. A house whose
+// card records no dwelling (no living area, no bedrooms, no plumbing) isn't read as one: with no building value it is land, otherwise
+// what stands on it is an outbuilding or an unfinished building.
+function useOf(row, unit) {
+  const code = Number(/^\((\d+)\)/.exec(row.LandUse || '')?.[1]);
+  const words = String(row.BuildingStyle || '').toUpperCase();
   if (code === 140) return unit ? ['unit', 'condo'] : ['property', 'townhouse'];
   if (/TOWNHOUSE/.test(words)) return ['property', 'townhouse'];
-  if (code === 110 || code === 111 || code === 112 || code === 113 || code === 190 || code === 185) return unit ? ['unit', 'condo'] : ['property', 'house'];
+  if (code === 110 || code === 111 || code === 112 || code === 113 || code === 190 || code === 185) {
+    if (unit) return ['unit', 'condo'];
+    if (/\bWIDE$|^PARK MODEL/.test(words)) return ['property', 'mobile_home'];
+    if (!positive(row.LivingArea) && !positive(row.NoOfBedrooms) && !bathsIn(row.Plumbing)) return positive(row.BuildingValue) ? ['other', null] : ['parcel', null];
+    return ['property', 'house'];
+  }
   if (code === 180 || code === 181 || code === 182) return ['property', 'mobile_home'];
   if (code === 120) return ['building', 'multi_unit'];
   if (code === 130 || code === 150) return ['building', 'apartment'];
@@ -55,7 +63,7 @@ function fromRow(row) {
   const parcel = word(row.PARCELID);
   if (!address || !parcel) return null;
   const place = /^(.*?),\s*WA\s+(\d{5})/i.exec(row.SitusCSZ || '');
-  const [kind, homeType] = useOf(row.LandUse, row.BuildingStyle, address.unit);
+  const [kind, homeType] = useOf(row, address.unit);
   const facts = { parcel_number: parcel, county: COUNTY, fips: FIPS };
   const home = kind === 'property' || kind === 'unit';
   put(facts, 'address_on_record', onRecord([row.SitusStNo, row.SitusStName].map(word).filter(Boolean).join(' '), unit));
