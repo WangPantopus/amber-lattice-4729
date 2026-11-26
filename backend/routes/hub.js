@@ -1174,20 +1174,29 @@ router.get('/discovery', verifyToken, async (req, res) => {
         }
 
         // Chunk .in('id', ...) to <=100 UUIDs to stay safely under PostgREST URL length limits.
+        // Each chunk returns its own top `parsedLimit`; a few chunks are read at a time.
         const IN_CHUNK = 100;
-        const bizUsers = [];
+        const CHUNKS_AT_ONCE = 5;
+        const idChunks = [];
         for (let i = 0; i < publishedIds.length; i += IN_CHUNK) {
-          const idChunk = publishedIds.slice(i, i + IN_CHUNK);
-          let query = supabaseAdmin
-            .from('User')
-            .select('id, username, name, profile_picture_url, average_rating, city, state, bio, created_at')
-            .eq('account_type', 'business')
-            .in('id', idChunk)
-            .order('average_rating', { ascending: false, nullsFirst: false })
-            .limit(parsedLimit);
-          if (sinceToday) query = query.gte('created_at', todayCutoff);
-          const { data: chunkUsers } = await query;
-          if (chunkUsers?.length) bizUsers.push(...chunkUsers);
+          idChunks.push(publishedIds.slice(i, i + IN_CHUNK));
+        }
+        const bizUsers = [];
+        for (let i = 0; i < idChunks.length; i += CHUNKS_AT_ONCE) {
+          const results = await Promise.all(idChunks.slice(i, i + CHUNKS_AT_ONCE).map((idChunk) => {
+            let query = supabaseAdmin
+              .from('User')
+              .select('id, username, name, profile_picture_url, average_rating, city, state, bio, created_at')
+              .eq('account_type', 'business')
+              .in('id', idChunk)
+              .order('average_rating', { ascending: false, nullsFirst: false })
+              .limit(parsedLimit);
+            if (sinceToday) query = query.gte('created_at', todayCutoff);
+            return query;
+          }));
+          for (const { data: chunkUsers } of results) {
+            if (chunkUsers?.length) bizUsers.push(...chunkUsers);
+          }
         }
 
         bizUsers.sort((a, b) => {
