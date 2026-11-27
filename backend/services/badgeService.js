@@ -66,15 +66,15 @@ async function computeBadgeCounts(userId) {
       const { data: gigs, error } = await supabaseAdmin.from('Gig').select('id').eq('user_id', userId);
       if (error || !Array.isArray(gigs)) throw new Error('Offer badges unavailable');
       if (!gigs.length) return { count: 0 };
+      // 100 ids per count keep each read inside URL limits; the gig read returns at most 1,000, so at most ten counts,
+      // read together so a poster with many tasks waits for one of them, not all in turn.
       const gigIds = gigs.map((gig) => gig.id);
-      let totalCount = 0;
-      for (let i = 0; i < gigIds.length; i += 100) {
-        const result = await supabaseAdmin.from('GigBid').select('id', { count: 'exact', head: true })
-          .in('gig_id', gigIds.slice(i, i + 100)).eq('status', 'pending');
-        if (result.error || result.count == null) throw new Error('Offer badges unavailable');
-        totalCount += result.count;
-      }
-      return { count: totalCount };
+      const chunks = [];
+      for (let i = 0; i < gigIds.length; i += 100) chunks.push(gigIds.slice(i, i + 100));
+      const results = await Promise.all(chunks.map((chunk) => supabaseAdmin.from('GigBid')
+        .select('id', { count: 'exact', head: true }).in('gig_id', chunk).eq('status', 'pending')));
+      if (results.some((result) => result.error || result.count == null)) throw new Error('Offer badges unavailable');
+      return { count: results.reduce((total, result) => total + result.count, 0) };
     })(),
     readablePost(withoutBlocked(excludeHiddenLaunchNotifications(supabaseAdmin.from('Notification')
       .select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_read', false)))),
