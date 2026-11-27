@@ -118,7 +118,11 @@ export default function StudioPicture({
           onChange({ ...art, zoom: clamp(art.zoom * (e.deltaY < 0 ? 1.06 : 1 / 1.06), 0.5, 3) });
         }}
         onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            /* a pointer that is already gone: nothing to follow */
+          }
           fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if ((!tool || tool === 'resize') && fingers.current.size === 2) {
             drag.current = null;

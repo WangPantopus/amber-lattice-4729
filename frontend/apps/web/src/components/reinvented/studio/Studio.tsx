@@ -12,7 +12,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { geo, moments, penNames } from '@pantopus/api';
-import type { Audience, Background, Hours, Location, NewMoment } from '@pantopus/api/endpoints/moments';
+import { post } from '@pantopus/api/client';
+import type { Audience, Background, Hours, Location, NewMoment, Preview } from '@pantopus/api/endpoints/moments';
 import type { MomentChatDraft } from '@pantopus/types';
 import {
   ArrowRight,
@@ -46,6 +47,8 @@ import { prepareMedia } from '@/components/moments/momentMedia';
 import { discardJob, keepJob, pendingJobs, postJob, type Job } from '@/components/moments/momentOutbox';
 import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
+import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
+import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import StudioPicture, { type StudioTool } from './StudioPicture';
 import './studio.css';
 
@@ -53,6 +56,7 @@ const PlacePreview = dynamic(() => import('@/components/moments/MomentPlacePrevi
 const fallback = { max_seconds: 30, max_parts: 1, max_bytes: 50 * 1024 * 1024 };
 const inkNames = ['White', 'Black', 'Yellow', 'Red', 'Blue', 'Green'];
 const pens = [0.006, 0.012, 0.024];
+const STAMP_SAFE = safeBox();
 // At home the place line reads "Area · <town>"; the first time only, one line under it says why (design §4).
 const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
 type Placement = 'exact' | 'area' | 'place' | 'none';
@@ -130,6 +134,9 @@ export default function Studio({
     [discarding, setDiscarding] = useState(false),
     [askedPost, setAskedPost] = useState(false),
     [setupOpen, setSetupOpen] = useState(false),
+    [stamps, setStamps] = useState<PlacedStamp[]>([]),
+    [picked, setPicked] = useState<StampKind | null>(null),
+    [trayOpen, setTrayOpen] = useState(false),
     [homeNote, setHomeNote] = useState(false);
   const drawer = drawerOpen || wide;
   const handle = useRef<AbortController | null>(null),
@@ -236,8 +243,11 @@ export default function Studio({
     distance(point, capture.position.coords) <= 150
   );
   const preview = useQuery({
-    queryKey: ['moments', 'preview', account, point?.latitude, point?.longitude, marked],
-    queryFn: ({ signal }) => moments.preview(point, marked, signal),
+    // Today's place preview, asking also for the values the stamps would carry here (CONTRACT §2a). A server without
+    // stamps drops the field and answers as today.
+    queryKey: ['moments', 'preview', 'studio', account, point?.latitude, point?.longitude, marked],
+    queryFn: ({ signal }) =>
+      post<Preview & { stamps?: StampValues }>('/api/moments/place-preview', { ...point, weather: marked, stamps: true }, { signal }),
     retry: 1,
     staleTime: 60000,
   });
@@ -285,6 +295,73 @@ export default function Studio({
   const altitude = fromAlbum ? fromAlbum.altitude : fix?.coords.altitude;
   const canHeight = !underPenName && point && p?.can_show_height && altitude != null && (!area || p.sky);
   const homeWarning = !underPenName && point && p?.at_home && !p.sky && !area;
+  // Stamps (CONTRACT §2): the values the server would fill here, less what it keeps out on posting, so the tray and the
+  // picture never show a stamp that won't be on the Moment. An album item isn't "now"; a Moment shared later doesn't
+  // say when its author was there.
+  const sv = p?.stamps;
+  const albumItem = mode === 'media' && !!file && capture?.file !== file;
+  const notNow = !!p?.at_home || noPlace || albumItem || !!later;
+  const elevationFt =
+    altitude != null && !p?.at_home && !noPlace && !underPenName && !(area && !p?.sky)
+      ? Math.round((altitude * 3.28084) / (area ? 100 : 10)) * (area ? 100 : 10)
+      : null;
+  // A library photo that says when it was taken is stamped with that time, as the server does; otherwise now.
+  const takenAt = albumItem && meta?.capturedAt ? new Date(meta.capturedAt) : null;
+  const zone = sv?.time?.zone;
+  const when =
+    takenAt && !Number.isNaN(takenAt.getTime())
+      ? {
+          date_label: takenAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: zone }),
+          label: takenAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone }),
+        }
+      : null;
+  const stampValue = (kind: StampKind): unknown => {
+    if (!sv && kind !== 'elevation') return null;
+    switch (kind) {
+      case 'postmark':
+        return noPlace || !sv?.postmark
+          ? null
+          : {
+              ...sv.postmark,
+              ...(when ? { date_label: when.date_label, time_label: when.label } : {}),
+              weather: notNow ? null : sv.postmark.weather,
+              ...(later ? { time_label: '' } : {}),
+            };
+      case 'weather':
+      case 'sunset':
+        return notNow ? null : sv?.[kind] || null;
+      case 'time':
+        return later || !sv?.time ? null : when ? { ...sv.time, ...when } : sv.time;
+      case 'place':
+        return noPlace ? null : sv?.place || null;
+      case 'home_distance':
+        return noPlace || underPenName ? null : sv?.home_distance || null;
+      case 'elevation':
+        return elevationFt == null ? null : { altitude_ft: elevationFt, label: `${elevationFt.toLocaleString()} ft` };
+    }
+  };
+  const kept = stamps.filter((st) => stampValue(st.kind) != null);
+  // Wet red ink while the Moment is live from here (the camera, just now, where it was taken); dried otherwise.
+  const stampInk: 'wet' | 'dry' = live && !later ? 'wet' : 'dry';
+  function placeStamp(kind: StampKind) {
+    setTrayOpen(false);
+    if (stamps.some((st) => st.kind === kind)) {
+      setStamps(stamps.filter((st) => st.kind !== kind));
+      setPicked(null);
+      return;
+    }
+    // A free spot inside the part every viewer shows (safeBox), clear of the tool rail (top right) and of the stamps
+    // already down; the postmark low on the left, as on board B2.
+    const slots =
+      kind === 'postmark'
+        ? [[0.27, 0.66], [0.27, 0.42], [0.72, 0.66]]
+        : [[0.38, 0.52], [0.38, 0.45], [0.38, 0.38], [0.38, 0.31], [0.64, 0.6], [0.64, 0.52], [0.38, 0.8]];
+    const near = (x: number, y: number) =>
+      kept.some((st) => Math.abs(st.x - x) < (st.kind === 'postmark' || kind === 'postmark' ? 0.25 : 0.2) && Math.abs(st.y - y) < (st.kind === 'postmark' || kind === 'postmark' ? 0.12 : 0.06));
+    const [x, y] = slots.find(([sx, sy]) => !near(sx, sy)) || slots[0];
+    setStamps([...stamps, { kind, x, y, scale: 1, rotation: kind === 'postmark' ? -9 : 0 }]);
+    setPicked(kind);
+  }
   useEffect(() => {
     const t = setTimeout(() => setSearch(venueTerm.trim()), 300);
     return () => clearTimeout(t);
@@ -438,7 +515,12 @@ export default function Studio({
         created: Date.now(),
         parts: Array.from({ length: count }, (_, i) => {
           // `post_as`: the server's field for the made-up name (routes/moments.js), sent only when it is picked.
-          const body: NewMoment & { post_as?: 'pen_name' } = {
+          // `stamps` and `elevation` (CONTRACT §2b): where each stamp sits; the server fills the values.
+          const body: NewMoment & {
+            post_as?: 'pen_name';
+            stamps?: PlacedStamp[];
+            elevation?: { meters: number; accuracy_m?: number | null; speed_mps?: number | null };
+          } = {
             client_request_id: crypto.randomUUID(),
             kind,
             hours,
@@ -477,6 +559,18 @@ export default function Studio({
               ? { taken_here: true, show_weather: weather }
               : {}),
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
+            ...(kept.length && i === 0
+              ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
+              : {}),
+            ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
+              ? {
+                  elevation: {
+                    meters: altitude,
+                    accuracy_m: fromAlbum ? null : gps?.coords.altitudeAccuracy,
+                    speed_mps: fromAlbum ? null : gps?.coords.speed,
+                  },
+                }
+              : {}),
           };
           return { body, media: prepared[i] };
         }),
@@ -520,11 +614,14 @@ export default function Studio({
     onClose();
   }
   // Something would be lost by going back: a picture, words on it or a drawing, a caption, the words of a card.
-  const unsaved = mode === 'media' ? !!file : mode === 'text' && !!text.trim();
+  const unsaved = mode === 'media' ? !!file : mode === 'text' && (!!text.trim() || stamps.length > 0);
   function backToStart() {
     setDiscarding(false);
     setAskedPost(false);
     setTool(null);
+    setTrayOpen(false);
+    setStamps([]);
+    setPicked(null);
     setDrawerOpen(false);
     setFiles([]);
     setIndex(0);
@@ -545,6 +642,8 @@ export default function Studio({
   const trap = useDialogFocusTrap<HTMLDivElement>(() => {
     if (setupOpen) return;
     if (discarding) setDiscarding(false);
+    else if (trayOpen) setTrayOpen(false);
+    else if (picked) setPicked(null);
     else if (tool) setTool(null);
     else if (drawerOpen && !wide) setDrawerOpen(false);
     else if (camera) setCamera(false);
@@ -797,7 +896,13 @@ export default function Studio({
             if (!busy && !gate) choose([...e.dataTransfer.files]);
           }}
         >
-          <div className="st-art" style={mode === 'text' && !camera && !gate ? { background: colors[bg] } : undefined}>
+          <div
+            className="st-art"
+            style={mode === 'text' && !camera && !gate ? { background: colors[bg] } : undefined}
+            onPointerDownCapture={(e) => {
+              if (picked && !(e.target as HTMLElement).closest('.sp-stamp')) setPicked(null);
+            }}
+          >
             {camera ? (
               <MomentCamera
                 maxSeconds={(limits.data?.video.max_seconds || 30) * (limits.data?.video.max_parts || 1)}
@@ -823,6 +928,17 @@ export default function Studio({
                 <small>{text.length}/200</small>
               </div>
             ) : null}
+            {composing && kept.length > 0 && (
+              <StampLayer
+                stamps={kept}
+                valueOf={stampValue}
+                ink={stampInk}
+                selected={picked}
+                onSelect={setPicked}
+                onChange={tool || busy ? undefined : setStamps}
+                safe={STAMP_SAFE}
+              />
+            )}
           </div>
           {!camera && <div className="st-shade-top" aria-hidden="true" />}
           {!camera && <div className="st-shade-bottom" aria-hidden="true" />}
@@ -845,20 +961,43 @@ export default function Studio({
             </div>
           )}
 
-          {composing && mode === 'media' && file && (
+          {composing && (mode === 'text' || !!file) && (
             <div className="st-rail" role="toolbar" aria-label="Tools" aria-orientation="vertical">
+              {mode === 'media' && (
+                <div className="st-tool">
+                  <span aria-hidden="true">Text</span>
+                  <button
+                    type="button"
+                    className="st-round st-aa"
+                    aria-label="Text"
+                    aria-pressed={tool === 'text'}
+                    onClick={() => setTool(tool === 'text' ? null : 'text')}
+                  >
+                    Aa
+                  </button>
+                </div>
+              )}
               <div className="st-tool">
-                <span aria-hidden="true">Text</span>
+                <span aria-hidden="true">Stamps and Play</span>
                 <button
                   type="button"
-                  className="st-round st-aa"
-                  aria-label="Text"
-                  aria-pressed={tool === 'text'}
-                  onClick={() => setTool(tool === 'text' ? null : 'text')}
+                  className="st-round"
+                  aria-label="Stamps and Play"
+                  aria-pressed={trayOpen}
+                  disabled={!!busy}
+                  onClick={() => {
+                    setTool(null);
+                    setTrayOpen(!trayOpen);
+                  }}
                 >
-                  Aa
+                  <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 5h14v9l-5 5H5z" />
+                    <path d="M14 19v-5h5" />
+                  </svg>
                 </button>
               </div>
+              {mode === 'media' && (
+                <>
               <div className="st-tool">
                 <span aria-hidden="true">Draw</span>
                 <button
@@ -885,6 +1024,8 @@ export default function Studio({
                   <Crop size={21} aria-hidden="true" />
                 </button>
               </div>
+                </>
+              )}
             </div>
           )}
 
@@ -984,6 +1125,46 @@ export default function Studio({
                 Done
               </button>
             </div>
+          )}
+
+          {composing && trayOpen && (
+            <>
+              <div className="st-tray-scrim" aria-hidden="true" onClick={() => setTrayOpen(false)} />
+              <section className="st-tray" aria-label="Stamps and Play">
+                <header>
+                  <h2>Stamps and Play</h2>
+                  <button type="button" className="st-done" onClick={() => setTrayOpen(false)}>
+                    Done
+                  </button>
+                </header>
+                <p className="st-tray-head">
+                  <strong>Checked by Pantopus</strong>
+                  <span>Nobody can type these</span>
+                </p>
+                {preview.isPending && !sv ? (
+                  <p className="st-hint" role="status">
+                    Reading the place…
+                  </p>
+                ) : (
+                  <div className="st-tray-stamps">
+                    {STAMP_KINDS.filter((k) => stampValue(k) != null).map((k) => {
+                      const on = kept.some((st) => st.kind === k);
+                      return (
+                        <button key={k} type="button" aria-pressed={on} onClick={() => placeStamp(k)}>
+                          <StampIcon kind={k} color={STAMP_TINT[k]} size={17} />
+                          {k === 'postmark' ? 'Postmark' : stampLabel(k, stampValue(k))}
+                        </button>
+                      );
+                    })}
+                    {STAMP_KINDS.every((k) => stampValue(k) == null) && (
+                      <p className="st-hint">
+                        {noPlace ? 'Stamps need a place. Pick where it shows in the post settings.' : 'No stamps for this place yet.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </section>
+            </>
           )}
 
           {gate && !camera && (
