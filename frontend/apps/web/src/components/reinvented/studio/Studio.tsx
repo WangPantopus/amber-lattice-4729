@@ -66,6 +66,7 @@ import {
   kindName,
   kindPill,
   purposeOf,
+  EXPLORE_KINDS,
   STUDIO_KINDS,
   type StudioKind,
 } from './postKinds';
@@ -176,7 +177,9 @@ export default function Studio({
     [phone, setPhone] = useState(''),
     [eventStart, setEventStart] = useState(''),
     [eventEnd, setEventEnd] = useState(''),
-    [eventVenue, setEventVenue] = useState('');
+    [eventVenue, setEventVenue] = useState(''),
+    // "Also show in Explore" (phase 1, CONTRACT 6f): off by default, chosen per post.
+    [exploreOn, setExploreOn] = useState(false);
   const client = useQueryClient();
   // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
   const postRequest = useRef<string | null>(null);
@@ -249,6 +252,8 @@ export default function Studio({
     setHeight(false);
     setWeather(false);
     setHomeAck(false);
+    // Explore is chosen per post: each picture starts with it off.
+    setExploreOn(false);
     if (file)
       void readCaptureMetadata(file).then((m) => {
         if (active) {
@@ -409,6 +414,19 @@ export default function Studio({
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
   // A post shows at its place to people nearby, or goes to the author's connections with no place (today's composer).
   const postPlaced = !noPlace && audience !== 'connections';
+  // Explore is offered only with a place, to people nearby, away from home and under one's own name; for a post, only a
+  // Spot, Learning or Event (never an Ask, Heads-up or Lost and found: they stay tied to the place). Never with Guess
+  // the spot, whose place is the answer. The server checks all of it again and drops it otherwise.
+  const exploreOffered =
+    !underPenName &&
+    !noPlace &&
+    audience === 'nearby' &&
+    !!point &&
+    !!p &&
+    !p.at_home &&
+    !(guessSpot && !postKind) &&
+    (!postKind || EXPLORE_KINDS.includes(postKind));
+  const toExplore = exploreOffered && exploreOn;
   const canGuess = !postKind && mode === 'media' && !!file && !noPlace && !!point && !p?.at_home;
   // Wet red ink while the Moment is live from here (the camera, just now, where it was taken); dried otherwise.
   const stampInk: 'wet' | 'dry' = live && !later ? 'wet' : 'dry';
@@ -602,6 +620,7 @@ export default function Studio({
           const body: NewMoment & {
             post_as?: 'pen_name';
             guess?: true;
+            explore?: true;
             stamps?: PlacedStamp[];
             elevation?: { meters: number; accuracy_m?: number | null; speed_mps?: number | null };
           } = {
@@ -644,6 +663,7 @@ export default function Studio({
               ? { taken_here: true, show_weather: weather }
               : {}),
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
+            ...(toExplore ? { explore: true as const } : {}),
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
               : {}),
@@ -706,7 +726,7 @@ export default function Studio({
       const digits = phone.replace(/\D/g, '');
       postRequest.current ??= crypto.randomUUID();
       const body: Parameters<typeof postsApi.createPost>[0] & {
-        studio: { stamps: PlacedStamp[]; elevation?: { meters: number; accuracy_m?: number | null } };
+        studio: { stamps: PlacedStamp[]; elevation?: { meters: number; accuracy_m?: number | null }; explore?: boolean };
       } = {
         clientRequestId: postRequest.current,
         content: words.trim(),
@@ -747,6 +767,7 @@ export default function Studio({
         showOnProfile: true,
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
+          ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
             : {}),
@@ -822,6 +843,7 @@ export default function Studio({
     setKind(null);
     setKindMenu(false);
     setAskDeclined(false);
+    setExploreOn(false);
     setDrawerOpen(false);
     setFiles([]);
     setIndex(0);
@@ -1122,6 +1144,15 @@ export default function Studio({
             </div>
           )}
         </div>
+        {exploreOffered && (
+          <div className="st-group" role="group" aria-label="Explore">
+            <label className="st-check">
+              <input type="checkbox" checked={exploreOn} onChange={(e) => setExploreOn(e.target.checked)} />
+              Also show in Explore
+            </label>
+            <p className="st-note">People anywhere can see this, with its place.</p>
+          </div>
+        )}
         {!postKind && (
         <div className="st-group" role="group" aria-label="How long">
           <span className="st-label">

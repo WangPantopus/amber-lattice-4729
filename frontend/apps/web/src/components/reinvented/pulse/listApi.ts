@@ -7,7 +7,7 @@ import type { Post } from '@pantopus/api';
 import type { Moment, Ring } from '@pantopus/api/endpoints/moments';
 import type { ShownStamp } from '../stamps/stampTypes';
 
-export type Reach = 'close' | 'around';
+export type Reach = 'close' | 'around' | 'explore';
 export type Chip = 'all' | 'live' | 'learn' | 'spots' | 'ask' | 'plans' | 'sports';
 export const CHIPS: readonly Chip[] = ['all', 'live', 'learn', 'spots', 'ask', 'plans', 'sports'];
 export const CHIP_WORDS: Record<Chip, string> = {
@@ -200,4 +200,33 @@ export function readAtlasBox(box: Box, signal?: AbortSignal): Promise<AtlasPage>
 /** Delete for good: ends it if live, removes its files at once, and it leaves the Atlas. */
 export function deleteForGood(id: string): Promise<unknown> {
   return del(`/api/reinvented/atlas/${encodeURIComponent(id)}`);
+}
+
+// ── Explore (coord/CONTRACT.md §6f): Moments their makers chose to show anywhere, never from the reader's own town ──
+
+export interface ExploreItem {
+  type: 'moment';
+  id: string;
+  moment: ListMoment;
+  /** "Picked today: 14 people marked it", "New from Kyoto", "New elsewhere". */
+  why: string;
+}
+
+export interface ExplorePage {
+  /** "Today, elsewhere": up to ten, on the first page only (null after). */
+  picked: ExploreItem[] | null;
+  items: ExploreItem[];
+  next_cursor: string | null;
+  /** "Keep exploring?" while there is more; null at the end. */
+  pause: string | null;
+}
+
+export function readExplore({ cursor, point }: { cursor: string | null; point: Point | null }, signal?: AbortSignal): Promise<ExplorePage> {
+  const params: Record<string, string | number> = {};
+  if (cursor) params.cursor = cursor;
+  if (point) {
+    params.latitude = Math.round(point.latitude * 1e5) / 1e5;
+    params.longitude = Math.round(point.longitude * 1e5) / 1e5;
+  }
+  return get<ExplorePage>('/api/reinvented/explore', params, { signal });
 }

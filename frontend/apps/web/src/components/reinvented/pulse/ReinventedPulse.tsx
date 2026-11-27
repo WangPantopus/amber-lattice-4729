@@ -18,12 +18,13 @@ import { useMyHomeCenter } from '@/lib/myHomes';
 import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostReactions';
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
-import { CHIP_WORDS, isChip, readAtlasBox, readList, readMap, readStrip, type Box, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
+import { CHIP_WORDS, isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
 import { PeekDeck, TimeRow } from './MapDeck';
-import { keptPins, pinsOf, roundBox, type Pin } from './pins';
+import { explorePins, keptPins, pinsOf, roundBox, type Pin } from './pins';
+import ExploreView from './ExploreView';
 import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import ReachDial from './ReachDial';
@@ -39,7 +40,7 @@ type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
 const DOWN: Record<Height, Height> = { list: 'middle', middle: 'map', map: 'map' };
 
-const REACH_NAMES: Record<Reach, string> = { close: 'Close circle', around: 'Around me' };
+const REACH_NAMES: Record<Reach, string> = { close: 'Close circle', around: 'Around me', explore: 'The world' };
 
 type ListData = InfiniteData<ListPage, string | null>;
 
@@ -95,10 +96,30 @@ export default function ReinventedPulse() {
     queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip, cursor: pageParam, point }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    enabled: !!account,
+    enabled: !!account && reach !== 'explore',
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
   });
+  // Explore (CONTRACT §6f): its own read, a page at a time, pausing with "Keep exploring?" instead of running on.
+  const explore = useInfiniteQuery({
+    queryKey: ['reinvented', 'explore', account, point?.latitude ?? null, point?.longitude ?? null],
+    queryFn: ({ pageParam, signal }) => readExplore({ cursor: pageParam, point }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled: !!account && reach === 'explore',
+    staleTime: 60_000,
+    retry: (count, error) => !isSwitchedOff(error) && count < 1,
+  });
+  useEffect(() => {
+    if (explore.error && isSwitchedOff(explore.error)) void reread();
+  }, [explore.error, reread]);
+  const explored = useMemo(() => {
+    const pages = explore.data?.pages || [];
+    return { picked: pages[0]?.picked || [], items: pages.flatMap((p) => p.items), pause: pages[pages.length - 1]?.pause ?? null };
+  }, [explore.data]);
+  const exploreMoments = useMemo(() => [...explored.picked, ...explored.items].map((i) => i.moment), [explored]);
+  // What the map fits itself to in Explore: the Moments listed, wherever in the world they are.
+  const exploreListItems = useMemo<ListItem[]>(() => exploreMoments.map((m) => ({ type: 'moment', id: m.id, band: null, moment: m })), [exploreMoments]);
   // The switch went off between two reads: read it again, and PulsePick puts today's Pulse back.
   useEffect(() => {
     if (list.error && isSwitchedOff(list.error)) void reread();
@@ -108,7 +129,7 @@ export default function ReinventedPulse() {
   const map = useQuery({
     queryKey: ['reinvented', 'map', account, time, box],
     queryFn: ({ signal }) => readMap(box!, time, signal),
-    enabled: !!account && !!box && view === 'pulse',
+    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore',
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
@@ -124,7 +145,10 @@ export default function ReinventedPulse() {
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
   });
-  const pins = useMemo(() => (view === 'atlas' ? keptPins(atlasMap.data?.moments) : pinsOf(map.data)), [view, atlasMap.data, map.data]);
+  const pins = useMemo(
+    () => (view === 'atlas' ? keptPins(atlasMap.data?.moments) : reach === 'explore' ? explorePins(exploreMoments) : pinsOf(map.data)),
+    [view, reach, atlasMap.data, exploreMoments, map.data],
+  );
   // Alive right now (CONTRACT §6c), over the list; it follows the list's first page like the map.
   const strip = useQuery({
     queryKey: ['reinvented', 'strip', account, point?.latitude ?? null, point?.longitude ?? null],
@@ -278,6 +302,13 @@ export default function ReinventedPulse() {
   // ── Moments ──
   const momentIds = useMemo(() => items.filter((it) => it.type === 'moment').map((it) => it.id), [items]);
   const openMoment = useCallback((id: string) => setViewing({ id, ids: momentIds.includes(id) ? momentIds : [id] }), [momentIds]);
+  const openExplored = useCallback(
+    (id: string) => {
+      const ids = exploreMoments.map((m) => m.id);
+      setViewing({ id, ids: ids.includes(id) ? ids : [id] });
+    },
+    [exploreMoments],
+  );
   const flyTo = useCallback((p: Point) => {
     setFly({ ...p, serial: Date.now() });
     setHeight((h) => (h === 'list' ? 'middle' : h));
@@ -287,6 +318,7 @@ export default function ReinventedPulse() {
   const openPin = useCallback(
     (pin: Pin) => {
       if (pin.type === 'kept') setAtlasItem(pin.moment);
+      else if (pin.type === 'explore') openExplored(pin.moment.id);
       else if (pin.type === 'ring') {
         const ids = pin.ring.moments.map((m) => m.id);
         if (!ids.length) return;
@@ -295,7 +327,7 @@ export default function ReinventedPulse() {
       } else if (pin.type === 'mark') openPost(pin.mark.post.id);
       else router.push(`/app/plans/${encodeURIComponent(pin.ticket.id)}`);
     },
-    [openPost, router],
+    [openPost, router, openExplored],
   );
   // At the Map height a pin chosen on the map brings its card up (a second tap opens it); elsewhere a tap opens it.
   const onPick = useCallback(
@@ -358,8 +390,8 @@ export default function ReinventedPulse() {
     );
   };
 
-  const placeName = reach === 'close' ? 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
-  const fitKey = `${reach}|${miles}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${list.dataUpdatedAt ? 'read' : ''}`;
+  const placeName = reach === 'explore' ? 'Explore' : reach === 'close' ? 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
+  const fitKey = `${reach}|${miles}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${(reach === 'explore' ? explore.dataUpdatedAt : list.dataUpdatedAt) ? 'read' : ''}`;
   const fallback = point ?? (home ? { latitude: home.lat, longitude: home.lng } : null);
   let prevBand: string | null = null;
 
@@ -373,7 +405,7 @@ export default function ReinventedPulse() {
           aria-expanded={scopeOpen}
           onClick={() => setScopeOpen((o) => !o)}
         >
-          <span className="rp-scope-dot" aria-hidden />
+          <span className="rp-scope-dot" data-reach={reach} aria-hidden />
           <strong>{placeName}</strong>
           <span className="rp-scope-reach">{reach === 'around' && miles < 25 ? `${REACH_NAMES.around} · ${miles} mi` : REACH_NAMES[reach]}</span>
           <ChevronDown size={16} aria-hidden />
@@ -405,7 +437,7 @@ export default function ReinventedPulse() {
         </button>
       </div>
 
-      {view === 'pulse' && chips.length > 1 && (
+      {view === 'pulse' && reach !== 'explore' && chips.length > 1 && (
         <div className="rp-chips" role="group" aria-label="Show">
           {chips.map((c) => (
             <button key={c} type="button" aria-pressed={chip === c} onClick={() => setChip(c)}>
@@ -422,7 +454,7 @@ export default function ReinventedPulse() {
       <div className="rp-map-layer" aria-hidden={height === 'list' || undefined}>
         <PulseMap
           pins={pins}
-          listItems={first?.items ?? []}
+          listItems={reach === 'explore' ? exploreListItems : first?.items ?? []}
           fitKey={fitKey}
           fallback={fallback}
           layoutKey={`${height}|${sideBySide}`}
@@ -433,7 +465,7 @@ export default function ReinventedPulse() {
         />
       </div>
       {height === 'map' && <div className="rp-map-top">{head}</div>}
-      {sideBySide && height === 'middle' && (
+      {sideBySide && height === 'middle' && reach !== 'explore' && (
         <div className="rp-map-time">
           <TimeRow time={time} onTime={setTime} />
         </div>
@@ -463,8 +495,14 @@ export default function ReinventedPulse() {
 
         {height === 'map' && (
           <div className="rp-map-bottom">
-            <TimeRow time={time} onTime={setTime} />
-            {map.isError && !isSwitchedOff(map.error) ? (
+            {reach !== 'explore' && <TimeRow time={time} onTime={setTime} />}
+            {reach === 'explore' ? (
+              pins.length ? (
+                <PeekDeck pins={pins} selected={selected} now={now} onSelect={onDeckSelect} onOpen={openPin} />
+              ) : (
+                <p className="rp-deck-empty">{explore.isPending ? 'Loading Explore…' : 'Nothing from elsewhere on the map right now.'}</p>
+              )
+            ) : map.isError && !isSwitchedOff(map.error) ? (
               <p className="rp-deck-empty">The map couldn’t load. Move it to try again.</p>
             ) : map.data ? (
               <PeekDeck pins={pins} selected={selected} now={now} onSelect={onDeckSelect} onOpen={openPin} />
@@ -476,6 +514,27 @@ export default function ReinventedPulse() {
         <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
           {view === 'atlas' && account ? (
             <AtlasView account={account} onOpen={setAtlasItem} />
+          ) : reach === 'explore' ? (
+            explore.isError && !isSwitchedOff(explore.error) ? (
+              <div className="rp-empty">
+                <p>Explore couldn’t load.</p>
+                <button type="button" className="rp-button" onClick={() => void explore.refetch()}>
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <ExploreView
+                picked={explored.picked}
+                items={explored.items}
+                pause={explored.pause}
+                loading={explore.isPending || explore.isFetchingNextPage}
+                more={!!explore.hasNextPage}
+                now={now}
+                onMore={() => void explore.fetchNextPage()}
+                onOpen={openExplored}
+                onPlace={flyTo}
+              />
+            )
           ) : list.isPending ? (
             <div className="rp-skeleton" role="status" aria-label="Loading Pulse">
               <span />
