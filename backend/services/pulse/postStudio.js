@@ -13,13 +13,46 @@ const momentStamps = require('../moments/momentStamps');
 const momentPlace = require('../moments/momentPlace');
 const store = require('../moments/momentStore');
 const { displayedPoint } = require('./distanceText');
+const { haversineMeters } = require('../../utils/trustState');
+
+// The Live mark's checks for a post's weather and sunset (CONTRACT 6d): a fix this fresh, this near the post's pin.
+const FIX_MAX_AGE_MS = 5 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+const FIX_NEAR_M = 200;
 
 // The kinds a post may be shown in Explore as (6f): never an Ask, an Offer, a Heads-up or a Lost and found.
 const EXPLORE_TYPES = ['recommendation', 'local_update', 'event', 'share'];
 
-/** The Studio's placements and height reading from the body's `studio`; 400 for a malformed list (momentStamps). */
+/**
+ * The Studio's placements, height reading and photo time from the body's `studio`; 400 for a malformed list
+ * (momentStamps) or a `taken_at` that isn't a date. `takenAt`: a picture from the library (CONTRACT 6d), null for one
+ * taken now.
+ */
 function parse(studio) {
-  return { ...momentStamps.parseStudio(studio || {}), explore: studio?.explore === true };
+  const takenAt = studio?.taken_at == null || studio.taken_at === '' ? null : String(studio.taken_at);
+  if (takenAt && !Number.isFinite(Date.parse(takenAt))) throw new Error('taken_at must be a date.');
+  const fix = studio?.fix && typeof studio.fix === 'object' ? studio.fix : null;
+  return {
+    ...momentStamps.parseStudio(studio || {}),
+    explore: studio?.explore === true,
+    takenAt,
+    takenHere: studio?.taken_here === true,
+    fix: fix && Number.isFinite(Number(fix.latitude)) && Number.isFinite(Number(fix.longitude))
+      ? { latitude: Number(fix.latitude), longitude: Number(fix.longitude), at: Date.parse(fix.fix_at || '') }
+      : null,
+  };
+}
+
+/**
+ * The Live mark's checks for a post's "now" stamps (weather, sunset; CONTRACT 6d): the app's own camera just now, no
+ * album time, and a fix at most 5 minutes old within 200 m of the pin the author placed. Used only here, never kept.
+ */
+function passesLiveChecks(parsed, row, now = Date.now()) {
+  const { fix } = parsed;
+  if (parsed.takenAt || !parsed.takenHere || !fix || !Number.isFinite(fix.at)) return false;
+  if (fix.at > now + CLOCK_SKEW_MS || now - fix.at > FIX_MAX_AGE_MS) return false;
+  if (row.latitude == null || row.longitude == null) return false;
+  return haversineMeters(fix.latitude, fix.longitude, row.latitude, row.longitude) <= FIX_NEAR_M;
 }
 
 /**
@@ -42,6 +75,10 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     town,
     atHome,
     penName: underPenName,
+    // A picture from the library isn't "now": no weather or sunset, and its time is the photo's (as a Moment's).
+    fresh: !parsed.takenAt,
+    takenAt: parsed.takenAt,
+    sky: passesLiveChecks(parsed, row),
     elevation: underPenName ? null : store.shownAltitude(parsed.reading, {
       atHome, showArea: row.location_precision !== 'exact_place', unplaced: !placed, floating: false,
     }),
@@ -97,4 +134,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, shownOf, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
