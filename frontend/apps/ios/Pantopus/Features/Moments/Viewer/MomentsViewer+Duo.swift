@@ -67,6 +67,14 @@ extension MomentsViewer {
     /// The reaction button, at the strip's bottom: someone else's Moment, not while replying.
     private var stripReactButton: MomentsStripButtons.Item? {
         guard !isReplying, !model.isMine, model.ring?.author != nil else { return nil }
+        // "Pulse, reinvented": the signal given, in the emoji's place, while the switch is on for you.
+        if signalsOn {
+            let signal = model.mySignal.flatMap(MomentSignal.init(rawValue:))
+            let label = signal.map { "Your signal \($0.title). Change" } ?? "React"
+            return MomentsStripButtons.Item(id: "moments.viewer.react", icon: signal?.icon ?? .smile, label: label) {
+                session.showsReactions = true
+            }
+        }
         let label = model.myReaction.map { "Your reaction \($0). Change" } ?? "React"
         return MomentsStripButtons.Item(id: "moments.viewer.react", icon: .smile, label: label, emoji: model.myReaction) {
             session.showsReactions = true

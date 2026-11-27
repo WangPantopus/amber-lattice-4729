@@ -318,9 +318,19 @@ extension MomentsViewer {
 
     /// The quick reactions: typing, on the standing half under the Moment (board T2); after React, in the buttons' place.
     private var tableReactions: some View {
-        MomentsQuickReactions(chosen: model.myReaction) { emoji in
-            Task { await model.react(emoji) }
-            closeReply()
+        Group {
+            // "Pulse, reinvented": the five signals in the seven emoji's place, while the switch is on for you.
+            if signalsOn {
+                MomentsQuickSignals(chosen: model.mySignal) { signal in
+                    Task { await model.signal(signal) }
+                    closeReply()
+                }
+            } else {
+                MomentsQuickReactions(chosen: model.myReaction) { emoji in
+                    Task { await model.react(emoji) }
+                    closeReply()
+                }
+            }
         }
         // A tap on a reaction while typing must reach it: the keyboard stays up until it has.
         .keepsKeyboardOnTap()
@@ -342,8 +352,9 @@ extension MomentsViewer {
                 text: $session.replyText,
                 focus: $replyFocused,
                 isTyping: replyFocused,
-                reaction: model.myReaction,
+                reaction: signalsOn ? nil : model.myReaction,
                 canReply: author.kind != .pantopus,
+                signal: signalsOn ? model.mySignal.flatMap(MomentSignal.init(rawValue:)) : nil,
                 onReact: { session.showsReactions = true },
                 onSend: send
             )
@@ -400,6 +411,8 @@ struct MomentsTableReplyBar: View {
     let isTyping: Bool
     let reaction: String?
     let canReply: Bool
+    /// "Pulse, reinvented": the signal given, drawn in the emoji's place while the switch is on.
+    var signal: MomentSignal?
     let onReact: () -> Void
     let onSend: () -> Void
 
@@ -436,7 +449,9 @@ struct MomentsTableReplyBar: View {
             } else {
                 Button(action: onReact) {
                     Group {
-                        if let reaction {
+                        if let signal {
+                            Icon(signal.icon, size: 24, strokeWidth: 2, color: .white)
+                        } else if let reaction {
                             Text(reaction).font(.system(size: 26))
                         } else {
                             Icon(.smile, size: 26, strokeWidth: 1.75, color: .white)
@@ -447,7 +462,8 @@ struct MomentsTableReplyBar: View {
                     .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(reaction.map { "Your reaction \($0). Change" } ?? "React")
+                .accessibilityLabel(signal.map { "Your signal \($0.title). Change" } ?? reaction
+                    .map { "Your reaction \($0). Change" } ?? "React")
                 .accessibilityIdentifier("moments.viewer.react")
             }
         }
