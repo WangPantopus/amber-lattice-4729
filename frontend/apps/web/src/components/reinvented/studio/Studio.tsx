@@ -49,6 +49,7 @@ import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
+import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
 import './studio.css';
 
@@ -87,11 +88,14 @@ export default function Studio({
   draft = null,
   onClose,
   onDone,
+  onSwitchedOff,
 }: {
   account: string;
   draft?: MomentChatDraft | null;
   onClose(): void;
   onDone(msg: string): void;
+  /** The server said the switch is off for this person (CONTRACT §1): today's composer takes over with these words. */
+  onSwitchedOff?(words: MomentChatDraft): void;
 }) {
   const wide = useWide();
   const [files, setFiles] = useState<File[]>([]),
@@ -252,6 +256,20 @@ export default function Studio({
     staleTime: 60000,
   });
   const p = preview.data;
+  // "The switch is off for you": back to today's composer with the words (the card's, or the caption).
+  const handBack = () =>
+    onSwitchedOff?.(
+      mode === 'text'
+        ? { kind: 'text', text, background: bg, hours, audience }
+        : { kind: 'photo', caption: caption.trim() || null, hours, audience },
+    );
+  // Before going back the person is told what comes with them (lead, 2026-11-27: the words, and the photo is picked
+  // again in today's composer).
+  const [wentOff, setWentOff] = useState(false);
+  const switchedOff = isSwitchedOff(preview.error);
+  useEffect(() => {
+    if (switchedOff) setWentOff(true);
+  }, [switchedOff]);
   useEffect(() => {
     if (p?.adult_confirmed) setAdult(true);
   }, [p?.adult_confirmed]);
@@ -462,6 +480,9 @@ export default function Studio({
     handle.current = controller;
     setBusy('Preparing…');
     setError('');
+    // The Studio's own upload, once kept in the outbox: taken out again if the server says the switch is off, so
+    // today's composer never offers to resume a Moment it can't post.
+    let made: Job | null = retry || null;
     try {
       if (retry) {
         await deliver(retry, controller.signal);
@@ -582,10 +603,16 @@ export default function Studio({
         job.memoryOnly = true;
         if (mounted.current) setError('Browser storage is full or unavailable. Keep this tab open until sharing finishes.');
       }
+      made = job;
       if (mounted.current) setJobs((old) => [...old, job]);
       await deliver(job, controller.signal);
     } catch (e) {
-      if (mounted.current) setError(messageOf(e, 'Couldn’t share. Try again.'));
+      if (isSwitchedOff(e)) {
+        if (made && !made.memoryOnly) await discardJob(made.id).catch(() => {});
+        if (made && mounted.current) setJobs((old) => old.filter((j) => j.id !== made!.id));
+        if (mounted.current) setWentOff(true);
+      }
+      else if (mounted.current) setError(messageOf(e, 'Couldn’t share. Try again.'));
     } finally {
       if (mounted.current) setBusy('');
       submitting.current = false;
@@ -641,6 +668,7 @@ export default function Studio({
   }
   const trap = useDialogFocusTrap<HTMLDivElement>(() => {
     if (setupOpen) return;
+    if (wentOff) return handBack();
     if (discarding) setDiscarding(false);
     else if (trayOpen) setTrayOpen(false);
     else if (picked) setPicked(null);
@@ -1226,6 +1254,20 @@ export default function Studio({
             </div>
           )}
 
+          {wentOff && (
+            <div className="st-panel st-wentoff" role="alertdialog" aria-modal="true" aria-labelledby="st-off-title">
+              <h3 id="st-off-title">This isn’t on for you right now</h3>
+              <p>
+                {mode === 'text'
+                  ? 'Your words go with you to the Moment composer.'
+                  : 'Your caption goes with you to the Moment composer. Pick the photo again there.'}
+              </p>
+              <button type="button" className="st-post" autoFocus onClick={handBack}>
+                Continue
+              </button>
+            </div>
+          )}
+
           {discarding && (
             <div className="st-panel" role="alertdialog" aria-modal="true" aria-labelledby="st-discard-title">
               <h3 id="st-discard-title">Discard this Moment?</h3>
@@ -1256,7 +1298,7 @@ export default function Studio({
               )}
               {composing && underPenName && penMe?.pen_name && (
                 <p className="st-status">
-                  As {penMe.pen_name.name}. Others can’t see it’s you.
+                  Posting as {penMe.pen_name.name}. Others can&apos;t see it&apos;s you.
                   {penCheck.data?.warning ? ' ' + penCheck.data.warning : ''}
                 </p>
               )}
