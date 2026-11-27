@@ -24,6 +24,7 @@ import SoundLayer, { hasSound, holdsForSound } from '../sound/SoundLayer';
 import type { PlayItem } from '../play/playTypes';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import { DeckBar } from '../deck/StepDeck';
+import { SealCover } from '../seal/Seal';
 import { withMentions, type MentionPerson } from '../mentions/Mentions';
 import { holdsForReplies, RepliesOverPicture, RepliesShownEntry } from '../replies/Replies';
 import PinLayer, { hasPins, holdsForPins, PinControls } from '../pins/PinLayer';
@@ -190,6 +191,7 @@ export const studioViewer = {
     <>
       <ViewerStamps moment={m as StudioMoment} />
       <DeckBar moment={m} />
+      <SealCover moment={m} />
       <RepliesOverPicture moment={m} />
       <PinControls moment={m} />
       <SavedNote id={m.id} />
