@@ -146,6 +146,7 @@ targets:
         NSPhotoLibraryUsageDescription: "Pantopus uses photos you choose for your profile, posts, Moments, home records and mail."
         NSPhotoLibraryAddUsageDescription: "Pantopus saves images you choose to export, like a QR code or your own Moment, to your photo library."
         NSMicrophoneUsageDescription: "Pantopus uses the microphone for voice messages in chat, a spoken greeting on a Christmas card, and the sound of videos you post."
+        NSSpeechRecognitionUsageDescription: "Pantopus turns your voice into words on your iPhone, so others can read along with a voice you post."
         NSFaceIDUsageDescription: "Pantopus uses Face ID to continue signed in after a reinstall, to unlock the app, and to confirm sensitive actions like payments and removing devices."
         UIBackgroundModes:
           - remote-notification

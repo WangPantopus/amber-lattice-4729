@@ -97,7 +97,31 @@ struct MomentDotCard: View {
             }
         case .thing:
             MomentFieldCardView(moment: moment, dot: dot)
-        case .whisper, .unknown:
+        case .whisper:
+            if let url = dot.audioURL.flatMap(URL.init(string:)) {
+                let owner = "\(moment.id)/\(dot.id)"
+                Button {
+                    MomentSoundPlayer.shared.isPlaying(owner) ? MomentSoundPlayer.shared.stop() : MomentSoundPlayer.shared.play(
+                        url,
+                        on: owner
+                    )
+                } label: {
+                    HStack(spacing: Spacing.s2) {
+                        Icon(MomentSoundPlayer.shared.isPlaying(owner) ? .pause : .play, size: 16, strokeWidth: 2.4, color: .white)
+                        Text("A whisper from \(moment.author.shortName)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("moments.viewer.dot.whisper")
+            } else {
+                Text("A whisper, still on its way")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.white.opacity(0.85))
+            }
+        case .unknown:
             EmptyView()
         }
     }

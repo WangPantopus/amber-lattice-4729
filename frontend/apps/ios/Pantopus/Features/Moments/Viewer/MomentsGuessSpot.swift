@@ -98,6 +98,8 @@ struct MomentsViewerPills: View {
                     .presentationDetents([.large])
                 }
         }
+        // "Pulse, reinvented" phase 2: the Moment's voice or place sound (`MomentSoundLayer`).
+        MomentSoundStrip(model: model)
     }
 }
 
