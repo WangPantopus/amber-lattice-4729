@@ -194,11 +194,24 @@ struct ReinventedAtlasView: View {
 /// A kept Moment's picture: the photo, a video's poster, or the text card.
 struct ReinventedAtlasPicture: View {
     let moment: MomentDTO
+    /// The opened Moment's picture (bigger words) rather than a tile of the grid.
+    var large = false
 
     var body: some View {
         switch moment.kind {
         case .text:
-            MomentsTextCard(text: moment.text ?? "", background: moment.background)
+            // The card's colors and words, sized for a tile (today's card is drawn for a whole screen).
+            let colors = MomentsPalette.card(moment.background ?? "teal")
+            LinearGradient(colors: [colors.top, colors.bottom], startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1))
+                .overlay {
+                    Text(moment.text ?? "")
+                        .font(.system(size: large ? 24 : 14, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                        .lineLimit(large ? 8 : 5)
+                        .minimumScaleFactor(0.8)
+                        .padding(large ? Spacing.s6 : Spacing.s2)
+                }
         case .photo, .video:
             Color.clear.overlay {
                 AsyncImage(url: moment.kind == .video ? moment.poster ?? moment.media : moment.media) { image in
@@ -223,7 +236,7 @@ struct ReinventedAtlasItem: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
-            ReinventedAtlasPicture(moment: moment)
+            ReinventedAtlasPicture(moment: moment, large: true)
                 .frame(maxWidth: .infinity)
                 .frame(height: 300)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
