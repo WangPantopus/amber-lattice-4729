@@ -48,6 +48,26 @@ final class MomentPlayStore {
         }
     }
 
+    /// Takes the reader's answer back (CONTRACT 7b: a poll, a slider, a board or a question box; never a guess), then
+    /// reads the item again for what this reader may see now. Nil when it went through, else the words.
+    func takeBack(_ item: MomentPlayItem, on momentId: String) async -> String? {
+        do {
+            try await StudioPlayAPI.send(StudioPlayEndpoints.takeBack(postId: momentId, item: item.id))
+            var fresh = item
+            fresh.mine = nil
+            if let read = try? await StudioPlayAPI.send(StudioPlayEndpoints.items(postId: momentId), as: MomentPlayItemsEnvelope.self),
+               let again = read.play.first(where: { $0.id == item.id }) {
+                fresh = again
+            }
+            keep(fresh, on: momentId)
+            return nil
+        } catch let failure as StudioPlayFailure {
+            return failure.message("Couldn't take that back. Try again.")
+        } catch {
+            return "Couldn't take that back. Try again."
+        }
+    }
+
     /// Items a reader can still answer: open, not yet answered, and of a kind that takes an answer.
     func waiting(_ moment: MomentDTO) -> Bool {
         items(moment).contains { item in
@@ -117,6 +137,22 @@ struct MomentPlayCard: View {
     var preview = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            content
+            if let moment, !preview, MomentPlayTakeBack.offers(item) {
+                MomentPlayTakeBack(moment: moment, item: item)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.72)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.16), lineWidth: 1))
+        .allowsHitTesting(!preview)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.play.\(item.kind.rawValue)")
+    }
+
+    private var content: some View {
         Group {
             if let moment, !preview {
                 switch item.kind {
@@ -133,13 +169,50 @@ struct MomentPlayCard: View {
                 MomentPlayPreview(item: item)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.72)))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.16), lineWidth: 1))
-        .allowsHitTesting(!preview)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("moments.play.\(item.kind.rawValue)")
+    }
+}
+
+/// "Take it back": the reader's answer on a poll, a slider, a board or a question box comes off while answers are
+/// taken (CONTRACT 7b). A guess is one try and stays.
+struct MomentPlayTakeBack: View {
+    let moment: MomentDTO
+    let item: MomentPlayItem
+    @State private var sending = false
+    @State private var problem: String?
+
+    static func offers(_ item: MomentPlayItem) -> Bool {
+        item.open && item.mine != nil && [.poll, .slider, .board, .question].contains(item.kind)
+    }
+
+    private var words: String {
+        switch item.kind {
+        case .poll: "Take my vote back"
+        case .board: "Take my face off"
+        default: "Take my answer back"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                Task {
+                    sending = true
+                    problem = await MomentPlayStore.shared.takeBack(item, on: moment.id)
+                    sending = false
+                }
+            } label: {
+                Text(words)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .underline()
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(sending)
+            .accessibilityIdentifier("moments.play.takeBack")
+            if let problem { MomentPlayNote(words: problem) }
+        }
     }
 }
 
