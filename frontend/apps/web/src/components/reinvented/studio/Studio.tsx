@@ -92,6 +92,8 @@ const pens = [0.006, 0.012, 0.024];
 const STAMP_SAFE = safeBox();
 // At home the place line reads "Area · <town>"; the first time only, one line under it says why (design §4).
 const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
+// The step deck's note to its author, said once (CONTRACT 7g): "Readers can save your steps' words."
+const DECK_NOTE_KEY = 'pantopus.studio.deckNoteSeen';
 type Placement = 'exact' | 'area' | 'place' | 'none';
 type PostAs = 'personal' | 'pen_name';
 
@@ -201,6 +203,9 @@ export default function Studio({
     [afterFile, setAfterFile] = useState<File | null>(null),
     [afterBlurs, setAfterBlurs] = useState<BlurBox[]>([]),
     [side, setSide] = useState<'before' | 'after'>('before'),
+    // A step deck (§7g): the photos or videos chosen together, posted one by one as the steps of one recipe or repair.
+    [asDeck, setAsDeck] = useState(false),
+    [deckNote, setDeckNote] = useState(false),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
@@ -469,8 +474,31 @@ export default function Studio({
   const hasPair = !!pairItem;
   const pair = hasPair && !!afterFile && canPair;
   const showAfter = pair && side === 'after';
-  // A new before, or the item taken off: the after goes with it.
+  // A step deck: two to four photos or videos chosen together, under the person's own name, as Moments.
+  const deckOffered = mode === 'media' && files.length >= 2 && files.length <= 4 && !underPenName && !postKind;
+  const deckOn = asDeck && deckOffered;
+  const deckId = useRef<string | null>(null);
   useEffect(() => {
+    setAsDeck(false);
+    deckId.current = null;
+  }, [files]);
+  function chooseDeck(on: boolean) {
+    setAsDeck(on);
+    if (on) deckId.current ??= crypto.randomUUID();
+    if (!on) return;
+    try {
+      if (localStorage.getItem(DECK_NOTE_KEY)) return;
+    } catch {
+      /* private window: say it each time */
+    }
+    setDeckNote(true);
+  }
+  // A new before, or the item taken off: the after goes with it. A recording belongs to its own picture too (each step
+  // of a deck has its own voice tip).
+  useEffect(() => {
+    setVoiceRec(null);
+    setVoiceWords('');
+    setPlaceRec(null);
     setAfterFile(null);
     setAfterBlurs([]);
     setSide('before');
@@ -654,6 +682,14 @@ export default function Studio({
     }
     if (!mounted.current) return;
     setJobs((old) => old.filter((j) => j.id !== job.id));
+    // A step of a deck went out: the author has had the note about saving steps' words.
+    const step = (job.parts[0]?.body as { deck?: { index: number; count: number } } | undefined)?.deck;
+    if (step)
+      try {
+        localStorage.setItem(DECK_NOTE_KEY, '1');
+      } catch {
+        /* private window: the note shows again next time */
+      }
     const state = result.find((m) => m.state !== 'live')?.state;
     const msg =
       state === 'scheduled'
@@ -664,12 +700,14 @@ export default function Studio({
             ? 'Media received. Your Moment is being checked.'
             : state === 'ended'
               ? 'This Moment has ended.'
-              : 'Moment shared.';
+              : step
+                ? `Step ${step.index} of ${step.count} shared.`
+                : 'Moment shared.';
     if (soundFailed) setError(msg + ' Its sound couldn’t be added.');
     if (file && index + 1 < files.length) {
       setIndex((i) => i + 1);
       setBusy('');
-      setError(msg + ' Review the next item.');
+      setError(msg + (step ? ` Review step ${step.index + 1}.` : ' Review the next item.'));
     } else onDone(msg);
   }
   async function submit(retry?: Job) {
@@ -710,6 +748,8 @@ export default function Studio({
       controller.signal.throwIfAborted();
       if (underPenName && prepared.length > 1)
         throw new Error("A video posted in parts can't go out under a made-up name. Post one of up to a minute.");
+      if (deckOn && prepared.length > 1)
+        throw new Error(`A step's video can be up to ${limits.data?.video.max_seconds || fallback.max_seconds} seconds. Choose a shorter one.`);
       let gps = fix;
       if (!noPlace && !fromAlbum && gps && !recentFix(gps.timestamp)) {
         setBusy('Updating your location…');
@@ -785,6 +825,7 @@ export default function Studio({
               ? { taken_here: true, show_weather: weather }
               : {}),
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
+            ...(deckOn && deckId.current ? { deck: { id: deckId.current, index: index + 1, count: files.length } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
@@ -1323,6 +1364,22 @@ export default function Studio({
             <p className="st-note">People anywhere can see this, with its place.</p>
           </div>
         )}
+        {deckOffered && (
+          <div className="st-group" role="group" aria-label="Steps">
+            <label className="st-check">
+              <input type="checkbox" checked={asDeck} disabled={index > 0 || !!busy} onChange={(e) => chooseDeck(e.target.checked)} />
+              Post these {files.length} as steps
+            </label>
+            <p className="st-note">
+              {index > 0
+                ? asDeck
+                  ? `Step ${index + 1} of ${files.length}. Give it its own words and voice tip.`
+                  : 'Posted one by one.'
+                : 'A recipe or a repair: readers go through the steps as one, each with its own words and voice tip.'}
+            </p>
+            {deckOn && deckNote && <p className="st-note">Readers can save your steps’ words.</p>}
+          </div>
+        )}
         {!postKind && (
         <div className="st-group" role="group" aria-label="How long">
           <span className="st-label">
@@ -1477,9 +1534,7 @@ export default function Studio({
                 <X size={20} strokeWidth={2.4} />
               </button>
               {composing && files.length > 1 && file && (
-                <span className="st-count">
-                  {index + 1} of {files.length}
-                </span>
+                <span className="st-count">{deckOn ? `Step ${index + 1} of ${files.length}` : `${index + 1} of ${files.length}`}</span>
               )}
               {composing && pair && (
                 <div className="st-ba-switch" role="group" aria-label="Which photo the Studio shows">

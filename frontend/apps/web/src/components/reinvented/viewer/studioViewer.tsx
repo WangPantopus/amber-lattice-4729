@@ -23,6 +23,7 @@ import DotLayer, { holdsForDots } from '../dots/DotLayer';
 import SoundLayer, { hasSound, holdsForSound } from '../sound/SoundLayer';
 import type { PlayItem } from '../play/playTypes';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
+import { DeckBar } from '../deck/StepDeck';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -184,6 +185,7 @@ export const studioViewer = {
   overPicture: (m: Moment) => (
     <>
       <ViewerStamps moment={m as StudioMoment} />
+      <DeckBar moment={m} />
       <SavedNote id={m.id} />
       <GuessOverPicture moment={m} />
       <KeepOverPicture moment={m} />

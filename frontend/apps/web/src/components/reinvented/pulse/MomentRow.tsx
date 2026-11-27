@@ -22,6 +22,8 @@ interface Props {
   onPlace(point: Point): void;
   /** Kept by its author ("Keep this?"): it stays, so no time left is drawn. */
   kept?: boolean;
+  /** The first of a step deck's steps in the list: how many steps the deck has (§7g). */
+  steps?: number;
 }
 
 /** Width over height of the picture as the server sized it (one half of a before and after); 9:16 when unknown. */
@@ -30,7 +32,7 @@ function aspectOf(m: ListMoment, paired: boolean): number {
   return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height / (paired ? 2 : 1) : 9 / 16;
 }
 
-export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false }: Props) {
+export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false, steps }: Props) {
   // A before and after shows both halves, split in the middle; the viewer lets the reader move the curtain.
   const pair = m.kind === 'photo' && m.media_url ? beforeAfterOf((m as ListMoment & { play?: PlayItem[] }).play) : null;
   const aspect = aspectOf(m, !!pair);
@@ -89,6 +91,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
             {where && <span>{where}</span>}
           </span>
         </div>
+        {steps && steps > 1 ? <span className="rp-moment-steps">{steps} steps</span> : null}
         {left && (
           <span className={`rp-moment-left${live ? ' rp-live' : ''}`}>
             {live && <span className="rp-live-dot" aria-hidden />}
