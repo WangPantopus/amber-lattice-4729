@@ -110,6 +110,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacedStill
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
+import app.pantopus.android.ui.screens.moments.studio.MomentsStudioStep
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -128,6 +129,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MomentsComposeScreen(
     onClose: () -> Unit,
+    // "Pulse, reinvented" (its switch on for the person): a photo or video opens the Studio instead of the Post sheet.
+    studio: Boolean = false,
     viewModel: MomentsComposeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -228,24 +231,44 @@ fun MomentsComposeScreen(
                     onLibrary = openLibrary,
                 )
             ComposeStep.Review ->
-                ReviewStep(
-                    state = state,
-                    avatarUrl = viewModel.avatarUrl,
-                    // Retake asks first when the photo has marks on it or was resized.
-                    onBack = { if (state.marks.isEmpty && state.placement == null) viewModel.backFromReview() else asksDiscard = true },
-                    onMarks = viewModel::openMarks,
-                    onShowArea = viewModel::setShowArea,
-                    onHours = viewModel::setHours,
-                    onAudience = viewModel::setAudience,
-                    onCaption = viewModel::setCaption,
-                    onPost = { viewModel.post() },
-                    onPlace = viewModel::pickPlace,
-                    onFindPlace = { viewModel.findPlace(true) },
-                    onNoLocation = viewModel::setNoLocation,
-                    onShowHeight = viewModel::setShowHeight,
-                    onShowWeather = viewModel::setShowWeather,
-                    sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
-                )
+                if (studio && state.media != null) {
+                    MomentsStudioStep(
+                        state = state,
+                        avatarUrl = viewModel.avatarUrl,
+                        onBack = { if (state.marks.isEmpty && state.placement == null) viewModel.backFromReview() else asksDiscard = true },
+                        onMarks = viewModel::openMarks,
+                        onShowArea = viewModel::setShowArea,
+                        onHours = viewModel::setHours,
+                        onAudience = viewModel::setAudience,
+                        onCaption = viewModel::setCaption,
+                        onPost = { viewModel.post() },
+                        onPlace = viewModel::pickPlace,
+                        onFindPlace = { viewModel.findPlace(true) },
+                        onNoLocation = viewModel::setNoLocation,
+                        onShowHeight = viewModel::setShowHeight,
+                        onShowWeather = viewModel::setShowWeather,
+                        sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
+                    )
+                } else {
+                    ReviewStep(
+                        state = state,
+                        avatarUrl = viewModel.avatarUrl,
+                        // Retake asks first when the photo has marks on it or was resized.
+                        onBack = { if (state.marks.isEmpty && state.placement == null) viewModel.backFromReview() else asksDiscard = true },
+                        onMarks = viewModel::openMarks,
+                        onShowArea = viewModel::setShowArea,
+                        onHours = viewModel::setHours,
+                        onAudience = viewModel::setAudience,
+                        onCaption = viewModel::setCaption,
+                        onPost = { viewModel.post() },
+                        onPlace = viewModel::pickPlace,
+                        onFindPlace = { viewModel.findPlace(true) },
+                        onNoLocation = viewModel::setNoLocation,
+                        onShowHeight = viewModel::setShowHeight,
+                        onShowWeather = viewModel::setShowWeather,
+                        sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
+                    )
+                }
         }
         // Text, Draw and Resize on the photo, over the Post screen (its own Back handler takes Back while it's up).
         state.marking?.let { editing ->
@@ -860,7 +883,7 @@ private fun ReviewStep(
  * canvas at its [placement] when Resize placed it.
  */
 @Composable
-private fun VideoStill(
+internal fun VideoStill(
     media: MomentMediaFile.Video,
     marks: MomentMarks,
     placement: MomentPlacement?,

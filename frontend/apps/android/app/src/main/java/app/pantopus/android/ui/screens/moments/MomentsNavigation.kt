@@ -3,6 +3,7 @@ package app.pantopus.android.ui.screens.moments
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -10,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeScreen
+import app.pantopus.android.ui.screens.moments.studio.MomentsStudioGateViewModel
 import app.pantopus.android.ui.screens.moments.viewer.MomentsViewerScreen
 import kotlinx.coroutines.flow.StateFlow
 
@@ -80,6 +82,8 @@ fun NavGraphBuilder.momentsRoutes(
                 },
             ),
     ) {
-        MomentsComposeScreen(onClose = { if (!nav.popBackStack()) external.openMap() })
+        // "Pulse, reinvented": with its switch on for the person, a shot opens the Studio instead of today's Post screen.
+        val gate: MomentsStudioGateViewModel = hiltViewModel()
+        MomentsComposeScreen(onClose = { if (!nav.popBackStack()) external.openMap() }, studio = gate.studio)
     }
 }

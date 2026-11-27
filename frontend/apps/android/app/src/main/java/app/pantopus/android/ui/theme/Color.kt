@@ -857,6 +857,17 @@ object PantopusColors {
     val momentMarksShadow = Color(0x99000000)
 
     /**
+     * "Pulse, reinvented": the Studio after a shot (board B2). The bar at the bottom — `#0B1220` at 94%; a "who sees
+     * it" chip's outline and the pill's fill and outline — white at 30%, 12% and 22%; the pill's second line — white
+     * at 72%.
+     */
+    val studioBar = Color(0xF00B1220)
+    val studioChipOutline = Color(0x4DFFFFFF)
+    val studioPillFill = Color(0x1FFFFFFF)
+    val studioPillOutline = Color(0x38FFFFFF)
+    val studioPillSecondary = Color(0xB8FFFFFF)
+
+    /**
      * The profile with sources (SPEC 2026-11-23, boards 1, 12, 13): the ring's "now" dot and the record tab's
      * underline — `#0284C7`; a year's band behind the full chart — `#EEF0F3`; the chart's month ticks — `#9CA3AF`;
      * the shelf's plank and its lit edge — `#B98A5A` / `#CAA06B`.

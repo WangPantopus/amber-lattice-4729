@@ -1,0 +1,620 @@
+@file:Suppress("MagicNumber", "LongParameterList", "LongMethod")
+
+package app.pantopus.android.ui.screens.moments.studio
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
+import app.pantopus.android.ui.screens.moments.compose.MomentsPostFullMap
+import app.pantopus.android.ui.screens.moments.compose.MomentsPostSheet
+import app.pantopus.android.ui.screens.moments.compose.MomentsSkyActions
+import app.pantopus.android.ui.screens.moments.compose.VideoStill
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
+import app.pantopus.android.ui.screens.moments.compose.postAtHome
+import app.pantopus.android.ui.screens.moments.compose.postMapSpot
+import app.pantopus.android.ui.screens.moments.compose.postPlaceKind
+import app.pantopus.android.ui.screens.moments.compose.postPlaceLabel
+import app.pantopus.android.ui.screens.moments.compose.sharesAt
+import app.pantopus.android.ui.screens.moments.compose.skyAtHome
+import app.pantopus.android.ui.sky.SkyWords
+import app.pantopus.android.ui.theme.PantopusColors
+import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
+import app.pantopus.android.ui.theme.Spacing
+import coil.compose.AsyncImage
+
+/** The two "who sees it" choices on the Studio's bar, as the server names them (today's Post sheet's two). */
+private val AUDIENCES = listOf("nearby" to "Nearby", "connections" to "Friends")
+
+/** Letters over the picture keep a soft shadow, as the camera's words do. */
+private val OnPicture = Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 4f)
+
+/**
+ * "Pulse, reinvented" (board B2), while the `pulse_reinvented` switch is on: the Studio after a shot. The photo or
+ * video fills the screen, with a tool rail on the right, the caption written on the picture and one bar at the
+ * bottom: who sees it (Nearby, Friends), a pill with how long it shows and where ("Fades in 24 hours" over the place),
+ * and Post. The pill opens a drawer holding every row of today's Post sheet (the map and the place, Show the area
+ * instead, No location, height, weather, Share later, how long). It reads and writes the same posting state as
+ * today's Post sheet, so a Moment posted here is an ordinary Moment.
+ *
+ * Built beside today's Post screen, never in place of it: with the switch off, the composer shows today's.
+ */
+@Composable
+internal fun MomentsStudioStep(
+    state: MomentsComposeUiState,
+    avatarUrl: String?,
+    onBack: () -> Unit,
+    onMarks: (MomentMarksTool) -> Unit,
+    onShowArea: (Boolean) -> Unit,
+    onHours: (Int) -> Unit,
+    onAudience: (String) -> Unit,
+    onCaption: (String) -> Unit,
+    onPost: () -> Unit,
+    onPlace: (String) -> Unit,
+    onFindPlace: () -> Unit,
+    onNoLocation: (Boolean) -> Unit,
+    onShowHeight: (Boolean) -> Unit,
+    onShowWeather: (Boolean) -> Unit,
+    sky: MomentsSkyActions,
+    gate: MomentsStudioGateViewModel = hiltViewModel(),
+) {
+    var drawer by rememberSaveable { mutableStateOf(false) }
+    // A tap on the drawer's small map opens it full screen; its back button (or Back) returns to the drawer.
+    var fullMap by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = drawer && !fullMap) { drawer = false }
+    BackHandler(enabled = fullMap && state.postMapSpot != null) { fullMap = false }
+    // Under the marks editor, TalkBack reads only the editor.
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag("moments.studio")
+                .then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier),
+    ) {
+        when (val media = state.media) {
+            is MomentMediaFile.Photo ->
+                AsyncImage(
+                    model = media.file,
+                    contentDescription = "Your photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
+            null -> Unit
+        }
+        // The fades keep the rail and the caption readable over a bright picture.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Brush.verticalGradient(listOf(PantopusColors.momentTopFade, Color.Transparent)))
+                    .clearAndSetSemantics {},
+        )
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, PantopusColors.momentDim)))
+                    .clearAndSetSemantics {},
+        )
+        StudioClose(
+            enabled = state.canRetake,
+            onClick = onBack,
+            modifier = Modifier.statusBarsPadding().padding(start = Spacing.s4, top = 11.dp),
+        )
+        StudioRail(
+            enabled = !state.posting,
+            video = state.media is MomentMediaFile.Video,
+            onOpen = onMarks,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
+        )
+        Column(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    // The caption and the bar ride above the keyboard while the caption is typed (the bar pads itself for
+                    // the navigation bar, so its color reaches the bottom edge).
+                    .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
+        ) {
+            state.notice?.let { notice ->
+                Text(
+                    text = notice,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier =
+                        Modifier
+                            .padding(horizontal = Spacing.s4)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PantopusColors.momentCaptionPill)
+                            .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
+                            .testTag("moments.studio.error"),
+                )
+                Spacer(Modifier.height(Spacing.s3))
+            }
+            StudioCaption(
+                caption = state.caption,
+                enabled = !state.posting,
+                onCaption = onCaption,
+                modifier = Modifier.padding(horizontal = Spacing.s4),
+            )
+            Spacer(Modifier.height(Spacing.s4))
+            StudioBar(
+                state = state,
+                homeNoteDue = gate.homeNoteDue,
+                onHomeNoteShown = gate::homeNoteShown,
+                onAudience = onAudience,
+                onOpenDrawer = { drawer = true },
+                onPost = onPost,
+            )
+        }
+        // The drawer: today's Post sheet, without what the bar already holds (who sees it, the caption, Post).
+        AnimatedVisibility(visible = drawer, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(PantopusColors.momentDim)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { drawer = false }
+                        .semantics {
+                            contentDescription = "Close"
+                            role = Role.Button
+                        },
+            )
+        }
+        AnimatedVisibility(
+            visible = drawer,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            MomentsPostSheet(
+                state = state,
+                avatarUrl = avatarUrl,
+                onShowArea = onShowArea,
+                onHours = onHours,
+                onAudience = onAudience,
+                onCaption = onCaption,
+                onPost = onPost,
+                modifier = Modifier.statusBarsPadding().padding(top = 64.dp).testTag("moments.studio.drawer"),
+                onPlace = onPlace,
+                onFindPlace = onFindPlace,
+                onNoLocation = onNoLocation,
+                onShowHeight = onShowHeight,
+                onShowWeather = onShowWeather,
+                sky = sky,
+                onOpenMap = { fullMap = true },
+                studio = true,
+            )
+        }
+        if (fullMap) {
+            state.postMapSpot?.let { spot ->
+                MomentsPostFullMap(
+                    spot = spot,
+                    avatarUrl = avatarUrl,
+                    placeLabel = state.postPlaceLabel,
+                    placeKind = state.postPlaceKind,
+                    atHome = (state.postAtHome && !state.showArea) || state.skyAtHome,
+                    onBack = { fullMap = false },
+                )
+            }
+        }
+    }
+}
+
+/** The X at the top left: back to the camera, as today's Retake (it asks first when something would be lost). */
+@Composable
+private fun StudioClose(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(44.dp)
+                .alpha(if (enabled) 1f else 0.5f)
+                .clip(CircleShape)
+                .background(PantopusColors.momentCameraChip)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .testTag("moments.studio.close")
+                .semantics { contentDescription = "Back to the camera" },
+        contentAlignment = Alignment.Center,
+    ) {
+        PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 22.dp, strokeWidth = 2.2f, tint = Color.White)
+    }
+}
+
+/**
+ * The tool rail (board B2): each tool's name beside its round button. Text, Draw and Resize open today's marks editor;
+ * the tools of later steps join the rail as they are built.
+ */
+@Composable
+private fun StudioRail(
+    enabled: Boolean,
+    video: Boolean,
+    onOpen: (MomentMarksTool) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val what = if (video) "video" else "photo"
+    Column(
+        modifier = modifier.semantics { contentDescription = "Tools" },
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        RailTool(
+            label = "Text",
+            spoken = "Write on the $what",
+            enabled = enabled,
+            tag = "text",
+            onClick = { onOpen(MomentMarksTool.Text) },
+        ) {
+            Text(text = "Aa", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+        }
+        RailTool(
+            label = "Draw",
+            spoken = "Draw on the $what",
+            enabled = enabled,
+            tag = "draw",
+            onClick = { onOpen(MomentMarksTool.Draw) },
+        ) {
+            PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 20.dp, tint = Color.White)
+        }
+        RailTool(
+            label = "Resize",
+            spoken = "Resize the $what",
+            enabled = enabled,
+            tag = "resize",
+            onClick = { onOpen(MomentMarksTool.Resize) },
+        ) {
+            PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 20.dp, tint = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun RailTool(
+    label: String,
+    spoken: String,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+    glyph: @Composable () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .heightIn(min = 48.dp)
+                .alpha(if (enabled) 1f else 0.5f)
+                .clip(RoundedCornerShape(24.dp))
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .testTag("moments.studio.tool.$tag")
+                .clearAndSetSemantics {
+                    contentDescription = spoken
+                    role = Role.Button
+                },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            style = TextStyle(shadow = OnPicture),
+        )
+        Box(
+            modifier = Modifier.size(44.dp).clip(CircleShape).background(PantopusColors.momentCameraChip),
+            contentAlignment = Alignment.Center,
+        ) { glyph() }
+    }
+}
+
+/** The caption, written on the picture (board B2); the same 100 letters as today's caption box. */
+@Composable
+private fun StudioCaption(
+    caption: String,
+    enabled: Boolean,
+    onCaption: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val style = TextStyle(color = Color.White, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, shadow = OnPicture)
+    BasicTextField(
+        value = caption,
+        onValueChange = onCaption,
+        enabled = enabled,
+        textStyle = style,
+        maxLines = 3,
+        cursorBrush = SolidColor(PantopusColors.momentInkSky),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+        modifier = modifier.fillMaxWidth().testTag("moments.studio.caption").semantics { contentDescription = "Caption" },
+        decorationBox = { field ->
+            Box {
+                if (caption.isEmpty()) Text("Add a caption", style = style.copy(color = PantopusColors.studioPillSecondary))
+                field()
+            }
+        },
+    )
+}
+
+/** The bar at the bottom (board B2): who sees it, then the pill (how long and where) and Post. */
+@Composable
+private fun StudioBar(
+    state: MomentsComposeUiState,
+    homeNoteDue: Boolean,
+    onHomeNoteShown: () -> Unit,
+    onAudience: (String) -> Unit,
+    onOpenDrawer: () -> Unit,
+    onPost: () -> Unit,
+) {
+    // "Don't show where": no pin, connections only (as today's Post sheet).
+    val unplaced = state.noLocationOn
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(PantopusColors.studioBar)
+                .navigationBarsPadding()
+                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4, bottom = Spacing.s3)
+                .testTag("moments.studio.bar"),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.semantics { contentDescription = "Who sees it" },
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
+            AUDIENCES.forEach { (key, text) ->
+                val on = key == if (unplaced) "connections" else state.audience
+                val usable = !state.posting && (!unplaced || key == "connections")
+                Box(
+                    modifier =
+                        Modifier
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(19.dp))
+                            .background(if (on) Color.White else Color.Transparent)
+                            .then(if (on) Modifier else Modifier.border(1.dp, PantopusColors.studioChipOutline, RoundedCornerShape(19.dp)))
+                            .clickable(enabled = usable, role = Role.RadioButton) { onAudience(key) }
+                            .padding(horizontal = Spacing.s4)
+                            .testTag("moments.studio.audience.$key")
+                            .clearAndSetSemantics {
+                                contentDescription = text
+                                role = Role.RadioButton
+                                selected = on
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = text,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color =
+                            when {
+                                on -> PantopusColors.appText
+                                usable -> Color.White
+                                else -> Color.White.copy(alpha = 0.4f)
+                            },
+                    )
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StudioWhenPill(state = state, onClick = onOpenDrawer, modifier = Modifier.weight(1f))
+            StudioPost(state = state, onPost = onPost)
+        }
+        StudioHomeLine(state = state, homeNoteDue = homeNoteDue, onShown = onHomeNoteShown)
+    }
+}
+
+/**
+ * At home, a line under the pill. Where the Moment shows only its area (the Sky at home), it says why, the first time
+ * only (the lead, 2026-11-26), in the words of today's at-home note. Where it would pin on the home itself (before the
+ * Sky, with Show the area instead off), today's Post sheet warns every time, and so does the Studio.
+ */
+@Composable
+private fun StudioHomeLine(
+    state: MomentsComposeUiState,
+    homeNoteDue: Boolean,
+    onShown: () -> Unit,
+) {
+    val line =
+        when {
+            state.skyAtHome -> SkyWords.HOME_TITLE.takeIf { homeNoteDue }
+            state.postAtHome && !state.showArea -> HOME_PIN_WARNING
+            else -> null
+        } ?: return
+    if (state.skyAtHome) LaunchedEffect(Unit) { onShown() }
+    Row(
+        modifier = Modifier.testTag("moments.studio.home").semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Home, contentDescription = null, size = 16.dp, strokeWidth = 2.2f, tint = Color.White)
+        Text(text = line, color = PantopusColors.studioPillSecondary, fontSize = 13.sp)
+    }
+}
+
+/** Today's at-home warning (the Post sheet's own words): the Moment will pin on the home. */
+private const val HOME_PIN_WARNING = "This is your home. People will see the pin on it."
+
+/**
+ * The pill's second line: the place's name as today's Post sheet says it, or "Area · Camas, WA" when the Moment shows
+ * only its area at home (the lead, 2026-11-26).
+ */
+private val MomentsComposeUiState.studioPlaceLine: String
+    get() =
+        when {
+            skyAtHome -> "Area · ${place?.area?.label ?: place?.areaLabel ?: "your area"}"
+            postAtHome && showArea -> "Area · ${place?.areaLabel ?: place?.placeLabel ?: "your area"}"
+            else -> postPlaceLabel
+        }
+
+/** "Fades in 24 hours" over the place's name ("Shares at 6:40 pm" with Share later picked): opens the drawer. */
+@Composable
+private fun StudioWhenPill(
+    state: MomentsComposeUiState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val first = state.sharesAt?.let(SkyWords::sharesAt) ?: fadesIn(state.hours)
+    val second = state.studioPlaceLine
+    Row(
+        modifier =
+            modifier
+                .height(56.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(PantopusColors.studioPillFill)
+                .border(1.dp, PantopusColors.studioPillOutline, RoundedCornerShape(18.dp))
+                .clickable(enabled = !state.posting, role = Role.Button, onClick = onClick)
+                .padding(horizontal = 14.dp)
+                .testTag("moments.studio.when")
+                .clearAndSetSemantics {
+                    contentDescription = "$first, $second. Where, how long and when"
+                    role = Role.Button
+                },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Clock, contentDescription = null, size = 22.dp, strokeWidth = 2.2f, tint = Color.White)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = first,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = second,
+                color = PantopusColors.studioPillSecondary,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        PantopusIconImage(icon = PantopusIcon.ChevronDown, contentDescription = null, size = 20.dp, strokeWidth = 2.2f, tint = Color.White)
+    }
+}
+
+/** Post: the same tap as today's Post sheet's button, which waits the same way for a video getting ready. */
+@Composable
+private fun StudioPost(
+    state: MomentsComposeUiState,
+    onPost: () -> Unit,
+) {
+    val enabled = !state.posting && (state.pin != null || state.noLocationOn)
+    val label =
+        when {
+            state.posting && state.readying != null -> "${(state.readying * 100).toInt()}%"
+            state.posting -> "Posting…"
+            // Several picked together: which one this is.
+            state.pickedTogether > 1 -> "Post ${state.pickedAt} of ${state.pickedTogether}"
+            // A video longer than one Moment posts as several, one after another.
+            state.videoParts > 1 -> "Post as ${state.videoParts}"
+            else -> "Post"
+        }
+    Row(
+        modifier =
+            Modifier
+                .height(56.dp)
+                .alpha(if (enabled || state.posting) 1f else 0.5f)
+                .clip(RoundedCornerShape(28.dp))
+                .background(PantopusColors.primary600)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onPost)
+                .padding(horizontal = 22.dp)
+                .testTag("moments.studio.post")
+                .clearAndSetSemantics {
+                    contentDescription =
+                        when {
+                            state.posting && state.readying != null -> "Getting your video ready, $label"
+                            state.videoParts > 1 -> "Post as ${state.videoParts} Moments"
+                            else -> label
+                        }
+                    role = Role.Button
+                },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(text = label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        if (!state.posting) {
+            PantopusIconImage(
+                icon = PantopusIcon.ArrowRight,
+                contentDescription = null,
+                size = 18.dp,
+                strokeWidth = 2.4f,
+                tint = Color.White,
+            )
+        }
+    }
+}
+
+/** "Fades in 24 hours" (founder's word for a Moment's time: it fades when its hours are up). */
+private fun fadesIn(hours: Int): String = if (hours == 1) "Fades in 1 hour" else "Fades in $hours hours"
