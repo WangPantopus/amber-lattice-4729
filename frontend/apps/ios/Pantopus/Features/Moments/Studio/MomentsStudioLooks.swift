@@ -10,6 +10,7 @@
 
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Photos
 import SwiftUI
 import UIKit
 
@@ -186,5 +187,102 @@ struct MomentsStudioLooksRow: View {
             if let look = MomentsStudioLook(rawValue: key) { keyed[look] = image }
         }
         previews = keyed
+    }
+}
+
+// MARK: - Photostrip (phase 0 step 5)
+
+extension MomentsComposerModel {
+    /// Photos picked together after this one: a photostrip takes up to three of them with this photo.
+    var stripPartners: [PHAsset] {
+        guard offersLooks, marking.marks.isEmpty else { return [] }
+        return Array(waiting.filter { $0.mediaType == .image }.prefix(3))
+    }
+
+    /// This photo and the next ones picked together, one under the other on white, as one picture (a photo-booth
+    /// strip). They leave the queue: the strip is one Moment.
+    func makePhotostrip() async {
+        let partners = stripPartners
+        guard !partners.isEmpty, case let .photo(first) = draft else { return }
+        var photos = [marking.base ?? first]
+        for asset in partners {
+            if let image = await MomentsLibraryLoader.image(for: asset) { photos.append(image) }
+        }
+        guard photos.count > 1 else { return }
+        let used = Set(partners.map(\.localIdentifier))
+        waiting.removeAll { used.contains($0.localIdentifier) }
+        // "2 of 3" counts Moments: the strip is one of them.
+        pickedTogether = waiting.isEmpty ? 0 : pickedTogether - partners.count
+        let strip = MomentsPhotostrip.draw(photos)
+        if marking.studio == nil { marking.studio = MomentsStudioTools() }
+        (marking.studio?.look, marking.studio?.lookOriginal, marking.studio?.lookResult) = (.original, nil, nil)
+        use(marked: strip, marking.marks, placement: marking.placement)
+    }
+}
+
+enum MomentsPhotostrip {
+    /// Each photo cropped to 4:3 across, one under the other, on a white strip with even margins.
+    static func draw(_ photos: [UIImage]) -> UIImage {
+        let width: CGFloat = 1080
+        let margin: CGFloat = 36
+        let frameWidth = width - margin * 2
+        let frameHeight = (frameWidth * 3 / 4).rounded()
+        let height = margin + CGFloat(photos.count) * (frameHeight + margin)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            for (index, photo) in photos.enumerated() {
+                let frame = CGRect(x: margin, y: margin + CGFloat(index) * (frameHeight + margin), width: frameWidth, height: frameHeight)
+                let scale = max(frame.width / max(photo.size.width, 1), frame.height / max(photo.size.height, 1))
+                let size = CGSize(width: photo.size.width * scale, height: photo.size.height * scale)
+                context.cgContext.saveGState()
+                context.cgContext.clip(to: frame)
+                let origin = CGPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2)
+                photo.draw(in: CGRect(origin: origin, size: size))
+                context.cgContext.restoreGState()
+            }
+        }
+    }
+}
+
+/// The tray's "Photostrip": shown while photos picked together wait behind this one.
+struct MomentsStudioStripRow: View {
+    let model: MomentsComposerModel
+    let onDone: () -> Void
+    @State private var making = false
+
+    var body: some View {
+        let count = model.stripPartners.count
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            Text("Photostrip")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(Theme.Color.appText)
+                .accessibilityAddTraits(.isHeader)
+            Button {
+                making = true
+                Task {
+                    await model.makePhotostrip()
+                    making = false
+                    onDone()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Icon(.image, size: 16, strokeWidth: 2.2, color: Theme.Color.primaryTint)
+                    Text(making ? "Making the strip…" : "This and the next \(count == 1 ? "photo" : "\(count) photos") in one strip")
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appText)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(Capsule().fill(Theme.Color.appSurfaceRaised))
+                .overlay(Capsule().stroke(Theme.Color.appBorder, lineWidth: 1))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(making)
+            .accessibilityIdentifier("moments.studio.photostrip")
+        }
     }
 }
