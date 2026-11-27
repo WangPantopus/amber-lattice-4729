@@ -51,6 +51,8 @@ import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
+import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
+import { sampleColors } from './sampleColors';
 import './studio.css';
 
 const PlacePreview = dynamic(() => import('@/components/moments/MomentPlacePreview'), { ssr: false });
@@ -133,7 +135,9 @@ export default function Studio({
     [recovered, setRecovered] = useState(false);
   const [tool, setTool] = useState<StudioTool>(null),
     [ink, setInk] = useState(inks[0]),
-    [pen, setPen] = useState(pens[1]);
+    [pen, setPen] = useState(pens[1]),
+    // Up to five colours the picture is mostly made of, beside the six inks (design: "colors sampled from the photo").
+    [photoInks, setPhotoInks] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false),
     [discarding, setDiscarding] = useState(false),
     [askedPost, setAskedPost] = useState(false),
@@ -203,6 +207,7 @@ export default function Studio({
     setMeta(null);
     setReading(!!file);
     setArt(blankArt());
+    setPhotoInks([]);
     setTool(null);
     setCaption(file ? draftCaption.current : '');
     if (file) draftCaption.current = '';
@@ -417,6 +422,15 @@ export default function Studio({
     setHomeNote(true);
   }, [p?.at_home, p?.sky, noPlace, mode]);
 
+  // A text look: its font is fetched first, so the picture never shows the words in a stand-in font.
+  async function pickLook(look: TextLook) {
+    await fontReady(look.font, art.text);
+    if (!mounted.current) return;
+    setArt((a) => {
+      const { font: _old, ...rest } = a;
+      return look.font ? { ...rest, font: look.font } : rest;
+    });
+  }
   function choose(items: File[]) {
     const valid = items.filter(
       (f) => f.type.startsWith('image/') || f.type.startsWith('video/') || /\.(heic|heif|mov|mp4)$/i.test(f.name),
@@ -500,6 +514,8 @@ export default function Studio({
           : file && (file.type.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.name))
             ? 'video'
             : 'photo';
+      // The look's font is in before the words are drawn into the picture that is posted.
+      if (file && art.text.trim()) await fontReady(art.font, art.text);
       const prepared = file
         ? await prepareMedia(file, art, limits.data?.video || fallback, controller.signal, (f) =>
             setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
@@ -943,7 +959,15 @@ export default function Studio({
                 }}
               />
             ) : gate ? null : mode === 'media' && file ? (
-              <StudioPicture file={file} art={art} onChange={setArt} tool={tool} ink={ink} pen={pen} />
+              <StudioPicture
+                file={file}
+                art={art}
+                onChange={setArt}
+                tool={tool}
+                ink={ink}
+                pen={pen}
+                onPicture={(el, w, h) => setPhotoInks(sampleColors(el, w, h, inks))}
+              />
             ) : mode === 'text' ? (
               <div className="st-words">
                 <textarea
@@ -1097,8 +1121,30 @@ export default function Studio({
                     placeholder="Write on the picture"
                     maxLength={120}
                     value={art.text}
+                    style={
+                      art.font
+                        ? { fontFamily: art.font.family, fontWeight: art.font.weight, fontStyle: art.font.style }
+                        : undefined
+                    }
                     onChange={(e) => setArt({ ...art, text: e.target.value })}
                   />
+                  <div className="st-looks" role="group" aria-label="Font">
+                    {TEXT_LOOKS.map((look) => (
+                      <button
+                        type="button"
+                        key={look.name}
+                        aria-pressed={(art.font?.family || '') === (look.font?.family || '')}
+                        style={
+                          look.font
+                            ? { fontFamily: look.font.family, fontWeight: look.font.weight, fontStyle: look.font.style }
+                            : undefined
+                        }
+                        onClick={() => void pickLook(look)}
+                      >
+                        {look.name}
+                      </button>
+                    ))}
+                  </div>
                   <label className="st-field">
                     Size
                     <input
@@ -1119,6 +1165,17 @@ export default function Studio({
                     type="button"
                     key={v}
                     aria-label={inkNames[i]}
+                    style={{ background: v }}
+                    aria-pressed={v === (tool === 'draw' ? ink : art.color)}
+                    onClick={() => (tool === 'draw' ? setInk(v) : setArt({ ...art, color: v }))}
+                  />
+                ))}
+                {photoInks.length > 0 && <span className="st-inks-from">From your photo</span>}
+                {photoInks.map((v, i) => (
+                  <button
+                    type="button"
+                    key={'photo-' + v}
+                    aria-label={`Colour ${i + 1} from your photo`}
                     style={{ background: v }}
                     aria-pressed={v === (tool === 'draw' ? ink : art.color)}
                     onClick={() => (tool === 'draw' ? setInk(v) : setArt({ ...art, color: v }))}

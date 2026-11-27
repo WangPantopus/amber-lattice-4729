@@ -19,6 +19,7 @@ export default function StudioPicture({
   tool,
   ink,
   pen,
+  onPicture,
 }: {
   file: File;
   art: Artwork;
@@ -26,6 +27,8 @@ export default function StudioPicture({
   tool: StudioTool;
   ink: string;
   pen: number;
+  /** The picture as it loaded (a video once its first frame is in), for reading its colours. */
+  onPicture?(el: HTMLImageElement | HTMLVideoElement, width: number, height: number): void;
 }) {
   const [url, setUrl] = useState(''),
     [unreadable, setUnreadable] = useState(false),
@@ -89,6 +92,7 @@ export default function StudioPicture({
             autoPlay
             loop
             onLoadedMetadata={(e) => measured(e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
+            onLoadedData={(e) => onPicture?.(e.currentTarget, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
             onError={() => setUnreadable(true)}
           />
         ) : (
@@ -97,7 +101,10 @@ export default function StudioPicture({
             src={url}
             style={style}
             alt="Your photo"
-            onLoad={(e) => measured(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
+            onLoad={(e) => {
+              measured(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
+              onPicture?.(e.currentTarget, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
+            }}
             onError={() => setUnreadable(true)}
           />
         ))}

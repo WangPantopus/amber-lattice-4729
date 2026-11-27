@@ -13,6 +13,8 @@ export interface Artwork {
   zoom: number;
   rotation: number;
   offset: XY;
+  /** Pulse, reinvented: the Studio's text look (components/reinvented/studio/fonts.ts). Unset: today's bold system font. */
+  font?: { family: string; weight: number; style?: 'italic' };
 }
 export const blankArt = (): Artwork => ({
   strokes: [],
@@ -61,7 +63,9 @@ export function paintOverlay(ctx: Context, a: Artwork) {
   if (!a.text.trim()) return;
   const px = w * a.size;
   ctx.save();
-  ctx.font = '700 ' + px + 'px system-ui, sans-serif';
+  ctx.font = a.font
+    ? (a.font.style ? a.font.style + ' ' : '') + a.font.weight + ' ' + px + 'px ' + a.font.family
+    : '700 ' + px + 'px system-ui, sans-serif';
   ctx.fillStyle = a.color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
