@@ -1,0 +1,13 @@
+/* The side list's "Guess the spot" (components/reinvented/guess/GuessSpots.tsx): rows like "On the map", with the
+   picture's thumbnail where a face would be. */
+.gs-thumb {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: #0f766e;
+  color: #fff;
+}
