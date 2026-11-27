@@ -16,4 +16,6 @@ export interface StudioViewerSlots {
   seenMark(v: Viewer): ReactNode;
   /** In Moment options: "Edit" on one's own Moment for 15 minutes after it went out. */
   menu(m: Moment, close: () => void): ReactNode;
+  /** True while the viewer should hold still on this Moment (a guess-the-spot Moment the reader hasn't guessed). */
+  holds(m: Moment, account: string): boolean;
 }
