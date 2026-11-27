@@ -188,13 +188,41 @@ async function stampsFor(posts) {
  * The shown stamps, the playable items and the dots of each of these posts that the Studio made, for `viewerId`
  * (CONTRACT 6d, 7b, 7c): { stamps, play, dots }, each by post id. The answers are read alongside the post's own row, never after the page.
  */
-async function readerParts(posts, viewerId) {
+// How many Studio rows, and answers, a box read takes before the list falls back to reading the page's own (partsInBox).
+const BOX_ROWS = 1000;
+
+/**
+ * The Studio rows of the posts in a box and the answers on those with playable items, read BESIDE a list's posts read
+ * (the list knows its place first), so the page's Studio parts cost no round after the posts (the opening time, LEAD-3
+ * 09:06). Answers null when the box held more than one read takes: the list then reads the page's own.
+ */
+async function partsInBox({ south, west, north, east }) {
+  const pad = 0.03;
+  const { data, error } = await supabaseAdmin.from('PostStudio').select('post_id, studio, post:Post!inner(latitude, longitude)')
+    .gte('post.latitude', south - pad).lte('post.latitude', north + pad)
+    .gte('post.longitude', west - pad).lte('post.longitude', east + pad)
+    .limit(BOX_ROWS);
+  if (error) throw new Error(`Failed to load the posts' Studio parts: ${error.message}`);
+  if ((data || []).length >= BOX_ROWS) return null;
+  const rows = (data || []).map((row) => ({ post_id: row.post_id, studio: row.studio }));
+  const playIds = rows.filter((row) => row.studio?.play?.length).map((row) => row.post_id);
+  const answers = playIds.length ? await play.answersOn(playIds) : new Map();
+  if ([...answers.values()].reduce((n, list) => n + list.length, 0) >= play.MAX_ANSWERS_READ) return null;
+  return { rows, answers };
+}
+
+async function readerParts(posts, viewerId, { inBox = null } = {}) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
   if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() };
-  const [{ data, error }, answers] = await Promise.all([
-    supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
-    play.answersOn(ids).catch(() => null),
-  ]);
+  // Read beside the posts when the list could (partsInBox); otherwise the page's own rows now.
+  const boxed = inBox ? await inBox.catch(() => null) : null;
+  const wanted = new Set(ids);
+  const [{ data, error }, answers] = boxed
+    ? [{ data: boxed.rows.filter((row) => wanted.has(row.post_id)), error: null }, boxed.answers]
+    : await Promise.all([
+      supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
+      play.answersOn(ids).catch(() => null),
+    ]);
   if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
   const rows = data || [];
   const stamps = new Map(rows.map((row) => [row.post_id, shownOf(row.studio)]));
@@ -243,4 +271,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, partsInBox, stampsInBox, withStamps, EXPLORE_TYPES };

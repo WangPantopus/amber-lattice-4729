@@ -312,6 +312,10 @@ async function listFor(userId, {
   const townRead = momentPlace.townAt(place.latitude, place.longitude).catch(() => momentPlace.FALLBACK_LABEL);
   const bands = bandsUpTo(miles, null);
   const reachM = bands[bands.length - 1].outerM;
+  // The Studio parts of the posts here (stamps, playable items and their answers, dots) are read beside the posts, not
+  // after them: the place is known first (the opening time, LEAD-3 09:06). A failed or too-large read only falls back.
+  const studioInBox = shape.posts ? postStudio.partsInBox(boxAround(place.latitude, place.longitude, reachM)) : null;
+  studioInBox?.catch(() => {});
   // The Moments are read when the chip shows them, or on the first page to say whether `live` has any.
   const shownRead = shape.moments || firstPage
     ? withKept(store.shownInBox(userId, boxAround(place.latitude, place.longitude, reachM)),
@@ -421,7 +425,7 @@ async function listFor(userId, {
   }
   const town = await townRead;
   return answer({
-    userId, reach, miles, chip, chipsRead, readyRead, place: { label: town }, bands: bandsUpTo(miles, town), items, next,
+    userId, reach, miles, chip, chipsRead, readyRead, place: { label: town }, bands: bandsUpTo(miles, town), items, next, studioInBox,
   });
 }
 
@@ -469,7 +473,7 @@ function prepare(userId, itemsRead) {
 }
 
 /** The page as the apps read it: Moments serialized as GET /api/moments/:id answers them, posts as the feed lists them. */
-async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next }) {
+async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null }) {
   const ready = await (readyRead || Promise.resolve(new Map())).catch(() => new Map());
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);
   const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
@@ -478,7 +482,7 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
     chipsRead || null,
     // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read only
     // leaves them off.
-    postStudio.readerParts(pagePosts, userId).catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() })),
+    postStudio.readerParts(pagePosts, userId, { inBox: studioInBox }).catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() })),
   ]);
   const { stamps, play, dots, mentions, passes, eyes } = studio;
   const byId = new Map([...ready, ...moments.map((moment) => [moment.id, moment])]);

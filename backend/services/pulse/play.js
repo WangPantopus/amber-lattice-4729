@@ -646,4 +646,5 @@ async function removeAnswer(id, itemId, answerId, viewerId) {
 module.exports = {
   KINDS, MAX_ITEMS, parseItems, wordsOf, parseAnswer, itemFor, playFor, answersOn,
   DOT_KINDS, MAX_DOTS, hiddenPeople, parseDots, wordsOfDots, dotsFor, dotItem, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
+  MAX_ANSWERS_READ,
 };
