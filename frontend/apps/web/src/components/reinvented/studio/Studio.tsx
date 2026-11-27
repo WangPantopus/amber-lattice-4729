@@ -10,8 +10,8 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
-import { geo, moments, penNames } from '@pantopus/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { geo, moments, penNames, posts as postsApi, upload } from '@pantopus/api';
 import { post } from '@pantopus/api/client';
 import type { Audience, Background, Hours, Location, NewMoment, Preview } from '@pantopus/api/endpoints/moments';
 import type { MomentChatDraft } from '@pantopus/types';
@@ -24,6 +24,8 @@ import {
   ImagePlus,
   LocateFixed,
   MapPin,
+  MessageCircleQuestion,
+  Plus,
   RotateCw,
   Type,
   Undo2,
@@ -31,6 +33,7 @@ import {
 } from 'lucide-react';
 import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/composer/mediaLocation';
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
+import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
 import { blankArt, inks } from '@/components/moments/momentArtwork';
 import {
@@ -53,6 +56,19 @@ import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
+import {
+  ALERT_KINDS,
+  asksSomething,
+  asStoredWallClock,
+  CONTACT_CHOICES,
+  eventTimeError,
+  kindHint,
+  kindName,
+  kindPill,
+  purposeOf,
+  STUDIO_KINDS,
+  type StudioKind,
+} from './postKinds';
 import './studio.css';
 
 const PlacePreview = dynamic(() => import('@/components/moments/MomentPlacePreview'), { ssr: false });
@@ -148,6 +164,22 @@ export default function Studio({
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
+  // "+ Ask / Kind" (phase 1, CONTRACT 6d): the picture or the words become one of today's Pulse posts. Each kind's own
+  // details are today's composer's (what a Heads-up is about, lost or found and how to reach the author, an event's
+  // times and venue).
+  const [kind, setKind] = useState<StudioKind | null>(null),
+    [kindMenu, setKindMenu] = useState(false),
+    [askDeclined, setAskDeclined] = useState(false),
+    [alertKind, setAlertKind] = useState('other'),
+    [lostType, setLostType] = useState<'lost' | 'found'>('lost'),
+    [contact, setContact] = useState<'dm' | 'comment' | 'phone'>('dm'),
+    [phone, setPhone] = useState(''),
+    [eventStart, setEventStart] = useState(''),
+    [eventEnd, setEventEnd] = useState(''),
+    [eventVenue, setEventVenue] = useState('');
+  const client = useQueryClient();
+  // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
+  const postRequest = useRef<string | null>(null);
   const drawer = drawerOpen || wide;
   const handle = useRef<AbortController | null>(null),
     input = useRef<HTMLInputElement>(null),
@@ -367,7 +399,17 @@ export default function Studio({
   };
   const kept = stamps.filter((st) => stampValue(st.kind) != null);
   // Guess the spot takes a photo or video with a place, never at home (the answer would point at it).
-  const canGuess = mode === 'media' && !!file && !noPlace && !!point && !p?.at_home;
+  const isVideo = !!file && (file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.name));
+  // A post is one photo or the words; under a made-up name it stays a Moment (a post under one is words only, of its
+  // own few kinds: today's composer makes those).
+  const kindsOffered = !underPenName && ((mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
+  const postKind = kindsOffered ? kind : null;
+  const words = mode === 'text' ? text : caption;
+  // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
+  const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
+  // A post shows at its place to people nearby, or goes to the author's connections with no place (today's composer).
+  const postPlaced = !noPlace && audience !== 'connections';
+  const canGuess = !postKind && mode === 'media' && !!file && !noPlace && !!point && !p?.at_home;
   // Wet red ink while the Moment is live from here (the camera, just now, where it was taken); dried otherwise.
   const stampInk: 'wet' | 'dry' = live && !later ? 'wet' : 'dry';
   function placeStamp(kind: StampKind) {
@@ -641,18 +683,123 @@ export default function Studio({
       handle.current = null;
     }
   }
+  // A Pulse post made in the Studio (CONTRACT 6d): today's request, as today's composer sends it, with the photo (the
+  // picture as drawn, words and marks in it) uploaded after it as today's composer does, and the Studio's `studio`
+  // field: where each stamp sits (the server fills the values) and the height reading for the elevation stamp.
+  async function submitPost(postType: StudioKind) {
+    if (submitting.current) return;
+    submitting.current = true;
+    const controller = new AbortController();
+    handle.current = controller;
+    setBusy('Preparing…');
+    setError('');
+    let posted = false;
+    try {
+      let photo: File | null = null;
+      if (file) {
+        if (art.text.trim()) await fontReady(art.font, art.text);
+        const [prepared] = await prepareMedia(file, art, limits.data?.video || fallback, controller.signal, () => {});
+        photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
+      }
+      controller.signal.throwIfAborted();
+      const at = placement === 'place' && pickedVenue ? { latitude: pickedVenue.center.lat, longitude: pickedVenue.center.lng } : point;
+      const digits = phone.replace(/\D/g, '');
+      postRequest.current ??= crypto.randomUUID();
+      const body: Parameters<typeof postsApi.createPost>[0] & {
+        studio: { stamps: PlacedStamp[]; elevation?: { meters: number; accuracy_m?: number | null } };
+      } = {
+        clientRequestId: postRequest.current,
+        content: words.trim(),
+        postType,
+        visibility: postPlaced ? 'neighborhood' : 'connections',
+        audience: postPlaced ? 'nearby' : 'connections',
+        postAs: 'personal',
+        ...(postPlaced && at
+          ? {
+              latitude: at.latitude,
+              longitude: at.longitude,
+              ...(placeName ? { locationName: placeName } : {}),
+              ...(placement === 'place' && venue.startsWith('osm:') ? { geocodePlaceId: venue } : {}),
+              ...(fromAlbum
+                ? { mediaLocations: [{ latitude: fromAlbum.latitude!, longitude: fromAlbum.longitude!, capturedAt: fromAlbum.capturedAt }] }
+                : fix
+                  ? {
+                      gpsTimestamp: new Date(fix.timestamp).toISOString(),
+                      gpsLatitude: fix.coords.latitude,
+                      gpsLongitude: fix.coords.longitude,
+                    }
+                  : {}),
+            }
+          : {}),
+        ...(postType === 'event'
+          ? {
+              eventDate: asStoredWallClock(eventStart),
+              ...(eventEnd ? { eventEndDate: asStoredWallClock(eventEnd) } : {}),
+              ...(eventVenue.trim() ? { eventVenue: eventVenue.trim() } : {}),
+            }
+          : {}),
+        ...(postType === 'alert' ? { safetyAlertKind: alertKind as Parameters<typeof postsApi.createPost>[0]['safetyAlertKind'] } : {}),
+        ...(postType === 'lost_found'
+          ? { lostFoundType: lostType, contactPref: contact, ...(contact === 'phone' ? { contactPhone: digits } : {}) }
+          : {}),
+        purpose: purposeOf(postType),
+        profileVisibilityScope: 'local_context',
+        showOnProfile: true,
+        studio: {
+          stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
+          ...(kept.some((st) => st.kind === 'elevation') && altitude != null
+            ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
+            : {}),
+        },
+      };
+      setBusy('Posting…');
+      const res = await postsApi.createPost(await withFreshFix(body));
+      const id = res.post?.id;
+      if (typeof id !== 'string' || !id.trim()) throw new Error('Post could not be confirmed. Try again.');
+      if (photo) {
+        setBusy('Adding the photo…');
+        const sent = await upload.uploadPostMedia(id, [photo]);
+        if (!Array.isArray(sent?.media_urls) || !sent.media_urls.length)
+          throw new Error('Post saved. The photo could not be confirmed. Try again.');
+      }
+      posted = true;
+      postRequest.current = null;
+      void client.invalidateQueries({ queryKey: ['posts', 'mine'], refetchType: 'none' });
+      void client.invalidateQueries({ queryKey: ['feed'], refetchType: 'none' });
+      void client.invalidateQueries({ queryKey: ['reinvented'] });
+    } catch (e) {
+      if (isSwitchedOff(e)) {
+        postRequest.current = null;
+        if (mounted.current) setWentOff(true);
+      } else if (mounted.current) setError(messageOf(e, 'Couldn’t post. Try again.'));
+    } finally {
+      if (mounted.current) setBusy('');
+      submitting.current = false;
+      handle.current = null;
+    }
+    if (posted) onDone(`${kindName(postType)} posted to Pulse.`);
+  }
   // Post: a setting that still needs the person opens the drawer at it, with the reason, instead of failing. The reason
   // stays only while it still holds (today's composer's words).
+  const phoneDigits = phone.replace(/\D/g, '').length;
   const blocker =
-    !noPlace && !point
+    (postKind ? postPlaced : !noPlace) && !point
       ? 'Choose Use my location, or select No location.'
-      : noPlace && p?.has_connections === false
+      : !postKind && noPlace && p?.has_connections === false
         ? 'A Moment without a location needs a connection.'
-        : homeWarning && !homeAck
+        : !postKind && homeWarning && !homeAck
           ? 'Confirm the pin at your home, or choose Show area.'
-          : '';
+          : !postKind && caption.trim().length > 100
+            ? 'A Moment’s caption is up to 100 characters.'
+            : postKind && !words.trim()
+              ? `Write what the ${kindName(postKind).toLowerCase()} is about.`
+              : postKind === 'event'
+                ? eventTimeError(eventStart, eventEnd) || ''
+                : postKind === 'lost_found' && contact === 'phone' && (phoneDigits < 7 || phoneDigits > 15)
+                  ? 'Enter a valid phone number.'
+                  : '';
   function tryPost() {
-    if (!blocker) return void submit();
+    if (!blocker) return void (postKind ? submitPost(postKind) : submit());
     setError('');
     setAskedPost(true);
     setDrawerOpen(true);
@@ -672,6 +819,9 @@ export default function Studio({
     setStamps([]);
     setPicked(null);
     setGuessSpot(false);
+    setKind(null);
+    setKindMenu(false);
+    setAskDeclined(false);
     setDrawerOpen(false);
     setFiles([]);
     setIndex(0);
@@ -693,6 +843,7 @@ export default function Studio({
     if (setupOpen) return;
     if (wentOff) return handBack();
     if (discarding) setDiscarding(false);
+    else if (kindMenu) setKindMenu(false);
     else if (trayOpen) setTrayOpen(false);
     else if (picked) setPicked(null);
     else if (tool) setTool(null);
@@ -724,8 +875,18 @@ export default function Studio({
               : '') + (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
   const laterChoice = later ? p?.share_later?.find((v) => v.key === later) : undefined;
   // With Share later the pill reads "Shares at 6:40 pm" over "24 hours · <place>".
-  const pillPlace = laterChoice ? `${hours} ${hours === 1 ? 'hour' : 'hours'} · ${placeLine}` : placeLine;
-  const timeLine = laterChoice
+  const pillPlace = postKind
+    ? postPlaced
+      ? placeLine
+      : 'Your connections · no place'
+    : laterChoice
+      ? `${hours} ${hours === 1 ? 'hour' : 'hours'} · ${placeLine}`
+      : placeLine;
+  // A post made here says how long it stays instead (CONTRACT 6d): "Stays until answered", "Stays in Atlas", "Until
+  // claimed", "Until Saturday 11 am".
+  const timeLine = postKind
+    ? kindPill(postKind, eventEnd || eventStart, new Date(now))
+    : laterChoice
     ? 'Shares at ' +
       new Date(laterChoice.at)
         .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -755,6 +916,71 @@ export default function Studio({
         )}
       </header>
       <fieldset disabled={!!busy}>
+        {postKind && (
+          <div className="st-group st-kind-group" role="group" aria-label={kindName(postKind)}>
+            <span className="st-label">
+              <MessageCircleQuestion size={15} aria-hidden="true" />
+              {kindName(postKind)}
+            </span>
+            {postKind === 'alert' && (
+              <>
+                <div className="st-chips">
+                  {ALERT_KINDS.map(([k, label]) => (
+                    <Chip key={k} on={alertKind === k} onClick={() => setAlertKind(k)}>
+                      {label}
+                    </Chip>
+                  ))}
+                </div>
+                <p className="st-note">Heads-ups can’t be about crime or suspicious people. In an emergency, call 911.</p>
+              </>
+            )}
+            {postKind === 'lost_found' && (
+              <>
+                <div className="st-chips">
+                  <Chip on={lostType === 'lost'} onClick={() => setLostType('lost')}>
+                    Lost
+                  </Chip>
+                  <Chip on={lostType === 'found'} onClick={() => setLostType('found')}>
+                    Found
+                  </Chip>
+                </div>
+                <span className="st-label">How should people contact you?</span>
+                <div className="st-chips">
+                  {CONTACT_CHOICES.map(([k, label]) => (
+                    <Chip key={k} on={contact === k} onClick={() => setContact(k)}>
+                      {label}
+                    </Chip>
+                  ))}
+                </div>
+                {contact === 'phone' && (
+                  <label className="st-field">
+                    Phone
+                    <input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </label>
+                )}
+              </>
+            )}
+            {postKind === 'event' && (
+              <>
+                <label className="st-field">
+                  Starts
+                  <input type="datetime-local" value={eventStart} onChange={(e) => setEventStart(e.target.value)} />
+                </label>
+                <label className="st-field">
+                  Ends (optional)
+                  <input type="datetime-local" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} />
+                </label>
+                <label className="st-field">
+                  Venue (optional)
+                  <input value={eventVenue} maxLength={200} onChange={(e) => setEventVenue(e.target.value)} placeholder="Where it is" />
+                </label>
+              </>
+            )}
+            {(postKind === 'ask_local' || postKind === 'recommendation' || postKind === 'local_update') && (
+              <p className="st-note">{kindHint(postKind)}.</p>
+            )}
+          </div>
+        )}
         <div className="st-group" role="group" aria-label="Where it shows">
           <span className="st-label">
             <MapPin size={15} aria-hidden="true" />
@@ -809,9 +1035,11 @@ export default function Studio({
           {!noPlace && (
             <div className="st-where">
               <div>
-                <strong>{placeLine}</strong>
+                <strong>{postKind && !postPlaced ? 'Your connections' : placeLine}</strong>
                 <small>
-                  {underPenName
+                  {postKind && !postPlaced
+                    ? 'A post to your connections shows no place.'
+                    : underPenName
                     ? 'Under a made-up name it shows over its area, or at a public place, to people nearby.'
                     : area
                       ? 'Only the area is shown.'
@@ -870,19 +1098,19 @@ export default function Studio({
               {venues.data?.attribution && <small>{venues.data.attribution}</small>}
             </>
           )}
-          {homeWarning && (
+          {!postKind && homeWarning && (
             <label className="st-check">
               <input type="checkbox" checked={homeAck} onChange={(e) => setHomeAck(e.target.checked)} />
               This is my home. People will see the pin on it.
             </label>
           )}
-          {canHeight && (
+          {!postKind && canHeight && (
             <label className="st-check">
               <input type="checkbox" checked={height} onChange={(e) => setHeight(e.target.checked)} />
               Show height
             </label>
           )}
-          {live && (
+          {!postKind && live && (
             <div className="st-note">
               Live from here
               {p?.weather && (
@@ -894,6 +1122,7 @@ export default function Studio({
             </div>
           )}
         </div>
+        {!postKind && (
         <div className="st-group" role="group" aria-label="How long">
           <span className="st-label">
             <Clock3 size={15} aria-hidden="true" />
@@ -907,7 +1136,8 @@ export default function Studio({
             ))}
           </div>
         </div>
-        {!!p?.share_later?.length && (
+        )}
+        {!postKind && !!p?.share_later?.length && (
           <div className="st-group" role="group" aria-label="When it shares">
             <span className="st-label">When it shares</span>
             <div className="st-chips">
@@ -1414,15 +1644,78 @@ export default function Studio({
                   {mode === 'media' && file && !tool && (
                     <input
                       className="st-caption"
-                      aria-label="Caption"
-                      maxLength={100}
+                      aria-label={postKind ? 'What it’s about' : 'Caption'}
+                      maxLength={postKind ? 500 : 100}
                       value={caption}
                       disabled={!!busy}
                       onChange={(e) => setCaption(e.target.value)}
-                      placeholder="Add a caption"
+                      placeholder={postKind === 'ask_local' ? 'Ask something' : postKind ? 'Say what it’s about' : 'Add a caption'}
                     />
                   )}
-                  {mode === 'text' && (
+                  {kindsOffered && !tool && (
+                    <div className="st-kind-row">
+                      {postKind ? (
+                        <>
+                          <span className="st-kind-chip">
+                            {kindName(postKind)}
+                            <button
+                              type="button"
+                              aria-label={`Keep it a Moment, not a ${kindName(postKind).toLowerCase()}`}
+                              disabled={!!busy}
+                              onClick={() => setKind(null)}
+                            >
+                              <X size={14} strokeWidth={2.6} aria-hidden="true" />
+                            </button>
+                          </span>
+                          <span className="st-kind-hint">{kindHint(postKind)}</span>
+                        </>
+                      ) : (
+                        <>
+                          {offerAsk && (
+                            <span className="st-kind-offer">
+                              <button type="button" onClick={() => setKind('ask_local')}>
+                                <MessageCircleQuestion size={15} aria-hidden="true" />
+                                Keep until answered?
+                              </button>
+                              <button type="button" aria-label="No, keep it a Moment" onClick={() => setAskDeclined(true)}>
+                                <X size={14} strokeWidth={2.6} aria-hidden="true" />
+                              </button>
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="st-kind-add"
+                            aria-haspopup="menu"
+                            aria-expanded={kindMenu}
+                            disabled={!!busy}
+                            onClick={() => setKindMenu((v) => !v)}
+                          >
+                            <Plus size={15} strokeWidth={2.6} aria-hidden="true" />
+                            Ask / Kind
+                          </button>
+                        </>
+                      )}
+                      {kindMenu && !postKind && (
+                        <div className="st-kind-menu" role="menu" aria-label="Make it a post that stays">
+                          {STUDIO_KINDS.map((k) => (
+                            <button
+                              key={k.kind}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setKind(k.kind);
+                                setKindMenu(false);
+                              }}
+                            >
+                              <strong>{k.name}</strong>
+                              <span>{k.hint}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {mode === 'text' && !postKind && (
                     <div className="st-swatches" role="group" aria-label="Background">
                       {(Object.keys(colors) as Background[]).map((k) => (
                         <button
@@ -1454,6 +1747,7 @@ export default function Studio({
                       <button
                         type="button"
                         className="st-when"
+                        data-kind={postKind || undefined}
                         aria-label={`${timeLine}, ${pillPlace}. Change`}
                         aria-expanded={drawer}
                         disabled={!!busy}
@@ -1462,7 +1756,7 @@ export default function Studio({
                           else setDrawerOpen((v) => !v);
                         }}
                       >
-                        <Clock3 size={20} aria-hidden="true" />
+                        {postKind ? <MessageCircleQuestion size={20} aria-hidden="true" /> : <Clock3 size={20} aria-hidden="true" />}
                         <span>
                           <strong>{timeLine}</strong>
                           <small>{pillPlace}</small>
