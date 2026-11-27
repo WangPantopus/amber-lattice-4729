@@ -529,6 +529,7 @@ internal fun StudioStampTray(
     state: MomentsComposeUiState,
     onStamps: (List<MomentStampPlacement>) -> Unit,
     onDone: () -> Unit,
+    onGuess: (Boolean) -> Unit = {},
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
@@ -541,6 +542,8 @@ internal fun StudioStampTray(
         placed = state.stamps,
         onRetry = { state.pin?.let { stamps.read(it.latitude, it.longitude, again = true) } },
         onDone = onDone,
+        // Play: "Guess the spot", for a photo or video with a place away from home.
+        play = if (state.offersGuess) ({ StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) }) }) else null,
     ) { kind, placed ->
         if (placed) {
             onStamps(state.stamps.filterNot { it.kind == kind })
@@ -571,6 +574,7 @@ internal fun StampTray(
     placed: List<MomentStampPlacement>,
     onRetry: () -> Unit,
     onDone: () -> Unit,
+    play: (@Composable () -> Unit)? = null,
     onChip: (kind: String, placed: Boolean) -> Unit,
 ) {
     BackHandler(enabled = visible, onBack = onDone)
@@ -610,6 +614,7 @@ internal fun StampTray(
             ) {
                 TrayHeader()
                 TrayStamps(reading = reading, offered = offered, placed = placed, onRetry = onRetry, onChip = onChip)
+                play?.invoke()
                 Spacer(Modifier.height(Spacing.s1))
             }
         }
