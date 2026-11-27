@@ -85,6 +85,7 @@ function parseItems(value, now = Date.now()) {
     const { error, value: item } = SCHEMAS[raw.kind].validate(raw, { abortEarly: true, stripUnknown: true });
     if (error) throw new Error(`play[${index}]: ${error.details[0].message.replace(/"/g, '')}`);
     if (seen.has(item.id)) throw new Error(`play[${index}]: each item needs its own id.`);
+    if (/^[ck]-/.test(item.id)) throw new Error(`play[${index}]: an id can't start with c- or k-.`);
     seen.add(item.id);
     const stored = {
       ...item,
@@ -125,8 +126,10 @@ function wordsOf(items) {
 
 const DOT_KINDS = ['note', 'rating', 'link', 'thing'];
 const MAX_DOTS = 8;
+// A dot's answers (a field card's correction, a collect) are kept under `c-<id>` and `k-<id>` (dotItem), so a dot's id
+// leaves room for the prefix, and a play item's id never starts with one.
 const dotPlace = {
-  id: placement.id,
+  id: Joi.string().pattern(/^[a-z0-9_-]{1,38}$/).required(),
   x: placement.x,
   y: placement.y,
 };
@@ -179,6 +182,11 @@ function parseDots(value, { photo = false, media = false, penName = false } = {}
     if (dot.kind === 'link') stored.title = dot.title || null;
     return stored;
   });
+}
+
+/** The PostAnswer item a dot's answer of this kind is kept under: `c-<id>` a correction, `k-<id>` a collect. */
+function dotItem(kind, dotId) {
+  return `${kind === 'collect' ? 'k' : 'c'}-${dotId}`;
 }
 
 /** Every word an author typed in these dots, for the made-up-name words check. */
@@ -530,7 +538,7 @@ async function authorAnswers(id, itemId, viewerId, cursor) {
   const target = await reach(id, viewerId);
   // A thing dot's field card corrections ("Not right?", CONTRACT 7d) are read here too.
   const thing = target.dots.find((dot) => dot.id === itemId && dot.kind === 'thing');
-  const item = thing ? { id: thing.id, kind: 'correction' } : itemOf(target, itemId);
+  const item = thing ? { id: dotItem('correction', thing.id), kind: 'correction' } : itemOf(target, itemId);
   if (!target.own || !['question', 'board', 'correction'].includes(item.kind)) throw notFound();
   const offset = Math.max(0, Number.parseInt(cursor || '0', 10) || 0);
   let query = supabaseAdmin.from('PostAnswer').select('id, user_id, value, updated_at')
@@ -567,5 +575,5 @@ async function removeAnswer(id, itemId, answerId, viewerId) {
 
 module.exports = {
   KINDS, MAX_ITEMS, parseItems, wordsOf, parseAnswer, itemFor, playFor, answersOn,
-  DOT_KINDS, MAX_DOTS, parseDots, wordsOfDots, dotsFor, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
+  DOT_KINDS, MAX_DOTS, parseDots, wordsOfDots, dotsFor, dotItem, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
 };

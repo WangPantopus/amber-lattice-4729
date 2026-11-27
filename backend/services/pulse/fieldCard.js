@@ -193,18 +193,26 @@ function thingOf(target, dotId) {
   return dot;
 }
 
-/** The reader's own correction on this card, or null; and how many people corrected it. */
-async function correctionsOf(postId, dotId, viewerId) {
-  const { data, error } = await supabaseAdmin.from('PostAnswer').select('user_id, value')
-    .eq('post_id', postId).eq('item', dotId).eq('kind', 'correction').limit(5000);
-  if (error) throw new Error(`Failed to load the corrections: ${error.message}`);
-  const mine = (data || []).find((row) => String(row.user_id) === String(viewerId));
-  return { count: (data || []).length, mine: mine ? { name: mine.value?.name || '', note: mine.value?.note || null } : null };
+/** How many people corrected this card, the reader's own correction or null, and whether the reader collected it. */
+async function readerSide(postId, dotId, viewerId) {
+  const corrections = play.dotItem('correction', dotId);
+  const collect = play.dotItem('collect', dotId);
+  const [all, mine] = await Promise.all([
+    supabaseAdmin.from('PostAnswer').select('id', { count: 'exact', head: true }).eq('post_id', postId).eq('item', corrections),
+    supabaseAdmin.from('PostAnswer').select('item, value').eq('post_id', postId).eq('user_id', viewerId).in('item', [corrections, collect]),
+  ]);
+  if (all.error || mine.error) throw new Error(`Failed to load the card's answers: ${(all.error || mine.error).message}`);
+  const own = (mine.data || []).find((row) => row.item === corrections);
+  return {
+    count: all.count || 0,
+    mine: own ? { name: own.value?.name || '', note: own.value?.note || null } : null,
+    collected: (mine.data || []).some((row) => row.item === collect),
+  };
 }
 
 async function shownFor(target, dotId, card, viewerId) {
-  const { count, mine } = await correctionsOf(target.id, dotId, viewerId);
-  return { ...play.shownCard(card), corrections: count, my_correction: mine };
+  const { count, mine, collected } = await readerSide(target.id, dotId, viewerId);
+  return { ...play.shownCard(card), corrections: count, my_correction: mine, collected };
 }
 
 /** POST /dots/:id/:dot/card — the thing's field card: kept, or made now with one call and kept. */
@@ -241,7 +249,8 @@ async function correct(id, dotId, viewerId, body) {
   const note = typeof body?.note === 'string' ? body.note.trim() : '';
   if (!name || name.length > 60 || note.length > 140) throw fail(400, 'PLAY_INVALID', 'Say what it is (up to 60 characters), and a note of up to 140 if you like.');
   const { error } = await supabaseAdmin.from('PostAnswer').upsert({
-    post_id: id, user_id: viewerId, item: dotId, kind: 'correction', value: { name, note: note || null }, updated_at: new Date().toISOString(),
+    post_id: id, user_id: viewerId, item: play.dotItem('correction', dotId), kind: 'correction', value: { name, note: note || null },
+    updated_at: new Date().toISOString(),
   }, { onConflict: 'post_id,item,user_id' });
   if (error) throw new Error(`Failed to keep the correction: ${error.message}`);
   const shown = await shownFor(target, dotId, card, viewerId);
@@ -253,4 +262,56 @@ async function correct(id, dotId, viewerId, body) {
   return { card: shown };
 }
 
-module.exports = { cardFor, correct, safeSource, CAUTION, ENDPOINT };
+// ─── Collect: the reader's field guide (CONTRACT 7f) ────────────────────────
+
+const GUIDE_PAGE = 30;
+
+/** POST /dots/:id/:dot/collect — keeps a kept card's words in the reader's own field guide. */
+async function collect(id, dotId, viewerId) {
+  const target = await play.reach(id, viewerId);
+  thingOf(target, dotId);
+  const card = target.cards?.[dotId];
+  if (!card) throw fail(404, 'PLAY_NOT_FOUND', 'This card could not be found.');
+  const words = {
+    dot: dotId, name: card.name || null, scientific: card.scientific || null, why: card.why || null,
+    source: card.source || null, caution: card.caution || null,
+  };
+  const { error } = await supabaseAdmin.from('PostAnswer').upsert({
+    post_id: id, user_id: viewerId, item: play.dotItem('collect', dotId), kind: 'collect', value: words,
+  }, { onConflict: 'post_id,item,user_id', ignoreDuplicates: true });
+  if (error) throw new Error(`Failed to collect the card: ${error.message}`);
+  logger.info('field_card.collected', { postId: id });
+  return { card: await shownFor(target, dotId, card, viewerId) };
+}
+
+/** DELETE /dots/:id/:dot/collect — lets a card go from the reader's field guide (even after the post is gone). */
+async function letGo(id, dotId, viewerId) {
+  const { error } = await supabaseAdmin.from('PostAnswer').delete()
+    .eq('post_id', id).eq('item', play.dotItem('collect', dotId)).eq('user_id', viewerId);
+  if (error) throw new Error(`Failed to let the card go: ${error.message}`);
+}
+
+/** GET /field-guide — the reader's own collected cards, newest first, with whether each post still opens for them. */
+async function fieldGuide(viewerId, cursor) {
+  const offset = Math.max(0, Number.parseInt(cursor || '0', 10) || 0);
+  const { data, error } = await supabaseAdmin.from('PostAnswer').select('post_id, value, created_at')
+    .eq('user_id', viewerId).eq('kind', 'collect').order('created_at', { ascending: false }).range(offset, offset + GUIDE_PAGE);
+  if (error) throw new Error(`Failed to load the field guide: ${error.message}`);
+  const rows = (data || []).slice(0, GUIDE_PAGE);
+  const open = await Promise.all(rows.map((row) => play.reach(row.post_id, viewerId).then(() => true, () => false)));
+  return {
+    cards: rows.map((row, index) => ({
+      post_id: row.post_id,
+      dot_id: row.value?.dot || null,
+      collected_at: row.created_at,
+      card: {
+        name: row.value?.name || null, scientific: row.value?.scientific || null, why: row.value?.why || null,
+        source: row.value?.source || null, caution: row.value?.caution || null, likely: true,
+      },
+      open: open[index],
+    })),
+    next_cursor: (data || []).length > GUIDE_PAGE ? String(offset + GUIDE_PAGE) : null,
+  };
+}
+
+module.exports = { cardFor, correct, collect, letGo, fieldGuide, safeSource, CAUTION, ENDPOINT };
