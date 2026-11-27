@@ -105,7 +105,20 @@ async function strandOf(post, source) {
  * and marked Want to go on someone else's post within 30 days before; each one that stands near what it marked makes a
  * strand. Safe to run twice (one strand per source, follower and kind). Answers how many it made.
  */
+/** Whether `pulse_reinvented` is on for anyone at all (globally, the team, or a chosen account): the cached flag row. */
+async function onForAnyone() {
+  try {
+    // eslint-disable-next-line global-require
+    const flag = await require('../featureFlagService').getFlag(momentStore().REINVENTED_FLAG);
+    return Boolean(flag && (flag.enabled_globally || flag.enabled_for_internal_team || (flag.beta_user_ids || []).length));
+  } catch {
+    return false;
+  }
+}
+
 async function findNew(now = Date.now()) {
+  // With the switch off for everyone, nothing at all: no read but the cached flag's (LEAD-3 06:31).
+  if (!(await onForAnyone())) return 0;
   const since = new Date(now - LOOK_BACK_MS).toISOString();
   const { data: posts, error } = await supabaseAdmin.from('Post').select(POST_SELECT)
     .gte('created_at', since).not('latitude', 'is', null).is('archived_at', null).eq('moderation_state', 'live')
@@ -260,4 +273,4 @@ async function remove(userId, id) {
   if (!data?.length) throw fail(404, 'STRAND_NOT_FOUND', 'This could not be found.');
 }
 
-module.exports = { findNew, list, markSeen, remove, strandOf, NEAR_M, WANT_DAYS };
+module.exports = { findNew, list, markSeen, remove, strandOf, onForAnyone, NEAR_M, WANT_DAYS };
