@@ -89,8 +89,8 @@ import coil.compose.AsyncImage
 /** The two "who sees it" choices on the Studio's bar, as the server names them (today's Post sheet's two). */
 private val AUDIENCES = listOf("nearby" to "Nearby", "connections" to "Friends")
 
-/** Letters over the picture keep a soft shadow, as the camera's words do. */
-private val OnPicture = Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 4f)
+/** Letters over the picture keep a shadow strong enough to read over a bright sky or snow. */
+private val OnPicture = Shadow(Color.Black.copy(alpha = 0.75f), blurRadius = 10f)
 
 /**
  * "Pulse, reinvented" (board B2), while the `pulse_reinvented` switch is on: the Studio after a shot. The photo or
