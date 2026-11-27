@@ -55,6 +55,8 @@ const PinboardView = dynamic(() => import('../pinboard/Pinboard'), { ssr: false 
 const TownFilm = dynamic(() => import('./TownFilm'), { ssr: false });
 // Open Eyes-on Asks near where the reader is now (CONTRACT 8f), on Around me.
 const EyesOnNear = dynamic(() => import('../eyeson/EyesOnNear'), { ssr: false });
+// Place relics near where the reader is now (CONTRACT 8g), on Around me.
+const RelicsNear = dynamic(() => import('../seal/RelicsNear'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -822,6 +824,9 @@ export default function ReinventedPulse() {
               )}
               {reach === 'around' && account && (chip === 'all' || chip === 'ask') && (
                 <EyesOnNear account={account} point={point} offer={chip === 'ask'} now={now} onAnswer={setAnswering} />
+              )}
+              {reach === 'around' && account && (chip === 'all' || chip === 'spots') && (
+                <RelicsNear account={account} point={point} offer={chip === 'spots'} />
               )}
               {items.length === 0 && (
                 <div className="rp-empty">
