@@ -83,7 +83,7 @@ struct MomentsStudioIlluminate: View {
             Text("Add a dot")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.Color.appTextSecondary)
-            HStack(spacing: Spacing.s2) {
+            MomentsStudioTrayFlow(spacing: Spacing.s2) {
                 ForEach(kinds, id: \.self) { kind in
                     Button { model.addStudioDot(kind) } label: {
                         chip(Self.addWords(kind), icon: kind.icon, on: false)

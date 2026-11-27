@@ -30,13 +30,26 @@ struct MomentPhotoSurface: View {
                 .accessibilityLabel("\(moment.author.shortName)'s before and after")
                 .accessibilityIdentifier("moments.viewer.photo")
                 .overlay { MomentLayersOverlay(moment: moment, picture: MomentBeforeAfterHalves.size(of: image.size)) }
+        } else if flags.isOn, !moment.layers.dots.isEmpty || !moment.layers.play.isEmpty {
+            // Dots and items open cards: they are laid over the frame that shows, not the photo's overflow, so a card
+            // stays on the screen on a wide photo.
+            Color.clear
+                .overlay {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .accessibilityLabel("\(moment.author.shortName)'s photo")
+                        .accessibilityIdentifier("moments.viewer.photo")
+                }
+                .clipped()
+                .overlay { MomentLayersOverlay(moment: moment, picture: image.size) }
         } else {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
                 .accessibilityLabel("\(moment.author.shortName)'s photo")
                 .accessibilityIdentifier("moments.viewer.photo")
-                // "Pulse, reinvented": its stamps and dots, only while the switch is on for you.
+                // "Pulse, reinvented": its stamps, only while the switch is on for you.
                 .overlay { MomentLayersOverlay(moment: moment, picture: image.size) }
         }
     }
