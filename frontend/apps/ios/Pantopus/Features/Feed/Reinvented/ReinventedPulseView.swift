@@ -136,9 +136,8 @@ struct ReinventedPulseView: View {
         .accessibilityLabel("Showing \(scopeTitle). Change what Pulse shows")
         .accessibilityIdentifier("reinventedPulse.scope")
         .sheet(isPresented: $showsDial) {
-            ReinventedReachDial(reach: model.reach, miles: model.miles) { reach, miles in
-                showsDial = false
-                Task { await model.pick(reach: reach, miles: miles) }
+            ReinventedReachDial(reach: model.reach, miles: model.miles, circle: model.circle) { reach, miles, circle in
+                Task { await model.pick(reach: reach, miles: miles, circle: circle) }
             }
             .presentationDetents([.medium, .large])
         }
@@ -154,7 +153,7 @@ struct ReinventedPulseView: View {
 
     private var scopeTitle: String {
         switch model.reach {
-        case "close": "Close circle"
+        case "close": model.circle?.name ?? "Close circle"
         case "explore": "Explore"
         default: model.placeLabel.map { "\($0) · \(model.miles) mi" } ?? "Around me"
         }
