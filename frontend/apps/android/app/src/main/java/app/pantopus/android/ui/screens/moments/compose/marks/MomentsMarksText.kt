@@ -538,8 +538,10 @@ internal fun TextTools(
         Box(Modifier.keepsKeyboard()) {
             Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } }, group = "Text color", picking = editing.textTint)
         }
-        Box(Modifier.keepsKeyboard()) {
-            PhotoColors(photo = photo, picked = editing.textTint, onPick = { color -> onEdit { it.tinted(color) } })
+        if (photo.isNotEmpty()) {
+            Box(Modifier.keepsKeyboard()) {
+                PhotoColors(photo = photo, picked = editing.textTint, onPick = { color -> onEdit { it.tinted(color) } })
+            }
         }
     }
 }

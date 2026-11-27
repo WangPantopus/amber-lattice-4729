@@ -694,7 +694,9 @@ private fun MarksPicture(
             if (live.isEmpty()) {
                 editing.marks
             } else {
-                editing.marks.copy(strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth))
+                editing.marks.copy(
+                    strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth, tint = editing.drawTint),
+                )
             }
         // The picture's exact drawn size (the canvas is whole pixels), so labels lay out from its exact shape.
         drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, drawn.width, drawn.height, skip = typed) }

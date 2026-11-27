@@ -68,6 +68,6 @@ object MomentPhotoColors {
         return (0.299f * r + 0.587f * g + 0.114f * b) > 0.6f
     }
 
-    /** "#3A7BD5" for TalkBack's sake. */
-    fun spoken(color: Int): String = "Colour from your photo, #%06X".format(color and 0xFFFFFF)
+    /** The colour read out as six hex digits, for TalkBack's sake. */
+    fun spoken(color: Int): String = "Color from your photo, #%06X".format(color and 0xFFFFFF)
 }
