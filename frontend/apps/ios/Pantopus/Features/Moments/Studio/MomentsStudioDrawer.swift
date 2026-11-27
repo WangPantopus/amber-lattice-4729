@@ -144,6 +144,7 @@ struct MomentsStudioDrawer: View {
             if model.showsDeckRow {
                 MomentsStudioDeckRow(model: model)
             }
+            TogetherStudioRows(model: model) // Phase 3's rows (CONTRACT 8): nothing unless the switch is on and one applies.
             if !asPost {
                 Text("How long")
                     .font(.system(size: 13, weight: .semibold))

@@ -101,7 +101,11 @@ final class ReinventedPulseModel {
         let cardsById = Dictionary(cards.cards.map { ($0.id, $0) }) { first, _ in first }
         var rows: [Row] = []
         var lastBand: String?
+        // A Retake is one row (CONTRACT 8e): its first frame in the list opens the whole Retake.
+        var retakes = Set<String>()
         for (index, item) in items.enumerated() {
+            if case let .moment(moment) = item.content, let retake = moment.together.retake,
+               !retakes.insert(retake.startId).inserted { continue }
             if reach == "explore", index == 0, pickedCount > 0 { rows.append(.heading("Today, elsewhere")) }
             if reach == "explore", index == pickedCount, pickedCount > 0 { rows.append(.heading("New elsewhere")) }
             if let band = item.band, band != lastBand, let line = bands.first(where: { $0.band == band }) {

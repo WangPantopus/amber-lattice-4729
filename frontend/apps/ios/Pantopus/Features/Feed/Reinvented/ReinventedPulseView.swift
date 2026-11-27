@@ -72,6 +72,7 @@ struct ReinventedPulseView: View {
         .onChange(of: ReinventedStudioPresenter.shared.closings) { _, _ in
             Task { await model.refresh() }
         }
+        .modifier(MomentRetakeListSheet())
         .fullScreenCover(item: $watching) { session in
             MomentsViewer(
                 session: session,
@@ -296,6 +297,7 @@ struct ReinventedPulseView: View {
     }
 
     private func open(_ moment: MomentDTO) {
+        if RetakePrompt.shared.opens(moment) { return }
         let ring = MomentRingDTO(moment: moment, mine: model.isMine(moment))
         watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
     }
