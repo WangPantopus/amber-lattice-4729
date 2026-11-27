@@ -12,7 +12,8 @@
 //  It opens only while the `pulse_reinvented` switch is on for the person
 //  (`PulseReinventedFlags`), read when + is tapped; off, + opens
 //  `MomentsComposer`, unchanged. Both post through the same model, so a
-//  Moment made here is an ordinary Moment.
+//  Moment made here is an ordinary Moment, and should the switch go off
+//  while it is open, today's composer picks up the same draft.
 //
 //  On the iPhone Duo held open, sideways or as a table, the Post screen is
 //  today's (`MomentsPostStage`, with its Duo layouts); the Studio takes the
@@ -20,6 +21,24 @@
 //
 
 import SwiftUI
+
+/// The composer + opens: the Studio when the switch was on as + was tapped, today's `MomentsComposer` otherwise. Should
+/// the switch go off while the Studio is open (read again on foreground, or the server saying so), today's composer
+/// takes over at once with the same model, so the picture, its marks and the caption are all still there (lead,
+/// 2026-11-27). A switch that comes on meanwhile changes nothing until the next +.
+struct MomentsComposerChoice: View {
+    let request: MomentsComposeRequest
+    let onClose: @MainActor () -> Void
+    @State private var reinvented = PulseReinventedFlags.shared
+
+    var body: some View {
+        if request.studio, reinvented.isOn {
+            MomentsStudioComposer(model: request.model, onClose: onClose)
+        } else {
+            MomentsComposer(model: request.model, onClose: onClose)
+        }
+    }
+}
 
 struct MomentsStudioComposer: View {
     /// Held by the Moments tab, above this cover: on the iPhone Duo a fold can build the composer again.
