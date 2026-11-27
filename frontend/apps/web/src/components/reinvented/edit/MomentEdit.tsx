@@ -17,7 +17,7 @@ import { colors, messageOf } from '@/components/moments/momentState';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type ShownStamp, type StampKind } from '../stamps/stampTypes';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
-import { savedMoment } from './saved';
+import { afterEdit } from './saved';
 import '../studio/studio.css';
 import './edit.css';
 
@@ -66,9 +66,9 @@ function useWide() {
   return wide;
 }
 
-function minutesLeft(until: string | null | undefined, now: number) {
+function msLeft(until: string | null | undefined, now: number) {
   const ms = Date.parse(until || '') - now;
-  return Number.isFinite(ms) && ms > 0 ? Math.ceil(ms / 60_000) : 0;
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 export default function MomentEdit({
@@ -100,7 +100,6 @@ export default function MomentEdit({
     [trayOpen, setTrayOpen] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [closed, setClosed] = useState(''),
     [discarding, setDiscarding] = useState(false),
     [wentOff, setWentOff] = useState(false),
     [now, setNow] = useState(Date.now);
@@ -114,7 +113,7 @@ export default function MomentEdit({
     mounted.current = true;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const tick = setInterval(() => setNow(Date.now()), 5_000);
+    const tick = setInterval(() => setNow(Date.now()), 1_000);
     return () => {
       mounted.current = false;
       clearInterval(tick);
@@ -122,8 +121,8 @@ export default function MomentEdit({
     };
   }, []);
 
-  const left = minutesLeft(moment.editable_until, now);
-  const open = left > 0 && !closed;
+  const left = msLeft(moment.editable_until, now);
+  const open = left > 0;
   // A made-up name's Moment goes to people nearby only, and its author can't be seen (made-up-names contract).
   const underPenName = moment.author.id !== account;
   const media = moment.kind !== 'text';
@@ -150,20 +149,31 @@ export default function MomentEdit({
       );
       void client.invalidateQueries({ queryKey: ['moments', 'map', account] });
       void client.invalidateQueries({ queryKey: ['moments', 'mine', account] });
-      savedMoment(moment.id);
+      afterEdit(moment.id, 'Moment updated');
       onClose();
     } catch (e) {
       if (!mounted.current) return;
       const code = (e as { code?: string } | null)?.code;
       // The switch went off: nothing changed on the Moment; the viewer goes back to today's once the switch is read.
       if (isSwitchedOff(e)) setWentOff(true);
-      else if (code === 'MOMENT_EDIT_CLOSED' || code === 'MOMENT_ENDED')
-        setClosed(messageOf(e, 'A Moment can be changed for 15 minutes after it goes out.'));
-      else setError(messageOf(e, 'Couldn’t save. Try again.'));
+      else if (code === 'MOMENT_EDIT_CLOSED') timeUp();
+      else if (code === 'MOMENT_ENDED') {
+        // The viewer reads it again and says it ended, in today's words.
+        void client.invalidateQueries({ queryKey: ['moments', 'watch', account, moment.id] });
+        onClose();
+      } else setError(messageOf(e, 'Couldn’t save. Try again.'));
     } finally {
       if (mounted.current) setBusy(false);
     }
   }
+  // The 15 minutes ran out (the server said so, or the clock here): nothing changed, and the edit closes.
+  function timeUp() {
+    afterEdit(moment.id, 'The 15 minutes are up. Your Moment stays as it was.');
+    onClose();
+  }
+  useEffect(() => {
+    if (!open && !busy && !wentOff) timeUp();
+  }, [open, busy, wentOff]); // eslint-disable-line react-hooks/exhaustive-deps
   function leave() {
     if (wentOff) void reread();
     onClose();
@@ -195,12 +205,28 @@ export default function MomentEdit({
   }
 
   const aspect = moment.kind === 'text' || !natural ? 9 / 16 : natural.w / natural.h;
-  const who = underPenName ? 'pen' : audience === 'connections' ? 'friends' : 'nearby';
-  // The pill's two lines: "12 more minutes" over "to change it · <place>"; once the window has passed, why not.
-  const place = moment.place_label || (moment.no_location ? 'No location · friends only' : '');
-  const timeLine = open ? `${left} more ${left === 1 ? 'minute' : 'minutes'}` : 'No more changes';
-  const placeLine = open ? ['to change it', place].filter(Boolean).join(' · ') : place;
-  const closedWhy = closed || (!open ? 'A Moment can be changed for 15 minutes after it goes out.' : '');
+  // Who sees it, as the server allows: a made-up name's Moment goes to people nearby only, one without a place to
+  // friends only (lead, 2026-11-27 01:12).
+  const choices: Audience[] = underPenName ? ['nearby'] : moment.no_location ? ['connections'] : ['nearby', 'connections'];
+  // The line over the bar (shared words): how long it can still change.
+  const minutes = Math.floor(left / 60_000);
+  const changeLine =
+    minutes >= 1
+      ? `You can change this for ${minutes} more ${minutes === 1 ? 'minute' : 'minutes'}`
+      : 'Less than a minute left to change this';
+  // The pill: how long the Moment has left and the place as posted; nothing here opens the drawer.
+  const shares = moment.state === 'scheduled' && moment.share_at ? new Date(moment.share_at) : null;
+  const fadesIn = Math.max(0, Date.parse(moment.expires_at) - now);
+  const timeLine = shares
+    ? 'Shares at ' +
+      shares
+        .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        .replace(/\s?AM$/, ' am')
+        .replace(/\s?PM$/, ' pm')
+    : fadesIn >= 3_600_000
+      ? `Fades in ${Math.ceil(fadesIn / 3_600_000)} hours`.replace(/^Fades in 1 hours$/, 'Fades in 1 hour')
+      : `Fades in ${Math.max(1, Math.ceil(fadesIn / 60_000))} ${Math.ceil(fadesIn / 60_000) <= 1 ? 'minute' : 'minutes'}`;
+  const placeLine = moment.place_label || (moment.no_location ? 'No location · friends only' : '');
 
   const stage = (
     <div
@@ -321,11 +347,6 @@ export default function MomentEdit({
                 {error || 'Saving…'}
               </p>
             )}
-            {closedWhy && (
-              <p className="st-status" role="status">
-                {closedWhy}
-              </p>
-            )}
             {underPenName && (
               <p className="st-status">Posting as {moment.author.name}. Others can&apos;t see it&apos;s you.</p>
             )}
@@ -340,35 +361,28 @@ export default function MomentEdit({
                 placeholder="Add a caption"
               />
             )}
+            <p className="st-status">{changeLine}</p>
             <div className="st-bar">
-              {!underPenName && (
-                <div className="st-who" role="group" aria-label="Who sees it">
+              <div className="st-who" role="group" aria-label="Who sees it">
+                {choices.map((a) => (
                   <button
                     type="button"
+                    key={a}
                     className="st-chip"
-                    aria-pressed={who === 'nearby'}
-                    disabled={busy || !open || moment.no_location}
-                    onClick={() => setAudience('nearby')}
+                    aria-pressed={audience === a}
+                    disabled={busy}
+                    onClick={() => setAudience(a)}
                   >
-                    Nearby
+                    {a === 'nearby' ? 'Nearby' : 'Friends'}
                   </button>
-                  <button
-                    type="button"
-                    className="st-chip"
-                    aria-pressed={who === 'friends'}
-                    disabled={busy || !open}
-                    onClick={() => setAudience('connections')}
-                  >
-                    Friends
-                  </button>
-                </div>
-              )}
+                ))}
+              </div>
               <div className="st-row">
                 <p className="st-when me-left">
                   <Clock3 size={20} aria-hidden="true" />
                   <span>
                     <strong>{timeLine}</strong>
-                    <small>{placeLine}</small>
+                    {placeLine && <small>{placeLine}</small>}
                   </span>
                 </p>
                 <button type="button" className="st-post" disabled={busy || !dirty || !open} onClick={() => void save()}>
