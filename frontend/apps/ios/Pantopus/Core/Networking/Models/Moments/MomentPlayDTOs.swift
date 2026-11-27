@@ -403,9 +403,11 @@ public struct MomentLayersDTO: Sendable, Hashable {
     public let sound: MomentSoundDTO?
     /// The step deck this Moment is a step of (CONTRACT 7g, `MomentDeckDTOs.swift`), nil for any other Moment.
     public let deck: MomentDeckDTO?
+    /// A loop on a video (CONTRACT 7j, `MomentLoopDTOs.swift`): the span the new viewers repeat, nil for any other.
+    public let loop: MomentLoopDTO?
 
     private enum CodingKeys: String, CodingKey {
-        case play, mentions, dots, sound, deck
+        case play, mentions, dots, sound, deck, loop
     }
 
     init(from decoder: any Decoder) {
@@ -415,6 +417,7 @@ public struct MomentLayersDTO: Sendable, Hashable {
         dots = (try? c?.decodeIfPresent(MomentLenientList<MomentDotDTO>.self, forKey: .dots))?.items.filter { $0.kind != .unknown } ?? []
         sound = try? c?.decodeIfPresent(MomentSoundDTO.self, forKey: .sound)
         deck = try? c?.decodeIfPresent(MomentDeckDTO.self, forKey: .deck)
+        loop = try? c?.decodeIfPresent(MomentLoopDTO.self, forKey: .loop)
     }
 
     /// The before and after on a photo, if it has one (one at most).

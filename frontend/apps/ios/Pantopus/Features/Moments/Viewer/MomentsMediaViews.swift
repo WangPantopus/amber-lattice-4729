@@ -34,8 +34,11 @@ final class MomentsVideoController {
     private static var loaded: Set<ObjectIdentifier> = []
 
     var isMuted = false {
-        didSet { player.isMuted = isMuted }
+        didSet { player.isMuted = isMuted || loop != nil }
     }
+
+    /// "Pulse, reinvented" (CONTRACT 7j, `MomentLoopPlayback`): the span a loop repeats, muted. Nil plays as today.
+    private(set) var loop: MomentLoopDTO?
 
     init() {
         player.automaticallyWaitsToMinimizeStalling = true
@@ -52,8 +55,10 @@ final class MomentsVideoController {
         standby.replaceCurrentItem(with: item)
     }
 
-    func load(_ url: URL, id: String) {
+    /// `loop` ("Pulse, reinvented", CONTRACT 7j): the span to repeat, muted; nil (every video today) plays it once.
+    func load(_ url: URL, id: String, loop: MomentLoopDTO? = nil) {
         stop()
+        self.loop = loop
         Self.loaded.insert(ObjectIdentifier(self))
         let item: AVPlayerItem
         if standbyID == id, let held = standby.currentItem, held.status != .failed {
@@ -68,6 +73,8 @@ final class MomentsVideoController {
             player.replaceCurrentItem(with: item)
         }
         standbyID = nil
+        player.isMuted = isMuted || loop != nil
+        MomentLoopPlayback.hold(item, on: player, to: loop)
         statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             guard item.status == .readyToPlay else { return }
             Task { @MainActor [weak self] in
@@ -79,11 +86,16 @@ final class MomentsVideoController {
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.onEnd?() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let loop { MomentLoopPlayback.again(player, from: loop) } else { onEnd?() }
+            }
         }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 20), queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, let duration = self.player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
+                // A loop is timed by the viewer's clock, as a photo is (CONTRACT 7j).
+                guard let self, loop == nil else { return }
+                guard let duration = self.player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
                 self.onProgress?(min(1, max(0, time.seconds / duration)))
             }
         }

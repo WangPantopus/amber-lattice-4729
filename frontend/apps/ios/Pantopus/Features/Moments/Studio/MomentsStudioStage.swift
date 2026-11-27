@@ -40,6 +40,8 @@ struct MomentsStudioStage: View {
     @State private var blurByHand = false
     /// Sound (phase 2): Voice Spark or place sound.
     @State private var showsSound = false
+    /// Loop (phase 0 step 5): a short piece of the video, over and over.
+    @State private var showsLoop = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -64,6 +66,7 @@ struct MomentsStudioStage: View {
                     openTray: openTray,
                     openIlluminate: openIlluminate,
                     openBlur: openBlur,
+                    openLoop: openLoop,
                     openSound: openSound
                 )
                 // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
@@ -160,6 +163,7 @@ struct MomentsStudioStage: View {
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
         }
+        .studioLoopSheet(model: model, isPresented: $showsLoop)
         .sheet(isPresented: $showsBlur) {
             MomentsStudioBlurSheet(model: model) {
                 showsBlur = false
@@ -205,6 +209,12 @@ struct MomentsStudioStage: View {
         writing = false
         Keyboard.close()
         showsSound = true
+    }
+
+    private func openLoop() {
+        writing = false
+        Keyboard.close()
+        showsLoop = true
     }
 
     private func openBlur() {
