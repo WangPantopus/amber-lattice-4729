@@ -53,6 +53,12 @@ struct MomentFieldCardView: View {
         // Opening reads the card: a kept one shows at once and is read again (no model call) for this reader's own
         // Collect and correction; without one, this first tap makes it.
         .task { await run { try await open() } }
+        // One sheet per view: "Not right?" hangs on the actions, the guide here.
+        .sheet(isPresented: $guiding) {
+            MomentsFieldGuide { guiding = false }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     @ViewBuilder
@@ -104,11 +110,6 @@ struct MomentFieldCardView: View {
             .fixedSize(horizontal: false, vertical: true)
         actions(card)
             .sheet(isPresented: $fixing) { correctionSheet }
-            .sheet(isPresented: $guiding) {
-                MomentsFieldGuide { guiding = false }
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-            }
         if let problem, !fixing {
             Text(problem)
                 .font(.system(size: 13))

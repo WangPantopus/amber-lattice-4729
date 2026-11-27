@@ -18,7 +18,23 @@ struct MomentsFieldGuide: View {
     @State private var failed = false
 
     var body: some View {
-        NavigationStack {
+        // No NavigationStack: shown as a sheet from inside the viewer, a guide with one was shown again about once a
+        // second; a plain header with Done holds still.
+        VStack(spacing: 0) {
+            ZStack {
+                Text("Your field guide")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appText)
+                    .accessibilityAddTraits(.isHeader)
+                HStack {
+                    Spacer()
+                    Button("Done", action: onClose)
+                        .font(.system(size: 17, weight: .semibold))
+                        .accessibilityIdentifier("moments.fieldGuide.done")
+                }
+            }
+            .padding(.horizontal, Spacing.s4)
+            .frame(height: 52)
             Group {
                 if reading, entries.isEmpty {
                     ProgressView()
@@ -41,14 +57,9 @@ struct MomentsFieldGuide: View {
                     list
                 }
             }
-            .navigationTitle("Your field guide")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: onClose).accessibilityIdentifier("moments.fieldGuide.done")
-                }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Theme.Color.appBg.ignoresSafeArea())
         .task { await load(reset: true) }
         .accessibilityIdentifier("moments.fieldGuide")
     }
