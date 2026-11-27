@@ -38,14 +38,18 @@ struct MomentPinsOverlay: View {
                     }
                     if let card = cardKind {
                         // Beside its pin or spot, as a dot's card sits (above it in the lower half, below it in the
-                        // upper), so the Moment's own caption at the bottom never covers it.
+                        // upper), so the Moment's own caption at the bottom never covers it; always inside what
+                        // shows on the screen.
                         let anchor = anchor(card, in: frame)
+                        let shown = Self.shown(in: geo)
+                        let width = min(shown.width - 32, 320)
+                        let half = width / 2 + 16
                         cardView(card)
-                            .frame(width: min(geo.size.width - 32, 320))
+                            .frame(width: width)
                             .fixedSize(horizontal: false, vertical: true)
                             .position(
-                                x: min(max(anchor.x, 176), max(geo.size.width - 176, 176)),
-                                y: anchor.y > geo.size.height * 0.55 ? anchor.y - 110 : anchor.y + 110
+                                x: min(max(anchor.x, shown.minX + half), max(shown.maxX - half, shown.minX + half)),
+                                y: anchor.y > shown.minY + shown.height * 0.55 ? anchor.y - 110 : anchor.y + 110
                             )
                     }
                 }
@@ -106,6 +110,19 @@ struct MomentPinsOverlay: View {
         if store.dropping == moment.id, store.spot != nil { return .drop }
         if let open = store.open, let pin = store.pins[moment.id]?.first(where: { $0.id == open }) { return .pin(pin) }
         return nil
+    }
+
+    /// The part of this layer that is on the screen, in its own coordinates. A video or a photo of another shape
+    /// than the screen is drawn filling it, so the layer runs past the screen's edges (a 9:16 video by about 45
+    /// points on each side of an iPhone); the card stays inside what shows.
+    private static func shown(in geo: GeometryProxy) -> CGRect {
+        let whole = CGRect(origin: .zero, size: geo.size)
+        let global = geo.frame(in: .global)
+        let window = UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow?.bounds }.first
+        guard let window else { return whole }
+        let visible = global.intersection(window)
+        guard !visible.isNull, visible.width > 120, visible.height > 120 else { return whole }
+        return visible.offsetBy(dx: -global.minX, dy: -global.minY)
     }
 
     /// The point on screen the card belongs to: the chosen spot, or the open pin.
