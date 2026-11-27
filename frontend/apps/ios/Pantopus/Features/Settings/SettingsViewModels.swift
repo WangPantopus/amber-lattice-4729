@@ -51,6 +51,8 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
     private var isAdmin: Bool = false
     /// What Pantopus keeps on this iPhone (Storage & data); nil until measured.
     private var storageBytes: Int?
+    /// "Pulse, reinvented": the person's own Pantopus AI choice, read only while the switch is on for them.
+    var pantopusAI: Bool?
 
     init(
         api: APIClient = .shared,
@@ -103,6 +105,7 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
         }
         stripeConnected = await connectTask.value.map { $0.account.chargesEnabled && $0.account.payoutsEnabled }
         storageBytes = await StorageDataViewModel.measure().total
+        pantopusAI = await Self.readPantopusAI()
         rebuild()
     }
 
@@ -205,7 +208,7 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
                     control: .chevron,
                     accessibilityIdentifier: "settings.rules"
                 )
-            ]
+            ] + pantopusAIRows
         )
     }
 
@@ -321,7 +324,10 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
         }
     }
 
-    public func toggleRow(_: String, isOn _: Bool) async {}
+    public func toggleRow(_ rowId: String, isOn: Bool) async {
+        if await togglePantopusAI(rowId, isOn: isOn) { rebuild() }
+    }
+
     public func selectRadio(_: String) async {}
     public func setSlider(_: String, index _: Int) async {}
 

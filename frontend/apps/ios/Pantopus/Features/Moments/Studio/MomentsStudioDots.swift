@@ -16,6 +16,24 @@ extension MomentsComposerModel {
     static let dotLimit = 8
 
     /// Dots go on a photo or a video.
+    /// "A thing to name" (its field card, CONTRACT 7d): on a photo of its own (not a before and after), while the
+    /// author keeps Pantopus AI on.
+    var offersThings: Bool {
+        guard case .photo = draft, studioPair == nil else { return false }
+        return MomentsStudioAI.shared.on == true
+    }
+
+    /// A thing's outline starts at a quarter of the picture's width.
+    static let thingSize = 0.24
+
+    /// A thing's outline around its dot, inside the picture (`size` is its width and height, 0 to 1).
+    static func thingBox(_ dot: MomentDotDTO) -> MomentPlayItem.Box {
+        let size = min(max(dot.box?.w ?? thingSize, 0.1), 0.8)
+        let x = min(max(dot.x - size / 2, 0), 1 - size)
+        let y = min(max(dot.y - size / 2, 0), 1 - size)
+        return MomentPlayItem.Box(x: (x * 1000).rounded() / 1000, y: (y * 1000).rounded() / 1000, w: size, h: size)
+    }
+
     var offersDots: Bool {
         switch draft {
         case .photo, .video: true
@@ -39,7 +57,12 @@ extension MomentsComposerModel {
                 out.url = Self.httpsLink(dot.url)?.absoluteString
                 let title = dot.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 out.title = title.isEmpty ? nil : title
-            case .thing, .whisper, .unknown: return nil
+            case .thing:
+                guard offersThings else { return nil }
+                out.box = Self.thingBox(dot)
+                let label = dot.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                out.label = label.isEmpty ? nil : label
+            case .whisper, .unknown: return nil
             }
             return out
         }
@@ -52,7 +75,8 @@ extension MomentsComposerModel {
         case .note: !(dot.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         case .rating: !(dot.label?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) && (1...5).contains(dot.stars ?? 0)
         case .link: httpsLink(dot.url) != nil
-        case .thing, .whisper, .unknown: false
+        case .thing: true
+        case .whisper, .unknown: false
         }
     }
 
@@ -77,6 +101,7 @@ extension MomentsComposerModel {
         let count = Double(studioDotDrafts.count)
         var dot = MomentDotDTO(id: "dot-\(number)", kind: kind, x: 0.5, y: min(0.32 + count * 0.06, 0.8))
         if kind == .rating { dot.stars = 4 }
+        if kind == .thing { dot.box = MomentPlayItem.Box(x: 0, y: 0, w: Self.thingSize, h: Self.thingSize) }
         marking.studio?.dots.append(dot)
         marking.studio?.pickedDot = dot.id
     }
@@ -136,6 +161,16 @@ struct MomentsStudioDotLayer: View {
     var body: some View {
         GeometryReader { geo in
             let frame = picture.map { MomentMarks.fill($0, in: geo.size) } ?? CGRect(origin: .zero, size: geo.size)
+            // The picked thing's outline: what the field card will look at.
+            if let thing = model.studioDotDrafts.first(where: { $0.kind == .thing && $0.id == model.marking.studio?.pickedDot }) {
+                let box = MomentsComposerModel.thingBox(thing)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    .frame(width: box.w * frame.width, height: box.h * frame.height)
+                    .position(x: frame.minX + (box.x + box.w / 2) * frame.width, y: frame.minY + (box.y + box.h / 2) * frame.height)
+                    .shadow(color: .black.opacity(0.4), radius: 3)
+                    .allowsHitTesting(false)
+            }
             ForEach(model.studioDotDrafts, id: \.id) { dot in
                 MomentsStudioPlacedDot(model: model, dot: dot, frame: frame, open: open)
             }

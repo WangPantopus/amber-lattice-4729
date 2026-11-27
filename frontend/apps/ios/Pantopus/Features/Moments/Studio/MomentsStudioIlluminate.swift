@@ -14,7 +14,9 @@ struct MomentsStudioIlluminate: View {
     let onDone: () -> Void
 
     private var kinds: [MomentDotDTO.Kind] {
-        model.postsUnderMadeUpName ? [.note, .rating] : [.note, .rating, .link]
+        var kinds: [MomentDotDTO.Kind] = model.postsUnderMadeUpName ? [.note, .rating] : [.note, .rating, .link]
+        if model.offersThings { kinds.append(.thing) }
+        return kinds
     }
 
     private var picked: MomentDotDTO? {
@@ -54,6 +56,7 @@ struct MomentsStudioIlluminate: View {
             .padding(.top, Spacing.s5)
             .padding(.bottom, Spacing.s4)
         }
+        .task { await MomentsStudioAI.shared.read() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio.illuminate")
     }
@@ -80,10 +83,10 @@ struct MomentsStudioIlluminate: View {
             Text("Add a dot")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.Color.appTextSecondary)
-            HStack(spacing: Spacing.s2) {
+            MomentsStudioTrayFlow(spacing: Spacing.s2) {
                 ForEach(kinds, id: \.self) { kind in
                     Button { model.addStudioDot(kind) } label: {
-                        chip(kind == .note ? "A note" : kind == .rating ? "A rating" : "A link", icon: kind.icon, on: false)
+                        chip(Self.addWords(kind), icon: kind.icon, on: false)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("moments.studio.illuminate.add.\(kind.rawValue)")
@@ -112,7 +115,9 @@ struct MomentsStudioIlluminate: View {
                 if model.postsUnderMadeUpName {
                     hint("A made-up name can't post a link: this one stays off.")
                 }
-            case .thing, .whisper, .unknown:
+            case .thing:
+                thingEditor(dot)
+            case .whisper, .unknown:
                 EmptyView()
             }
             Button { model.removeStudioDot(dot.id) } label: {
@@ -120,6 +125,39 @@ struct MomentsStudioIlluminate: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("moments.studio.illuminate.remove")
+        }
+    }
+
+    private static func addWords(_ kind: MomentDotDTO.Kind) -> String {
+        switch kind {
+        case .note: "A note"
+        case .rating: "A rating"
+        case .link: "A link"
+        case .thing: "A thing to name"
+        case .whisper, .unknown: kind.name
+        }
+    }
+
+    /// A thing to name: the author's own guess, and how much of the picture its outline takes.
+    private func thingEditor(_ dot: MomentDotDTO) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            field("What you think it is (optional)", text: model.dotField(dot.id, \.label, limit: 40), id: "label")
+            HStack(spacing: Spacing.s2) {
+                Button { resize(dot, by: -0.06) } label: { chip("Smaller outline", icon: .minus, on: false) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("moments.studio.illuminate.smaller")
+                Button { resize(dot, by: 0.06) } label: { chip("Bigger outline", icon: .plus, on: false) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("moments.studio.illuminate.bigger")
+            }
+            hint("A reader's tap names it with a source (Pantopus AI). It always says \"likely\", and people can correct it.")
+        }
+    }
+
+    private func resize(_ dot: MomentDotDTO, by step: Double) {
+        model.updateStudioDot(dot.id) { thing in
+            let size = min(max((thing.box?.w ?? MomentsComposerModel.thingSize) + step, 0.1), 0.8)
+            thing.box = MomentPlayItem.Box(x: 0, y: 0, w: size, h: size)
         }
     }
 
