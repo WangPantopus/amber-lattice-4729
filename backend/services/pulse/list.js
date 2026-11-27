@@ -474,15 +474,18 @@ function prepare(userId, itemsRead) {
 
 /** The page as the apps read it: Moments serialized as GET /api/moments/:id answers them, posts as the feed lists them. */
 async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null }) {
+  const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
+  // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read
+  // only leaves them off. Started as soon as the page's posts are known, beside the Moments still being made ready (the
+  // opening time, LEAD-3 09:06).
+  const studioRead = postStudio.readerParts(pagePosts, userId, { inBox: studioInBox })
+    .catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() }));
   const ready = await (readyRead || Promise.resolve(new Map())).catch(() => new Map());
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);
-  const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
   const [moments, chips, studio] = await Promise.all([
     rows.length ? store.serializeMoments(rows, userId, { keptPosts: true }) : [],
     chipsRead || null,
-    // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read only
-    // leaves them off.
-    postStudio.readerParts(pagePosts, userId, { inBox: studioInBox }).catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() })),
+    studioRead,
   ]);
   const { stamps, play, dots, mentions, passes, eyes } = studio;
   const byId = new Map([...ready, ...moments.map((moment) => [moment.id, moment])]);
