@@ -1,0 +1,81 @@
+/* The step deck's bar over a step's picture in the viewer (StepDeck.tsx, CONTRACT 7g). */
+.dk-bar {
+  position: absolute;
+  top: 74px;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  margin: 0 auto;
+  padding: 5px 6px 5px 12px;
+  border-radius: 999px;
+  background: rgba(12, 18, 24, 0.66);
+  color: #fff;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+.dk-step {
+  font-size: 13px;
+  font-weight: 750;
+}
+.dk-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+.dk-dots button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.dk-dots button::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+}
+.dk-dots button[aria-current]::before {
+  width: 10px;
+  height: 10px;
+  background: #fff;
+}
+.dk-save {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #15191e;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dk-save[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.dk-save:disabled {
+  opacity: 0.7;
+}
+.dk-error {
+  flex-basis: 100%;
+  color: #fca5a5;
+  font-size: 12px;
+  text-align: center;
+  white-space: normal;
+}
+.dk-bar :focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
