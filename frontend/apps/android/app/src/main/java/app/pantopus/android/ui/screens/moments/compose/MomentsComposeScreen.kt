@@ -259,6 +259,7 @@ fun MomentsComposeScreen(
                         onPhotostrip = viewModel::photostrip,
                         onTrayOpen = viewModel::readLookPicture,
                         lookPicture = viewModel.marksPicture,
+                        onMention = viewModel::addMention,
                     )
                 } else {
                     ReviewStep(

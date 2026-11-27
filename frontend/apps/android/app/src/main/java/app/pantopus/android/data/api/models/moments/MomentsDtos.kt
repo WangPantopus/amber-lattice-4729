@@ -405,6 +405,8 @@ data class CreateMomentBody(
     val guess: Boolean? = null,
     /** The Studio drawer's "Also show in Explore" (CONTRACT 6f): `true` only when chosen; left out otherwise. */
     val explore: Boolean? = null,
+    /** The Studio's mentions (CONTRACT 7h): up to five person ids named in the caption; left out otherwise. */
+    val mentions: List<String>? = null,
 )
 
 /**

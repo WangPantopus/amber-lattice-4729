@@ -52,7 +52,9 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
+import app.pantopus.android.ui.screens.moments.studio.StudioMention
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
+import app.pantopus.android.ui.screens.moments.studio.sentMentions
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -228,6 +230,8 @@ data class MomentsComposeUiState(
     val stamps: List<MomentStampPlacement> = emptyList(),
     /** "Pulse, reinvented"'s Studio: "Guess the spot" picked (CONTRACT 5a). Only the Studio sets it. */
     val guess: Boolean = false,
+    /** "Pulse, reinvented"'s Studio: people picked after "@" in the caption (CONTRACT 7h). Only the Studio sets it. */
+    val mentions: List<StudioMention> = emptyList(),
 ) {
     val kind: String
         get() =
@@ -1092,6 +1096,9 @@ class MomentsComposeViewModel
 
         fun setCaption(caption: String) = _state.update { it.copy(caption = caption.take(MAX_CAPTION)) }
 
+        /** "Pulse, reinvented"'s Studio: a person picked after "@" in the caption (sent while their "@Name" stays in it). */
+        fun addMention(person: StudioMention) = _state.update { it.copy(mentions = (it.mentions + person).distinctBy { m -> m.id }) }
+
         fun clearNotice() = _state.update { it.copy(notice = null) }
 
         /** A short notice over the camera ("Couldn't take the photo."), gone after a few seconds. */
@@ -1162,6 +1169,7 @@ class MomentsComposeViewModel
                         elevation = current.stampElevation(usable),
                         guess = current.sentGuess,
                         explore = current.sentExplore,
+                        mentions = current.sentMentions,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -1347,6 +1355,7 @@ class MomentsComposeViewModel
                         clientRequestId = requestId,
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
                         shareLater = current.shareLaterChoice?.key,
+                        mentions = current.sentMentions,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()
