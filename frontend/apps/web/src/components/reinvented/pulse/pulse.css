@@ -1328,3 +1328,23 @@
   background: #ecfdf5;
   color: #065f46;
 }
+
+/* A post made in the Studio (StudioPostPicture.tsx): its whole picture, at most 4:5 tall, with its layers. */
+.rp-studio-pic {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0b0f14;
+}
+.rp-studio-pic > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.rp-studio-layers {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
