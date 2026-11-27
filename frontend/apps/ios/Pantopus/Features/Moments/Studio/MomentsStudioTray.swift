@@ -53,6 +53,9 @@ struct MomentsStudioTray: View {
             if model.studioCutoutSurface != nil {
                 MomentsStudioYourCutouts(model: model, onPlaced: onDone)
             }
+            if model.offersGuess {
+                MomentsStudioGuessRow(model: model)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.s4)

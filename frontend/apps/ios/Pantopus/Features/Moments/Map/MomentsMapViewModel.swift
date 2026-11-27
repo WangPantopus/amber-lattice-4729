@@ -304,6 +304,7 @@ final class MomentsMapViewModel {
             heightsAnswered(reply.heightsOn)
             floatAnswered(reply.floatOn, sun: reply.sun)
             MomentsScheduled.shared.moments = reply.scheduled
+            MomentsGuessSpots.shared.spots = reply.guessSpots
             loaded = true
             loadFailed = false
             lookAroundIfOpening()

@@ -125,3 +125,22 @@ public struct MomentStampDTO: Decodable, Sendable, Hashable {
 
 /// Steps past a stamp the app can't read (a kind from a newer server) in a list.
 struct MomentStampSkip: Decodable {}
+
+extension MomentStampDTO {
+    /// A Moment's `stamps`, one by one: one the app can't read is left out, never the Moment.
+    static func list(from decoder: any Decoder) -> [MomentStampDTO] {
+        enum Keys: String, CodingKey { case stamps }
+        guard let c = try? decoder.container(keyedBy: Keys.self), var list = try? c.nestedUnkeyedContainer(forKey: .stamps) else {
+            return []
+        }
+        var read: [MomentStampDTO] = []
+        while !list.isAtEnd {
+            if let stamp = try? list.decode(MomentStampDTO.self) {
+                read.append(stamp)
+            } else {
+                _ = try? list.decode(MomentStampSkip.self)
+            }
+        }
+        return read
+    }
+}
