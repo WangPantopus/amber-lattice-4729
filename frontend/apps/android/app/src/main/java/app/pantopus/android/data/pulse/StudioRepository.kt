@@ -46,7 +46,7 @@ class StudioRepository
             return when (val answer = safeApiCall { api.signal(momentId, body) }) {
                 is NetworkResult.Success -> NetworkResult.Success(answer.data.mySignal)
                 is NetworkResult.Failure -> {
-                    if (answer.error.serverCode == SWITCH_OFF) feature.refresh()
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
                     answer
                 }
             }
