@@ -54,10 +54,19 @@ export interface Point {
 }
 
 export function readList(
-  { reach, miles, chip, cursor, point }: { reach: Reach; miles: number; chip: Chip; cursor: string | null; point: Point | null },
+  {
+    reach,
+    miles,
+    chip,
+    cursor,
+    point,
+    circle = null,
+  }: { reach: Reach; miles: number; chip: Chip; cursor: string | null; point: Point | null; circle?: string | null },
   signal?: AbortSignal,
 ): Promise<ListPage> {
   const params: Record<string, string | number> = { reach, chip, limit: 20 };
+  // Close circle can be one of the person's circles (CONTRACT 8d): only its people who are in.
+  if (reach === 'close' && circle) params.circle = circle;
   if (reach === 'around') params.miles = miles;
   if (cursor) params.cursor = cursor;
   if (point && reach === 'around') {

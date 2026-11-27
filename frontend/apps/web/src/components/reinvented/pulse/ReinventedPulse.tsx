@@ -56,6 +56,8 @@ export default function ReinventedPulse() {
   const account = me.data?.id ?? null;
   const home = useMyHomeCenter();
   const [reach, setReach] = useState<Reach>('around');
+  // One of the person's circles inside Close circle (CONTRACT 8d); null is all their connections.
+  const [circle, setCircle] = useState<{ id: string; name: string } | null>(null);
   const [chip, setChip] = useState<Chip>('all');
   const [height, setHeight] = useState<Height>('middle');
   const [point, setPoint] = useState<Point | null>(null);
@@ -94,10 +96,14 @@ export default function ReinventedPulse() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const key = useMemo(() => ['reinvented', 'list', account, reach, reach === 'around' ? miles : null, chip, point?.latitude ?? null, point?.longitude ?? null] as const, [account, reach, miles, chip, point]);
+  const circleId = reach === 'close' ? circle?.id ?? null : null;
+  const key = useMemo(
+    () => ['reinvented', 'list', account, reach, reach === 'around' ? miles : null, chip, point?.latitude ?? null, point?.longitude ?? null, circleId] as const,
+    [account, reach, miles, chip, point, circleId],
+  );
   const list = useInfiniteQuery({
     queryKey: key,
-    queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip, cursor: pageParam, point }, signal),
+    queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip, cursor: pageParam, point, circle: circleId }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: !!account && reach !== 'explore',
@@ -170,8 +176,13 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (strip.error && isSwitchedOff(strip.error)) void reread();
   }, [strip.error, reread]);
+  // A circle the person is no longer in answers 404 CIRCLE_NOT_FOUND: back to all their connections, not to today's Pulse.
+  const circleGone = (list.error as { code?: string } | null)?.code === 'CIRCLE_NOT_FOUND';
+  useEffect(() => {
+    if (circleGone) setCircle(null);
+  }, [circleGone]);
   // A server older than this website answers these reads 404: back to today's Pulse at once, as on the switch going off.
-  useBackWhenMissing(list.error, map.error, strip.error, explore.error);
+  useBackWhenMissing(circleGone ? null : list.error, map.error, strip.error, explore.error);
   // A box with no height (the map laid out before the sheet settles, at phone width) is never read: the server answers
   // 400 to it.
   const onBox = useCallback((b: Box) => {
@@ -466,7 +477,8 @@ export default function ReinventedPulse() {
     );
   };
 
-  const placeName = reach === 'explore' ? 'Explore' : reach === 'close' ? 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
+  const placeName =
+    reach === 'explore' ? 'Explore' : reach === 'close' ? circle?.name || 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
   const fitKey = `${reach}|${miles}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${(reach === 'explore' ? explore.dataUpdatedAt : list.dataUpdatedAt) ? 'read' : ''}`;
   const fallback = point ?? (home ? { latitude: home.lat, longitude: home.lng } : null);
   let prevBand: string | null = null;
@@ -494,6 +506,13 @@ export default function ReinventedPulse() {
             onReach={(r) => {
               if (r !== reach) setChip('all');
               setReach(r);
+              if (r !== 'close') setCircle(null);
+            }}
+            circle={circle?.id ?? null}
+            onCircle={(c) => {
+              setChip('all');
+              setReach('close');
+              setCircle(c);
             }}
             onMiles={setMiles}
             onClose={closeDial}

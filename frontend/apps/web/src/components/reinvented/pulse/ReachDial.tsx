@@ -7,7 +7,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import type { Reach } from './listApi';
+import { CIRCLES_KEY, readCircles } from '../circles/circlesApi';
 
 export const EXPLORE_RULES_PATH = '/about/explore';
 
@@ -18,10 +20,18 @@ interface Props {
   onReach(r: Reach): void;
   onMiles(m: number): void;
   onClose(): void;
+  /** One of the person's circles inside Close circle (CONTRACT 8d), or null for all their connections. */
+  circle?: string | null;
+  onCircle?(c: { id: string; name: string } | null): void;
 }
 
-export default function ReachDial({ reach, miles, place, onReach, onMiles, onClose }: Props) {
+export default function ReachDial({ reach, miles, place, onReach, onMiles, onClose, circle = null, onCircle }: Props) {
   const panel = useRef<HTMLDivElement>(null);
+  // The person's circles (phase 3): Close circle can be one of them.
+  const circles = useQuery({ queryKey: CIRCLES_KEY, queryFn: ({ signal }) => readCircles(signal), enabled: !!onCircle, staleTime: 60_000, retry: false });
+  const mine = circles.data?.circles || [];
+  const chosen = mine.find((c) => c.id === circle) || null;
+  const news = (circles.data?.invites.length || 0) + mine.filter((c) => c.magazine_ready).length;
   const [draft, setDraft] = useState(miles);
   useEffect(() => setDraft(miles), [miles]);
   // The list reads again once the slider rests, not at every step.
@@ -48,7 +58,7 @@ export default function ReachDial({ reach, miles, place, onReach, onMiles, onClo
   }, [onClose]);
 
   const lines: Record<Reach, { name: string; line: string }> = {
-    close: { name: 'Close circle', line: 'People you’re connected with · newest first' },
+    close: { name: 'Close circle', line: chosen ? `Only ${chosen.name} · newest first` : 'People you’re connected with · newest first' },
     around: { name: 'Around me', line: `${place ? `${place}, out` : 'Out'} to ${draft} ${draft === 1 ? 'mile' : 'miles'} · nearest first` },
     explore: { name: 'Explore', line: 'The world · ten picked a day, then newest' },
   };
@@ -75,6 +85,26 @@ export default function ReachDial({ reach, miles, place, onReach, onMiles, onClo
           </button>
         ))}
       </div>
+      {reach === 'close' && onCircle && circles.data && (
+        <div className="rp-dial-circles">
+          {mine.length > 0 && (
+            <div role="radiogroup" aria-label="Which people">
+              <button type="button" role="radio" aria-checked={!chosen} onClick={() => onCircle(null)}>
+                All your connections
+              </button>
+              {mine.map((c) => (
+                <button key={c.id} type="button" role="radio" aria-checked={chosen?.id === c.id} onClick={() => onCircle({ id: c.id, name: c.name })}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <Link href="/app/circles" className="rp-dial-circles-link">
+            {mine.length ? 'Your circles' : 'Make a circle of 2 to 8 close people'}
+            {news > 0 && <span className="rp-dial-new">{news} new</span>}
+          </Link>
+        </div>
+      )}
       {reach === 'around' && (
         <div className="rp-dial-miles">
           <label htmlFor="rp-miles">
