@@ -59,6 +59,8 @@ struct ReinventedPulseList: View {
                 }
                 // Eyes on near you (CONTRACT 8f): read only once the Ask chip is picked.
                 if model.chip == "ask" { EyesOnNearSection(viewer: model.viewer) }
+                // Relics near you (CONTRACT 8g): read only once the Spots chip is picked.
+                if model.chip == "spots" { RelicsNearSection() }
                 if model.isEmpty {
                     emptyNote
                 }
