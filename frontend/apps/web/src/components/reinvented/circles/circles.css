@@ -1,0 +1,330 @@
+/* Your circles and the weekly magazine (CirclesPage.tsx, Magazine.tsx; CONTRACT 8d). */
+.cc-page {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  color: rgb(var(--app-text));
+}
+.cc-head h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.cc-head p,
+.cc-note {
+  margin: 0;
+  color: rgb(var(--app-text-secondary));
+  font-size: 14px;
+}
+.cc-section {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 750;
+}
+.cc-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.cc-card {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 14px;
+  background: rgb(var(--app-surface));
+  color: inherit;
+  text-align: left;
+}
+.cc-card h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 750;
+}
+.cc-open {
+  cursor: pointer;
+}
+.cc-open:hover,
+.cc-open:focus-visible {
+  border-color: #0369a1;
+}
+.cc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cc-open.cc-row {
+  justify-content: flex-start;
+}
+.cc-faces {
+  display: flex;
+  flex: none;
+}
+.cc-faces > *,
+.cc-members .cc-row > :first-child {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+.cc-faces > * + * {
+  margin-left: -8px;
+}
+.cc-words {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  font-size: 14px;
+}
+.cc-words span {
+  color: rgb(var(--app-text-secondary));
+  font-size: 13px;
+}
+.cc-members {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.cc-field input,
+.cc-picker input[type='search'] {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+.cc-inline {
+  display: flex;
+  gap: 8px;
+}
+.cc-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.cc-picker {
+  display: grid;
+  gap: 8px;
+}
+.cc-people {
+  display: grid;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-people label,
+.cc-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cc-chip {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(3, 105, 161, 0.12);
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.cc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cc-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.cc-strong {
+  border-color: transparent;
+  background: #0369a1;
+  color: #fff;
+}
+.cc-danger {
+  border-color: transparent;
+  background: #b91c1c;
+  color: #fff;
+}
+.cc-link {
+  justify-self: start;
+}
+.cc-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+.cc-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(185, 28, 28, 0.08);
+}
+.cc-confirm p {
+  margin: 0;
+  font-size: 14px;
+}
+/* The magazine. */
+.mg-head {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+.mg-kicker {
+  margin: 0;
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mg-head h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.mg-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 4px 0 0;
+  color: rgb(var(--app-text-secondary));
+  font-size: 13px;
+}
+.mg-people > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mg-people > span > :first-child {
+  width: 22px;
+  height: 22px;
+}
+.mg-page {
+  display: grid;
+  gap: 10px;
+}
+.mg-page[data-layout='two'] {
+  grid-template-columns: 1fr 1fr;
+}
+.mg-page[data-layout='grid'] {
+  grid-template-columns: repeat(3, 1fr);
+}
+.mg-item {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  border-radius: 12px;
+  background: rgb(var(--app-surface-muted));
+  color: #fff;
+  text-decoration: none;
+}
+.mg-item[data-big] {
+  aspect-ratio: 4 / 3;
+}
+.mg-page[data-layout='one'] .mg-item {
+  aspect-ratio: 16 / 10;
+}
+.mg-item img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mg-words {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #0f5e6e;
+  font-size: 18px;
+  font-weight: 750;
+  text-align: center;
+}
+.mg-by {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 10px 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
+  font-size: 13px;
+}
+.mg-by > :first-child {
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+.mg-by > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+.mg-caption {
+  overflow: hidden;
+  opacity: 0.85;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mg-page[data-layout='grid'] .mg-caption {
+  display: none;
+}
+@media (max-width: 480px) {
+  .mg-page[data-layout='grid'] {
+    grid-template-columns: 1fr 1fr;
+  }
+}
