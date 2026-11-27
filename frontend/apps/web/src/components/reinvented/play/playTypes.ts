@@ -5,7 +5,7 @@
 
 import { del, get, put } from '@pantopus/api/client';
 
-export type PlayKind = 'poll' | 'slider' | 'board' | 'question' | 'guess' | 'countdown';
+export type PlayKind = 'poll' | 'slider' | 'board' | 'question' | 'guess' | 'countdown' | 'quote' | 'fog' | 'swatch';
 
 export interface PlayPerson {
   id: string;
@@ -83,7 +83,11 @@ export type PlayItem =
       ends_at: string;
       mine: null;
       results: null;
-    });
+    })
+  // §7g: kinds that take no answer.
+  | (Base & { kind: 'quote'; text: string; source?: string | null; mine: null; results: null })
+  | (Base & { kind: 'fog'; mine: null; results: null })
+  | (Base & { kind: 'swatch'; colors: string[]; box: { x: number; y: number; w: number; h: number }; mine: null; results: null });
 
 export type PlayAnswer =
   | { choice: number }
@@ -105,7 +109,7 @@ export function takeBackPlay(postId: string, item: string) {
 
 /** The items a reader may answer now: open, and not yet answered. */
 export function waitingItems(play: readonly PlayItem[] | undefined | null): PlayItem[] {
-  return (play || []).filter((p) => p.open && p.kind !== 'countdown' && !p.mine);
+  return (play || []).filter((p) => p.open && !['countdown', 'quote', 'fog', 'swatch'].includes(p.kind) && !p.mine);
 }
 
 export function isPlayList(value: unknown): value is PlayItem[] {

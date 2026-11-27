@@ -21,7 +21,19 @@ export const PLAY_MAKERS: { kind: PlayKind | 'dial'; label: string }[] = [
   { kind: 'question', label: 'Question box' },
   { kind: 'guess', label: 'Guess and reveal' },
   { kind: 'countdown', label: 'Countdown' },
+  { kind: 'quote', label: 'Quote' },
+  { kind: 'fog', label: 'Fog' },
+  { kind: 'swatch', label: 'Colour swatch' },
 ];
+
+/** A swatch's try-on area: around where its colours sit on the picture (§7g's `box`). */
+export function swatchBox(x: number, y: number) {
+  const w = 0.44,
+    h = 0.3;
+  const bx = Math.min(1 - w, Math.max(0, x - w / 2)),
+    by = Math.min(1 - h, Math.max(0, y - h / 2));
+  return { x: Math.round(bx * 1000) / 1000, y: Math.round(by * 1000) / 1000, w, h };
+}
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -118,7 +130,8 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
     [max, setMax] = useState('100'),
     [unit, setUnit] = useState(''),
     [answer, setAnswer] = useState(''),
-    [ends, setEnds] = useState('');
+    [ends, setEnds] = useState(''),
+    [colors, setColors] = useState<string[]>(['#2f6f8f', '#c2410c']);
   const base = kind === 'dial' ? 'slider' : kind;
   let n = 1;
   while (taken.some((p) => p.id === `${base}-${n}`)) n++;
@@ -144,6 +157,9 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
   }
   if (base === 'countdown' && q.trim() && ends && Date.parse(ends) > Date.now())
     item = { ...place, kind: 'countdown', title: q.trim(), ends_at: new Date(ends).toISOString() };
+  if (base === 'quote' && q.trim()) item = { ...place, kind: 'quote', text: q.trim(), ...(a.trim() ? { source: a.trim() } : {}) };
+  if (base === 'fog' && !taken.some((p) => p.kind === 'fog')) item = { ...place, kind: 'fog' };
+  if (base === 'swatch' && colors.length) item = { ...place, kind: 'swatch', colors, box: swatchBox(place.x, place.y) };
 
   const choices = (withRight: boolean) => (
     <>
@@ -252,6 +268,47 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
               </Field>
             </div>
           )}
+        </>
+      )}
+      {base === 'quote' && (
+        <>
+          <Field label="The words">
+            <Text value={q} set={setQ} max={280} placeholder="Words from a page, a sign or a whiteboard" />
+          </Field>
+          <Field label="Where they’re from (optional)">
+            <Text value={a} set={setA} max={80} placeholder="Trail sign at Round Lake" />
+          </Field>
+        </>
+      )}
+      {base === 'fog' && (
+        <p className="st-hint">
+          {taken.some((p) => p.kind === 'fog') ? 'This post already has fog.' : 'The picture opens frosted; each reader wipes it clear on their screen.'}
+        </p>
+      )}
+      {base === 'swatch' && (
+        <>
+          <p className="st-hint">Colours readers can try over the picture around where you put them. The photo itself never changes.</p>
+          <div className="pl-field-row">
+            {colors.map((c, i) => (
+              <input
+                key={i}
+                type="color"
+                value={c}
+                aria-label={`Colour ${i + 1}`}
+                onChange={(e) => setColors(colors.map((x, j) => (j === i ? e.target.value : x)))}
+              />
+            ))}
+            {colors.length < 6 && (
+              <button type="button" className="st-chip" onClick={() => setColors([...colors, '#7c3aed'])}>
+                Add a colour
+              </button>
+            )}
+            {colors.length > 1 && (
+              <button type="button" className="st-chip" onClick={() => setColors(colors.slice(0, -1))}>
+                Fewer
+              </button>
+            )}
+          </div>
         </>
       )}
       {base === 'countdown' && (
