@@ -28,7 +28,7 @@ const {
 const { matchBusinessesForPost } = require('../jobs/organicMatch');
 const { checkHomePermission, getActiveOccupancy, mapLegacyRole } = require('../utils/homePermissions');
 const { computeUtilityScore } = require('../utils/feedRanking');
-const { reactionNotice, normalizePostReaction, shownReaction } = require('../utils/postReaction');
+const { reactionNotice, normalizePostReaction, shownReaction, normalizePostSignal, shownSignal } = require('../utils/postReaction');
 const s3 = require('../services/s3Service');
 const feedService = require('../services/feedService');
 const { loadChatPeople, chatPersonRow } = require('../services/chatPeople');
@@ -129,6 +129,8 @@ const {
   applyMuteHideFilters,
   enrichFeedPosts,
   loadReactionSummaries,
+  loadSignalSummaries,
+  reinventedFor,
   attachIdentityAuthors,
   loadIdentityAuthorRows,
   applyPostLocationPrivacy,
@@ -814,7 +816,11 @@ function signedOutPostView(post) {
 }
 
 function readerPostView(post) {
-  return { ...Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null])), post_metadata: sourceMetadata(post) };
+  return {
+    ...Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null])), post_metadata: sourceMetadata(post),
+    // Pulse, reinvented: the five signals, on the post only for a reader with the switch on.
+    ...(post.signals !== undefined ? { userSignal: post.userSignal ?? null, signals: post.signals } : {}),
+  };
 }
 
 
@@ -3220,7 +3226,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     // Now that the reader may see the post: the replies, their reaction, save and repost, each reaction emoji's count,
     // the matched businesses' state and the author's names don't depend on each other, so they're read together.
     const blockedIds = await blocked;
-    const [commentRows, viewerRows, authorRows, reactionSummaries] = await Promise.all([
+    const [commentRows, viewerRows, authorRows, reactionSummaries, , signalSummaries] = await Promise.all([
       readWholeThread(post, userId, blockedIds),
       Promise.all([
         supabaseAdmin.from('PostLike').select('id, reaction').eq('post_id', id).eq('user_id', userId).single(),
@@ -3230,6 +3236,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
       loadIdentityAuthorRows([post]),
       loadReactionSummaries([post]),
       dropUnpublishedMatches([post]),
+      // The five signals (Pulse, reinvented), only for a reader with the switch on.
+      reinventedFor(userId).then((on) => (on ? loadSignalSummaries([post]) : null)),
     ]);
     const [{ data: userLike }, { data: userSave }, { data: userRepost }] = viewerRows;
 
@@ -3267,6 +3275,10 @@ router.get('/:id', optionalAuth, async (req, res) => {
       userHasSaved: !!userSave,
       userHasReposted: !!userRepost,
       comments: commentRows,
+      ...(signalSummaries ? {
+        userSignal: userLike ? shownSignal(userLike.reaction) : null,
+        signals: signalSummaries.get(post.id) || [],
+      } : {}),
     }, userId, authorRows);
 
     // "Repost with your words": the post this one is about, as its card.
@@ -3793,11 +3805,15 @@ router.post('/:id/like', verifyToken, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
     // `reaction` sets the viewer's emoji (utils/postReaction.js) or, as null, takes it away. An emoji the apps don't
-    // offer is refused before anything is read.
-    const setsReaction = Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'reaction');
-    const reaction = setsReaction && req.body.reaction !== null ? normalizePostReaction(req.body.reaction) : null;
-    if (setsReaction && req.body.reaction !== null && !reaction) {
-      return res.status(400).json({ error: 'Choose one of the reactions offered.', code: 'INVALID_REACTION' });
+    // offer is refused before anything is read. `signal` (Pulse, reinvented: one of the five signals, or null) does the
+    // same for a viewer with the switch on; with it off the field is ignored, as before.
+    const bySignal = Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal')
+      && await reinventedFor(userId);
+    const setsReaction = bySignal || (Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'reaction'));
+    const sent = bySignal ? req.body.signal : req.body?.reaction;
+    const reaction = setsReaction && sent !== null ? (bySignal ? normalizePostSignal(sent) : normalizePostReaction(sent)) : null;
+    if (setsReaction && sent !== null && !reaction) {
+      return res.status(400).json({ error: bySignal ? 'Choose one of the signals offered.' : 'Choose one of the reactions offered.', code: 'INVALID_REACTION' });
     }
     const post = await requireVisiblePost({ postId: id, userId, res, select: `${POST_REFS_SELECT},post_type` });
     if (!post) return;
@@ -3841,6 +3857,19 @@ router.post('/:id/like', verifyToken, async (req, res) => {
     // Each emoji's count after this change, so the apps show it at once. A failed read leaves `reactions` out and the
     // apps keep what they showed; the next read of the post has it.
     const summaries = await loadReactionSummaries([{ id, like_count: data.likeCount }]);
+    if (bySignal) {
+      // `reaction` and `reactions` stay emoji, as every other answer says them; `signal` and `signals` beside them.
+      const signalCounts = await loadSignalSummaries([{ id, like_count: data.likeCount }]);
+      return res.json({
+        message: reaction ? 'Reaction saved' : 'Reaction removed',
+        liked: Boolean(reaction),
+        likeCount: data.likeCount,
+        reaction: reaction && shownReaction(reaction),
+        ...(summaries.has(id) || data.likeCount === 0 ? { reactions: summaries.get(id) || [] } : {}),
+        signal: reaction && shownSignal(reaction),
+        ...(signalCounts.has(id) || data.likeCount === 0 ? { signals: signalCounts.get(id) || [] } : {}),
+      });
+    }
     res.json({
       message: reaction ? 'Reaction saved' : 'Reaction removed',
       liked: Boolean(reaction),

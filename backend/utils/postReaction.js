@@ -16,6 +16,18 @@ const POST_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', 
 /** A mark made before emoji reactions, or by an app that predates them, has no emoji and shows as this one. */
 const DEFAULT_POST_REACTION = POST_REACTION_EMOJIS[0];
 
+/**
+ * The five signals (Pulse, reinvented, founder 2026-11-26), in the order the new screens offer them. Only a person with
+ * `pulse_reinvented` on can choose one. A signal is stored where an emoji is (PostLike.reaction, one per person per
+ * post), so choosing one replaces the other. Every answer that exists today keeps saying emoji: a signal shows there,
+ * and on the apps already in the stores, as its nearest emoji (SIGNAL_EMOJI); the new screens show an emoji as its
+ * nearest signal (EMOJI_SIGNAL), and a mark from before emoji, which was "Helpful", as `helpful`.
+ */
+const POST_SIGNALS = ['learned', 'want_to_go', 'smile', 'same', 'helpful'];
+const SIGNAL_EMOJI = { learned: '😮', want_to_go: '❤️', smile: '😂', same: '👍', helpful: '🙏' };
+const EMOJI_SIGNAL = { '👍': 'same', '❤️': 'smile', '😂': 'smile', '😮': 'learned', '😢': 'same', '🙏': 'helpful', '🎉': 'smile' };
+const SIGNAL_OF_OLD_MARK = 'helpful';
+
 // U+FE0F only asks for the emoji presentation; "❤" and "❤️" are the same reaction.
 const bare = (emoji) => emoji.replace(/️/g, '');
 const BY_BARE_FORM = new Map(POST_REACTION_EMOJIS.map((emoji) => [bare(emoji), emoji]));
@@ -26,9 +38,35 @@ function normalizePostReaction(value) {
   return BY_BARE_FORM.get(bare(value.trim())) || null;
 }
 
-/** A stored reaction as the apps show it: a row without one (an older mark) is 👍. */
+/** A stored reaction as the apps show it: a row without one (an older mark) is 👍, a signal its nearest emoji. */
 function shownReaction(stored) {
-  return normalizePostReaction(stored) || DEFAULT_POST_REACTION;
+  return normalizePostReaction(stored) || SIGNAL_EMOJI[stored] || DEFAULT_POST_REACTION;
+}
+
+/** The signal as stored, or null when it isn't one of POST_SIGNALS. */
+function normalizePostSignal(value) {
+  return typeof value === 'string' && POST_SIGNALS.includes(value.trim()) ? value.trim() : null;
+}
+
+/** A stored reaction as the new screens show it: a signal as itself, an emoji as its nearest signal. */
+function shownSignal(stored) {
+  if (POST_SIGNALS.includes(stored)) return stored;
+  if (stored == null) return SIGNAL_OF_OLD_MARK;
+  return EMOJI_SIGNAL[shownReaction(stored)] || SIGNAL_OF_OLD_MARK;
+}
+
+/** Rows of { reaction, count } as [{ signal, count }], the most used first, ties in the order the screens offer them. */
+function signalSummary(rows) {
+  const counts = new Map();
+  for (const row of rows || []) {
+    const count = Number(row.count ?? row.reaction_count) || 0;
+    if (count <= 0) continue;
+    const signal = shownSignal(row.reaction);
+    counts.set(signal, (counts.get(signal) || 0) + count);
+  }
+  return [...counts.entries()]
+    .map(([signal, count]) => ({ signal, count }))
+    .sort((a, b) => b.count - a.count || POST_SIGNALS.indexOf(a.signal) - POST_SIGNALS.indexOf(b.signal));
 }
 
 /**
@@ -76,4 +114,10 @@ module.exports = {
   postReaction,
   reactionNotice,
   NOT_HELPFUL_POST_TYPES,
+  POST_SIGNALS,
+  SIGNAL_EMOJI,
+  EMOJI_SIGNAL,
+  normalizePostSignal,
+  shownSignal,
+  signalSummary,
 };

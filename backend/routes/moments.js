@@ -26,7 +26,7 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
-const { normalizePostReaction } = require('../utils/postReaction');
+const { normalizePostReaction, normalizePostSignal, shownReaction, shownSignal } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
 const penName = require('../services/penName');
@@ -730,7 +730,7 @@ router.get('/:id/viewers', async (req, res) => {
     const row = await store.ownMoment(momentId(req), req.user.id);
     if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
     if (store.momentState(row) === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
-    res.json(await store.viewersOf(row, req.user.id));
+    res.json(await store.viewersOf(row, req.user.id, { signals: await store.reinventedOn(req.user) }));
   } catch (error) {
     sendError(res, error, 'viewers');
   }
@@ -744,15 +744,26 @@ async function othersMoment(req) {
   return row;
 }
 
-/** PUT /:id/reaction — { emoji } (one of the post reactions) or { emoji: null } to take it back. */
+/**
+ * PUT /:id/reaction — { emoji } (one of the post reactions) or { emoji: null } to take it back. With `pulse_reinvented`
+ * on for the caller it also takes { signal } (one of the five signals, or null), and the answer adds `my_signal`;
+ * `my_reaction` stays the emoji (a signal's nearest one), as every other answer says it.
+ */
 router.put('/:id/reaction', actionLimiter, async (req, res) => {
   try {
-    const raw = req.body?.emoji;
-    const emoji = raw === null ? null : normalizePostReaction(raw);
-    if (raw !== null && !emoji) throw store.fail(400, 'MOMENT_INVALID', 'Choose one of the reactions.');
+    const reinvented = await store.reinventedOn(req.user);
+    const bySignal = reinvented && Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal');
+    const raw = bySignal ? req.body.signal : req.body?.emoji;
+    const emoji = raw === null ? null : bySignal ? normalizePostSignal(raw) : normalizePostReaction(raw);
+    if (raw !== null && !emoji) {
+      throw store.fail(400, 'MOMENT_INVALID', bySignal ? 'Choose one of the signals.' : 'Choose one of the reactions.');
+    }
     const row = await othersMoment(req);
     const { error } = await supabaseAdmin.rpc('set_post_reaction', { p_post_id: row.id, p_user_id: req.user.id, p_reaction: emoji });
     if (error) throw new Error(`Failed to save the reaction: ${error.message}`);
+    if (reinvented) {
+      return res.json({ my_reaction: emoji && shownReaction(emoji), my_signal: emoji && shownSignal(emoji) });
+    }
     res.json({ my_reaction: emoji });
   } catch (error) {
     sendError(res, error, 'reaction');
