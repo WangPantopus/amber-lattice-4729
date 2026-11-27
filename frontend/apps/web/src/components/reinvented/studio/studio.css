@@ -781,6 +781,12 @@
   gap: 6px;
   white-space: nowrap;
 }
+.st-tray-play i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #047857;
+}
 .st-tray-stamps button[aria-pressed='true'] {
   border-color: #7dd3fc;
   background: #e0f2fe;

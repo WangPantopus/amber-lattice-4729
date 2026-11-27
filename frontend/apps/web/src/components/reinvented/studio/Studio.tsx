@@ -145,6 +145,8 @@ export default function Studio({
     [stamps, setStamps] = useState<PlacedStamp[]>([]),
     [picked, setPicked] = useState<StampKind | null>(null),
     [trayOpen, setTrayOpen] = useState(false),
+    // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
+    [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
   const drawer = drawerOpen || wide;
   const handle = useRef<AbortController | null>(null),
@@ -364,6 +366,8 @@ export default function Studio({
     }
   };
   const kept = stamps.filter((st) => stampValue(st.kind) != null);
+  // Guess the spot takes a photo or video with a place, never at home (the answer would point at it).
+  const canGuess = mode === 'media' && !!file && !noPlace && !!point && !p?.at_home;
   // Wet red ink while the Moment is live from here (the camera, just now, where it was taken); dried otherwise.
   const stampInk: 'wet' | 'dry' = live && !later ? 'wet' : 'dry';
   function placeStamp(kind: StampKind) {
@@ -555,6 +559,7 @@ export default function Studio({
           // `stamps` and `elevation` (CONTRACT §2b): where each stamp sits; the server fills the values.
           const body: NewMoment & {
             post_as?: 'pen_name';
+            guess?: true;
             stamps?: PlacedStamp[];
             elevation?: { meters: number; accuracy_m?: number | null; speed_mps?: number | null };
           } = {
@@ -564,6 +569,7 @@ export default function Studio({
             audience: noPlace ? 'connections' : underPenName ? 'nearby' : audience,
             location: loc,
             ...(underPenName ? { post_as: 'pen_name' as const } : {}),
+            ...(canGuess && guessSpot ? { guess: true as const } : {}),
             ...(kind === 'text'
               ? { text: text.trim(), background: bg }
               : caption.trim() && i === 0
@@ -665,6 +671,7 @@ export default function Studio({
     setTrayOpen(false);
     setStamps([]);
     setPicked(null);
+    setGuessSpot(false);
     setDrawerOpen(false);
     setFiles([]);
     setIndex(0);
@@ -1248,6 +1255,27 @@ export default function Studio({
                     )}
                   </div>
                 )}
+                {canGuess && (
+                  <>
+                    <p className="st-tray-head">
+                      <strong>Play</strong>
+                      <span>Things people can touch</span>
+                    </p>
+                    <div className="st-tray-stamps st-tray-play">
+                      <button
+                        type="button"
+                        aria-pressed={guessSpot}
+                        onClick={() => {
+                          setGuessSpot(!guessSpot);
+                          setTrayOpen(false);
+                        }}
+                      >
+                        <i aria-hidden="true" />
+                        Guess the spot
+                      </button>
+                    </div>
+                  </>
+                )}
               </section>
             </>
           )}
@@ -1352,6 +1380,9 @@ export default function Studio({
                 <p className="st-status" role={busy ? 'status' : 'alert'}>
                   {busy || error || blocker}
                 </p>
+              )}
+              {composing && canGuess && guessSpot && (
+                <p className="st-status">Guess the spot: others see the picture, not the place, until they guess.</p>
               )}
               {composing && underPenName && penMe?.pen_name && (
                 <p className="st-status">
