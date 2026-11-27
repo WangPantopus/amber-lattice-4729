@@ -1,9 +1,13 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.moments.MomentSignalResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Path
 
 /**
  * The requests only "Pulse, reinvented"'s new screens send (CONTRACT sections 2 to 4), and only while
@@ -19,4 +23,15 @@ interface StudioApi {
     suspend fun stampsPreview(
         @Body body: MomentStampsPreviewBody,
     ): MomentStampsPreviewResponse
+
+    /**
+     * `PUT /api/moments/:id/reaction` with `{ "signal": "learned" }` or `{ "signal": null }` (CONTRACT 4): one of the
+     * five signals, or none; it replaces the caller's emoji. The body is raw JSON, so taking a signal back sends the null.
+     * Route `backend/routes/moments.js` (reaction).
+     */
+    @PUT("api/moments/{id}/reaction")
+    suspend fun signal(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): MomentSignalResponse
 }

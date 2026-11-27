@@ -161,6 +161,8 @@ data class MomentDto(
     val weather: MomentWeatherDto? = null,
     /** "Pulse, reinvented" (CONTRACT 2c): the stamps placed on it, with their values; only to a person whose switch is on. */
     val stamps: List<MomentStampDto>? = null,
+    /** "Pulse, reinvented" (CONTRACT 4): the signal you gave it (one of the five), for a person whose switch is on. */
+    @Json(name = "my_signal") val mySignal: String? = null,
 )
 
 /**
@@ -400,6 +402,8 @@ data class MomentViewerDto(
     @Json(name = "viewed_at") val viewedAt: String? = null,
     val reaction: String? = null,
     val replied: Boolean = false,
+    /** "Pulse, reinvented" (CONTRACT 4): their signal, for an author whose switch is on. */
+    val signal: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
