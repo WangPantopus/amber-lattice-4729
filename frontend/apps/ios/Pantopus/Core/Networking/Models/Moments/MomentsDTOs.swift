@@ -246,22 +246,21 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let sky: MomentSkyStateDTO
     /// Taken here, live until when, and the weather (v4.1, `MomentLiveDTOs.swift`).
     public let live: MomentLiveStateDTO
-    /// The stamps its author placed, with the values the server filled ("Pulse, reinvented", CONTRACT 2c). Sent only
-    /// while the switch is on for the caller; empty otherwise, and drawn only then (`MomentStampsOverlay`).
+    /// The stamps placed, with the values the server filled (CONTRACT 2c): switch on only (`MomentStampsOverlay`).
     public let stamps: [MomentStampDTO]
-    /// The caller's signal ("Pulse, reinvented", CONTRACT 4), beside `myReaction` (its nearest emoji); only while the
-    /// switch is on for the caller.
+    /// The caller's signal (CONTRACT 4), beside `myReaction` (its nearest emoji): switch on only.
     public let mySignal: String?
     /// The 15-minute edit ("Pulse, reinvented", CONTRACT 3; `MomentEditDTOs.swift`), switch on only.
     public let editableUntil: String?
     public let stampChoices: [MomentStampKind: MomentStampValue]
-    /// Guess the spot ("Pulse, reinvented", CONTRACT 5; `MomentGuessDTOs.swift`): nil on an ordinary Moment, and while
-    /// the switch is off for the caller.
+    /// Guess the spot (CONTRACT 5; `MomentGuessDTOs.swift`): nil on an ordinary Moment and with the switch off.
     public let guess: MomentGuessStateDTO?
     /// "Keep this?" (CONTRACT 6d): on one's own Moment with a reply, in its last two hours, until answered once.
     public let keepOffer: Bool
     /// "Want to come?" (CONTRACT 6g, `MomentPlan.swift`): the plan this Moment started, as this reader may see it.
     public let plan: MomentPlanDTO?
+    /// Phase 2's layers on the picture (CONTRACT 7; `MomentPlayDTOs.swift`): empty with the switch off.
+    public let layers: MomentLayersDTO
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -323,6 +322,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         guess = MomentGuessStateDTO(from: decoder)
         keepOffer = MomentGuessStateDTO.keepOffer(from: decoder)
         plan = MomentPlanDTO.read(from: decoder)
+        layers = MomentLayersDTO(from: decoder)
     }
 
     public var media: URL? {

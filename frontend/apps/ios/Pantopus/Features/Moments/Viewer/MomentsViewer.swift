@@ -240,7 +240,7 @@ extension MomentsViewer {
                 .overlay(alignment: .bottom) {
                     // The caption gives way to a reply being written, and to a photo being pinched bigger.
                     if let caption = model.moment?.caption, !caption.isEmpty, model.moment?.kind != .text, !isReplying, !zooming {
-                        MomentsCaptionPill(caption: caption).padding(.bottom, 63)
+                        MomentsMentionCaption(caption: caption, moment: model.moment, onPerson: openMention).padding(.bottom, 63)
                     }
                 }
                 .overlay {
@@ -331,13 +331,8 @@ extension MomentsViewer {
             switch moment.kind {
             case .photo:
                 if let image = model.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .accessibilityLabel("\(moment.author.shortName)'s photo")
-                        .accessibilityIdentifier("moments.viewer.photo")
-                        // "Pulse, reinvented": its stamps, only while the switch is on for you.
-                        .overlay { MomentStampsOverlay(moment: moment, picture: image.size) }
+                    // The photo with its stamps; "Pulse, reinvented"'s layers only while the switch is on for you.
+                    MomentPhotoSurface(moment: moment, image: image)
                 }
             case .video:
                 ZStack {
@@ -350,14 +345,14 @@ extension MomentsViewer {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(moment.author.shortName)'s video")
                 .accessibilityIdentifier("moments.viewer.video")
-                .overlay { MomentStampsOverlay(moment: moment, picture: moment.pictureSize) }
+                .overlay { MomentLayersOverlay(moment: moment, picture: moment.pictureSize) }
             case .text:
                 // While a reply is being written the card keeps its color and gives up its words, so they
                 // don't read through the reactions and the reply box. On a table nothing covers the card.
                 MomentsTextCard(text: isReplying && duo.pose != .table ? "" : moment.text ?? "", background: moment.background)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("moments.viewer.text")
-                    .overlay { MomentStampsOverlay(moment: moment, picture: nil) }
+                    .overlay { MomentLayersOverlay(moment: moment, picture: nil) }
             }
         }
     }

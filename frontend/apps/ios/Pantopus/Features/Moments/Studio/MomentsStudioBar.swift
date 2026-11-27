@@ -21,10 +21,12 @@ struct MomentsStudioRail: View {
     let model: MomentsComposerModel
     /// "Stamps and Play" (step 3): the tray, for a Moment with a place (every stamp reads the spot).
     var openTray: (() -> Void)?
+    /// Illuminate (phase 2): dots on things in the picture (`MomentsStudioIlluminate`).
+    var openIlluminate: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Spacing.s3) {
-            if model.offersMarks {
+            if model.offersMarks, model.studioPair == nil {
                 tool("Text", id: "moments.studio.rail.text") {
                     // "Aa" is lettering, not an icon (board B2).
                     Text("Aa").font(.system(size: 17, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
@@ -35,12 +37,17 @@ struct MomentsStudioRail: View {
                     Icon(.stamp, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { openTray() }
             }
-            if model.offersMarks {
+            if let openIlluminate, model.offersDots {
+                tool("Illuminate", id: "moments.studio.rail.illuminate") {
+                    Icon(.sparkles, size: 20, strokeWidth: 2.2, color: .white)
+                } action: { openIlluminate() }
+            }
+            if model.offersMarks, model.studioPair == nil {
                 tool("Draw", id: "moments.studio.rail.draw") {
                     Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { model.openStudioMarks(.draw) }
             }
-            if model.offersResize {
+            if model.offersResize, model.studioPair == nil {
                 tool("Resize", id: "moments.studio.rail.resize") {
                     Icon(.maximize, size: 19, strokeWidth: 2.2, color: .white)
                 } action: { model.openMarks(.resize) }

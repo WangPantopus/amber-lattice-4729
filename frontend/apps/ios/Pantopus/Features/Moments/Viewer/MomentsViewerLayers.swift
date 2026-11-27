@@ -1,0 +1,144 @@
+//
+//  MomentsViewerLayers.swift
+//  Pantopus
+//
+//  What "Pulse, reinvented" phase 2 lays over a Moment's photo in the viewer (CONTRACT 7), drawn only while the switch
+//  is on for the person watching. With it off, or on a Moment with none, the photo is today's: the same picture with
+//  the same label, and its stamps (`MomentStampsOverlay`, which draws nothing with the switch off).
+//
+//  Before and after (CONTRACT 7g): one half over the other with a curtain (`MomentBeforeAfterView`); the stamps sit on
+//  one half's frame. The viewer holds still on it, so the reader compares at their own pace and taps on when they
+//  choose.
+//
+//  Dots (CONTRACT 7c): a tap on one opens what it holds (a note, a rating, a link that opens only on a tap); the
+//  viewer holds still while it's open. The author can take a dot off their own Moment.
+//
+
+import Observation
+import SwiftUI
+
+/// A Moment's photo in the viewer, with what is laid over it.
+struct MomentPhotoSurface: View {
+    let moment: MomentDTO
+    let image: UIImage
+    @State private var flags = PulseReinventedFlags.shared
+
+    var body: some View {
+        if flags.isOn, let pair = moment.layers.beforeAfter {
+            MomentBeforeAfterView(picture: image, item: pair)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("\(moment.author.shortName)'s before and after")
+                .accessibilityIdentifier("moments.viewer.photo")
+                .overlay { MomentLayersOverlay(moment: moment, picture: MomentBeforeAfterHalves.size(of: image.size)) }
+        } else {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .accessibilityLabel("\(moment.author.shortName)'s photo")
+                .accessibilityIdentifier("moments.viewer.photo")
+                // "Pulse, reinvented": its stamps and dots, only while the switch is on for you.
+                .overlay { MomentLayersOverlay(moment: moment, picture: image.size) }
+        }
+    }
+}
+
+extension MomentsViewerModel {
+    /// The viewer holds still on a before and after (as the web's viewer does), and while a dot is open: the reader
+    /// goes on with a tap.
+    var playHolds: Bool {
+        guard PulseReinventedFlags.shared.isOn, let moment else { return false }
+        if MomentDotPrompt.shared.open?.momentId == moment.id { return true }
+        return moment.kind == .photo && moment.layers.beforeAfter != nil
+    }
+}
+
+/// The dot open over the viewer (one at a time), and dots the author took off in this run.
+@Observable
+@MainActor
+final class MomentDotPrompt {
+    struct Open: Equatable {
+        let momentId: String
+        let dotId: String
+    }
+
+    static let shared = MomentDotPrompt()
+
+    var open: Open?
+    var removed: Set<String> = []
+
+    func shown(_ moment: MomentDTO) -> [MomentDotDTO] {
+        moment.layers.dots.filter { !removed.contains("\(moment.id)/\($0.id)") }
+    }
+}
+
+/// What "Pulse, reinvented" lays over a Moment's photo or video: its stamps, then its dots. Nothing with the switch off.
+struct MomentLayersOverlay: View {
+    let moment: MomentDTO
+    /// The picture's own size (one half's for a before and after); nil for a text card.
+    let picture: CGSize?
+    @State private var flags = PulseReinventedFlags.shared
+
+    var body: some View {
+        if flags.isOn {
+            // Clear underneath so the layers always have the picture's size (the stamps draw nothing without stamps).
+            ZStack {
+                Color.clear
+                MomentStampsOverlay(moment: moment, picture: picture)
+                if moment.kind != .text, !moment.layers.dots.isEmpty {
+                    MomentDotsOverlay(moment: moment, picture: picture)
+                }
+            }
+        } else {
+            // With the switch off: exactly today's overlay.
+            MomentStampsOverlay(moment: moment, picture: picture)
+        }
+    }
+}
+
+/// A Moment's dots in the viewer, and the open one's card.
+struct MomentDotsOverlay: View {
+    let moment: MomentDTO
+    let picture: CGSize?
+    private let prompt = MomentDotPrompt.shared
+
+    var body: some View {
+        GeometryReader { geo in
+            let frame = picture.map { MomentMarks.fill($0, in: geo.size) } ?? CGRect(origin: .zero, size: geo.size)
+            let dots = prompt.shown(moment)
+            let open = dots.first { prompt.open == MomentDotPrompt.Open(momentId: moment.id, dotId: $0.id) }
+            ZStack {
+                if open != nil {
+                    // A tap away from the card closes it (and goes nowhere else).
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { prompt.open = nil }
+                        .accessibilityHidden(true)
+                }
+                ForEach(dots, id: \.id) { dot in
+                    Button {
+                        prompt.open = open?.id == dot.id ? nil : MomentDotPrompt.Open(momentId: moment.id, dotId: dot.id)
+                    } label: {
+                        MomentDotMark(kind: dot.kind, picked: open?.id == dot.id)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .position(x: frame.minX + dot.x * frame.width, y: frame.minY + dot.y * frame.height)
+                    .accessibilityLabel(MomentDotCard.spoken(dot))
+                    .accessibilityIdentifier("moments.viewer.dot.\(dot.id)")
+                }
+                if let open {
+                    let x = frame.minX + open.x * frame.width
+                    let y = frame.minY + open.y * frame.height
+                    MomentDotCard(moment: moment, dot: open)
+                        .frame(width: min(geo.size.width - 32, 280))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .position(
+                            x: min(max(x, 156), max(geo.size.width - 156, 156)),
+                            y: y > geo.size.height * 0.55 ? y - 96 : y + 96
+                        )
+                }
+            }
+        }
+    }
+}

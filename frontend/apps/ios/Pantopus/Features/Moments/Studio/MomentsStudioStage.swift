@@ -33,6 +33,8 @@ struct MomentsStudioStage: View {
     /// The stamps' values for this spot and the one picked on the picture (step 3).
     @State private var stamps = MomentsStudioStamps()
     @State private var showsTray = false
+    /// Illuminate's sheet (phase 2: dots on things in the picture).
+    @State private var showsIlluminate = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -52,12 +54,18 @@ struct MomentsStudioStage: View {
             HStack(alignment: .top) {
                 closeButton
                 Spacer(minLength: Spacing.s2)
-                MomentsStudioRail(model: model, openTray: openTray)
+                MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
             Spacer(minLength: Spacing.s4)
             if model.draft != .text {
+                // "@" in the caption offers the author's connections (CONTRACT 7h, `MomentsStudioMentions`).
+                if let query = model.typingMention {
+                    MomentsStudioMentionPicker(model: model, query: query)
+                        .padding(.horizontal, Spacing.s4)
+                        .padding(.bottom, Spacing.s2)
+                }
                 caption
                     .padding(.horizontal, Spacing.s4)
                     .padding(.bottom, Spacing.s3)
@@ -97,11 +105,20 @@ struct MomentsStudioStage: View {
                 MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.
                 MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
+                // Illuminate's dots (phase 2), over the stamps.
+                MomentsStudioDotLayer(model: model, picture: stampPicture, open: openIlluminate)
             }
             .ignoresSafeArea()
         }
         .sheet(isPresented: $showsDrawer) {
             MomentsStudioDrawer(model: model) { showsDrawer = false }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
+                .environment(\.colorScheme, .dark)
+        }
+        .sheet(isPresented: $showsIlluminate) {
+            MomentsStudioIlluminate(model: model) { showsIlluminate = false }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
@@ -134,6 +151,12 @@ struct MomentsStudioStage: View {
         .accessibilityIdentifier("moments.studio")
     }
 
+    private func openIlluminate() {
+        writing = false
+        Keyboard.close()
+        showsIlluminate = true
+    }
+
     private func openTray() {
         writing = false
         Keyboard.close()
@@ -145,7 +168,7 @@ struct MomentsStudioStage: View {
     private var stampPicture: CGSize? {
         guard model.marking.placement == nil else { return nil }
         switch model.draft {
-        case let .photo(image): return image.size
+        case let .photo(image): return model.studioPair == nil ? image.size : MomentBeforeAfterHalves.size(of: image.size)
         case .video: return model.marking.video?.size
         case .text, nil: return nil
         }
@@ -306,6 +329,14 @@ struct MomentsStudioPicture: View {
 
     var body: some View {
         switch model.draft {
+        case let .photo(image) where model.studioPair != nil:
+            // Before and after: one half over the other with the curtain, as the new viewer shows it.
+            MomentBeforeAfterView(
+                picture: image,
+                before: model.studioPair?.beforeLabel ?? "",
+                after: model.studioPair?.afterLabel ?? ""
+            )
+            .accessibilityIdentifier("moments.studio.beforeAfter.picture")
         case let .photo(image):
             MomentsMarkedPhoto(
                 image: image,

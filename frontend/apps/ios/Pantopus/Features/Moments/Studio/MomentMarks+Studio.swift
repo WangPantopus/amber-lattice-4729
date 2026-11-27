@@ -195,6 +195,13 @@ struct MomentsStudioTools {
     var lookOriginal: UIImage?
     /// The photo the look made: while the picture is still that one, the look and its original hold.
     var lookResult: UIImage?
+    /// Before and after (`MomentsStudioBeforeAfter`): the side-by-side picture it made, and what to put back.
+    var pair: MomentsStudioPair?
+    /// People picked after "@" in the caption (`MomentsStudioMentions`): sent while their "@Name" is still in it.
+    var mentioned: [MomentsStudioMention] = []
+    /// Illuminate's dots on things in the picture (`MomentsStudioDots`), and the one being edited.
+    var dots: [MomentDotDTO] = []
+    var pickedDot: String?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

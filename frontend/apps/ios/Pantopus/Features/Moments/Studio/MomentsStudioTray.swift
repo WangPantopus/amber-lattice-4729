@@ -50,11 +50,14 @@ struct MomentsStudioTray: View {
                     }
                 }
             }
-            if model.offersLooks {
+            if model.offersLooks, model.studioPair == nil {
                 MomentsStudioLooksRow(model: model)
             }
-            if !model.stripPartners.isEmpty {
+            if !model.stripPartners.isEmpty, model.studioPair == nil {
                 MomentsStudioStripRow(model: model, onDone: onDone)
+            }
+            if model.offersBeforeAfter || model.studioPair != nil {
+                MomentsStudioBeforeAfterRow(model: model, onDone: onDone)
             }
             if model.studioCutoutSurface != nil {
                 MomentsStudioYourCutouts(model: model, onPlaced: onDone)

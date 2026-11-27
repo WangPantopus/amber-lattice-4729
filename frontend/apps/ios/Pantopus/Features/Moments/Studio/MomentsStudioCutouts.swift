@@ -213,6 +213,8 @@ final class MomentsCutoutShelf {
 extension MomentsComposerModel {
     /// The picture the cutouts sit on, its own size (the canvas once placed); nil for a text card or a video not read.
     var studioCutoutSurface: CGSize? {
+        // A before and after takes stamps only (`MomentsStudioBeforeAfter`).
+        if studioPair != nil { return nil }
         if marking.placement != nil { return MomentPlacement.pixels }
         switch draft {
         case let .photo(image): return image.size

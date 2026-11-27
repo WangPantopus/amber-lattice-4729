@@ -29,6 +29,11 @@ extension MomentsViewer {
         guard !model.isMine, let author = model.ring?.author, let profile = MomentsViewerProfile(author) else { return nil }
         return { session.profile = profile }
     }
+
+    /// A name mentioned in the caption ("Pulse, reinvented", `MomentsMentionCaption`) opens that person's profile.
+    func openMention(_ person: MomentAuthorDTO) {
+        if let profile = MomentsViewerProfile(person) { session.profile = profile }
+    }
 }
 
 extension View {

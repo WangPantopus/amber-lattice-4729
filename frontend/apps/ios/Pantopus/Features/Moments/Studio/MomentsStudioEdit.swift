@@ -182,9 +182,11 @@ struct MomentsStudioEdit: View {
     }
 
     private var pictureSize: CGSize? {
-        if let picture { return picture.size }
+        // A before and after's stamps sit on one half's frame, as the viewer draws them.
+        let paired = model.moment.layers.beforeAfter != nil
+        if let picture { return paired ? MomentBeforeAfterHalves.size(of: picture.size) : picture.size }
         guard let width = model.moment.width, let height = model.moment.height, width > 0, height > 0 else { return nil }
-        return CGSize(width: width, height: height)
+        return paired ? CGSize(width: width / 2, height: height) : CGSize(width: width, height: height)
     }
 
     var body: some View {
@@ -204,6 +206,11 @@ struct MomentsStudioEdit: View {
                     MomentsTextCard(text: model.moment.text ?? "", background: model.moment.background)
                         .frame(width: full.width, height: full.height)
                         .accessibilityLabel("Your card, as posted")
+                } else if let picture, let pair = model.moment.layers.beforeAfter {
+                    // Before and after: the halves at the middle, as the viewer opens it.
+                    MomentBeforeAfterView(picture: picture, item: pair, still: true)
+                        .frame(width: full.width, height: full.height)
+                        .accessibilityLabel("Your before and after, as posted")
                 } else if let picture {
                     Image(uiImage: picture)
                         .resizable()
