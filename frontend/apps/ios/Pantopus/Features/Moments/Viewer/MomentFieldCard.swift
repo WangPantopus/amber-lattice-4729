@@ -22,6 +22,9 @@ struct MomentFieldCardView: View {
     @State private var name = ""
     @State private var note = ""
     @FocusState private var typing: Bool
+    /// The reader's field guide over the viewer, from this card (a sheet hung on the dots' layer kept being shown
+    /// again, about once a second).
+    @State private var guiding = false
     private let prompt = MomentDotPrompt.shared
 
     init(moment: MomentDTO, dot: MomentDotDTO) {
@@ -101,6 +104,11 @@ struct MomentFieldCardView: View {
             .fixedSize(horizontal: false, vertical: true)
         actions(card)
             .sheet(isPresented: $fixing) { correctionSheet }
+            .sheet(isPresented: $guiding) {
+                MomentsFieldGuide { guiding = false }
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
         if let problem, !fixing {
             Text(problem)
                 .font(.system(size: 13))
@@ -126,7 +134,7 @@ struct MomentFieldCardView: View {
                 .accessibilityIdentifier("moments.viewer.fieldCard.collect")
             }
             if card.collected == true {
-                button("Open the guide") { prompt.guideFrom = moment.id }
+                button("Open the guide") { guiding = true }
                     .accessibilityIdentifier("moments.viewer.fieldCard.guide")
             }
             button(card.myCorrection.map { "You said: \($0.name)" } ?? "Not right?") {
