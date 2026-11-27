@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -421,6 +422,8 @@ private fun LabelField(
                 fontSize = letters.toSp(),
                 lineHeight = (letters * MomentMarkRules.LINE_HEIGHT).toSp(),
                 fontWeight = FontWeight.Bold,
+                // The Studio's lettering; today's bold system font (no family) for Classic.
+                fontFamily = label.font.takeIf { it != MomentFont.Classic }?.let { FontFamily(it.typeface) },
                 textAlign = TextAlign.Center,
                 // Unhinted, like the painter's letters, so the words wrap where the photo's do.
                 textMotion = TextMotion.Animated,
@@ -497,6 +500,8 @@ internal fun TextTools(
     editing: MomentMarksEditing,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     modifier: Modifier = Modifier,
+    // "Pulse, reinvented"'s Studio: the ten letterings over the looks.
+    studio: Boolean = false,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (!editing.typing) {
@@ -514,6 +519,10 @@ internal fun TextTools(
                 style = TextStyle(shadow = Shadow(PantopusColors.momentMarksShadow, offset = Offset(0f, 1f), blurRadius = 2f)),
             )
             Spacer(Modifier.height(14.dp))
+        }
+        if (studio) {
+            StudioLetterings(picked = editing.font, onPick = { font -> onEdit { it.fonted(font) } })
+            Spacer(Modifier.height(Spacing.s3))
         }
         Row(
             modifier = Modifier.fillMaxWidth().keepsKeyboard().semantics { contentDescription = "Look" },
