@@ -58,7 +58,9 @@ extension MomentsComposerModel {
     var studioPlay: [MomentPlayItem]? {
         var items: [MomentPlayItem] = []
         if let pair = studioPair { items.append(.beforeAfter(before: pair.beforeLabel, after: pair.afterLabel)) }
-        return items.isEmpty ? nil : items
+        // The items made in the Play maker (`MomentsStudioPlay`), up to four in all.
+        items += studioPlayItems
+        return items.isEmpty ? nil : Array(items.prefix(Self.playLimit))
     }
 
     /// This photo before and the next one picked together after, side by side in one picture. The after leaves the

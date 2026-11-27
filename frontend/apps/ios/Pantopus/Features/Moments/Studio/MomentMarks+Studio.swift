@@ -209,6 +209,9 @@ struct MomentsStudioTools {
     var voiceWords = ""
     var place: MomentsStudioRecording?
     var whispers: [String: MomentsStudioRecording] = [:]
+    /// Playable items made in the tray's Play maker (`MomentsStudioPlay`), and the one picked on the picture.
+    var play: [MomentPlayItem] = []
+    var pickedPlay: String?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

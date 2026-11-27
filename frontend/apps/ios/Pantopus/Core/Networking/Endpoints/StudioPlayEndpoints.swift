@@ -54,6 +54,35 @@ public enum StudioPlayEndpoints {
         )
     }
 
+    /// `PUT /api/reinvented/play/:id/:item` (CONTRACT 7b): the reader's answer (or a changed one); the item comes back
+    /// with what they may now see. Route `backend/routes/reinvented.js:217`.
+    static func answer(postId: String, item: String, body: MomentPlayAnswerBody) -> Endpoint {
+        Endpoint(method: .put, path: "/api/reinvented/play/\(part(postId))/\(part(item))", body: body)
+    }
+
+    /// `DELETE /api/reinvented/play/:id/:item` (CONTRACT 7b): the reader takes their answer back (never a guess).
+    /// Route `backend/routes/reinvented.js:227`.
+    static func takeBack(postId: String, item: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/reinvented/play/\(part(postId))/\(part(item))")
+    }
+
+    /// `GET /api/reinvented/play/:id/:item/answers?cursor=` (CONTRACT 7b): a question box's answers or a board's notes,
+    /// to the author only. Route `backend/routes/reinvented.js:237`.
+    static func answers(postId: String, item: String, cursor: String?) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "/api/reinvented/play/\(part(postId))/\(part(item))/answers",
+            query: cursor.map { ["cursor": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
+    /// `DELETE /api/reinvented/play/:id/:item/answers/:answer` (CONTRACT 7b): the author removes one answer.
+    /// Route `backend/routes/reinvented.js:247`.
+    static func removeAnswer(postId: String, item: String, answer: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/reinvented/play/\(part(postId))/\(part(item))/answers/\(part(answer))")
+    }
+
     /// `GET /api/reinvented/settings` (CONTRACT 7d): the person's own choices, `pantopus_ai` among them.
     /// Route `backend/routes/reinvented.js:333`.
     static let settings = Endpoint(method: .get, path: "/api/reinvented/settings", cachePolicy: .reloadIgnoringLocalCacheData)
@@ -65,6 +94,40 @@ public enum StudioPlayEndpoints {
 }
 
 struct StudioEmptyBody: Encodable {}
+
+/// A reader's answer on a playable item, in the shape its kind takes (CONTRACT 7b).
+struct MomentPlayAnswerBody: Encodable {
+    var choice: Int?
+    var value: Double?
+    var x: Double?
+    var y: Double?
+    var note: String?
+    var text: String?
+}
+
+/// `{ "item": … }`, an answered item as the reader may now see it.
+struct MomentPlayItemEnvelope: Decodable {
+    let item: MomentPlayItem
+}
+
+/// The author's list of a question box's answers or a board's notes, newest first.
+struct MomentPlayAnswersPage: Decodable {
+    struct Row: Decodable, Identifiable {
+        let id: String
+        let text: String?
+        let note: String?
+        let at: String?
+        let person: MomentPlayPerson?
+    }
+
+    let answers: [Row]
+    let nextCursor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case answers
+        case nextCursor = "next_cursor"
+    }
+}
 
 struct FieldCardCorrectionBody: Encodable {
     let name: String
