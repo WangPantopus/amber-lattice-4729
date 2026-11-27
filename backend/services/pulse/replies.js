@@ -153,6 +153,10 @@ async function remove(id, replyId, viewerId) {
   if (String(reply.user_id) !== String(viewerId) && !store.isOwn(row, viewerId)) throw fail(404, 'REPLY_NOT_FOUND', 'This reply could not be found.');
   const { error } = await supabaseAdmin.from('PostComment').update({ is_deleted: true }).eq('id', reply.id);
   if (error) throw new Error(`Failed to remove the reply: ${error.message}`);
+  // A pin (CONTRACT 8b) is a reply: its voice or cutout file goes with it, whoever removes it. A failure is left to the
+  // cleanup job, which deletes the files of removed pins.
+  // eslint-disable-next-line global-require
+  await require('./pins').replyRemoved(reply.id).catch((pinError) => logger.warn('moments.pin_file_left', { replyId: reply.id, error: pinError.message }));
   logger.info('moments.reply_shown_removed', { momentId: row.id, by_author: store.isOwn(row, viewerId) });
 }
 

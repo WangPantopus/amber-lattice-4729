@@ -6507,6 +6507,19 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
       logger.warn('Account deletion could not read made-up names', { userId, error: err.message });
     }
 
+    // ── 3d. Pins on Moments' pictures: which files were this person's ─
+    // A voice bubble or a cutout they pinned on someone's Moment sits in that Moment's folder, not theirs, so step 6's
+    // folders never reach it; their replies are scrubbed with the User row below, which leaves the pins hidden. Read
+    // the files now, while the replies still name them, and delete them in step 6 (services/pulse/pins.js). A no-op
+    // for a person with no pins; a failed read is logged and doesn't stop the deletion (the cleanup job deletes the
+    // files of removed pins later).
+    let pinFiles = [];
+    try {
+      pinFiles = await require('../services/pulse/pins').accountPinFiles(userId);
+    } catch (err) {
+      logger.warn('Account deletion could not read pins', { userId, error: err.message });
+    }
+
     // ── 4. Delete User row ───────────────────────────────────────
     // This triggers ON DELETE CASCADE for ~70+ tables (Posts, Gigs,
     // Wallet, Listings, Notifications, Chat participants, etc.)
@@ -6561,6 +6574,7 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
         const momentMedia = require('../services/moments/momentMedia');
         let count = await momentMedia.removeAccountFiles(userId);
         for (const penNameId of madeUpNameIds) count += await momentMedia.removeAccountFiles(penNameId);
+        if (pinFiles.length) count += await require('../services/pulse/pins').removeAccountPinFiles(pinFiles);
         return count;
       })
       .then((count) => { if (count) logger.info('Account deletion removed Moment files', { userId, count }); })
