@@ -709,6 +709,61 @@ router.post('/town-film', async (req, res) => {
   }
 });
 
+// ─── Ask the map and Atlas search (CONTRACT 9b) ──────────────────────────────
+
+const search = require('../services/pulse/search');
+
+// A search is limited per person (LEAD-3 08:17): 30 a minute, for both routes together.
+const searchLimiter = require('express-rate-limit')({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `pulse-search:${req.user.id}`,
+  message: { error: "You're searching very quickly. Try again in a minute.", code: 'SEARCH_LIMIT' },
+});
+
+// The words go in the body, never in the address, and nothing of them is logged (CONTRACT 9b).
+const askSchema = Joi.object({
+  q: Joi.string().min(2).max(100).required(),
+  south: Joi.number().min(-90).max(90).required(),
+  west: Joi.number().min(-180).max(180).required(),
+  north: Joi.number().min(-90).max(90).required(),
+  east: Joi.number().min(-180).max(180).required(),
+  time: Joi.string().valid(...pulseMap.TIMES).default('live'),
+});
+
+/** POST /map/ask — { q, south, west, north, east, time }: the pins in view whose words match, to light. */
+router.post('/map/ask', searchLimiter, async (req, res) => {
+  try {
+    const { error, value } = askSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: 'Send what to look for (2 to 100 characters) and the map area.', code: 'SEARCH_INVALID' });
+    const { q, time, ...box } = value;
+    if (box.south >= box.north || box.west >= box.east) {
+      return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'SEARCH_INVALID' });
+    }
+    res.json(await search.askMap(req.user, { q, box, time }));
+  } catch (error) {
+    sendError(res, error, 'map_ask');
+  }
+});
+
+const atlasSearchSchema = Joi.object({
+  q: Joi.string().min(2).max(100).required(),
+  cursor: Joi.string().max(40).allow('', null),
+});
+
+/** POST /atlas/search — { q, cursor? }: plain words across yours, people you know, your places, what you learned. */
+router.post('/atlas/search', searchLimiter, async (req, res) => {
+  try {
+    const { error, value } = atlasSearchSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: 'Send what to look for in 2 to 100 characters.', code: 'SEARCH_INVALID' });
+    res.json(await search.atlasSearch(req.user.id, { q: value.q, cursor: value.cursor || null }));
+  } catch (error) {
+    sendError(res, error, 'atlas_search');
+  }
+});
+
 // ─── Curiosity constellations (CONTRACT 9c) ──────────────────────────────────
 
 const constellations = require('../services/pulse/constellations');

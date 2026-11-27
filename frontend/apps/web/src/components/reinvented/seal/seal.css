@@ -1,0 +1,67 @@
+/* A sealed Moment in the viewer (Seal.tsx, CONTRACT 8g). */
+.sl-cover {
+  position: absolute;
+  inset: 0;
+  /* No z-index: it covers the picture (earlier in the page) and stays under the viewer's own bars (later). */
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  background: #0c2024;
+  color: #fff;
+  text-align: center;
+  pointer-events: auto;
+}
+.sl-cover > svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.85;
+}
+.sl-cover strong {
+  font-size: 22px;
+  font-weight: 800;
+}
+.sl-cover p {
+  margin: 0;
+  font-size: 15px;
+}
+.sl-by {
+  opacity: 0.75;
+  font-size: 13px !important;
+}
+.sl-open {
+  height: 40px;
+  margin-top: 6px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #15191e;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sl-error {
+  color: #fca5a5;
+  font-size: 13px !important;
+}
+.sl-mark {
+  position: absolute;
+  top: 74px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(12, 18, 24, 0.7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sl-mark svg {
+  width: 14px;
+  height: 14px;
+}

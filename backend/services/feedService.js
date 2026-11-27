@@ -2458,6 +2458,8 @@ module.exports = {
   loadSignalSummaries,
   reinventedFor,
   applyPostLocationPrivacy,
+  // Where everyone but its author is shown a post (Pulse, reinvented's search index, services/pulse/searchIndex.js).
+  displayedPoint,
   placeLabelForOthers,
   areaOf,
   refreshSkyEverywhere,
