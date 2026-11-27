@@ -9,6 +9,13 @@
 import Foundation
 
 public enum StudioEndpoints {
+    /// `PUT /api/moments/:id/reaction` with `{ "signal": … }` (CONTRACT 4): one of the five signals, or null to take it
+    /// back; it replaces the caller's emoji. Route `backend/routes/moments.js` (reaction).
+    static func signal(momentId: String, signal: String?) -> Endpoint {
+        let id = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        return Endpoint(method: .put, path: "/api/moments/\(id)/reaction", body: MomentSignalBody(signal: signal))
+    }
+
     /// `POST /api/moments/place-preview` with `stamps: true` (CONTRACT 2a): what the tray's stamps would read for a
     /// Moment posted here now. Route `backend/routes/moments.js` (place-preview).
     public static func stampsPreview(latitude: Double, longitude: Double) -> Endpoint {

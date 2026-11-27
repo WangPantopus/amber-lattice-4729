@@ -233,6 +233,8 @@ struct MomentsReplyBar: View {
     let canReply: Bool
     /// Closed, the iPhone Duo has the reaction button in its side strip (board C3).
     var showsReact = true
+    /// "Pulse, reinvented": the signal given, drawn in the emoji's place while the switch is on.
+    var signal: MomentSignal?
     /// On the Duo the box floats over the picture on a dark glass (boards C3, U2).
     var floating = false
     let onReact: () -> Void
@@ -278,7 +280,9 @@ struct MomentsReplyBar: View {
             } else if showsReact {
                 Button(action: onReact) {
                     Group {
-                        if let reaction {
+                        if let signal {
+                            Icon(signal.icon, size: 24, strokeWidth: 2, color: .white)
+                        } else if let reaction {
                             Text(reaction).font(.system(size: 26))
                         } else {
                             Icon(.smile, size: 26, strokeWidth: 1.75, color: .white)
@@ -288,7 +292,8 @@ struct MomentsReplyBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(reaction.map { "Your reaction \($0). Change" } ?? "React")
+                .accessibilityLabel(signal.map { "Your signal \($0.title). Change" } ?? reaction
+                    .map { "Your reaction \($0). Change" } ?? "React")
                 .accessibilityIdentifier("moments.viewer.react")
             }
         }

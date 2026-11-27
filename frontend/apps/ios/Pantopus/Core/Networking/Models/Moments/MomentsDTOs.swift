@@ -249,10 +249,14 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// The stamps its author placed, with the values the server filled ("Pulse, reinvented", CONTRACT 2c). Sent only
     /// while the switch is on for the caller; empty otherwise, and drawn only then (`MomentStampsOverlay`).
     public let stamps: [MomentStampDTO]
+    /// The caller's signal ("Pulse, reinvented", CONTRACT 4), beside `myReaction` (its nearest emoji); only while the
+    /// switch is on for the caller.
+    public let mySignal: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
         case stamps
+        case mySignal = "my_signal"
         case altitudeFt = "altitude_ft"
         case mediaURL = "media_url"
         case posterURL = "poster_url"
@@ -301,6 +305,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         sky = MomentSkyStateDTO(from: decoder)
         live = MomentLiveStateDTO(from: decoder)
         stamps = Self.stamps(c)
+        mySignal = try? c.decodeIfPresent(String.self, forKey: .mySignal)
     }
 
     /// The stamps one by one: one the app can't read is left out, never the Moment.

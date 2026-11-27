@@ -373,9 +373,19 @@ extension MomentsViewer {
         VStack(spacing: 0) {
             if isReplying {
                 Spacer(minLength: 0)
-                MomentsQuickReactions(chosen: model.myReaction) { emoji in
-                    Task { await model.react(emoji) }
-                    closeReply()
+                Group {
+                    // "Pulse, reinvented": the five signals in the seven emoji's place, while the switch is on for you.
+                    if signalsOn {
+                        MomentsQuickSignals(chosen: model.mySignal) { signal in
+                            Task { await model.signal(signal) }
+                            closeReply()
+                        }
+                    } else {
+                        MomentsQuickReactions(chosen: model.myReaction) { emoji in
+                            Task { await model.react(emoji) }
+                            closeReply()
+                        }
+                    }
                 }
                 // A tap on a reaction while typing must reach it: the keyboard stays up until it has.
                 .keepsKeyboardOnTap()
@@ -428,9 +438,10 @@ extension MomentsViewer {
                 text: $session.replyText,
                 focus: $replyFocused,
                 isTyping: replyFocused,
-                reaction: model.myReaction,
+                reaction: signalsOn ? nil : model.myReaction,
                 canReply: author.kind != .pantopus,
                 showsReact: showsReact,
+                signal: signalsOn ? model.mySignal.flatMap(MomentSignal.init(rawValue:)) : nil,
                 floating: floating,
                 onReact: { session.showsReactions = true },
                 onSend: send
