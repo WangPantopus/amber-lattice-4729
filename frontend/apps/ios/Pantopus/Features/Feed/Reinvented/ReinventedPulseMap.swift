@@ -48,6 +48,8 @@ final class ReinventedMapModel {
     ]
 
     private(set) var time = "live"
+    /// My Atlas (CONTRACT 6e): the map shows the person's own kept Moments instead of Pulse.
+    private(set) var atlas = false
     private(set) var items: [Item] = []
     var position: MapCameraPosition = .userLocation(fallback: .automatic)
     /// The card the deck shows, and the pin it lights.
@@ -104,6 +106,22 @@ final class ReinventedMapModel {
         }
     }
 
+    /// Into My Atlas or back to Pulse: the map reads again.
+    func show(atlas: Bool) {
+        guard atlas != self.atlas else { return }
+        self.atlas = atlas
+        items = []
+        deck = []
+        reading?.cancel()
+        reading = Task { [weak self] in await self?.read() }
+    }
+
+    /// Reads the box again (a kept Moment deleted for good).
+    func reread() {
+        reading?.cancel()
+        reading = Task { [weak self] in await self?.read() }
+    }
+
     func pick(time: String) {
         guard time != self.time else { return }
         self.time = time
@@ -122,6 +140,7 @@ final class ReinventedMapModel {
     private func read() async {
         guard let region else { return }
         let half = (lat: region.span.latitudeDelta / 2, lng: region.span.longitudeDelta / 2)
+        if atlas { return await readAtlas(region: region, half: half) }
         let endpoint = ReinventedEndpoints.map(
             south: region.center.latitude - half.lat,
             west: region.center.longitude - half.lng,
@@ -145,6 +164,21 @@ final class ReinventedMapModel {
         default:
             return
         }
+    }
+
+    /// My Atlas on the map: every kept Moment of the person's in the box, as their own pins.
+    private func readAtlas(region: MKCoordinateRegion, half: (lat: Double, lng: Double)) async {
+        let endpoint = ReinventedEndpoints.atlasBox(
+            south: region.center.latitude - half.lat,
+            west: region.center.longitude - half.lng,
+            north: region.center.latitude + half.lat,
+            east: region.center.longitude + half.lng
+        )
+        guard let page: ReinventedAtlasPage = try? await api.request(endpoint), !Task.isCancelled, atlas else { return }
+        items = page.moments.filter { !$0.noLocation }.map { moment in
+            .kept(ReinventedKeptDTO(id: moment.id, latitude: moment.latitude, longitude: moment.longitude, moment: moment))
+        }
+        arrangeDeck()
     }
 }
 
