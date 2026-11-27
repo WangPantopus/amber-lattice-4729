@@ -32,9 +32,9 @@ extension MomentsViewerModel {
         return replies
     }
 
-    /// The viewer holds still while the replies are open.
+    /// The viewer holds still while the replies are open, and while a pin is being dropped or one is open (8b).
     var repliesOpen: Bool {
-        MomentRepliesPrompt.shared.open != nil
+        MomentRepliesPrompt.shared.open != nil || MomentPinsStore.shared.holds
     }
 
     /// In the author's Moment options: show the replies to everyone who sees it, or hide them. Nil where it isn't
@@ -74,31 +74,38 @@ struct MomentRepliesChip: View {
 
     var body: some View {
         if let replies = model.shownReplies, let moment = model.moment {
-            Button { prompt.open = moment } label: {
-                HStack(spacing: 6) {
-                    Icon(.messageCircle, size: 15, strokeWidth: 2.2, color: .white)
-                    Text(title(replies, momentId: moment.id))
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(Color.black.opacity(0.45)))
-                .overlay(Capsule().stroke(Color.white.opacity(0.35), lineWidth: 1))
-                .contentShape(Capsule())
+            HStack(spacing: Spacing.s2) {
+                chip(replies, moment: moment)
+                MomentPinControls(moment: moment, canDrop: replies.canReply)
             }
-            .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 58)
             .padding(.top, Spacing.s1)
-            .accessibilityHint("Opens the replies everyone who sees this Moment can read")
-            .accessibilityIdentifier("moments.viewer.replies")
             .sheet(item: Binding(get: { prompt.open }, set: { prompt.open = $0 })) { opened in
                 MomentRepliesSheet(moment: opened, canReply: opened.together.replies?.canReply ?? false)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    private func chip(_ replies: MomentRepliesDTO, moment: MomentDTO) -> some View {
+        Button { prompt.open = moment } label: {
+            HStack(spacing: 6) {
+                Icon(.messageCircle, size: 15, strokeWidth: 2.2, color: .white)
+                Text(title(replies, momentId: moment.id))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.black.opacity(0.45)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.35), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the replies everyone who sees this Moment can read")
+        .accessibilityIdentifier("moments.viewer.replies")
     }
 
     private func title(_ replies: MomentRepliesDTO, momentId: String) -> String {
@@ -127,5 +134,46 @@ enum MomentRepliesWords {
         if minutes < 60 { return "\(minutes)m" }
         if minutes < 1440 { return "\(minutes / 60)h" }
         return "\(minutes / 1440)d"
+    }
+}
+
+/// Beside the replies chip: drop a pin on the picture (where the reader may reply), and hide or show the pins.
+struct MomentPinControls: View {
+    let moment: MomentDTO
+    let canDrop: Bool
+    private let store = MomentPinsStore.shared
+
+    var body: some View {
+        let count = store.pins[moment.id]?.count ?? 0
+        if canDrop {
+            pill(store.dropping == moment.id ? "Cancel" : "Drop a pin", icon: .pin, id: "moments.pins.drop") {
+                store.startDropping(on: moment.id)
+            }
+        }
+        if count > 0 {
+            pill(store.hidden ? "Show pins (\(count))" : "Hide pins", icon: store.hidden ? .eye : .eyeOff, id: "moments.pins.toggle") {
+                store.hidden.toggle()
+                store.open = nil
+            }
+        }
+    }
+
+    private func pill(_ title: String, icon: PantopusIcon, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Icon(icon, size: 14, strokeWidth: 2.2, color: .white)
+                Text(title)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.black.opacity(0.45)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.35), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 }
