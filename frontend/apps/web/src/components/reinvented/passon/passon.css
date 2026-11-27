@@ -1,0 +1,64 @@
+/* Passing on (PassOn.tsx, CONTRACT 8f). */
+.po-travel {
+  color: rgb(var(--app-text-secondary));
+  font-size: 12px;
+  font-weight: 650;
+}
+.po-panel {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 12px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 12px;
+}
+.po-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.po-note {
+  margin: 0;
+  color: rgb(var(--app-text-secondary));
+  font-size: 12px;
+}
+.po-panel textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.po-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+.po-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.po-button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.po-strong {
+  border-color: transparent;
+  background: #0369a1;
+  color: #fff;
+}
+.po-button:disabled {
+  opacity: 0.6;
+}

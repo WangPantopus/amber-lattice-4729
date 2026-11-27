@@ -9,6 +9,7 @@ import type { Post } from '@pantopus/api';
 import PostCard from '@/components/feed/PostCard';
 import { studioPostPicture } from './StudioPostPicture';
 import type { Point } from './listApi';
+import { PassItOn, travelLine } from '../passon/PassOn';
 
 type CardProps = Omit<ComponentProps<typeof PostCard>, 'post'>;
 
@@ -52,15 +53,18 @@ export default function PostRow({
   card: CardProps;
 }) {
   const status = statusLine(post);
+  // Who carried it, who it came from, or an Eyes-on Ask's window (CONTRACT 8f).
+  const travel = travelLine(post);
   return (
     <div className="rp-post">
-      {(status || point) && (
+      {(status || point || travel) && (
         <div className="rp-post-status">
           {status && (
             <span className="rp-status" data-tone={status.tone}>
               {status.words}
             </span>
           )}
+          {travel && <span className="po-travel">{travel}</span>}
           {point && (
             <button type="button" className="rp-place-button" onClick={() => onPlace(point)} aria-label="Show this post’s place on the map">
               <MapPin size={15} aria-hidden />
@@ -70,6 +74,7 @@ export default function PostRow({
         </div>
       )}
       <PostCard post={post} {...card} overMedia={studioPostPicture} />
+      <PassItOn post={post} />
     </div>
   );
 }
