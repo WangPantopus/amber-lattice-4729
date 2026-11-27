@@ -720,13 +720,25 @@ async function keepOffers(rows) {
   return new Set(candidates.filter((row) => replied.has(row.id)).map((row) => row.id));
 }
 
-/** Which of these Moments someone other than their author replied to (a reply is a chat message naming it). */
+/**
+ * Which of these Moments someone other than their author replied to (a reply is a chat message naming it, in the
+ * replier's direct chat with the author: momentChat.replyToMoment). Read narrowly: only the authors' own chats
+ * (ChatParticipant by user), and only messages written since the earliest of these Moments went out, so the chat
+ * table's (room_id, created_at) index serves it however many messages it holds.
+ */
 async function repliedMoments(rows) {
+  if (!rows.length) return new Set();
   const authors = new Map(rows.map((row) => [row.id, String(row.user_id)]));
+  const since = new Date(Math.min(...rows.map((row) => Date.parse(row.created_at)))).toISOString();
+  const rooms = (await readInBatches([...new Set(authors.values())], (batch) => supabaseAdmin.from('ChatParticipant')
+    .select('room_id').in('user_id', batch).limit(5000), 'chats')).map((row) => row.room_id);
+  if (!rooms.length) return new Set();
+  const ids = rows.map((row) => row.id);
   const found = new Set();
-  for (const batch of chunks(rows.map((row) => row.id))) {
+  for (const batch of chunks([...new Set(rooms)])) {
     const { data, error } = await supabaseAdmin.from('ChatMessage').select('user_id, moment_id:metadata->moment->>id')
-      .in('metadata->moment->>id', batch).eq('deleted', false).limit(1000);
+      .in('room_id', batch).gte('created_at', since).eq('deleted', false)
+      .in('metadata->moment->>id', ids).limit(1000);
     if (error) throw new Error(`Failed to load replies: ${error.message}`);
     for (const message of data || []) {
       if (String(message.user_id) !== authors.get(message.moment_id)) found.add(message.moment_id);
