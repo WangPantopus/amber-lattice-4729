@@ -54,4 +54,20 @@ enum TogetherEndpoints {
     static func repliesShown(momentId: String, shown: Bool) -> Endpoint {
         Endpoint(method: .post, path: "\(path(momentId))/replies-shown", body: MomentRepliesShownBody(shown: shown))
     }
+
+    // MARK: - Pins on the photo (CONTRACT 8b)
+
+    /// `GET /api/reinvented/moments/:id/pins`: every pin this reader may see on the picture. Route
+    /// `backend/routes/reinvented.js:509`.
+    static func pins(momentId: String) -> Endpoint {
+        Endpoint(method: .get, path: "\(path(momentId))/pins", cachePolicy: .reloadIgnoringLocalCacheData)
+    }
+
+    /// `POST /api/reinvented/moments/:id/pins` `{ kind: "reaction", x, y, signal }`: a reaction on a spot of the
+    /// picture (shares of it, 0 to 1). Removing and reporting a pin are its reply's. Route
+    /// `backend/routes/reinvented.js:518`.
+    static func dropReaction(momentId: String, x: Double, y: Double, signal: String) -> Endpoint {
+        let spot = (x: (x * 10000).rounded() / 10000, y: (y * 10000).rounded() / 10000)
+        return Endpoint(method: .post, path: "\(path(momentId))/pins", body: MomentPinReactionBody(x: spot.x, y: spot.y, signal: signal))
+    }
 }

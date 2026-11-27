@@ -102,6 +102,7 @@ struct MomentLayersOverlay: View {
                 if moment.kind != .text, !moment.layers.dots.isEmpty {
                     MomentDotsOverlay(moment: moment, picture: picture)
                 }
+                MomentPinsOverlay(moment: moment, picture: picture) // Pins on the photo (8b): only where replies show.
             }
         } else {
             // With the switch off: exactly today's overlay.
