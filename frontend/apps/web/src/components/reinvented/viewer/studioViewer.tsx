@@ -12,6 +12,7 @@ import type { Moment, Viewer } from '@pantopus/api/endpoints/moments';
 import { useMe } from '@/lib/me';
 import StampLayer from '../stamps/StampLayer';
 import type { ShownStamp, StampKind } from '../stamps/stampTypes';
+import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isSignal, SIGNALS, SIGNAL_WORDS, SignalIcon, type Signal } from './signals';
 import './studioViewer.css';
 
@@ -100,6 +101,7 @@ function SignalMark({ moment }: { moment: StudioMoment }) {
 /** The five signals in today's reaction sheet; one per person, chosen again to take it back. */
 function SignalChoices({ moment, close }: { moment: StudioMoment; close(): void }) {
   const client = useQueryClient();
+  const reread = useRereadSwitch();
   const account = useMe().data?.id;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -118,7 +120,11 @@ function SignalChoices({ moment, close }: { moment: StudioMoment; close(): void 
       );
       close();
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : 'Couldn’t send that. Try again.');
+      // The switch went off: read it again and the viewer goes back to today's reactions.
+      if (isSwitchedOff(e)) {
+        close();
+        void reread();
+      } else setError(e instanceof Error && e.message ? e.message : 'Couldn’t send that. Try again.');
     } finally {
       setBusy(false);
     }

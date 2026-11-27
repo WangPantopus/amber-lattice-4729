@@ -49,6 +49,7 @@ import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
+import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
 import './studio.css';
 
@@ -87,11 +88,14 @@ export default function Studio({
   draft = null,
   onClose,
   onDone,
+  onSwitchedOff,
 }: {
   account: string;
   draft?: MomentChatDraft | null;
   onClose(): void;
   onDone(msg: string): void;
+  /** The server said the switch is off for this person (CONTRACT §1): today's composer takes over with these words. */
+  onSwitchedOff?(words: MomentChatDraft): void;
 }) {
   const wide = useWide();
   const [files, setFiles] = useState<File[]>([]),
@@ -252,6 +256,18 @@ export default function Studio({
     staleTime: 60000,
   });
   const p = preview.data;
+  // "The switch is off for you": back to today's composer with the words (the card's, or the caption).
+  const handBack = () =>
+    onSwitchedOff?.(
+      mode === 'text'
+        ? { kind: 'text', text, background: bg, hours, audience }
+        : { kind: 'photo', caption: caption.trim() || null, hours, audience },
+    );
+  const switchedOff = isSwitchedOff(preview.error);
+  useEffect(() => {
+    if (switchedOff) handBack();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the answer comes
+  }, [switchedOff]);
   useEffect(() => {
     if (p?.adult_confirmed) setAdult(true);
   }, [p?.adult_confirmed]);
@@ -462,6 +478,9 @@ export default function Studio({
     handle.current = controller;
     setBusy('Preparing…');
     setError('');
+    // The Studio's own upload, once kept in the outbox: taken out again if the server says the switch is off, so
+    // today's composer never offers to resume a Moment it can't post.
+    let made: Job | null = retry || null;
     try {
       if (retry) {
         await deliver(retry, controller.signal);
@@ -582,10 +601,15 @@ export default function Studio({
         job.memoryOnly = true;
         if (mounted.current) setError('Browser storage is full or unavailable. Keep this tab open until sharing finishes.');
       }
+      made = job;
       if (mounted.current) setJobs((old) => [...old, job]);
       await deliver(job, controller.signal);
     } catch (e) {
-      if (mounted.current) setError(messageOf(e, 'Couldn’t share. Try again.'));
+      if (isSwitchedOff(e)) {
+        if (made && !made.memoryOnly) await discardJob(made.id).catch(() => {});
+        handBack();
+      }
+      else if (mounted.current) setError(messageOf(e, 'Couldn’t share. Try again.'));
     } finally {
       if (mounted.current) setBusy('');
       submitting.current = false;
