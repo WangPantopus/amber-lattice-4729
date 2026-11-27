@@ -74,7 +74,7 @@ async function maySee(row, viewerId) {
 }
 
 /** The strand that `post` (just posted by its author) makes with `source` (marked Want to go by them), or null. */
-async function strandOf(post, source) {
+async function strandOf(post, source, kind = 'went') {
   const store = momentStore();
   if (String(source.user_id) === String(post.user_id)) return null;
   if (penName.isPenNameRow(post) || penName.isPenNameRow(source)) return null;
@@ -82,8 +82,11 @@ async function strandOf(post, source) {
   // while the post is still within its look back.
   const liveGuess = (row) => row.is_story && momentGuess().isGuess(row) && !store.hasEnded(row);
   if (liveGuess(source) || liveGuess(post)) return null;
-  const [from, to] = [shownPoint(source), shownPoint(post)];
-  if (!from || !to || haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude) > NEAR_M) return null;
+  // "Went because of you" needs the new post near the marked one; a Retake frame and a pass are their own link.
+  if (kind === 'went') {
+    const [from, to] = [shownPoint(source), shownPoint(post)];
+    if (!from || !to || haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude) > NEAR_M) return null;
+  }
   const [sourceOn, blocked, hiddenBySource, hiddenByFollower, homeA, homeB] = await Promise.all([
     store.reinventedOn(source.user_id),
     blockService.isBlocked(source.user_id, post.user_id),
@@ -97,8 +100,41 @@ async function strandOf(post, source) {
     || homeA || homeB) return null;
   if (!(await maySee(post, source.user_id))) return null;
   return {
-    kind: 'went', source_post_id: source.id, source_user_id: source.user_id, follower_user_id: post.user_id, follower_post_id: post.id,
+    kind, source_post_id: source.id, source_user_id: source.user_id, follower_user_id: post.user_id, follower_post_id: post.id,
   };
+}
+
+/** The `retake` and `passed` strands the new posts make (CONTRACT 8e, 8f): a frame's start, a pass's original. */
+async function linkedStrands(candidates) {
+  const store = momentStore();
+  const frames = candidates.filter((row) => row.is_story && store.meta(row).retake?.of);
+  const posts = candidates.filter((row) => !row.is_story);
+  const { data: studios, error } = posts.length
+    ? await supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', posts.map((r) => r.id))
+    : { data: [] };
+  if (error) throw new Error(`Failed to read passes: ${error.message}`);
+  const passFrom = new Map((studios || []).filter((r) => r.studio?.passed_on?.from).map((r) => [r.post_id, r.studio.passed_on.from]));
+  const pairs = [
+    ...frames.map((row) => [row, store.meta(row).retake.of, 'retake']),
+    ...posts.filter((row) => passFrom.has(row.id)).map((row) => [row, passFrom.get(row.id), 'passed']),
+  ];
+  if (!pairs.length) return [];
+  const { data: sources, error: sourceError } = await supabaseAdmin.from('Post').select(POST_SELECT())
+    .in('id', [...new Set(pairs.map(([, id]) => id))]);
+  if (sourceError) throw new Error(`Failed to load the linked posts: ${sourceError.message}`);
+  const byId = new Map((sources || []).map((row) => [row.id, row]));
+  const out = [];
+  for (const [post, sourceId, kind] of pairs) {
+    const source = byId.get(sourceId);
+    if (!source || source.archived_at || source.moderation_state !== 'live') continue;
+    try {
+      const strand = await strandOf(post, source, kind);
+      if (strand) out.push(strand);
+    } catch (strandError) {
+      logger.warn('[pulseStrands] link failed', { postId: post.id, kind, error: strandError.message });
+    }
+  }
+  return out;
 }
 
 /**
@@ -138,15 +174,14 @@ async function findNew(now = Date.now()) {
   const { data: marks, error: markError } = await supabaseAdmin.from('PostLike').select('user_id, post_id, created_at')
     .in('user_id', [...new Set(candidates.map((row) => String(row.user_id)))]).eq('reaction', 'want_to_go').gte('created_at', earliest).limit(5000);
   if (markError) throw new Error(`Failed to load Want to go marks: ${markError.message}`);
-  if (!(marks || []).length) return 0;
-  const { data: sources, error: sourceError } = await supabaseAdmin.from('Post').select(POST_SELECT())
-    .in('id', [...new Set(marks.map((mark) => mark.post_id))]);
+  const { data: sources, error: sourceError } = (marks || []).length ? await supabaseAdmin.from('Post').select(POST_SELECT())
+    .in('id', [...new Set(marks.map((mark) => mark.post_id))]) : { data: [] };
   if (sourceError) throw new Error(`Failed to load marked posts: ${sourceError.message}`);
   const byId = new Map((sources || []).map((row) => [row.id, row]));
   const made = [];
   for (const post of candidates) {
     const posted = Date.parse(post.created_at);
-    const mine = marks.filter((mark) => String(mark.user_id) === String(post.user_id)
+    const mine = (marks || []).filter((mark) => String(mark.user_id) === String(post.user_id)
       && Date.parse(mark.created_at) < posted && posted - Date.parse(mark.created_at) <= WANT_DAYS * DAY_MS);
     for (const mark of mine) {
       const source = byId.get(mark.post_id);
@@ -159,6 +194,8 @@ async function findNew(now = Date.now()) {
       }
     }
   }
+  // A Retake frame tells the start's author (kind `retake`); a pass tells the original's author (kind `passed`).
+  made.push(...await linkedStrands(candidates));
   if (!made.length) return 0;
   const { data: kept, error: insertError } = await supabaseAdmin.from('PostStrand')
     .upsert(made, { onConflict: 'source_post_id,follower_user_id,kind', ignoreDuplicates: true }).select('id');
@@ -168,11 +205,17 @@ async function findNew(now = Date.now()) {
 
 // ─── Reading (the source's author; the follower's own side) ─────────────────
 
-function labelOf(people, count, type, today) {
+function labelOf(people, count, type, today, kind = 'went', extra = {}) {
   const what = type === 'moment' ? 'your Moment' : 'your post';
   const first = (person) => String(person?.name || 'Someone').split(/\s+/)[0];
-  if (count === 1) return `${first(people[0])} went because of ${what}.`;
-  if (count === 2 && people.length === 2) return `${first(people[0])} and ${first(people[1])} went because of ${what}.`;
+  const who = count === 1 ? first(people[0])
+    : count === 2 && people.length === 2 ? `${first(people[0])} and ${first(people[1])}` : `${count} people`;
+  if (kind === 'retake') {
+    const title = extra.title ? ` "${extra.title}"` : '';
+    return `${who} stood where you stood and added to your Retake${title}${count > 2 && today ? ' today' : ''}.`;
+  }
+  if (kind === 'passed') return `${who} carried ${what} on${count > 2 && today ? ' today' : ''}.`;
+  if (count <= 2 && who !== `${count} people`) return `${who} went because of ${what}.`;
   return `${count} people went because of ${what}${today ? ' today' : ''}.`;
 }
 
@@ -222,8 +265,8 @@ async function list(userId, { side, cursor } = {}) {
   const groups = new Map();
   for (const row of visible) {
     const day = DateTime.fromISO(row.created_at).setZone(ZONE).toISODate();
-    const key = `${row.source_post_id}|${day}`;
-    if (!groups.has(key)) groups.set(key, { source: byId.get(row.source_post_id), day, rows: [] });
+    const key = `${row.source_post_id}|${day}|${row.kind}`;
+    if (!groups.has(key)) groups.set(key, { source: byId.get(row.source_post_id), day, kind: row.kind, rows: [] });
     groups.get(key).rows.push(row);
   }
   const all = [...groups.values()];
@@ -237,7 +280,10 @@ async function list(userId, { side, cursor } = {}) {
         day: group.day,
         count: group.rows.length,
         people,
-        label: labelOf(people, group.rows.length, type, group.day === today),
+        kind: group.kind,
+        label: labelOf(people, group.rows.length, type, group.day === today, group.kind, {
+          title: group.source.is_story ? momentStore().meta(group.source).retake?.title : null,
+        }),
         unseen: group.rows.some((row) => !row.seen_at),
         items: group.rows.map((row) => ({
           id: row.id, follower: authors.get(String(row.follower_user_id)) || null, follower_post_id: row.follower_post_id, at: row.created_at,
