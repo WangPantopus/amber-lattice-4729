@@ -66,7 +66,7 @@ struct MomentsStudioDrawer: View {
             if !model.noLocationOn {
                 MomentsPostMap(
                     pin: model.pin,
-                    showArea: model.floats,
+                    showArea: model.floats || model.madeUpFloats,
                     disc: model.skyDisc,
                     me: me,
                     placeholder: model.locating == .unavailable ? "Location is off" : "Finding where you are…",
@@ -75,12 +75,26 @@ struct MomentsStudioDrawer: View {
                 )
                 .padding(.top, Spacing.s2)
             }
-            rows.placeRow
-                .padding(.top, Spacing.s2)
+            Group {
+                // Under a made-up name the server floats it over its area: no exact spot to read or pick.
+                if model.madeUpFloats { madeUpPlaceLine } else { rows.placeRow }
+            }
+            .padding(.top, Spacing.s2)
             if let taken = model.takenLine {
                 rows.takenRow(taken).padding(.top, 2)
-            } else if model.showsLive {
+            } else if model.showsLive, !madeUp {
                 rows.liveRow.padding(.top, 2)
+            }
+            if madeUp {
+                // Under a made-up name the server floats it over its area and keeps no Live mark, weather or height
+                // (the made-up-names contract): those rows go.
+                Text("Under your made-up name it shows over its area at home, or at a public place, with no Live mark, weather or height.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.s1)
+                    .padding(.top, Spacing.s2)
+                    .accessibilityIdentifier("moments.studio.madeUpNote")
             }
             if model.pin == nil, model.locating == .unavailable, !model.noLocationOn {
                 Text("Turn on location for Pantopus in Settings to post a Moment.")
@@ -89,25 +103,31 @@ struct MomentsStudioDrawer: View {
                     .padding(.horizontal, Spacing.s1)
                     .accessibilityIdentifier("moments.studio.locationOff")
             }
-            if model.showsHomeNotice {
+            if model.showsHomeNotice, !madeUp {
                 homeNotice.padding(.top, Spacing.s2)
             }
-            if model.skyAtHome {
+            if model.skyAtHome, !madeUp {
                 rows.skyHomeNote.padding(.top, Spacing.s2)
             }
-            if !model.noLocationOn {
-                Group { if model.sky != nil { rows.pinRow } else { areaRow } }
-                    .padding(.top, Spacing.s2)
+            if madeUp, !model.madeUpFloats, model.sky != nil {
+                // Away from home a made-up name's Moment sits at a public place: which one is the person's choice.
+                rows.pinRow.padding(.top, Spacing.s2)
             }
-            rows.noLocationRow
-                .padding(.top, model.noLocationOn ? Spacing.s2 : 0)
-            if model.offersHeight, let feet = model.heightFeet {
-                rows.heightRow(feet: feet)
-            } else if model.greysHeight {
-                rows.greyHeightRow
-            }
-            if model.offersWeather, let weather = model.live.weather {
-                rows.weatherRow(weather)
+            if !madeUp {
+                if !model.noLocationOn {
+                    Group { if model.sky != nil { rows.pinRow } else { areaRow } }
+                        .padding(.top, Spacing.s2)
+                }
+                rows.noLocationRow
+                    .padding(.top, model.noLocationOn ? Spacing.s2 : 0)
+                if model.offersHeight, let feet = model.heightFeet {
+                    rows.heightRow(feet: feet)
+                } else if model.greysHeight {
+                    rows.greyHeightRow
+                }
+                if model.offersWeather, let weather = model.live.weather {
+                    rows.weatherRow(weather)
+                }
             }
             if model.sky != nil, !model.shareLaterChoices.isEmpty {
                 rows.shareLaterRow
@@ -120,6 +140,26 @@ struct MomentsStudioDrawer: View {
                 .accessibilityAddTraits(.isHeader)
             durations.padding(.top, Spacing.s2)
         }
+    }
+
+    /// Posted under the made-up name (`MomentsStudioMadeUpName`).
+    private var madeUp: Bool {
+        model.postsUnderMadeUpName
+    }
+
+    private var madeUpPlaceLine: some View {
+        HStack(spacing: Spacing.s2) {
+            Icon(.mapPin, size: 18, strokeWidth: 2.2, color: Theme.Color.primaryTint)
+            Text("Area · \(model.studioAreaName)")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundStyle(Theme.Color.appText)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .frame(minHeight: 32)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("moments.studio.madeUpPlace")
     }
 
     private var me: MomentAuthorDTO? {

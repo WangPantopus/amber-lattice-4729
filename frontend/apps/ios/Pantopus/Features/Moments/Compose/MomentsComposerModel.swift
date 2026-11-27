@@ -85,6 +85,9 @@ final class MomentsComposerModel {
     var choseNoLocation = false
     /// "Show elevation" (board H1, `+Height`): the Moment says how high above sea level it was made.
     var showHeight = false
+    /// The Studio's "Made-up name" ("Pulse, reinvented", `MomentsStudioMadeUpName`): sent as `post_as: "pen_name"`.
+    /// Only the Studio sets it; today's Post sheet never does.
+    var postsUnderMadeUpName = false
     /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
     /// it was taken.
     var pinsAtPlace = false

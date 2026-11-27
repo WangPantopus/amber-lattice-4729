@@ -82,12 +82,16 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var takenHere: Bool?
     /// "Show the weather" was on (v4.1): the server reads the weather at the pin itself; left out otherwise.
     public var showWeather: Bool?
+    /// `"pen_name"`: posted under the person's made-up name (`docs/product/made-up-names/README.md`, "Moments"); left
+    /// out for the person's own name.
+    public var postAs: String?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
         case shareLater = "share_later"
         case takenHere = "taken_here"
         case showWeather = "show_weather"
+        case postAs = "post_as"
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

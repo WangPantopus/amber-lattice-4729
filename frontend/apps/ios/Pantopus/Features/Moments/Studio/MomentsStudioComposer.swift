@@ -32,10 +32,16 @@ struct MomentsComposerChoice: View {
     @State private var reinvented = PulseReinventedFlags.shared
 
     var body: some View {
-        if request.studio, reinvented.isOn {
-            MomentsStudioComposer(model: request.model, onClose: onClose)
-        } else {
-            MomentsComposer(model: request.model, onClose: onClose)
+        Group {
+            if request.studio, reinvented.isOn {
+                MomentsStudioComposer(model: request.model, onClose: onClose)
+            } else {
+                MomentsComposer(model: request.model, onClose: onClose)
+            }
+        }
+        // Today's composer knows nothing of a made-up name: going back, the Moment is the person's own again.
+        .onChange(of: reinvented.isOn) { _, isOn in
+            if !isOn { request.model.postsUnderMadeUpName = false }
         }
     }
 }
