@@ -30,6 +30,7 @@ import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import { useLinkedMoment, useLinkedSky } from './momentLinks';
 import { readBeams } from './mapLight';
+import AskTheMap, { type Lit } from './AskTheMap';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -98,6 +99,9 @@ export default function ReinventedPulse() {
   // Answering an Eyes-on Ask with a Live photo (CONTRACT 8f).
   const [answering, setAnswering] = useState<{ id: string; question: string } | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
+  // Ask the map (CONTRACT 9b): the pins lit for the words asked; the rest dim. Cleared with a new reach, view or time.
+  const [lit, setLit] = useState<Lit | null>(null);
+  useEffect(() => setLit(null), [reach, view, time]);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
@@ -601,6 +605,9 @@ export default function ReinventedPulse() {
           ))}
         </div>
       )}
+      {view === 'pulse' && reach !== 'explore' && (height === 'map' || sideBySide) && (
+        <AskTheMap box={box} time={time} data={map.data} lit={lit} shown={lit ? pins.filter((p) => lit.pins.has(p.key)).length : 0} onLit={setLit} />
+      )}
     </header>
   );
 
@@ -618,6 +625,7 @@ export default function ReinventedPulse() {
           onBox={onBox}
           onPick={onPick}
           float={view === 'pulse' && reach !== 'explore' && !!map.data?.heights_on && !!map.data?.float_on}
+          lit={view === 'pulse' && reach !== 'explore' ? lit : null}
           beams={view === 'pulse' && reach !== 'explore' && time === 'live' ? beams.data?.beams : undefined}
         />
       </div>
@@ -670,7 +678,12 @@ export default function ReinventedPulse() {
         )}
         <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
           {view === 'atlas' && account ? (
-            <AtlasView account={account} onOpen={setAtlasItem} />
+            <AtlasView
+              account={account}
+              onOpen={setAtlasItem}
+              onFound={(m) => (m.author?.id === account ? setAtlasItem(m) : setViewing({ id: m.id, ids: [m.id] }))}
+              onPlace={flyTo}
+            />
           ) : reach === 'explore' ? (
             explore.isError && !isSwitchedOff(explore.error) ? (
               <div className="rp-empty">

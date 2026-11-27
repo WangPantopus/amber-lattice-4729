@@ -19,6 +19,7 @@ import { colors } from '@/components/moments/momentState';
 import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
 import type { Pin } from './pins';
 import { liftOf, nightOf, shadowOf, sunPosition, type Beam, type Sun } from './mapLight';
+import type { Lit } from './AskTheMap';
 import './sky.css';
 
 export interface FlyTarget extends Point {
@@ -45,6 +46,8 @@ interface Props {
   float?: boolean;
   /** Live beams in the box (CONTRACT 9h). */
   beams?: Beam[];
+  /** Ask the map (CONTRACT 9b): these pins light up with the words they matched; the rest dim. */
+  lit?: Lit | null;
 }
 
 /** What the sky does to a ring: its height and the sun over the map. */
@@ -186,7 +189,7 @@ function coveredInsets(mapEl: HTMLElement | null): { top: number; bottom: number
   return { top, bottom };
 }
 
-export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick, float = false, beams }: Props) {
+export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick, float = false, beams, lit = null }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -279,10 +282,20 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
     elements.current.clear();
     const now = Date.now();
     const sky: Sky = { float, sun };
+    // Ask the map: dim the rest only when something drawn is lit.
+    const lighting = !!lit && pins.some((p) => lit.pins.has(p.key));
     for (const pin of pins) {
       const { el, size } = pinElement(pin, now, sky);
       el.dataset.pin = pin.key;
       if (pin.key === latest.current.selected) el.classList.add('rp-pin-selected');
+      const words = lit?.pins.get(pin.key);
+      if (lighting) el.classList.add(words ? 'rp-pin-lit' : 'rp-pin-dim');
+      if (words?.length) {
+        const label = document.createElement('span');
+        label.className = 'rp-pin-words';
+        label.textContent = words.slice(0, 2).join(', ');
+        el.appendChild(label);
+      }
       elements.current.set(pin.key, el);
       const headsUp = pin.type === 'mark' && pin.mark.heads_up;
       const marker = L.marker([pin.point.latitude, pin.point.longitude], {
@@ -292,14 +305,14 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
           iconSize: size ?? undefined,
           iconAnchor: size ? [size[0] / 2, size[1] / 2] : undefined,
         }),
-        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' || pin.type === 'kept' || pin.type === 'explore' ? 2000 : pin.type === 'mark' ? 1000 : 0,
+        zIndexOffset: lit?.pins.has(pin.key) ? 4000 : headsUp ? 3000 : pin.type === 'ring' || pin.type === 'kept' || pin.type === 'explore' ? 2000 : pin.type === 'mark' ? 1000 : 0,
         keyboard: true,
         title: pinTitle(pin),
       });
       marker.on('click', () => latest.current.onPick(pin.key));
       marker.addTo(layer);
     }
-  }, [pins, float, sun]);
+  }, [pins, float, sun, lit]);
 
   // Live beams: a faint line from each capture to where they all looked, and a glow there. Not tappable.
   useEffect(() => {
