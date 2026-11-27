@@ -473,4 +473,35 @@ router.post('/moments/:id/replies-shown', async (req, res) => {
   }
 });
 
+// ─── Pins on the photo (CONTRACT 8b) ────────────────────────────────────────
+
+const pins = require('../services/pulse/pins');
+
+const pinUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 10, parts: 12, fieldSize: 4 * 1024, fieldNameSize: 40 },
+}).single('file');
+
+/** GET /moments/:id/pins — the pins this reader may see on the picture. */
+router.get('/moments/:id/pins', async (req, res) => {
+  try {
+    res.json(await pins.list(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'pins');
+  }
+});
+
+/** POST /moments/:id/pins — a reaction (JSON), or a voice bubble or a cutout (multipart `file`), on a spot. */
+router.post('/moments/:id/pins', contentCreationLimiter, (req, res, next) => pinUpload(req, res, (error) => {
+  if (!error) return next();
+  if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'This file is too large to post.', code: 'MEDIA_TOO_LARGE' });
+  return res.status(400).json({ error: 'Send the pin as kind, x, y and, for a voice or a cutout, "file".', code: 'PIN_INVALID' });
+}), async (req, res) => {
+  try {
+    res.status(201).json(await pins.create(req.params.id, req.user, req.body || {}, req.file || null));
+  } catch (error) {
+    sendError(res, error, 'pin_create');
+  }
+});
+
 module.exports = router;
