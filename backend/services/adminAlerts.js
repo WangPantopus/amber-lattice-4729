@@ -37,9 +37,10 @@ async function notifyClaimToReview({ claim, home, claimantUserId }) {
 
   const kind = claim.claim_type === 'resident' ? 'Residency' : 'Ownership';
   const where = [home && home.city, home && home.state].filter(Boolean).join(', ') || 'unknown area';
+  const article = kind === 'Ownership' ? 'An' : 'A';
   const subject = `[Pantopus] ${kind} claim to review · ${where}`;
   const text = [
-    `A ${kind.toLowerCase()} claim is waiting for review.`,
+    `${article} ${kind.toLowerCase()} claim is waiting for review.`,
     '',
     `Claim: ${claim.id}`,
     `Method: ${claim.method || 'doc_upload'}`,
@@ -51,7 +52,7 @@ async function notifyClaimToReview({ claim, home, claimantUserId }) {
     '',
     'The promise on the door is "usually within hours".',
   ].join('\n');
-  const html = `<p>A <strong>${kind.toLowerCase()}</strong> claim is waiting for review.</p>
+  const html = `<p>${article} <strong>${kind.toLowerCase()}</strong> claim is waiting for review.</p>
 <ul>
   <li>Claim: <code>${claim.id}</code></li>
   <li>Method: ${claim.method || 'doc_upload'}</li>
@@ -111,6 +112,42 @@ async function notifyClaimInfoSent({ claim, home }) {
     return true;
   } catch (err) {
     logger.warn('adminAlerts: claim info-sent email failed (non-fatal)', { claimId: claim.id, error: err.message });
+    return false;
+  }
+}
+
+/**
+ * Once a day: claims whose document has waited more than a day for a reviewer. One email with the count and the
+ * longest wait; no names, addresses or documents. Nothing is sent when nothing waits.
+ *
+ * @param {object} params
+ * @param {number} params.count        Claims waiting on a reviewer for more than a day.
+ * @param {number} params.oldestDays   Whole days the longest of them has waited.
+ * @returns {Promise<boolean>} true when an email was handed to the mailer.
+ */
+async function notifyClaimsStillWaiting({ count, oldestDays }) {
+  const to = recipients();
+  if (!to.length || !(count > 0)) return false;
+
+  const claims = count === 1 ? '1 claim has' : `${count} claims have`;
+  const longest = `${oldestDays} day${oldestDays === 1 ? '' : 's'}`;
+  const subject = `[Pantopus] ${count === 1 ? '1 claim' : `${count} claims`} waiting for review more than a day`;
+  const text = [
+    `${claims} had a document waiting for a reviewer for more than a day. The longest wait is ${longest}.`,
+    '',
+    `Review: ${queueUrl()}`,
+    '',
+    'The promise on the door is "usually within hours".',
+  ].join('\n');
+  const html = `<p>${claims} had a document waiting for a reviewer for more than a day. The longest wait is <strong>${longest}</strong>.</p>
+<p><a href="${queueUrl()}">Open the review queue</a></p>
+<p>The promise on the door is “usually within hours”.</p>`;
+
+  try {
+    await emailService.sendEmail({ to: to.join(','), subject, text, html });
+    return true;
+  } catch (err) {
+    logger.warn('adminAlerts: claims-still-waiting email failed (non-fatal)', { error: err.message });
     return false;
   }
 }
@@ -463,6 +500,6 @@ async function notifySignInSetupProblem({ provider, reason, appId }) {
   }
 }
 
-module.exports = { notifyClaimToReview, notifyClaimInfoSent, notifyReportToReview, notifyRemovalVoteToReview,
+module.exports = { notifyClaimToReview, notifyClaimInfoSent, notifyClaimsStillWaiting, notifyReportToReview, notifyRemovalVoteToReview,
   notifyAddressWatchCase, notifyPostcardReported, notifyProbationDisputeToReview, notifyRecordProblemToReview, notifyFloorPlanSheetToReview,
   notifySignInSetupProblem, recipients };

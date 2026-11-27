@@ -124,3 +124,13 @@ data class ReinventedExploreResponse(
     @Json(name = "next_cursor") val nextCursor: String? = null,
     val pause: String? = null,
 )
+
+/**
+ * `GET /api/reinvented/atlas` (CONTRACT 6e), My Atlas: the caller's own kept Moments, live and ended, private to them,
+ * newest first, by date (with [nextCursor]) or every one in a box (no cursor).
+ */
+@JsonClass(generateAdapter = true)
+data class ReinventedAtlasResponse(
+    @Lossy val moments: List<MomentDto> = emptyList(),
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+)

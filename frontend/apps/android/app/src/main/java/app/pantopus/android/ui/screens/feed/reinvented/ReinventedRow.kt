@@ -3,6 +3,7 @@ package app.pantopus.android.ui.screens.feed.reinvented
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
+import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
@@ -154,4 +155,13 @@ data class ReinventedStripActions(
     val onOpenMoment: (MomentDto) -> Unit,
     val onOpenPlan: (String) -> Unit,
     val onOpenRing: (MomentRingDto) -> Unit,
+)
+
+/** My Atlas in the new Pulse: whether it shows, the person's kept Moments in view as pins, and what its taps do. */
+data class ReinventedAtlasHook(
+    val on: Boolean = false,
+    val pins: List<ReinventedMapItem> = emptyList(),
+    val onToggle: (Boolean) -> Unit = {},
+    val onMoved: (ReinventedBox) -> Unit = {},
+    val onOpen: (MomentDto) -> Unit = {},
 )
