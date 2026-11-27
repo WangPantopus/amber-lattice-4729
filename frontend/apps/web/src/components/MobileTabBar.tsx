@@ -6,6 +6,7 @@
 
 import { useMomentBadge } from './moments/useMomentBadge';
 import { useMomentsAccess } from './moments/useMomentsAccess';
+import { useReinventedOn } from './reinvented/pulse/useReinventedOn';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
@@ -88,7 +89,10 @@ export default function MobileTabBar({ unreadMail = 0, accountId }: { unreadMail
   // Read once, when the bar mounts: the order doesn't move while the app is in use.
   const [keptOrder] = useState(keptTabOrder);
   const todayFirst = todayIsFirst(keptOrder, accountId);
-  const tabs = useMemo(() => availableMobileTabs(!!enabled, plansEnabled, todayFirst), [enabled, plansEnabled, todayFirst]);
+  // Pulse, reinvented (phase 1): while its switch is on for the person every Moment is in Pulse, so the bar has no
+  // Moments tab. The switch is read only while Moments is on (no tab to take away otherwise).
+  const reinvented = useReinventedOn(!!enabled);
+  const tabs = useMemo(() => availableMobileTabs(!!enabled && !reinvented, plansEnabled, todayFirst), [enabled, reinvented, plansEnabled, todayFirst]);
   // The home list as the pages read it (the bar asks for nothing itself): its answer is kept for the next load.
   // An older server sends no primary_home; nothing is kept then.
   const primaryHome = useQuery({ ...myHomesQuery(), enabled: false }).data?.primary_home;

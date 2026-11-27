@@ -14,6 +14,7 @@ import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { NavIcons, HomeIcons, BusinessIcons } from '@/lib/icons';
 import { useMomentBadge } from './moments/useMomentBadge';
 import { useMomentsAccess } from './moments/useMomentsAccess';
+import { useReinventedOn } from './reinvented/pulse/useReinventedOn';
 import MobileTabBar, { hidesMobileTabs, isConversation } from '@/components/MobileTabBar';
 import { PantopusMark } from '@/components/brand/PantopusMark';
 import UnifiedFAB, { routeHasFab } from '@/components/UnifiedFAB';
@@ -292,7 +293,10 @@ function AppShellInner({ children, publicPage = false }: { children: React.React
   // A conversation on a phone is exactly the window the browser shows: only its
   // thread scrolls, so the page can't slide its header under the top bar.
   const isMomentsPage = pathname === '/app/moments' || pathname.startsWith('/app/moments/');
-  const isMapWorkspace = isMomentsPage || pathname === '/app/plans';
+  // Pulse, reinvented (phase 1): while its switch is on for the person, /app/feed is the one Pulse tab, a list over a
+  // map that fills the window like the Moments map. The feed page reads the switch itself; this shares its answer.
+  const reinventedPulse = useReinventedOn(pathname === '/app/feed') && pathname === '/app/feed';
+  const isMapWorkspace = isMomentsPage || pathname === '/app/plans' || reinventedPulse;
   const fillsWindow = isMapWorkspace || (isMobile && isConversation(pathname));
   // The map workspaces use the space left by the actual tab bar, including its safe area.
   const mobileTabPadding =
@@ -831,6 +835,8 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
   const plansOn = useFeatureFlagState('plans').enabled;
   const momentsOn = useMomentsAccess().data?.enabled;
   const newMoments = useMomentBadge(!!momentsOn);
+  // Pulse, reinvented (phase 1): every Moment is in Pulse while its switch is on, so the sidebar drops only Moments.
+  const reinventedOn = useReinventedOn(!!momentsOn);
   const onCards = currentPath === '/app/mailbox/cards';
 
   // ── Prefetch on hover/focus of primary nav items ──────────
@@ -905,7 +911,7 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
       <SidebarItem icon={NavIcons.today} label="Today" active={startsWith('/app/today') || startsWith('/app/hub/today')} onClick={() => go('/app/today')} onPrefetch={prefetchToday} showLabel={showLabels} testId="sidebar-today" />
       {/* The Pulse tab, named Nearby until the founder's November 7 decision (its test id stays). */}
       <SidebarItem icon={NavIcons.pulse} label="Pulse" active={startsWith('/app/feed') || startsWith('/app/beacons') || startsWith('/app/gigs') || startsWith('/app/marketplace')} onClick={() => go('/app/feed')} onPrefetch={prefetchNearby} showLabel={showLabels} testId="sidebar-nearby" />
-      {momentsOn && <SidebarItem icon={NavIcons.moments} label="Moments" active={startsWith('/app/moments')} onClick={() => go('/app/moments')} onPrefetch={() => router.prefetch('/app/moments')} showLabel={showLabels} accent="teal" accessory={newMoments ? <span aria-label="New Moments" className="h-2 w-2 rounded-full bg-teal-500"/> : undefined} testId="sidebar-moments" />}
+      {momentsOn && !reinventedOn && <SidebarItem icon={NavIcons.moments} label="Moments" active={startsWith('/app/moments')} onClick={() => go('/app/moments')} onPrefetch={() => router.prefetch('/app/moments')} showLabel={showLabels} accent="teal" accessory={newMoments ? <span aria-label="New Moments" className="h-2 w-2 rounded-full bg-teal-500"/> : undefined} testId="sidebar-moments" />}
       {plansOn && <SidebarItem icon={NavIcons.plans} label="Plans" active={startsWith('/app/plans')} onClick={() => go('/app/plans')} onPrefetch={() => router.prefetch('/app/plans')} showLabel={showLabels} testId="sidebar-plans" />}
       {launchFeatures.mailbox ? <SidebarItem icon={christmasMail ? NavIcons.christmasMail : NavIcons.mail} label="Mail" active={startsWith('/app/mailbox') && !(cardsOpen && onCards)} onClick={() => go('/app/mailbox/personal')} onPrefetch={prefetchMail} showLabel={showLabels} count={mailUnread} countLabel="unopened" testId="sidebar-mail" /> : null}
       {/* While Christmas cards are open (Mail's "Send a Christmas card" row shows), the send flow is one step away,

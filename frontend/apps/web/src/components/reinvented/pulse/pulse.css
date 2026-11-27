@@ -1,0 +1,653 @@
+/* The one Pulse tab (Pulse, reinvented, phase 1, board B1). Only ReinventedPulse uses these. */
+.rp-board {
+  --rp-paper: rgb(var(--app-surface));
+  --rp-wash: rgb(var(--app-surface-muted));
+  --rp-ink: rgb(var(--app-text));
+  --rp-muted: rgb(var(--app-text-muted));
+  --rp-line: rgb(var(--app-border));
+  --rp-brand: #0b6b9a;
+  --rp-live: #d92d20;
+  --rp-shadow: 0 -2px 6px #0e29350f, 0 -10px 30px #0e29351a;
+  --rp-sheet-top: 36%;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--rp-ink);
+  background: var(--rp-wash);
+}
+.rp-board button {
+  cursor: pointer;
+  font: inherit;
+}
+.rp-board :is(button, [role='button']):focus-visible {
+  outline: 3px solid #32aeba;
+  outline-offset: 2px;
+}
+
+/* ── The map, always behind ── */
+.rp-map-layer,
+.rp-map,
+.rp-leaflet {
+  position: absolute;
+  inset: 0;
+}
+.rp-leaflet {
+  z-index: 0;
+  background: #e6e9ec;
+}
+.rp-map-note {
+  position: absolute;
+  z-index: 400;
+  left: 10px;
+  top: 10px;
+  max-width: calc(100% - 72px);
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ffffffd9;
+  color: #3b4650;
+  font-size: 11px;
+  box-shadow: 0 1px 4px #0002;
+}
+.rp-leaflet-icon {
+  background: none;
+  border: 0;
+}
+.rp-ring {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  padding: 3px;
+  background: #2bb3a8;
+  box-shadow: 0 2px 6px #0004;
+}
+.rp-ring-live {
+  background: var(--rp-live);
+}
+.rp-ring-face {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #0e6f73;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.rp-ring-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rp-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--rp-brand);
+  box-shadow: 0 1px 4px #0005;
+}
+.rp-mark[data-kind='ask_local'] {
+  background: #1d6fd6;
+}
+.rp-mark[data-kind='event'] {
+  background: #b54708;
+}
+.rp-mark[data-kind='share'],
+.rp-mark[data-kind='recommendation'] {
+  background: #7a5af8;
+}
+.rp-mark[data-kind='lost_found'] {
+  background: #c4320a;
+}
+.rp-mark-heads-up {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: var(--rp-live);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  animation: rp-pulse 1.6s ease-out infinite;
+}
+@keyframes rp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 #d92d2088, 0 1px 4px #0005;
+  }
+  100% {
+    box-shadow: 0 0 0 18px #d92d2000, 0 1px 4px #0005;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-mark-heads-up {
+    animation: none;
+    box-shadow: 0 0 0 6px #d92d2040, 0 1px 4px #0005;
+  }
+}
+
+/* ── The list, at three heights ── */
+.rp-sheet {
+  position: absolute;
+  z-index: 500;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--rp-sheet-top);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 22px 22px 0 0;
+  background: var(--rp-paper);
+  box-shadow: var(--rp-shadow);
+  transition: top 0.25s ease;
+}
+.rp-board[data-height='list'] {
+  --rp-sheet-top: 0px;
+}
+.rp-board[data-height='list'] .rp-sheet {
+  border-radius: 0;
+}
+.rp-board[data-height='map'] {
+  --rp-sheet-top: calc(100% - 178px);
+}
+.rp-board[data-height='map'] .rp-list {
+  visibility: hidden;
+}
+/* The page's + button sits at the bottom right on a phone: the tucked list keeps clear of it. */
+@media (max-width: 1023px) {
+  .rp-board[data-height='map'] .rp-head {
+    padding-right: 84px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-sheet {
+    transition: none;
+  }
+}
+.rp-handle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  height: 22px;
+  touch-action: none;
+}
+.rp-handle span {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--rp-line);
+}
+.rp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: none;
+  padding: 0 16px 10px;
+}
+.rp-scope-wrap {
+  position: relative;
+}
+.rp-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--rp-line);
+  border-radius: 999px;
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+}
+.rp-scope strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+.rp-scope-reach {
+  flex: none;
+  color: var(--rp-muted);
+  font-size: 14px;
+}
+.rp-scope-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rp-brand);
+}
+.rp-scope-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(340px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--rp-line);
+  border-radius: 16px;
+  background: var(--rp-paper);
+  box-shadow: 0 8px 30px #0003;
+}
+.rp-scope-menu button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--rp-ink);
+  text-align: left;
+}
+.rp-scope-menu button[aria-checked='true'] {
+  background: var(--rp-wash);
+}
+.rp-scope-menu button span {
+  color: var(--rp-muted);
+  font-size: 13px;
+}
+.rp-scope-note {
+  margin: 4px 12px 6px;
+  color: var(--rp-muted);
+  font-size: 12px;
+}
+.rp-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rp-ink) 7%, var(--rp-paper));
+}
+.rp-switch button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--rp-muted);
+  font-size: 16px;
+  font-weight: 600;
+}
+.rp-switch button[data-lit] {
+  background: color-mix(in srgb, var(--rp-ink) 16%, var(--rp-paper));
+  color: var(--rp-ink);
+  box-shadow: 0 1px 3px #0002;
+}
+.rp-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rp-chips::-webkit-scrollbar {
+  display: none;
+}
+.rp-chips button {
+  flex: none;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--rp-line);
+  border-radius: 999px;
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+  font-size: 15px;
+  font-weight: 500;
+}
+.rp-chips button[aria-pressed='true'] {
+  border-color: var(--rp-ink);
+  background: var(--rp-ink);
+  color: var(--rp-paper);
+}
+.rp-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px 96px;
+}
+.rp-items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rp-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+  color: var(--rp-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rp-band::before,
+.rp-band::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rp-line);
+}
+.rp-band::before {
+  flex: 0 0 12px;
+}
+.rp-end {
+  margin: 28px 0 8px;
+  color: var(--rp-muted);
+  text-align: center;
+  font-size: 14px;
+}
+.rp-muted {
+  color: var(--rp-muted);
+  font-size: 14px;
+}
+.rp-center {
+  text-align: center;
+}
+.rp-sentinel {
+  height: 1px;
+}
+.rp-empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 32px 8px;
+  text-align: center;
+}
+.rp-empty p {
+  max-width: 34ch;
+  margin: 0;
+}
+.rp-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.rp-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rp-brand);
+  color: #fff;
+  font-weight: 600;
+}
+.rp-button-quiet {
+  border: 1px solid var(--rp-line);
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+}
+.rp-skeleton {
+  display: grid;
+  gap: 16px;
+}
+.rp-skeleton span {
+  display: block;
+  height: 220px;
+  border-radius: 20px;
+  background: var(--rp-wash);
+  animation: rp-wait 1.2s ease-in-out infinite alternate;
+}
+@keyframes rp-wait {
+  to {
+    opacity: 0.55;
+  }
+}
+.rp-toast {
+  position: absolute;
+  z-index: 900;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #1d2733;
+  color: #fff;
+  font-size: 14px;
+}
+
+/* ── A Moment that fades: borderless, full width, its time left ── */
+.rp-moment {
+  overflow: hidden;
+  border-radius: 20px;
+  background: #0f1a24;
+  color: #fff;
+}
+.rp-moment-window {
+  position: relative;
+  overflow: hidden;
+  max-height: 78vh;
+  container-type: inline-size;
+}
+.rp-moment-picture {
+  position: relative;
+  width: 100%;
+}
+.rp-moment-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rp-moment-stamps {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.rp-moment-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 18%;
+  color: #fff;
+  font-size: clamp(18px, 6cqi, 34px);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.rp-moment-who {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 150px);
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  background: #0f1a24b3;
+  backdrop-filter: blur(6px);
+}
+.rp-moment-who .mo-face {
+  --mo-paper: #0f1a24;
+  flex: none;
+  width: 34px;
+  height: 34px;
+}
+.rp-moment-who-words {
+  display: grid;
+  min-width: 0;
+  line-height: 1.2;
+}
+.rp-moment-who-words :is(strong, span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-moment-who-words strong {
+  font-size: 14px;
+}
+.rp-moment-who-words span {
+  color: #ffffffcc;
+  font-size: 12px;
+}
+.rp-moment-left {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #ffffffeb;
+  color: #17212b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.rp-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rp-live);
+}
+.rp-moment-foot {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+.rp-moment-caption {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.rp-moment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rp-signal-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #ffffff38;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.rp-signal-mine {
+  border-color: #7dd3fc;
+  color: #bae6fd;
+}
+.rp-place-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: #7dd3fc;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── A post that stays: today's card under its status line ── */
+.rp-post-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 8px;
+}
+.rp-status {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 13px;
+  font-weight: 700;
+}
+.rp-status[data-tone='done'] {
+  background: #dcfce7;
+  color: #166534;
+}
+.rp-status[data-tone='spot'] {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+.rp-status[data-tone='plan'] {
+  background: #ffedd5;
+  color: #9a3412;
+}
+.rp-status[data-tone='alert'],
+.rp-status[data-tone='lost'] {
+  background: #fee4e2;
+  color: #b42318;
+}
+.rp-status[data-tone='offer'] {
+  background: #ccfbf1;
+  color: #115e59;
+}
+.rp-post .rp-place-button {
+  color: var(--rp-brand);
+}
+
+/* ── Desktop width: the list and the map side by side ── */
+@media (min-width: 1024px) {
+  .rp-sheet {
+    top: 0;
+    right: auto;
+    width: min(560px, 44%);
+    border-radius: 0;
+    border-right: 1px solid var(--rp-line);
+    box-shadow: none;
+    transition: none;
+  }
+  .rp-handle {
+    display: none;
+  }
+  .rp-head {
+    padding-top: 14px;
+  }
+  .rp-board[data-height='middle'] .rp-map-layer {
+    left: min(560px, 44%);
+  }
+  .rp-board[data-height='list'] .rp-sheet {
+    width: 100%;
+    border-right: 0;
+  }
+  .rp-board[data-height='list'] :is(.rp-head, .rp-items, .rp-end, .rp-empty, .rp-skeleton) {
+    width: min(720px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .rp-board[data-height='map'] .rp-sheet {
+    top: 16px;
+    left: 16px;
+    bottom: auto;
+    width: 420px;
+    border: 1px solid var(--rp-line);
+    border-radius: 18px;
+    box-shadow: 0 8px 30px #0003;
+  }
+  .rp-board[data-height='map'] .rp-list {
+    display: none;
+  }
+}
