@@ -1553,7 +1553,7 @@ export default function Studio({
               <input type="checkbox" checked={startRetake} onChange={(e) => setStartRetake(e.target.checked)} />
               Start a Retake
             </label>
-            <p className="st-note">Others who stand here later add their own picture of this same view. It stays.</p>
+            <p className="st-note">A Retake shows this exact spot and stays, so others can stand here.</p>
             {startRetake && (
               <input
                 className="st-retake-title"

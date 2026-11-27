@@ -2,8 +2,9 @@
 
 // Your circles (Pulse, reinvented, phase 3; coord/CONTRACT.md §8d): circles of 2 to 8 close people. Make one from your
 // connections (they're invited, and in only by their own yes), say yes or no to an invite (nobody is told who said
-// no), and for each circle: who's in, your own "Keep my Moments in this circle's magazine after they fade", rename,
-// add or remove people (its maker), leave, or end it. Only while `pulse_reinvented` is on for the person.
+// no), and for each circle: who's in, your own "Keep my Moments for this circle after they fade" (its magazine and
+// morning postcards), rename, add or remove people (its maker), leave, or end it. Only while `pulse_reinvented` is on
+// for the person.
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -27,7 +28,7 @@ import {
 import './circles.css';
 
 const MAX_OTHERS = 7;
-const KEEP_WORDS = 'Keep my Moments in this circle’s magazine after they fade';
+const KEEP_WORDS = 'Keep my Moments for this circle after they fade: its weekly magazine and morning postcards';
 
 function errorWords(e: unknown): string {
   const err = e as { message?: string; statusCode?: number };
