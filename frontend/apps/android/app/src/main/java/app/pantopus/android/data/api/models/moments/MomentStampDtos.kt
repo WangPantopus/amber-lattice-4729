@@ -100,6 +100,17 @@ data class MomentStampsPreviewDto(
             ).toMap()
 }
 
+/**
+ * The author's 15-minute edit (CONTRACT 3, `PATCH /api/moments/:id`): only what changed is sent (a field left null is
+ * left out); a caption of "" clears it.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentEditBody(
+    val caption: String? = null,
+    val stamps: List<MomentStampPlacement>? = null,
+    val audience: String? = null,
+)
+
 /** The tray's request: today's place-preview body, plus `stamps: true` (sent only by the Studio). */
 @JsonClass(generateAdapter = true)
 data class MomentStampsPreviewBody(

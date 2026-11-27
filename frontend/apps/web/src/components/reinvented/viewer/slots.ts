@@ -18,4 +18,6 @@ export interface StudioViewerSlots {
   menu(m: Moment, close: () => void): ReactNode;
   /** True while the viewer should hold still on this Moment (a guess-the-spot Moment the reader hasn't guessed). */
   holds(m: Moment, account: string): boolean;
+  /** The caption's words, with the people its author mentioned linked to their profiles (§7h). */
+  caption?(m: Moment): ReactNode;
 }

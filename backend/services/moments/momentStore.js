@@ -304,8 +304,14 @@ async function viewerContext(viewerId, authorIds = [], shared = null, rows = nul
  * guess-the-spot Moment but to its author, since its pin and place are the answer. It is opened by id instead.
  */
 function listedFor(row, viewerId) {
-  return !(momentGuess.isGuess(row) && !hasEnded(row) && !isOwn(row, viewerId));
+  return !(momentGuess.isGuess(row) && !hasEnded(row) && !isOwn(row, viewerId))
+    // A sealed Moment (Pulse, reinvented; CONTRACT 8g) is listed nowhere until it opens, but to its author.
+    && !(sealedNow(row) && !isOwn(row, viewerId));
 }
+
+// Required when used: seal.js requires this file.
+// eslint-disable-next-line global-require
+const sealedNow = (row) => Boolean(row?.post_metadata?.moment?.seal) && require('../pulse/seal').isSealed(row);
 
 /** Whether the viewer may see this Moment at all (blocks, mutes, audience), whatever its state. */
 function canSee(row, ctx) {
@@ -313,6 +319,8 @@ function canSee(row, ctx) {
   // A live guess-the-spot Moment (Pulse, reinvented) is for readers with the switch on only, until it ends; a context
   // built without that read (a profile's count) leaves it out too.
   if (momentGuess.isGuess(row) && !hasEnded(row) && !ctx.reinvented) return false;
+  // A sealed Moment (CONTRACT 8g) is for readers with the switch on only, until it opens.
+  if (sealedNow(row) && !ctx.reinvented) return false;
   // Under a made-up name: hidden by that name (or the brake), never by a block or a mute of a person, which would
   // say who is behind it. It goes to people nearby, so there is no audience to check.
   if (penName.isPenNameRow(row)) return !ctx.penNamesHidden && !ctx.hiddenPenNames.has(String(row.identity_context_id));
@@ -536,7 +544,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null, unsealed = false }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -630,13 +638,17 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       retake: retakes?.get(row.id) || null,
       // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
       mentions: mentioned?.get(row.id) || [],
+      // A sealed Moment (CONTRACT 8g): how and when it opens, and whether it has; null for any other.
+      seal: m.seal ? require('../pulse/seal').sealAnswer(row) : null,
       // A Convergence it joined (CONTRACT 8h): which one and whether it is open; null for any other.
       convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
   const hideSpot = reinvented && momentGuess.isGuess(row) && !own && !guess?.mine && state !== 'ended';
-  return hideSpot ? { ...momentGuess.withoutSpot(answer), plan: null } : answer;
+  const spotted = hideSpot ? { ...momentGuess.withoutSpot(answer), plan: null } : answer;
+  // Sealed and not open yet (CONTRACT 8g): nothing of what it holds, but to its author, or to a reader standing there.
+  return m.seal && !own && !unsealed && sealedNow(row) ? require('../pulse/seal').withoutContent(spotted) : spotted;
 }
 
 /** The author's counts by signal (Pulse, reinvented), by Moment id: [{ signal, count }]. */
@@ -687,7 +699,7 @@ function keptFilesOf(row) {
  * Full Moments for `viewerId` (each row already checked visible), in the given order. `keptEnded` (My Atlas only, the
  * author's own list): their kept Moments that ended keep their pictures for them.
  */
-async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false } = {}) {
+async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false, unsealed = false } = {}) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   // "Want to come?" (CONTRACT 6g): the plans these Moments started, read from the start beside everything else, and
@@ -747,6 +759,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     replyCounts,
     mentioned,
     retakes,
+    unsealed,
   }));
 }
 

@@ -1151,6 +1151,17 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       } catch (studioError) {
         return res.status(400).json({ error: studioError.message, code: 'POST_INVALID' });
       }
+      // Eyes on (CONTRACT 8f): an Ask of a picked public place (a venue), or it isn't one (LEAD-3 07:03).
+      if (studioParsed.eyesOn) {
+        try {
+          require('../services/pulse/eyesOn').checkAsk({
+            postType: req.body.postType, placeId: req.body.geocodePlaceId, accuracy: req.body.geocodeAccuracy,
+            latitude: req.body.latitude, longitude: req.body.longitude,
+          });
+        } catch (eyesError) {
+          return res.status(eyesError.status).json({ error: eyesError.message, code: eyesError.code });
+        }
+      }
       // Passing on (CONTRACT 8f): the quoted post must be one that may travel, passed once per person.
       if (studioParsed.passedOn) {
         try {

@@ -1,10 +1,13 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.moments.MomentEditBody
+import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.moments.MomentSignalResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
 import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -34,4 +37,14 @@ interface StudioApi {
         @Path("id") id: String,
         @Body body: RequestBody,
     ): MomentSignalResponse
+
+    /**
+     * `PATCH /api/moments/:id` (CONTRACT 3): the author changes the caption, the stamps or who sees it, for 15 minutes
+     * after it went out. Route `backend/routes/moments.js` (PATCH /:id).
+     */
+    @PATCH("api/moments/{id}")
+    suspend fun edit(
+        @Path("id") id: String,
+        @Body body: MomentEditBody,
+    ): MomentEnvelope
 }
