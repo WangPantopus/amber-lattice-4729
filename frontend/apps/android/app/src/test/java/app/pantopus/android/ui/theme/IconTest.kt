@@ -347,6 +347,10 @@ class IconTest {
             "mountain",
             // Moment marks: Draw's Undo.
             "undo",
+            // "Pulse, reinvented"'s Studio, Draw: the highlighter, the eraser and the eyedropper.
+            "highlighter",
+            "eraser",
+            "pipette",
         )
 
     @Test

@@ -509,7 +509,9 @@ internal fun TextTools(
         if (!editing.typing) {
             Text(
                 text =
-                    if (editing.marks.labels.isEmpty()) {
+                    if (editing.dropping) {
+                        DROPPER_HINT
+                    } else if (editing.marks.labels.isEmpty()) {
                         "Tap the picture to add words."
                     } else {
                         "Drag to move. Pinch to resize. Twist to turn."
@@ -536,11 +538,22 @@ internal fun TextTools(
         }
         Spacer(Modifier.height(14.dp))
         Box(Modifier.keepsKeyboard()) {
-            Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } }, group = "Text color", picking = editing.textTint)
+            Inks(
+                picked = editing.textInk,
+                onPick = { ink -> onEdit { it.inked(ink).copy(dropping = false) } },
+                group = "Text color",
+                picking = editing.textTint,
+            )
         }
-        if (photo.isNotEmpty()) {
+        if (studio) {
             Box(Modifier.keepsKeyboard()) {
-                PhotoColors(photo = photo, picked = editing.textTint, onPick = { color -> onEdit { it.tinted(color) } })
+                PhotoColors(
+                    photo = photo,
+                    picked = editing.textTint,
+                    onPick = { color -> onEdit { it.tinted(color).copy(dropping = false) } },
+                    dropping = editing.dropping,
+                    onDropper = { onEdit { it.copy(dropping = !it.dropping) } },
+                )
             }
         }
     }
