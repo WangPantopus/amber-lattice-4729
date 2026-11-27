@@ -1,0 +1,48 @@
+/* What today's viewer draws while pulse_reinvented is on (components/reinvented/viewer/studioViewer.tsx). */
+.sv-stamps {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sv-picture {
+  position: absolute;
+}
+.sv-mine {
+  display: grid;
+  place-items: center;
+}
+.sv-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sv-signals button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px 0 11px;
+  border: 1px solid var(--mo-line, rgba(255, 255, 255, 0.3));
+  border-radius: 18px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 650;
+}
+.sv-signals button[aria-pressed='true'] {
+  border-color: transparent;
+  background: #0369a1;
+  color: #fff;
+}
+.sv-seen {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sv-error {
+  margin: 8px 0 0;
+  color: #fca5a5;
+  font-size: 13px;
+}

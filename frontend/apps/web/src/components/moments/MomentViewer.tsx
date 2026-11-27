@@ -35,6 +35,7 @@ import {
 import MomentDialog from './MomentDialog';
 import { MomentFace } from './MomentFace';
 import { colors, messageOf, timeAgo } from './momentState';
+import type { StudioViewerSlots } from '@/components/reinvented/viewer/slots';
 
 type Sheet = 'menu' | 'report' | 'mute' | 'block' | 'delete' | 'seen' | 'react' | null;
 interface Props {
@@ -48,6 +49,8 @@ interface Props {
   onWatchedPlace(point: Point | null): void;
   onRemove(id: string, author?: string): void;
   onPlace(point: Point): void;
+  /** "Pulse, reinvented": given only while `pulse_reinvented` is on for the person; without it, today's viewer. */
+  studio?: StudioViewerSlots;
 }
 function Action({
   children,
@@ -311,6 +314,7 @@ export default function MomentViewer(props: Props) {
             ) : (
               <p>{moment.state === 'checking' ? 'Checking media…' : 'Media unavailable'}</p>
             )}
+            {props.studio?.overPicture(moment)}
           </div>
           <div className="mo-watch-top">
             <div
@@ -471,7 +475,7 @@ export default function MomentViewer(props: Props) {
                   </>
                 )}
                 <button type="button" aria-label="React to Moment" onClick={() => setSheet('react')}>
-                  {activeReaction || <SmilePlus />}
+                  {props.studio ? props.studio.reactButton(moment) : activeReaction || <SmilePlus />}
                 </button>
               </form>
             )}
@@ -580,7 +584,8 @@ export default function MomentViewer(props: Props) {
                     )}
                   </>
                 )}
-                {sheet === 'react' && (
+                {sheet === 'react' && props.studio?.reactions(moment, () => setSheet(null))}
+                {sheet === 'react' && !props.studio && (
                   <div className="mo-reactions">
                     {POST_REACTION_EMOJIS.map((r) => (
                       <button
@@ -616,7 +621,7 @@ export default function MomentViewer(props: Props) {
                           <MomentFace author={v.user} />
                           <strong>{v.user.name}</strong>
                           <small>{v.replied ? 'Replied' : timeAgo(v.viewed_at)}</small>
-                          {v.reaction}
+                          {props.studio ? props.studio.seenMark(v) : v.reaction}
                         </div>
                       ))
                     ) : (
