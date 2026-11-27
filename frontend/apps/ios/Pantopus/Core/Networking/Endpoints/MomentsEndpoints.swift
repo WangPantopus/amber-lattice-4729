@@ -130,6 +130,12 @@ public enum MomentsEndpoints {
         Endpoint(method: .put, path: "/api/moments/\(segment(id))/reaction", body: MomentsReactionBody(emoji: emoji))
     }
 
+    /// `PATCH /api/moments/:id` — the author's 15-minute edit ("Pulse, reinvented", CONTRACT 3): any of the caption,
+    /// the whole list of stamps, who sees it. Route `backend/routes/moments.js` (edit).
+    public static func edit(id: String, body: MomentEditBody) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/moments/\(segment(id))", body: body)
+    }
+
     /// `POST /api/moments/:id/reply` — a direct chat message to the author with the Moment quoted.
     /// Route `backend/routes/moments.js` (reply).
     public static func reply(id: String, text: String) -> Endpoint {

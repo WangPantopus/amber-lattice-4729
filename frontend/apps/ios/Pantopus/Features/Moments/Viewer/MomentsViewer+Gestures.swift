@@ -169,6 +169,14 @@ extension MomentsViewer {
             } message: {
                 Text("It leaves the map for everyone.")
             }
+            .fullScreenCover(item: Binding(get: { active ? editing : nil }, set: { if active { editing = $0 } })) { moment in
+                MomentsStudioEdit(moment: moment, picture: model.image ?? model.poster) { updated in
+                    editing = nil
+                    model.edited(updated)
+                } onClose: {
+                    editing = nil
+                }
+            }
     }
 
     /// The post report reasons (`reportPostSchema`), as Pulse offers them.
@@ -184,6 +192,11 @@ extension MomentsViewer {
     /// Your own Moment: what Seen by also offers, where a person looks for it first.
     @ViewBuilder
     private var ownMenu: some View {
+        // "Pulse, reinvented": the 15-minute edit, only while the switch is on and the window holds.
+        if MomentsStudioEditModel.offers(model.moment, mine: model.isMine) {
+            Button("Edit") { editing = model.moment }
+                .accessibilityIdentifier("moments.menu.edit")
+        }
         Button("Save to Photos") {
             let moment = model.moment
             let card = moment?.kind == .text ? MomentsCardPicture.render(text: moment?.text ?? "", background: moment?.background) : nil
