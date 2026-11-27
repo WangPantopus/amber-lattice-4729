@@ -21,6 +21,10 @@ struct MomentMarks: Equatable {
         var points: [CGPoint]
         var ink: Ink
         var width: CGFloat
+        /// The Studio's Draw (`MomentMarks+Studio`): what drew it, and an ink taken from the photo in the six inks'
+        /// place. Today's editor never sets them: a pen line in one of the six inks, drawn as before.
+        var pen = Pen.marker
+        var tint: Tint?
     }
 
     /// Words on the picture (Text): where its middle is, in picture coordinates, its letter size as a share of the
@@ -34,6 +38,10 @@ struct MomentMarks: Equatable {
         var size: CGFloat
         /// Degrees clockwise, in (-180, 180]; 0 when made.
         var turn: CGFloat = 0
+        /// The Studio's Text (`MomentMarks+Studio`): its letters, and an ink taken from the photo in the six inks'
+        /// place. Today's editor never sets them: bold system letters in one of the six inks, drawn as before.
+        var font = Typeface.standard
+        var tint: Tint?
     }
 
     /// The six inks (boards T2, T3); the colors are `MomentsPalette.ink(_:)`.

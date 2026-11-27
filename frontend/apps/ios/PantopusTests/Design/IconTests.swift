@@ -134,7 +134,9 @@ final class IconTests: XCTestCase {
         // Settings → Devices & sessions: an iPad's row.
         "tablet",
         // Plans on an iPad: "Show list", bringing the list column back beside the map.
-        "panel-left"
+        "panel-left",
+        // The Studio's Draw ("Pulse, reinvented"): the highlighter, the eraser and the eyedropper.
+        "highlighter", "eraser", "pipette"
     ]
 
     func testInventoryMatches() {
