@@ -221,6 +221,9 @@ export default function Studio({
     [retakeTitle, setRetakeTitle] = useState(''),
     [startRetake, setStartRetake] = useState(false),
     [ghostOn, setGhostOn] = useState(true),
+    // "Seal it" (§8g): the Moment opens later, on a date, where it was left, or the next time it rains there.
+    [sealWhen, setSealWhen] = useState<'none' | 'date' | 'place' | 'rain'>('none'),
+    [sealAt, setSealAt] = useState(''),
     [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -575,6 +578,19 @@ export default function Studio({
   const [eyesOn, setEyesOn] = useState(false);
   const eyesOnOffered = postKind === 'ask_local' && !underPenName;
   const eyesOnPlaced = placement === 'place' && venue.startsWith('osm:');
+  const sealOffered = !retakeOf && !eyesOnFor && !postKind && !underPenName && (mode === 'media' || mode === 'text');
+  // Where it was left and the next rain need its exact place, on a photo or words.
+  const sealPlaceOk = !noPlace && !area && !isVideo;
+  const sealOut =
+    !sealOffered || sealWhen === 'none'
+      ? {}
+      : sealWhen === 'date'
+        ? sealAt && Date.parse(sealAt) > Date.now()
+          ? { seal: { opens: 'date' as const, at: new Date(sealAt).toISOString() } }
+          : {}
+        : sealPlaceOk
+          ? { seal: { opens: sealWhen } }
+          : {};
   const retakeOut = retakeOf ? { retake_of: retakeOf.id } : retakeOffered && startRetake && retakeTitle.trim() ? { retake: { title: retakeTitle.trim().slice(0, 60) } } : {};
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
@@ -843,6 +859,7 @@ export default function Studio({
                 : {}),
             ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
             ...(i === 0 ? retakeOut : {}),
+            ...(i === 0 ? sealOut : {}),
             ...(i === 0 && eyesOnFor ? { eyes_on_for: eyesOnFor.id } : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
               ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
@@ -1446,6 +1463,42 @@ export default function Studio({
               {eyesOn && !eyesOnPlaced
                 ? 'Pick the place you’re asking about: choose “Pin it at a place” above.'
                 : 'For six hours, people at this place can answer with a Live photo. Nobody is told who is near it.'}
+            </p>
+          </div>
+        )}
+        {sealOffered && (
+          <div className="st-group" role="group" aria-label="Seal it">
+            <span className="st-label">Seal it: it opens later</span>
+            <div className="st-chips">
+              {(
+                [
+                  ['none', 'Not sealed'],
+                  ['date', 'On a date'],
+                  ['place', 'When someone stands here'],
+                  ['rain', 'The next time it rains here'],
+                ] as const
+              ).map(([v, label]) => (
+                <Chip key={v} on={sealWhen === v} disabled={(v === 'place' || v === 'rain') && !sealPlaceOk} onClick={() => setSealWhen(v)}>
+                  {label}
+                </Chip>
+              ))}
+            </div>
+            {sealWhen === 'date' && (
+              <input
+                className="st-retake-title"
+                type="datetime-local"
+                value={sealAt}
+                min={new Date(Date.now() + 3_600_000 - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)}
+                onChange={(e) => setSealAt(e.target.value)}
+                aria-label="When it opens"
+              />
+            )}
+            <p className="st-note">
+              {sealWhen === 'none'
+                ? 'Until it opens, only you see what it holds.'
+                : (sealWhen === 'place' || sealWhen === 'rain') && !sealPlaceOk
+                  ? 'This needs its exact place, on a photo or words.'
+                  : 'Until it opens, only you see what it holds. It stays, so it’s there when it opens.'}
             </p>
           </div>
         )}
