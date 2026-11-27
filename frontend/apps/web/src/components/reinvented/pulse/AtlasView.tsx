@@ -12,6 +12,7 @@ import { useBackWhenMissing } from '../serverBehind';
 import { deleteForGood, readAtlas, type AtlasPage, type ListMoment, type Point } from './listApi';
 import AtlasSearch from './AtlasSearch';
 import Cabinet from '../cabinet/Cabinet';
+import Echoes from '../echoes/Echoes';
 import PosterView, { posterYear } from '../cabinet/Poster';
 import { useMe } from '@/lib/me';
 import { WentBecauseOfYou } from '../strands/Strands';
@@ -172,6 +173,7 @@ export default function AtlasView({
       {!searching && (
         <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
       )}
+      {!searching && <Echoes account={account} />}
       {!searching && <Cabinet personId={account} viewerId={account} own />}
       {!searching && (
         <button type="button" className="cb-poster-open" onClick={() => setPoster(true)}>

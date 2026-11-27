@@ -33,6 +33,7 @@ import { readBeams } from './mapLight';
 import AskTheMap, { type Lit } from './AskTheMap';
 import FollowedPlaces, { useFollow } from './FollowedPlaces';
 import Constellations from './Constellations';
+import Echoes from '../echoes/Echoes';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -771,6 +772,10 @@ export default function ReinventedPulse() {
             </div>
           ) : (
             <>
+              {/* Echoes (CONTRACT 9e): nothing is pushed; in the evening, by the reader's own clock, they show here too. */}
+              {reach === 'around' && account && chip === 'all' && new Date(now).getHours() >= 18 && (
+                <Echoes account={account} onOpen={(id) => setViewing({ id, ids: [id] })} />
+              )}
               {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
                 <TownFilm account={account} place={fallback} ready={!!first} now={now} onPlay={(ids, start) => setViewing({ id: start, ids })} />
               )}
