@@ -136,6 +136,8 @@ struct ReinventedAtlasView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+            // Strands (CONTRACT 8c): "Dana went because of your Moment", private to you; nothing when there are none.
+            ReinventedWentBecauseOfYou()
             if model.moments.isEmpty {
                 Text("Nothing here yet. The Moments you post from now on are kept here.")
                     .font(.system(size: 15))
