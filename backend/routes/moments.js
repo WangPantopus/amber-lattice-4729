@@ -26,6 +26,7 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
+const retake = require('../services/pulse/retake');
 const mentions = require('../services/pulse/mentions');
 
 /** The mentions kept on a new Moment (CONTRACT 7h), as the Moment's own field: { mentions } or nothing. */
@@ -378,7 +379,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -404,6 +405,8 @@ router.post('/', createLimiter, async (req, res) => {
         throw store.fail(400, 'MOMENT_INVALID', playError.message);
       }
     }
+    // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
+    const retakeAsk = studio ? retake.parse(req.body) : null;
     // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
     const guess = Boolean(studio) && req.body?.guess === true;
     if (guess && (!['photo', 'video'].includes(body.kind) || body.location.source === 'none')) {
@@ -538,6 +541,16 @@ router.post('/', createLimiter, async (req, res) => {
     // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
     const studioAtHome = atHome || (!unplaced && !markHomeClear);
     if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
+    let retakeStartId = null;
+    if (retakeAsk) {
+      retake.checkPosting(retakeAsk, {
+        kind: body.kind, source: body.location.source, shareAt, floating: Boolean(area), showArea, atHome: studioAtHome,
+        underPenName, guess,
+      });
+      if (retakeAsk.of) {
+        retakeStartId = await retake.checkFrame(req.user.id, retakeAsk.of, { latitude: body.location.latitude, longitude: body.location.longitude });
+      }
+    }
     if (studio) {
       // The values every stamp shows, read by the server now (never from the phone), at the point everyone sees. One
       // made at home, or from a pin moved off where the author stood at home, says no weather, height or distance.
@@ -568,6 +581,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(play.length ? { play } : {}),
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
+        // Retake (CONTRACT 8e): a start or a frame; it stays, kept as a post that stays.
+        ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.

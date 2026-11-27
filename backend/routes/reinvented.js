@@ -504,4 +504,17 @@ router.post('/moments/:id/pins', contentCreationLimiter, (req, res, next) => pin
   }
 });
 
+// ─── Retake (CONTRACT 8e) ───────────────────────────────────────────────────
+
+const retake = require('../services/pulse/retake');
+
+/** GET /retakes/:id — a Retake (from its start or any frame): its frames by date and season, as the reader may see them. */
+router.get('/retakes/:id', async (req, res) => {
+  try {
+    res.json(await retake.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'retake');
+  }
+});
+
 module.exports = router;
