@@ -11,7 +11,7 @@ import AVFoundation
 
 extension MomentDTO {
     /// The span the viewer repeats: a video's `loop`, only while the switch is on for the person watching.
-    var loopSpan: MomentLoopDTO? {
+    @MainActor var loopSpan: MomentLoopDTO? {
         guard kind == .video, PulseReinventedFlags.shared.isOn else { return nil }
         return layers.loop
     }
