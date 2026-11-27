@@ -425,9 +425,11 @@ export default function Studio({
   const kindsOffered = underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text';
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
-  // Dots go on a photo or video Moment (a post's picture can't draw them on the web yet, as Play); a thing to name needs
-  // a photo and the author's Pantopus AI on; a link isn't for a made-up name.
-  const canIlluminate = mode === 'media' && !!file && !postKind;
+  // Playable items and dots go on a Moment, or on a Pulse post with its one photo (the new Pulse draws them over it,
+  // #5009); a words-only post has no picture to carry them. A thing to name needs a photo and the author's Pantopus AI
+  // on; a link isn't for a made-up name.
+  const playOn = !postKind || (mode === 'media' && !!file && !isVideo);
+  const canIlluminate = mode === 'media' && !!file && (!postKind || !isVideo);
   const aiOn = usePantopusAiOn(canIlluminate);
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
@@ -764,6 +766,8 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
+          play?: Record<string, unknown>[];
+          dots?: Record<string, unknown>[];
           taken_at?: string;
           taken_here?: boolean;
           fix?: { latitude: number; longitude: number; fix_at: string };
@@ -808,6 +812,17 @@ export default function Studio({
         ...(underPenName ? {} : { profileVisibilityScope: 'local_context' as const, showOnProfile: true }),
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
+          // Playable items and dots on the post's photo (CONTRACT 7b, 7c: `studio.play`, `studio.dots`), placed as a Moment's.
+          ...(photo && play.length ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) } : {}),
+          ...(photo && canIlluminate && dotsWire(dots, { things: aiOn, links: !underPenName }).length
+            ? {
+                dots: dotsWire(dots, { things: aiOn, links: !underPenName }).map((d) => ({
+                  ...d,
+                  ...frame.point(d.x as number, d.y as number),
+                  ...(d.box ? { box: frame.box(d.box as { x: number; y: number; w: number; h: number }) } : {}),
+                })),
+              }
+            : {}),
           ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
@@ -1314,8 +1329,7 @@ export default function Studio({
                 safe={STAMP_SAFE}
               />
             )}
-            {/* Playable items go on Moments for now: a post's picture can't draw them on the web yet (QUESTIONS, 05:55). */}
-            {composing && !postKind && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
+            {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
             {composing && canIlluminate && (
               <DotEditLayer
                 dots={dots}
@@ -1659,14 +1673,14 @@ export default function Studio({
                         Guess the spot
                       </button>
                     )}
-                    {postKind && <p className="st-hint">Polls, boards and the rest go on Moments for now.</p>}
-                    {!postKind && PLAY_MAKERS.map((m) => (
+                    {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
+                    {playOn && PLAY_MAKERS.map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
                       </button>
                     ))}
-                    {!postKind && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
+                    {playOn && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
                   </div>
                 )}
               </section>
