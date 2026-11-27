@@ -960,6 +960,14 @@ async function sessionRowFromRequest(req) {
 // /devices/register — metadata + push linkage + Android grant. Never binds.
 // ---------------------------------------------------------------------------
 
+/** The stored security_prefs as they are (every key), {} when none or unreadable. */
+async function storedPrefs(userId) {
+  const { data, error } = await supabaseAdmin.from('User').select('security_prefs').eq('id', userId).maybeSingle();
+  if (error) return {};
+  const raw = data?.security_prefs;
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
 async function getSecurityPrefs(userId) {
   const { data, error } = await supabaseAdmin
     .from('User')
@@ -971,8 +979,11 @@ async function getSecurityPrefs(userId) {
 }
 
 async function patchSecurityPrefs(userId, patch = {}) {
-  const current = await getSecurityPrefs(userId);
-  const next = { ...current };
+  // Keys this route doesn't know (a person's own "Pantopus AI" choice, services/pulse/aiSetting.js) stay as stored, and
+  // the answer is only the keys it knows, as before.
+  const stored = await storedPrefs(userId);
+  const current = authNotifyService.normalizePrefs(stored);
+  const next = { ...stored, ...current };
   if (typeof patch.allowRestoreGrants === 'boolean') next.allowRestoreGrants = patch.allowRestoreGrants;
   if (typeof patch.newDeviceEmail === 'boolean') next.newDeviceEmail = patch.newDeviceEmail;
   const { error } = await supabaseAdmin
@@ -986,7 +997,7 @@ async function patchSecurityPrefs(userId, patch = {}) {
   if (current.allowRestoreGrants && next.allowRestoreGrants === false) {
     await authSessionService.revokeGrantsForUser(userId);
   }
-  return next;
+  return authNotifyService.normalizePrefs(next);
 }
 
 /** Whether this device may hold an Android resume grant right now. */

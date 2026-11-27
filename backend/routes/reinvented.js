@@ -318,4 +318,30 @@ router.get('/field-guide', async (req, res) => {
   }
 });
 
+// ─── The person's own Pantopus AI switch (CONTRACT 7d) ──────────────────────
+
+const aiSetting = require('../services/pulse/aiSetting');
+const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean().required() });
+
+/** GET /settings — { pantopus_ai }: the person's own Pantopus AI switch, on unless they turned it off. */
+router.get('/settings', async (req, res) => {
+  try {
+    res.json(await aiSetting.settingsOf(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'settings');
+  }
+});
+
+/** PATCH /settings — { pantopus_ai: true | false }. */
+router.patch('/settings', async (req, res) => {
+  try {
+    const { error, value } = settingsSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'SETTINGS_INVALID' });
+    logger.info('reinvented.pantopus_ai_set', { on: value.pantopus_ai });
+    return res.json(await aiSetting.setAi(req.user.id, value.pantopus_ai));
+  } catch (error) {
+    return sendError(res, error, 'settings_set');
+  }
+});
+
 module.exports = router;
