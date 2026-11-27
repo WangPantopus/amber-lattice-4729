@@ -712,7 +712,7 @@ export default function ReinventedPulse() {
           ) : (
             <>
               {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
-                <TownFilm account={account} place={fallback} onPlay={(ids, start) => setViewing({ id: start, ids })} />
+                <TownFilm account={account} place={fallback} ready={!!first} now={now} onPlay={(ids, start) => setViewing({ id: start, ids })} />
               )}
               {strip.data && (chip === 'all' || chip === 'live') && (
                 <AliveStrip

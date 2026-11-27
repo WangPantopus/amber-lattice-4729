@@ -4,7 +4,8 @@
 // film of that day's Moments, only where a town has enough (the server's rule: 8 Moments by 4 people, each shared with
 // people nearby, still live or kept by its author). The place is the list's own (the reader's shared point, else their
 // home's centre) and goes in the body of POST /api/reinvented/town-film, never an address. The server keeps nothing.
-// A tap plays the film in the Moment viewer, oldest first.
+// It is asked only after the list's first page has come and only in the evening by the reader's own clock, so nothing
+// competes with what opens the tab (LEAD-3 09:44). A tap plays the film in the Moment viewer, oldest first.
 
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -26,12 +27,33 @@ interface Film {
 // The label the server gives a place it can't name (momentPlace's FALLBACK_LABEL): then the card says "around you".
 const UNNAMED = 'Nearby';
 
-export default function TownFilm({ account, place, onPlay }: { account: string; place: Point | null; onPlay(ids: string[], start: string): void }) {
+/** From 8 pm until 4 am by the reader's own clock, when the server may have a film. */
+function evening(now: number) {
+  const hour = new Date(now).getHours();
+  return hour >= 20 || hour < 4;
+}
+
+export default function TownFilm({
+  account,
+  place,
+  ready,
+  now,
+  onPlay,
+}: {
+  account: string;
+  place: Point | null;
+  /** The list's first page has come. */
+  ready: boolean;
+  /** The page's clock, read again each minute. */
+  now: number;
+  onPlay(ids: string[], start: string): void;
+}) {
   const reread = useRereadSwitch();
+  const open = evening(now);
   const film = useQuery({
     // About 1 km in the key; the exact point goes only in the body.
     queryKey: ['reinvented', 'town-film', account, place ? Math.round(place.latitude * 100) : null, place ? Math.round(place.longitude * 100) : null],
-    enabled: !!place,
+    enabled: !!place && ready && open,
     retry: false,
     staleTime: 10 * 60_000,
     // It opens at 8 pm: a page left open finds it then.
@@ -42,7 +64,7 @@ export default function TownFilm({ account, place, onPlay }: { account: string; 
     if (isSwitchedOff(film.error)) void reread();
   }, [film.error, reread]);
 
-  const f = film.data?.film;
+  const f = open ? film.data?.film : null;
   const ids = f?.moments.map((m) => m.id) || [];
   if (!f || !ids.length) return null;
   const town = f.town && f.town !== UNNAMED ? f.town : null;
