@@ -35,7 +35,8 @@ import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/com
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
-import { blankArt, inks } from '@/components/moments/momentArtwork';
+import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
+import { stageFrame } from './frame';
 import {
   colors,
   deviceFix,
@@ -172,6 +173,8 @@ export default function Studio({
     [making, setMaking] = useState<PlayKind | 'dial' | null>(null),
     // Illuminate (phase 2, CONTRACT 7c): dots on things in the photo, and the one being changed.
     [dots, setDots] = useState<DotDraft[]>([]),
+    // The picture's own width and height, for where placed things land on it (frame.ts).
+    [shape, setShape] = useState<{ w: number; h: number } | null>(null),
     [illuminate, setIlluminate] = useState(false),
     [pickedDot, setPickedDot] = useState<string | null>(null),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -426,6 +429,8 @@ export default function Studio({
   // a photo and the author's Pantopus AI on; a link isn't for a made-up name.
   const canIlluminate = mode === 'media' && !!file && !postKind;
   const aiOn = usePantopusAiOn(canIlluminate);
+  // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
+  const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
   // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
@@ -682,11 +687,19 @@ export default function Studio({
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
             ...(kept.length && i === 0
-              ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
+              ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
-            ...(play.length && i === 0 && !postKind ? { play: playWire(play) } : {}),
+            ...(play.length && i === 0 && !postKind
+              ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) }
+              : {}),
             ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).length
-              ? { dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }) }
+              ? {
+                  dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).map((d) => ({
+                    ...d,
+                    ...frame.point(d.x as number, d.y as number),
+                    ...(d.box ? { box: frame.box(d.box as { x: number; y: number; w: number; h: number }) } : {}),
+                  })),
+                }
               : {}),
             ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
               ? {
@@ -794,7 +807,7 @@ export default function Studio({
         // Under a made-up name: no profile (today's composer leaves these out there).
         ...(underPenName ? {} : { profileVisibilityScope: 'local_context' as const, showOnProfile: true }),
         studio: {
-          stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
+          stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
           ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
@@ -1273,7 +1286,10 @@ export default function Studio({
                 tool={tool}
                 ink={ink}
                 pen={pen}
-                onPicture={(el, w, h) => setPhotoInks(sampleColors(el, w, h, inks))}
+                onPicture={(el, w, h) => {
+                  setPhotoInks(sampleColors(el, w, h, inks));
+                  setShape({ w, h });
+                }}
               />
             ) : mode === 'text' ? (
               <div className="st-words">
