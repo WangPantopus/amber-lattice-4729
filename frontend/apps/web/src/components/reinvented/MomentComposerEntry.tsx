@@ -6,6 +6,7 @@ import type { MomentChatDraft } from '@pantopus/types';
 import MomentComposer from '@/components/moments/MomentComposer';
 import { usePulseReinvented } from './usePulseReinvented';
 import { useRereadSwitch } from './switchOff';
+import { useServerBehind } from './serverBehind';
 
 const Studio = dynamic(() => import('./studio/Studio'), { ssr: false });
 
@@ -19,7 +20,9 @@ const Studio = dynamic(() => import('./studio/Studio'), { ssr: false });
  */
 export default function MomentComposerEntry(props: ComponentProps<typeof MomentComposer>) {
   const flag = usePulseReinvented();
-  const [studio, setStudio] = useState(() => flag.data?.enabled === true);
+  // A server older than this website: today's composer, as when the switch is off.
+  const behind = useServerBehind();
+  const [studio, setStudio] = useState(() => flag.data?.enabled === true && !behind);
   const [kept, setKept] = useState<MomentChatDraft | null>(null);
   const reread = useRereadSwitch();
   return studio ? (

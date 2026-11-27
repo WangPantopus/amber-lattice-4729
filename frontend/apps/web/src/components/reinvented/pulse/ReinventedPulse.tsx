@@ -18,6 +18,7 @@ import { useMyHomeCenter } from '@/lib/myHomes';
 import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostReactions';
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import { useBackWhenMissing } from '../serverBehind';
 import { CHIP_WORDS, isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
@@ -161,6 +162,8 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (strip.error && isSwitchedOff(strip.error)) void reread();
   }, [strip.error, reread]);
+  // A server older than this website answers these reads 404: back to today's Pulse at once, as on the switch going off.
+  useBackWhenMissing(list.error, map.error, strip.error, explore.error);
   // A box with no height (the map laid out before the sheet settles, at phone width) is never read: the server answers
   // 400 to it.
   const onBox = useCallback((b: Box) => {

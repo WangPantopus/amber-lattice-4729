@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { colors } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import { useBackWhenMissing } from '../serverBehind';
 import { deleteForGood, readAtlas, type AtlasPage, type ListMoment } from './listApi';
 
 const dayWords = (iso: string) =>
@@ -105,6 +106,7 @@ export default function AtlasView({ account, onOpen }: { account: string; onOpen
   useEffect(() => {
     if (atlas.error && isSwitchedOff(atlas.error)) void reread();
   }, [atlas.error, reread]);
+  useBackWhenMissing(atlas.error);
   const days = useMemo(() => {
     const out: { day: string; moments: ListMoment[] }[] = [];
     for (const m of atlas.data?.pages.flatMap((p) => p.moments) ?? []) {
