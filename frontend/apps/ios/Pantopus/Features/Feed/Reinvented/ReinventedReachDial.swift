@@ -25,6 +25,9 @@ struct ReinventedReachDial: View {
     let onPick: (String, Int, ReinventedCirclePick?) -> Void
     @State private var pickedMiles: Double
     @State private var path: [ReinventedCircleRoute] = []
+    /// Half height for the choices; the circles' pages open at full height, so a keyboard closing never leaves a form
+    /// at half height with taps above it closing the dial.
+    @State private var detent: PresentationDetent = .medium
     /// A Moment or post a magazine opened: opened once the dial has gone.
     @State private var opening: String?
     @Environment(\.openURL) private var openURL
@@ -45,6 +48,8 @@ struct ReinventedReachDial: View {
                 .navigationDestination(for: ReinventedCircleRoute.self) { route in destination(route) }
                 .toolbar(.hidden, for: .navigationBar)
         }
+        .presentationDetents([.medium, .large], selection: $detent)
+        .onChange(of: path) { _, pages in if !pages.isEmpty { detent = .large } }
         .task(id: reach == "close") { if reach == "close" { await circles.read() } }
         .onDisappear {
             if let opening { DeepLinkRouter.shared.handle(path: opening) }

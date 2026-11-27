@@ -139,7 +139,6 @@ struct ReinventedPulseView: View {
             ReinventedReachDial(reach: model.reach, miles: model.miles, circle: model.circle) { reach, miles, circle in
                 Task { await model.pick(reach: reach, miles: miles, circle: circle) }
             }
-            .presentationDetents([.medium, .large])
         }
     }
 
