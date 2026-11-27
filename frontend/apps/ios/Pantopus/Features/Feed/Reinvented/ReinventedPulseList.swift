@@ -240,7 +240,9 @@ struct ReinventedPulseList: View {
             if card.actions.isSolved { return "Solved" }
             return replies == 1 ? "Question, 1 answer" : "Question, \(replies) answers"
         case .recommend:
-            return "Spot"
+            // "Spot, 8 want to go" (PHASE-1 §2.3): the Want to go signal's count, on a post that carries signals.
+            let want = card.reaction.signals?.count(of: .wantToGo) ?? 0
+            return want > 0 ? "Spot, \(want) want to go" : "Spot"
         case .event:
             let going = card.reaction.likeCount
             return going > 0 ? "Plan, \(going) going" : "Plan"
