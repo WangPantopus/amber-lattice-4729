@@ -29,6 +29,7 @@ const momentStamps = require('../services/moments/momentStamps');
 const { normalizePostReaction, normalizePostSignal, shownReaction, shownSignal } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
+const momentGuess = require('../services/moments/momentGuess');
 const penName = require('../services/penName');
 
 const router = express.Router();
@@ -358,10 +359,15 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
+    // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
+    const guess = Boolean(studio) && req.body?.guess === true;
+    if (guess && (!['photo', 'video'].includes(body.kind) || body.location.source === 'none')) {
+      throw store.fail(400, 'MOMENT_INVALID', 'Guess the spot needs a photo or video with a place.');
+    }
     const id = retryId(req.user.id, body.client_request_id);
     if (id) {
       const prior = await store.ownMoment(id, req.user.id);
@@ -488,10 +494,13 @@ router.post('/', createLimiter, async (req, res) => {
       takenHere: marked,
       weather,
     });
+    // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
+    const studioAtHome = atHome || (!unplaced && !markHomeClear);
+    if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
     if (studio) {
       // The values every stamp shows, read by the server now (never from the phone), at the point everyone sees. One
       // made at home, or from a pin moved off where the author stood at home, says no weather, height or distance.
-      const stampsAtHome = atHome || (!unplaced && !markHomeClear);
+      const stampsAtHome = studioAtHome;
       draft.post_metadata.moment = {
         ...draft.post_metadata.moment,
         stamps: studio.placements,
@@ -510,12 +519,14 @@ router.post('/', createLimiter, async (req, res) => {
           // The Live mark's own reading when the post made one (null when it found none); otherwise read here.
           weather: marked && body.show_weather ? weather : undefined,
         }),
+        // Guess the spot: the town it is in (for the daily spot), when one was found.
+        ...(guess ? { guess: { v: 1, town: labels.area_label && labels.area_label !== momentPlace.FALLBACK_LABEL ? labels.area_label : null } } : {}),
       };
     }
     const { row, created } = await store.insertMoment(draft, id, underPenName ? { userId: req.user.id, pen } : null);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
       ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}),
-      ...(studio ? { stamps: studio.placements.length } : {}),
+      ...(studio ? { stamps: studio.placements.length } : {}), ...(guess ? { guess: true } : {}),
       ...(marked ? { taken_here: true, weather: Boolean(weather) } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
     // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
@@ -881,6 +892,28 @@ router.delete('/:id', actionLimiter, async (req, res) => {
     res.status(204).end();
   } catch (error) {
     sendError(res, error, 'delete');
+  }
+});
+
+// ─── Guess the spot (Pulse, reinvented) ────────────────────────────────────
+
+/**
+ * POST /:id/guess — { latitude, longitude }: the caller's one guess on someone's live guess-the-spot Moment (CONTRACT
+ * 5c). Answers how far off it was and the Moment in full; a second guess answers the first again. Only while the switch
+ * is on for the caller (403 PULSE_REINVENTED_OFF otherwise).
+ */
+router.post('/:id/guess', reinventedOnly, actionLimiter, async (req, res) => {
+  try {
+    const at = parseBody(Joi.object(point), req.body);
+    const row = await othersMoment(req);
+    if (!momentGuess.isGuess(row)) throw store.fail(400, 'MOMENT_INVALID', "This Moment isn't a guess-the-spot one.");
+    const answer = store.displayedPoint(row);
+    if (answer.latitude == null) throw store.fail(400, 'MOMENT_INVALID', "This Moment isn't a guess-the-spot one.");
+    const result = await momentGuess.recordGuess(row, req.user.id, at, answer);
+    logger.info('moments.guessed', { momentId: row.id, distance_m: result.distance_m });
+    res.json({ guess: result, moment: await oneMoment(row, req.user.id) });
+  } catch (error) {
+    sendError(res, error, 'guess');
   }
 });
 

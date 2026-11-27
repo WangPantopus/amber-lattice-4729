@@ -44,6 +44,7 @@ const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
 const momentWeather = require('./momentWeather');
 const momentStamps = require('./momentStamps');
+const momentGuess = require('./momentGuess');
 const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -260,9 +261,11 @@ async function viewerContext(viewerId, authorIds = [], shared = null, rows = nul
   // `shared` (sharedViewerReads): the viewer's filters already being read for this request, used instead of reading
   // them again; a failed read throws here, as its own would have. `rows`: the Moments being decided, so the viewer's
   // own made-up-name ones are marked in the same step.
-  const [filters] = await Promise.all([
+  const [filters, , reinvented] = await Promise.all([
     shared ? used(shared.filters) : feedService.getMuteAndHideFilters(viewerId),
     rows ? markOwn(rows, viewerId) : null,
+    // Pulse, reinvented: only a reader with the switch on may open a live guess-the-spot Moment (canSee).
+    reinventedOn(viewerId),
   ]);
   const others = [...new Set(authorIds.filter((id) => id && id !== viewerId))];
   let connected;
@@ -288,12 +291,24 @@ async function viewerContext(viewerId, authorIds = [], shared = null, rows = nul
     // Made-up names this viewer muted or blocked, and the brake that hides every made-up-name Moment.
     hiddenPenNames: filters.hiddenPenNameIds || new Set(),
     penNamesHidden: filters.penNamesHidden === true,
+    reinvented,
   };
+}
+
+/**
+ * Whether the Moment may be listed for `viewerId` (a ring on the map or a profile, the tab's dot): never a live
+ * guess-the-spot Moment but to its author, since its pin and place are the answer. It is opened by id instead.
+ */
+function listedFor(row, viewerId) {
+  return !(momentGuess.isGuess(row) && !hasEnded(row) && !isOwn(row, viewerId));
 }
 
 /** Whether the viewer may see this Moment at all (blocks, mutes, audience), whatever its state. */
 function canSee(row, ctx) {
   if (isOwn(row, ctx.viewerId)) return true;
+  // A live guess-the-spot Moment (Pulse, reinvented) is for readers with the switch on only, until it ends; a context
+  // built without that read (a profile's count) leaves it out too.
+  if (momentGuess.isGuess(row) && !hasEnded(row) && !ctx.reinvented) return false;
   // Under a made-up name: hidden by that name (or the brake), never by a block or a mute of a person, which would
   // say who is behind it. It goes to people nearby, so there is no audience to check.
   if (penName.isPenNameRow(row)) return !ctx.penNamesHidden && !ctx.hiddenPenNames.has(String(row.identity_context_id));
@@ -516,7 +531,7 @@ function briefOf(row, seen) {
  * counts (`reactionCounts` from reactionCountsFor).
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
-  heights = false, reinvented = false, mySignal = null, signalCounts = null }) {
+  heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -524,7 +539,7 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
   const point = displayedPoint(row);
   const showMedia = state === 'live' || (own && state !== 'ended');
   const stored = m.media || null;
-  return {
+  const answer = {
     id: row.id,
     author,
     kind: m.kind,
@@ -579,8 +594,13 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       // The five signals: the viewer's own reaction as a signal, and the author's counts by signal.
       my_signal: own ? null : mySignal,
       signal_counts: own ? signalCounts || [] : null,
+      // Guess the spot: how many guessed and this reader's own guess; null on any other Moment.
+      guess: momentGuess.isGuess(row) ? (guess || { count: 0, mine: null }) : null,
     } : {}),
   };
+  // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
+  const hideSpot = reinvented && momentGuess.isGuess(row) && !own && !guess?.mine && state !== 'ended';
+  return hideSpot ? momentGuess.withoutSpot(answer) : answer;
 }
 
 /** The author's counts by signal (Pulse, reinvented), by Moment id: [{ signal, count }]. */
@@ -633,7 +653,9 @@ async function serializeMoments(rows, viewerId) {
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const signals = reinvented ? await signalCountsFor(ownIds) : new Map();
+  const [signals, guesses] = reinvented
+    ? await Promise.all([signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId)])
+    : [new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -645,6 +667,7 @@ async function serializeMoments(rows, viewerId) {
     reinvented,
     mySignal: marks.signals.get(row.id) || null,
     signalCounts: signals.get(row.id) || null,
+    guess: guesses.get(row.id) || null,
   }));
 }
 
@@ -753,7 +776,7 @@ async function shownInBox(viewerId, { south, west, north, east }, shared = null)
   ]);
   const shown = [];
   for (const row of rows) {
-    if (!canSee(row, ctx) || reported.has(row.id)) continue;
+    if (!canSee(row, ctx) || reported.has(row.id) || !listedFor(row, viewerId)) continue;
     const point = displayedPoint(row);
     if (point.latitude < south || point.latitude > north || point.longitude < west || point.longitude > east) continue;
     shown.push({ row, point });
@@ -791,7 +814,7 @@ async function shownUnplaced(viewerId, shared = null) {
     viewerContext(viewerId, rows.map((r) => r.user_id), shared && { ...shared, connections }),
     shared ? shared.reported : reportedIds(viewerId),
   ]);
-  return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
+  return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id) && listedFor(row, viewerId))
     .sort((a, b) => Date.parse(shownAt(b)) - Date.parse(shownAt(a)))
     .map((row) => ({ row, point: { latitude: null, longitude: null } }));
 }
@@ -930,7 +953,7 @@ async function peopleRings(viewerId, userIds) {
   if (!rows.length) return [];
   const [ctx, reported] = await Promise.all([
     viewerContext(viewerId, rows.map((r) => r.user_id), null, rows), reportedIds(viewerId)]);
-  const shown = rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
+  const shown = rows.filter((row) => canSee(row, ctx) && !reported.has(row.id) && listedFor(row, viewerId))
     .map((row) => ({ row, point: displayedPoint(row) }));
   return ringsOf(viewerId, shown, { keyOf: (row) => `u_${authorKey(row)}_all`, previews: false });
 }
@@ -1348,5 +1371,5 @@ module.exports = {
   EDIT_WINDOW_MS, editableUntil,
   newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
-  authorKey, isOwn, markOwn, authorsFor, ownMoment,
+  authorKey, isOwn, markOwn, authorsFor, ownMoment, listedFor,
 };

@@ -235,6 +235,8 @@ async function notifyConnections(row) {
   try {
     // A Moment under a made-up name tells nobody that someone they know posted (services/penName).
     if (row?.identity_context_type === 'pen_name') return;
+    // Nor a guess-the-spot Moment (Pulse, reinvented): the push names its place, which is the answer.
+    if (store.meta(row).guess) return;
     if (!row || store.momentState(row) !== 'live' || store.meta(row).notify) return;
     const author = (await store.loadAuthors([row.user_id])).get(String(row.user_id));
     // Only people's Moments notify.
