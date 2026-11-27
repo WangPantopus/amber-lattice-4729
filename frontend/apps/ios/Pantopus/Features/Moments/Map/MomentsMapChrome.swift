@@ -43,6 +43,7 @@ struct MomentsMapTopBar: View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             topRow
             MomentsHeightsBar(viewModel: viewModel)
+            MomentsGuessSpotsChip(viewModel: viewModel)
         }
     }
 

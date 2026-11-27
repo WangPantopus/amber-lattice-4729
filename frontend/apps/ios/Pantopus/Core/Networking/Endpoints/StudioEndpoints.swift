@@ -16,6 +16,24 @@ public enum StudioEndpoints {
         return Endpoint(method: .put, path: "/api/moments/\(id)/reaction", body: MomentSignalBody(signal: signal))
     }
 
+    /// `POST /api/moments/:id/guess` (CONTRACT 5c): the reader's one guess at a guess-the-spot Moment's spot. Answers how
+    /// far off it was and the Moment in full. Route `backend/routes/moments.js` (guess).
+    static func guess(momentId: String, latitude: Double, longitude: Double) -> Endpoint {
+        let id = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        return Endpoint(method: .post, path: "/api/moments/\(id)/guess", body: MomentGuessBody(latitude: latitude, longitude: longitude))
+    }
+
+    /// `GET /api/moments/daily-spot` (CONTRACT 5d): the town's guess-the-spot Moment for today, the same for everyone.
+    /// Route `backend/routes/moments.js:764` (daily-spot).
+    static func dailySpot(latitude: Double, longitude: Double) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "/api/moments/daily-spot",
+            query: ["latitude": String(format: "%.4f", latitude), "longitude": String(format: "%.4f", longitude)],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
     /// `POST /api/moments/place-preview` with `stamps: true` (CONTRACT 2a): what the tray's stamps would read for a
     /// Moment posted here now. Route `backend/routes/moments.js` (place-preview).
     public static func stampsPreview(latitude: Double, longitude: Double) -> Endpoint {

@@ -172,6 +172,8 @@ extension MomentsComposerModel {
         body.showWeather = marks.showWeather
         // The Studio's made-up name; left out otherwise, so today's Post sheet sends what it always has.
         body.postAs = postsUnderMadeUpName ? "pen_name" : nil
+        // The Studio's "Guess the spot" (CONTRACT 5a), only where it may be made; left out otherwise.
+        body.guess = offersGuess && studioGuess ? true : nil
         // The Studio's stamps, and the phone's height for an elevation stamp; left out otherwise.
         if !studioStamps.isEmpty {
             body.stamps = studioStamps

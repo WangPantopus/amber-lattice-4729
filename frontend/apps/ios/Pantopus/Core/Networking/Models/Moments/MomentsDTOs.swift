@@ -255,6 +255,9 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// The 15-minute edit ("Pulse, reinvented", CONTRACT 3; `MomentEditDTOs.swift`), switch on only.
     public let editableUntil: String?
     public let stampChoices: [MomentStampKind: MomentStampValue]
+    /// Guess the spot ("Pulse, reinvented", CONTRACT 5; `MomentGuessDTOs.swift`): nil on an ordinary Moment, and while
+    /// the switch is off for the caller.
+    public let guess: MomentGuessStateDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -309,24 +312,11 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
         sky = MomentSkyStateDTO(from: decoder)
         live = MomentLiveStateDTO(from: decoder)
-        stamps = Self.stamps(c)
+        stamps = MomentStampDTO.list(from: decoder)
         mySignal = try? c.decodeIfPresent(String.self, forKey: .mySignal)
         editableUntil = try? c.decodeIfPresent(String.self, forKey: .editableUntil)
         stampChoices = (try? c.decodeIfPresent(MomentStampChoices.self, forKey: .stampChoices))?.values ?? [:]
-    }
-
-    /// The stamps one by one: one the app can't read is left out, never the Moment.
-    private static func stamps(_ c: KeyedDecodingContainer<CodingKeys>) -> [MomentStampDTO] {
-        guard var list = try? c.nestedUnkeyedContainer(forKey: .stamps) else { return [] }
-        var read: [MomentStampDTO] = []
-        while !list.isAtEnd {
-            if let stamp = try? list.decode(MomentStampDTO.self) {
-                read.append(stamp)
-            } else {
-                _ = try? list.decode(MomentStampSkip.self)
-            }
-        }
-        return read
+        guess = MomentGuessStateDTO(from: decoder)
     }
 
     public var media: URL? {
@@ -366,6 +356,9 @@ public struct MomentsMapResponse: Decodable, Sendable {
     public let sun: MomentSunDTO?
     /// The Sky: your own Moments waiting to share later, for your row only; empty while the Sky is off for you.
     public let scheduled: [MomentDTO]
+    /// Guess the spot (CONTRACT 5d): the live guess-the-spot Moments the reader may see in the box, with no point; only
+    /// while the switch is on for the reader, empty otherwise.
+    public let guessSpots: [MomentGuessSpotDTO]
 
     private enum CodingKeys: String, CodingKey {
         case rings, unplaced, sun, scheduled
@@ -381,6 +374,7 @@ public struct MomentsMapResponse: Decodable, Sendable {
         floatOn = (try? c.decodeIfPresent(Bool.self, forKey: .floatOn)) ?? false
         sun = try? c.decodeIfPresent(MomentSunDTO.self, forKey: .sun)
         scheduled = ((try? c.decodeIfPresent([MomentDTO].self, forKey: .scheduled)) ?? []).filter { $0.state == .scheduled }
+        guessSpots = MomentGuessSpotDTO.list(from: decoder)
     }
 }
 
