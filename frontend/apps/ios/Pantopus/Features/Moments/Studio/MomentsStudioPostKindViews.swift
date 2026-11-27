@@ -115,11 +115,8 @@ struct MomentsStudioKindDetails: View {
     let kind: StudioPostKind
 
     var body: some View {
+        // The drawer's title already names the kind.
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            Text(kind.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Color.appTextSecondary)
-                .accessibilityAddTraits(.isHeader)
             switch kind {
             case .alert: alertKinds
             case .lostFound: lostFound
@@ -132,6 +129,10 @@ struct MomentsStudioKindDetails: View {
         }
         .padding(.horizontal, Spacing.s1)
         .padding(.top, Spacing.s3)
+        // What stopped Post (a time, a phone number) goes once it's put right.
+        .onChange(of: model.studioPost) { _, _ in
+            if model.studioKindBlocker == nil, model.error != nil { model.error = nil }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio.kindDetails")
     }
