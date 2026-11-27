@@ -5,12 +5,13 @@
 // whose authors chose to join become one kept piece; each sunset leaves one band of colour in the place's sky strip.
 // Never invented: the server decides by its stated rules.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { get } from '@pantopus/api/client';
 import type { Moment } from '@pantopus/api/endpoints/moments';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import CrowdView from '../crowd/Crowd';
 import './sky.css';
 
 export interface ConvergenceInfo {
@@ -67,6 +68,8 @@ export default function ConvergenceView({ id, onClose }: { id: string; onClose()
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
   const c = piece.data?.convergence;
+  // A photo of the piece opens the scene from every phone that caught it (the crowd freeze, §8i).
+  const [scene, setScene] = useState<string | null>(null);
   return (
     <div className="sk-scrim" data-covers-shell="" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={box} className="sk-box" role="dialog" aria-modal="true" aria-label={c?.title || 'Convergence'} tabIndex={-1}>
@@ -101,7 +104,7 @@ export default function ConvergenceView({ id, onClose }: { id: string; onClose()
               {c.moments.map((m) => {
                 const src = m.kind === 'video' ? m.poster_url : m.media_url;
                 return (
-                  <figure key={m.id}>
+                  <figure key={m.id} role="button" tabIndex={0} aria-label={`See the scene from every phone, from ${m.author?.name || 'this'} view`} onClick={() => setScene(m.id)} onKeyDown={(e) => e.key === 'Enter' && setScene(m.id)}>
                     {/* eslint-disable-next-line @next/next/no-img-element -- a signed picture of the Moment */}
                     {src ? <img src={src} alt={m.caption || `${m.author?.name || 'Someone'}’s photo`} loading="lazy" /> : <span className="sk-empty" />}
                     <figcaption>{m.author?.name}</figcaption>
@@ -128,6 +131,7 @@ export default function ConvergenceView({ id, onClose }: { id: string; onClose()
           </>
         ) : null}
       </div>
+      {scene && <CrowdView id={scene} onClose={() => setScene(null)} />}
     </div>
   );
 }
