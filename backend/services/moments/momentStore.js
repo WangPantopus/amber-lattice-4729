@@ -45,6 +45,7 @@ const media = require('./momentMedia');
 const momentWeather = require('./momentWeather');
 const momentStamps = require('./momentStamps');
 const momentGuess = require('./momentGuess');
+const playItems = require('../pulse/play');
 const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -532,7 +533,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -612,6 +613,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       guess: momentGuess.isGuess(row) ? (guess || { count: 0, mine: null }) : null,
       // "Want to come?" (CONTRACT 6g): the plan this Moment started, as Plans shows it to this reader, or null.
       plan,
+      // Playable items (CONTRACT 7b), with what this reader may see of the answers; [] when none.
+      play: play || [],
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
@@ -686,12 +689,16 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans] = reinvented
+  const [signals, guesses, offers, plans, plays] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
+      // Playable items (CONTRACT 7b): one read of the answers for the Moments that carry any.
+      playItems.playFor(rows.filter((r) => meta(r).play?.length).map((r) => ({
+        id: r.id, items: meta(r).play, own: isOwn(r, viewerId), open: momentState(r) === 'live',
+      })), viewerId),
     ])
-    : [new Map(), new Map(), new Set(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -708,6 +715,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     keptPosts,
     keepOffer: offers.has(row.id),
     plan: plans.get(row.id) || null,
+    play: plays.get(row.id) || null,
   }));
 }
 

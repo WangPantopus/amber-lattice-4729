@@ -14,6 +14,7 @@ const momentPlace = require('../moments/momentPlace');
 const store = require('../moments/momentStore');
 const { displayedPoint } = require('./distanceText');
 const { haversineMeters } = require('../../utils/trustState');
+const play = require('./play');
 
 // The Live mark's checks for a post's weather and sunset (CONTRACT 6d): a fix this fresh, this near the post's pin.
 const FIX_MAX_AGE_MS = 5 * 60 * 1000;
@@ -35,6 +36,8 @@ function parse(studio) {
   return {
     ...momentStamps.parseStudio(studio || {}),
     explore: studio?.explore === true,
+    // Playable items (CONTRACT 7b); a malformed list throws, answered 400 POST_INVALID.
+    play: play.parseItems(studio?.play),
     takenAt,
     takenHere: studio?.taken_here === true,
     fix: fix && Number.isFinite(Number(fix.latitude)) && Number.isFinite(Number(fix.longitude))
@@ -90,6 +93,7 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     stamp_values: stampValues,
     // The home rules, checked again on every read (momentStamps.valueOf): nothing kept says more than they allow.
     guard: { at_home: atHome, pen_name: Boolean(underPenName), placed },
+    ...(parsed.play?.length ? { play: parsed.play } : {}),
     ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
   };
 }
@@ -115,6 +119,31 @@ async function stampsFor(posts) {
 }
 
 /**
+ * The shown stamps and the playable items of each of these posts that the Studio made, for `viewerId` (CONTRACT 6d,
+ * 7b): { stamps, play }, each by post id. The answers are read alongside the post's own row, never after the page.
+ */
+async function readerParts(posts, viewerId) {
+  const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
+  if (!ids.length) return { stamps: new Map(), play: new Map() };
+  const [{ data, error }, answers] = await Promise.all([
+    supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
+    play.answersOn(ids).catch(() => null),
+  ]);
+  if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
+  const rows = data || [];
+  const stamps = new Map(rows.map((row) => [row.post_id, shownOf(row.studio)]));
+  const byId = new Map((posts || []).map((post) => [post.id, post]));
+  const withItems = rows.filter((row) => row.studio?.play?.length).map((row) => ({
+    id: row.post_id,
+    items: row.studio.play,
+    // A post is listed as its reader gets it: their own made-up-name post carries their id (penName.present).
+    own: String(byId.get(row.post_id)?.user_id) === String(viewerId),
+    open: true,
+  }));
+  return { stamps, play: answers ? await play.playFor(withItems, viewerId, { answers }) : new Map() };
+}
+
+/**
  * The shown stamps of the Studio-made posts whose stored point is in the box (widened as the map's own post read is),
  * by post id: read alongside the map's posts, never after them. Only the posts the map then lists use theirs.
  */
@@ -134,4 +163,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, shownOf, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };

@@ -368,6 +368,8 @@ const createPostSchema = Joi.object({
     // The Live mark's checks for weather and sunset (CONTRACT 6d): the app's own camera, now, and the phone's fix.
     taken_here: Joi.boolean(),
     fix: Joi.object().allow(null),
+    // Playable items (CONTRACT 7b), checked by services/pulse/play.
+    play: Joi.array().max(4).allow(null),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
@@ -1819,7 +1821,8 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       const refusal = !placed
         ? { status: 400, code: 'PEN_NAME_NEEDS_PLACE', message: 'A post under a made-up name needs a place, so it reaches people nearby.' }
         : await penName.gate.crowdRefusal(postData.latitude, postData.longitude)
-          || await penName.gate.wordsRefusal([postData.title, postData.content]);
+          || await penName.gate.wordsRefusal([postData.title, postData.content,
+            ...(studioParsed ? require('../services/pulse/play').wordsOf(studioParsed.play) : [])]);
       if (refusal) return res.status(refusal.status).json({ error: refusal.message, code: refusal.code });
       Object.assign(postData, penName.write.postFields(pen));
     }
