@@ -62,7 +62,7 @@ class HomeVerificationContentTest {
     @Test
     fun pending_doc_frame() {
         val content = HomeVerificationContent.make(HomeVerificationStatus.PendingDoc)
-        assertEquals("Document under review", content.headline)
+        assertEquals("Verify with a document", content.headline)
         assertEquals(HaloCircleTone.Warning, content.halo.tone)
         assertTrue(content.body.contains("Pantopus reviewer"))
     }
