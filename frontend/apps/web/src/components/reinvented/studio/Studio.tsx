@@ -55,7 +55,7 @@ import { discardJob, keepJob, pendingJobs, postJob, type Job } from '@/component
 import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
-import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire } from '../play/PlayEdit';
+import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire, swatchBox } from '../play/PlayEdit';
 import type { PlayItem, PlayKind } from '../play/playTypes';
 import { SoundPanel } from '../sound/SoundPanel';
 import { timedWords, uploadSound, type Recording } from '../sound/record';
@@ -111,6 +111,12 @@ function Chip({ on, children, ...rest }: { on: boolean; children: ReactNode } & 
       {children}
     </button>
   );
+}
+
+/** A playable item where it lands on the picture; a swatch's try-on area follows its colours (§7g). */
+function placedPlay(it: ReturnType<typeof playWire>[number], frame: ReturnType<typeof stageFrame>) {
+  const at = frame.point(it.x, it.y);
+  return { ...it, ...at, scale: frame.scale(it.scale), ...(it.kind === 'swatch' ? { box: swatchBox(at.x, at.y) } : {}) };
 }
 
 export default function Studio({
@@ -733,7 +739,7 @@ export default function Studio({
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
             ...(play.length && i === 0 && !postKind
-              ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) }
+              ? { play: playWire(play).map((it) => placedPlay(it, frame)) }
               : {}),
             ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).length
               ? {
@@ -862,7 +868,7 @@ export default function Studio({
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
           // Playable items and dots on the post's photo (CONTRACT 7b, 7c: `studio.play`, `studio.dots`), placed as a Moment's.
-          ...(photo && play.length ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) } : {}),
+          ...(photo && play.length ? { play: playWire(play).map((it) => placedPlay(it, frame)) } : {}),
           ...(photo && canIlluminate && dotsWire(dots, { things: aiOn, links: !underPenName }).length
             ? {
                 dots: dotsWire(dots, { things: aiOn, links: !underPenName }).map((d) => ({

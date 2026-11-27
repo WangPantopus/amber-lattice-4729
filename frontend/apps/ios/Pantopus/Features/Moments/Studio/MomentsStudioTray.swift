@@ -50,6 +50,12 @@ struct MomentsStudioTray: View {
                     }
                 }
             }
+            if model.offersLooks {
+                MomentsStudioLooksRow(model: model)
+            }
+            if !model.stripPartners.isEmpty {
+                MomentsStudioStripRow(model: model, onDone: onDone)
+            }
             if model.studioCutoutSurface != nil {
                 MomentsStudioYourCutouts(model: model, onPlaced: onDone)
             }

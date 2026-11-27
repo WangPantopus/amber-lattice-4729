@@ -469,3 +469,92 @@
 .pl-answers li .pl-link {
   flex: none;
 }
+
+/* §7g kinds: a quote, a colour swatch's try-on, the fog a reader wipes clear. */
+.pl-quote {
+  margin: 0;
+}
+.pl-quote blockquote {
+  margin: 0;
+  font-size: 1.05em;
+  font-style: italic;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.pl-quote figcaption {
+  color: #475569;
+  font-size: 0.8em;
+}
+.pl-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45em;
+}
+.pl-swatches button {
+  width: 2em;
+  height: 2em;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #cbd5e1;
+  cursor: pointer;
+}
+.pl-swatches button[aria-pressed='true'] {
+  box-shadow: 0 0 0 3px #0369a1;
+}
+.pl-tint {
+  position: absolute;
+  border-radius: 6px;
+  outline: 2px dashed rgba(255, 255, 255, 0.8);
+  mix-blend-mode: color;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.pl-fog {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: none;
+}
+.pl-fog canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+.pl-fog-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.4em 0.9em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 750;
+  pointer-events: none;
+}
+.pl-fog-clear {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 15px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pl-field-row input[type='color'] {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: none;
+}

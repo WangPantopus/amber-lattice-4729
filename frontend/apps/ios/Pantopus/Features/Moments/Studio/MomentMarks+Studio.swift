@@ -185,6 +185,12 @@ struct MomentsStudioTools {
     /// Cutouts on the Studio's picture (`MomentsStudioCutouts`), drawn into it at Post, and the one picked.
     var cutouts: [MomentMarks.Cutout] = []
     var pickedCutout: UUID?
+    /// Film looks (`MomentsStudioLooks`): the look picked, and the photo as it was before any look, so another look
+    /// starts from it again.
+    var look = MomentsStudioLook.original
+    var lookOriginal: UIImage?
+    /// The photo the look made: while the picture is still that one, the look and its original hold.
+    var lookResult: UIImage?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {
