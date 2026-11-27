@@ -705,6 +705,7 @@ async function composeMorningBriefing(userId, location) {
     signals: briefingSignals,
     signal_count: briefingSignals.length,
   }, {
+    userId,
     targetUse: 'push',
     greeting: true,
     maxWords: 45,

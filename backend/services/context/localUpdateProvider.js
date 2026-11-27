@@ -7,8 +7,10 @@
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const { postScopeAccess } = require('../pulse/readAccess');
-const { getAnthropicClient, resolveEffort, DRAFT_MODEL } = require('../../config/anthropic');
+const { resolveEffort, DRAFT_MODEL } = require('../../config/anthropic');
 const { complete } = require('../ai/llm');
+const { backgroundCall } = require('../ai/background');
+const { GeoCache } = require('../../utils/geoCache');
 const logger = require('../../utils/logger');
 
 const AI_EFFORT = resolveEffort(process.env.ANTHROPIC_DRAFT_EFFORT, 'low');
@@ -20,6 +22,11 @@ const DEFAULT_RADIUS_METERS = 25_000;
 const LOOKBACK_HOURS = 24;
 const MAX_DB_ROWS = 16;
 const MAX_ITEMS = 3;
+const SUMMARY_CACHE_TTL_MS = 90 * 60 * 1000; // 90 minutes across neighbors sharing the same stories
+const CURATOR_IDS_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const summaryCache = new GeoCache(500);
+let curatorIdsMemo = { ids: null, expiresAt: 0 };
 
 function boundingBoxFromCenter(lat, lng, radiusMeters) {
   const latDelta = radiusMeters / 111000;
@@ -127,9 +134,15 @@ function validateSummary(text) {
 
 async function summarizeUpdates(items, locationLabel, briefingKind = 'morning') {
   const deterministic = deterministicSummary(items);
-  const client = getAnthropicClient();
-  if (!client || items.length === 0) {
+  if (items.length === 0) {
     return { summary: deterministic, tokens_used: 0 };
+  }
+
+  // The area's name is part of the prompt, so it is part of the key: a sentence written for one town is never read out in another.
+  const cacheKey = `${briefingKind}:${String(locationLabel || 'nearby').trim().toLowerCase()}:${items.map((item) => item.id).sort().join(',')}`;
+  const cached = summaryCache.get(cacheKey);
+  if (cached !== undefined) {
+    return { summary: cached, tokens_used: 0 };
   }
 
   const bulletLines = items.map((item, index) => {
@@ -137,8 +150,14 @@ async function summarizeUpdates(items, locationLabel, briefingKind = 'morning') 
     return `${index + 1}. ${cleanText(item.title || '')} ${cleanText(item.content || '')} (${ageHours}h ago)`;
   });
 
-  try {
-    const response = await complete({
+  const call = await backgroundCall({
+    // Shared per-area summary cached across neighbors; charge against the global
+    // background cap and AI_ASSISTANT kill switch rather than one user's quota.
+    userId: null,
+    endpoint: 'brief',
+    model: DRAFT_MODEL,
+    promptVersion: `local-update-${briefingKind}-v1`,
+    run: (client) => complete({
       client,
       model: DRAFT_MODEL,
       system: briefingKind === 'evening'
@@ -153,26 +172,32 @@ async function summarizeUpdates(items, locationLabel, briefingKind = 'morning') 
       // a budget returns empty text and the deterministic summary wins.
       maxTokens: AI_MAX_TOKENS,
       timeoutMs: AI_TIMEOUT_MS,
-    });
+    }),
+  });
 
-    const text = response.text.trim();
-    const tokensUsed = response.inputTokens + response.outputTokens;
+  if (call.ok && call.value) {
+    const response = call.value;
+    const text = (response.text || '').trim();
+    const tokensUsed = (response.inputTokens || 0) + (response.outputTokens || 0);
 
-    if (/^skip$/i.test(text || '')) {
+    if (/^skip$/i.test(text)) {
+      summaryCache.set(cacheKey, null, SUMMARY_CACHE_TTL_MS);
       return { summary: null, tokens_used: tokensUsed };
     }
 
     if (validateSummary(text)) {
+      summaryCache.set(cacheKey, text, SUMMARY_CACHE_TTL_MS);
       return { summary: text, tokens_used: tokensUsed };
     }
-  } catch (err) {
-    logger.warn('localUpdateProvider: AI summary failed', { error: err.message });
   }
 
   return { summary: deterministic, tokens_used: 0 };
 }
 
 async function getCuratorIds() {
+  if (curatorIdsMemo.ids && Date.now() < curatorIdsMemo.expiresAt) {
+    return curatorIdsMemo.ids;
+  }
   const { data, error } = await supabaseAdmin
     .from('User')
     .select('id')
@@ -180,10 +205,12 @@ async function getCuratorIds() {
 
   if (error) {
     logger.warn('localUpdateProvider: curator lookup failed', { error: error.message });
-    return [];
+    return curatorIdsMemo.ids || [];
   }
 
-  return (data || []).map((row) => row.id).filter(Boolean);
+  const ids = (data || []).map((row) => row.id).filter(Boolean);
+  curatorIdsMemo = { ids, expiresAt: Date.now() + CURATOR_IDS_CACHE_TTL_MS };
+  return ids;
 }
 
 async function getLocalUpdateContext(options = {}) {

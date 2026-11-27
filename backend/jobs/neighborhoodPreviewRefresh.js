@@ -24,6 +24,27 @@ const { unlockThreshold } = require('../services/place/densityReader');
 const BASE_MILESTONES = [500, 200, 100, 50, 25, 10];
 // A claimed home counts on the meter once its claim has stood this long without being disproven (home claims PR 3).
 const CLAIM_COUNTS_AFTER_DAYS = 14;
+const PAGE_SIZE = 1000;
+const IN_CHUNK_SIZE = 100;
+const UPSERT_CHUNK_SIZE = 500;
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function fetchAllPages(buildQuery) {
+  const all = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await buildQuery(offset, offset + PAGE_SIZE - 1);
+    if (error) return { data: null, error };
+    const rows = data || [];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return { data: all, error: null };
+}
 
 // The unlock threshold is always a milestone, whatever the env sets it to,
 // so crossing it is announced as the moment the neighborhood opens rather
@@ -57,12 +78,16 @@ function milestoneCopy(milestone, unlock) {
 // ── Main job ──────────────────────────────────────────────────────────────
 
 module.exports = async function neighborhoodPreviewRefresh() {
-  // 1. Fetch all active homes with coordinates
-  const { data: homes, error: homesErr } = await supabaseAdmin
-    .from('Home')
-    .select('id, map_center_lat, map_center_lng')
-    .not('map_center_lat', 'is', null)
-    .not('map_center_lng', 'is', null);
+  // 1. Fetch all active homes with coordinates (paginated past PostgREST's 1,000-row cap)
+  const { data: homes, error: homesErr } = await fetchAllPages((from, to) =>
+    supabaseAdmin
+      .from('Home')
+      .select('id, map_center_lat, map_center_lng')
+      .not('map_center_lat', 'is', null)
+      .not('map_center_lng', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
 
   if (homesErr) {
     logger.error('neighborhoodPreviewRefresh: failed to fetch homes', { error: homesErr.message });
@@ -82,23 +107,30 @@ module.exports = async function neighborhoodPreviewRefresh() {
     geohashToHomeIds.get(gh).push(home.id);
   }
 
-  // 3. Count distinct verified residents per geohash cell (single batch query). Someone who only set a home up,
-  // or asked to join one, isn't counted, and a claim (home claims PR 3) counts once it has stood for
-  // CLAIM_COUNTS_AFTER_DAYS, so new claims can't pad the meter.
+  // 3. Count distinct verified residents per geohash cell (chunked <=100 home IDs & paginated).
+  // Someone who only set a home up, or asked to join one, isn't counted, and a claim
+  // (home claims PR 3) counts once it has stood for CLAIM_COUNTS_AFTER_DAYS, so new claims can't pad the meter.
   const allHomeIds = homes.map((h) => h.id);
-  const { data: activeOccupancies, error: occErr } = await supabaseAdmin
-    .from('HomeOccupancy')
-    .select('home_id, user_id, verification_source, verified_at')
-    .in('home_id', allHomeIds)
-    .eq('is_active', true)
-    .eq('verification_status', 'verified');
-
-  if (occErr) {
-    logger.error('neighborhoodPreviewRefresh: failed to fetch occupancies', { error: occErr.message });
-    return;
+  const activeOccupancies = [];
+  for (const homeChunk of chunkArray(allHomeIds, IN_CHUNK_SIZE)) {
+    const { data: chunkOccs, error: occErr } = await fetchAllPages((from, to) =>
+      supabaseAdmin
+        .from('HomeOccupancy')
+        .select('home_id, user_id, verification_source, verified_at')
+        .in('home_id', homeChunk)
+        .eq('is_active', true)
+        .eq('verification_status', 'verified')
+        .order('id', { ascending: true })
+        .range(from, to),
+    );
+    if (occErr) {
+      logger.error('neighborhoodPreviewRefresh: failed to fetch occupancies', { error: occErr.message });
+      return;
+    }
+    if (chunkOccs?.length) activeOccupancies.push(...chunkOccs);
   }
   const claimCutoff = Date.now() - CLAIM_COUNTS_AFTER_DAYS * 24 * 60 * 60 * 1000;
-  const occupancies = (activeOccupancies || []).filter((occ) => occ.verification_source !== 'claim'
+  const occupancies = activeOccupancies.filter((occ) => occ.verification_source !== 'claim'
     || (occ.verified_at && Date.parse(occ.verified_at) <= claimCutoff));
 
   // Build home_id → geohash lookup
@@ -124,38 +156,45 @@ module.exports = async function neighborhoodPreviewRefresh() {
     if (!geohashCounts.has(gh)) geohashCounts.set(gh, 0);
   }
 
-  // 4. Fetch existing preview rows for comparison BEFORE upserting
+  // 4. Fetch existing preview rows for comparison BEFORE upserting (chunked <=100 geohashes).
+  // A cell whose row can't be read would look as if no milestone had been announced, and its people would be told
+  // again, so a failed read ends this run; the next one, 15 minutes later, reads them all again.
   const geohashes = Array.from(geohashCounts.keys());
   if (geohashes.length === 0) return;
 
-  const { data: existingRows, error: fetchErr } = await supabaseAdmin
-    .from('NeighborhoodPreview')
-    .select('geohash, verified_users_count, last_milestone_notified')
-    .in('geohash', geohashes);
-
-  if (fetchErr) {
-    logger.warn('neighborhoodPreviewRefresh: failed to fetch existing previews', { error: fetchErr.message });
-  }
-
   const existingByGeohash = new Map();
-  for (const row of existingRows || []) {
-    existingByGeohash.set(row.geohash, row);
+  for (const ghChunk of chunkArray(geohashes, IN_CHUNK_SIZE)) {
+    const { data: existingRows, error: fetchErr } = await supabaseAdmin
+      .from('NeighborhoodPreview')
+      .select('geohash, verified_users_count, last_milestone_notified')
+      .in('geohash', ghChunk);
+
+    if (fetchErr) {
+      logger.warn('neighborhoodPreviewRefresh: failed to fetch existing previews', { error: fetchErr.message });
+      return;
+    }
+    for (const row of existingRows || []) {
+      existingByGeohash.set(row.geohash, row);
+    }
   }
 
-  // 5. Upsert all preview rows
+  // 5. Upsert all preview rows (chunked <=500)
+  const nowIso = new Date().toISOString();
   const upsertRows = geohashes.map((gh) => ({
     geohash: gh,
     verified_users_count: geohashCounts.get(gh),
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   }));
 
-  const { error: upsertErr } = await supabaseAdmin
-    .from('NeighborhoodPreview')
-    .upsert(upsertRows, { onConflict: 'geohash', ignoreDuplicates: false });
+  for (const rowChunk of chunkArray(upsertRows, UPSERT_CHUNK_SIZE)) {
+    const { error: upsertErr } = await supabaseAdmin
+      .from('NeighborhoodPreview')
+      .upsert(rowChunk, { onConflict: 'geohash', ignoreDuplicates: false });
 
-  if (upsertErr) {
-    logger.error('neighborhoodPreviewRefresh: upsert failed', { error: upsertErr.message });
-    return;
+    if (upsertErr) {
+      logger.error('neighborhoodPreviewRefresh: upsert failed', { error: upsertErr.message });
+      return;
+    }
   }
 
   // 6. Detect milestone crossings and notify
@@ -194,26 +233,50 @@ module.exports = async function neighborhoodPreviewRefresh() {
     const homeIds = geohashToHomeIds.get(geohash) || [];
     if (homeIds.length === 0) continue;
 
-    // Get active users in these homes
-    const { data: occupants, error: occErr } = await supabaseAdmin
-      .from('HomeOccupancy')
-      .select('user_id')
-      .in('home_id', homeIds)
-      .eq('is_active', true);
+    // Get active users in these homes (chunked <=100 home IDs & paginated)
+    const occupants = [];
+    let occFailed = false;
+    for (const homeChunk of chunkArray(homeIds, IN_CHUNK_SIZE)) {
+      const { data: chunkOccs, error: occErr } = await fetchAllPages((from, to) =>
+        supabaseAdmin
+          .from('HomeOccupancy')
+          .select('user_id')
+          .in('home_id', homeChunk)
+          .eq('is_active', true)
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
+      if (occErr) {
+        occFailed = true;
+        break;
+      }
+      if (chunkOccs?.length) occupants.push(...chunkOccs);
+    }
 
-    if (occErr || !occupants || occupants.length === 0) continue;
+    if (occFailed || occupants.length === 0) continue;
 
     const userIds = [...new Set(occupants.map((o) => o.user_id))];
 
-    // Check which users already received a density_milestone notification today
-    const { data: recentNotifs } = await supabaseAdmin
-      .from('Notification')
-      .select('user_id')
-      .eq('type', 'density_milestone')
-      .in('user_id', userIds)
-      .gte('created_at', `${today}T00:00:00Z`);
+    // Check which users already received a density_milestone notification today (chunked <=100). If that can't be
+    // read, this cell waits for the next run rather than telling someone twice.
+    const alreadyNotified = new Set();
+    let recentFailed = false;
+    for (const userChunk of chunkArray(userIds, IN_CHUNK_SIZE)) {
+      const { data: recentNotifs, error: recentErr } = await supabaseAdmin
+        .from('Notification')
+        .select('user_id')
+        .eq('type', 'density_milestone')
+        .in('user_id', userChunk)
+        .gte('created_at', `${today}T00:00:00Z`);
+      if (recentErr) {
+        logger.warn('neighborhoodPreviewRefresh: failed to read today\'s milestone notices', { error: recentErr.message });
+        recentFailed = true;
+        break;
+      }
+      for (const n of recentNotifs || []) alreadyNotified.add(n.user_id);
+    }
+    if (recentFailed) continue;
 
-    const alreadyNotified = new Set((recentNotifs || []).map((n) => n.user_id));
     const eligibleUserIds = userIds.filter((id) => !alreadyNotified.has(id));
 
     if (eligibleUserIds.length === 0) continue;

@@ -18,60 +18,70 @@ async function vaultWeeklyDigest() {
 
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Get all users who have vault folders (meaning they use the vault)
-  const { data: vaultUsers, error: vaultError } = await supabaseAdmin
-    .from('VaultFolder')
-    .select('user_id')
-    .not('user_id', 'is', null);
+  // Get all users who have vault folders (paginated past PostgREST's 1,000-row cap)
+  const PAGE_SIZE = 1000;
+  const userIdSet = new Set();
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data: vaultUsers, error: vaultError } = await supabaseAdmin
+      .from('VaultFolder')
+      .select('user_id')
+      .not('user_id', 'is', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
 
-  if (vaultError) {
-    logger.error('[VaultDigest] Failed to query vault users', { error: vaultError.message });
-    return;
+    if (vaultError) {
+      logger.error('[VaultDigest] Failed to query vault users', { error: vaultError.message });
+      return;
+    }
+    for (const v of vaultUsers || []) userIdSet.add(v.user_id);
+    if (!vaultUsers || vaultUsers.length < PAGE_SIZE) break;
   }
 
-  const userIds = [...new Set((vaultUsers || []).map(v => v.user_id))];
+  const userIds = [...userIdSet];
   logger.info(`[VaultDigest] Found ${userIds.length} vault users`);
 
   let digested = 0;
 
   for (const userId of userIds) {
     try {
-      // Count auto-filed items this week
-      const { data: autoFiledEvents } = await supabaseAdmin
-        .from('MailEvent')
-        .select('id', { count: 'exact', head: false })
-        .eq('user_id', userId)
-        .eq('event_type', 'auto_filed')
-        .gte('created_at', oneWeekAgo);
-
-      const autoFiledCount = autoFiledEvents?.length || 0;
-
-      // Count unfiled items in vault tab
-      const { count: unfiledCount } = await supabaseAdmin
-        .from('Mail')
-        .select('*', { count: 'exact', head: true })
-        .eq('recipient_user_id', userId)
-        .is('vault_folder_id', null)
-        .eq('archived', true)  // archived but not in a folder
-        .in('lifecycle', ['delivered', 'opened', 'expired'])
-        .is('deleted_at', null);
-
-      // Count total vault items
-      const { count: totalItems } = await supabaseAdmin
-        .from('Mail')
-        .select('*', { count: 'exact', head: true })
-        .eq('recipient_user_id', userId)
-        .not('vault_folder_id', 'is', null)
-        .is('deleted_at', null);
-
-      // Count folders
-      const { count: folderCount } = await supabaseAdmin
-        .from('VaultFolder')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
+      const [
+        { count: autoFiledCount },
+        { count: unfiledCount },
+        { count: totalItems },
+        { count: folderCount },
+      ] = await Promise.all([
+        // Count auto-filed items this week via head:true (no row payload or 1,000-row cap)
+        supabaseAdmin
+          .from('MailEvent')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('event_type', 'auto_filed')
+          .gte('created_at', oneWeekAgo),
+        // Count unfiled items in vault tab
+        supabaseAdmin
+          .from('Mail')
+          .select('*', { count: 'exact', head: true })
+          .eq('recipient_user_id', userId)
+          .is('vault_folder_id', null)
+          .eq('archived', true)  // archived but not in a folder
+          .in('lifecycle', ['delivered', 'opened', 'expired'])
+          .is('deleted_at', null),
+        // Count total vault items
+        supabaseAdmin
+          .from('Mail')
+          .select('*', { count: 'exact', head: true })
+          .eq('recipient_user_id', userId)
+          .not('vault_folder_id', 'is', null)
+          .is('deleted_at', null),
+        // Count folders
+        supabaseAdmin
+          .from('VaultFolder')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId),
+      ]);
 
       // Skip if nothing interesting happened
-      if (autoFiledCount === 0 && (unfiledCount || 0) === 0) {
+      if ((autoFiledCount || 0) === 0 && (unfiledCount || 0) === 0) {
         continue;
       }
 
@@ -82,7 +92,7 @@ async function vaultWeeklyDigest() {
           event_type: 'vault_weekly_digest',
           user_id: userId,
           metadata: {
-            auto_filed_this_week: autoFiledCount,
+            auto_filed_this_week: autoFiledCount || 0,
             unfiled_items: unfiledCount || 0,
             total_vault_items: totalItems || 0,
             folder_count: folderCount || 0,

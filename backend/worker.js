@@ -17,7 +17,7 @@ require('./config/stagingRuntime').validateStagingRuntime();
 const logger = require('./utils/logger');
 const { initPgBoss, stopPgBoss } = require('./jobs/pgBossManager');
 const { registerPgBossJobs } = require('./jobs/pgBossJobs');
-const { startJobs } = require('./jobs');
+const { startJobs, stopJobs } = require('./jobs');
 
 function envFlagEnabled(name, defaultValue = true) {
   const value = process.env[name];
@@ -79,13 +79,37 @@ async function main() {
   logger.info('[Worker] Ready');
 }
 
-// Graceful shutdown
+// Graceful shutdown (idempotent, with forced-exit safeguard)
+const WORKER_SHUTDOWN_GRACE_MS = 30_000;
+let shuttingDown = false;
 const shutdown = async (signal) => {
+  if (shuttingDown) {
+    logger.info(`[Worker] ${signal} received while shutdown already in progress`);
+    return;
+  }
+  shuttingDown = true;
   logger.info(`[Worker] ${signal} received, shutting down...`);
+
+  const forceTimer = setTimeout(() => {
+    logger.error('[Worker] Forced shutdown due to timeout');
+    process.exit(1);
+  }, WORKER_SHUTDOWN_GRACE_MS);
+  forceTimer.unref?.();
+
+  stopJobs();
   await stopPgBoss().catch((err) => {
     logger.error('[Worker] Error stopping pg-boss:', { error: err.message });
   });
-  await require('./services/propertyRecords/counts').flush();
+  require('./services/push/apnsClient').close();
+  require('./services/push/fcmClient').close();
+  await require('./config/directDb').close();
+  await require('./services/propertyRecords/counts').flush().catch((err) => {
+    logger.warn('[Worker] Error flushing propertyRecords counts:', { error: err.message });
+  });
+  try {
+    fs.rmSync('/tmp/pantopus-worker-ready', { force: true });
+  } catch { /* ignore */ }
+  clearTimeout(forceTimer);
   process.exit(0);
 };
 

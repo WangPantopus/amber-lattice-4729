@@ -2330,24 +2330,7 @@ router.get('/search', verifyToken, async (req, res) => {
       return res.json({ gigs: [], total: 0 });
     }
 
-    // Enrich with bid counts
-    const gigIds = rows.map((g) => g.id).filter(Boolean);
-    let bidCountsByGigId = {};
-    if (gigIds.length > 0) {
-      const { data: bidRows, error: bidErr } = await supabaseAdmin
-        .from('GigBid')
-        .select('gig_id')
-        .in('gig_id', gigIds);
-
-      if (!bidErr) {
-        for (const r of bidRows || []) {
-          const k = String(r.gig_id);
-          bidCountsByGigId[k] = (bidCountsByGigId[k] || 0) + 1;
-        }
-      }
-    }
-
-    // Score and rank results
+    // Score and rank results first, then count bids only for the final page (chunked <=100).
     const ranked = rows
       .map((g) => {
         const title = String(g.title || '').toLowerCase();
@@ -2379,7 +2362,6 @@ router.get('/search', verifyToken, async (req, res) => {
           accepted_by: g.accepted_by,
           created_at: g.created_at,
           poster_account_type: g.User?.account_type || null,
-          bidsCount: bidCountsByGigId[String(g.id)] || 0,
           _score: score,
           _searchable: searchable,
         };
@@ -2392,8 +2374,27 @@ router.get('/search', verifyToken, async (req, res) => {
 
     const total = ranked.length;
     const page = ranked.slice(safeOffset, safeOffset + safeLimit);
+    const pageGigIds = page.map((g) => g.id).filter(Boolean);
+    const bidCountsByGigId = {};
+    for (let i = 0; i < pageGigIds.length; i += 100) {
+      const idChunk = pageGigIds.slice(i, i + 100);
+      const { data: bidRows, error: bidErr } = await supabaseAdmin
+        .from('GigBid')
+        .select('gig_id')
+        .in('gig_id', idChunk);
+      if (!bidErr) {
+        for (const r of bidRows || []) {
+          const k = String(r.gig_id);
+          bidCountsByGigId[k] = (bidCountsByGigId[k] || 0) + 1;
+        }
+      }
+    }
     const posterFields = await loadTaskPosterFields(page);
-    const result = page.map(({ _score, _searchable, ...rest }) => ({ ...rest, ...posterFields(rest) }));
+    const result = page.map(({ _score, _searchable, ...rest }) => ({
+      ...rest,
+      bidsCount: bidCountsByGigId[String(rest.id)] || 0,
+      ...posterFields(rest),
+    }));
 
     return res.json({ gigs: result, total });
   } catch (err) {

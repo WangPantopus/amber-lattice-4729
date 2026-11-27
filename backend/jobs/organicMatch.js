@@ -27,6 +27,7 @@ const RADIUS_METERS = 8047;   // ~5 miles
 const CACHE_TTL_DAYS = 7;     // Re-run match after 7 days
 const MAX_POST_AGE_DAYS = 30; // Stop showing card after 30 days
 const BATCH_SIZE = 50;        // Max posts per cron run
+const RECHECK_MINUTES = 60;   // A post with no matches is checked again after this long
 const METERS_PER_MILE = 1609.34;
 
 /**
@@ -139,12 +140,19 @@ async function matchBusinessesForPost(postId) {
 async function organicMatch() {
   const thirtyDaysAgo = new Date(Date.now() - MAX_POST_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  // ── Pass 1: Match new posts that have service_category but no matches yet ──
+  // ── Pass 1: Match posts that have service_category but no matches yet ──
+  // A new post's column default is `{}`, the same value a check that found nothing
+  // writes, so "no matches yet" can't tell the two apart. A check stamps updated_at,
+  // so a post is looked at again only once that is RECHECK_MINUTES old: a post whose
+  // inline match failed, or whose category was added by an edit, is matched within
+  // the hour, and one with no business nearby is asked about hourly, not every 2 minutes.
+  const recheckCutoff = new Date(Date.now() - RECHECK_MINUTES * 60 * 1000).toISOString();
   const { data: unmatchedPosts, error: findErr } = await supabaseAdmin
     .from('Post')
     .select('id')
     .not('service_category', 'is', null)
     .or('matched_business_ids.is.null,matched_business_ids.eq.{}')
+    .lt('updated_at', recheckCutoff)
     .gte('created_at', thirtyDaysAgo)
     .neq('is_archived', true)
     .order('created_at', { ascending: false })

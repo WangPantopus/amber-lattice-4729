@@ -34,6 +34,7 @@ const similarHomes = require('../propertyRecords/similarHomes');
 const { changeNicheData } = require('../homeNicheData');
 const householdFacts = require('../householdFacts');
 const { pickAttomRooms, pickAttomSummaryLot } = require('./attomFacts');
+const { GeoCache } = require('../../utils/geoCache');
 const { isDeepStrictEqual } = require('node:util');
 
 const ATTOM_BASE = 'https://api.gateway.attomdata.com/propertyapi/v1.0.0';
@@ -829,11 +830,11 @@ function profileFromResponses(home, { responses, fetchedAts }) {
 // sends the same signal itself, also when it fails.
 const HOME_LOOKUP_SELECT = 'id, address, address2, city, state, zipcode, address_id, year_built, sq_ft, bedrooms, bathrooms, lot_sq_ft, home_type, niche_data';
 const runningLookups = new Map();
-const failedLookups = new Map();
+const failedLookups = new GeoCache(5000);
 
 function lookupState(id) {
   if (runningLookups.has(id)) return 'pending';
-  return Date.now() - (failedLookups.get(id) || 0) < RETRY_AFTER_FAILURE_MS ? 'failed' : null;
+  return failedLookups.get(id) ? 'failed' : null;
 }
 
 // Runs `work` (resolving true when everything was answered) in the background
@@ -846,9 +847,9 @@ function startLookup(id, work, onDone) {
     try {
       outcome = await work();
       if (outcome?.complete) failedLookups.delete(id);
-      else failedLookups.set(id, Date.now());
+      else failedLookups.set(id, true, RETRY_AFTER_FAILURE_MS);
     } catch (err) {
-      failedLookups.set(id, Date.now());
+      failedLookups.set(id, true, RETRY_AFTER_FAILURE_MS);
       logger.warn('ATTOM background lookup failed', { lookup: id.split(':')[0], error: err.message });
     } finally {
       runningLookups.delete(id);

@@ -21,10 +21,12 @@
 const http2 = require('http2');
 const jwt = require('jsonwebtoken');
 const logger = require('../../utils/logger');
+const { runLimited } = require('../../utils/runLimited');
 
 const PROD_HOST = 'https://api.push.apple.com';
 const SANDBOX_HOST = 'https://api.sandbox.push.apple.com';
 const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_CONCURRENCY = 50;
 // Apple rejects provider tokens older than 1h and throttles minting; we
 // refresh well inside that window and reuse the JWT across sends.
 const TOKEN_TTL_MS = 45 * 60 * 1000;
@@ -141,14 +143,19 @@ function classifyApnsFailure(status, reason) {
 function getSession() {
   const { host } = getConfig();
   if (_session && !_session.closed && !_session.destroyed) return _session;
-  _session = http2.connect(host);
-  _session.on('error', (err) => {
+  const session = http2.connect(host);
+  session.on('error', (err) => {
     logger.warn('APNs HTTP/2 session error', { error: err.message });
-    _session = null;
+    if (_session === session) _session = null;
   });
-  _session.on('close', () => {
-    _session = null;
+  session.on('goaway', (errorCode, lastStreamID) => {
+    logger.warn('APNs HTTP/2 session GOAWAY received — resetting session', { errorCode, lastStreamID });
+    if (_session === session) _session = null;
   });
+  session.on('close', () => {
+    if (_session === session) _session = null;
+  });
+  _session = session;
   return _session;
 }
 
@@ -168,16 +175,24 @@ function sendOne(session, token, payloadString, providerToken, bundleId, collaps
       return;
     }
 
-    const req = session.request({
-      ':method': 'POST',
-      ':path': `/3/device/${encodeURIComponent(token)}`,
-      authorization: `bearer ${providerToken}`,
-      'apns-topic': bundleId,
-      'apns-push-type': 'alert',
-      'apns-priority': '10',
-      ...(collapseId ? { 'apns-collapse-id': collapseId } : {}),
-      'content-type': 'application/json',
-    });
+    let req;
+    try {
+      req = session.request({
+        ':method': 'POST',
+        ':path': `/3/device/${encodeURIComponent(token)}`,
+        authorization: `bearer ${providerToken}`,
+        'apns-topic': bundleId,
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+        ...(collapseId ? { 'apns-collapse-id': collapseId } : {}),
+        'content-type': 'application/json',
+      });
+    } catch (err) {
+      logger.warn('APNs session.request failed — resetting session', { error: err.message });
+      if (_session === session) _session = null;
+      finish({ token, action: 'retry', status: 0 });
+      return;
+    }
 
     let status = 0;
     let raw = '';
@@ -224,16 +239,16 @@ async function sendMany(tokens, message) {
   const { bundleId } = getConfig();
   const providerToken = getProviderToken();
   const payloadString = JSON.stringify(buildPayload(message));
-  const session = getSession();
   // One durable chat delivery retains one OS notification across uncertain retries.
   // Different messages have different IDs and are never collapsed together.
   const id = message?.data?.notificationId;
   const collapseId = ['chat_message', 'business_message'].includes(message?.data?.type)
     && /^[0-9a-f-]{36}$/i.test(id || '') ? id : undefined;
 
-  const results = await Promise.all(
-    tokens.map((token) => sendOne(session, token, payloadString, providerToken, bundleId, collapseId)),
-  );
+  // At most MAX_CONCURRENCY in flight; each send takes the current session, so the ones after Apple closes a
+  // connection go out on the new one, and a send that times out holds back its own slot only.
+  const results = await runLimited(tokens, MAX_CONCURRENCY,
+    (token) => sendOne(getSession(), token, payloadString, providerToken, bundleId, collapseId));
 
   const invalidTokens = results.filter((r) => r.action === 'invalid').map((r) => r.token);
   const acceptedTokens = results.filter((r) => r.action === 'ok').map((r) => r.token);

@@ -6,8 +6,9 @@
  * AI is a finisher, not the foundation — all facts come from source data.
  */
 
-const { getAnthropicClient, resolveEffort, DRAFT_MODEL } = require('../../config/anthropic');
+const { resolveEffort, DRAFT_MODEL } = require('../../config/anthropic');
 const { complete } = require('../ai/llm');
+const { backgroundCall } = require('../ai/background');
 const logger = require('../../utils/logger');
 
 const AI_EFFORT = resolveEffort(process.env.ANTHROPIC_DRAFT_EFFORT, 'low');
@@ -281,13 +282,14 @@ function validateAiOutput(text, signals) {
  * Attempt AI polish of the briefing.
  */
 async function aiPolish(signals, options) {
-  const client = getAnthropicClient();
-  if (!client) return null;
-
   const maxWords = options.maxWords || 45;
 
-  try {
-    const response = await complete({
+  const call = await backgroundCall({
+    userId: options.userId || null,
+    endpoint: 'brief',
+    model: DRAFT_MODEL,
+    promptVersion: 'briefing-polish-v1',
+    run: (client) => complete({
       client,
       model: DRAFT_MODEL,
       system: SYSTEM_PROMPT.replace('{maxWords}', String(maxWords)),
@@ -297,21 +299,21 @@ async function aiPolish(signals, options) {
       // a budget returns empty text and the template wins.
       maxTokens: AI_MAX_TOKENS,
       timeoutMs: AI_TIMEOUT_MS,
-    });
+    }),
+  });
 
-    const text = response.text.trim();
-    const tokensUsed = response.inputTokens + response.outputTokens;
+  if (!call.ok || !call.value) return null;
 
-    if (!validateAiOutput(text, signals)) {
-      logger.warn('briefingComposer: AI validation failed, falling back to template');
-      return null;
-    }
+  const response = call.value;
+  const text = (response.text || '').trim();
+  const tokensUsed = (response.inputTokens || 0) + (response.outputTokens || 0);
 
-    return { text, tokensUsed };
-  } catch (err) {
-    logger.error('briefingComposer: AI polish error', { error: err.message });
+  if (!validateAiOutput(text, signals)) {
+    logger.warn('briefingComposer: AI validation failed, falling back to template');
     return null;
   }
+
+  return { text, tokensUsed };
 }
 
 // ── Main composer ───────────────────────────────────────────────────
@@ -347,15 +349,16 @@ async function composeBriefing(rankedOutput, options = {}) {
 
   if (shouldUseAI) {
     const aiResult = await aiPolish(signals, {
+      userId: options.userId || null,
       maxWords,
       greeting,
-        targetUse,
-        weather: options.weather,
-        leadIntro: options.leadIntro,
-        includeWeatherTemperature: options.includeWeatherTemperature,
-        timezone,
-        now,
-      });
+      targetUse,
+      weather: options.weather,
+      leadIntro: options.leadIntro,
+      includeWeatherTemperature: options.includeWeatherTemperature,
+      timezone,
+      now,
+    });
 
     if (aiResult) {
       logger.debug('briefingComposer: AI polish succeeded', {

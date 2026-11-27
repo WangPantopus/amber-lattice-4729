@@ -31,6 +31,8 @@ const missingSmtpVars = requiredSmtpVars.filter((key) => !process.env[key]);
 if (missingSmtpVars.length === 0) {
   try {
     transporter = nodemailer.createTransport({
+      pool: true,
+      maxConnections: 5,
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '587'),
       secure: process.env.SMTP_SECURE === 'true',

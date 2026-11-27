@@ -18,6 +18,8 @@
  */
 
 const zlib = require('zlib');
+const { promisify } = require('util');
+const gunzipAsync = promisify(zlib.gunzip);
 const logger = require('../../utils/logger');
 const config = require('../../config/propertyRecords');
 const { createReader, createStorage, StorageUnavailable } = require('./reader');
@@ -41,7 +43,7 @@ function pointsReader() {
   return pointsShared;
 }
 
-const gunzipJson = (bytes) => JSON.parse(zlib.gunzipSync(bytes).toString('utf8'));
+const gunzipJson = async (bytes) => JSON.parse((await gunzipAsync(bytes)).toString('utf8'));
 
 /** One structure at this street address, or null: two can't both be this home's. */
 async function structureAt(state, parsed, zip, city) {

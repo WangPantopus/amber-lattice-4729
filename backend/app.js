@@ -75,7 +75,7 @@ const { getSnapshot: getAddressVerificationMetrics } = require('./services/addre
 const chatSocketio = require('./socket/chatSocketio');
 
 // Import background jobs
-const { startJobs } = require('./jobs');
+const { startJobs, stopJobs } = require('./jobs');
 const { initPgBoss, stopPgBoss } = require('./jobs/pgBossManager');
 const { registerPgBossJobs } = require('./jobs/pgBossJobs');
 
@@ -745,16 +745,24 @@ server.listen(PORT, HOST, async () => {
 // agent turn takes up to 45 s, a storage upload up to 60 s.
 const SHUTDOWN_GRACE_MS = 60_000;
 
+let shuttingDown = false;
 const gracefulShutdown = async (signal) => {
+  if (shuttingDown) {
+    logger.info(`${signal} received while shutdown already in progress`);
+    return;
+  }
+  shuttingDown = true;
   logger.info(`${signal} received, starting graceful shutdown`);
 
   // Force shutdown if requests are still running after the grace period
-  setTimeout(() => {
+  const forceTimer = setTimeout(() => {
     logger.error('Forced shutdown due to timeout');
     process.exit(1);
   }, SHUTDOWN_GRACE_MS);
+  forceTimer.unref?.();
 
-  // Stop pg-boss workers first (allows in-flight jobs to complete)
+  // Stop scheduled cron ticks and pg-boss workers first (allows in-flight jobs to complete)
+  stopJobs();
   await stopPgBoss().catch((err) => {
     logger.error('[pg-boss] Error during shutdown:', { error: err.message });
   });
@@ -768,7 +776,14 @@ const gracefulShutdown = async (signal) => {
   // accepting connections and lets running requests finish.
   io.close(() => {
     logger.info('Socket.io and HTTP server closed');
-    process.exit(0);
+    // The push senders and the direct-read pool serve requests, so they close only once the running ones are done:
+    // closed before, a request still running would open a new pool and a new connection to Apple.
+    require('./services/push/apnsClient').close();
+    require('./services/push/fcmClient').close();
+    require('./config/directDb').close().finally(() => {
+      clearTimeout(forceTimer);
+      process.exit(0);
+    });
   });
 };
 

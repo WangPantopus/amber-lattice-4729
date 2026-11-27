@@ -183,13 +183,34 @@ function envFlagEnabled(name, defaultValue = true) {
   return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
+// Job name → when its run in this process started.
+const runningJobs = new Map();
+const activeCronTasks = [];
+// A run older than this no longer holds its job back: a run that never settles (a call
+// that hangs with no timeout) would otherwise keep the job from running until a restart.
+const MAX_OVERLAP_HOLD_MS = 60 * 60 * 1000;
+
 /**
- * Wraps a job function with error handling and timing.
- * Prevents one job crash from killing the whole process.
+ * Wraps a job function with overlap protection, error handling, and timing.
+ * Prevents one job crash from killing the whole process and prevents a slow
+ * cron tick from overlapping itself inside the same process. The API and each
+ * worker hold their own list, so this does not stop two processes running the
+ * same job at once.
  */
 function wrapJob(name, fn) {
   const wrapped = async () => {
     const start = Date.now();
+    const runningSince = runningJobs.get(name);
+    if (runningSince !== undefined) {
+      if (start - runningSince < MAX_OVERLAP_HOLD_MS) {
+        logger.warn(`[CRON] Skipping overlapping run: ${name}`);
+        return;
+      }
+      logger.error(`[CRON] Previous run still not finished, starting anyway: ${name}`, {
+        running_ms: start - runningSince,
+      });
+    }
+    runningJobs.set(name, start);
     // The job's database calls (count, time, slowest), so its load on the database shows in the log.
     const ledger = dbTiming.open();
     logger.info(`[CRON] Starting: ${name}`);
@@ -205,10 +226,26 @@ function wrapJob(name, fn) {
         elapsed_ms: elapsed,
         ...dbTiming.fields(ledger),
       });
+    } finally {
+      if (runningJobs.get(name) === start) runningJobs.delete(name);
     }
   };
   wrapped.jobName = name;
   return wrapped;
+}
+
+/**
+ * Stop all scheduled node-cron tasks (used on graceful shutdown).
+ */
+function stopJobs() {
+  while (activeCronTasks.length > 0) {
+    const task = activeCronTasks.pop();
+    try {
+      task?.stop?.();
+    } catch (err) {
+      logger.warn('[CRON] Error stopping cron task', { error: err.message });
+    }
+  }
 }
 
 /**
@@ -241,7 +278,9 @@ function startJobs(options = {}) {
       return null;
     }
     scheduledJobs.push(jobName);
-    return cron.schedule(expression, task, cronOptions);
+    const scheduled = cron.schedule(expression, task, cronOptions);
+    if (scheduled) activeCronTasks.push(scheduled);
+    return scheduled;
   };
 
   // ─── Authorize Upcoming Gigs ───
@@ -908,6 +947,12 @@ function startJobs(options = {}) {
     timezone: 'UTC',
   });
 
+  // Legacy Expo push receipt drain — every 15 minutes (no-op when PUSH_EXPO_ENABLED=false or queue empty).
+  scheduleCron('6,21,36,51 * * * *', wrapJob('pushCheckReceipts', () => require('../services/pushService').checkReceipts()), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+
   logger.info('[CRON] Background jobs initialized', {
     scheduled_count: scheduledJobs.length,
     skipped_count: skippedJobs.length,
@@ -916,4 +961,4 @@ function startJobs(options = {}) {
   });
 }
 
-module.exports = { startJobs };
+module.exports = { startJobs, stopJobs };

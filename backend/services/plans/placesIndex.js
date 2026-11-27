@@ -26,6 +26,8 @@
  */
 
 const zlib = require('zlib');
+const { promisify } = require('util');
+const gunzipAsync = promisify(zlib.gunzip);
 const logger = require('../../utils/logger');
 const { encodeGeohash } = require('../../utils/geohash');
 const { FORMAT, PRECISION, SELECTORS, decodeElement } = require('./placesIndexFormat');
@@ -132,7 +134,7 @@ function createIndexReader({
     } else {
       const [offset, length] = current.regions[area];
       job = readRange(current.dataUrl, offset, length)
-        .then((bytes) => JSON.parse(zlib.gunzipSync(bytes).toString('utf8')).map(decodeElement));
+        .then(async (bytes) => JSON.parse((await gunzipAsync(bytes)).toString('utf8')).map(decodeElement));
       job.catch(() => areas.delete(key));
     }
     areas.set(key, job);
