@@ -131,6 +131,7 @@ export default function Studio({
   onDone,
   onSwitchedOff,
   retakeOf = null,
+  eyesOnFor = null,
 }: {
   account: string;
   draft?: MomentChatDraft | null;
@@ -140,6 +141,8 @@ export default function Studio({
   onSwitchedOff?(words: MomentChatDraft): void;
   /** Adding a frame to a Retake (CONTRACT 8e): its first picture shows as a ghost to line up with. */
   retakeOf?: { id: string; title: string; ghost: string | null } | null;
+  /** Answering an Eyes-on Ask with a Live photo from the place (CONTRACT 8f). */
+  eyesOnFor?: { id: string; question: string } | null;
 }) {
   const wide = useWide();
   const [files, setFiles] = useState<File[]>([]),
@@ -468,7 +471,7 @@ export default function Studio({
   // A post is one photo or the words. Under a made-up name a post is words only, of its own four kinds, to people
   // nearby (made-up-names contract; LEAD-2 03:03), so there the Studio offers those for the words.
   const kindsOffered =
-    !retakeOf && (underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
+    !retakeOf && !eyesOnFor && (underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
   // Playable items and dots go on a Moment, or on a Pulse post with its one photo (the new Pulse draws them over it,
@@ -568,6 +571,10 @@ export default function Studio({
   }
   // A Retake starts on one photo Moment with its exact place (not the area, not without one), under one's own name.
   const retakeOffered = !retakeOf && mode === 'media' && !!file && !isVideo && files.length === 1 && !underPenName && !noPlace && !area && !postKind;
+  // Eyes on (§8f): an Ask about a picked public place, open six hours to people who are there now.
+  const [eyesOn, setEyesOn] = useState(false);
+  const eyesOnOffered = postKind === 'ask_local' && !underPenName;
+  const eyesOnPlaced = placement === 'place' && venue.startsWith('osm:');
   const retakeOut = retakeOf ? { retake_of: retakeOf.id } : retakeOffered && startRetake && retakeTitle.trim() ? { retake: { title: retakeTitle.trim().slice(0, 60) } } : {};
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
@@ -836,6 +843,7 @@ export default function Studio({
                 : {}),
             ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
             ...(i === 0 ? retakeOut : {}),
+            ...(i === 0 && eyesOnFor ? { eyes_on_for: eyesOnFor.id } : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
               ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
               : {}),
@@ -939,6 +947,7 @@ export default function Studio({
     setError('');
     let posted = false;
     try {
+      if (eyesOnOffered && eyesOn && !eyesOnPlaced) throw new Error('Pick the place you’re asking about.');
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
@@ -955,6 +964,7 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
+          eyes_on?: boolean;
           mentions?: string[];
           play?: Record<string, unknown>[];
           dots?: Record<string, unknown>[];
@@ -1014,6 +1024,7 @@ export default function Studio({
               }
             : {}),
           ...(toExplore ? { explore: true } : {}),
+          ...(eyesOnOffered && eyesOn ? { eyes_on: true } : {}),
           ...(canMention && mentionIds(words, mentioned).length ? { mentions: mentionIds(words, mentioned) } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
@@ -1425,6 +1436,19 @@ export default function Studio({
             </p>
           </div>
         )}
+        {eyesOnOffered && (
+          <div className="st-group" role="group" aria-label="Eyes on">
+            <label className="st-check">
+              <input type="checkbox" checked={eyesOn} onChange={(e) => setEyesOn(e.target.checked)} />
+              Eyes on: ask people who are there now
+            </label>
+            <p className="st-note">
+              {eyesOn && !eyesOnPlaced
+                ? 'Pick the place you’re asking about: choose “Pin it at a place” above.'
+                : 'For six hours, people at this place can answer with a Live photo. Nobody is told who is near it.'}
+            </p>
+          </div>
+        )}
         {retakeOffered && (
           <div className="st-group" role="group" aria-label="Retake">
             <label className="st-check">
@@ -1618,6 +1642,9 @@ export default function Studio({
 
           {!camera && (
             <div className="st-top">
+              {eyesOnFor && (
+                <span className="st-retake-banner">Answering “{eyesOnFor.question}” with a Live photo</span>
+              )}
               {retakeOf && (
                 <button type="button" className="st-retake-banner" aria-pressed={ghostOn} onClick={() => setGhostOn(!ghostOn)}>
                   Adding to “{retakeOf.title}” · {ghostOn ? 'Hide the first picture' : 'Show the first picture'}
