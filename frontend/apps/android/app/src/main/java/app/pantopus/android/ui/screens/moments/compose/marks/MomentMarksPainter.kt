@@ -5,7 +5,6 @@ package app.pantopus.android.ui.screens.moments.compose.marks
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -163,7 +162,7 @@ object MomentMarksPainter {
     ): TextPaint =
         TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             textSize = letters
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = label.font.typeface
             color = letterColor(label).toArgb()
             isLinearText = true
             isSubpixelText = true
