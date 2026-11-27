@@ -73,6 +73,10 @@ struct MomentsStudioBar: View {
     let model: MomentsComposerModel
     /// The first Moment made at home that shows only its area says why, once (`MomentsStudioStage`).
     var explainsHomeArea = false
+    /// "Made-up name" picked before the person has one: the name screen opens (`MomentsStudioStage`).
+    var needsMadeUpName: () -> Void = {}
+    /// The pin's place refuses the made-up name (too few verified homes): Post waits, as in Pulse's composer.
+    var blocksPost = false
     let onPosted: () -> Void
     let openDrawer: () -> Void
 
@@ -80,7 +84,10 @@ struct MomentsStudioBar: View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
             HStack(spacing: Spacing.s2) {
                 audienceChip(.nearby, "Nearby", id: "moments.studio.audience.nearby")
-                audienceChip(.connections, "Friends", id: "moments.studio.audience.friends")
+                audienceChip(.friends, "Friends", id: "moments.studio.audience.friends")
+                if model.offersMadeUpName || model.postsUnderMadeUpName {
+                    audienceChip(.madeUp, "Made-up name", id: "moments.studio.audience.madeUp")
+                }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 10) {
@@ -110,11 +117,17 @@ struct MomentsStudioBar: View {
 
     // MARK: Who sees it
 
-    private func audienceChip(_ value: MomentAudience, _ title: String, id: String) -> some View {
+    private func audienceChip(_ value: MomentsStudioAudience, _ title: String, id: String) -> some View {
         // A Moment with no location goes only to connections: "Nearby" needs a place.
-        let selected = (model.noLocationOn ? .connections : model.audience) == value
-        let usable = !model.noLocationOn || value == .connections
-        return Button { model.audience = value } label: {
+        let selected = model.studioAudience == value
+        let usable = !model.noLocationOn || value == .friends
+        return Button {
+            if value == .madeUp, PenNameStore.shared.penName == nil {
+                needsMadeUpName()
+            } else {
+                model.pickStudioAudience(value)
+            }
+        } label: {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(selected ? Theme.Color.appText : Color.white.opacity(usable ? 1 : 0.4))
@@ -179,7 +192,9 @@ struct MomentsStudioBar: View {
     /// Where it pins, as the Post sheet's place row says it, and "Area · Camas, WA" for one at home that shows only its
     /// area; with "Share later", how long it shows first.
     private var pillPlace: String {
-        let place = Self.showsHomeArea(model) ? "Area · \(homeTown)" : model.placeLine
+        // Under a made-up name it shows over its area too (the server picks it).
+        // Under a made-up name at home it floats over its area too; elsewhere it reads its place.
+        let place = Self.showsHomeArea(model) || model.madeUpFloats ? "Area · \(homeTown)" : model.placeLine
         return model.sharesAt == nil ? place : "\(hoursWords) · \(place)"
     }
 
@@ -214,11 +229,11 @@ struct MomentsStudioBar: View {
             .padding(.horizontal, 22)
             .frame(minHeight: 54)
             .background(Capsule().fill(Theme.Color.primarySolid))
-            .opacity(model.canPost ? 1 : 0.5)
+            .opacity(model.canPost && !blocksPost ? 1 : 0.5)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(!model.canPost)
+        .disabled(!model.canPost || blocksPost)
         .accessibilityLabel(model.postLabel)
         .accessibilityIdentifier("moments.studio.post")
     }

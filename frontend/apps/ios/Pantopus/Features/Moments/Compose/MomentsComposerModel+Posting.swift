@@ -170,6 +170,8 @@ extension MomentsComposerModel {
         // The Live mark and the weather (v4.1, `+Live`): only for the camera's own shot, while it still holds.
         body.takenHere = marks.takenHere
         body.showWeather = marks.showWeather
+        // The Studio's made-up name; left out otherwise, so today's Post sheet sends what it always has.
+        body.postAs = postsUnderMadeUpName ? "pen_name" : nil
         return body
     }
 

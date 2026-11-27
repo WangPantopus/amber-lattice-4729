@@ -13,6 +13,7 @@
 //
 
 import AVFoundation
+import CoreLocation
 import SwiftUI
 
 struct MomentsStudioStage: View {
@@ -23,6 +24,10 @@ struct MomentsStudioStage: View {
     /// This account was told once why a Moment at home shows only its area (`MomentsStudioBar`).
     @AppStorage private var homeAreaExplained: Bool
     @State private var explainedNow = false
+    /// The made-up name screen, when "Made-up name" is picked before there is one.
+    @State private var showsNameScreen = false
+    /// `GET /api/pen-names/check` at the pin, while the made-up name is picked: a refusal or a warning.
+    @State private var madeUpCheck: PenNameCheckResponse?
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -53,11 +58,19 @@ struct MomentsStudioStage: View {
                     .padding(.bottom, Spacing.s3)
             }
             notes
-            MomentsStudioBar(model: model, explainsHomeArea: homeAreaFirstTime, onPosted: onPosted) {
-                writing = false
-                Keyboard.close()
-                showsDrawer = true
+            if model.postsUnderMadeUpName, let penName = PenNameStore.shared.penName {
+                MomentsStudioPostingAs(penName: penName)
+                    .padding(.horizontal, Spacing.s4)
+                    .padding(.bottom, Spacing.s3)
             }
+            MomentsStudioBar(
+                model: model,
+                explainsHomeArea: homeAreaFirstTime,
+                needsMadeUpName: { showsNameScreen = true },
+                blocksPost: model.postsUnderMadeUpName && madeUpCheck?.allowed == false,
+                onPosted: onPosted,
+                openDrawer: openDrawer
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Behind the screen, never part of its layout: a photo that fills the screen is larger than the screen.
@@ -74,6 +87,12 @@ struct MomentsStudioStage: View {
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
         }
+        .sheet(isPresented: $showsNameScreen) {
+            PenNameSetupView { _ in model.pickStudioAudience(.madeUp) }
+        }
+        // Whether the made-up name may be offered (once per app run), and what the pin's place says about it.
+        .task { await PenNameStore.shared.load() }
+        .task(id: MadeUpCheckKey(on: model.postsUnderMadeUpName, pin: model.pin)) { await checkMadeUpPlace() }
         // Shown once: kept for this screen, and remembered for the next.
         .onChange(of: MomentsStudioBar.showsHomeArea(model), initial: true) { _, shows in
             guard shows, !homeAreaExplained else { return }
@@ -82,6 +101,12 @@ struct MomentsStudioStage: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio")
+    }
+
+    private func openDrawer() {
+        writing = false
+        Keyboard.close()
+        showsDrawer = true
     }
 
     /// Back to the camera (or to the text card), as today's Retake: it asks first when marks would be lost.
@@ -155,9 +180,28 @@ struct MomentsStudioStage: View {
         if model.pin == nil, model.locating == .unavailable, !model.noLocationOn {
             lines.append("Turn on location for Pantopus in Settings to post a Moment.")
         }
-        if model.showsHomeNotice { lines.append("This is your home. People will see the pin on it.") }
+        if model.showsHomeNotice, !model.postsUnderMadeUpName { lines.append("This is your home. People will see the pin on it.") }
         if model.parts > 1 { lines.append("This video posts as \(model.parts) Moments, one after another.") }
+        if model.postsUnderMadeUpName, let check = madeUpCheck {
+            if !check.allowed, let refusal = check.refusal {
+                lines.append(refusal.message)
+            } else if let warning = check.warning {
+                lines.append(warning)
+            }
+        }
         return lines
+    }
+
+    /// The pin's place for the made-up name: too few verified homes refuses it, few warns.
+    private func checkMadeUpPlace() async {
+        guard model.postsUnderMadeUpName, let pin = model.pin else {
+            madeUpCheck = nil
+            return
+        }
+        madeUpCheck = try? await APIClient.shared.request(
+            PenNamesEndpoints.check(latitude: pin.latitude, longitude: pin.longitude),
+            as: PenNameCheckResponse.self
+        )
     }
 
     /// A little shade at the top and the bottom, so the X, the tools and the caption read on any picture.
@@ -170,6 +214,19 @@ struct MomentsStudioStage: View {
                 .frame(height: 300)
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// What the made-up name's place check is read again for.
+private struct MadeUpCheckKey: Equatable {
+    let on: Bool
+    let latitude: Double?
+    let longitude: Double?
+
+    init(on: Bool, pin: CLLocationCoordinate2D?) {
+        self.on = on
+        latitude = pin?.latitude
+        longitude = pin?.longitude
     }
 }
 
