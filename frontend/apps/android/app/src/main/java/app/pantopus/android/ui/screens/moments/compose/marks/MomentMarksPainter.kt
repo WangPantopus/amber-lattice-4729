@@ -60,13 +60,18 @@ object MomentMarksPainter {
         shape: Float = width / height,
     ) {
         val ink = CardSignatureInk.paint(multiply = false)
-        for (stroke in marks.strokes) {
-            val pixels = ArrayList<Float>(stroke.points.size)
-            stroke.points.forEachIndexed { at, value -> pixels += value * if (at % 2 == 0) width else height }
-            ink.color = stroke.tint ?: stroke.ink.color.toArgb()
-            // Never thinner than a pixel, even on a small picture.
-            ink.strokeWidth = (stroke.width * width).coerceAtLeast(1f)
-            canvas.drawPath(CardSignatureInk.path(listOf(pixels)), ink)
+        if (marks.strokes.any { it.pen != MomentPen.Marker }) {
+            // "Pulse, reinvented"'s Studio: lines with a highlighter, an arrow or the eraser among them.
+            MomentPensPainter.draw(canvas, marks.strokes, width, height)
+        } else {
+            for (stroke in marks.strokes) {
+                val pixels = ArrayList<Float>(stroke.points.size)
+                stroke.points.forEachIndexed { at, value -> pixels += value * if (at % 2 == 0) width else height }
+                ink.color = stroke.tint ?: stroke.ink.color.toArgb()
+                // Never thinner than a pixel, even on a small picture.
+                ink.strokeWidth = (stroke.width * width).coerceAtLeast(1f)
+                canvas.drawPath(CardSignatureInk.path(listOf(pixels)), ink)
+            }
         }
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
         for (label in marks.labels) {

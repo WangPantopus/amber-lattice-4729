@@ -75,6 +75,8 @@ data class MomentStroke(
     val width: Float,
     /** "Pulse, reinvented"'s Studio: a colour from the photo (ARGB) in place of [ink]; null everywhere else. */
     val tint: Int? = null,
+    /** "Pulse, reinvented"'s Studio: what drew it ([MomentPens]); today's pen everywhere else. */
+    val pen: MomentPen = MomentPen.Marker,
 )
 
 /** One label written on the picture. */
@@ -144,6 +146,9 @@ data class MomentMarksEditing(
     /** "Pulse, reinvented"'s Studio: a colour from the photo for Text and for Draw, in place of the ink; null otherwise. */
     val textTint: Int? = null,
     val drawTint: Int? = null,
+    /** "Pulse, reinvented"'s Studio: Draw's pen, and the eyedropper out; today's pen, and never out, everywhere else. */
+    val pen: MomentPen = MomentPen.Marker,
+    val dropping: Boolean = false,
 ) {
     /** The marks as Done keeps them. */
     val result: MomentMarks get() = marks.kept
@@ -165,7 +170,7 @@ data class MomentMarksEditing(
         if (points.size < 2 || marks.strokes.size >= MomentMarkRules.MAX_STROKES) {
             this
         } else {
-            copy(marks = marks.copy(strokes = marks.strokes + MomentStroke(points, ink, width, tint = drawTint)))
+            copy(marks = marks.copy(strokes = marks.strokes + line(points, width)))
         }
 
     /** Undo: the last line goes. */

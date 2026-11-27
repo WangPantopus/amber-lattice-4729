@@ -318,7 +318,7 @@ internal fun MomentsMarksEditor(
                 val keyboard = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
                 TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }), studio = studio, photo = photo)
             }
-            MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools, photo)
+            MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools, photo, studio = studio)
             MomentMarksTool.Resize ->
                 ResizeTools(
                     editing,
@@ -350,15 +350,24 @@ private fun DrawTools(
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     modifier: Modifier,
     photo: List<Int> = emptyList(),
+    // "Pulse, reinvented"'s Studio: the pens over the inks, and the eyedropper after the photo's colours.
+    studio: Boolean = false,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        MarksHint("Draw with your finger.")
+        MarksHint(drawHint(editing))
         Spacer(Modifier.height(Spacing.s3))
-        Inks(picked = editing.ink, onPick = {
-                ink ->
-            onEdit { it.copy(ink = ink, drawTint = null) }
-        }, group = "Ink color", picking = editing.drawTint)
-        PhotoColors(photo = photo, picked = editing.drawTint, onPick = { color -> onEdit { it.copy(drawTint = color) } })
+        if (studio) {
+            StudioPens(picked = editing.pen, dropping = editing.dropping, onPick = { pen -> onEdit { it.penned(pen) } })
+            Spacer(Modifier.height(Spacing.s2))
+        }
+        Inks(picked = editing.ink, onPick = { ink -> onEdit { it.inkedLines(ink) } }, group = "Ink color", picking = editing.drawTint)
+        PhotoColors(
+            photo = photo,
+            picked = editing.drawTint,
+            onPick = { color -> onEdit { it.tintedLines(color) } },
+            dropping = editing.dropping.takeIf { studio },
+            onDropper = { onEdit { it.copy(dropping = !it.dropping) } },
+        )
     }
 }
 
@@ -507,6 +516,12 @@ private fun MarksCanvas(
             )
             TopBarLine(MomentMarkRules.labelBox(surface.width, surface.height).top)
             if (text) TextLabels(editing, frame, onEdit)
+            // "Pulse, reinvented"'s Studio: the eyedropper out, over the picture and its labels.
+            if (editing.dropping) {
+                MarksDropper(picture, editing.shownPlacement(pictureSize), backdrop, surface, Size(drawnWidth, drawnHeight)) { color ->
+                    onEdit { it.dropped(color) }
+                }
+            }
         }
         if (editing.tool == MomentMarksTool.Resize) {
             ResizeLayer(editing, pictureSize, Size(frameWidth, frameHeight), onEdit, Modifier.matchParentSize(), video = video != null)
@@ -694,9 +709,7 @@ private fun MarksPicture(
             if (live.isEmpty()) {
                 editing.marks
             } else {
-                editing.marks.copy(
-                    strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth, tint = editing.drawTint),
-                )
+                editing.marks.copy(strokes = editing.marks.strokes + editing.line(live.toList(), lineWidth))
             }
         // The picture's exact drawn size (the canvas is whole pixels), so labels lay out from its exact shape.
         drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, drawn.width, drawn.height, skip = typed) }

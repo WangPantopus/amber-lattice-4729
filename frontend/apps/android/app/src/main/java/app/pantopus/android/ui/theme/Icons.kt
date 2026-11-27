@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -738,6 +739,12 @@ enum class PantopusIcon(
 
     // Moment marks (Text and Draw, board T3): Draw's Undo is Lucide `undo` (Material `Undo`, SF `arrow.uturn.backward`).
     Undo("undo"),
+
+    // "Pulse, reinvented"'s Studio, Draw: the highlighter and the eraser (Lucide `highlighter` / `eraser`, drawn as
+    // Lucide's strokes) and the eyedropper (Lucide `pipette`, Material `Colorize`); SF `highlighter`, `eraser`, `eyedropper`.
+    Highlighter("highlighter"),
+    Eraser("eraser"),
+    Pipette("pipette"),
     ;
 
     companion object {
@@ -1116,6 +1123,9 @@ internal fun PantopusIcon.source(): IconSource =
         PantopusIcon.Keyboard -> IconSource.Material(Icons.Filled.Keyboard)
         PantopusIcon.Undo2 -> IconSource.Material(Icons.AutoMirrored.Filled.ArrowBack)
         PantopusIcon.Undo -> IconSource.Material(Icons.AutoMirrored.Filled.Undo)
+        PantopusIcon.Highlighter -> IconSource.Drawable(R.drawable.ic_lucide_highlighter)
+        PantopusIcon.Eraser -> IconSource.Drawable(R.drawable.ic_lucide_eraser)
+        PantopusIcon.Pipette -> IconSource.Material(Icons.Filled.Colorize)
         // A17.9 Party — Material ships direct glyphs for all but
         // `cloud-sun` (which uses Material's `WbSunny` sun-with-rays as the
         // closest weather analogue) and `shirt` (which uses `Checkroom`'s

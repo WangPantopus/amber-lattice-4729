@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lucide "eraser": the Studio's eraser in Draw ("Pulse, reinvented"; SF Symbol `eraser` on iPhone). Three strokes, as
+  in Lucide's SVG. Black, so the icon tint takes over.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M7,21 L2.7,16.7 C1.7,15.7 1.7,14.2 2.7,13.3 L12.3,3.7 C13.3,2.7 14.8,2.7 15.7,3.7 L21.3,9.3 C22.3,10.3 22.3,11.8 21.3,12.7 L13,21"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M22,21 L7,21"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M5,11 L14,20"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+</vector>

@@ -76,23 +76,26 @@ internal fun StudioLetterings(
 }
 
 /**
- * "From your photo" under the six inks (LEAD-2 01:30): up to five colours the picture holds. Nothing when there are
- * none (today's composer passes none).
+ * "From your photo" under the six inks (LEAD-2 01:30): up to five colours the picture holds, a colour taken with the
+ * eyedropper that isn't one of them, and the eyedropper ([dropping]: out or not; null, none). Nothing when there are
+ * no colours and no eyedropper (today's composer passes neither).
  */
 @Composable
 internal fun PhotoColors(
     photo: List<Int>,
     picked: Int?,
     onPick: (Int) -> Unit,
+    dropping: Boolean? = null,
+    onDropper: () -> Unit = {},
 ) {
-    if (photo.isEmpty()) return
+    if (photo.isEmpty() && dropping == null) return
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = Spacing.s2)) {
         Text(text = "From your photo", color = Color.White, fontSize = 12.sp)
         Row(
             modifier = Modifier.padding(top = Spacing.s1).semantics { contentDescription = "From your photo" },
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            photo.forEach { color ->
+            (photo + listOfNotNull(picked?.takeIf { dropping != null && it !in photo })).forEach { color ->
                 val on = color == picked
                 Box(
                     modifier =
@@ -117,6 +120,7 @@ internal fun PhotoColors(
                     )
                 }
             }
+            dropping?.let { out -> DropperButton(out = out, onTap = onDropper) }
         }
     }
 }
