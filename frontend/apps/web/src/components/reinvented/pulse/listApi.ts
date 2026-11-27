@@ -4,7 +4,7 @@
 
 import { get } from '@pantopus/api/client';
 import type { Post } from '@pantopus/api';
-import type { Moment } from '@pantopus/api/endpoints/moments';
+import type { Moment, Ring } from '@pantopus/api/endpoints/moments';
 import type { ShownStamp } from '../stamps/stampTypes';
 
 export type Reach = 'close' | 'around';
@@ -80,4 +80,78 @@ export function timeLeft(expiresAt: string | null | undefined, now: number): str
 /** "Live from here" holds while the author is still where they took it (today's Live mark: `taken_here`, `live_until`). */
 export function isLiveHere(m: Pick<Moment, 'taken_here' | 'live_until'>, now: number): boolean {
   return m.taken_here === true && Date.parse(m.live_until || '') > now;
+}
+
+// ── The one map (coord/CONTRACT.md §6b): rings are Moments, marks are posts that stay, tickets are plans ──
+
+export type MapTime = 'all' | 'week' | 'today' | 'live' | 'tonight' | 'weekend';
+/** The time row, back on the left and forward on the right, Live between them. */
+export const MAP_TIMES: readonly MapTime[] = ['all', 'week', 'today', 'live', 'tonight', 'weekend'];
+export const MAP_TIME_WORDS: Record<MapTime, string> = {
+  all: 'All time',
+  week: 'This week',
+  today: 'Today',
+  live: 'Live',
+  tonight: 'Tonight',
+  weekend: 'This weekend',
+};
+
+export interface MapMark {
+  id: string;
+  latitude: number;
+  longitude: number;
+  heads_up: boolean;
+  post: Post;
+}
+
+export interface MapTicket {
+  layer_type: 'plan';
+  id: string;
+  kind: string;
+  latitude: number;
+  longitude: number;
+  precision?: string;
+  title: string;
+  starts_at: string;
+  ends_at?: string | null;
+  timezone?: string | null;
+  area_label?: string | null;
+  going_count?: number;
+  spots_left?: number | null;
+  is_full?: boolean;
+  state?: string;
+}
+
+export interface MapData {
+  time: MapTime;
+  rings: Ring[];
+  marks: MapMark[];
+  tickets: MapTicket[];
+}
+
+export interface Box {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+export function readMap(box: Box, time: MapTime, signal?: AbortSignal): Promise<MapData> {
+  return get<MapData>('/api/reinvented/map', { ...box, time }, { signal });
+}
+
+/** A plan's time as its ticket says it: "Now", "Tonight 6", "Today 10", "Sat 9". */
+export function ticketWhen(t: MapTicket, now: number): string {
+  const start = Date.parse(t.starts_at);
+  const end = Date.parse(t.ends_at || '');
+  if (!Number.isFinite(start)) return 'Plan';
+  if (start <= now && (!Number.isFinite(end) || end > now)) return 'Now';
+  const zone = t.timezone || undefined;
+  const day = (ms: number) => new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit', weekday: 'short', hour12: true }).formatToParts(start);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const hour24 = Number(new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', hourCycle: 'h23' }).format(start));
+  const clock = part('minute') === '00' ? part('hour') : `${part('hour')}:${part('minute')}`;
+  if (day(start) === day(now)) return `${hour24 >= 17 ? 'Tonight' : 'Today'} ${clock}`;
+  return `${part('weekday')} ${clock}`;
 }

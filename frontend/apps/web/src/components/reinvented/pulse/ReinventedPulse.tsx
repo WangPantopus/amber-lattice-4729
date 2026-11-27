@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ChevronDown, LocateFixed } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { Post } from '@pantopus/api';
@@ -18,10 +18,12 @@ import { useMyHomeCenter } from '@/lib/myHomes';
 import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostReactions';
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
-import { CHIP_WORDS, isChip, readList, type Chip, type ListItem, type ListPage, type Point, type Reach } from './listApi';
+import { CHIP_WORDS, isChip, readList, readMap, type Box, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
+import { PeekDeck, TimeRow } from './MapDeck';
+import { pinsOf, roundBox, type Pin } from './pins';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -31,8 +33,6 @@ const MomentViewer = dynamic(() => import('@/components/moments/MomentViewer'), 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
 const DOWN: Record<Height, Height> = { list: 'middle', middle: 'map', map: 'map' };
-/** How much of the map the list covers at each height, on a phone (pulse.css keeps the same numbers). */
-const COVERED: Record<Height, number> = { middle: 0.64, list: 1, map: 0.25 };
 
 const REACH_WORDS: Record<Reach, { name: string; line: string }> = {
   close: { name: 'Close circle', line: 'People you’re connected with. Newest first.' },
@@ -53,7 +53,10 @@ export default function ReinventedPulse() {
   const [height, setHeight] = useState<Height>('middle');
   const [point, setPoint] = useState<Point | null>(null);
   const [locating, setLocating] = useState<'idle' | 'busy' | 'refused'>('idle');
-  const [viewing, setViewing] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; ids: string[] } | null>(null);
+  const [time, setTime] = useState<MapTime>('live');
+  const [box, setBox] = useState<Box | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [fly, setFly] = useState<FlyTarget | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -92,6 +95,21 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (list.error && isSwitchedOff(list.error)) void reread();
   }, [list.error, reread]);
+
+  // The map's own read for the box in view and the time row's choice (CONTRACT §6b); it follows the list's first page.
+  const map = useQuery({
+    queryKey: ['reinvented', 'map', account, time, box],
+    queryFn: ({ signal }) => readMap(box!, time, signal),
+    enabled: !!account && !!box,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: (count, error) => !isSwitchedOff(error) && count < 1,
+  });
+  useEffect(() => {
+    if (map.error && isSwitchedOff(map.error)) void reread();
+  }, [map.error, reread]);
+  const pins = useMemo(() => pinsOf(map.data), [map.data]);
+  const onBox = useCallback((b: Box) => setBox(roundBox(b)), []);
 
   const pages = list.data?.pages;
   const first = pages?.[0];
@@ -226,10 +244,43 @@ export default function ReinventedPulse() {
 
   // ── Moments ──
   const momentIds = useMemo(() => items.filter((it) => it.type === 'moment').map((it) => it.id), [items]);
+  const openMoment = useCallback((id: string) => setViewing({ id, ids: momentIds.includes(id) ? momentIds : [id] }), [momentIds]);
   const flyTo = useCallback((p: Point) => {
     setFly({ ...p, serial: Date.now() });
     setHeight((h) => (h === 'list' ? 'middle' : h));
   }, []);
+
+  // ── The map's pins and the peek deck ──
+  const openPin = useCallback(
+    (pin: Pin) => {
+      if (pin.type === 'ring') {
+        const ids = pin.ring.moments.map((m) => m.id);
+        if (!ids.length) return;
+        const start = pin.ring.moments.find((m) => !m.seen)?.id || ids[0];
+        setViewing({ id: start, ids });
+      } else if (pin.type === 'mark') openPost(pin.mark.post.id);
+      else router.push(`/app/plans/${encodeURIComponent(pin.ticket.id)}`);
+    },
+    [openPost, router],
+  );
+  // At the Map height a pin chosen on the map brings its card up (a second tap opens it); elsewhere a tap opens it.
+  const onPick = useCallback(
+    (key: string) => {
+      const pin = pins.find((p) => p.key === key);
+      if (!pin) return;
+      if (height === 'map' && selected !== key) setSelected(key);
+      else openPin(pin);
+    },
+    [pins, height, selected, openPin],
+  );
+  const onDeckSelect = useCallback(
+    (key: string) => {
+      setSelected(key);
+      const pin = pins.find((p) => p.key === key);
+      if (pin) setFly({ ...pin.point, serial: Date.now(), keepZoom: true });
+    },
+    [pins],
+  );
 
   // ── The list's three heights: pulled by the handle, or set by the switch ──
   const pull = useRef<{ y: number; moved: boolean } | null>(null);
@@ -266,19 +317,86 @@ export default function ReinventedPulse() {
   const fallback = point ?? (home ? { latitude: home.lat, longitude: home.lng } : null);
   let prevBand: string | null = null;
 
+  const head = (
+    <header className="rp-head">
+      <div className="rp-scope-wrap">
+        <button
+          type="button"
+          className="rp-scope"
+          aria-haspopup="menu"
+          aria-expanded={scopeOpen}
+          onClick={() => setScopeOpen((o) => !o)}
+        >
+          <span className="rp-scope-dot" aria-hidden />
+          <strong>{placeName}</strong>
+          <span className="rp-scope-reach">{REACH_WORDS[reach].name}</span>
+          <ChevronDown size={16} aria-hidden />
+        </button>
+        {scopeOpen && (
+          <div className="rp-scope-menu" role="menu" aria-label="What Pulse shows">
+            {(['close', 'around'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="menuitemradio"
+                aria-checked={reach === r}
+                onClick={() => {
+                  setReach(r);
+                  setChip('all');
+                  setScopeOpen(false);
+                }}
+              >
+                <strong>{REACH_WORDS[r].name}</strong>
+                <span>{REACH_WORDS[r].line}</span>
+              </button>
+            ))}
+            <p className="rp-scope-note">No hidden ranking.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="rp-switch" role="group" aria-label="List or map">
+        <button type="button" aria-pressed={height !== 'map'} data-lit={height !== 'map' || undefined} onClick={() => pick('list')}>
+          List
+        </button>
+        <button type="button" aria-pressed={height !== 'list'} data-lit={height !== 'list' || undefined} onClick={() => pick('map')}>
+          Map
+        </button>
+      </div>
+
+      {chips.length > 1 && (
+        <div className="rp-chips" role="group" aria-label="Show">
+          {chips.map((c) => (
+            <button key={c} type="button" aria-pressed={chip === c} onClick={() => setChip(c)}>
+              {CHIP_WORDS[c]}
+            </button>
+          ))}
+        </div>
+      )}
+    </header>
+  );
+
   return (
     <div className="rp-board" data-height={height}>
       <div className="rp-map-layer" aria-hidden={height === 'list' || undefined}>
         <PulseMap
-          items={items}
+          pins={pins}
+          listItems={first?.items ?? []}
           fitKey={fitKey}
           fallback={fallback}
-          coveredBelow={sideBySide ? 0 : COVERED[height]}
+          layoutKey={`${height}|${sideBySide}`}
           flyTo={fly}
-          onOpenMoment={setViewing}
-          onOpenPost={openPost}
+          selected={selected}
+          onBox={onBox}
+          onPick={onPick}
         />
       </div>
+      {height === 'map' && <div className="rp-map-top">{head}</div>}
+      {sideBySide && height === 'middle' && (
+        <div className="rp-map-time">
+          <TimeRow time={time} onTime={setTime} />
+        </div>
+      )}
 
       <section className="rp-sheet" aria-label="Pulse">
         <div
@@ -300,64 +418,21 @@ export default function ReinventedPulse() {
           <span />
         </div>
 
-        <header className="rp-head">
-          <div className="rp-scope-wrap">
-            <button
-              type="button"
-              className="rp-scope"
-              aria-haspopup="menu"
-              aria-expanded={scopeOpen}
-              onClick={() => setScopeOpen((o) => !o)}
-            >
-              <span className="rp-scope-dot" aria-hidden />
-              <strong>{placeName}</strong>
-              <span className="rp-scope-reach">{REACH_WORDS[reach].name}</span>
-              <ChevronDown size={16} aria-hidden />
-            </button>
-            {scopeOpen && (
-              <div className="rp-scope-menu" role="menu" aria-label="What Pulse shows">
-                {(['close', 'around'] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={reach === r}
-                    onClick={() => {
-                      setReach(r);
-                      setChip('all');
-                      setScopeOpen(false);
-                    }}
-                  >
-                    <strong>{REACH_WORDS[r].name}</strong>
-                    <span>{REACH_WORDS[r].line}</span>
-                  </button>
-                ))}
-                <p className="rp-scope-note">No hidden ranking.</p>
-              </div>
+        {height !== 'map' && head}
+
+        {height === 'map' && (
+          <div className="rp-map-bottom">
+            <TimeRow time={time} onTime={setTime} />
+            {map.isError && !isSwitchedOff(map.error) ? (
+              <p className="rp-deck-empty">The map couldn’t load. Move it to try again.</p>
+            ) : map.data ? (
+              <PeekDeck pins={pins} selected={selected} now={now} onSelect={onDeckSelect} onOpen={openPin} />
+            ) : (
+              <p className="rp-deck-empty">Loading the map…</p>
             )}
           </div>
-
-          <div className="rp-switch" role="group" aria-label="List or map">
-            <button type="button" aria-pressed={height !== 'map'} data-lit={height !== 'map' || undefined} onClick={() => pick('list')}>
-              List
-            </button>
-            <button type="button" aria-pressed={height !== 'list'} data-lit={height !== 'list' || undefined} onClick={() => pick('map')}>
-              Map
-            </button>
-          </div>
-
-          {chips.length > 1 && (
-            <div className="rp-chips" role="group" aria-label="Show">
-              {chips.map((c) => (
-                <button key={c} type="button" aria-pressed={chip === c} onClick={() => setChip(c)}>
-                  {CHIP_WORDS[c]}
-                </button>
-              ))}
-            </div>
-          )}
-        </header>
-
-        <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined}>
+        )}
+        <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
           {list.isPending ? (
             <div className="rp-skeleton" role="status" aria-label="Loading Pulse">
               <span />
@@ -416,7 +491,7 @@ export default function ReinventedPulse() {
                         </p>
                       )}
                       {item.type === 'moment' ? (
-                        <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={setViewing} onPlace={flyTo} />
+                        <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={openMoment} onPlace={flyTo} />
                       ) : (
                         <PostRow
                           post={item.post}
@@ -445,13 +520,13 @@ export default function ReinventedPulse() {
 
       {viewing && account && (
         <MomentViewer
-          key={viewing}
-          id={viewing}
+          key={viewing.id}
+          id={viewing.id}
           account={account}
-          ids={momentIds.includes(viewing) ? momentIds : [viewing]}
+          ids={viewing.ids}
           wide={false}
           onClose={() => setViewing(null)}
-          onSelect={setViewing}
+          onSelect={(id) => setViewing((v) => (v ? { ...v, id } : v))}
           onSeen={() => undefined}
           onWatchedPlace={() => undefined}
           onRemove={(id) => {
