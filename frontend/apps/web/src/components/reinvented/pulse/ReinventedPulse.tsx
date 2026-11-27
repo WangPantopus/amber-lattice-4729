@@ -25,6 +25,7 @@ import { itemPoint, type FlyTarget } from './PulseMap';
 import { PeekDeck, TimeRow } from './MapDeck';
 import { pinsOf, roundBox, type Pin } from './pins';
 import AliveStrip from './AliveStrip';
+import ReachDial from './ReachDial';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -35,10 +36,7 @@ type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
 const DOWN: Record<Height, Height> = { list: 'middle', middle: 'map', map: 'map' };
 
-const REACH_WORDS: Record<Reach, { name: string; line: string }> = {
-  close: { name: 'Close circle', line: 'People you’re connected with. Newest first.' },
-  around: { name: 'Around me', line: 'Within 25 miles of your place. Nearest first, newest first inside each distance.' },
-};
+const REACH_NAMES: Record<Reach, string> = { close: 'Close circle', around: 'Around me' };
 
 type ListData = InfiniteData<ListPage, string | null>;
 
@@ -60,6 +58,8 @@ export default function ReinventedPulse() {
   const [selected, setSelected] = useState<string | null>(null);
   const [fly, setFly] = useState<FlyTarget | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
+  const closeDial = useCallback(() => setScopeOpen(false), []);
+  const [miles, setMiles] = useState(25);
   const [toast, setToast] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [now, setNow] = useState(Date.now);
@@ -82,10 +82,10 @@ export default function ReinventedPulse() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const key = useMemo(() => ['reinvented', 'list', account, reach, chip, point?.latitude ?? null, point?.longitude ?? null] as const, [account, reach, chip, point]);
+  const key = useMemo(() => ['reinvented', 'list', account, reach, reach === 'around' ? miles : null, chip, point?.latitude ?? null, point?.longitude ?? null] as const, [account, reach, miles, chip, point]);
   const list = useInfiniteQuery({
     queryKey: key,
-    queryFn: ({ pageParam, signal }) => readList({ reach, chip, cursor: pageParam, point }, signal),
+    queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip, cursor: pageParam, point }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: !!account,
@@ -326,7 +326,7 @@ export default function ReinventedPulse() {
   };
 
   const placeName = reach === 'close' ? 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
-  const fitKey = `${reach}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${list.dataUpdatedAt ? 'read' : ''}`;
+  const fitKey = `${reach}|${miles}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${list.dataUpdatedAt ? 'read' : ''}`;
   const fallback = point ?? (home ? { latitude: home.lat, longitude: home.lng } : null);
   let prevBand: string | null = null;
 
@@ -336,35 +336,27 @@ export default function ReinventedPulse() {
         <button
           type="button"
           className="rp-scope"
-          aria-haspopup="menu"
+          aria-haspopup="dialog"
           aria-expanded={scopeOpen}
           onClick={() => setScopeOpen((o) => !o)}
         >
           <span className="rp-scope-dot" aria-hidden />
           <strong>{placeName}</strong>
-          <span className="rp-scope-reach">{REACH_WORDS[reach].name}</span>
+          <span className="rp-scope-reach">{reach === 'around' && miles < 25 ? `${REACH_NAMES.around} · ${miles} mi` : REACH_NAMES[reach]}</span>
           <ChevronDown size={16} aria-hidden />
         </button>
         {scopeOpen && (
-          <div className="rp-scope-menu" role="menu" aria-label="What Pulse shows">
-            {(['close', 'around'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                role="menuitemradio"
-                aria-checked={reach === r}
-                onClick={() => {
-                  setReach(r);
-                  setChip('all');
-                  setScopeOpen(false);
-                }}
-              >
-                <strong>{REACH_WORDS[r].name}</strong>
-                <span>{REACH_WORDS[r].line}</span>
-              </button>
-            ))}
-            <p className="rp-scope-note">No hidden ranking.</p>
-          </div>
+          <ReachDial
+            reach={reach}
+            miles={miles}
+            place={first?.place?.label ?? null}
+            onReach={(r) => {
+              if (r !== reach) setChip('all');
+              setReach(r);
+            }}
+            onMiles={setMiles}
+            onClose={closeDial}
+          />
         )}
       </div>
 
