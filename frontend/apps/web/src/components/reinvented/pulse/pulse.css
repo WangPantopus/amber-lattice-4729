@@ -573,7 +573,7 @@
 }
 .rp-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 4px;
   padding: 4px;
   border-radius: 14px;
@@ -1117,4 +1117,116 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── My Atlas ── */
+.rp-atlas {
+  display: grid;
+  gap: 14px;
+}
+.rp-atlas-note {
+  margin: 0;
+  color: var(--rp-muted);
+  font-size: 13px;
+}
+.rp-atlas-day {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.rp-atlas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+}
+.rp-atlas-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--rp-wash);
+}
+.rp-atlas-card img,
+.rp-atlas-item-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rp-atlas-card-text {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.rp-atlas-card-time {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #0009;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rp-ring-kept {
+  background: #6d28d9;
+}
+.rp-atlas-scrim {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #000a;
+}
+.rp-atlas-item {
+  display: grid;
+  gap: 12px;
+  width: min(420px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: 20px;
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+  outline: none;
+}
+.rp-atlas-item-picture {
+  display: grid;
+  aspect-ratio: 3 / 4;
+  max-height: 52dvh;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--rp-wash);
+}
+.rp-atlas-item-picture .rp-atlas-card-text {
+  font-size: 18px;
+}
+.rp-atlas-item-words {
+  display: grid;
+  gap: 2px;
+}
+.rp-atlas-item-words p {
+  margin: 6px 0 0;
+}
+.rp-atlas-ask p {
+  margin: 0 0 10px;
+}
+.rp-atlas-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 14px;
+}
+.rp-button-danger {
+  background: #b42318;
 }
