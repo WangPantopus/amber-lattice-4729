@@ -8,8 +8,10 @@
 //  right, the caption is written on the picture, and one bar at the bottom
 //  holds who sees it, a pill with how long it shows and where, and Post. The
 //  pill opens a drawer with every row of today's Post sheet
-//  (`MomentsStudioDrawer`). It posts through the composer's model, exactly as
-//  today's Post sheet does.
+//  (`MomentsStudioDrawer`), and Stamps and Play opens the tray of stamps
+//  Pantopus checked (`MomentsStudioTray`), placed on the picture as objects
+//  (`MomentsStudioStamps`). It posts through the composer's model, exactly as
+//  today's Post sheet does, with the stamps' places.
 //
 
 import AVFoundation
@@ -28,6 +30,9 @@ struct MomentsStudioStage: View {
     @State private var showsNameScreen = false
     /// `GET /api/pen-names/check` at the pin, while the made-up name is picked: a refusal or a warning.
     @State private var madeUpCheck: PenNameCheckResponse?
+    /// The stamps' values for this spot and the one picked on the picture (step 3).
+    @State private var stamps = MomentsStudioStamps()
+    @State private var showsTray = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -47,7 +52,7 @@ struct MomentsStudioStage: View {
             HStack(alignment: .top) {
                 closeButton
                 Spacer(minLength: Spacing.s2)
-                MomentsStudioRail(model: model)
+                MomentsStudioRail(model: model, openTray: openTray)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
@@ -75,10 +80,14 @@ struct MomentsStudioStage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Behind the screen, never part of its layout: a photo that fills the screen is larger than the screen.
         .background {
-            MomentsStudioPicture(model: model)
-                .overlay { legibility }
-                .clipped()
-                .ignoresSafeArea()
+            ZStack {
+                MomentsStudioPicture(model: model)
+                    .overlay { legibility }
+                    .clipped()
+                // The stamps sit on the picture, under the X, the tools, the caption and the bar.
+                MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
+            }
+            .ignoresSafeArea()
         }
         .sheet(isPresented: $showsDrawer) {
             MomentsStudioDrawer(model: model) { showsDrawer = false }
@@ -86,6 +95,17 @@ struct MomentsStudioStage: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
+        }
+        .sheet(isPresented: $showsTray) {
+            MomentsStudioTray(model: model, stamps: stamps) { showsTray = false }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
+                .environment(\.colorScheme, .dark)
+        }
+        // A new spot (a picked place moves no pin; another photo's own place does): the tray reads it again.
+        .task(id: StampSpotKey(pin: model.basePin)) {
+            if model.basePin != nil { await stamps.read(model: model) }
         }
         .sheet(isPresented: $showsNameScreen) {
             PenNameSetupView { _ in model.pickStudioAudience(.madeUp) }
@@ -101,6 +121,23 @@ struct MomentsStudioStage: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio")
+    }
+
+    private func openTray() {
+        writing = false
+        Keyboard.close()
+        showsTray = true
+    }
+
+    /// The picture the stamps are placed on: the photo or the video as it is; once placed on a canvas (Resize), or for a
+    /// text card, the screen-filling canvas itself.
+    private var stampPicture: CGSize? {
+        guard model.marking.placement == nil else { return nil }
+        switch model.draft {
+        case let .photo(image): return image.size
+        case .video: return model.marking.video?.size
+        case .text, nil: return nil
+        }
     }
 
     private func openDrawer() {
@@ -214,6 +251,17 @@ struct MomentsStudioStage: View {
                 .frame(height: 300)
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// The spot the tray's stamps are read for.
+private struct StampSpotKey: Equatable {
+    let latitude: Double?
+    let longitude: Double?
+
+    init(pin: CLLocationCoordinate2D?) {
+        latitude = pin?.latitude
+        longitude = pin?.longitude
     }
 }
 

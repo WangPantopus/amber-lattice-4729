@@ -61,6 +61,8 @@ extension MomentsComposerModel {
             // Away from home the server takes a made-up name's Moment only at a public place (`pin: "place"`): the
             // one that names the spot, which the drawer can change. At home it floats over its area.
             if place?.atHome != true, sky?.canPin == true, sky?.place != nil || pickedVenue != nil { pinsAtPlace = true }
+            // Nor a stamp that says how high or how far from home.
+            studioStamps.removeAll { MomentsStudioStamps.notUnderMadeUpName.contains($0.kind) }
         }
         error = nil
     }

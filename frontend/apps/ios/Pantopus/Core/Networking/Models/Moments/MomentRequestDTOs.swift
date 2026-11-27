@@ -85,6 +85,11 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     /// `"pen_name"`: posted under the person's made-up name (`docs/product/made-up-names/README.md`, "Moments"); left
     /// out for the person's own name.
     public var postAs: String?
+    /// The Studio's stamps ("Pulse, reinvented", CONTRACT 2b): where each sits; the server fills their values. Left out
+    /// when none were placed.
+    public var stamps: [MomentStampPlacement]?
+    /// The phone's height for an elevation stamp (CONTRACT 2b), apart from `altitude` ("Show elevation").
+    public var elevation: MomentAltitudeBody?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
@@ -92,6 +97,7 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
         case takenHere = "taken_here"
         case showWeather = "show_weather"
         case postAs = "post_as"
+        case stamps, elevation
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

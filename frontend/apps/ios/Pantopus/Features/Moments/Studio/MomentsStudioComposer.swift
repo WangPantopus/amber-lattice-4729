@@ -41,7 +41,11 @@ struct MomentsComposerChoice: View {
         }
         // Today's composer knows nothing of a made-up name: going back, the Moment is the person's own again.
         .onChange(of: reinvented.isOn) { _, isOn in
-            if !isOn { request.model.postsUnderMadeUpName = false }
+            if !isOn {
+                request.model.postsUnderMadeUpName = false
+                // Nor stamps: today's server refuses them while the switch is off.
+                request.model.studioStamps = []
+            }
         }
     }
 }
@@ -90,6 +94,11 @@ struct MomentsStudioComposer: View {
         }
         .environment(\.momentsDuoScreen, duo)
         .onAppear { Task { await model.start() } }
+        // Back to the camera, or on to the next of several picked together: the stamps were that picture's.
+        .onChange(of: model.draft == nil) { _, gone in
+            if gone { model.studioStamps = [] }
+        }
+        .onChange(of: model.waiting.count) { _, _ in model.studioStamps = [] }
         .onChange(of: model.wantsCamera, initial: true) { _, wants in
             if wants {
                 Task { await model.camera.start() }
