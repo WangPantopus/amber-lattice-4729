@@ -124,7 +124,7 @@ function wordsOf(items) {
 
 // ─── Dots: living objects (CONTRACT 7c) ─────────────────────────────────────
 
-const DOT_KINDS = ['note', 'rating', 'link', 'thing'];
+const DOT_KINDS = ['note', 'rating', 'link', 'thing', 'whisper'];
 const MAX_DOTS = 8;
 // A dot's answers (a field card's correction, a collect) are kept under `c-<id>` and `k-<id>` (dotItem), so a dot's id
 // leaves room for the prefix, and a play item's id never starts with one.
@@ -143,6 +143,8 @@ const DOT_SCHEMAS = {
     url: Joi.string().trim().max(500).uri({ scheme: ['https'] }).required(),
     title: Joi.string().trim().max(60).allow('', null),
   }),
+  // A three-second voice whisper (CONTRACT 7e): its sound is uploaded after posting (POST /moments/:id/sound).
+  whisper: Joi.object({ ...dotPlace, kind: Joi.string() }),
   thing: Joi.object({
     ...dotPlace,
     kind: Joi.string(),
@@ -164,7 +166,6 @@ function parseDots(value, { photo = false, media = false, penName = false, thing
   if (value.length > MAX_DOTS) throw new Error(`dots holds at most ${MAX_DOTS}.`);
   const seen = new Set();
   return value.map((raw, index) => {
-    if (raw?.kind === 'whisper') throw new Error(`dots[${index}]: a voice whisper can't be posted yet.`);
     const schema = DOT_SCHEMAS[raw?.kind];
     if (!schema) throw new Error(`dots[${index}]: kind must be one of ${DOT_KINDS.join(', ')}.`);
     const { error, value: dot } = schema.validate(raw, { abortEarly: true, stripUnknown: true });
@@ -196,9 +197,19 @@ function wordsOfDots(dots) {
   return (dots || []).flatMap((dot) => [dot.text, dot.label, dot.title]).filter((word) => typeof word === 'string' && word.trim());
 }
 
-/** The dots as a reader gets them: as placed, a `thing` with its kept field card (7d) or null. */
-function dotsFor(dots, cards = {}) {
-  return (dots || []).map((dot) => (dot.kind === 'thing' ? { ...dot, card: cards?.[dot.id] ? shownCard(cards[dot.id]) : null } : dot));
+/**
+ * The dots as a reader gets them: as placed, a `thing` with its kept field card (7d) or null, a `whisper` with its
+ * sound's link and length (7e; the link only while the Moment's picture link is given, `show`).
+ */
+function dotsFor(dots, cards = {}, { whispers = {}, links = new Map(), show = false } = {}) {
+  return (dots || []).map((dot) => {
+    if (dot.kind === 'thing') return { ...dot, card: cards?.[dot.id] ? shownCard(cards[dot.id]) : null };
+    if (dot.kind === 'whisper') {
+      const sound = whispers?.[dot.id];
+      return { ...dot, audio_url: sound && show ? links.get(sound.key) || null : null, duration_ms: sound?.duration_ms ?? null };
+    }
+    return dot;
+  });
 }
 
 /** A kept field card as every reader sees it (7d); the reader's own correction is added by the card route. */
@@ -512,8 +523,16 @@ async function removeDot(id, dotId, viewerId) {
   if (target.moment && !target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   await keepWith(target, (kept) => {
     const { [dotId]: _gone, ...cards } = kept.cards || {};
-    return { dots: (kept.dots || []).filter((dot) => dot.id !== dotId), cards };
+    const { [dotId]: _sound, ...whispers } = kept.whispers || {};
+    return { dots: (kept.dots || []).filter((dot) => dot.id !== dotId), cards, ...(kept.whispers ? { whispers } : {}) };
   });
+  // A whisper's sound goes with its dot, now.
+  const whisper = target.moment?.post_metadata?.moment?.whispers?.[dotId];
+  if (whisper?.key) {
+    // eslint-disable-next-line global-require
+    await require('../moments/momentMedia').removeKeys(whisper.bucket, [whisper.key])
+      .catch((error) => logger.warn('play.whisper_remove_failed', { error: error.message }));
+  }
   logger.info('play.dot_removed', { postId: id, moment: Boolean(target.moment) });
 }
 
