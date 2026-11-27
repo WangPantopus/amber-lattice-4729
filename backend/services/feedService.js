@@ -23,7 +23,7 @@ const { readablePosts, postScopeAccess } = require('./pulse/readAccess');
 const { unpublishedBusinessIds } = require('../utils/visibilityPolicy');
 const { localDisplayNames } = require('../utils/identityProfiles');
 const penName = require('./penName');
-const { reactionSummary, shownReaction } = require('../utils/postReaction');
+const { reactionSummary, shownReaction, signalSummary, shownSignal } = require('../utils/postReaction');
 const { taggedPlaceKind } = require('../utils/postPlaceTag');
 const {
   SAFE_CREATOR_SELECT,
@@ -688,6 +688,33 @@ async function loadReactionSummaries(posts) {
   return summaries;
 }
 
+// Pulse, reinvented: each post's reactions as [{ signal, count }] (utils/postReaction.js signalSummary), read only
+// for a viewer with `pulse_reinvented` on. A failed read leaves them out, as loadReactionSummaries does.
+async function loadSignalSummaries(posts) {
+  const summaries = new Map();
+  const ids = posts.filter((post) => Number(post.like_count) > 0).map((post) => post.id);
+  if (!ids.length) return summaries;
+  const { data, error } = await supabaseAdmin.rpc('post_reaction_counts', { p_post_ids: ids });
+  if (error) {
+    logger.warn('Post signal counts unavailable', { error: error.message, posts: ids.length });
+    return summaries;
+  }
+  const rowsByPost = new Map();
+  for (const row of Array.isArray(data) ? data : []) {
+    if (!rowsByPost.has(row.post_id)) rowsByPost.set(row.post_id, []);
+    rowsByPost.get(row.post_id).push(row);
+  }
+  for (const [postId, rows] of rowsByPost) summaries.set(postId, signalSummary(rows));
+  return summaries;
+}
+
+/** Whether `pulse_reinvented` is on for this viewer (read where the Moments read it; signed out: off). */
+function reinventedFor(userId) {
+  if (!userId) return Promise.resolve(false);
+  // Read here, not at load: the Moments store reads this module.
+  return require('./moments/momentStore').reinventedOn(userId);
+}
+
 // NOTE: This function applies location privacy via applyPostLocationPrivacy.
 // Callers should NOT also call applyPostLocationPrivacy.
 async function enrichWithUserStatus(posts, userId, embedsRead = null) {
@@ -695,14 +722,17 @@ async function enrichWithUserStatus(posts, userId, embedsRead = null) {
   await refreshSkyEverywhere();
   // The matched businesses' state, the reaction counts and the viewer's likes, saves and reposts don't depend on each
   // other. The creators and homes of posts read without them (loadPostEmbeds) arrive before the privacy pass below.
-  const [[{ data: likes }, { data: saves }, { data: reposts }, { data: pinned }], reactionSummaries] = await Promise.all([
+  const [[{ data: likes }, { data: saves }, { data: reposts }, { data: pinned }], reactionSummaries, , , signalSummaries] = await Promise.all([
     loadUserStatusRows(posts, userId),
     loadReactionSummaries(posts),
     dropUnpublishedMatches(posts),
     embedsRead,
+    // The five signals, only for a viewer with the switch on (null otherwise: nothing is added below).
+    reinventedFor(userId).then((on) => (on ? loadSignalSummaries(posts) : null)),
   ]);
   // The viewer's own reaction on each post they reacted to (a mark from before emoji reactions shows as 👍).
   const viewerReactions = new Map((likes || []).map(r => [r.post_id, shownReaction(r.reaction)]));
+  const viewerSignals = signalSummaries ? new Map((likes || []).map(r => [r.post_id, shownSignal(r.reaction)])) : null;
   const savedSet = new Set((saves || []).map(r => r.post_id));
   const repostSet = new Set((reposts || []).map(r => r.post_id));
   // Left off when the read failed, so a menu never offers Pin for a pinned post.
@@ -717,6 +747,7 @@ async function enrichWithUserStatus(posts, userId, embedsRead = null) {
       userHasSaved: savedSet.has(p.id),
       userHasReposted: repostSet.has(p.id),
       ...(userId && p.user_id === userId && pinnedSet ? { profile_pinned: pinnedSet.has(p.id) } : {}),
+      ...(signalSummaries ? { userSignal: viewerSignals.get(p.id) || null, signals: signalSummaries.get(p.id) || [] } : {}),
     };
   });
 }
@@ -2385,6 +2416,8 @@ module.exports = {
   enrichFeedPosts,
   attachQuotedPosts,
   loadReactionSummaries,
+  loadSignalSummaries,
+  reinventedFor,
   applyPostLocationPrivacy,
   placeLabelForOthers,
   areaOf,

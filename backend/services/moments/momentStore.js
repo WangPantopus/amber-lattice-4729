@@ -39,7 +39,7 @@ const { loadChatPeople } = require('../chatPeople');
 const { verifiedResidentUserIds } = require('../../utils/identityProfiles');
 const { PANTOPUS_VERIFIED_STATUSES } = require('../../utils/businessConstants');
 const { applyLocationPrecision, MAX_DISPLAY_OFFSET_DEGREES, snapToNeighborhoodCells } = require('../../utils/locationPrivacy');
-const { shownReaction, reactionSummary } = require('../../utils/postReaction');
+const { shownReaction, reactionSummary, shownSignal, signalSummary } = require('../../utils/postReaction');
 const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
 const momentWeather = require('./momentWeather');
@@ -376,9 +376,12 @@ async function loadMoment(id) {
   return data || null;
 }
 
-/** The viewer's views and reactions on these Moments: { seen: Set, reactions: Map(id → emoji) }. */
+/**
+ * The viewer's views and reactions on these Moments: { seen: Set, reactions: Map(id → emoji), signals: Map(id → signal) }
+ * (the same reaction as the new screens name it, Pulse, reinvented).
+ */
 async function viewerMarks(viewerId, ids) {
-  if (!ids.length) return { seen: new Set(), reactions: new Map() };
+  if (!ids.length) return { seen: new Set(), reactions: new Map(), signals: new Map() };
   const [views, likes] = await Promise.all([
     readInBatches(ids, (batch) => supabaseAdmin.from('PostView').select('post_id').eq('user_id', viewerId).in('post_id', batch), 'views'),
     readInBatches(ids, (batch) => supabaseAdmin.from('PostLike').select('post_id, reaction').eq('user_id', viewerId).in('post_id', batch), 'reactions'),
@@ -386,6 +389,7 @@ async function viewerMarks(viewerId, ids) {
   return {
     seen: new Set(views.map((v) => v.post_id)),
     reactions: new Map(likes.map((l) => [l.post_id, shownReaction(l.reaction)])),
+    signals: new Map(likes.map((l) => [l.post_id, shownSignal(l.reaction)])),
   };
 }
 
@@ -512,7 +516,7 @@ function briefOf(row, seen) {
  * counts (`reactionCounts` from reactionCountsFor).
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
-  heights = false, reinvented = false }) {
+  heights = false, reinvented = false, mySignal = null, signalCounts = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -572,8 +576,26 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       stamps: momentStamps.shownStamps(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) }),
       edited_at: m.edited_at || null,
       editable_until: own ? editableUntil(row) : null,
+      // The five signals: the viewer's own reaction as a signal, and the author's counts by signal.
+      my_signal: own ? null : mySignal,
+      signal_counts: own ? signalCounts || [] : null,
     } : {}),
   };
+}
+
+/** The author's counts by signal (Pulse, reinvented), by Moment id: [{ signal, count }]. */
+async function signalCountsFor(ids) {
+  const counts = new Map(ids.map((id) => [id, []]));
+  if (!ids.length) return counts;
+  const { data, error } = await supabaseAdmin.rpc('post_reaction_counts', { p_post_ids: ids });
+  if (error) throw new Error(`Failed to count reactions: ${error.message}`);
+  const byPost = new Map();
+  for (const row of data || []) {
+    if (!byPost.has(row.post_id)) byPost.set(row.post_id, []);
+    byPost.get(row.post_id).push(row);
+  }
+  for (const [id, rows] of byPost) counts.set(id, signalSummary(rows));
+  return counts;
 }
 
 async function reactionCountsFor(ids) {
@@ -611,6 +633,7 @@ async function serializeMoments(rows, viewerId) {
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
+  const signals = reinvented ? await signalCountsFor(ownIds) : new Map();
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -620,6 +643,8 @@ async function serializeMoments(rows, viewerId) {
     reactionCounts: counts.get(row.id) || null,
     heights,
     reinvented,
+    mySignal: marks.signals.get(row.id) || null,
+    signalCounts: signals.get(row.id) || null,
   }));
 }
 
@@ -979,8 +1004,11 @@ async function ownMoment(id, viewerId) {
   return isOwn(row, viewerId) ? row : null;
 }
 
-/** Who watched the author's Moment, newest first (CONTRACT GET /:id/viewers). Blocked people aren't listed. */
-async function viewersOf(row, writerId = row.user_id) {
+/**
+ * Who watched the author's Moment, newest first (CONTRACT GET /:id/viewers). Blocked people aren't listed. `signals`
+ * (Pulse, reinvented, for an author with the switch on) adds each one's reaction as a signal.
+ */
+async function viewersOf(row, writerId = row.user_id, { signals = false } = {}) {
   // `writerId`: the account that wrote it, when that isn't the account it is stored under (a made-up-name Moment).
   const [views, likes, blocked] = await Promise.all([
     supabaseAdmin.from('PostView').select('user_id, created_at').eq('post_id', row.id)
@@ -1002,6 +1030,7 @@ async function viewersOf(row, writerId = row.user_id) {
     for (const message of data || []) replied.add(message.user_id);
   }
   const reactions = new Map((likes.data || []).map((l) => [l.user_id, shownReaction(l.reaction)]));
+  const signalOf = new Map((likes.data || []).map((l) => [l.user_id, shownSignal(l.reaction)]));
   const authors = await loadAuthors(viewerIds);
   return {
     count: rows.length,
@@ -1010,6 +1039,7 @@ async function viewersOf(row, writerId = row.user_id) {
       viewed_at: v.created_at,
       reaction: reactions.get(v.user_id) || null,
       replied: replied.has(v.user_id),
+      ...(signals ? { signal: signalOf.get(v.user_id) || null } : {}),
     })).filter((v) => v.user),
   };
 }
