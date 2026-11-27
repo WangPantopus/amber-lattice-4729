@@ -596,4 +596,26 @@ router.post('/eyes-on/near', async (req, res) => {
   }
 });
 
+// ─── Relics and "Seal it" (CONTRACT 8g) ─────────────────────────────────────
+
+const seal = require('../services/pulse/seal');
+
+/** POST /seals/near — { latitude, longitude } in the body (never in the address, never kept): place relics near you. */
+router.post('/seals/near', async (req, res) => {
+  try {
+    res.json(await seal.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'seals_near');
+  }
+});
+
+/** POST /seals/:id/open — { latitude, longitude } in the body: a place relic, whole, for a reader standing there. */
+router.post('/seals/:id/open', async (req, res) => {
+  try {
+    res.json(await seal.openHere(req.params.id, req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'seal_open');
+  }
+});
+
 module.exports = router;
