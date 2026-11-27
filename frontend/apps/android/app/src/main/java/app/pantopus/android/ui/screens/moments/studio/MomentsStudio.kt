@@ -63,12 +63,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
+import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostFullMap
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostSheet
@@ -162,7 +165,8 @@ internal fun MomentsStudioStep(
                     modifier = Modifier.fillMaxSize(),
                 )
             is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
-            null -> Unit
+            // A text card (as on iPhone): the card itself, its words in the middle of what the bar leaves.
+            null -> StudioTextCard(text = state.text, background = state.background)
         }
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
@@ -184,15 +188,19 @@ internal fun MomentsStudioStep(
         )
         StudioClose(
             enabled = state.canRetake,
+            card = state.media == null,
             onClick = onBack,
             modifier = Modifier.statusBarsPadding().padding(start = Spacing.s4, top = 11.dp),
         )
-        StudioRail(
-            enabled = !state.posting,
-            video = state.media is MomentMediaFile.Video,
-            onOpen = onMarks,
-            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
-        )
+        // Text, Draw and Resize change a photo or a video; a text card has nothing on the rail yet (Stamps come next).
+        if (state.media != null) {
+            StudioRail(
+                enabled = !state.posting,
+                video = state.media is MomentMediaFile.Video,
+                onOpen = onMarks,
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
+            )
+        }
         Column(
             modifier =
                 Modifier
@@ -218,13 +226,16 @@ internal fun MomentsStudioStep(
                 )
                 Spacer(Modifier.height(Spacing.s3))
             }
-            StudioCaption(
-                caption = state.caption,
-                enabled = !state.posting,
-                onCaption = onCaption,
-                modifier = Modifier.padding(horizontal = Spacing.s4),
-            )
-            Spacer(Modifier.height(Spacing.s4))
+            // A caption goes with a photo or a video; a text card is its own words.
+            if (state.media != null) {
+                StudioCaption(
+                    caption = state.caption,
+                    enabled = !state.posting,
+                    onCaption = onCaption,
+                    modifier = Modifier.padding(horizontal = Spacing.s4),
+                )
+                Spacer(Modifier.height(Spacing.s4))
+            }
             StudioBar(
                 state = state,
                 homeNoteDue = gate.homeNoteDue,
@@ -304,10 +315,14 @@ internal fun MomentsStudioStep(
     }
 }
 
-/** The X at the top left: back to the camera, as today's Retake (it asks first when something would be lost). */
+/**
+ * The X at the top left: back to the camera, as today's Retake (it asks first when something would be lost); for a
+ * text card, back to the card's words, as today's Edit.
+ */
 @Composable
 private fun StudioClose(
     enabled: Boolean,
+    card: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -320,7 +335,7 @@ private fun StudioClose(
                 .background(PantopusColors.momentCameraChip)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .testTag("moments.studio.close")
-                .semantics { contentDescription = "Back to the camera" },
+                .semantics { contentDescription = if (card) "Back to your card" else "Back to the camera" },
         contentAlignment = Alignment.Center,
     ) {
         PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 22.dp, strokeWidth = 2.2f, tint = Color.White)
@@ -409,6 +424,28 @@ private fun RailTool(
             modifier = Modifier.size(44.dp).clip(CircleShape).background(PantopusColors.momentCameraChip),
             contentAlignment = Alignment.Center,
         ) { glyph() }
+    }
+}
+
+/** A text card in the Studio: its colour and its words, as the viewer shows them, above the bar. */
+@Composable
+private fun StudioTextCard(
+    text: String,
+    background: MomentCardBackground,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().momentCardGradient(background).padding(bottom = 200.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = 26.sp,
+            lineHeight = 33.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 36.dp).testTag("moments.studio.card"),
+        )
     }
 }
 
