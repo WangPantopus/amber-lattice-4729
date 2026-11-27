@@ -20,4 +20,6 @@ export interface StudioViewerSlots {
   holds(m: Moment, account: string): boolean;
   /** The caption's words, with the people its author mentioned linked to their profiles (§7h). */
   caption?(m: Moment): ReactNode;
+  /** True for a loop (§7j): the video plays only its span, over and over, muted, on a photo's timer. */
+  loops?(m: Moment): boolean;
 }

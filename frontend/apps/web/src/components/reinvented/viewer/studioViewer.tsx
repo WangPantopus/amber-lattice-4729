@@ -30,6 +30,8 @@ import { CrowdChip } from '../crowd/Crowd';
 import { withMentions, type MentionPerson } from '../mentions/Mentions';
 import { holdsForReplies, RepliesOverPicture, RepliesShownEntry } from '../replies/Replies';
 import PinLayer, { hasPins, holdsForPins, PinControls } from '../pins/PinLayer';
+import { loopOf } from '../loop/loop';
+import { LoopDriver } from '../loop/LoopDriver';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -191,6 +193,7 @@ function SeenMark({ viewer }: { viewer: Viewer & { signal?: string | null } }) {
 export const studioViewer = {
   overPicture: (m: Moment) => (
     <>
+      <LoopDriver moment={m} />
       <ViewerStamps moment={m as StudioMoment} />
       <DeckBar moment={m} />
       <SealCover moment={m} />
@@ -216,4 +219,5 @@ export const studioViewer = {
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,
   caption: (m: Moment) => withMentions(m.caption || '', (m as Moment & { mentions?: MentionPerson[] }).mentions),
+  loops: (m: Moment) => !!loopOf(m),
 };

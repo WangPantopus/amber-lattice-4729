@@ -33,6 +33,7 @@ import {
   PenLine,
   Pipette,
   Plus,
+  Repeat,
   RotateCw,
   Sparkles,
   Type,
@@ -76,6 +77,8 @@ import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPictur
 import { FILM_LOOKS, lookPreviews, photostrip, withLook, type FilmLook } from './looks';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
+import { fitSpan, LOOP_FIRST_MS, LOOP_MIN_MS, loopPoster, loopsFile, type LoopSpan } from '../loop/loop';
+import { LoopPanel } from '../loop/LoopPanel';
 import {
   ALERT_KINDS,
   asksSomething,
@@ -278,6 +281,10 @@ export default function Studio({
     [eventVenue, setEventVenue] = useState(''),
     // "Also show in Explore" (phase 1, CONTRACT 6f): off by default, chosen per post.
     [exploreOn, setExploreOn] = useState(false);
+  // Loop (CONTRACT 7j): the part of the video that repeats, whether its panel is open, and the video's own length.
+  const [loopSpan, setLoopSpan] = useState<LoopSpan | null>(null),
+    [loopOpen, setLoopOpen] = useState(false),
+    [videoMs, setVideoMs] = useState<number | null>(null);
   const client = useQueryClient();
   // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
   const postRequest = useRef<string | null>(null);
@@ -542,6 +549,24 @@ export default function Studio({
   const canBlur = mode === 'media' && !!file && !isVideo;
   // Boxes belong to one photo: a new picture starts with none.
   useEffect(() => setBlurs([]), [file]);
+  // A loop goes on a picked MP4 or QuickTime video, never one the browser recorded, and only one short enough to post
+  // whole (a longer one goes out in parts). Each video starts without one; another tool opening closes its panel.
+  const loopMax = limits.data?.video.max_seconds || fallback.max_seconds;
+  const canLoop = mode === 'media' && !!file && isVideo && capture?.file !== file && loopsFile(file);
+  const loopFits = videoMs != null && videoMs >= LOOP_MIN_MS && videoMs / 1000 - 0.025 <= loopMax;
+  const loopOut = canLoop && loopFits && loopSpan && videoMs != null ? fitSpan(loopSpan, videoMs) : null;
+  useEffect(() => {
+    setLoopSpan(null);
+    setLoopOpen(false);
+    setVideoMs(null);
+  }, [file]);
+  useEffect(() => {
+    if (tool || illuminate || soundOpen || trayOpen) setLoopOpen(false);
+  }, [tool, illuminate, soundOpen, trayOpen]);
+  // Opened, the loop is on: the first three seconds (or the whole of a shorter video), as soon as the length is known.
+  useEffect(() => {
+    if (loopOpen && !loopSpan && loopFits && videoMs != null) setLoopSpan({ from_ms: 0, to_ms: Math.min(LOOP_FIRST_MS, videoMs) });
+  }, [loopOpen, loopSpan, loopFits, videoMs]);
   // Before and after goes on one photo (the before), with the after beside it in the same picture.
   const canPair = canBlur && files.length === 1 && look === 'original';
   const pairItem = beforeAfterOf(play);
@@ -967,6 +992,12 @@ export default function Studio({
           )
         : [];
       if (pair && prepared.length === 1) prepared = [await withAfter(prepared[0])];
+      // A loop is one short video, and its still is the frame where it starts (CONTRACT 7j).
+      if (loopOut && prepared.length > 1) throw new Error('A loop is one short video. Take the loop off to post this video in parts.');
+      if (loopOut && prepared.length === 1) {
+        const still = await loopPoster(prepared[0].file, loopOut.from_ms, controller.signal);
+        if (still) prepared = [{ ...prepared[0], poster: still }];
+      }
       controller.signal.throwIfAborted();
       if (underPenName && prepared.length > 1)
         throw new Error("A video posted in parts can't go out under a made-up name. Post one of up to a minute.");
@@ -1007,6 +1038,7 @@ export default function Studio({
             explore?: true;
             stamps?: PlacedStamp[];
             elevation?: { meters: number; accuracy_m?: number | null; speed_mps?: number | null };
+            loop?: LoopSpan;
           } = {
             client_request_id: crypto.randomUUID(),
             kind,
@@ -1058,6 +1090,7 @@ export default function Studio({
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
             ...(deckOn && deckId.current ? { deck: { id: deckId.current, index: index + 1, count: files.length } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
+            ...(i === 0 && count === 1 && loopOut ? { loop: loopOut } : {}),
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
@@ -1838,8 +1871,10 @@ export default function Studio({
                     : (el, w, h) => {
                         setPhotoInks(sampleColors(el, w, h, inks));
                         setShape({ w, h });
+                        setVideoMs(el instanceof HTMLVideoElement && Number.isFinite(el.duration) ? Math.round(el.duration * 1000) : null);
                       }
                 }
+                loop={loopOut}
               />
             ) : mode === 'text' ? (
               <div className="st-words">
@@ -2001,6 +2036,26 @@ export default function Studio({
                   <Crop size={21} aria-hidden="true" />
                 </button>
               </div>
+              {canLoop && (
+                <div className="st-tool">
+                  <span aria-hidden="true">{loopOut ? 'Loop on' : 'Loop'}</span>
+                  <button
+                    type="button"
+                    className="st-round"
+                    aria-label={loopOut ? 'Loop, on' : 'Loop'}
+                    aria-pressed={loopOpen}
+                    onClick={() => {
+                      setTool(null);
+                      setIlluminate(false);
+                      setSoundOpen(false);
+                      setTrayOpen(false);
+                      setLoopOpen(!loopOpen);
+                    }}
+                  >
+                    <Repeat size={21} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
               {canIlluminate && (
                 <div className="st-tool">
                   <span aria-hidden="true">Illuminate</span>
@@ -2090,6 +2145,19 @@ export default function Studio({
               place={placeRec}
               setPlace={setPlaceRec}
               onDone={() => setSoundOpen(false)}
+            />
+          )}
+          {composing && canLoop && loopOpen && !tool && !illuminate && !soundOpen && (
+            <LoopPanel
+              durationMs={videoMs}
+              maxSeconds={loopMax}
+              span={loopOut}
+              onSpan={setLoopSpan}
+              onOff={() => {
+                setLoopSpan(null);
+                setLoopOpen(false);
+              }}
+              onDone={() => setLoopOpen(false)}
             />
           )}
           {composing && canIlluminate && illuminate && !tool && (

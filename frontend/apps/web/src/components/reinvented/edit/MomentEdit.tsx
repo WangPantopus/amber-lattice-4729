@@ -19,6 +19,7 @@ import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type ShownStamp, ty
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isRouteGone, markServerBehind } from '../serverBehind';
 import { afterEdit } from './saved';
+import { loopOf, useSpanLoop } from '../loop/loop';
 import '../studio/studio.css';
 import './edit.css';
 
@@ -119,6 +120,9 @@ export default function MomentEdit({
   );
   const art = useRef<HTMLDivElement>(null);
   const box = usePictureBox(art, moment.kind === 'text' ? null : natural);
+  // A loop plays its part over and over here too, as the viewers show it (CONTRACT 7j; the edit leaves it as it is).
+  const [clip, setClip] = useState<HTMLVideoElement | null>(null);
+  useSpanLoop(clip, loopOf(moment));
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -294,6 +298,7 @@ export default function MomentEdit({
               />
             ) : moment.kind === 'video' && moment.media_url ? (
               <video
+                ref={setClip}
                 className="me-media"
                 src={moment.media_url}
                 poster={moment.poster_url || undefined}
