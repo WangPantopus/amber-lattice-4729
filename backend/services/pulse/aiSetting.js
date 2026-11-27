@@ -56,8 +56,11 @@ async function strandsOnFor(userIds) {
 
 /** The settings as the new Settings rows read them. */
 async function settingsOf(userId) {
-  const [ai, strands] = await Promise.all([aiOnOrThrow(userId), strandsOnFor([userId])]);
-  return { pantopus_ai: ai, strands: strands.get(String(userId)) };
+  // eslint-disable-next-line global-require
+  const cabinet = require('./cabinet');
+  const [ai, strands, cabinetShown] = await Promise.all([aiOnOrThrow(userId), strandsOnFor([userId]), cabinet.shownOn(userId)]);
+  // `cabinet_shown` (CONTRACT 9d): "Show my cabinet to people I know".
+  return { pantopus_ai: ai, strands: strands.get(String(userId)), cabinet_shown: cabinetShown };
 }
 
 /** Turns strands on or off for this person. On removes the row, so the default is what's left. */
