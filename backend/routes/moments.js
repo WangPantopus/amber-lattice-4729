@@ -25,6 +25,7 @@ const momentUpload = require('../services/moments/momentUpload');
 const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
+const momentStamps = require('../services/moments/momentStamps');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
@@ -110,6 +111,9 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * With `weather: true` (API v4.1: an app that offers "Show the weather") it adds `weather`, the stamp a Moment taken
  * here would keep ({ temp_f, kind, label }, momentWeather.weatherAt), or null: always null at home and with no point,
  * where nothing is looked up. A request without it looks nothing up, so apps from before add no weather reads.
+ * With `stamps: true` from the Studio's tray (Pulse, reinvented; only while `pulse_reinvented` is on for the caller) it
+ * adds `stamps`, each stamp's value as a Moment posted here now would keep it (momentStamps.js), null where none. Sent
+ * while the switch is off for the caller: 403 PULSE_REINVENTED_OFF (store.reinventedOff).
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
@@ -119,12 +123,15 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
     }).and('latitude', 'longitude'), req.body);
     const placed = at.latitude != null;
     const sky = await store.skyOn(req.user);
+    const studioAsked = req.body?.stamps !== undefined;
+    const studio = studioAsked && await store.reinventedOn(req.user);
+    if (studioAsked && !studio) throw store.reinventedOff();
     // A failed home read answers at home, as POST / will treat it: the sheet then offers what the post will do (only the
     // area with the Sky on, no height, no pin at a place).
     const homeCheck = placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude, { onFailure: true }) : false;
     // Asked for after the home check, and only away from home, so a point at home is never sent to the weather source
     // from here.
-    const weatherRead = at.weather && placed
+    const weatherRead = (at.weather || studio) && placed
       ? homeCheck.then((home) => (home ? null : momentWeather.weatherAt(at.latitude, at.longitude)))
       : null;
     const [labels, home, heights, adult, connections, pickWithin, weather] = await Promise.all([
@@ -154,6 +161,7 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       ...(connections ? { has_connections: connections.length > 0 } : {}),
       ...(at.weather ? { weather: atHome ? null : weather } : {}),
       ...(sky ? await skyPreview(req.user.id, at, atHome) : {}),
+      ...(studio ? { stamps: await stampsPreview(req.user.id, at, labels, atHome, weather) } : {}),
     });
   } catch (error) {
     sendError(res, error, 'place_preview');
@@ -184,6 +192,23 @@ async function skyPreview(userId, at, atHome) {
     can_pin: !atHome,
     share_later: shareLater,
   };
+}
+
+/**
+ * The Studio tray's stamps for a point (Pulse, reinvented): what a Moment posted there now would keep, from the
+ * preview's own reads (`weather` was read only away from home). With no point only the time is there.
+ */
+async function stampsPreview(userId, at, labels, atHome, weather) {
+  const placed = at.latitude != null;
+  const values = await momentStamps.valuesFor({
+    userId,
+    point: placed ? { latitude: at.latitude, longitude: at.longitude } : null,
+    placeLabel: placed ? (atHome ? labels.area_label : labels.place_label) : null,
+    town: placed ? labels.area_label : null,
+    atHome,
+    weather: placed && !atHome ? weather || null : null,
+  });
+  return momentStamps.previewOf(values, { atHome, placed });
 }
 
 /**
@@ -329,6 +354,14 @@ router.post('/', createLimiter, async (req, res) => {
     if (body.series && (body.kind !== 'video' || body.series.index > body.series.count)) {
       throw store.fail(400, 'MOMENT_INVALID', 'Only a video is posted in parts.');
     }
+    // Pulse, reinvented: the Studio's stamps (`stamps`) and its height reading for the elevation stamp (`elevation`),
+    // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
+    // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
+    const reinvented = await store.reinventedOn(req.user);
+    if (!reinvented && ['stamps', 'elevation'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+      throw store.reinventedOff();
+    }
+    const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
     const id = retryId(req.user.id, body.client_request_id);
     if (id) {
       const prior = await store.ownMoment(id, req.user.id);
@@ -431,7 +464,7 @@ router.post('/', createLimiter, async (req, res) => {
       const crowd = await penName.gate.crowdRefusal(area ? area.latitude : latitude, area ? area.longitude : longitude);
       if (crowd) throw store.fail(crowd.status, crowd.code, crowd.message);
     }
-    const { row, created } = await store.insertMoment(store.newMomentRow({
+    const draft = store.newMomentRow({
       userId: underPenName ? penName.SYSTEM_ACCOUNT_ID : req.user.id,
       pen,
       accountType: req.user.accountType,
@@ -454,9 +487,35 @@ router.post('/', createLimiter, async (req, res) => {
       shareAt,
       takenHere: marked,
       weather,
-    }), id, underPenName ? { userId: req.user.id, pen } : null);
+    });
+    if (studio) {
+      // The values every stamp shows, read by the server now (never from the phone), at the point everyone sees. One
+      // made at home, or from a pin moved off where the author stood at home, says no weather, height or distance.
+      const stampsAtHome = atHome || (!unplaced && !markHomeClear);
+      draft.post_metadata.moment = {
+        ...draft.post_metadata.moment,
+        stamps: studio.placements,
+        stamp_values: await momentStamps.valuesFor({
+          userId: req.user.id,
+          point: store.displayedPoint(draft),
+          placeLabel: draft.location_name,
+          town: unplaced ? null : labels.area_label,
+          atHome: stampsAtHome,
+          penName: underPenName,
+          sharedLater: Boolean(shareAt),
+          fresh: body.location.source !== 'capture' && !body.taken_at,
+          takenAt: body.location.source === 'capture' ? body.location.taken_at : body.taken_at,
+          elevation: underPenName ? null
+            : store.shownAltitude(studio.reading, { atHome: stampsAtHome, showArea, unplaced, floating: Boolean(area) }),
+          // The Live mark's own reading when the post made one (null when it found none); otherwise read here.
+          weather: marked && body.show_weather ? weather : undefined,
+        }),
+      };
+    }
+    const { row, created } = await store.insertMoment(draft, id, underPenName ? { userId: req.user.id, pen } : null);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
       ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}),
+      ...(studio ? { stamps: studio.placements.length } : {}),
       ...(marked ? { taken_here: true, weather: Boolean(weather) } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
     // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
