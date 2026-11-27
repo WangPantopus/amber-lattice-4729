@@ -462,12 +462,14 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
   const ready = await (readyRead || Promise.resolve(new Map())).catch(() => new Map());
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);
   const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
-  const [moments, chips, stamps] = await Promise.all([
+  const [moments, chips, studio] = await Promise.all([
     rows.length ? store.serializeMoments(rows, userId, { keptPosts: true }) : [],
     chipsRead || null,
-    // A post made in the Studio shows its stamps here (CONTRACT 6d); a failed read only leaves them off.
-    postStudio.stampsFor(pagePosts).catch(() => new Map()),
+    // A post made in the Studio shows its stamps and its playable items here (CONTRACT 6d, 7b); a failed read only
+    // leaves them off.
+    postStudio.readerParts(pagePosts, userId).catch(() => ({ stamps: new Map(), play: new Map() })),
   ]);
+  const { stamps, play } = studio;
   const byId = new Map([...ready, ...moments.map((moment) => [moment.id, moment])]);
   const bandKey = (index) => (index == null ? null : bands[index]?.band ?? null);
   const out = items.map((item) => {
@@ -478,7 +480,7 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
       return { type: 'moment', id: moment.id, band: bandKey(item.bandIndex), ...(moment.kept ? { kept: true } : {}), moment };
     }
     const { distance_meters: _distance, ...post } = item.post;
-    const shown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post;
+    const shown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id), play: play.get(post.id) || [] } : post;
     return { type: 'post', id: post.id, band: bandKey(item.bandIndex), post: shown };
   }).filter(Boolean);
   return {

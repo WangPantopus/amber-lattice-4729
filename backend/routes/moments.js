@@ -26,6 +26,7 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
+const playItems = require('../services/pulse/play');
 const { normalizePostReaction, normalizePostSignal, shownReaction, shownSignal } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
@@ -365,10 +366,19 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
+    // Playable items (CONTRACT 7b): a poll, a slider, a board, a question box, a guess and reveal, a countdown.
+    let play = [];
+    if (studio) {
+      try {
+        play = playItems.parseItems(req.body?.play);
+      } catch (playError) {
+        throw store.fail(400, 'MOMENT_INVALID', playError.message);
+      }
+    }
     // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
     const guess = Boolean(studio) && req.body?.guess === true;
     if (guess && (!['photo', 'video'].includes(body.kind) || body.location.source === 'none')) {
@@ -391,7 +401,7 @@ router.post('/', createLimiter, async (req, res) => {
         : body.series ? { status: 400, code: 'PEN_NAME_NOT_FOR_THIS', message: "A video posted in parts can't go out under a made-up name. Post one of up to a minute." }
         : await penName.gate.accountRefusal(req.user.id)
           || await penName.gate.limitRefusal(req.user.id, 'moment')
-          || await penName.gate.wordsRefusal([body.caption, body.text]);
+          || await penName.gate.wordsRefusal([body.caption, body.text, ...playItems.wordsOf(play)]);
       if (refusal) throw store.fail(refusal.status, refusal.code, refusal.message);
       pen = await penName.write.requireName(req.user.id);
       Object.assign(body, { show_area: false, altitude: null, taken_here: false, show_weather: false });
@@ -529,6 +539,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(guess ? { guess: { v: 1, town: labels.area_label && labels.area_label !== momentPlace.FALLBACK_LABEL ? labels.area_label : null } } : {}),
         // My Atlas (CONTRACT 6e): posted with the switch on, its files are kept for its author (jobs/momentsCleanup).
         kept: true,
+        // Playable items (CONTRACT 7b); the answers are rows of PostAnswer.
+        ...(play.length ? { play } : {}),
         // Explore (CONTRACT 6f): "Also show in Explore", kept only for a Moment with a place, to people nearby, not at
         // home and not under a made-up name (dropped anywhere else, never an error), with the town it is in.
         ...(req.body?.explore === true && !unplaced && body.audience === 'nearby' && !studioAtHome && !underPenName
@@ -540,6 +552,7 @@ router.post('/', createLimiter, async (req, res) => {
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
       ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}),
       ...(studio ? { stamps: studio.placements.length } : {}), ...(guess ? { guess: true } : {}),
+      ...(play.length ? { play: play.map((item) => item.kind) } : {}),
       ...(marked ? { taken_here: true, weather: Boolean(weather) } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
     // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared

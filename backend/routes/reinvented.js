@@ -13,6 +13,7 @@ const atlas = require('../services/pulse/atlas');
 const explore = require('../services/pulse/explore');
 const keep = require('../services/pulse/keep');
 const wantToCome = require('../services/pulse/wantToCome');
+const play = require('../services/pulse/play');
 const planActions = require('../services/plans/planActions');
 const requireFeatureFlag = require('../middleware/requireFeatureFlag');
 const { contentCreationLimiter } = require('../middleware/rateLimiter');
@@ -195,6 +196,57 @@ router.post('/moments/:id/plan', requireFeatureFlag('plans'), contentCreationLim
       return res.status(error.status).json({ error: error.message, code: error.code, ...error.extra });
     }
     return sendError(res, error, 'moment_plan');
+  }
+});
+
+// ─── Playable items and the answers (CONTRACT 7b) ───────────────────────────
+
+/** GET /play/:id — a post's or a Moment's playable items, with what this reader may see of the answers. */
+router.get('/play/:id', async (req, res) => {
+  try {
+    res.json(await play.playOf(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'play');
+  }
+});
+
+/** PUT /play/:id/:item — the reader's answer: a vote, a slider value, a spot on the board, a question, a guess. */
+router.put('/play/:id/:item', contentCreationLimiter, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    res.json(await play.answer(req.params.id, req.params.item, req.user.id, body));
+  } catch (error) {
+    sendError(res, error, 'play_answer');
+  }
+});
+
+/** DELETE /play/:id/:item — the reader takes their answer back (never a guess). */
+router.delete('/play/:id/:item', async (req, res) => {
+  try {
+    await play.takeBack(req.params.id, req.params.item, req.user.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'play_take_back');
+  }
+});
+
+/** GET /play/:id/:item/answers — the question box's answers or a board's notes, for the author only. */
+router.get('/play/:id/:item/answers', async (req, res) => {
+  try {
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor.slice(0, 12) : '';
+    res.json(await play.authorAnswers(req.params.id, req.params.item, req.user.id, cursor));
+  } catch (error) {
+    sendError(res, error, 'play_answers');
+  }
+});
+
+/** DELETE /play/:id/:item/answers/:answer — the author removes one answer on their post. */
+router.delete('/play/:id/:item/answers/:answer', async (req, res) => {
+  try {
+    await play.removeAnswer(req.params.id, req.params.item, req.params.answer, req.user.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'play_remove');
   }
 });
 
