@@ -23,6 +23,7 @@ import {
 } from '@pantopus/ui-utils';
 import { PostReactionBar, reactedPostPatch, reactionFieldsOf, serverReactionPatch } from '@/components/feed/PostReactions';
 import { hasSignals, PostSignalBar } from '@/components/reinvented/signals/PostSignals';
+import { usePostPagePicture } from '@/components/reinvented/pulse/PostPageLayers';
 import { getErrorMessage, chosenUsername } from '@pantopus/utils';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -107,6 +108,8 @@ export default function PostDetailPage() {
   const { post, comments, postQuery, commentsQuery, setPost, setComments, loading, unavailable, commentsFailed } = usePostDetail(postId);
   // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
   const media = useShownMedia(post);
+  // Pulse, reinvented: a Studio post's one picture with its layers while the switch is on; null keeps today's grid.
+  const studioPicture = usePostPagePicture(post, media.shown, setLightboxIdx);
   // A failed load that isn't "this post is gone" (network, 5xx): retryable.
   const loadError = !post && postQuery.isError && !unavailable
     ? getErrorMessage(postQuery.error, "We couldn't load this post. Please try again.")
@@ -735,7 +738,8 @@ export default function PostDetailPage() {
           )}
 
           {/* Media grid with lightbox */}
-          {media.shown.length > 0 && (
+          {studioPicture}
+          {!studioPicture && media.shown.length > 0 && (
             <div
               className={`px-5 pb-4 grid gap-1.5 ${
                 media.shown.length === 1
