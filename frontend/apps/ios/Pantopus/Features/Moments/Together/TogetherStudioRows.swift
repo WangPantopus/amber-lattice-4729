@@ -19,6 +19,8 @@ struct TogetherStudioRows: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 if case let .retakeFrame(_, title, ghost) = together.context {
                     addingRow(title: title, hasGhost: ghost != nil, photo: model.isPhoto)
+                } else if case let .eyesOnAnswer(_, question) = together.context {
+                    answeringRow(question)
                 } else if model.offersRetake {
                     retakeRow
                 }
@@ -53,6 +55,23 @@ struct TogetherStudioRows: View {
         .padding(.vertical, Spacing.s2)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("together.studio.adding")
+    }
+
+    /// "Answering “Is the trail muddy?” with a Live photo".
+    private func answeringRow(_ question: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Answering “\(question)” with a Live photo")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.Color.appText)
+            Text("Take the photo there, now: your Moment answers their question.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .padding(.vertical, Spacing.s2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("together.studio.answering")
     }
 
     /// "Start a Retake", and its name.
