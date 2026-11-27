@@ -21,6 +21,7 @@
 const http2 = require('http2');
 const jwt = require('jsonwebtoken');
 const logger = require('../../utils/logger');
+const { runLimited } = require('../../utils/runLimited');
 
 const PROD_HOST = 'https://api.push.apple.com';
 const SANDBOX_HOST = 'https://api.sandbox.push.apple.com';
@@ -244,15 +245,10 @@ async function sendMany(tokens, message) {
   const collapseId = ['chat_message', 'business_message'].includes(message?.data?.type)
     && /^[0-9a-f-]{36}$/i.test(id || '') ? id : undefined;
 
-  const results = [];
-  for (let i = 0; i < tokens.length; i += MAX_CONCURRENCY) {
-    const batch = tokens.slice(i, i + MAX_CONCURRENCY);
-    const activeSession = getSession();
-    const batchResults = await Promise.all(
-      batch.map((token) => sendOne(activeSession, token, payloadString, providerToken, bundleId, collapseId)),
-    );
-    results.push(...batchResults);
-  }
+  // At most MAX_CONCURRENCY in flight; each send takes the current session, so the ones after Apple closes a
+  // connection go out on the new one, and a send that times out holds back its own slot only.
+  const results = await runLimited(tokens, MAX_CONCURRENCY,
+    (token) => sendOne(getSession(), token, payloadString, providerToken, bundleId, collapseId));
 
   const invalidTokens = results.filter((r) => r.action === 'invalid').map((r) => r.token);
   const acceptedTokens = results.filter((r) => r.action === 'ok').map((r) => r.token);

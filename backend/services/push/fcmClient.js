@@ -22,6 +22,7 @@
 
 const jwt = require('jsonwebtoken');
 const logger = require('../../utils/logger');
+const { runLimited } = require('../../utils/runLimited');
 
 const TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -232,12 +233,8 @@ async function sendMany(tokens, message) {
 
   const sa = getServiceAccount();
   const url = `https://fcm.googleapis.com/v1/projects/${sa.projectId}/messages:send`;
-  const results = [];
-  for (let i = 0; i < tokens.length; i += MAX_CONCURRENCY) {
-    const batch = tokens.slice(i, i + MAX_CONCURRENCY);
-    const batchResults = await Promise.all(batch.map((token) => sendOne(url, accessToken, token, message)));
-    results.push(...batchResults);
-  }
+  // At most MAX_CONCURRENCY in flight; a send that times out holds back its own slot only.
+  const results = await runLimited(tokens, MAX_CONCURRENCY, (token) => sendOne(url, accessToken, token, message));
   const invalidTokens = results.filter((r) => r.action === 'invalid').map((r) => r.token);
   const acceptedTokens = results.filter((r) => r.action === 'ok').map((r) => r.token);
   return { invalidTokens, acceptedTokens };

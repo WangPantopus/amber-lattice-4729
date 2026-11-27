@@ -13,6 +13,7 @@ const logger = require('../utils/logger');
 const badgeService = require('./badgeService');
 const pushService = require('./pushService');
 const { readableNotifications } = require('./pulse/notificationAccess');
+const { runLimited } = require('../utils/runLimited');
 const { isLaunchNotificationHidden } = require('../utils/featureFlags');
 const {
   CONTEXTS: NOTIFICATION_CONTEXT_LIST,
@@ -568,30 +569,28 @@ async function createBulkNotifications(notifications, { sendPush = true } = {}) 
           return !prefRow || prefRow[prefField] !== false;
         });
 
-        for (let i = 0; i < eligible.length; i += PUSH_CONCURRENCY) {
-          const batch = eligible.slice(i, i + PUSH_CONCURRENCY);
-          await Promise.allSettled(batch.map(async (notif) => {
-            try {
-              // A later batch leaves seconds after the inbox check above, so a post-linked notice is checked again
-              // right before it leaves (docs/product/pulse-build/02-contract.md §5); one with no post reads nothing.
-              if (!(await readableNotifications([notif])).length) return;
-              emitDesktopAlert(notif);
-              await pushService.sendToUser(notif.user_id, {
-                title: notif.title,
-                body: notif.body || '',
-                data: {
-                  notificationId: notif.id,
-                  type: notif.type,
-                  link: notif.link || null,
-                  ...(notif.metadata || {}),
-                  recipient_user_id: notif.user_id,
-                },
-              });
-            } catch (err) {
-              logger.warn('Bulk push delivery failed (non-blocking)', { error: err.message });
-            }
-          }));
-        }
+        // PUSH_CONCURRENCY at a time; a push that waits on Apple or Google holds back its own slot only.
+        await runLimited(eligible, PUSH_CONCURRENCY, async (notif) => {
+          try {
+            // The last pushes leave seconds after the inbox check above, so a post-linked notice is checked again
+            // right before it leaves (docs/product/pulse-build/02-contract.md §5); one with no post reads nothing.
+            if (!(await readableNotifications([notif])).length) return;
+            emitDesktopAlert(notif);
+            await pushService.sendToUser(notif.user_id, {
+              title: notif.title,
+              body: notif.body || '',
+              data: {
+                notificationId: notif.id,
+                type: notif.type,
+                link: notif.link || null,
+                ...(notif.metadata || {}),
+                recipient_user_id: notif.user_id,
+              },
+            });
+          } catch (err) {
+            logger.warn('Bulk push delivery failed (non-blocking)', { error: err.message });
+          }
+        });
       })().catch((err) => {
         logger.warn('Bulk push delivery batch failed (non-blocking)', { error: err.message });
       });
