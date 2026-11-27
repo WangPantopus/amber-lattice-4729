@@ -147,15 +147,33 @@ struct MomentDotsOverlay: View {
                 if let open {
                     let x = frame.minX + open.x * frame.width
                     let y = frame.minY + open.y * frame.height
+                    // A video fills the screen past its edges (a 9:16 video by about 45 points a side on an iPhone):
+                    // the card stays inside the part that shows.
+                    let shown = MomentLayerScreen.shown(in: geo)
                     MomentDotCard(moment: moment, dot: open)
-                        .frame(width: min(geo.size.width - 32, 280))
+                        .frame(width: min(shown.width - 32, 280))
                         .fixedSize(horizontal: false, vertical: true)
                         .position(
-                            x: min(max(x, 156), max(geo.size.width - 156, 156)),
+                            x: min(max(x, shown.minX + 156), max(shown.maxX - 156, shown.minX + 156)),
                             y: y > geo.size.height * 0.55 ? y - (open.kind == .thing ? 150 : 96) : y + (open.kind == .thing ? 150 : 96)
                         )
                 }
             }
         }
+    }
+}
+
+/// The part of a layer that is on the screen, in the layer's own coordinates. A video, or a photo of another shape than
+/// the screen, is drawn filling it, so its layer runs past the screen's edges; a card opened on it stays inside this.
+enum MomentLayerScreen {
+    @MainActor
+    static func shown(in geo: GeometryProxy) -> CGRect {
+        let whole = CGRect(origin: .zero, size: geo.size)
+        let global = geo.frame(in: .global)
+        let window = UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow?.bounds }.first
+        guard let window else { return whole }
+        let visible = global.intersection(window)
+        guard !visible.isNull, visible.width > 120, visible.height > 120 else { return whole }
+        return visible.offsetBy(dx: -global.minX, dy: -global.minY)
     }
 }
