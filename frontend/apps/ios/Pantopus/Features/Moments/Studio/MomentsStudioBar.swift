@@ -6,8 +6,9 @@
 //
 //  The rail, at the right: each tool is its word beside a round button. Phase
 //  0 step 2 carries today's tools, Text, Draw and Resize, which open today's
-//  marks editor (`MomentsMarksEditor`) in that tool; the board's other tools
-//  arrive with the steps that build them.
+//  marks editor (`MomentsMarksEditor`) in that tool; step 3 adds Stamps and
+//  Play (`MomentsStudioTray`). The board's other tools arrive with the steps
+//  that build them.
 //
 //  The bar: who sees it (Nearby or Friends, today's "Everyone nearby" and "My
 //  connections"), a pill reading how long it shows and where ("Fades in 24
@@ -18,6 +19,8 @@ import SwiftUI
 
 struct MomentsStudioRail: View {
     let model: MomentsComposerModel
+    /// "Stamps and Play" (step 3): the tray, for a Moment with a place (every stamp reads the spot).
+    var openTray: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Spacing.s3) {
@@ -26,6 +29,13 @@ struct MomentsStudioRail: View {
                     // "Aa" is lettering, not an icon (board B2).
                     Text("Aa").font(.system(size: 17, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
                 } action: { model.openMarks(.text) }
+            }
+            if let openTray, !model.noLocationOn {
+                tool("Stamps and Play", id: "moments.studio.rail.stamps") {
+                    Icon(.stamp, size: 20, strokeWidth: 2.2, color: .white)
+                } action: { openTray() }
+            }
+            if model.offersMarks {
                 tool("Draw", id: "moments.studio.rail.draw") {
                     Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { model.openMarks(.draw) }
@@ -213,7 +223,13 @@ struct MomentsStudioBar: View {
         Button {
             Keyboard.close()
             Task {
-                if await model.post() { onPosted() }
+                if await model.post() {
+                    onPosted()
+                } else if !model.studioStamps.isEmpty {
+                    // Stamps are the Studio's own: refused, the switch may be off now (CONTRACT 1). Read it again; off,
+                    // today's composer takes the draft (`MomentsComposerChoice`).
+                    await PulseReinventedFlags.shared.recheck()
+                }
             }
         } label: {
             ZStack {

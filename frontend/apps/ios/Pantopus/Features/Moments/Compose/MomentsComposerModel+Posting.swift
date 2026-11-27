@@ -172,6 +172,13 @@ extension MomentsComposerModel {
         body.showWeather = marks.showWeather
         // The Studio's made-up name; left out otherwise, so today's Post sheet sends what it always has.
         body.postAs = postsUnderMadeUpName ? "pen_name" : nil
+        // The Studio's stamps, and the phone's height for an elevation stamp; left out otherwise.
+        if !studioStamps.isEmpty {
+            body.stamps = studioStamps
+            if studioStamps.contains(where: { $0.kind == .elevation }), let reading = capture != nil ? captureHeight : fixHeight {
+                body.elevation = MomentAltitudeBody(meters: reading.meters, accuracyM: reading.accuracyMeters, speedMps: reading.speedMps)
+            }
+        }
         return body
     }
 
