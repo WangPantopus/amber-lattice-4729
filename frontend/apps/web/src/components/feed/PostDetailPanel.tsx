@@ -30,6 +30,7 @@ import {
 import { openQuoteComposer } from '@/lib/feedComposerEvents';
 import { formatTimeAgo as timeAgo, getPostTypeConfig, POST_TYPE_ICONS_LUCIDE, postReaction } from '@pantopus/ui-utils';
 import { PostReactionBar, reactedPostPatch, reactionFieldsOf, serverReactionPatch } from './PostReactions';
+import { hasSignals, PostSignalBar } from '@/components/reinvented/signals/PostSignals';
 import { chosenUsername } from '@pantopus/utils';
 import { patchPostInFeedCaches, removePostFromFeedCaches } from '@/hooks/useFeedData';
 import { usePostDetail } from '@/hooks/usePostDetail';
@@ -620,7 +621,8 @@ export default function PostDetailPanel({
               )}
 
               {/* Each emoji's count and the button for the picker; an event's Going is in the bar below */}
-              {!isEvent && (
+              {!isEvent && hasSignals(post) && <PostSignalBar post={post} className="px-5 pb-3" />}
+              {!isEvent && !hasSignals(post) && (
                 <PostReactionBar post={post} pending={reactMutation.isPending} onReact={handleReact} className="px-5 pb-3" />
               )}
 

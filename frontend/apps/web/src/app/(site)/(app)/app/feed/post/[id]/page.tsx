@@ -22,6 +22,7 @@ import {
   formatDistance, formatTimeAgo as timeAgo, getPostTypeConfig, POST_TYPE_ICONS_LUCIDE, postReaction,
 } from '@pantopus/ui-utils';
 import { PostReactionBar, reactedPostPatch, reactionFieldsOf, serverReactionPatch } from '@/components/feed/PostReactions';
+import { hasSignals, PostSignalBar } from '@/components/reinvented/signals/PostSignals';
 import { getErrorMessage, chosenUsername } from '@pantopus/utils';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -780,7 +781,8 @@ export default function PostDetailPage() {
           )}
 
           {/* Each emoji's count and the button for the picker; an event's Going is in the bar below */}
-          {!isEvent && (
+          {!isEvent && hasSignals(post) && <PostSignalBar post={post} className="px-4 pb-3" />}
+          {!isEvent && !hasSignals(post) && (
             <PostReactionBar post={post} pending={reactMutation.isPending} onReact={handleReact} className="px-4 pb-3" />
           )}
 

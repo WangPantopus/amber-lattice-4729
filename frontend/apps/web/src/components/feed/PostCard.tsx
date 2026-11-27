@@ -25,6 +25,7 @@ import { chosenUsername } from '@pantopus/utils';
 import { confirmStore } from '@/components/ui/confirm-store';
 import PostMetadata, { aroundStory } from './PostMetadata';
 import { PostReactionPill } from './PostReactions';
+import { hasSignals, PostSignalPill } from '@/components/reinvented/signals/PostSignals';
 import { canSharePost, sharePostLink } from './sharePostLink';
 import RepostChooser from './RepostChooser';
 import QuotedPostCard from './QuotedPostCard';
@@ -655,6 +656,8 @@ function PostCard({
             <span>Going</span>
             {post.like_count > 0 && <span>{post.like_count}</span>}
           </button>
+        ) : hasSignals(post) ? (
+          <PostSignalPill post={post} />
         ) : (
           <PostReactionPill post={post} pending={isLiking} onReact={(reaction) => onReact(post.id, reaction)} />
         )}
