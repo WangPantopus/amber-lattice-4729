@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { ChevronDown, LocateFixed, Plus } from 'lucide-react';
+import { ChevronDown, Headphones, LocateFixed, Plus } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { Post } from '@pantopus/api';
 import { useMe } from '@/lib/me';
@@ -29,7 +29,7 @@ import ExploreView from './ExploreView';
 import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import { useLinkedMoment, useLinkedSky } from './momentLinks';
-import { readBeams } from './mapLight';
+import { readBeams, readSounds } from './mapLight';
 import AskTheMap, { type Lit } from './AskTheMap';
 import FollowedPlaces, { useFollow } from './FollowedPlaces';
 import Constellations from './Constellations';
@@ -105,6 +105,8 @@ export default function ReinventedPulse() {
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   // Ask the map (CONTRACT 9b): the pins lit for the words asked; the rest dim. Cleared with a new reach, view or time.
   const [lit, setLit] = useState<Lit | null>(null);
+  // Listen to the town (CONTRACT 9g): off until the reader turns it on; the map's place sounds for its box and time.
+  const [listening, setListening] = useState(false);
   useEffect(() => setLit(null), [reach, view, time]);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -187,6 +189,14 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (map.error && isSwitchedOff(map.error)) void reread();
   }, [map.error, reread]);
+  const sounds = useQuery({
+    queryKey: ['reinvented', 'sounds', account, time, box],
+    queryFn: ({ signal }) => readSounds(box!, time, signal),
+    enabled: listening && !!account && !!box && view === 'pulse' && reach !== 'explore',
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    retry: false,
+  });
   // Live beams in the box (CONTRACT 9h), on the live map only. A server without the route draws none.
   const beams = useQuery({
     queryKey: ['reinvented', 'beams', account, box],
@@ -631,6 +641,23 @@ export default function ReinventedPulse() {
       {view === 'pulse' && reach !== 'explore' && (height === 'map' || sideBySide) && (
         <AskTheMap box={box} time={time} data={map.data} lit={lit} shown={lit ? pins.filter((p) => lit.pins.has(p.key)).length : 0} onLit={setLit} />
       )}
+      {view === 'pulse' && reach !== 'explore' && (height === 'map' || sideBySide) && (
+        <div className="rp-listen">
+          <button type="button" aria-pressed={listening} onClick={() => setListening((on) => !on)}>
+            <Headphones size={15} aria-hidden />
+            {listening ? 'Listening' : 'Listen to the town'}
+          </button>
+          {listening && (
+            <small role="status">
+              {sounds.data?.sounds.length
+                ? 'Put on headphones and move across the map: you hear the sounds people kept here.'
+                : sounds.isFetching
+                  ? 'Finding sounds…'
+                  : 'No sounds kept here. Move the map.'}
+            </small>
+          )}
+        </div>
+      )}
     </header>
   );
 
@@ -649,6 +676,7 @@ export default function ReinventedPulse() {
           onPick={onPick}
           float={view === 'pulse' && reach !== 'explore' && !!map.data?.heights_on && !!map.data?.float_on}
           lit={view === 'pulse' && reach !== 'explore' ? lit : null}
+          sounds={listening && view === 'pulse' && reach !== 'explore' ? sounds.data?.sounds ?? null : null}
           beams={view === 'pulse' && reach !== 'explore' && time === 'live' ? beams.data?.beams : undefined}
         />
       </div>
