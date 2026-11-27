@@ -9,13 +9,13 @@ const supabaseAdmin = require('../../config/supabaseAdmin');
 const { haversineMeters } = require('../../utils/trustState');
 
 const OPEN_MS = 6 * 60 * 60 * 1000;
-// Measured against the point everyone sees (the area privacy floor moves it up to about 900 m), never the stored one.
-const NEAR_M = 1500;
+// An Eyes-on Ask is asked of a picked public place (a venue: LEAD-3 07:03); "there now" is within this of the place.
+const NEAR_M = 300;
 const LIST = 30;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOW_SOURCES = ['gps', 'capture'];
-// NEAR_M plus the largest display offset, in degrees, for the database's first, wider cut.
-const PAD = 0.025;
+// A little over NEAR_M in degrees, for the database's first, wider cut.
+const PAD = 0.006;
 
 function fail(status, code, message) {
   return Object.assign(new Error(message), { status, code });
@@ -23,14 +23,34 @@ function fail(status, code, message) {
 
 // eslint-disable-next-line global-require
 const readAccess = () => require('./readAccess');
-// eslint-disable-next-line global-require
-const shownPoint = (post) => require('./distanceText').displayedPoint(post);
 
-/** The Studio row's part for a new Ask (`eyes_on: true` sent): open for 6 hours; only an Ask with a place, not at home. */
-function keptFor({ wanted, row, atHome }) {
-  if (!wanted || row.post_type !== 'ask_local' || row.latitude == null || atHome) return {};
-  return { eyes_on: { v: 1, until: new Date(Date.now() + OPEN_MS).toISOString() } };
+// eslint-disable-next-line global-require
+const venueTagged = (placeId, accuracy) => require('../../utils/postPlaceTag').taggedPlaceKind(placeId, accuracy) === 'venue';
+
+/**
+ * Whether an Ask sent with `eyes_on` may be one (checked in the route before posting): an Ask that tags a venue, a
+ * public place picked with the place picker. Throws 400 otherwise.
+ */
+function checkAsk({ postType, placeId, accuracy, latitude, longitude }) {
+  if (postType !== 'ask_local') throw fail(400, 'EYES_ON_INVALID', 'Eyes on is for a question.');
+  if (latitude == null || longitude == null || !venueTagged(placeId, accuracy)) {
+    throw fail(400, 'EYES_ON_NEEDS_PLACE', "Pick the place you're asking about.");
+  }
 }
+
+/**
+ * The Studio row's part for a new Ask (`eyes_on: true` sent, checkAsk passed): open for 6 hours, with the picked place's
+ * own point (a public place, so its point is no one's). Never at the asker's home.
+ */
+function keptFor({ wanted, row, atHome }) {
+  if (!wanted || row.post_type !== 'ask_local' || atHome || !venueTagged(row.geocode_place_id, row.geocode_accuracy)) return {};
+  const latitude = row.effective_latitude ?? row.latitude;
+  const longitude = row.effective_longitude ?? row.longitude;
+  if (latitude == null || longitude == null) return {};
+  return { eyes_on: { v: 1, until: new Date(Date.now() + OPEN_MS).toISOString(), place: { latitude, longitude } } };
+}
+
+const placeOf = (row) => (row.studio?.eyes_on?.place?.latitude != null ? row.studio.eyes_on.place : null);
 
 function point(body) {
   const latitude = Number(body?.latitude);
@@ -76,7 +96,7 @@ async function near(userId, body) {
   const rows = await openAsks({ box: here });
   const readable = [];
   for (const row of rows) {
-    const at = shownPoint(row.post);
+    const at = placeOf(row);
     if (!at || haversineMeters(here.latitude, here.longitude, at.latitude, at.longitude) > NEAR_M) continue;
     if (await readAccess().canReadPost(row.post, userId).catch(() => false)) readable.push(row);
   }
@@ -89,6 +109,7 @@ async function near(userId, body) {
     asks: page.map((row) => ({
       id: row.post_id,
       question: String(row.post.content || '').slice(0, 280),
+      place: row.post.location_name || null,
       author: authors.get(String(row.post.user_id)) || null,
       at: row.post.created_at,
       until: row.studio.eyes_on.until,
@@ -109,7 +130,7 @@ async function checkAnswer(userId, askId, { kind, source, latitude, longitude, a
     throw fail(404, 'EYES_ON_NOT_FOUND', 'This question is closed or could not be found.');
   }
   if (atHome) throw fail(422, 'EYES_ON_AT_HOME', "An answer can't be taken at your home.");
-  const at = shownPoint(row.post);
+  const at = placeOf(row);
   if (!at || latitude == null || haversineMeters(latitude, longitude, at.latitude, at.longitude) > NEAR_M) {
     throw fail(422, 'EYES_ON_TOO_FAR', 'Answer from the place the question is about.');
   }
@@ -128,4 +149,4 @@ async function partsFor(studios) {
   return out;
 }
 
-module.exports = { keptFor, near, checkAnswer, partsFor, NEAR_M };
+module.exports = { checkAsk, keptFor, near, checkAnswer, partsFor, NEAR_M };
