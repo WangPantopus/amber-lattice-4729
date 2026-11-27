@@ -55,9 +55,13 @@ async function view(userId, date, viewerId) {
   if (error) throw new Error(`Failed to load the day: ${error.message}`);
   const shown = await visible((data || []).filter((r) => !penName.isPenNameRow(r)), viewerId);
   if (!shown.length) throw fail(404, 'YOUR_DAY_NOT_FOUND', 'This day could not be found.');
-  const line = shown.filter((r) => !store.meta(r).at_home).map((r) => ({ ...store.displayedPoint(r), at: r.created_at }))
-    .filter((p) => p.latitude != null);
-  return { day: { date, line, moments: await store.serializeMoments(shown, viewerId, { keptPosts: true }) } };
+  const moments = await store.serializeMoments(shown, viewerId, { keptPosts: true });
+  // The line takes each point from the answer this reader gets, so a spot the answer hides (a live guess-the-spot
+  // Moment, a sealed one) is never on it either.
+  const atHome = new Set(shown.filter((r) => store.meta(r).at_home).map((r) => r.id));
+  const line = moments.filter((m) => m && !atHome.has(m.id) && m.latitude != null && m.longitude != null)
+    .map((m) => ({ latitude: m.latitude, longitude: m.longitude, at: m.created_at }));
+  return { day: { date, line, moments } };
 }
 
 /** POST /town-film — { latitude, longitude } in the body, never kept: tonight's film of the town, or null. */
