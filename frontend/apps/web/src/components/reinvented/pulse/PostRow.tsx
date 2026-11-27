@@ -7,6 +7,7 @@ import type { ComponentProps } from 'react';
 import { MapPin } from 'lucide-react';
 import type { Post } from '@pantopus/api';
 import PostCard from '@/components/feed/PostCard';
+import { studioPostPicture } from './StudioPostPicture';
 import type { Point } from './listApi';
 
 type CardProps = Omit<ComponentProps<typeof PostCard>, 'post'>;
@@ -68,7 +69,7 @@ export default function PostRow({
           )}
         </div>
       )}
-      <PostCard post={post} {...card} />
+      <PostCard post={post} {...card} overMedia={studioPostPicture} />
     </div>
   );
 }

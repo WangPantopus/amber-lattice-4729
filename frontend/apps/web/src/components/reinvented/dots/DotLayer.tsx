@@ -63,8 +63,10 @@ function host(url: string) {
   }
 }
 
-export default function DotLayer({ moment }: { moment: Moment }) {
-  const dots = ((moment as DotMoment).dots || []).filter((d) => d.kind !== 'whisper');
+export default function DotLayer({ moment, post = false }: { moment: Moment; post?: boolean }) {
+  // On a post the author's removals are kept here (there is no viewer cache to read again).
+  const [gone, setGone] = useState<string[]>([]);
+  const dots = ((moment as DotMoment).dots || []).filter((d) => d.kind !== 'whisper' && !gone.includes(d.id));
   const account = useMe().data?.id;
   const own = !!account && moment.author?.id === account;
   const [open, setOpen] = useState<string | null>(null);
@@ -110,7 +112,16 @@ export default function DotLayer({ moment }: { moment: Moment }) {
             <X aria-hidden="true" />
           </button>
           <DotBody key={shown.id} moment={moment} dot={shown} />
-          {own && <RemoveDot moment={moment} dot={shown} onDone={() => setOpen(null)} />}
+          {own && (
+            <RemoveDot
+              moment={moment}
+              dot={shown}
+              onDone={() => {
+                if (post) setGone([...gone, shown.id]);
+                setOpen(null);
+              }}
+            />
+          )}
         </div>
       )}
     </div>

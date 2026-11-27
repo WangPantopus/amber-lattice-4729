@@ -144,6 +144,11 @@ interface PostCardProps {
    * profile header (and on iOS and Android). The feed colors initials by post kind.
    */
   authorColorSeed?: string;
+  /**
+   * Pulse, reinvented: only its new Pulse passes this, while the switch is on. For a post with one picture it may draw
+   * that picture whole with what was placed on it in the Studio; null keeps today's picture. Without it, today's card.
+   */
+  overMedia?: (post: Post, mediaIndex: number) => ReactNode;
 }
 
 function PostCard({
@@ -171,6 +176,7 @@ function PostCard({
   surface,
   showToast,
   authorColorSeed,
+  overMedia,
 }: PostCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   // Repost's chooser, opened from ↻ in the action bar or from Repost in the ⋯ menu (it opens where the menu was).
@@ -249,6 +255,7 @@ function PostCard({
   const talk = post.conversation?.latest ? post.conversation : null;
   // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
   const media = useShownMedia(post);
+  const studioPicture = overMedia && media.shown.length === 1 ? overMedia(post, media.shown[0]) : null;
   const repostChooser = (from: 'bar' | 'menu') => chooserFrom === from && (
     <RepostChooser
       reposted={reposted}
@@ -595,7 +602,11 @@ function PostCard({
       )}
 
       {/* ─── Media grid ──────────────────────────────── */}
-      {media.shown.length > 0 && (
+      {studioPicture ? (
+        <div className="px-4 pb-3 cursor-pointer" onClick={openFullPost}>
+          {studioPicture}
+        </div>
+      ) : media.shown.length > 0 && (
         <div
           className={`px-4 pb-3 grid gap-1.5 ${
             media.shown.length === 1
