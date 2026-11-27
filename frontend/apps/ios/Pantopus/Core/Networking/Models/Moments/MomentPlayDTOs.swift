@@ -188,6 +188,126 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// A dot on a thing in the photo (CONTRACT 7c, living objects): a note, a rating, a link, a thing to name (its field
+/// card, 7d) or a voice whisper (7e). `x` and `y` are its place on the picture, 0 to 1 from the top left, as a stamp's.
+public struct MomentDotDTO: Codable, Sendable, Hashable, Identifiable {
+    public enum Kind: String, Codable, Sendable {
+        case note, rating, link, thing, whisper
+        /// A kind this app doesn't know yet: never drawn.
+        case unknown
+    }
+
+    public var id: String
+    public var kind: Kind
+    public var x: Double
+    public var y: Double
+    /// A note's words (up to 140).
+    public var text: String?
+    /// A rating's subject, or a thing's own guess (up to 40).
+    public var label: String?
+    /// A rating's stars, 1 to 5.
+    public var stars: Int?
+    /// A link's https address and optional title.
+    public var url: String?
+    public var title: String?
+    /// A thing's outline on the picture.
+    public var box: MomentPlayItem.Box?
+    /// Read only: a thing's kept field card, and a whisper's sound.
+    public var card: MomentFieldCardDTO?
+    public var audioURL: String?
+    public var durationMs: Double?
+
+    public init(id: String, kind: Kind, x: Double, y: Double) {
+        self.id = id
+        self.kind = kind
+        self.x = x
+        self.y = y
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, x, y, text, label, stars, url, title, box, card
+        case audioURL = "audio_url"
+        case durationMs = "duration_ms"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decode(String.self, forKey: .kind)).flatMap(Kind.init(rawValue:)) ?? .unknown
+        x = (try? c.decodeIfPresent(Double.self, forKey: .x)) ?? 0.5
+        y = (try? c.decodeIfPresent(Double.self, forKey: .y)) ?? 0.5
+        text = try? c.decodeIfPresent(String.self, forKey: .text)
+        label = try? c.decodeIfPresent(String.self, forKey: .label)
+        stars = try? c.decodeIfPresent(Int.self, forKey: .stars)
+        url = try? c.decodeIfPresent(String.self, forKey: .url)
+        title = try? c.decodeIfPresent(String.self, forKey: .title)
+        box = try? c.decodeIfPresent(MomentPlayItem.Box.self, forKey: .box)
+        card = try? c.decodeIfPresent(MomentFieldCardDTO.self, forKey: .card)
+        audioURL = try? c.decodeIfPresent(String.self, forKey: .audioURL)
+        durationMs = try? c.decodeIfPresent(Double.self, forKey: .durationMs)
+    }
+
+    /// What the author sends: its place and its kind's own fields.
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(kind.rawValue, forKey: .kind)
+        try c.encode(x, forKey: .x)
+        try c.encode(y, forKey: .y)
+        try c.encodeIfPresent(text, forKey: .text)
+        try c.encodeIfPresent(label, forKey: .label)
+        try c.encodeIfPresent(stars, forKey: .stars)
+        try c.encodeIfPresent(url, forKey: .url)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(box, forKey: .box)
+    }
+}
+
+/// A thing's field card (CONTRACT 7d): always "likely", one line of why, a source a reader can open, and a caution
+/// for anything one might eat. Kept with the post once made, so the next reader's tap costs nothing.
+public struct MomentFieldCardDTO: Decodable, Sendable, Hashable {
+    public struct Source: Decodable, Sendable, Hashable {
+        public let title: String
+        public let url: String
+    }
+
+    public struct Correction: Decodable, Sendable, Hashable {
+        public let name: String
+        public let note: String?
+    }
+
+    public let name: String?
+    public let likely: Bool
+    public let scientific: String?
+    public let why: String
+    public let source: Source?
+    public let caution: String?
+    public let namedBy: String
+    public let corrections: Int
+    public let myCorrection: Correction?
+    public let collected: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case name, likely, scientific, why, source, caution, corrections, collected
+        case namedBy = "named_by"
+        case myCorrection = "my_correction"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try? c.decodeIfPresent(String.self, forKey: .name)
+        likely = (try? c.decodeIfPresent(Bool.self, forKey: .likely)) ?? true
+        scientific = try? c.decodeIfPresent(String.self, forKey: .scientific)
+        why = (try? c.decodeIfPresent(String.self, forKey: .why)) ?? ""
+        source = try? c.decodeIfPresent(Source.self, forKey: .source)
+        caution = try? c.decodeIfPresent(String.self, forKey: .caution)
+        namedBy = (try? c.decodeIfPresent(String.self, forKey: .namedBy)) ?? "Pantopus AI"
+        corrections = (try? c.decodeIfPresent(Int.self, forKey: .corrections)) ?? 0
+        myCorrection = try? c.decodeIfPresent(Correction.self, forKey: .myCorrection)
+        collected = try? c.decodeIfPresent(Bool.self, forKey: .collected)
+    }
+}
+
 /// A person on a board, along the dial, or in the author's list of answers.
 public struct MomentPlayPerson: Decodable, Sendable, Hashable {
     public let id: String
@@ -229,15 +349,18 @@ public struct MomentLayersDTO: Sendable, Hashable {
     public let play: [MomentPlayItem]
     /// The people mentioned in the caption (CONTRACT 7h), in the order sent, as this reader may see them; `[]` when none.
     public let mentions: [MomentAuthorDTO]
+    /// The dots on things in the photo (CONTRACT 7c), `[]` when none.
+    public let dots: [MomentDotDTO]
 
     private enum CodingKeys: String, CodingKey {
-        case play, mentions
+        case play, mentions, dots
     }
 
     init(from decoder: any Decoder) {
         let c = try? decoder.container(keyedBy: CodingKeys.self)
         play = (try? c?.decodeIfPresent(MomentLenientList<MomentPlayItem>.self, forKey: .play))?.items.filter { $0.kind != .unknown } ?? []
         mentions = (try? c?.decodeIfPresent(MomentLenientList<MomentAuthorDTO>.self, forKey: .mentions))?.items ?? []
+        dots = (try? c?.decodeIfPresent(MomentLenientList<MomentDotDTO>.self, forKey: .dots))?.items.filter { $0.kind != .unknown } ?? []
     }
 
     /// The before and after on a photo, if it has one (one at most).

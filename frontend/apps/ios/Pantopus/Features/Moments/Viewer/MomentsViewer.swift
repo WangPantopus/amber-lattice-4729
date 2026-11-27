@@ -345,14 +345,14 @@ extension MomentsViewer {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(moment.author.shortName)'s video")
                 .accessibilityIdentifier("moments.viewer.video")
-                .overlay { MomentStampsOverlay(moment: moment, picture: moment.pictureSize) }
+                .overlay { MomentLayersOverlay(moment: moment, picture: moment.pictureSize) }
             case .text:
                 // While a reply is being written the card keeps its color and gives up its words, so they
                 // don't read through the reactions and the reply box. On a table nothing covers the card.
                 MomentsTextCard(text: isReplying && duo.pose != .table ? "" : moment.text ?? "", background: moment.background)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("moments.viewer.text")
-                    .overlay { MomentStampsOverlay(moment: moment, picture: nil) }
+                    .overlay { MomentLayersOverlay(moment: moment, picture: nil) }
             }
         }
     }

@@ -33,6 +33,8 @@ struct MomentsStudioStage: View {
     /// The stamps' values for this spot and the one picked on the picture (step 3).
     @State private var stamps = MomentsStudioStamps()
     @State private var showsTray = false
+    /// Illuminate's sheet (phase 2: dots on things in the picture).
+    @State private var showsIlluminate = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -52,7 +54,7 @@ struct MomentsStudioStage: View {
             HStack(alignment: .top) {
                 closeButton
                 Spacer(minLength: Spacing.s2)
-                MomentsStudioRail(model: model, openTray: openTray)
+                MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
@@ -99,11 +101,20 @@ struct MomentsStudioStage: View {
                 MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.
                 MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
+                // Illuminate's dots (phase 2), over the stamps.
+                MomentsStudioDotLayer(model: model, picture: stampPicture, open: openIlluminate)
             }
             .ignoresSafeArea()
         }
         .sheet(isPresented: $showsDrawer) {
             MomentsStudioDrawer(model: model) { showsDrawer = false }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
+                .environment(\.colorScheme, .dark)
+        }
+        .sheet(isPresented: $showsIlluminate) {
+            MomentsStudioIlluminate(model: model) { showsIlluminate = false }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
@@ -134,6 +145,12 @@ struct MomentsStudioStage: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio")
+    }
+
+    private func openIlluminate() {
+        writing = false
+        Keyboard.close()
+        showsIlluminate = true
     }
 
     private func openTray() {

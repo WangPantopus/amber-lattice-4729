@@ -197,6 +197,9 @@ struct MomentsStudioTools {
     var pair: MomentsStudioPair?
     /// People picked after "@" in the caption (`MomentsStudioMentions`): sent while their "@Name" is still in it.
     var mentioned: [MomentsStudioMention] = []
+    /// Illuminate's dots on things in the picture (`MomentsStudioDots`), and the one being edited.
+    var dots: [MomentDotDTO] = []
+    var pickedDot: String?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

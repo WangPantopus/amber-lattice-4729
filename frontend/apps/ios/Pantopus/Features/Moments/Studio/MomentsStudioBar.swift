@@ -21,6 +21,8 @@ struct MomentsStudioRail: View {
     let model: MomentsComposerModel
     /// "Stamps and Play" (step 3): the tray, for a Moment with a place (every stamp reads the spot).
     var openTray: (() -> Void)?
+    /// Illuminate (phase 2): dots on things in the picture (`MomentsStudioIlluminate`).
+    var openIlluminate: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Spacing.s3) {
@@ -34,6 +36,11 @@ struct MomentsStudioRail: View {
                 tool("Stamps and Play", id: "moments.studio.rail.stamps") {
                     Icon(.stamp, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { openTray() }
+            }
+            if let openIlluminate, model.offersDots {
+                tool("Illuminate", id: "moments.studio.rail.illuminate") {
+                    Icon(.sparkles, size: 20, strokeWidth: 2.2, color: .white)
+                } action: { openIlluminate() }
             }
             if model.offersMarks, model.studioPair == nil {
                 tool("Draw", id: "moments.studio.rail.draw") {
