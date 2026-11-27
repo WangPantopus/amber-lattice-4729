@@ -21,6 +21,8 @@ public enum StudioEndpoints {
     static func postSignal(postId: String, signal: String?) -> Endpoint {
         let id = postId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? postId
         return Endpoint(method: .post, path: "/api/posts/\(id)/like", body: PostSignalRequest(signal: signal))
+    }
+
     /// `POST /api/moments/:id/guess` (CONTRACT 5c): the reader's one guess at a guess-the-spot Moment's spot. Answers how
     /// far off it was and the Moment in full. Route `backend/routes/moments.js` (guess).
     static func guess(momentId: String, latitude: Double, longitude: Double) -> Endpoint {
