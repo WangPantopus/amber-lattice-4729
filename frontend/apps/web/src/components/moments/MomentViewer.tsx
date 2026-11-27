@@ -420,7 +420,7 @@ export default function MomentViewer(props: Props) {
                 </span>
               )}
             </div>
-            {moment.caption && <p>{moment.caption}</p>}
+            {moment.caption && <p>{props.studio?.caption ? props.studio.caption(moment) : moment.caption}</p>}
           </div>
           <div className="mo-watch-bottom">
             {note && (

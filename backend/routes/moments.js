@@ -26,6 +26,21 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
+const retake = require('../services/pulse/retake');
+const pinboard = require('../services/pulse/pinboard');
+const eyesOn = require('../services/pulse/eyesOn');
+const seal = require('../services/pulse/seal');
+const mentions = require('../services/pulse/mentions');
+
+/** The mentions kept on a new Moment (CONTRACT 7h), as the Moment's own field: { mentions } or nothing. */
+async function keptMentions(ids, authorId, { penName: underPenName, audience, guess }) {
+  // As it will be stored: who may see it is today's rule (its audience, blocks, mutes; a live guess-the-spot Moment
+  // only for a reader with the switch on).
+  const row = { user_id: authorId, audience, post_metadata: { moment: guess ? { guess: { v: 1 } } : {} },
+    story_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() };
+  const kept = await mentions.keep(ids, authorId, { penName: underPenName, maySee: (id) => mentions.maySeeMoment(row, id) });
+  return kept.length ? { mentions: kept } : {};
+}
 const playItems = require('../services/pulse/play');
 const stepDeck = require('../services/pulse/deck');
 const { normalizePostReaction, normalizePostSignal, shownReaction, shownSignal } = require('../utils/postReaction');
@@ -367,7 +382,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -375,11 +390,14 @@ router.post('/', createLimiter, async (req, res) => {
     // Dots on the picture (CONTRACT 7c): a note, a rating, a link, a thing to name. A step deck (7g).
     let play = [];
     let dots = [];
+    // Mentions (CONTRACT 7h): the ids sent beside the caption's "@First Last"; who is kept is decided below.
+    let mentionIds = null;
     const deck = studio ? stepDeck.parseDeck(req.body?.deck, { kind: body.kind, penName: body.post_as === 'pen_name' }) : null;
     if (deck) await stepDeck.checkStep(req.user.id, deck, retryId(req.user.id, body.client_request_id));
     if (studio) {
       try {
         play = playItems.parseItems(req.body?.play, Date.now(), { photo: body.kind === 'photo' });
+        mentionIds = mentions.parse(req.body?.mentions);
         dots = playItems.parseDots(req.body?.dots, {
           photo: body.kind === 'photo', media: body.kind !== 'text', penName: body.post_as === 'pen_name',
           // A thing to name sends its photo to Pantopus AI: only while the author keeps it on (CONTRACT 7d).
@@ -390,6 +408,12 @@ router.post('/', createLimiter, async (req, res) => {
         throw store.fail(400, 'MOMENT_INVALID', playError.message);
       }
     }
+    // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
+    const retakeAsk = studio ? retake.parse(req.body) : null;
+    // Seal it (CONTRACT 8g): opens on a date, at a place or with rain; checked below, once the place is known.
+    const sealAsk = studio ? seal.parse(req.body) : null;
+    // Pinboards (CONTRACT 8i): start one (`pinboard.prompt`) or add a piece (`pinboard_of`).
+    const pinboardAsk = studio ? pinboard.parse(req.body) : null;
     // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
     const guess = Boolean(studio) && req.body?.guess === true;
     if (guess && (!['photo', 'video'].includes(body.kind) || body.location.source === 'none')) {
@@ -524,6 +548,25 @@ router.post('/', createLimiter, async (req, res) => {
     // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
     const studioAtHome = atHome || (!unplaced && !markHomeClear);
     if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
+    seal.checkPosting(sealAsk, { unplaced, floating: Boolean(area), showArea, atHome: studioAtHome, underPenName, guess });
+    pinboard.checkPosting(pinboardAsk, { kind: body.kind, underPenName });
+    const pinboardStartId = pinboardAsk?.of ? await pinboard.checkPiece(req.user.id, pinboardAsk.of) : null;
+    let retakeStartId = null;
+    if (retakeAsk) {
+      retake.checkPosting(retakeAsk, {
+        kind: body.kind, source: body.location.source, shareAt, floating: Boolean(area), showArea, atHome: studioAtHome,
+        underPenName, guess,
+      });
+      if (retakeAsk.of) {
+        retakeStartId = await retake.checkFrame(req.user.id, retakeAsk.of, { latitude: body.location.latitude, longitude: body.location.longitude });
+      }
+    }
+    // Eyes on (CONTRACT 8f): an answer is a photo taken there now, never from the answerer's home.
+    const eyesOnFor = studio && req.body?.eyes_on_for != null
+      ? await eyesOn.checkAnswer(req.user.id, req.body.eyes_on_for, {
+        kind: body.kind, source: body.location.source, latitude: body.location.latitude, longitude: body.location.longitude, atHome: studioAtHome,
+      })
+      : null;
     if (studio) {
       // The values every stamp shows, read by the server now (never from the phone), at the point everyone sees. One
       // made at home, or from a pin moved off where the author stood at home, says no weather, height or distance.
@@ -554,8 +597,21 @@ router.post('/', createLimiter, async (req, res) => {
         ...(play.length ? { play } : {}),
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
+        ...(eyesOnFor ? { eyes_on_for: eyesOnFor } : {}),
+        // Seal it (CONTRACT 8g): it stays, so it is there when it opens.
+        ...(sealAsk ? seal.keptPart(sealAsk) : {}),
+        // Pinboards (CONTRACT 8i): a start or a piece; it stays.
+        ...(pinboardAsk ? pinboard.keptPart(pinboardAsk, pinboardStartId) : {}),
+        // Retake (CONTRACT 8e): a start or a frame; it stays, kept as a post that stays.
+        ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
+        // Convergences (CONTRACT 8h): "Join tonight's sky: your photo stays in the piece", the author's own choice.
+        ...(req.body?.join_convergence === true ? { convergence_join: true } : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
+        // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.
+        ...(mentionIds?.length ? await keptMentions(mentionIds, req.user.id, {
+          penName: underPenName, audience: body.audience, guess: Boolean(guess),
+        }) : {}),
         // Explore (CONTRACT 6f): "Also show in Explore", kept only for a Moment with a place, to people nearby, not at
         // home and not under a made-up name (dropped anywhere else, never an error), with the town it is in.
         ...(req.body?.explore === true && !unplaced && body.audience === 'nearby' && !studioAtHome && !underPenName
@@ -891,7 +947,8 @@ const editSchema = Joi.object({
   // The whole new list of placements (momentStamps.parsePlacements checks it); the values stay those kept at posting.
   stamps: Joi.any(),
   audience: Joi.string().valid(...store.AUDIENCES),
-}).or('caption', 'stamps', 'audience');
+  mentions: Joi.any(),
+}).or('caption', 'stamps', 'audience', 'mentions');
 
 /**
  * PATCH /:id — the author changes the caption, the stamps or who sees it, for 15 minutes after it went out
@@ -912,6 +969,12 @@ router.patch('/:id', reinventedOnly, actionLimiter, async (req, res) => {
     const id = momentId(req);
     const changes = parseBody(editSchema, req.body);
     const stamps = changes.stamps === undefined ? undefined : momentStamps.parsePlacements(changes.stamps);
+    let mentionIds;
+    try {
+      mentionIds = mentions.parse(changes.mentions);
+    } catch (mentionError) {
+      throw store.fail(400, 'MOMENT_INVALID', mentionError.message);
+    }
     const row = await store.ownMoment(id, req.user.id);
     if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
     const state = store.momentState(row);
@@ -937,7 +1000,17 @@ router.patch('/:id', reinventedOnly, actionLimiter, async (req, res) => {
     const updated = await store.updateMoment(row, {
       ...(changes.caption !== undefined ? { content: changes.caption || '' } : {}),
       ...(changes.audience ? { audience: changes.audience } : {}),
-      moment: { ...(stamps !== undefined ? { stamps } : {}), edited_at: new Date().toISOString() },
+      moment: {
+        ...(stamps !== undefined ? { stamps } : {}),
+        // Mentions (CONTRACT 7h): the whole new list, kept by the same rules as on posting, for who sees it after the edit.
+        ...(mentionIds ? {
+          mentions: await mentions.keep(mentionIds, req.user.id, {
+            penName: underPenName,
+            maySee: (person) => mentions.maySeeMoment({ ...row, audience: changes.audience || row.audience }, person),
+          }),
+        } : {}),
+        edited_at: new Date().toISOString(),
+      },
     }, { archived_at: null });
     if (!updated) throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
     logger.info('moments.edited', { momentId: id, caption: changes.caption !== undefined, audience: changes.audience || null,

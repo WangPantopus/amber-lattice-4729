@@ -100,11 +100,10 @@ async function upload(id, user, file, fields) {
     media.sha256(file.buffer), EXT[type]);
   await media.put(bucket, key, file.buffer, type);
   const stored = { key, bucket, content_type: type, duration_ms: durationMs };
-  const updated = await store.updateMoment(row, {
-    moment: kind === 'whisper'
-      ? { whispers: { ...(m.whispers || {}), [dotId]: stored } }
-      : { sound: { ...stored, kind, words, cleaned: String(fields.cleaned) === 'true' } },
-  }, { archived_at: null });
+  // Worked out from the Moment as it is when written, so sounds sent at the same moment keep each other (LEAD-3).
+  const updated = await store.changeMoment(row, (now) => (kind === 'whisper'
+    ? { whispers: { ...(now.whispers || {}), [dotId]: stored } }
+    : { sound: { ...stored, kind, words, cleaned: String(fields.cleaned) === 'true' } }), { archived_at: null });
   if (!updated) throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   // The sound it replaced, if any, stays in the folder until the Moment's files go (as every file there does).
   logger.info('moments.sound_added', { momentId: id, kind, duration_ms: durationMs, words: words?.length || 0 });

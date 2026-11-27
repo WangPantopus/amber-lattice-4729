@@ -46,3 +46,8 @@
   color: #fca5a5;
   font-size: 13px;
 }
+.sv-ba-backdrop {
+  position: absolute;
+  inset: 0;
+  background: #0c2024;
+}

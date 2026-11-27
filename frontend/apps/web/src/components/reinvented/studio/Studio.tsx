@@ -40,6 +40,9 @@ import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCam
 import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
+import { cutToShape, sideBySide } from './beforeAfter';
+import { beforeAfterOf } from '../play/BeforeAfter';
+import { MentionPicker, mentionIds, type Mentioned } from '../mentions/Mentions';
 import {
   colors,
   deviceFix,
@@ -90,6 +93,8 @@ const pens = [0.006, 0.012, 0.024];
 const STAMP_SAFE = safeBox();
 // At home the place line reads "Area · <town>"; the first time only, one line under it says why (design §4).
 const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
+// The step deck's note to its author, said once (CONTRACT 7g): "Readers can save your steps' words."
+const DECK_NOTE_KEY = 'pantopus.studio.deckNoteSeen';
 type Placement = 'exact' | 'area' | 'place' | 'none';
 type PostAs = 'personal' | 'pen_name';
 
@@ -195,6 +200,18 @@ export default function Studio({
     [soundOpen, setSoundOpen] = useState(false),
     // Blur before posting (phase 2): boxes over faces, plates, numbers and labels, drawn into the photo when posting.
     [blurs, setBlurs] = useState<BlurBox[]>([]),
+    // Before and after (§7g): the after photo, cut to the before's shape; its own blurs; which one the stage shows.
+    [afterFile, setAfterFile] = useState<File | null>(null),
+    [afterBlurs, setAfterBlurs] = useState<BlurBox[]>([]),
+    [side, setSide] = useState<'before' | 'after'>('before'),
+    // A step deck (§7g): the photos or videos chosen together, posted one by one as the steps of one recipe or repair.
+    [asDeck, setAsDeck] = useState(false),
+    [deckNote, setDeckNote] = useState(false),
+    // Mentions (§7h): the connections picked after "@" in the words, and where the caret is in which field.
+    [mentioned, setMentioned] = useState<Mentioned[]>([]),
+    // Replies everyone can see (§8a): null keeps the server's default (on for Friends, off for Nearby).
+    [repliesShown, setRepliesShown] = useState<boolean | null>(null),
+    [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
@@ -457,6 +474,92 @@ export default function Studio({
   const canBlur = mode === 'media' && !!file && !isVideo;
   // Boxes belong to one photo: a new picture starts with none.
   useEffect(() => setBlurs([]), [file]);
+  // Before and after goes on one photo (the before), with the after beside it in the same picture.
+  const canPair = canBlur && files.length === 1;
+  const pairItem = beforeAfterOf(play);
+  const hasPair = !!pairItem;
+  const pair = hasPair && !!afterFile && canPair;
+  const showAfter = pair && side === 'after';
+  // A step deck: two to four photos or videos chosen together, under the person's own name, as Moments.
+  const deckOffered = mode === 'media' && files.length >= 2 && files.length <= 4 && !underPenName && !postKind;
+  const deckOn = asDeck && deckOffered;
+  const deckId = useRef<string | null>(null);
+  useEffect(() => {
+    setAsDeck(false);
+    deckId.current = null;
+  }, [files]);
+  function chooseDeck(on: boolean) {
+    setAsDeck(on);
+    if (on) deckId.current ??= crypto.randomUUID();
+    if (!on) return;
+    try {
+      if (localStorage.getItem(DECK_NOTE_KEY)) return;
+    } catch {
+      /* private window: say it each time */
+    }
+    setDeckNote(true);
+  }
+  // A new before, or the item taken off: the after goes with it. A recording belongs to its own picture too (each step
+  // of a deck has its own voice tip).
+  useEffect(() => {
+    setMentioned([]);
+    setVoiceRec(null);
+    setVoiceWords('');
+    setPlaceRec(null);
+    setAfterFile(null);
+    setAfterBlurs([]);
+    setSide('before');
+    setPlay((old) => (old.some((p) => p.kind === 'before_after') ? old.filter((p) => p.kind !== 'before_after') : old));
+  }, [file]);
+  useEffect(() => {
+    if (hasPair) return;
+    setAfterFile(null);
+    setAfterBlurs([]);
+    setSide('before');
+  }, [hasPair]);
+  async function addAfter(item: PlayItem, after: File) {
+    if (!shape) {
+      setError('Wait for the photo to load, then add the after.');
+      return;
+    }
+    try {
+      const cut = await cutToShape(after, shape);
+      if (!mounted.current) return;
+      setAfterFile(cut);
+      setAfterBlurs([]);
+      setPlay((old) => [...old.filter((p) => p.kind !== 'before_after'), item]);
+      setSide('after');
+    } catch (e) {
+      if (mounted.current) setError(messageOf(e, 'This photo couldn’t be opened.'));
+    }
+  }
+  /** The picture that goes out: the before as prepared, with the after beside it when there is a before and after. */
+  async function withAfter(prepared: { file: Blob }) {
+    if (!pair || !afterFile) return prepared;
+    setBusy('Putting before and after side by side…');
+    const after = afterBlurs.length ? await blurInto(afterFile, afterBlurs) : afterFile;
+    return { file: await sideBySide(prepared.file, after, art) };
+  }
+  // Mentions go out under the person's own name only (a mention says who they know).
+  const canMention = !underPenName;
+  const captionRef = useRef<HTMLInputElement>(null),
+    wordsRef = useRef<HTMLTextAreaElement>(null);
+  function followCaret(field: 'caption' | 'words', el: HTMLInputElement | HTMLTextAreaElement) {
+    setCaretAt({ field, at: el.selectionStart ?? el.value.length });
+  }
+  function pickMention(field: 'caption' | 'words', next: { text: string; caret: number; person: Mentioned }) {
+    if (field === 'caption') setCaption(next.text);
+    else setText(next.text);
+    setMentioned((old) => (old.some((p) => p.id === next.person.id) ? old : [...old, next.person]));
+    setCaretAt({ field, at: next.caret });
+    const el = field === 'caption' ? captionRef.current : wordsRef.current;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(next.caret, next.caret);
+    });
+  }
+  /** The items that go out: a before and after only with its after photo. */
+  const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
@@ -604,6 +707,14 @@ export default function Studio({
     }
     if (!mounted.current) return;
     setJobs((old) => old.filter((j) => j.id !== job.id));
+    // A step of a deck went out: the author has had the note about saving steps' words.
+    const step = (job.parts[0]?.body as { deck?: { index: number; count: number } } | undefined)?.deck;
+    if (step)
+      try {
+        localStorage.setItem(DECK_NOTE_KEY, '1');
+      } catch {
+        /* private window: the note shows again next time */
+      }
     const state = result.find((m) => m.state !== 'live')?.state;
     const msg =
       state === 'scheduled'
@@ -614,12 +725,14 @@ export default function Studio({
             ? 'Media received. Your Moment is being checked.'
             : state === 'ended'
               ? 'This Moment has ended.'
-              : 'Moment shared.';
+              : step
+                ? `Step ${step.index} of ${step.count} shared.`
+                : 'Moment shared.';
     if (soundFailed) setError(msg + ' Its sound couldn’t be added.');
     if (file && index + 1 < files.length) {
       setIndex((i) => i + 1);
       setBusy('');
-      setError(msg + ' Review the next item.');
+      setError(msg + (step ? ` Review step ${step.index + 1}.` : ' Review the next item.'));
     } else onDone(msg);
   }
   async function submit(retry?: Job) {
@@ -651,14 +764,17 @@ export default function Studio({
             : 'photo';
       // The look's font is in before the words are drawn into the picture that is posted.
       if (file && art.text.trim()) await fontReady(art.font, art.text);
-      const prepared = file
+      let prepared = file
         ? await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, (f) =>
             setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
           )
         : [];
+      if (pair && prepared.length === 1) prepared = [await withAfter(prepared[0])];
       controller.signal.throwIfAborted();
       if (underPenName && prepared.length > 1)
         throw new Error("A video posted in parts can't go out under a made-up name. Post one of up to a minute.");
+      if (deckOn && prepared.length > 1)
+        throw new Error(`A step's video can be up to ${limits.data?.video.max_seconds || fallback.max_seconds} seconds. Choose a shorter one.`);
       let gps = fix;
       if (!noPlace && !fromAlbum && gps && !recentFix(gps.timestamp)) {
         setBusy('Updating your location…');
@@ -707,6 +823,10 @@ export default function Studio({
               : (caption.trim() || (canSound && voiceRec && voiceWords.trim())) && i === 0
                 ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
+            ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
+            ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
+              ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
+              : {}),
             ...(file && capture?.file !== file && meta?.capturedAt ? { taken_at: meta.capturedAt } : {}),
             ...(area && !noPlace ? { show_area: true } : {}),
             ...(placement === 'place' && !area
@@ -734,12 +854,13 @@ export default function Studio({
               ? { taken_here: true, show_weather: weather }
               : {}),
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
+            ...(deckOn && deckId.current ? { deck: { id: deckId.current, index: index + 1, count: files.length } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
-            ...(play.length && i === 0 && !postKind
-              ? { play: playWire(play).map((it) => placedPlay(it, frame)) }
+            ...(playOut.length && i === 0 && !postKind
+              ? { play: playWire(playOut).map((it) => placedPlay(it, frame)) }
               : {}),
             ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).length
               ? {
@@ -809,7 +930,8 @@ export default function Studio({
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
-        const [prepared] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const [first] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const prepared = await withAfter(first);
         photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
       }
       controller.signal.throwIfAborted();
@@ -821,6 +943,7 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
+          mentions?: string[];
           play?: Record<string, unknown>[];
           dots?: Record<string, unknown>[];
           taken_at?: string;
@@ -868,7 +991,7 @@ export default function Studio({
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
           // Playable items and dots on the post's photo (CONTRACT 7b, 7c: `studio.play`, `studio.dots`), placed as a Moment's.
-          ...(photo && play.length ? { play: playWire(play).map((it) => placedPlay(it, frame)) } : {}),
+          ...(photo && playOut.length ? { play: playWire(playOut).map((it) => placedPlay(it, frame)) } : {}),
           ...(photo && canIlluminate && dotsWire(dots, { things: aiOn, links: !underPenName }).length
             ? {
                 dots: dotsWire(dots, { things: aiOn, links: !underPenName }).map((d) => ({
@@ -879,6 +1002,7 @@ export default function Studio({
               }
             : {}),
           ...(toExplore ? { explore: true } : {}),
+          ...(canMention && mentionIds(words, mentioned).length ? { mentions: mentionIds(words, mentioned) } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
             : {}),
@@ -951,6 +1075,7 @@ export default function Studio({
   // Something would be lost by going back: a picture, words on it or a drawing, a caption, the words of a card.
   const unsaved = mode === 'media' ? !!file : mode === 'text' && (!!text.trim() || stamps.length > 0);
   function backToStart() {
+    setRepliesShown(null);
     setDiscarding(false);
     setAskedPost(false);
     setTool(null);
@@ -1271,6 +1396,39 @@ export default function Studio({
             <p className="st-note">People anywhere can see this, with its place.</p>
           </div>
         )}
+        {!postKind && !underPenName && (
+          <div className="st-group" role="group" aria-label="Replies">
+            <label className="st-check">
+              <input
+                type="checkbox"
+                checked={repliesShown ?? (noPlace || audience === 'connections')}
+                onChange={(e) => setRepliesShown(e.target.checked)}
+              />
+              Replies everyone can see
+            </label>
+            <p className="st-note">
+              {repliesShown ?? (noPlace || audience === 'connections')
+                ? 'People who see this Moment can read and add replies under it. You can hide them later.'
+                : 'Replies come to you privately, in your messages.'}
+            </p>
+          </div>
+        )}
+        {deckOffered && (
+          <div className="st-group" role="group" aria-label="Steps">
+            <label className="st-check">
+              <input type="checkbox" checked={asDeck} disabled={index > 0 || !!busy} onChange={(e) => chooseDeck(e.target.checked)} />
+              Post these {files.length} as steps
+            </label>
+            <p className="st-note">
+              {index > 0
+                ? asDeck
+                  ? `Step ${index + 1} of ${files.length}. Give it its own words and voice tip.`
+                  : 'Posted one by one.'
+                : 'A recipe or a repair: readers go through the steps as one, each with its own words and voice tip.'}
+            </p>
+            {deckOn && deckNote && <p className="st-note">Readers can save your steps’ words.</p>}
+          </div>
+        )}
         {!postKind && (
         <div className="st-group" role="group" aria-label="How long">
           <span className="st-label">
@@ -1350,27 +1508,40 @@ export default function Studio({
               />
             ) : gate ? null : mode === 'media' && file ? (
               <StudioPicture
-                file={file}
+                file={showAfter ? afterFile! : file}
                 art={art}
                 onChange={setArt}
                 tool={tool}
                 ink={ink}
                 pen={pen}
-                onPicture={(el, w, h) => {
-                  setPhotoInks(sampleColors(el, w, h, inks));
-                  setShape({ w, h });
-                }}
+                onPicture={
+                  showAfter
+                    ? undefined
+                    : (el, w, h) => {
+                        setPhotoInks(sampleColors(el, w, h, inks));
+                        setShape({ w, h });
+                      }
+                }
               />
             ) : mode === 'text' ? (
               <div className="st-words">
                 <textarea
+                  ref={wordsRef}
                   aria-label="Your words"
                   maxLength={200}
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    followCaret('words', e.target);
+                  }}
+                  onSelect={(e) => followCaret('words', e.currentTarget)}
+                  onBlur={() => setTimeout(() => setCaretAt((c) => (c?.field === 'words' ? null : c)), 150)}
                   placeholder="What’s happening here?"
                 />
                 <small>{text.length}/200</small>
+                {caretAt?.field === 'words' && (
+                  <MentionPicker text={text} caret={caretAt.at} picked={mentioned} enabled={canMention} onPick={(n) => pickMention('words', n)} />
+                )}
               </div>
             ) : null}
             {composing && kept.length > 0 && (
@@ -1385,7 +1556,9 @@ export default function Studio({
               />
             )}
             {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
-            {composing && canBlur && <BlurLayer boxes={blurs} active={blurOn && !busy} onChange={setBlurs} />}
+            {composing && canBlur && (
+              <BlurLayer boxes={showAfter ? afterBlurs : blurs} active={blurOn && !busy} onChange={showAfter ? setAfterBlurs : setBlurs} />
+            )}
             {composing && canIlluminate && (
               <DotEditLayer
                 dots={dots}
@@ -1419,9 +1592,17 @@ export default function Studio({
                 <X size={20} strokeWidth={2.4} />
               </button>
               {composing && files.length > 1 && file && (
-                <span className="st-count">
-                  {index + 1} of {files.length}
-                </span>
+                <span className="st-count">{deckOn ? `Step ${index + 1} of ${files.length}` : `${index + 1} of ${files.length}`}</span>
+              )}
+              {composing && pair && (
+                <div className="st-ba-switch" role="group" aria-label="Which photo the Studio shows">
+                  <button type="button" aria-pressed={side === 'before'} onClick={() => setSide('before')}>
+                    {pairItem?.before || 'Before'}
+                  </button>
+                  <button type="button" aria-pressed={side === 'after'} onClick={() => setSide('after')}>
+                    {pairItem?.after || 'After'}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1773,11 +1954,15 @@ export default function Studio({
                   <PlayMaker
                     kind={making}
                     taken={play}
-                    onAdd={(item) => {
+                    onAdd={(item, after) => {
                       setMaking(null);
                       if (!item) return;
-                      setPlay([...play, item]);
                       setTrayOpen(false);
+                      if (item.kind === 'before_after') {
+                        if (after) void addAfter(item, after);
+                        return;
+                      }
+                      setPlay([...play, item]);
                     }}
                   />
                 ) : (
@@ -1796,7 +1981,7 @@ export default function Studio({
                       </button>
                     )}
                     {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
-                    {playOn && PLAY_MAKERS.map((m) => (
+                    {playOn && PLAY_MAKERS.filter((m) => m.kind !== 'before_after' || canPair).map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
@@ -1936,14 +2121,23 @@ export default function Studio({
                 </div>
               ) : (
                 <>
+                  {mode === 'media' && file && !tool && caretAt?.field === 'caption' && (
+                    <MentionPicker text={caption} caret={caretAt.at} picked={mentioned} enabled={canMention} onPick={(n) => pickMention('caption', n)} />
+                  )}
                   {mode === 'media' && file && !tool && (
                     <input
+                      ref={captionRef}
                       className="st-caption"
                       aria-label={postKind ? 'What it’s about' : 'Caption'}
                       maxLength={postKind ? 500 : 100}
                       value={caption}
                       disabled={!!busy}
-                      onChange={(e) => setCaption(e.target.value)}
+                      onChange={(e) => {
+                        setCaption(e.target.value);
+                        followCaret('caption', e.target);
+                      }}
+                      onSelect={(e) => followCaret('caption', e.currentTarget)}
+                      onBlur={() => setTimeout(() => setCaretAt((c) => (c?.field === 'caption' ? null : c)), 150)}
                       placeholder={postKind === 'ask_local' ? 'Ask something' : postKind ? 'Say what it’s about' : 'Add a caption'}
                     />
                   )}

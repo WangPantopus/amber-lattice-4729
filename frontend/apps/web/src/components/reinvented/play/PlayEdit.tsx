@@ -24,6 +24,7 @@ export const PLAY_MAKERS: { kind: PlayKind | 'dial'; label: string }[] = [
   { kind: 'quote', label: 'Quote' },
   { kind: 'fog', label: 'Fog' },
   { kind: 'swatch', label: 'Colour swatch' },
+  { kind: 'before_after', label: 'Before and after' },
 ];
 
 /** A swatch's try-on area: around where its colours sit on the picture (§7g's `box`). */
@@ -116,8 +117,19 @@ function Text({ value, set, max, placeholder }: { value: string; set(v: string):
   return <input value={value} maxLength={max} placeholder={placeholder} onChange={(e) => set(e.target.value)} />;
 }
 
-/** The form for one kind, in the tray. `onAdd` gets the item, placed in the picture's middle; null to go back. */
-export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; taken: readonly PlayItem[]; onAdd(item: PlayItem | null): void }) {
+/**
+ * The form for one kind, in the tray. `onAdd` gets the item, placed in the picture's middle (null to go back), and for a
+ * before and after the photo chosen as the after.
+ */
+export function PlayMaker({
+  kind,
+  taken,
+  onAdd,
+}: {
+  kind: PlayKind | 'dial';
+  taken: readonly PlayItem[];
+  onAdd(item: PlayItem | null, after?: File): void;
+}) {
   const [q, setQ] = useState(''),
     [options, setOptions] = useState(['', '']),
     [a, setA] = useState(''),
@@ -131,7 +143,8 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
     [unit, setUnit] = useState(''),
     [answer, setAnswer] = useState(''),
     [ends, setEnds] = useState(''),
-    [colors, setColors] = useState<string[]>(['#2f6f8f', '#c2410c']);
+    [colors, setColors] = useState<string[]>(['#2f6f8f', '#c2410c']),
+    [afterPhoto, setAfterPhoto] = useState<File | null>(null);
   const base = kind === 'dial' ? 'slider' : kind;
   let n = 1;
   while (taken.some((p) => p.id === `${base}-${n}`)) n++;
@@ -160,6 +173,8 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
   if (base === 'quote' && q.trim()) item = { ...place, kind: 'quote', text: q.trim(), ...(a.trim() ? { source: a.trim() } : {}) };
   if (base === 'fog' && !taken.some((p) => p.kind === 'fog')) item = { ...place, kind: 'fog' };
   if (base === 'swatch' && colors.length) item = { ...place, kind: 'swatch', colors, box: swatchBox(place.x, place.y) };
+  if (base === 'before_after' && afterPhoto && !taken.some((p) => p.kind === 'before_after'))
+    item = { ...place, kind: 'before_after', ...(q.trim() ? { before: q.trim() } : {}), ...(a.trim() ? { after: a.trim() } : {}) };
 
   const choices = (withRight: boolean) => (
     <>
@@ -188,7 +203,7 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
       className="pl-maker"
       onSubmit={(e) => {
         e.preventDefault();
-        if (item) onAdd(item);
+        if (item) onAdd(item, item.kind === 'before_after' ? afterPhoto ?? undefined : undefined);
       }}
     >
       {(base === 'poll' || base === 'slider' || base === 'board') && (
@@ -311,6 +326,33 @@ export function PlayMaker({ kind, taken, onAdd }: { kind: PlayKind | 'dial'; tak
           </div>
         </>
       )}
+      {base === 'before_after' &&
+        (taken.some((p) => p.kind === 'before_after') ? (
+          <p className="st-hint">This post already has a before and after.</p>
+        ) : (
+          <>
+            <p className="st-hint">
+              The photo you have is the before. Choose the after: both go out side by side as one picture, the same size
+              and shape, and readers drag a curtain between them.
+            </p>
+            <Field label="The after photo">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setAfterPhoto(f && (f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)) ? f : null);
+                }}
+              />
+            </Field>
+            <Field label="Before label (optional)">
+              <Text value={q} set={setQ} max={24} placeholder="Before" />
+            </Field>
+            <Field label="After label (optional)">
+              <Text value={a} set={setA} max={24} placeholder="After" />
+            </Field>
+          </>
+        ))}
       {base === 'countdown' && (
         <Field label="Ends">
           <input type="datetime-local" value={ends} min={nowLocal} max={maxLocal} onChange={(e) => setEnds(e.target.value)} />

@@ -44,6 +44,8 @@ const listSchema = Joi.object({
   longitude: Joi.number().min(-180).max(180),
   cursor: Joi.string().max(2000).allow(''),
   limit: Joi.number().integer().min(1).max(50).default(20),
+  // One of the reader's circles, with Close circle (CONTRACT 8d).
+  circle: Joi.string().guid(),
 }).and('latitude', 'longitude');
 
 /** GET /list — Close circle or Around me: the Moments and posts the caller may see, mixed (CONTRACT 6a). */
@@ -321,9 +323,10 @@ router.get('/field-guide', async (req, res) => {
 // ─── The person's own Pantopus AI switch (CONTRACT 7d) ──────────────────────
 
 const aiSetting = require('../services/pulse/aiSetting');
-const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean().required() });
+// `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". Send either or both.
+const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean(), strands: Joi.boolean() }).or('pantopus_ai', 'strands');
 
-/** GET /settings — { pantopus_ai }: the person's own Pantopus AI switch, on unless they turned it off. */
+/** GET /settings — { pantopus_ai, strands }: the person's own switches, each on unless they turned it off. */
 router.get('/settings', async (req, res) => {
   try {
     res.json(await aiSetting.settingsOf(req.user.id));
@@ -332,13 +335,20 @@ router.get('/settings', async (req, res) => {
   }
 });
 
-/** PATCH /settings — { pantopus_ai: true | false }. */
+/** PATCH /settings — { pantopus_ai?: true | false, strands?: true | false }: answers the settings as GET does. */
 router.patch('/settings', async (req, res) => {
   try {
     const { error, value } = settingsSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
     if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'SETTINGS_INVALID' });
-    logger.info('reinvented.pantopus_ai_set', { on: value.pantopus_ai });
-    return res.json(await aiSetting.setAi(req.user.id, value.pantopus_ai));
+    if (value.pantopus_ai !== undefined) {
+      logger.info('reinvented.pantopus_ai_set', { on: value.pantopus_ai });
+      await aiSetting.setAi(req.user.id, value.pantopus_ai);
+    }
+    if (value.strands !== undefined) {
+      logger.info('reinvented.strands_set', { on: value.strands });
+      await aiSetting.setStrands(req.user.id, value.strands);
+    }
+    return res.json(await aiSetting.settingsOf(req.user.id));
   } catch (error) {
     return sendError(res, error, 'settings_set');
   }
@@ -501,6 +511,163 @@ router.post('/moments/:id/pins', contentCreationLimiter, (req, res, next) => pin
     res.status(201).json(await pins.create(req.params.id, req.user, req.body || {}, req.file || null));
   } catch (error) {
     sendError(res, error, 'pin_create');
+  }
+});
+
+// ─── Strands: "went because of you" (CONTRACT 8c) ────────────────────────────
+
+const strands = require('../services/pulse/strands');
+
+/** GET /strands — the strands told to the reader (their posts' followers); `side=mine`: the strands they are in. */
+router.get('/strands', async (req, res) => {
+  try {
+    res.json(await strands.list(req.user.id, { side: req.query.side, cursor: req.query.cursor }));
+  } catch (error) {
+    sendError(res, error, 'strands');
+  }
+});
+
+/** POST /strands/seen — { ids } or { all: true }. */
+router.post('/strands/seen', async (req, res) => {
+  try {
+    await strands.markSeen(req.user.id, req.body || {});
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'strands_seen');
+  }
+});
+
+/** DELETE /strands/:id — the follower takes back a strand they are in. */
+router.delete('/strands/:id', async (req, res) => {
+  try {
+    await strands.remove(req.user.id, req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'strand_remove');
+  }
+});
+
+// ─── Circles and the weekly magazine (CONTRACT 8d) ───────────────────────────
+
+const circles = require('../services/pulse/circles');
+
+const circleRoute = (fn, label, { status = 200 } = {}) => async (req, res) => {
+  try {
+    const out = await fn(req);
+    if (out == null) return res.status(204).end();
+    return res.status(status).json(out);
+  } catch (error) {
+    return sendError(res, error, label);
+  }
+};
+
+router.get('/circles', circleRoute((req) => circles.list(req.user.id, { tz: req.query.tz }), 'circles'));
+router.post('/circles', contentCreationLimiter, circleRoute((req) => circles.create(req.user.id, req.body || {}), 'circle_create', { status: 201 }));
+router.post('/circles/:id/join', circleRoute((req) => circles.join(req.user.id, req.params.id, req.body || {}), 'circle_join'));
+router.post('/circles/:id/me', circleRoute((req) => circles.setMine(req.user.id, req.params.id, req.body || {}), 'circle_me'));
+router.post('/circles/:id/leave', circleRoute((req) => circles.leave(req.user.id, req.params.id), 'circle_leave'));
+router.patch('/circles/:id', contentCreationLimiter, circleRoute((req) => circles.change(req.user.id, req.params.id, req.body || {}), 'circle_change'));
+router.delete('/circles/:id', circleRoute(async (req) => { await circles.remove(req.user.id, req.params.id); return null; }, 'circle_remove'));
+router.get('/circles/:id/magazine', circleRoute((req) => circles.magazine(req.user.id, req.params.id, req.query.week || null, req.query.tz || null), 'circle_magazine'));
+
+// ─── Retake (CONTRACT 8e) ───────────────────────────────────────────────────
+
+const retake = require('../services/pulse/retake');
+
+/** GET /retakes/:id — a Retake (from its start or any frame): its frames by date and season, as the reader may see them. */
+router.get('/retakes/:id', async (req, res) => {
+  try {
+    res.json(await retake.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'retake');
+  }
+});
+
+// ─── Eyes on (CONTRACT 8f) ──────────────────────────────────────────────────
+
+const eyesOn = require('../services/pulse/eyesOn');
+
+/** POST /eyes-on/near — { latitude, longitude } in the body (never in the address, never kept): open Eyes-on Asks near you. */
+router.post('/eyes-on/near', async (req, res) => {
+  try {
+    res.json(await eyesOn.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'eyes_on');
+  }
+});
+
+// ─── Relics and "Seal it" (CONTRACT 8g) ─────────────────────────────────────
+
+const seal = require('../services/pulse/seal');
+
+/** POST /seals/near — { latitude, longitude } in the body (never in the address, never kept): place relics near you. */
+router.post('/seals/near', async (req, res) => {
+  try {
+    res.json(await seal.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'seals_near');
+  }
+});
+
+/** POST /seals/:id/open — { latitude, longitude } in the body: a place relic, whole, for a reader standing there. */
+router.post('/seals/:id/open', async (req, res) => {
+  try {
+    res.json(await seal.openHere(req.params.id, req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'seal_open');
+  }
+});
+
+// ─── Convergences and the sky strip (CONTRACT 8h) ────────────────────────────
+
+const convergence = require('../services/pulse/convergence');
+
+/** POST /convergences/near — { latitude, longitude } in the body (never kept): windows open now or in the last day nearby. */
+router.post('/convergences/near', async (req, res) => {
+  try {
+    res.json(await convergence.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'convergences_near');
+  }
+});
+
+/** GET /convergences/:id — the kept piece: its Moments this reader may see, and their colour bands. */
+router.get('/convergences/:id', async (req, res) => {
+  try {
+    res.json(await convergence.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'convergence');
+  }
+});
+
+/** GET /strip/sky?cell=<a sunset convergence id>&days= — one day's sunset bands per entry. */
+router.get('/strip/sky', async (req, res) => {
+  try {
+    res.json(await convergence.skyStrip(req.query.cell, req.user.id, req.query.days));
+  } catch (error) {
+    sendError(res, error, 'sky_strip');
+  }
+});
+
+// ─── Pinboards and the crowd freeze (CONTRACT 8i) ────────────────────────────
+
+const pinboard = require('../services/pulse/pinboard');
+
+/** GET /pinboards/:id — a pinboard (from its start or any piece): its pieces, as the reader may see them. */
+router.get('/pinboards/:id', async (req, res) => {
+  try {
+    res.json(await pinboard.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'pinboard');
+  }
+});
+
+/** GET /crowd/:id — the scene around one Live photo or video, from the phones there in the same minute (or null). */
+router.get('/crowd/:id', async (req, res) => {
+  try {
+    res.json(await pinboard.crowdOf(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'crowd');
   }
 });
 

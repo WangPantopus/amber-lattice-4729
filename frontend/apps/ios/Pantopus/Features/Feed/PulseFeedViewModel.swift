@@ -1529,9 +1529,10 @@ public final class PulseFeedViewModel {
         let isBusiness = post.creator?.accountType == "business" || post.businessAuthorId != nil
         let likeCount = live.likeCount
         // An Event's Going (the backend's like counter), every other post's emoji.
-        let reaction = PostReactionKind(postType: post.postType) == .going
+        var reaction = PostReactionKind(postType: post.postType) == .going
             ? PulseReaction(kind: .going, likeCount: likeCount)
             : PulseReaction(emoji: live.reactions)
+        if reaction.kind == .emoji { reaction.signals = PulseReinventedFlags.postSignals(post) }
         let hasReacted = reaction.kind == .going ? live.hasReacted : live.reactions.mine != nil
         let attendees: PulseAttendeeStrip? = intent == .event
             ? PulseAttendeeStrip(

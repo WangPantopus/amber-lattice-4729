@@ -4,10 +4,14 @@
 // picture is cut to a square around its stamps, so the stamps its author placed stay on the part one sees.
 
 import type { KeyboardEvent } from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, MessageCircle } from 'lucide-react';
 import { MomentFace } from '@/components/moments/MomentFace';
 import { colors } from '@/components/moments/momentState';
 import StampLayer from '../stamps/StampLayer';
+import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
+import type { PlayItem } from '../play/playTypes';
+import { withMentions, type MentionPerson } from '../mentions/Mentions';
+import { repliesOf } from '../replies/Replies';
 import type { StampKind } from '../stamps/stampTypes';
 import { isSignal, SIGNAL_WORDS, SignalIcon } from '../viewer/signals';
 import { isLiveHere, timeLeft, type ListMoment, type Point } from './listApi';
@@ -20,16 +24,20 @@ interface Props {
   onPlace(point: Point): void;
   /** Kept by its author ("Keep this?"): it stays, so no time left is drawn. */
   kept?: boolean;
+  /** The first of a step deck's steps in the list: how many steps the deck has (§7g). */
+  steps?: number;
 }
 
-/** Width over height of the picture as the server sized it; the web's own frame (9:16) when unknown. */
-function aspectOf(m: ListMoment): number {
+/** Width over height of the picture as the server sized it (one half of a before and after); 9:16 when unknown. */
+function aspectOf(m: ListMoment, paired: boolean): number {
   if (m.kind === 'text') return 9 / 16;
-  return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height : 9 / 16;
+  return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height / (paired ? 2 : 1) : 9 / 16;
 }
 
-export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false }: Props) {
-  const aspect = aspectOf(m);
+export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false, steps }: Props) {
+  // A before and after shows both halves, split in the middle; the viewer lets the reader move the curtain.
+  const pair = m.kind === 'photo' && m.media_url ? beforeAfterOf((m as ListMoment & { play?: PlayItem[] }).play) : null;
+  const aspect = aspectOf(m, !!pair);
   // A tall picture shows a square of itself; a wide one shows whole.
   const shown = Math.min(1, aspect);
   const stamps = m.stamps || [];
@@ -45,6 +53,11 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
   const where = [m.place_label, bandLabel].filter(Boolean).join(' · ');
   const picture = m.kind === 'video' ? m.poster_url : m.media_url;
   const mine = isSignal(m.my_signal) ? m.my_signal : null;
+  // People the author mentioned (§7h): their names in the words link to their profiles.
+  const mentions = (m as ListMoment & { mentions?: MentionPerson[] }).mentions;
+  // Replies everyone can see (§8a): how many, when the Moment shows them.
+  const replies = repliesOf(m);
+  const replyCount = replies?.shown ? replies.count : 0;
   const counts = (m.signal_counts || []).filter((s) => isSignal(s.signal) && s.count > 0).slice(0, 3);
   const open = () => onOpen(m.id);
   const onKey = (e: KeyboardEvent) => {
@@ -66,7 +79,9 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
           }}
         >
           {m.kind === 'text' ? (
-            <p className="rp-moment-text">{m.text}</p>
+            <p className="rp-moment-text">{withMentions(m.text || '', mentions)}</p>
+          ) : pair && picture ? (
+            <BeforeAfter src={picture} item={pair} still />
           ) : picture ? (
             <img src={picture} alt={m.caption || `${m.author.name}’s ${m.kind === 'video' ? 'video' : 'photo'}`} loading="lazy" />
           ) : null}
@@ -83,6 +98,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
             {where && <span>{where}</span>}
           </span>
         </div>
+        {steps && steps > 1 ? <span className="rp-moment-steps">{steps} steps</span> : null}
         {left && (
           <span className={`rp-moment-left${live ? ' rp-live' : ''}`}>
             {live && <span className="rp-live-dot" aria-hidden />}
@@ -90,9 +106,9 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
           </span>
         )}
       </div>
-      {(m.caption || mine || counts.length > 0 || point) && (
+      {(m.caption || mine || counts.length > 0 || replyCount > 0 || point) && (
         <div className="rp-moment-foot">
-          {m.caption && <p className="rp-moment-caption">{m.caption}</p>}
+          {m.caption && <p className="rp-moment-caption">{withMentions(m.caption, mentions)}</p>}
           <div className="rp-moment-actions">
             {counts.map((s) => (
               <span key={s.signal} className="rp-signal-count">
@@ -100,6 +116,12 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
                 {SIGNAL_WORDS[s.signal as keyof typeof SIGNAL_WORDS]} {s.count}
               </span>
             ))}
+            {replyCount > 0 && (
+              <span className="rp-signal-count">
+                <MessageCircle size={15} aria-hidden />
+                {replyCount === 1 ? '1 reply' : `${replyCount} replies`}
+              </span>
+            )}
             {mine && (
               <span className="rp-signal-count rp-signal-mine">
                 <SignalIcon signal={mine} />

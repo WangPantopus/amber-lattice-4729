@@ -371,6 +371,12 @@ const createPostSchema = Joi.object({
     // Playable items and dots (CONTRACT 7b, 7c), checked by services/pulse/play.
     play: Joi.array().max(4).allow(null),
     dots: Joi.array().max(8).allow(null),
+    // Mentions in the caption (CONTRACT 7h), checked by services/pulse/mentions.
+    mentions: Joi.array().allow(null),
+    // Passing on (CONTRACT 8f): this quote post passes the quoted post on from where its writer is.
+    passed_on: Joi.boolean(),
+    // Eyes on (CONTRACT 8f): an Ask that people there now answer with a Live photo.
+    eyes_on: Joi.boolean(),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
@@ -1144,6 +1150,26 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
         studioParsed = require('../services/pulse/postStudio').parse(req.body.studio, { penName: underPenName, things });
       } catch (studioError) {
         return res.status(400).json({ error: studioError.message, code: 'POST_INVALID' });
+      }
+      // Eyes on (CONTRACT 8f): an Ask of a picked public place (a venue), or it isn't one (LEAD-3 07:03).
+      if (studioParsed.eyesOn) {
+        try {
+          require('../services/pulse/eyesOn').checkAsk({
+            postType: req.body.postType, placeId: req.body.geocodePlaceId, accuracy: req.body.geocodeAccuracy,
+            latitude: req.body.latitude, longitude: req.body.longitude,
+          });
+        } catch (eyesError) {
+          return res.status(eyesError.status).json({ error: eyesError.message, code: eyesError.code });
+        }
+      }
+      // Passing on (CONTRACT 8f): the quoted post must be one that may travel, passed once per person.
+      if (studioParsed.passedOn) {
+        try {
+          studioParsed.passedFrom = await require('../services/pulse/passOn').check(req.user.id, req.body.quotedPostId);
+        } catch (passError) {
+          if (!passError.status) throw passError;
+          return res.status(passError.status).json({ error: passError.message, code: passError.code });
+        }
       }
     }
     // P2.4 / unified-IA §4.1 — defense-in-depth. Persona-context posts

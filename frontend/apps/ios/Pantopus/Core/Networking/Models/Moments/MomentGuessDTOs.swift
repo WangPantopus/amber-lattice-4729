@@ -134,3 +134,16 @@ public struct MomentDailySpotDTO: Decodable, Sendable, Hashable {
         guessed = (try? c.decodeIfPresent(Bool.self, forKey: .guessed)) ?? false
     }
 }
+
+extension MomentGuessStateDTO {
+    /// `keep_offer` on one's own Moment (CONTRACT 6d), read without throwing; false when absent.
+    static func keepOffer(from decoder: any Decoder) -> Bool {
+        enum Keys: String, CodingKey { case keepOffer = "keep_offer" }
+        return (try? decoder.container(keyedBy: Keys.self).decodeIfPresent(Bool.self, forKey: .keepOffer)) ?? false
+    }
+}
+
+/// `POST /api/reinvented/moments/:id/keep`: `{ "keep": true }` keeps it as a post that stays; false says no.
+struct MomentKeepBody: Encodable {
+    let keep: Bool
+}

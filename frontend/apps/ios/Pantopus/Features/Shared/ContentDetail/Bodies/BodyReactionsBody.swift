@@ -104,6 +104,8 @@ public struct PostReactionCounts: Sendable, Hashable {
     public var isOn: Bool
     /// Every post but an Event: each emoji's count and the person's own.
     public private(set) var emoji: PostReactions
+    /// Pulse, reinvented: the five signals in the emoji's place, on a post that carries them; nil otherwise (today's bar).
+    var signals: PostSignals?
 
     /// An Event's Going.
     public init(goingCount: Int, isGoing: Bool) {
@@ -546,7 +548,14 @@ private struct ReactionsBar: View {
     @State private var showsPicker = false
 
     var body: some View {
-        if counts.kind == .going {
+        if let signals = counts.signals {
+            // Pulse, reinvented: the five signals, with the comment count at the first line's right end.
+            HStack(alignment: .top, spacing: Spacing.s2) {
+                PostSignalChips(base: signals)
+                commentSummaryLabel
+                    .frame(minHeight: 44)
+            }
+        } else if counts.kind == .going {
             HStack(spacing: Spacing.s2) {
                 // An Event's Going, as on its card ("Going 3").
                 ReactionPill(

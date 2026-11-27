@@ -304,8 +304,14 @@ async function viewerContext(viewerId, authorIds = [], shared = null, rows = nul
  * guess-the-spot Moment but to its author, since its pin and place are the answer. It is opened by id instead.
  */
 function listedFor(row, viewerId) {
-  return !(momentGuess.isGuess(row) && !hasEnded(row) && !isOwn(row, viewerId));
+  return !(momentGuess.isGuess(row) && !hasEnded(row) && !isOwn(row, viewerId))
+    // A sealed Moment (Pulse, reinvented; CONTRACT 8g) is listed nowhere until it opens, but to its author.
+    && !(sealedNow(row) && !isOwn(row, viewerId));
 }
+
+// Required when used: seal.js requires this file.
+// eslint-disable-next-line global-require
+const sealedNow = (row) => Boolean(row?.post_metadata?.moment?.seal) && require('../pulse/seal').isSealed(row);
 
 /** Whether the viewer may see this Moment at all (blocks, mutes, audience), whatever its state. */
 function canSee(row, ctx) {
@@ -313,6 +319,8 @@ function canSee(row, ctx) {
   // A live guess-the-spot Moment (Pulse, reinvented) is for readers with the switch on only, until it ends; a context
   // built without that read (a profile's count) leaves it out too.
   if (momentGuess.isGuess(row) && !hasEnded(row) && !ctx.reinvented) return false;
+  // A sealed Moment (CONTRACT 8g) is for readers with the switch on only, until it opens.
+  if (sealedNow(row) && !ctx.reinvented) return false;
   // Under a made-up name: hidden by that name (or the brake), never by a block or a mute of a person, which would
   // say who is behind it. It goes to people nearby, so there is no audience to check.
   if (penName.isPenNameRow(row)) return !ctx.penNamesHidden && !ctx.hiddenPenNames.has(String(row.identity_context_id));
@@ -536,7 +544,8 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map() }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null,
+  unsealed = false, pinboards = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -626,11 +635,23 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       deck: stepDeck.deckOf(m, decks, row.user_id),
       // Replies people can see (CONTRACT 8a): shown or not, how many this reader may see, and whether they may reply.
       replies: shownReplies.repliesOf(row, replyCounts),
+      // Retake (CONTRACT 8e): the Retake this Moment starts or joined, as this reader may see it; null for any other.
+      retake: retakes?.get(row.id) || null,
+      // Pinboards (CONTRACT 8i): the pinboard this Moment starts or is a piece of; null for any other.
+      pinboard: pinboards?.get(row.id) || null,
+      // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
+      mentions: mentioned?.get(row.id) || [],
+      // A sealed Moment (CONTRACT 8g): how and when it opens, and whether it has; null for any other.
+      seal: m.seal ? require('../pulse/seal').sealAnswer(row) : null,
+      // A Convergence it joined (CONTRACT 8h): which one and whether it is open; null for any other.
+      convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
   const hideSpot = reinvented && momentGuess.isGuess(row) && !own && !guess?.mine && state !== 'ended';
-  return hideSpot ? { ...momentGuess.withoutSpot(answer), plan: null } : answer;
+  const spotted = hideSpot ? { ...momentGuess.withoutSpot(answer), plan: null } : answer;
+  // Sealed and not open yet (CONTRACT 8g): nothing of what it holds, but to its author, or to a reader standing there.
+  return m.seal && !own && !unsealed && sealedNow(row) ? require('../pulse/seal').withoutContent(spotted) : spotted;
 }
 
 /** The author's counts by signal (Pulse, reinvented), by Moment id: [{ signal, count }]. */
@@ -681,7 +702,7 @@ function keptFilesOf(row) {
  * Full Moments for `viewerId` (each row already checked visible), in the given order. `keptEnded` (My Atlas only, the
  * author's own list): their kept Moments that ended keep their pictures for them.
  */
-async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false } = {}) {
+async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false, unsealed = false } = {}) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   // "Want to come?" (CONTRACT 6g): the plans these Moments started, read from the start beside everything else, and
@@ -702,7 +723,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays, decks, replyCounts] = reinvented
+  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes, pinboards] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
@@ -714,8 +735,14 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       rows.some((r) => meta(r).deck) ? stepDeck.decksFor(rows, viewerId) : new Map(),
       // Replies people can see (CONTRACT 8a): one count for the page, only of the Moments that show them.
       shownReplies.countsFor(rows, viewerId).catch(() => new Map()),
+      // Mentions (CONTRACT 7h): one read of the people, only when a row mentions anyone.
+      require('../pulse/mentions').shownFor(rows, viewerId, (r) => meta(r).mentions).catch(() => new Map()),
+      // Retake (CONTRACT 8e): one read of the starts and frames, only when a row is part of one.
+      rows.some((r) => meta(r).retake) ? require('../pulse/retake').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
+      // Pinboards (CONTRACT 8i): one read of the starts and pieces, only when a row is part of one.
+      rows.some((r) => meta(r).pinboard) ? require('../pulse/pinboard').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -735,6 +762,10 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     play: plays.get(row.id) || null,
     decks,
     replyCounts,
+    mentioned,
+    retakes,
+    unsealed,
+    pinboards,
   }));
 }
 
@@ -1419,7 +1450,66 @@ async function insertMoment(row, id = null, penWriter = null) {
 }
 
 /** Writes `changes` (post_metadata.moment fields under `moment`) when the row still matches `expect`. */
-async function updateMoment(row, { moment, ...columns }, expect = {}) {
+// Writes sent at the same moment keep each other (coord, LEAD-3 2026-11-27): a write that changes the kept values
+// (post_metadata.moment) of a Moment posted with the switch on runs as one statement that merges only its own keys into
+// the row as it is then (moment_metadata_update, migration 20261127140000), instead of writing back the whole value it
+// read; only while the switch is on for anyone (mergedWriteOn). Only these columns and filters go through it; any other
+// write, and every write while the switch is off for everyone, is the plain update below, as before.
+const MERGED_COLUMNS = ['content', 'audience', 'story_expires_at'];
+const MOMENT_KEY_FILTER = /^post_metadata->moment->>([a-z_]+)$/;
+const MERGE_RETRY_MS = 60 * 1000;
+let mergeMissingSince = 0;
+
+function mergeFilters(expect) {
+  const filters = {};
+  for (const [column, value] of Object.entries(expect)) {
+    const key = MOMENT_KEY_FILTER.exec(column)?.[1];
+    if (key && value === null) (filters.moment_null = filters.moment_null || []).push(key);
+    else if (column === 'archived_at' && value === null) filters.unarchived = true;
+    else if (column === 'moderation_state' && typeof value === 'string') filters.moderation_state = value;
+    else return null;
+  }
+  return filters;
+}
+
+/**
+ * Whether a write to this Moment may take the merged path (LEAD-3, 06:10): only a Moment posted with the switch on (the
+ * Studio branch marks it `kept`), and only while `pulse_reinvented` is on for anyone at all (the cached flag row). Every
+ * other Moment, and every Moment while the switch is off for everyone, is written exactly as today.
+ */
+async function mergedWriteOn(row) {
+  if (!meta(row).kept) return false;
+  try {
+    const flag = await getFlag(REINVENTED_FLAG);
+    return Boolean(flag && (flag.enabled_globally || flag.enabled_for_internal_team || (flag.beta_user_ids || []).length));
+  } catch (error) {
+    logger.warn('moments.flag_failed', { flag: REINVENTED_FLAG, error: error.message });
+    return false;
+  }
+}
+
+function missingFunction(error) {
+  return error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function/i.test(error?.message || '');
+}
+
+/**
+ * Updates a Moment's columns and kept values (`moment`: the keys to set), only while `expect`'s filters hold. Answers
+ * the updated row, or null when it isn't there or a filter doesn't hold. `same` (key -> the value the write was worked
+ * out from): only if those keys still hold it (changeMoment).
+ */
+async function updateMoment(row, { moment, ...columns }, expect = {}, { same } = {}) {
+  const filters = moment ? mergeFilters(expect) : null;
+  if (filters && Object.keys(columns).every((column) => MERGED_COLUMNS.includes(column))
+    && Date.now() - mergeMissingSince > MERGE_RETRY_MS && await mergedWriteOn(row)) {
+    const { data, error } = await supabaseAdmin.rpc('moment_metadata_update', {
+      p_id: row.id, p_moment: moment, p_columns: columns, p_expect: same ? { ...filters, moment_same: same } : filters,
+    }).select(MOMENT_SELECT).maybeSingle();
+    if (!error) return data || null;
+    if (!missingFunction(error)) throw new Error(`Failed to update the Moment: ${error.message}`);
+    // A database without the function yet: today's write, and the function is tried again in a minute.
+    mergeMissingSince = Date.now();
+    logger.warn('moments.merge_update_missing', { error: error.message });
+  }
   const next = { ...columns };
   if (moment) next.post_metadata = { ...row.post_metadata, moment: { ...meta(row), ...moment } };
   let query = supabaseAdmin.from('Post').update(next).eq('id', row.id).eq('is_story', true);
@@ -1429,6 +1519,37 @@ async function updateMoment(row, { moment, ...columns }, expect = {}) {
   const { data, error } = await query.select(MOMENT_SELECT).maybeSingle();
   if (error) throw new Error(`Failed to update the Moment: ${error.message}`);
   return data || null;
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  if (typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => sameValue(a[key], b[key]));
+}
+
+/**
+ * Sets the kept values that `change(moment)` works out from the Moment's current ones (a map of field cards, a list of
+ * dots), only if those keys still hold what it read; when another write changed them first, reads the Moment again and
+ * works the change out again (a few tries). Answers the updated row, or null when the Moment isn't there or `expect`
+ * doesn't hold.
+ */
+async function changeMoment(row, change, expect = {}) {
+  let current = row;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const set = change(meta(current));
+    if (!set || !Object.keys(set).length) return current;
+    const same = Object.fromEntries(Object.keys(set).map((key) => [key, meta(current)[key] ?? null]));
+    const updated = await updateMoment(current, { moment: set }, expect, { same });
+    if (updated) return updated;
+    const fresh = await loadMoment(current.id);
+    // Nothing it read has changed: the Moment itself refused (it ended, or a filter doesn't hold).
+    if (!fresh || Object.keys(same).every((key) => sameValue(meta(fresh)[key] ?? null, same[key]))) return null;
+    current = fresh;
+  }
+  throw fail(409, 'MOMENT_BUSY', 'This Moment is changing right now. Try again in a moment.');
 }
 
 /**
@@ -1537,7 +1658,7 @@ module.exports = {
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   EDIT_WINDOW_MS, editableUntil,
-  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, changeMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment, listedFor,
   // Pulse, reinvented's list (services/pulse/list.js).
