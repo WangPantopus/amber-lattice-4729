@@ -8,6 +8,7 @@
 
 const { DateTime } = require('luxon');
 const supabaseAdmin = require('../../config/supabaseAdmin');
+const momentStamps = require('../moments/momentStamps');
 
 // eslint-disable-next-line global-require
 const momentStore = () => require('../moments/momentStore');
@@ -84,14 +85,24 @@ async function numbersOf(userId, range = null) {
   let highest = null;
   let eyes = 0;
   let canvases = 0;
+  const store = momentStore();
+  // A number never tells what the person didn't show (LEAD-3 08:44): Moments at home are left out of every count, and
+  // the highest point comes only from a height the person showed (the Moment's own height, or a placed elevation stamp).
   for (const row of moments) {
     const m = row.post_metadata?.moment || {};
+    // An unopened relic (8g) hasn't been shown yet either.
+    // eslint-disable-next-line global-require
+    if (m.at_home || (m.seal && require('./seal').isSealed(row))) continue;
     const floating = Boolean(row.post_metadata?.area);
-    if (row.latitude != null && row.longitude != null && !m.at_home && !floating) {
+    if (row.latitude != null && row.longitude != null && !floating) {
       places.add(m.venue_id ? `v:${m.venue_id}` : `${Math.floor(row.latitude * 100)}:${Math.floor(row.longitude * 100)}`);
     }
-    const ft = Number(m.stamp_values?.elevation?.altitude_ft);
-    if (Number.isFinite(ft) && !m.at_home && !floating && !m.stamp_values?.elevation?.flying) highest = highest == null ? ft : Math.max(highest, ft);
+    const shownHigh = store.shownHeight(row);
+    const placed = Array.isArray(m.stamps) && m.stamps.some((stamp) => stamp?.kind === 'elevation')
+      ? momentStamps.valueOf('elevation', m.stamp_values, { atHome: false, penName: false, placed: row.latitude != null }) : null;
+    for (const shown of [shownHigh, placed]) {
+      if (shown && !shown.flying && Number.isFinite(shown.altitude_ft)) highest = highest == null ? shown.altitude_ft : Math.max(highest, shown.altitude_ft);
+    }
     if (m.eyes_on_for) eyes += 1;
     if (m.retake?.of || m.pinboard?.of) canvases += 1;
   }
