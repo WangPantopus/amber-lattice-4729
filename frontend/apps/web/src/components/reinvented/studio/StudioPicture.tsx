@@ -1,11 +1,59 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { paintOverlay, type Artwork, type XY } from '@/components/moments/momentArtwork';
+import { paintMedia, paintOverlay, type Artwork, type Stroke, type XY } from '@/components/moments/momentArtwork';
 
 export type StudioTool = 'text' | 'draw' | 'resize' | null;
+/** Draw's brushes (design, the Studio's rail: "Draw: brush, highlighter, arrow, eyedropper, eraser"). */
+export type StudioBrush = 'pen' | 'highlighter' | 'arrow' | 'eraser';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+// The posted frame in pixels (9:16, as the canvas below): lengths and angles are worked out here, not in fractions.
+const W = 720,
+  H = 1280;
+const px = (p: XY) => ({ x: p.x * W, y: p.y * H });
+const frac = (p: XY) => ({ x: clamp(p.x / W, 0, 1), y: clamp(p.y / H, 0, 1) });
+
+/**
+ * A highlighter is today's stroke in a see-through ink and a wider line: one path is stroked once, so it stays even
+ * where it crosses itself, and today's painter draws it unchanged.
+ */
+export const highlight = (ink: string) => (/^#[0-9a-f]{6}$/i.test(ink) ? ink + '66' : ink);
+
+/** An arrow from where the drag began to where it is now: the shaft and its head in one stroke, so Undo takes it whole. */
+function arrow(from: XY, to: XY, width: number): XY[] {
+  const a = px(from),
+    b = px(to);
+  const dx = b.x - a.x,
+    dy = b.y - a.y,
+    len = Math.hypot(dx, dy);
+  if (len < 4) return [from];
+  const head = Math.min(len * 0.6, Math.max(width * W * 3.5, 22)),
+    ux = dx / len,
+    uy = dy / len;
+  const wing = (turn: number) =>
+    frac({
+      x: b.x - head * (ux * Math.cos(turn) - uy * Math.sin(turn)),
+      y: b.y - head * (uy * Math.cos(turn) + ux * Math.sin(turn)),
+    });
+  return [from, to, wing(0.5), to, wing(-0.5)];
+}
+
+/** How far a point is from a stroke, in the frame's pixels. */
+function distance(p: XY, stroke: Stroke) {
+  const q = px(p);
+  let best = Infinity;
+  stroke.points.forEach((pt, i) => {
+    const a = px(pt),
+      b = px(stroke.points[i + 1] ?? pt);
+    const dx = b.x - a.x,
+      dy = b.y - a.y,
+      l2 = dx * dx + dy * dy;
+    const t = l2 ? clamp(((q.x - a.x) * dx + (q.y - a.y) * dy) / l2, 0, 1) : 0;
+    best = Math.min(best, Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy) - (stroke.width * W) / 2);
+  });
+  return best;
+}
 
 /**
  * The picture in the Studio: the photo or video fills the 9:16 frame that is posted (the same frame, artwork and
@@ -19,6 +67,10 @@ export default function StudioPicture({
   tool,
   ink,
   pen,
+  brush = 'pen',
+  picking = false,
+  onPick,
+  onBeforeStrokes,
   onPicture,
 }: {
   file: File;
@@ -27,6 +79,13 @@ export default function StudioPicture({
   tool: StudioTool;
   ink: string;
   pen: number;
+  /** Draw's brush; today's pen when unset. */
+  brush?: StudioBrush;
+  /** The eyedropper is on: the next tap on the picture reads its colour there (as it will be posted) for `onPick`. */
+  picking?: boolean;
+  onPick?(color: string): void;
+  /** The lines as they were before a line is drawn or rubbed out, so Undo can put them back. */
+  onBeforeStrokes?(strokes: Stroke[]): void;
   /** The picture as it loaded (a video once its first frame is in), for reading its colours. */
   onPicture?(el: HTMLImageElement | HTMLVideoElement, width: number, height: number): void;
 }) {
@@ -36,6 +95,8 @@ export default function StudioPicture({
   const canvas = useRef<HTMLCanvasElement>(null),
     frame = useRef<HTMLDivElement>(null),
     drag = useRef<{ from: XY; original: Artwork } | null>(null),
+    media = useRef<HTMLImageElement | HTMLVideoElement | null>(null),
+    rubbed = useRef<XY | null>(null),
     fingers = useRef(new Map<number, XY>()),
     pinch = useRef<{ span: number; zoom: number } | null>(null),
     fitted = useRef('');
@@ -55,6 +116,36 @@ export default function StudioPicture({
   const point = (e: { clientX: number; clientY: number }): XY => {
     const b = frame.current!.getBoundingClientRect();
     return { x: clamp((e.clientX - b.left) / b.width, 0, 1), y: clamp((e.clientY - b.top) / b.height, 0, 1) };
+  };
+  // The colour under a point of the picture as it will be posted (the same zoom, turn and place), on this device only.
+  const colourAt = (p: XY) => {
+    const el = media.current;
+    if (!el || !dimensions.w || !dimensions.h) return null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
+      paintMedia(ctx, el, dimensions.w, dimensions.h, { ...art, strokes: [], text: '' });
+      const [r, g, b] = ctx.getImageData(Math.min(W - 1, Math.round(p.x * W)), Math.min(H - 1, Math.round(p.y * H)), 1, 1).data;
+      return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    } catch {
+      return null;
+    }
+  };
+  // The eraser takes away every line it touches, all along the drag (points every few pixels from where it last was).
+  const rub = (to: XY, strokes: Stroke[]) => {
+    const from = rubbed.current ?? to;
+    rubbed.current = to;
+    const steps = Math.max(1, Math.ceil(Math.hypot((to.x - from.x) * W, (to.y - from.y) * H) / 8));
+    const path = Array.from({ length: steps + 1 }, (_, i) => ({
+      x: from.x + ((to.x - from.x) * i) / steps,
+      y: from.y + ((to.y - from.y) * i) / steps,
+    }));
+    const reach = Math.max(24, pen * W * 2);
+    const kept = strokes.filter((s) => path.every((p) => distance(p, s) > reach));
+    return kept.length === strokes.length ? null : kept;
   };
   const span = () => {
     const [a, b] = [...fingers.current.values()];
@@ -85,6 +176,9 @@ export default function StudioPicture({
       {url &&
         (file.type.startsWith('video/') ? (
           <video
+            ref={(el) => {
+              media.current = el;
+            }}
             style={style}
             src={url}
             muted
@@ -98,6 +192,9 @@ export default function StudioPicture({
         ) : (
           // eslint-disable-next-line @next/next/no-img-element -- a local object URL of the file being posted
           <img
+            ref={(el) => {
+              media.current = el;
+            }}
             src={url}
             style={style}
             alt="Your photo"
@@ -113,8 +210,11 @@ export default function StudioPicture({
         ref={canvas}
         width={720}
         height={1280}
+        data-picking={picking || undefined}
         aria-label={
-          tool === 'draw'
+          picking
+            ? 'Tap the picture to take its colour'
+            : tool === 'draw'
             ? 'Draw on your Moment'
             : tool === 'text'
               ? 'Drag to move your words'
@@ -131,6 +231,11 @@ export default function StudioPicture({
             /* a pointer that is already gone: nothing to follow */
           }
           fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (picking) {
+            const colour = colourAt(point(e));
+            if (colour) onPick?.(colour);
+            return;
+          }
           if ((!tool || tool === 'resize') && fingers.current.size === 2) {
             drag.current = null;
             pinch.current = { span: span(), zoom: art.zoom };
@@ -138,7 +243,21 @@ export default function StudioPicture({
           }
           const p = point(e);
           drag.current = { original: art, from: p };
-          if (tool === 'draw') onChange({ ...art, strokes: [...art.strokes, { width: pen, color: ink, points: [p] }] });
+          rubbed.current = null;
+          if (tool === 'draw' && brush === 'eraser') {
+            const kept = rub(p, art.strokes);
+            if (kept) {
+              onBeforeStrokes?.(art.strokes);
+              onChange({ ...art, strokes: kept });
+            }
+          } else if (tool === 'draw') {
+            onBeforeStrokes?.(art.strokes);
+            const line =
+              brush === 'highlighter'
+                ? { width: pen * 2.5, color: highlight(ink), points: [p] }
+                : { width: pen, color: ink, points: [p] };
+            onChange({ ...art, strokes: [...art.strokes, line] });
+          }
         }}
         onPointerMove={(e) => {
           if (fingers.current.has(e.pointerId)) fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -150,10 +269,23 @@ export default function StudioPicture({
           if (!drag.current) return;
           const p = point(e),
             { original, from } = drag.current;
-          if (tool === 'draw') {
+          if (tool === 'draw' && brush === 'eraser') {
+            const kept = rub(p, art.strokes);
+            if (kept) {
+              // One rub is one step back: the lines as they were when the drag began, kept once.
+              if (original.strokes === art.strokes) onBeforeStrokes?.(art.strokes);
+              onChange({ ...art, strokes: kept });
+            }
+          } else if (tool === 'draw') {
             const stroke = art.strokes.at(-1);
             if (stroke)
-              onChange({ ...art, strokes: [...art.strokes.slice(0, -1), { ...stroke, points: [...stroke.points, p] }] });
+              onChange({
+                ...art,
+                strokes: [
+                  ...art.strokes.slice(0, -1),
+                  { ...stroke, points: brush === 'arrow' ? arrow(from, p, stroke.width) : [...stroke.points, p] },
+                ],
+              });
           } else if (tool === 'text')
             onChange({
               ...art,

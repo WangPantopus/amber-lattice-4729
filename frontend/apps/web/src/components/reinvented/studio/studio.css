@@ -1015,3 +1015,18 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
+/* Draw's eyedropper: a round button in the colour row; the picture takes one tap for it. */
+.st-inks .st-dropper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--st-soft);
+  color: #fff;
+}
+.st-inks .st-dropper[aria-pressed='true'] {
+  background: #fff;
+  color: var(--st-night);
+}
+.st-picture canvas[data-picking] {
+  cursor: crosshair;
+}
