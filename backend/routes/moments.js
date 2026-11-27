@@ -384,7 +384,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of', 'your_day', 'heading'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of', 'your_day', 'heading', 'loop'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -408,6 +408,15 @@ router.post('/', createLimiter, async (req, res) => {
         });
       } catch (playError) {
         throw store.fail(400, 'MOMENT_INVALID', playError.message);
+      }
+    }
+    // Loop (CONTRACT 7j): which span of this one video the new viewers repeat, silently.
+    let loop = null;
+    if (studio) {
+      try {
+        loop = require('../services/pulse/loop').parse(req.body?.loop, { kind: body.kind, series: body.series });
+      } catch (loopError) {
+        throw store.fail(400, 'MOMENT_INVALID', loopError.message);
       }
     }
     // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
@@ -615,6 +624,8 @@ router.post('/', createLimiter, async (req, res) => {
           kind: body.kind, source: body.location.source, takenAt: body.taken_at, shareAt, atHome: studioAtHome,
           floating: Boolean(area), showArea, underPenName, guess, audience: body.audience,
         }),
+        // Loop (CONTRACT 7j): the span the new viewers repeat; the file stays an ordinary video.
+        ...require('../services/pulse/loop').keptPart(loop),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.
