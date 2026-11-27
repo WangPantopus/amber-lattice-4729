@@ -38,9 +38,36 @@ async function aiOn(userId) {
   }
 }
 
-/** The setting as the new Settings row reads it. */
+// Strands (CONTRACT 8c; LEAD-3 06:19): "Tell people when their post led me somewhere", on by default. Off, no strand is
+// ever made from this person's acts. Kept beside the AI switch, as `strands` = { on: false } only while it is off.
+const STRANDS_CHOICE = 'strands';
+
+/** Whether strands are on for these people, by id (on unless they turned it off); one read. Throws when unreadable. */
+async function strandsOnFor(userIds) {
+  const ids = [...new Set((userIds || []).map(String))];
+  const out = new Map(ids.map((id) => [id, true]));
+  if (!ids.length) return out;
+  const { data, error } = await supabaseAdmin.from('PersonChoice').select('user_id, value')
+    .in('user_id', ids).eq('choice', STRANDS_CHOICE);
+  if (error) throw new Error(`Failed to read the strands setting: ${error.message}`);
+  for (const row of data || []) if (row.value?.on === false) out.set(String(row.user_id), false);
+  return out;
+}
+
+/** The settings as the new Settings rows read them. */
 async function settingsOf(userId) {
-  return { pantopus_ai: await aiOnOrThrow(userId) };
+  const [ai, strands] = await Promise.all([aiOnOrThrow(userId), strandsOnFor([userId])]);
+  return { pantopus_ai: ai, strands: strands.get(String(userId)) };
+}
+
+/** Turns strands on or off for this person. On removes the row, so the default is what's left. */
+async function setStrands(userId, on) {
+  const { error } = on
+    ? await supabaseAdmin.from('PersonChoice').delete().eq('user_id', userId).eq('choice', STRANDS_CHOICE)
+    : await supabaseAdmin.from('PersonChoice').upsert({
+      user_id: userId, choice: STRANDS_CHOICE, value: { on: false }, updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,choice' });
+  if (error) throw new Error(`Failed to keep the strands setting: ${error.message}`);
 }
 
 /** Turns it on or off. On removes the row, so the default is what's left. */
@@ -51,7 +78,6 @@ async function setAi(userId, on) {
       user_id: userId, choice: CHOICE, value: { on: false }, updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,choice' });
   if (error) throw new Error(`Failed to keep the Pantopus AI setting: ${error.message}`);
-  return { pantopus_ai: Boolean(on) };
 }
 
-module.exports = { aiOn, aiOnOrThrow, settingsOf, setAi, OFF, offError: () => fail(OFF), CHOICE };
+module.exports = { aiOn, aiOnOrThrow, settingsOf, setAi, setStrands, strandsOnFor, OFF, offError: () => fail(OFF), CHOICE, STRANDS_CHOICE };

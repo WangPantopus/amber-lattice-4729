@@ -24,6 +24,7 @@
 //   - processQuorumActions       → hourly at :33 (owner votes nobody opened)
 //   - fastCheckLocationLapse     → hourly at :17 (FASTVERIFY: a location check that missed its second match, told once)
 //   - momentsCleanup             → every 10 minutes (Moments: checks left behind, files 7 days after the end)
+//   - pulseStrands               → every 10 minutes (Pulse, reinvented: strands, "went because of you")
 //   - momentsShareLater          → every minute (Moments shared later: the push to connections at their time)
 //   - cardMediaCleanup           → daily at 04:50 UTC (a card's own photo or voice nobody can read any more)
 //   - aroundYouFeeds             → hourly at :36 (Around you: wildfires, federal notices, road projects, calendars)
@@ -128,6 +129,7 @@ const { runSupportTrainReminders } = require('./supportTrainReminders');
 const { runPlansTick } = require('./planJobs');
 // Moments: picture checks left behind, and files deleted 7 days after the end
 const momentsCleanup = require('./momentsCleanup');
+const pulseStrands = require('./pulseStrands');
 const fastCheckLocationLapse = require('./fastCheckLocationLapse');
 const momentsShareLater = require('./momentsShareLater');
 const cardMediaCleanup = require('./cardMediaCleanup');
@@ -898,6 +900,11 @@ function startJobs(options = {}) {
   // Every 10 minutes: finish picture checks an upload left running, check again Moments whose check couldn't run, and
   // delete files 7 days after a Moment ends unless a review holds them. Moments end on time without it.
   scheduleCron('*/10 * * * *', wrapJob('momentsCleanup', momentsCleanup), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+  // Every 10 minutes (Pulse, reinvented; switch on only): strands, "went because of you" (CONTRACT 8c).
+  scheduleCron('5-59/10 * * * *', wrapJob('pulseStrands', pulseStrands), {
     scheduled: true,
     timezone: 'UTC',
   });
