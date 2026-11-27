@@ -1,6 +1,8 @@
 package app.pantopus.android.ui.screens.moments.compose.marks
 
 import android.graphics.Typeface
+import android.os.Build
+import androidx.compose.ui.text.font.FontWeight
 
 /**
  * "Pulse, reinvented" step 4: the Studio's letterings, LEAD-2's ten names shared by all three apps, in this order
@@ -28,4 +30,15 @@ enum class MomentFont(
 
     /** The letters' typeface: today's bold system font for [Classic]. */
     val typeface: Typeface by lazy { family?.let { Typeface.create(it, style) } ?: Typeface.DEFAULT_BOLD }
+
+    /** The typeface's own weight, so a text field asks for no more (or less) than the painter draws. */
+    val weight: FontWeight
+        get() =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                FontWeight(typeface.weight)
+            } else if (typeface.isBold) {
+                FontWeight.Bold
+            } else {
+                FontWeight.Normal
+            }
 }

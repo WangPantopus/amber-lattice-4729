@@ -73,6 +73,8 @@ data class MomentStroke(
     val ink: MomentInk,
     /** The line's width as a share of the picture's width. */
     val width: Float,
+    /** "Pulse, reinvented"'s Studio: a colour from the photo (ARGB) in place of [ink]; null everywhere else. */
+    val tint: Int? = null,
 )
 
 /** One label written on the picture. */
@@ -92,6 +94,8 @@ data class MomentLabel(
     val turn: Float = 0f,
     /** "Pulse, reinvented"'s Studio: its lettering; [MomentFont.Classic], today's bold system font, everywhere else. */
     val font: MomentFont = MomentFont.Classic,
+    /** "Pulse, reinvented"'s Studio: a colour from the photo (ARGB) in place of [ink]; null everywhere else. */
+    val tint: Int? = null,
 )
 
 /** Everything written and drawn on one picture. */
@@ -137,6 +141,9 @@ data class MomentMarksEditing(
     val gestured: Boolean = false,
     /** "Pulse, reinvented"'s Studio: the lettering for new labels; today's (Classic) everywhere else. */
     val font: MomentFont = MomentFont.Classic,
+    /** "Pulse, reinvented"'s Studio: a colour from the photo for Text and for Draw, in place of the ink; null otherwise. */
+    val textTint: Int? = null,
+    val drawTint: Int? = null,
 ) {
     /** The marks as Done keeps them. */
     val result: MomentMarks get() = marks.kept
@@ -158,7 +165,7 @@ data class MomentMarksEditing(
         if (points.size < 2 || marks.strokes.size >= MomentMarkRules.MAX_STROKES) {
             this
         } else {
-            copy(marks = marks.copy(strokes = marks.strokes + MomentStroke(points, ink, width)))
+            copy(marks = marks.copy(strokes = marks.strokes + MomentStroke(points, ink, width, tint = drawTint)))
         }
 
     /** Undo: the last line goes. */
@@ -177,7 +184,7 @@ data class MomentMarksEditing(
         val settled = unpicked().copy(addsLabel = false)
         if (!settled.roomForLabel) return settled
         val id = (settled.marks.labels.maxOfOrNull { it.id } ?: 0) + 1
-        val label = kept(MomentLabel(id, "", x, y, size, style, textInk, font = font))
+        val label = kept(MomentLabel(id, "", x, y, size, style, textInk, font = font, tint = textTint))
         return settled.copy(marks = settled.marks.copy(labels = settled.marks.labels + label), selected = id, typing = true)
     }
 
@@ -185,13 +192,22 @@ data class MomentMarksEditing(
     fun editing(id: Int): MomentMarksEditing {
         val label = marks.labels.firstOrNull { it.id == id } ?: return this
         val settled = if (selected == id) this else typingEnded()
-        return settled.copy(selected = id, typing = true, style = label.style, textInk = label.ink)
+        return settled.copy(
+            selected = id,
+            typing = true,
+            style = label.style,
+            textInk = label.ink,
+            font = label.font,
+            textTint = label.tint,
+        )
     }
 
     /** A label moved or resized with a finger: it's picked (not typed in). */
     fun moved(label: MomentLabel): MomentMarksEditing {
         val settled = if (selected == label.id) this else typingEnded()
-        return settled.changed(label).copy(selected = label.id, style = label.style, textInk = label.ink)
+        return settled.changed(
+            label,
+        ).copy(selected = label.id, style = label.style, textInk = label.ink, font = label.font, textTint = label.tint)
     }
 
     /** One label changed in place (TalkBack's moves, a resize). */
@@ -224,7 +240,11 @@ data class MomentMarksEditing(
     fun styled(style: MomentLabelStyle): MomentMarksEditing = (picked?.let { changed(it.copy(style = style)) } ?: this).copy(style = style)
 
     /** Text's ink: the picked label takes it, and so do new ones. */
-    fun inked(ink: MomentInk): MomentMarksEditing = (picked?.let { changed(it.copy(ink = ink)) } ?: this).copy(textInk = ink)
+    fun inked(ink: MomentInk): MomentMarksEditing =
+        (picked?.let { changed(it.copy(ink = ink, tint = null)) } ?: this).copy(textInk = ink, textTint = null)
+
+    /** The Studio's colour from the photo: on the picked label, and for the next ones (an ink picked takes it back). */
+    fun tinted(color: Int): MomentMarksEditing = (picked?.let { changed(it.copy(tint = color)) } ?: this).copy(textTint = color)
 
     /** The Studio's lettering: on the picked label, and for the next ones. */
     fun fonted(font: MomentFont): MomentMarksEditing = (picked?.let { changed(it.copy(font = font)) } ?: this).copy(font = font)
