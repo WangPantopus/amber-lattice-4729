@@ -68,7 +68,9 @@ async function visibleRows(rows, viewerId) {
   if (!standing.length) return [];
   const [ctx, reported] = await Promise.all([
     store.viewerContext(viewerId, standing.map((r) => r.user_id), null, standing), store.reportedIds(viewerId)]);
-  return standing.filter((row) => store.isOwn(row, viewerId) || (store.canSee(row, ctx) && !reported.has(row.id)));
+  // Listed as lists show them (listedFor): never another's unopened relic or live guess spot (CONTRACT 8g, 5b).
+  return standing.filter((row) => store.isOwn(row, viewerId)
+    || (store.canSee(row, ctx) && store.listedFor(row, viewerId) && !reported.has(row.id)));
 }
 
 async function loadStart(id) {
