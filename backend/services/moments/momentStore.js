@@ -622,7 +622,7 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       // Voice Spark or place sound (CONTRACT 7e), its link given exactly when the picture's is.
       sound: soundMedia.soundOf(m, links, Boolean(showMedia)),
       // The step deck it belongs to (CONTRACT 7g), with the steps this reader may see; null for any other Moment.
-      deck: stepDeck.deckOf(m, decks),
+      deck: stepDeck.deckOf(m, decks, row.user_id),
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).

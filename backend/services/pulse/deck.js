@@ -54,36 +54,40 @@ async function checkStep(userId, deck, retryRowId = null) {
  */
 async function decksFor(rows, viewerId) {
   const store = momentStore();
-  // A deck is its author's: steps are gathered by the author and the id together, so another person's Moment that
-  // carries the same id is never one of its steps (LEAD-3, 04:47). The read is on the authors' own rows.
-  const owners = new Map(rows.filter((row) => store.meta(row).deck?.id).map((row) => [store.meta(row).deck.id, String(row.user_id)]));
-  const ids = [...owners.keys()];
+  // A deck is its author's: steps are gathered, kept and looked up by the author and the id together
+  // (`${user_id}:${id}`), so another person's Moment with the same id is never one of its steps, even on the same page
+  // (LEAD-3, 04:47 and 04:49). The read is on the authors' own rows.
+  const keyOf = (userId, deckId) => `${String(userId)}:${deckId}`;
+  const wanted = new Set(rows.filter((row) => store.meta(row).deck?.id).map((row) => keyOf(row.user_id, store.meta(row).deck.id)));
   const out = new Map();
-  if (!ids.length) return out;
+  if (!wanted.size) return out;
+  const ids = [...new Set([...wanted].map((key) => key.slice(key.indexOf(':') + 1)))];
+  const authors = [...new Set([...wanted].map((key) => key.slice(0, key.indexOf(':'))))];
   const { data, error } = await supabaseAdmin.from('Post').select('id, user_id, post_metadata')
-    .eq('is_story', true).in('user_id', [...new Set(owners.values())]).in('post_metadata->moment->deck->>id', ids)
-    .limit(ids.length * MAX_STEPS * 2);
+    .eq('is_story', true).in('user_id', authors).in('post_metadata->moment->deck->>id', ids)
+    .limit(wanted.size * MAX_STEPS * 2);
   if (error) throw new Error(`Failed to read the decks: ${error.message}`);
-  const own = (data || []).filter((row) => owners.get(row.post_metadata?.moment?.deck?.id) === String(row.user_id));
+  const own = (data || []).filter((row) => wanted.has(keyOf(row.user_id, row.post_metadata?.moment?.deck?.id)));
   const visible = new Set((await store.openMoments(own.map((row) => row.id), viewerId)).map((row) => row.id));
   const seen = new Set();
   for (const row of own) {
     const deck = row.post_metadata?.moment?.deck;
+    const key = keyOf(row.user_id, deck?.id);
     // One Moment per step.
-    if (!deck || !visible.has(row.id) || seen.has(`${deck.id}:${deck.index}`)) continue;
-    seen.add(`${deck.id}:${deck.index}`);
-    if (!out.has(deck.id)) out.set(deck.id, []);
-    out.get(deck.id).push({ id: row.id, index: deck.index });
+    if (!deck || !visible.has(row.id) || seen.has(`${key}:${deck.index}`)) continue;
+    seen.add(`${key}:${deck.index}`);
+    if (!out.has(key)) out.set(key, []);
+    out.get(key).push({ id: row.id, index: deck.index });
   }
-  for (const [id, steps] of out) out.set(id, steps.sort((a, b) => a.index - b.index).map((step) => step.id));
+  for (const [key, steps] of out) out.set(key, steps.sort((a, b) => a.index - b.index).map((step) => step.id));
   return out;
 }
 
-/** A Moment's `deck` as a reader gets it, or null. */
-function deckOf(m, decks) {
+/** A Moment's `deck` as a reader gets it, or null; its steps looked up by its author and the deck id together. */
+function deckOf(m, decks, authorId) {
   const deck = m?.deck;
   if (!deck) return null;
-  return { id: deck.id, index: deck.index, count: deck.count, steps: decks.get(deck.id) || [] };
+  return { id: deck.id, index: deck.index, count: deck.count, steps: decks.get(`${String(authorId)}:${deck.id}`) || [] };
 }
 
 // ─── "Save the steps" (CONTRACT 7g; LEAD-3 04:31) ───────────────────────────
