@@ -62,8 +62,7 @@ struct MomentDeckStrip: View {
             .accessibilityIdentifier("moments.viewer.deck")
             .sheet(isPresented: Binding(get: { saves.guideFrom == moment.id }, set: { if !$0 { saves.guideFrom = nil } })) {
                 MomentsFieldGuide { saves.guideFrom = nil }
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                    .overViewerSheet()
             }
         }
     }
