@@ -1419,10 +1419,11 @@ async function insertMoment(row, id = null, penWriter = null) {
 }
 
 /** Writes `changes` (post_metadata.moment fields under `moment`) when the row still matches `expect`. */
-// Writes sent at the same moment keep each other (coord, LEAD-3 2026-11-27): a write that changes a Moment's kept values
-// (post_metadata.moment) runs as one statement that merges only its own keys into the row as it is then
-// (moment_metadata_update, migration 20261127140000), instead of writing back the whole value it read. Only these
-// columns and filters go through it; any other write is the plain update below, as before.
+// Writes sent at the same moment keep each other (coord, LEAD-3 2026-11-27): a write that changes the kept values
+// (post_metadata.moment) of a Moment posted with the switch on runs as one statement that merges only its own keys into
+// the row as it is then (moment_metadata_update, migration 20261127140000), instead of writing back the whole value it
+// read; only while the switch is on for anyone (mergedWriteOn). Only these columns and filters go through it; any other
+// write, and every write while the switch is off for everyone, is the plain update below, as before.
 const MERGED_COLUMNS = ['content', 'audience', 'story_expires_at'];
 const MOMENT_KEY_FILTER = /^post_metadata->moment->>([a-z_]+)$/;
 const MERGE_RETRY_MS = 60 * 1000;
@@ -1440,6 +1441,22 @@ function mergeFilters(expect) {
   return filters;
 }
 
+/**
+ * Whether a write to this Moment may take the merged path (LEAD-3, 06:10): only a Moment posted with the switch on (the
+ * Studio branch marks it `kept`), and only while `pulse_reinvented` is on for anyone at all (the cached flag row). Every
+ * other Moment, and every Moment while the switch is off for everyone, is written exactly as today.
+ */
+async function mergedWriteOn(row) {
+  if (!meta(row).kept) return false;
+  try {
+    const flag = await getFlag(REINVENTED_FLAG);
+    return Boolean(flag && (flag.enabled_globally || flag.enabled_for_internal_team || (flag.beta_user_ids || []).length));
+  } catch (error) {
+    logger.warn('moments.flag_failed', { flag: REINVENTED_FLAG, error: error.message });
+    return false;
+  }
+}
+
 function missingFunction(error) {
   return error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function/i.test(error?.message || '');
 }
@@ -1452,7 +1469,7 @@ function missingFunction(error) {
 async function updateMoment(row, { moment, ...columns }, expect = {}, { same } = {}) {
   const filters = moment ? mergeFilters(expect) : null;
   if (filters && Object.keys(columns).every((column) => MERGED_COLUMNS.includes(column))
-    && Date.now() - mergeMissingSince > MERGE_RETRY_MS) {
+    && Date.now() - mergeMissingSince > MERGE_RETRY_MS && await mergedWriteOn(row)) {
     const { data, error } = await supabaseAdmin.rpc('moment_metadata_update', {
       p_id: row.id, p_moment: moment, p_columns: columns, p_expect: same ? { ...filters, moment_same: same } : filters,
     }).select(MOMENT_SELECT).maybeSingle();
