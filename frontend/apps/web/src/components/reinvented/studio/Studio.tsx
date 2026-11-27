@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Clock3,
   Crop,
+  EyeOff,
   Mic,
   ImagePlus,
   LocateFixed,
@@ -38,6 +39,7 @@ import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
 import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
+import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import {
   colors,
   deviceFix,
@@ -185,6 +187,9 @@ export default function Studio({
     [voiceWords, setVoiceWords] = useState(''),
     [placeRec, setPlaceRec] = useState<Recording | null>(null),
     [soundOpen, setSoundOpen] = useState(false),
+    // Blur before posting (phase 2): boxes over faces, plates, numbers and labels, drawn into the photo when posting.
+    [blurs, setBlurs] = useState<BlurBox[]>([]),
+    [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
@@ -443,6 +448,9 @@ export default function Studio({
   const aiOn = usePantopusAiOn(canIlluminate);
   // Sound goes on a photo or video Moment under the person's own name (a voice tells who someone is), not yet on a post.
   const canSound = canIlluminate && !postKind && !underPenName;
+  const canBlur = mode === 'media' && !!file && !isVideo;
+  // Boxes belong to one photo: a new picture starts with none.
+  useEffect(() => setBlurs([]), [file]);
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
@@ -638,7 +646,7 @@ export default function Studio({
       // The look's font is in before the words are drawn into the picture that is posted.
       if (file && art.text.trim()) await fontReady(art.font, art.text);
       const prepared = file
-        ? await prepareMedia(file, art, limits.data?.video || fallback, controller.signal, (f) =>
+        ? await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, (f) =>
             setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
           )
         : [];
@@ -795,7 +803,7 @@ export default function Studio({
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
-        const [prepared] = await prepareMedia(file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const [prepared] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
         photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
       }
       controller.signal.throwIfAborted();
@@ -1371,6 +1379,7 @@ export default function Studio({
               />
             )}
             {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
+            {composing && canBlur && <BlurLayer boxes={blurs} active={blurOn && !busy} onChange={setBlurs} />}
             {composing && canIlluminate && (
               <DotEditLayer
                 dots={dots}
@@ -1513,11 +1522,47 @@ export default function Studio({
                   </button>
                 </div>
               )}
+              {canBlur && (
+                <div className="st-tool">
+                  <span aria-hidden="true">Blur</span>
+                  <button
+                    type="button"
+                    className="st-round"
+                    aria-label="Blur"
+                    aria-pressed={blurOn}
+                    onClick={() => {
+                      setTool(null);
+                      setIlluminate(false);
+                      setSoundOpen(false);
+                      setBlurOn(!blurOn);
+                    }}
+                  >
+                    <EyeOff size={21} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
                 </>
               )}
             </div>
           )}
 
+          {composing && canBlur && blurOn && !tool && (
+            <div className="st-toolpanel" role="group" aria-label="Blur">
+              <p className="st-hint">
+                Drag over faces of people who didn’t ask to be in it, licence plates, house numbers and mail labels. They’re blurred into the photo when you post.
+              </p>
+              <div className="dt-row">
+                {blurs.length > 0 && (
+                  <button type="button" className="st-chip" onClick={() => setBlurs([])}>
+                    Take all off
+                  </button>
+                )}
+                <button type="button" className="st-done" onClick={() => setBlurOn(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
           {composing && canSound && soundOpen && !tool && !illuminate && (
             <SoundPanel
               voice={voiceRec}
