@@ -548,6 +548,7 @@ export default function MomentViewer(props: Props) {
                         Show on map
                       </Action>
                     )}
+                    {props.studio?.menu(moment, () => setSheet(null))}
                     {own ? (
                       <>
                         <Action

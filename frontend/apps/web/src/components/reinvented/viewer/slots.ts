@@ -14,4 +14,6 @@ export interface StudioViewerSlots {
   reactions(m: Moment, close: () => void): ReactNode;
   /** Beside a viewer in "Seen by". */
   seenMark(v: Viewer): ReactNode;
+  /** In Moment options: "Edit" on one's own Moment for 15 minutes after it went out. */
+  menu(m: Moment, close: () => void): ReactNode;
 }

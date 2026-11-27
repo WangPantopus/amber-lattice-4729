@@ -1,0 +1,410 @@
+'use client';
+
+// The 15-minute edit (Pulse, reinvented; coord/CONTRACT.md §3): the author changes a Moment's caption, its stamps and
+// who sees it for 15 minutes after it went out. It opens from the viewer's Moment options while `pulse_reinvented` is
+// on for the person and the server still says `editable_until`, and it is drawn as the Studio is (board B2): the
+// picture as it was posted fills the frame, the stamps sit on it, and one bar at the bottom holds who sees it and Save.
+// The stamps' values stay the ones the server kept when the Moment was posted; only where they sit changes.
+
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Check, Clock3, X } from 'lucide-react';
+import { patch } from '@pantopus/api/client';
+import type { Audience, Moment } from '@pantopus/api/endpoints/moments';
+import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
+import { colors, messageOf } from '@/components/moments/momentState';
+import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
+import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type ShownStamp, type StampKind } from '../stamps/stampTypes';
+import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import { savedMoment } from './saved';
+import '../studio/studio.css';
+import './edit.css';
+
+export type EditableMoment = Moment & { stamps?: ShownStamp[]; editable_until?: string | null; edited_at?: string | null };
+
+const placements = (list: readonly PlacedStamp[]) =>
+  list.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation }));
+const same = (a: readonly PlacedStamp[], b: readonly PlacedStamp[]) =>
+  JSON.stringify(placements(a)) === JSON.stringify(placements(b));
+
+/** The picture as the viewer draws it: centred and fitted in the 9:16 frame, so a stamp sits where it was placed. */
+function usePictureBox(art: React.RefObject<HTMLDivElement | null>, natural: { w: number; h: number } | null) {
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    const el = art.current;
+    if (!el) return;
+    const measure = () => {
+      const bw = el.clientWidth,
+        bh = el.clientHeight;
+      const nw = natural?.w || 9,
+        nh = natural?.h || 16;
+      if (!bw || !bh) return setBox(null);
+      const scale = Math.min(bw / nw, bh / nh);
+      const width = nw * scale,
+        height = nh * scale;
+      setBox({ left: (bw - width) / 2, top: (bh - height) / 2, width, height });
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [art, natural?.w, natural?.h]);
+  return box;
+}
+
+/** A wide window frames the picture as the Studio does there (studio.css `[data-wide]`). */
+function useWide() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia('(min-width: 1000px)');
+    const read = () => setWide(q.matches);
+    read();
+    q.addEventListener('change', read);
+    return () => q.removeEventListener('change', read);
+  }, []);
+  return wide;
+}
+
+function minutesLeft(until: string | null | undefined, now: number) {
+  const ms = Date.parse(until || '') - now;
+  return Number.isFinite(ms) && ms > 0 ? Math.ceil(ms / 60_000) : 0;
+}
+
+export default function MomentEdit({
+  moment,
+  account,
+  container,
+  onClose,
+}: {
+  moment: EditableMoment;
+  account: string;
+  /** Where it is drawn: the viewer's modal dialog on a phone, else the page. */
+  container: Element;
+  onClose(): void;
+}) {
+  const client = useQueryClient();
+  const reread = useRereadSwitch();
+  const wide = useWide();
+  // What it was when the edit opened; the server's answer replaces it once saved.
+  const [original] = useState(() => ({
+    caption: moment.caption || '',
+    audience: moment.audience,
+    stamps: (moment.stamps || []).filter((s) => STAMP_KINDS.includes(s.kind)),
+  }));
+  const values = new Map<StampKind, unknown>(original.stamps.map((s) => [s.kind, s.value]));
+  const [caption, setCaption] = useState(original.caption),
+    [audience, setAudience] = useState<Audience>(original.audience),
+    [stamps, setStamps] = useState<PlacedStamp[]>(() => placements(original.stamps)),
+    [picked, setPicked] = useState<StampKind | null>(null),
+    [trayOpen, setTrayOpen] = useState(false);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [closed, setClosed] = useState(''),
+    [discarding, setDiscarding] = useState(false),
+    [wentOff, setWentOff] = useState(false),
+    [now, setNow] = useState(Date.now);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(
+    moment.width && moment.height ? { w: moment.width, h: moment.height } : null,
+  );
+  const art = useRef<HTMLDivElement>(null);
+  const box = usePictureBox(art, moment.kind === 'text' ? null : natural);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const tick = setInterval(() => setNow(Date.now()), 5_000);
+    return () => {
+      mounted.current = false;
+      clearInterval(tick);
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  const left = minutesLeft(moment.editable_until, now);
+  const open = left > 0 && !closed;
+  // A made-up name's Moment goes to people nearby only, and its author can't be seen (made-up-names contract).
+  const underPenName = moment.author.id !== account;
+  const media = moment.kind !== 'text';
+  const changed = {
+    caption: media && caption.trim() !== original.caption.trim(),
+    audience: audience !== original.audience,
+    stamps: !same(stamps, original.stamps),
+  };
+  const dirty = changed.caption || changed.audience || changed.stamps;
+  const wet = moment.taken_here === true && Date.parse(moment.live_until || '') > now;
+
+  async function save() {
+    if (busy || !dirty || !open) return;
+    setBusy(true);
+    setError('');
+    try {
+      const answer = await patch<{ moment: EditableMoment }>(`/api/moments/${encodeURIComponent(moment.id)}`, {
+        ...(changed.caption ? { caption: caption.trim() || null } : {}),
+        ...(changed.audience ? { audience } : {}),
+        ...(changed.stamps ? { stamps: placements(stamps) } : {}),
+      });
+      client.setQueryData<{ moment: EditableMoment }>(['moments', 'watch', account, moment.id], (old) =>
+        old ? { ...old, moment: answer.moment } : old,
+      );
+      void client.invalidateQueries({ queryKey: ['moments', 'map', account] });
+      void client.invalidateQueries({ queryKey: ['moments', 'mine', account] });
+      savedMoment(moment.id);
+      onClose();
+    } catch (e) {
+      if (!mounted.current) return;
+      const code = (e as { code?: string } | null)?.code;
+      // The switch went off: nothing changed on the Moment; the viewer goes back to today's once the switch is read.
+      if (isSwitchedOff(e)) setWentOff(true);
+      else if (code === 'MOMENT_EDIT_CLOSED' || code === 'MOMENT_ENDED')
+        setClosed(messageOf(e, 'A Moment can be changed for 15 minutes after it goes out.'));
+      else setError(messageOf(e, 'Couldn’t save. Try again.'));
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+  function leave() {
+    if (wentOff) void reread();
+    onClose();
+  }
+  function closeOrAsk() {
+    if (busy) return;
+    if (dirty && open && !wentOff) setDiscarding(true);
+    else leave();
+  }
+  const trap = useDialogFocusTrap<HTMLDivElement>(() => {
+    if (wentOff) return leave();
+    if (discarding) setDiscarding(false);
+    else if (trayOpen) setTrayOpen(false);
+    else if (picked) setPicked(null);
+    else closeOrAsk();
+  });
+  // Put a stamp taken off in this edit back where it was (its value is the one kept at posting).
+  function toggleStamp(kind: StampKind) {
+    setTrayOpen(false);
+    if (stamps.some((s) => s.kind === kind)) {
+      setStamps(stamps.filter((s) => s.kind !== kind));
+      setPicked(null);
+      return;
+    }
+    const was = original.stamps.find((s) => s.kind === kind);
+    if (!was) return;
+    setStamps([...stamps, ...placements([was])]);
+    setPicked(kind);
+  }
+
+  const aspect = moment.kind === 'text' || !natural ? 9 / 16 : natural.w / natural.h;
+  const who = underPenName ? 'pen' : audience === 'connections' ? 'friends' : 'nearby';
+  // The pill's two lines: "12 more minutes" over "to change it · <place>"; once the window has passed, why not.
+  const place = moment.place_label || (moment.no_location ? 'No location · friends only' : '');
+  const timeLine = open ? `${left} more ${left === 1 ? 'minute' : 'minutes'}` : 'No more changes';
+  const placeLine = open ? ['to change it', place].filter(Boolean).join(' · ') : place;
+  const closedWhy = closed || (!open ? 'A Moment can be changed for 15 minutes after it goes out.' : '');
+
+  const stage = (
+    <div
+      ref={trap}
+      className="st-studio me-edit"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit Moment"
+      data-wide={wide || undefined}
+    >
+      <div className="st-stage">
+        <div className="st-frame">
+          <div
+            ref={art}
+            className="st-art"
+            style={moment.kind === 'text' ? { background: colors[moment.background || 'teal'] } : undefined}
+            onPointerDownCapture={(e) => {
+              if (picked && !(e.target as HTMLElement).closest('.sp-stamp')) setPicked(null);
+            }}
+          >
+            {moment.kind === 'text' ? (
+              <p className="me-card">{moment.text}</p>
+            ) : moment.kind === 'photo' && moment.media_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- the Moment's own signed link, as the viewer draws it
+              <img
+                className="me-media"
+                src={moment.media_url}
+                alt={moment.caption || 'Your photo'}
+                onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              />
+            ) : moment.kind === 'video' && moment.media_url ? (
+              <video
+                className="me-media"
+                src={moment.media_url}
+                poster={moment.poster_url || undefined}
+                muted
+                playsInline
+                autoPlay
+                loop
+                onLoadedMetadata={(e) => setNatural({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
+              />
+            ) : (
+              <p className="me-card">{moment.state === 'checking' ? 'Checking media…' : 'Media unavailable'}</p>
+            )}
+            {box && stamps.length > 0 && (
+              <div className="me-picture" style={box}>
+                <StampLayer
+                  stamps={stamps}
+                  valueOf={(k) => values.get(k) ?? null}
+                  ink={wet ? 'wet' : 'dry'}
+                  selected={picked}
+                  onSelect={setPicked}
+                  onChange={busy || !open ? undefined : setStamps}
+                  safe={safeBox(aspect)}
+                />
+              </div>
+            )}
+          </div>
+          <div className="st-shade-top" aria-hidden="true" />
+          <div className="st-shade-bottom" aria-hidden="true" />
+
+          <div className="st-top">
+            <button type="button" className="st-round" aria-label="Close without saving" onClick={closeOrAsk}>
+              <X size={20} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          {original.stamps.length > 0 && open && (
+            <div className="st-rail" role="toolbar" aria-label="Tools" aria-orientation="vertical">
+              <div className="st-tool">
+                <span aria-hidden="true">Stamps and Play</span>
+                <button
+                  type="button"
+                  className="st-round"
+                  aria-label="Stamps and Play"
+                  aria-pressed={trayOpen}
+                  disabled={busy}
+                  onClick={() => setTrayOpen(!trayOpen)}
+                >
+                  <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 5h14v9l-5 5H5z" />
+                    <path d="M14 19v-5h5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {trayOpen && (
+            <>
+              <div className="st-tray-scrim" aria-hidden="true" onClick={() => setTrayOpen(false)} />
+              <section className="st-tray" aria-label="Stamps and Play">
+                <header>
+                  <h2>Stamps and Play</h2>
+                  <button type="button" className="st-done" onClick={() => setTrayOpen(false)}>
+                    Done
+                  </button>
+                </header>
+                <p className="st-tray-head">
+                  <strong>Checked by Pantopus</strong>
+                  <span>Nobody can type these</span>
+                </p>
+                <div className="st-tray-stamps">
+                  {STAMP_KINDS.filter((k) => values.has(k)).map((k) => (
+                    <button key={k} type="button" aria-pressed={stamps.some((s) => s.kind === k)} onClick={() => toggleStamp(k)}>
+                      <StampIcon kind={k} color={STAMP_TINT[k]} size={17} />
+                      {k === 'postmark' ? 'Postmark' : stampLabel(k, values.get(k))}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          <div className="st-foot">
+            {(error || (busy && 'Saving…')) && (
+              <p className="st-status" role={error ? 'alert' : 'status'}>
+                {error || 'Saving…'}
+              </p>
+            )}
+            {closedWhy && (
+              <p className="st-status" role="status">
+                {closedWhy}
+              </p>
+            )}
+            {underPenName && (
+              <p className="st-status">Posting as {moment.author.name}. Others can&apos;t see it&apos;s you.</p>
+            )}
+            {media && (
+              <input
+                className="st-caption"
+                aria-label="Caption"
+                maxLength={100}
+                value={caption}
+                disabled={busy || !open}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Add a caption"
+              />
+            )}
+            <div className="st-bar">
+              {!underPenName && (
+                <div className="st-who" role="group" aria-label="Who sees it">
+                  <button
+                    type="button"
+                    className="st-chip"
+                    aria-pressed={who === 'nearby'}
+                    disabled={busy || !open || moment.no_location}
+                    onClick={() => setAudience('nearby')}
+                  >
+                    Nearby
+                  </button>
+                  <button
+                    type="button"
+                    className="st-chip"
+                    aria-pressed={who === 'friends'}
+                    disabled={busy || !open}
+                    onClick={() => setAudience('connections')}
+                  >
+                    Friends
+                  </button>
+                </div>
+              )}
+              <div className="st-row">
+                <p className="st-when me-left">
+                  <Clock3 size={20} aria-hidden="true" />
+                  <span>
+                    <strong>{timeLine}</strong>
+                    <small>{placeLine}</small>
+                  </span>
+                </p>
+                <button type="button" className="st-post" disabled={busy || !dirty || !open} onClick={() => void save()}>
+                  {busy ? '…' : 'Save'}
+                  {!busy && <Check size={17} strokeWidth={2.6} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {wentOff && (
+            <div className="st-panel st-wentoff" role="alertdialog" aria-modal="true" aria-labelledby="me-off-title">
+              <h3 id="me-off-title">This isn’t on for you right now</h3>
+              <p>Your Moment stays as it was.</p>
+              <button type="button" className="st-post" autoFocus onClick={leave}>
+                Continue
+              </button>
+            </div>
+          )}
+
+          {discarding && (
+            <div className="st-panel" role="alertdialog" aria-modal="true" aria-labelledby="me-discard-title">
+              <h3 id="me-discard-title">Discard your changes?</h3>
+              <div className="st-pending-actions">
+                <button type="button" className="st-chip" autoFocus onClick={() => setDiscarding(false)}>
+                  Keep
+                </button>
+                <button type="button" className="st-post" onClick={leave}>
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  return createPortal(stage, container);
+}

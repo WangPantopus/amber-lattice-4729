@@ -1,0 +1,55 @@
+/* The 15-minute edit (components/reinvented/edit): drawn as the Studio is (studio.css), with the Moment's picture as it
+   was posted, fitted in the 9:16 frame as the viewer draws it. */
+.me-edit .st-art {
+  background: #152025;
+}
+.me-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+.me-card {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 90px 28px 200px;
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.me-picture {
+  position: absolute;
+}
+/* The time left, where the Studio's pill is: words only, nothing to open. */
+.st-when.me-left {
+  margin: 0;
+  cursor: default;
+}
+
+/* "Moment updated", over the viewer's picture. */
+.me-saved {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 16px;
+  background: rgba(11, 18, 32, 0.82);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
