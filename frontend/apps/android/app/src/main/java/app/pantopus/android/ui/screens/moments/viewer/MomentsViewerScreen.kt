@@ -150,7 +150,11 @@ import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
 import app.pantopus.android.ui.screens.moments.components.MomentMetaPills
+import app.pantopus.android.ui.screens.moments.components.MomentSignal
+import app.pantopus.android.ui.screens.moments.components.MomentSignalBadge
+import app.pantopus.android.ui.screens.moments.components.MomentStampsOverlay
 import app.pantopus.android.ui.screens.moments.components.MomentVerifiedCheck
+import app.pantopus.android.ui.screens.moments.components.MomentViewerSignals
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.components.rememberMomentImage
@@ -192,6 +196,8 @@ fun MomentsViewerScreen(
     onClose: () -> Unit,
     /** Opens a person's profile, or a business's page (`business`), over the viewer: Back returns to the Moment. */
     onOpenProfile: (userId: String, business: Boolean) -> Unit = { _, _ -> },
+    // "Pulse, reinvented" (its switch on for the person): the Moment's stamps over its picture.
+    studio: Boolean = false,
     viewModel: MomentsViewerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -626,6 +632,7 @@ fun MomentsViewerScreen(
                                 },
                                 onFailed = viewModel::next,
                             )
+                            if (studio) MomentStampsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit
                     ViewerLoad.Ended ->
@@ -764,18 +771,23 @@ fun MomentsViewerScreen(
                     .padding(bottom = keyboardPadding),
         ) {
             if (typing || reacting) {
-                QuickReactions(
-                    selected = moment?.myReaction,
-                    onPick = { emoji ->
-                        if (moment?.myReaction != emoji) {
-                            pops += 1
-                            popped = pops to emoji
-                            MomentHaptics.light(view)
-                        }
-                        viewModel.react(emoji)
-                        dismissInput()
-                    },
-                )
+                // "Pulse, reinvented": the five signals in the emoji's place.
+                if (studio && moment != null) {
+                    MomentViewerSignals(moment = moment, onPicked = { dismissInput() }, onMessage = { toast.show(it) })
+                } else {
+                    QuickReactions(
+                        selected = moment?.myReaction,
+                        onPick = { emoji ->
+                            if (moment?.myReaction != emoji) {
+                                pops += 1
+                                popped = pops to emoji
+                                MomentHaptics.light(view)
+                            }
+                            viewModel.react(emoji)
+                            dismissInput()
+                        },
+                    )
+                }
                 if (typing) {
                     // Within reach of the thumb (REVIEW L3): the reactions, 14 dp, the line, 12 dp, the box.
                     Spacer(Modifier.height(14.dp))
@@ -912,6 +924,7 @@ fun MomentsViewerScreen(
         SeenBySheet(
             moment = moment,
             state = state,
+            studio = studio,
             saveNote = saveNote,
             onDismiss = { seenByOpen = false },
             onOpenViewer = { watcher ->
@@ -1646,6 +1659,8 @@ private fun SeenByRow(
 private fun SeenBySheet(
     moment: MomentDto,
     state: MomentsViewerUiState,
+    // "Pulse, reinvented": each watcher's signal in the emoji's place.
+    studio: Boolean = false,
     saveNote: String?,
     onDismiss: () -> Unit,
     onOpenViewer: (MomentAuthorDto) -> Unit,
@@ -1740,7 +1755,11 @@ private fun SeenBySheet(
                 else ->
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(viewers?.viewers.orEmpty(), key = { it.user.id }) { viewer ->
-                            ViewerRow(viewer, onOpen = { onOpenViewer(viewer.user) })
+                            ViewerRow(
+                                viewer,
+                                onOpen = { onOpenViewer(viewer.user) },
+                                signal = MomentSignal.of(viewer.signal).takeIf { studio },
+                            )
                         }
                     }
             }
@@ -1781,6 +1800,7 @@ private fun MomentAuthorDto.profileOpener(onOpenProfile: (String, Boolean) -> Un
 private fun ViewerRow(
     viewer: MomentViewerDto,
     onOpen: () -> Unit,
+    signal: MomentSignal? = null,
 ) {
     val reactionName = QUICK_REACTIONS.firstOrNull { it.first == viewer.reaction }?.second
     Row(
@@ -1807,7 +1827,9 @@ private fun ViewerRow(
             )
             agoLabel(viewer.viewedAt)?.let { Text(text = it, fontSize = 13.sp, color = PantopusColors.appTextSecondary) }
         }
-        if (viewer.reaction != null) {
+        if (signal != null) {
+            MomentSignalBadge(signal)
+        } else if (viewer.reaction != null) {
             Text(
                 text = viewer.reaction,
                 fontSize = 22.sp,

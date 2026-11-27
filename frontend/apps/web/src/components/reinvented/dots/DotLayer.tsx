@@ -5,9 +5,9 @@
 // calls a wild plant safe to eat, links its source, and can be kept in the reader's field guide ("Collect") or
 // corrected ("Not right?"). The author can remove any of their dots. While a dot is open the viewer holds still.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookmarkCheck, BookmarkPlus, ExternalLink, Star, X } from 'lucide-react';
+import { BookmarkCheck, BookmarkPlus, ExternalLink, Star, Volume2, X } from 'lucide-react';
 import type { Moment } from '@pantopus/api/endpoints/moments';
 import { useMe } from '@/lib/me';
 import { messageOf } from '@/components/moments/momentState';
@@ -27,6 +27,34 @@ export function holdsForDots(m: Moment): boolean {
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
+/** Drawn as a link only for a web address (http or https); anything else shows as plain words. */
+function webUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function Outlink({ url, title }: { url: string; title: string }) {
+  const href = webUrl(url);
+  const words = (
+    <span>
+      <strong>{title}</strong>
+      <small>{host(url)}</small>
+    </span>
+  );
+  return href ? (
+    <a className="dt-link" href={href} target="_blank" rel="noopener noreferrer nofollow">
+      {words}
+      <ExternalLink aria-hidden="true" />
+    </a>
+  ) : (
+    <div className="dt-link">{words}</div>
+  );
+}
+
 function host(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -35,8 +63,10 @@ function host(url: string) {
   }
 }
 
-export default function DotLayer({ moment }: { moment: Moment }) {
-  const dots = ((moment as DotMoment).dots || []).filter((d) => d.kind !== 'whisper');
+export default function DotLayer({ moment, post = false }: { moment: Moment; post?: boolean }) {
+  // On a post the author's removals are kept here (there is no viewer cache to read again).
+  const [gone, setGone] = useState<string[]>([]);
+  const dots = ((moment as DotMoment).dots || []).filter((d) => !gone.includes(d.id));
   const account = useMe().data?.id;
   const own = !!account && moment.author?.id === account;
   const [open, setOpen] = useState<string | null>(null);
@@ -71,7 +101,7 @@ export default function DotLayer({ moment }: { moment: Moment }) {
           className="dt-dot"
           data-kind={d.kind}
           aria-expanded={open === d.id}
-          aria-label={d.kind === 'thing' ? `What is this${d.label ? `: ${d.label}` : ''}?` : d.kind === 'rating' ? `${d.label}: ${d.stars} of 5` : d.kind === 'link' ? d.title || host(d.url) : 'A note'}
+          aria-label={d.kind === 'whisper' ? 'A whisper' : d.kind === 'thing' ? `What is this${d.label ? `: ${d.label}` : ''}?` : d.kind === 'rating' ? `${d.label}: ${d.stars} of 5` : d.kind === 'link' ? d.title || host(d.url) : 'A note'}
           style={{ left: `${clamp01(d.x) * 100}%`, top: `${clamp01(d.y) * 100}%` }}
           onClick={() => setOpen(open === d.id ? null : d.id)}
         />
@@ -82,7 +112,16 @@ export default function DotLayer({ moment }: { moment: Moment }) {
             <X aria-hidden="true" />
           </button>
           <DotBody key={shown.id} moment={moment} dot={shown} />
-          {own && <RemoveDot moment={moment} dot={shown} onDone={() => setOpen(null)} />}
+          {own && (
+            <RemoveDot
+              moment={moment}
+              dot={shown}
+              onDone={() => {
+                if (post) setGone([...gone, shown.id]);
+                setOpen(null);
+              }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -106,16 +145,12 @@ function DotBody({ moment, dot }: { moment: Moment; dot: Dot }) {
       );
     case 'link':
       return (
-        <a className="dt-link" href={dot.url} target="_blank" rel="noopener noreferrer nofollow">
-          <span>
-            <strong>{dot.title || host(dot.url)}</strong>
-            <small>{host(dot.url)}</small>
-          </span>
-          <ExternalLink aria-hidden="true" />
-        </a>
+        <Outlink url={dot.url} title={dot.title || host(dot.url)} />
       );
     case 'thing':
       return <Thing moment={moment} dot={dot} />;
+    case 'whisper':
+      return <Whisper dot={dot} />;
     default:
       return null;
   }
@@ -182,13 +217,7 @@ function Thing({ moment, dot }: { moment: Moment; dot: Extract<Dot, { kind: 'thi
       <p className="dt-text">{card.why}</p>
       {card.caution && <p className="dt-caution">{card.caution}</p>}
       {card.source && (
-        <a className="dt-link" href={card.source.url} target="_blank" rel="noopener noreferrer nofollow">
-          <span>
-            <strong>{card.source.title}</strong>
-            <small>{host(card.source.url)}</small>
-          </span>
-          <ExternalLink aria-hidden="true" />
-        </a>
+        <Outlink url={card.source.url} title={card.source.title} />
       )}
       <p className="dt-small">
         Named by {card.named_by}. It can be wrong.
@@ -290,5 +319,34 @@ function RemoveDot({ moment, dot, onDone }: { moment: Moment; dot: Dot; onDone()
         </p>
       )}
     </>
+  );
+}
+
+/** A three-second voice whisper (§7e): played as the dot opens, again on a tap. */
+function Whisper({ dot }: { dot: Extract<Dot, { kind: 'whisper' }> }) {
+  const audio = useRef<HTMLAudioElement>(null);
+  const [state, setState] = useState<'idle' | 'playing' | 'blocked'>('idle');
+  const play = () => {
+    const el = audio.current;
+    if (!el) return;
+    el.currentTime = 0;
+    el.play().then(
+      () => setState('playing'),
+      () => setState('blocked'),
+    );
+  };
+  useEffect(() => {
+    if (dot.audio_url) play();
+  }, [dot.audio_url]);
+  if (!dot.audio_url) return <p className="dt-text">A whisper, not ready yet.</p>;
+  return (
+    <div className="dt-card">
+      <audio ref={audio} src={dot.audio_url} preload="auto" onEnded={() => setState('idle')} onPause={() => setState((s) => (s === 'playing' ? 'idle' : s))} />
+      <p className="dt-text">A whisper{dot.duration_ms ? ` · ${Math.max(1, Math.round(dot.duration_ms / 1000))} s` : ''}</p>
+      <button type="button" className="dt-button" onClick={play}>
+        <Volume2 aria-hidden="true" />
+        {state === 'playing' ? 'Playing…' : state === 'blocked' ? 'Tap to hear' : 'Hear it again'}
+      </button>
+    </div>
   );
 }

@@ -91,6 +91,8 @@ final class MomentsComposerModel {
     /// The Studio's stamps ("Pulse, reinvented" step 3, `MomentsStudioStamps`): where each sits on the picture; the
     /// server fills what they read. Only the Studio places any; empty, nothing is sent.
     var studioStamps: [MomentStampPlacement] = []
+    /// The Studio's "Guess the spot" ("Pulse, reinvented" step 8, `MomentsStudioGuess`); only the Studio sets it.
+    var studioGuess = false
     /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
     /// it was taken.
     var pinsAtPlace = false

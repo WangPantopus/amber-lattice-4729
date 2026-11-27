@@ -29,7 +29,7 @@ export type Dot =
   | (Base & { kind: 'rating'; label: string; stars: number })
   | (Base & { kind: 'link'; url: string; title?: string | null })
   | (Base & { kind: 'thing'; box: { x: number; y: number; w: number; h: number }; label?: string | null; card: FieldCard | null })
-  | (Base & { kind: 'whisper' });
+  | (Base & { kind: 'whisper'; audio_url?: string | null; duration_ms?: number | null });
 
 const dotPath = (postId: string, dot: string) => `/api/reinvented/dots/${encodeURIComponent(postId)}/${encodeURIComponent(dot)}`;
 

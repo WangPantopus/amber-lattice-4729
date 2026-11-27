@@ -180,9 +180,7 @@ extension MomentsViewer {
                     onClose: { model.close() }
                 )
                 .padding(.top, 9)
-                if let meta = model.metaPills {
-                    MomentsMetaPills(meta: meta)
-                }
+                MomentsViewerPills(model: model)
                 // The Duo's layouts show the height as a tag under the name, without the phone's rail.
                 if let height = model.shownHeight {
                     MomentsViewerHeightLine(height: height)

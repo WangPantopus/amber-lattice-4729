@@ -389,4 +389,88 @@ router.delete('/moments/:id/sound', async (req, res) => {
   }
 });
 
+// ─── "Save the steps" of a step deck (CONTRACT 7g) ───────────────────────────
+
+const stepDeck = require('../services/pulse/deck');
+
+/** POST /moments/:id/deck/save — keeps the words of the deck's steps in the reader's field guide. */
+router.post('/moments/:id/deck/save', contentCreationLimiter, async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This step deck could not be found.', code: 'PLAY_NOT_FOUND' });
+    }
+    return res.json(await stepDeck.saveSteps(req.params.id, req.user.id));
+  } catch (error) {
+    return sendError(res, error, 'deck_save');
+  }
+});
+
+/** DELETE /moments/:id/deck/save — lets them go. */
+router.delete('/moments/:id/deck/save', async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This step deck could not be found.', code: 'PLAY_NOT_FOUND' });
+    }
+    await stepDeck.unsaveSteps(req.params.id, req.user.id);
+    return res.status(204).end();
+  } catch (error) {
+    return sendError(res, error, 'deck_unsave');
+  }
+});
+
+// ─── Replies people can see on a Moment (CONTRACT 8a) ───────────────────────
+
+const shownReplies = require('../services/pulse/replies');
+
+/** GET /moments/:id/replies — the replies this reader may see, oldest first. */
+router.get('/moments/:id/replies', async (req, res) => {
+  try {
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor.slice(0, 12) : '';
+    res.json(await shownReplies.list(req.params.id, req.user.id, cursor));
+  } catch (error) {
+    sendError(res, error, 'replies');
+  }
+});
+
+/** POST /moments/:id/replies — { text }. */
+router.post('/moments/:id/replies', contentCreationLimiter, async (req, res) => {
+  try {
+    res.status(201).json(await shownReplies.create(req.params.id, req.user, req.body?.text));
+  } catch (error) {
+    sendError(res, error, 'reply_create');
+  }
+});
+
+/** DELETE /moments/:id/replies/:reply — its writer or the Moment's author. */
+router.delete('/moments/:id/replies/:reply', async (req, res) => {
+  try {
+    await shownReplies.remove(req.params.id, req.params.reply, req.user.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'reply_remove');
+  }
+});
+
+/** POST /moments/:id/replies/:reply/report — { reason, details }: Pulse's reply report. */
+router.post('/moments/:id/replies/:reply/report', contentCreationLimiter, async (req, res) => {
+  try {
+    await shownReplies.report(req.params.id, req.params.reply, req.user.id, req.body || {});
+    res.json({ message: 'Reply reported successfully. We will review it shortly.' });
+  } catch (error) {
+    sendError(res, error, 'reply_report');
+  }
+});
+
+/** POST /moments/:id/replies-shown — { shown }: the author's choice for this Moment. */
+router.post('/moments/:id/replies-shown', async (req, res) => {
+  try {
+    if (typeof req.body?.shown !== 'boolean') return res.status(400).json({ error: 'Send shown: true or false.', code: 'REPLY_INVALID' });
+    const row = await shownReplies.setShown(req.params.id, req.user.id, req.body.shown);
+    const [moment] = await store.serializeMoments([row], req.user.id);
+    return res.json({ moment });
+  } catch (error) {
+    return sendError(res, error, 'replies_shown');
+  }
+});
+
 module.exports = router;

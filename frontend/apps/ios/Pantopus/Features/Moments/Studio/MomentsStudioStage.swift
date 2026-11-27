@@ -63,6 +63,11 @@ struct MomentsStudioStage: View {
                     .padding(.bottom, Spacing.s3)
             }
             notes
+            if model.studioGuess, model.offersGuess {
+                MomentsStudioGuessNote()
+                    .padding(.horizontal, Spacing.s4)
+                    .padding(.bottom, Spacing.s3)
+            }
             if model.postsUnderMadeUpName, let penName = PenNameStore.shared.penName {
                 MomentsStudioPostingAs(penName: penName)
                     .padding(.horizontal, Spacing.s4)

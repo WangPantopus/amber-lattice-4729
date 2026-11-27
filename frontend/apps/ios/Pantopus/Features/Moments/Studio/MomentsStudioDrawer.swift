@@ -67,7 +67,7 @@ struct MomentsStudioDrawer: View {
                 MomentsPostMap(
                     pin: model.pin,
                     showArea: model.floats || model.madeUpFloats,
-                    disc: model.skyDisc,
+                    disc: model.skyDisc ?? model.madeUpDisc,
                     me: me,
                     placeholder: model.locating == .unavailable ? "Location is off" : "Finding where you are…",
                     height: 130,
@@ -88,7 +88,7 @@ struct MomentsStudioDrawer: View {
             if madeUp {
                 // Under a made-up name the server floats it over its area and keeps no Live mark, weather or height
                 // (the made-up-names contract): those rows go.
-                Text("Under your made-up name it shows over its area at home, or at a public place, with no Live mark, weather or height.")
+                Text("Under your made-up name it shows over its area, or at a public place you pick, with no Live mark, weather or height.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -109,8 +109,8 @@ struct MomentsStudioDrawer: View {
             if model.skyAtHome, !madeUp {
                 rows.skyHomeNote.padding(.top, Spacing.s2)
             }
-            if madeUp, !model.madeUpFloats, model.sky != nil {
-                // Away from home a made-up name's Moment sits at a public place: which one is the person's choice.
+            if model.offersMadeUpPin {
+                // Away from home a made-up name's Moment floats over its area unless its author pins it at a place.
                 rows.pinRow.padding(.top, Spacing.s2)
             }
             if !madeUp {

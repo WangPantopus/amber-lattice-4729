@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
@@ -130,10 +131,13 @@ internal fun MomentsStudioStep(
     onShowWeather: (Boolean) -> Unit,
     sky: MomentsSkyActions,
     onMadeUp: (Boolean) -> Unit = {},
+    onStamps: (List<MomentStampPlacement>) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
     var drawer by rememberSaveable { mutableStateOf(false) }
+    // "Stamps and Play" (step 3): the tray of stamps Pantopus checked.
+    var tray by rememberSaveable { mutableStateOf(false) }
     // "Made-up name" (made-up-names contract, "Moments"): offered once `/api/pen-names/me` has answered, checked at the pin.
     val postAs by penNames.postAs.collectAsStateWithLifecycle()
     val setupOpen by penNames.setupOpen.collectAsStateWithLifecycle()
@@ -157,6 +161,8 @@ internal fun MomentsStudioStep(
                 .then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
         StudioPicture(state)
+        // The stamps sit on the picture, under the X, the tools, the caption and the bar.
+        StudioStampLayer(state = state, onStamps = onStamps)
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
             modifier =
@@ -181,15 +187,15 @@ internal fun MomentsStudioStep(
             onClick = onBack,
             modifier = Modifier.statusBarsPadding().padding(start = Spacing.s4, top = 11.dp),
         )
-        // Text, Draw and Resize change a photo or a video; a text card has nothing on the rail yet (Stamps come next).
-        if (state.media != null) {
-            StudioRail(
-                enabled = !state.posting,
-                video = state.media is MomentMediaFile.Video,
-                onOpen = onMarks,
-                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
-            )
-        }
+        // Text, Draw and Resize change a photo or a video; Stamps and Play reads the spot, so it needs a place (a text
+        // card has only Stamps and Play).
+        StudioRail(
+            enabled = !state.posting,
+            media = state.media,
+            onOpen = onMarks,
+            onStamps = { tray = true }.takeIf { !state.noLocationOn },
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
+        )
         Column(
             modifier =
                 Modifier
@@ -287,6 +293,7 @@ internal fun MomentsStudioStep(
                 studio = true,
             )
         }
+        StudioStampTray(visible = tray, state = state, onStamps = onStamps, onDone = { tray = false })
         if (fullMap) {
             state.postMapSpot?.let { spot ->
                 MomentsPostFullMap(
@@ -332,48 +339,71 @@ private fun StudioClose(
 }
 
 /**
- * The tool rail (board B2): each tool's name beside its round button. Text, Draw and Resize open today's marks editor;
- * the tools of later steps join the rail as they are built.
+ * The tool rail (board B2): each tool's name beside its round button, in iPhone's order: Text, Stamps and Play, Draw,
+ * Resize. Text, Draw and Resize open today's marks editor on a photo or video; Stamps and Play opens the tray. The tools
+ * of later steps join the rail as they are built; a tool that can't be used here isn't drawn.
  */
 @Composable
 private fun StudioRail(
     enabled: Boolean,
-    video: Boolean,
+    media: MomentMediaFile?,
     onOpen: (MomentMarksTool) -> Unit,
+    onStamps: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val what = if (video) "video" else "photo"
+    if (media == null && onStamps == null) return
     Column(
         modifier = modifier.semantics { contentDescription = "Tools" },
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        RailTool(
-            label = "Text",
-            spoken = "Write on the $what",
-            enabled = enabled,
-            tag = "text",
-            onClick = { onOpen(MomentMarksTool.Text) },
-        ) {
-            Text(text = "Aa", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+        if (media != null) MarksTool(MomentMarksTool.Text, media, enabled, onOpen)
+        if (onStamps != null) {
+            RailTool(label = "Stamps and Play", spoken = "Stamps and Play", enabled = enabled, tag = "stamps", onClick = onStamps) {
+                PantopusIconImage(
+                    icon = PantopusIcon.Stamp,
+                    contentDescription = null,
+                    size = 20.dp,
+                    strokeWidth = 2.2f,
+                    tint = Color.White,
+                )
+            }
         }
-        RailTool(
-            label = "Draw",
-            spoken = "Draw on the $what",
-            enabled = enabled,
-            tag = "draw",
-            onClick = { onOpen(MomentMarksTool.Draw) },
-        ) {
-            PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 20.dp, tint = Color.White)
+        if (media != null) {
+            MarksTool(MomentMarksTool.Draw, media, enabled, onOpen)
+            MarksTool(MomentMarksTool.Resize, media, enabled, onOpen)
         }
-        RailTool(
-            label = "Resize",
-            spoken = "Resize the $what",
-            enabled = enabled,
-            tag = "resize",
-            onClick = { onOpen(MomentMarksTool.Resize) },
-        ) {
-            PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 20.dp, tint = Color.White)
+    }
+}
+
+/** Text, Draw or Resize on the rail: today's marks editor on the photo or video. */
+@Composable
+private fun MarksTool(
+    tool: MomentMarksTool,
+    media: MomentMediaFile,
+    enabled: Boolean,
+    onOpen: (MomentMarksTool) -> Unit,
+) {
+    val what = if (media is MomentMediaFile.Video) "video" else "photo"
+    val (label, spoken) =
+        when (tool) {
+            MomentMarksTool.Text -> "Text" to "Write on the $what"
+            MomentMarksTool.Draw -> "Draw" to "Draw on the $what"
+            MomentMarksTool.Resize -> "Resize" to "Resize the $what"
+        }
+    RailTool(label = label, spoken = spoken, enabled = enabled, tag = label.lowercase(), onClick = { onOpen(tool) }) {
+        when (tool) {
+            MomentMarksTool.Text ->
+                Text(text = "Aa", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+            MomentMarksTool.Draw ->
+                PantopusIconImage(
+                    icon = PantopusIcon.Pencil,
+                    contentDescription = null,
+                    size = 20.dp,
+                    tint = Color.White,
+                )
+            MomentMarksTool.Resize ->
+                PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 20.dp, tint = Color.White)
         }
     }
 }

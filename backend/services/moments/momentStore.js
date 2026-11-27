@@ -47,6 +47,8 @@ const momentStamps = require('./momentStamps');
 const momentGuess = require('./momentGuess');
 const playItems = require('../pulse/play');
 const soundMedia = require('../pulse/sound');
+const stepDeck = require('../pulse/deck');
+const shownReplies = require('../pulse/replies');
 const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -534,7 +536,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map() }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -620,6 +622,10 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       dots: playItems.dotsFor(m.dots, m.cards, { whispers: m.whispers, links, show: Boolean(showMedia) }),
       // Voice Spark or place sound (CONTRACT 7e), its link given exactly when the picture's is.
       sound: soundMedia.soundOf(m, links, Boolean(showMedia)),
+      // The step deck it belongs to (CONTRACT 7g), with the steps this reader may see; null for any other Moment.
+      deck: stepDeck.deckOf(m, decks, row.user_id),
+      // Replies people can see (CONTRACT 8a): shown or not, how many this reader may see, and whether they may reply.
+      replies: shownReplies.repliesOf(row, replyCounts),
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
@@ -696,7 +702,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays] = reinvented
+  const [signals, guesses, offers, plans, plays, decks, replyCounts] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
@@ -704,8 +710,12 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       playItems.playFor(rows.filter((r) => meta(r).play?.length).map((r) => ({
         id: r.id, items: meta(r).play, own: isOwn(r, viewerId), open: momentState(r) === 'live',
       })), viewerId),
+      // Step decks (CONTRACT 7g): one read of their steps, only when a row is part of one.
+      rows.some((r) => meta(r).deck) ? stepDeck.decksFor(rows, viewerId) : new Map(),
+      // Replies people can see (CONTRACT 8a): one count for the page, only of the Moments that show them.
+      shownReplies.countsFor(rows, viewerId).catch(() => new Map()),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -723,6 +733,8 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     keepOffer: offers.has(row.id),
     plan: plans.get(row.id) || null,
     play: plays.get(row.id) || null,
+    decks,
+    replyCounts,
   }));
 }
 

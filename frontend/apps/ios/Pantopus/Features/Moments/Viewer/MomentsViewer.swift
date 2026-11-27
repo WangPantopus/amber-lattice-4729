@@ -215,6 +215,7 @@ struct MomentsViewer: View {
     private var covered: Bool {
         showsMenu || showsReport || showsBlock || confirmsDelete || session.profile != nil
             || (session.showsSeenBy && !seenByBeside) || (session.paused && duo.pose == .table) || editing != nil
+            || model.guessCovers
     }
 }
 
@@ -274,9 +275,7 @@ extension MomentsViewer {
                     onClose: { model.close() }
                 )
                 .padding(.top, 9)
-                if let meta = model.metaPills {
-                    MomentsMetaPills(meta: meta)
-                }
+                MomentsViewerPills(model: model)
             }
             .opacity(model.holding || zooming ? 0 : 1)
             .animation(.easeOut(duration: 0.15), value: model.holding || zooming)

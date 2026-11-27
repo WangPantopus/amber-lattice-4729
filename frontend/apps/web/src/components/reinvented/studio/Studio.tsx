@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Clock3,
   Crop,
+  Mic,
   ImagePlus,
   LocateFixed,
   MapPin,
@@ -35,7 +36,8 @@ import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/com
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
-import { blankArt, inks } from '@/components/moments/momentArtwork';
+import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
+import { stageFrame } from './frame';
 import {
   colors,
   deviceFix,
@@ -53,6 +55,8 @@ import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire } from '../play/PlayEdit';
 import type { PlayItem, PlayKind } from '../play/playTypes';
+import { SoundPanel } from '../sound/SoundPanel';
+import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
@@ -172,8 +176,15 @@ export default function Studio({
     [making, setMaking] = useState<PlayKind | 'dial' | null>(null),
     // Illuminate (phase 2, CONTRACT 7c): dots on things in the photo, and the one being changed.
     [dots, setDots] = useState<DotDraft[]>([]),
+    // The picture's own width and height, for where placed things land on it (frame.ts).
+    [shape, setShape] = useState<{ w: number; h: number } | null>(null),
     [illuminate, setIlluminate] = useState(false),
     [pickedDot, setPickedDot] = useState<string | null>(null),
+    // Sound (phase 2, CONTRACT 7e): Voice Spark with its words, and place sound; sent after the Moment is made.
+    [voiceRec, setVoiceRec] = useState<Recording | null>(null),
+    [voiceWords, setVoiceWords] = useState(''),
+    [placeRec, setPlaceRec] = useState<Recording | null>(null),
+    [soundOpen, setSoundOpen] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
@@ -201,7 +212,9 @@ export default function Studio({
     drawerRef = useRef<HTMLElement>(null),
     textInput = useRef<HTMLInputElement>(null),
     mounted = useRef(true),
-    submitting = useRef(false);
+    submitting = useRef(false),
+    // The sound to send once the Moment exists (set as it is posted, read by deliver()).
+    pendingSound = useRef<{ voice: Recording | null; words: string; place: Recording | null; whispers: { id: string; audio: Recording }[] } | null>(null);
   useEffect(() => {
     mounted.current = true;
     const previous = document.body.style.overflow;
@@ -422,10 +435,16 @@ export default function Studio({
   const kindsOffered = underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text';
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
-  // Dots go on a photo or video Moment (a post's picture can't draw them on the web yet, as Play); a thing to name needs
-  // a photo and the author's Pantopus AI on; a link isn't for a made-up name.
-  const canIlluminate = mode === 'media' && !!file && !postKind;
+  // Playable items and dots go on a Moment, or on a Pulse post with its one photo (the new Pulse draws them over it,
+  // #5009); a words-only post has no picture to carry them. A thing to name needs a photo and the author's Pantopus AI
+  // on; a link isn't for a made-up name.
+  const playOn = !postKind || (mode === 'media' && !!file && !isVideo);
+  const canIlluminate = mode === 'media' && !!file && (!postKind || !isVideo);
   const aiOn = usePantopusAiOn(canIlluminate);
+  // Sound goes on a photo or video Moment under the person's own name (a voice tells who someone is), not yet on a post.
+  const canSound = canIlluminate && !postKind && !underPenName;
+  // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
+  const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
   // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
@@ -549,6 +568,26 @@ export default function Studio({
     const result = await postJob(job, signal, (s) => {
       if (mounted.current) setBusy(s);
     });
+    // Sound goes to the Moment once it exists (CONTRACT 7e); the Moment stands even if a sound doesn't make it.
+    const sounds = pendingSound.current;
+    pendingSound.current = null;
+    let soundFailed = false;
+    if (sounds && result[0]?.id) {
+      if (mounted.current) setBusy('Adding sound…');
+      const id = result[0].id;
+      // One at a time: each one is written into the Moment's own record, and two at once could lose one.
+      const sends: (() => Promise<unknown>)[] = [];
+      if (sounds.voice) sends.push(() => uploadSound(id, sounds.voice!, 'voice', { words: timedWords(sounds.words, sounds.voice!.ms) }));
+      else if (sounds.place) sends.push(() => uploadSound(id, sounds.place!, 'place'));
+      for (const w of sounds.whispers) sends.push(() => uploadSound(id, w.audio, 'whisper', { dot: w.id }));
+      for (const send of sends) {
+        try {
+          await send();
+        } catch {
+          soundFailed = true;
+        }
+      }
+    }
     if (!mounted.current) return;
     setJobs((old) => old.filter((j) => j.id !== job.id));
     const state = result.find((m) => m.state !== 'live')?.state;
@@ -562,6 +601,7 @@ export default function Studio({
             : state === 'ended'
               ? 'This Moment has ended.'
               : 'Moment shared.';
+    if (soundFailed) setError(msg + ' Its sound couldn’t be added.');
     if (file && index + 1 < files.length) {
       setIndex((i) => i + 1);
       setBusy('');
@@ -650,8 +690,8 @@ export default function Studio({
             ...(canGuess && guessSpot ? { guess: true as const } : {}),
             ...(kind === 'text'
               ? { text: text.trim(), background: bg }
-              : caption.trim() && i === 0
-                ? { caption: caption.trim() }
+              : (caption.trim() || (canSound && voiceRec && voiceWords.trim())) && i === 0
+                ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
             ...(file && capture?.file !== file && meta?.capturedAt ? { taken_at: meta.capturedAt } : {}),
             ...(area && !noPlace ? { show_area: true } : {}),
@@ -682,11 +722,19 @@ export default function Studio({
             ...(count > 1 ? { series: { id: series, index: i + 1, count } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
             ...(kept.length && i === 0
-              ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
+              ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
-            ...(play.length && i === 0 && !postKind ? { play: playWire(play) } : {}),
-            ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).length
-              ? { dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }) }
+            ...(play.length && i === 0 && !postKind
+              ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) }
+              : {}),
+            ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).length
+              ? {
+                  dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).map((d) => ({
+                    ...d,
+                    ...frame.point(d.x as number, d.y as number),
+                    ...(d.box ? { box: frame.box(d.box as { x: number; y: number; w: number; h: number }) } : {}),
+                  })),
+                }
               : {}),
             ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
               ? {
@@ -710,6 +758,14 @@ export default function Studio({
       }
       made = job;
       if (mounted.current) setJobs((old) => [...old, job]);
+      pendingSound.current = canSound
+        ? {
+            voice: voiceRec,
+            words: voiceWords,
+            place: placeRec,
+            whispers: dots.filter((d) => d.kind === 'whisper' && d.audio).map((d) => ({ id: d.id, audio: d.audio! })),
+          }
+        : null;
       await deliver(job, controller.signal);
     } catch (e) {
       if (isSwitchedOff(e)) {
@@ -751,6 +807,8 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
+          play?: Record<string, unknown>[];
+          dots?: Record<string, unknown>[];
           taken_at?: string;
           taken_here?: boolean;
           fix?: { latitude: number; longitude: number; fix_at: string };
@@ -794,7 +852,18 @@ export default function Studio({
         // Under a made-up name: no profile (today's composer leaves these out there).
         ...(underPenName ? {} : { profileVisibilityScope: 'local_context' as const, showOnProfile: true }),
         studio: {
-          stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
+          stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
+          // Playable items and dots on the post's photo (CONTRACT 7b, 7c: `studio.play`, `studio.dots`), placed as a Moment's.
+          ...(photo && play.length ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) } : {}),
+          ...(photo && canIlluminate && dotsWire(dots, { things: aiOn, links: !underPenName }).length
+            ? {
+                dots: dotsWire(dots, { things: aiOn, links: !underPenName }).map((d) => ({
+                  ...d,
+                  ...frame.point(d.x as number, d.y as number),
+                  ...(d.box ? { box: frame.box(d.box as { x: number; y: number; w: number; h: number }) } : {}),
+                })),
+              }
+            : {}),
           ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
@@ -1273,7 +1342,10 @@ export default function Studio({
                 tool={tool}
                 ink={ink}
                 pen={pen}
-                onPicture={(el, w, h) => setPhotoInks(sampleColors(el, w, h, inks))}
+                onPicture={(el, w, h) => {
+                  setPhotoInks(sampleColors(el, w, h, inks));
+                  setShape({ w, h });
+                }}
               />
             ) : mode === 'text' ? (
               <div className="st-words">
@@ -1298,8 +1370,7 @@ export default function Studio({
                 safe={STAMP_SAFE}
               />
             )}
-            {/* Playable items go on Moments for now: a post's picture can't draw them on the web yet (QUESTIONS, 05:55). */}
-            {composing && !postKind && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
+            {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
             {composing && canIlluminate && (
               <DotEditLayer
                 dots={dots}
@@ -1424,17 +1495,47 @@ export default function Studio({
                   </button>
                 </div>
               )}
+              {canSound && (
+                <div className="st-tool">
+                  <span aria-hidden="true">Sound</span>
+                  <button
+                    type="button"
+                    className="st-round"
+                    aria-label="Sound"
+                    aria-pressed={soundOpen}
+                    onClick={() => {
+                      setTool(null);
+                      setIlluminate(false);
+                      setSoundOpen(!soundOpen);
+                    }}
+                  >
+                    <Mic size={21} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
                 </>
               )}
             </div>
           )}
 
+          {composing && canSound && soundOpen && !tool && !illuminate && (
+            <SoundPanel
+              voice={voiceRec}
+              setVoice={setVoiceRec}
+              words={voiceWords}
+              setWords={setVoiceWords}
+              place={placeRec}
+              setPlace={setPlaceRec}
+              onDone={() => setSoundOpen(false)}
+            />
+          )}
           {composing && canIlluminate && illuminate && !tool && (
             <DotEditPanel
               dot={dots.find((d) => d.id === pickedDot) || null}
               count={dots.length}
               allowLink={!underPenName}
               allowThing={!isVideo && aiOn}
+              allowWhisper={canSound}
               onChange={(d) => setDots(dots.map((x) => (x.id === d.id ? d : x)))}
               onRemove={(id) => {
                 setDots(dots.filter((x) => x.id !== id));
@@ -1643,14 +1744,14 @@ export default function Studio({
                         Guess the spot
                       </button>
                     )}
-                    {postKind && <p className="st-hint">Polls, boards and the rest go on Moments for now.</p>}
-                    {!postKind && PLAY_MAKERS.map((m) => (
+                    {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
+                    {playOn && PLAY_MAKERS.map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
                       </button>
                     ))}
-                    {!postKind && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
+                    {playOn && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
                   </div>
                 )}
               </section>
