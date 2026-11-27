@@ -100,7 +100,11 @@ final class SocketClient {
         "unauthorized", "jwt expired", "token expired", "token_reuse", "dpop_"
     ]
     /// Terminal codes: stop reconnecting (design §7.7 / task item 6).
-    static let terminalAuthErrorMarkers = ["device_revoked", "session_revoked"]
+    /// "session revoked" is the handshake's own refusal (`io.use`:
+    /// `Session revoked`), for a session revoked while this socket was away.
+    /// It went unread, so a revoked phone that came back to a screen making
+    /// no request kept showing the signed-in app until its next one.
+    static let terminalAuthErrorMarkers = ["device_revoked", "session_revoked", "session revoked"]
 
     init(environment: AppEnvironment = .current) {
         self.environment = environment
