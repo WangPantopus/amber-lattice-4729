@@ -30,6 +30,9 @@ struct MomentsViewer: View {
     @State var confirmsDelete = false
     @State var showsReport = false
     @State var showsBlock = false
+    /// "Pulse, reinvented": your own Moment open in the Studio's 15-minute edit (`MomentsStudioEdit`); never set while
+    /// the switch is off.
+    @State var editing: MomentDTO?
     /// Where the finger has moved the viewer, down or sideways (`MomentsViewerMotion.swift`): never read by this
     /// view's own body, so a finger moving doesn't build the viewer again.
     @State var motion = MomentsViewerMotion()
@@ -211,7 +214,7 @@ struct MomentsViewer: View {
     /// table, Seen by covers nothing: your Moment keeps playing next to the list (board O6).
     private var covered: Bool {
         showsMenu || showsReport || showsBlock || confirmsDelete || session.profile != nil
-            || (session.showsSeenBy && !seenByBeside) || (session.paused && duo.pose == .table)
+            || (session.showsSeenBy && !seenByBeside) || (session.paused && duo.pose == .table) || editing != nil
     }
 }
 

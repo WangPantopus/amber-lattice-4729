@@ -252,11 +252,16 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// The caller's signal ("Pulse, reinvented", CONTRACT 4), beside `myReaction` (its nearest emoji); only while the
     /// switch is on for the caller.
     public let mySignal: String?
+    /// The 15-minute edit ("Pulse, reinvented", CONTRACT 3; `MomentEditDTOs.swift`), switch on only.
+    public let editableUntil: String?
+    public let stampChoices: [MomentStampKind: MomentStampValue]
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
         case stamps
         case mySignal = "my_signal"
+        case editableUntil = "editable_until"
+        case stampChoices = "stamp_choices"
         case altitudeFt = "altitude_ft"
         case mediaURL = "media_url"
         case posterURL = "poster_url"
@@ -306,6 +311,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         live = MomentLiveStateDTO(from: decoder)
         stamps = Self.stamps(c)
         mySignal = try? c.decodeIfPresent(String.self, forKey: .mySignal)
+        editableUntil = try? c.decodeIfPresent(String.self, forKey: .editableUntil)
+        stampChoices = (try? c.decodeIfPresent(MomentStampChoices.self, forKey: .stampChoices))?.values ?? [:]
     }
 
     /// The stamps one by one: one the app can't read is left out, never the Moment.
