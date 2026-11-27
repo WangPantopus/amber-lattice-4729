@@ -34,6 +34,7 @@ import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { useMomentsAccess } from './useMomentsAccess';
 import { usePulseReinvented } from '@/components/reinvented/usePulseReinvented';
 import { studioViewer } from '@/components/reinvented/viewer/studioViewer';
+import GuessSpots from '@/components/reinvented/guess/GuessSpots';
 import type { MapTarget } from './MomentsMap';
 import { MomentFace } from './MomentFace';
 import MomentDialog from './MomentDialog';
@@ -770,6 +771,7 @@ function Board({ account }: { account: string }) {
                   onPlay={play}
                 />
                 {!focus && <People title="Not on the map" rings={unplaced} center={center} onPlay={play} />}
+                {!focus && <GuessSpots result={map.data} center={center} onOpen={open} />}
                 {(focus ? !focused.length : empty) && (
                   <div className="mo-empty">
                     <span className="mo-empty-icon">
