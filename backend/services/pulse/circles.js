@@ -84,8 +84,11 @@ async function countsFor(userId) {
 // ─── The week ───────────────────────────────────────────────────────────────
 
 /**
- * The magazine's week: the 7 days before the newest `week_day` on or before today (or before `week`), in the reader's
- * own time zone when the app sends it (`tz`), Pacific otherwise (LEAD-3 06:33).
+ * The magazine's week: the 7 days before its `day`, a `week_day`, in the reader's own time zone when the app sends it
+ * (`tz`), Pacific otherwise (LEAD-3 06:33). With no `week`, the newest finished week (its `day` the newest `week_day`
+ * on or before today). `week` is any day of the week wanted, and the answer is the week that holds it (its magazine
+ * comes on the first `week_day` after it): the apps send the day before the shown week's `from` for an earlier one.
+ * A day in the week not finished yet gives the newest. Up to `WEEKS_BACK` weeks before the newest.
  */
 function zoneOf(tz) {
   return typeof tz === 'string' && tz && DateTime.now().setZone(tz).isValid ? tz : ZONE;
@@ -94,12 +97,18 @@ function zoneOf(tz) {
 function weekOf(circle, week = null, now = DateTime.now(), tz = null) {
   const zone = zoneOf(tz);
   const today = now.setZone(zone).startOf('day');
-  let day = week ? DateTime.fromISO(String(week), { zone }).startOf('day') : today;
-  if (!day.isValid) throw fail(400, 'CIRCLE_INVALID', 'Send the week as YYYY-MM-DD.');
-  if (day > today) day = today;
   // luxon weekday: 1 Monday … 7 Sunday; ours: 0 Sunday … 6 Saturday.
-  while (day.weekday % 7 !== circle.week_day) day = day.minus({ days: 1 });
-  if (today.diff(day, 'weeks').weeks > WEEKS_BACK) throw fail(400, 'CIRCLE_INVALID', `A magazine goes back ${WEEKS_BACK} weeks.`);
+  let newest = today;
+  while (newest.weekday % 7 !== circle.week_day) newest = newest.minus({ days: 1 });
+  let day = newest;
+  if (week) {
+    const asked = DateTime.fromISO(String(week), { zone }).startOf('day');
+    if (!asked.isValid) throw fail(400, 'CIRCLE_INVALID', 'Send the week as YYYY-MM-DD.');
+    day = asked.plus({ days: 1 });
+    while (day.weekday % 7 !== circle.week_day) day = day.plus({ days: 1 });
+    if (day > newest) day = newest;
+  }
+  if (newest.diff(day, 'weeks').weeks > WEEKS_BACK) throw fail(400, 'CIRCLE_INVALID', `A magazine goes back ${WEEKS_BACK} weeks.`);
   return { day: day.toISODate(), from: day.minus({ days: 7 }), to: day };
 }
 
