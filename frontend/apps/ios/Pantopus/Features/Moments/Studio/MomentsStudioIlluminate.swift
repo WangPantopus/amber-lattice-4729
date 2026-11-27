@@ -12,10 +12,13 @@ import SwiftUI
 struct MomentsStudioIlluminate: View {
     let model: MomentsComposerModel
     let onDone: () -> Void
+    @State private var whisperRecorder = MomentsSoundRecorder()
+    @State private var recordingKind: MomentsSoundRecorder.Kind?
 
     private var kinds: [MomentDotDTO.Kind] {
         var kinds: [MomentDotDTO.Kind] = model.postsUnderMadeUpName ? [.note, .rating] : [.note, .rating, .link]
         if model.offersThings { kinds.append(.thing) }
+        if model.offersSound { kinds.append(.whisper) }
         return kinds
     }
 
@@ -117,7 +120,15 @@ struct MomentsStudioIlluminate: View {
                 }
             case .thing:
                 thingEditor(dot)
-            case .whisper, .unknown:
+            case .whisper:
+                MomentsSoundRecordRow(
+                    recorder: whisperRecorder,
+                    kind: .whisper,
+                    kept: model.marking.studio?.whispers[dot.id],
+                    recordingKind: $recordingKind
+                ) { model.setWhisper($0, dot: dot.id) }
+                hint("Three seconds of your voice, heard when someone taps the dot.")
+            case .unknown:
                 EmptyView()
             }
             Button { model.removeStudioDot(dot.id) } label: {
@@ -134,7 +145,8 @@ struct MomentsStudioIlluminate: View {
         case .rating: "A rating"
         case .link: "A link"
         case .thing: "A thing to name"
-        case .whisper, .unknown: kind.name
+        case .whisper: "A whisper"
+        case .unknown: kind.name
         }
     }
 

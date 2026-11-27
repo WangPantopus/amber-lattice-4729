@@ -81,6 +81,8 @@ extension MomentsComposerModel {
         MomentsUploader.shared.upload(parts: zip(made, ready).map { moment, part in
             MomentsUploadPart(moment: moment, media: part.1, folderId: part.0)
         })
+        // The Studio's sound (CONTRACT 7e) goes up once its Moment is made; nothing without one.
+        uploadStudioSounds(to: made.first)
         made = []
         return true
     }

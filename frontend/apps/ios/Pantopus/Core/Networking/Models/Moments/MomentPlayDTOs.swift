@@ -308,6 +308,54 @@ public struct MomentFieldCardDTO: Decodable, Sendable, Hashable {
     }
 }
 
+/// A Moment's sound (CONTRACT 7e): the person's own voice with their exact words and when each was said (Voice Spark),
+/// or three seconds of the place. `url` is a short signed link, given exactly when the picture's link is.
+public struct MomentSoundDTO: Decodable, Sendable, Hashable {
+    public enum Kind: String, Decodable, Sendable {
+        case voice, place
+    }
+
+    public let kind: Kind
+    public let url: String?
+    public let durationMs: Double
+    public let words: [MomentSoundWord]?
+    /// Wind was cleaned from it on the phone (shown as such).
+    public let cleaned: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case kind, url, words, cleaned
+        case durationMs = "duration_ms"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        url = try? c.decodeIfPresent(String.self, forKey: .url)
+        durationMs = (try? c.decodeIfPresent(Double.self, forKey: .durationMs)) ?? 0
+        words = try? c.decodeIfPresent([MomentSoundWord].self, forKey: .words)
+        cleaned = (try? c.decodeIfPresent(Bool.self, forKey: .cleaned)) ?? false
+    }
+}
+
+/// One spoken word and when it was said, in milliseconds from the start.
+public struct MomentSoundWord: Codable, Sendable, Hashable {
+    public let w: String
+    public let startMs: Int
+    public let endMs: Int
+
+    public init(w: String, startMs: Int, endMs: Int) {
+        self.w = w
+        self.startMs = startMs
+        self.endMs = endMs
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case w
+        case startMs = "start_ms"
+        case endMs = "end_ms"
+    }
+}
+
 /// A person on a board, along the dial, or in the author's list of answers.
 public struct MomentPlayPerson: Decodable, Sendable, Hashable {
     public let id: String
@@ -351,9 +399,11 @@ public struct MomentLayersDTO: Sendable, Hashable {
     public let mentions: [MomentAuthorDTO]
     /// The dots on things in the photo (CONTRACT 7c), `[]` when none.
     public let dots: [MomentDotDTO]
+    /// Voice Spark or place sound (CONTRACT 7e), nil when none.
+    public let sound: MomentSoundDTO?
 
     private enum CodingKeys: String, CodingKey {
-        case play, mentions, dots
+        case play, mentions, dots, sound
     }
 
     init(from decoder: any Decoder) {
@@ -361,6 +411,7 @@ public struct MomentLayersDTO: Sendable, Hashable {
         play = (try? c?.decodeIfPresent(MomentLenientList<MomentPlayItem>.self, forKey: .play))?.items.filter { $0.kind != .unknown } ?? []
         mentions = (try? c?.decodeIfPresent(MomentLenientList<MomentAuthorDTO>.self, forKey: .mentions))?.items ?? []
         dots = (try? c?.decodeIfPresent(MomentLenientList<MomentDotDTO>.self, forKey: .dots))?.items.filter { $0.kind != .unknown } ?? []
+        sound = try? c?.decodeIfPresent(MomentSoundDTO.self, forKey: .sound)
     }
 
     /// The before and after on a photo, if it has one (one at most).

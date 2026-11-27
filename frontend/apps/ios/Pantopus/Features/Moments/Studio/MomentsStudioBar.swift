@@ -25,6 +25,8 @@ struct MomentsStudioRail: View {
     var openIlluminate: (() -> Void)?
     /// Blur before posting (phase 2, `MomentsStudioBlurSheet`).
     var openBlur: (() -> Void)?
+    /// Sound (phase 2): Voice Spark or place sound (`MomentsStudioSoundSheet`).
+    var openSound: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Spacing.s3) {
@@ -48,6 +50,11 @@ struct MomentsStudioRail: View {
                 tool("Draw", id: "moments.studio.rail.draw") {
                     Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { model.openStudioMarks(.draw) }
+            }
+            if let openSound, model.offersSound {
+                tool("Sound", id: "moments.studio.rail.sound") {
+                    Icon(.mic, size: 19, strokeWidth: 2.2, color: .white)
+                } action: { openSound() }
             }
             if let openBlur, model.offersBlur {
                 tool("Blur", id: "moments.studio.rail.blur") {

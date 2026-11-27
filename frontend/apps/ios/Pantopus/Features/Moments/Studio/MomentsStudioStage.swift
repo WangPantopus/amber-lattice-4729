@@ -38,6 +38,8 @@ struct MomentsStudioStage: View {
     /// Blur before posting (phase 2): its sheet, and drawing boxes by hand on the picture.
     @State private var showsBlur = false
     @State private var blurByHand = false
+    /// Sound (phase 2): Voice Spark or place sound.
+    @State private var showsSound = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -57,10 +59,16 @@ struct MomentsStudioStage: View {
             HStack(alignment: .top) {
                 closeButton
                 Spacer(minLength: Spacing.s2)
-                MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate, openBlur: openBlur)
-                    // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
-                    .opacity(blurByHand ? 0 : 1)
-                    .allowsHitTesting(!blurByHand)
+                MomentsStudioRail(
+                    model: model,
+                    openTray: openTray,
+                    openIlluminate: openIlluminate,
+                    openBlur: openBlur,
+                    openSound: openSound
+                )
+                // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
+                .opacity(blurByHand ? 0 : 1)
+                .allowsHitTesting(!blurByHand)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
@@ -141,6 +149,13 @@ struct MomentsStudioStage: View {
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
         }
+        .sheet(isPresented: $showsSound) {
+            MomentsStudioSoundSheet(model: model) { showsSound = false }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
+                .environment(\.colorScheme, .dark)
+        }
         .sheet(isPresented: $showsBlur) {
             MomentsStudioBlurSheet(model: model) {
                 showsBlur = false
@@ -180,6 +195,12 @@ struct MomentsStudioStage: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio")
+    }
+
+    private func openSound() {
+        writing = false
+        Keyboard.close()
+        showsSound = true
     }
 
     private func openBlur() {

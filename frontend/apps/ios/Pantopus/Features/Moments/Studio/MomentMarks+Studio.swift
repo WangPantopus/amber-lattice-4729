@@ -204,6 +204,11 @@ struct MomentsStudioTools {
     var pickedDot: String?
     /// Blur before posting (`MomentsStudioBlur`): what was found on this photo, and the blurred photo.
     var blur: MomentsStudioBlurState?
+    /// Sound (`MomentsStudioSound`): Voice Spark with its words, or place sound; and each whisper dot's three seconds.
+    var voice: MomentsStudioRecording?
+    var voiceWords = ""
+    var place: MomentsStudioRecording?
+    var whispers: [String: MomentsStudioRecording] = [:]
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

@@ -60,7 +60,7 @@ extension MomentsViewerModel {
     /// goes on with a tap.
     var playHolds: Bool {
         guard PulseReinventedFlags.shared.isOn, let moment else { return false }
-        if MomentDotPrompt.shared.open?.momentId == moment.id || MomentDotPrompt.shared.guideFrom == moment.id { return true }
+        if MomentDotPrompt.shared.open?.momentId == moment.id || MomentDotPrompt.shared.guideFrom == moment.id || soundHolds { return true }
         return moment.kind == .photo && moment.layers.beforeAfter != nil
     }
 }

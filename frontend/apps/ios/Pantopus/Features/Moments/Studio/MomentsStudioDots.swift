@@ -48,7 +48,7 @@ extension MomentsComposerModel {
     /// The dots that go out: each one finished, and none of a kind this post can't carry.
     var studioDots: [MomentDotDTO]? {
         let ready = studioDotDrafts.compactMap { dot -> MomentDotDTO? in
-            guard Self.dotReady(dot), dot.kind != .link || !postsUnderMadeUpName else { return nil }
+            guard dotDone(dot), dot.kind != .link || !postsUnderMadeUpName else { return nil }
             var out = MomentDotDTO(id: dot.id, kind: dot.kind, x: (dot.x * 1000).rounded() / 1000, y: (dot.y * 1000).rounded() / 1000)
             switch dot.kind {
             case .note: out.text = dot.text?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -62,14 +62,20 @@ extension MomentsComposerModel {
                 out.box = Self.thingBox(dot)
                 let label = dot.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 out.label = label.isEmpty ? nil : label
-            case .whisper, .unknown: return nil
+            case .whisper: guard offersSound else { return nil }
+            case .unknown: return nil
             }
             return out
         }
         return ready.isEmpty ? nil : ready
     }
 
-    /// Whether a dot has what it needs to go out.
+    /// Whether a dot has what it needs to go out: a whisper, its three seconds recorded (`MomentsStudioSound`).
+    func dotDone(_ dot: MomentDotDTO) -> Bool {
+        dot.kind == .whisper ? marking.studio?.whispers[dot.id] != nil : Self.dotReady(dot)
+    }
+
+    /// Whether a dot has what it needs to go out (a whisper: see `dotDone`).
     static func dotReady(_ dot: MomentDotDTO) -> Bool {
         switch dot.kind {
         case .note: !(dot.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -108,6 +114,7 @@ extension MomentsComposerModel {
 
     func removeStudioDot(_ id: String) {
         marking.studio?.dots.removeAll { $0.id == id }
+        marking.studio?.whispers[id] = nil
         if marking.studio?.pickedDot == id { marking.studio?.pickedDot = studioDotDrafts.last?.id }
     }
 
@@ -187,7 +194,7 @@ private struct MomentsStudioPlacedDot: View {
 
     var body: some View {
         let picked = model.marking.studio?.pickedDot == dot.id
-        MomentDotMark(kind: dot.kind, picked: picked, unfinished: !MomentsComposerModel.dotReady(dot))
+        MomentDotMark(kind: dot.kind, picked: picked, unfinished: !model.dotDone(dot))
             .frame(width: 44, height: 44)
             .contentShape(Circle())
             .position(x: frame.minX + dot.x * frame.width + moving.width, y: frame.minY + dot.y * frame.height + moving.height)
