@@ -19,10 +19,11 @@ import { GuessOverPicture, holdsForGuess } from '../guess/GuessSpot';
 import { holdsForKeep, KeepOverPicture } from '../keep/KeepThis';
 import { PlanOverPicture, StartPlanEntry } from '../plan/WantToCome';
 import PlayLayer, { holdsForPlay } from '../play/PlayLayer';
+import DotLayer, { holdsForDots } from '../dots/DotLayer';
 import type { PlayItem } from '../play/playTypes';
 import './studioViewer.css';
 
-type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[] };
+type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
 
 /**
  * The stamps and the playable items (phase 2), laid over the picture as the viewer draws it (centred and fitted, `object-fit: contain`), so a stamp
@@ -33,7 +34,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [now, setNow] = useState(Date.now);
   const stamps = moment.stamps || [];
-  const playing = (moment.play || []).length;
+  const playing = (moment.play || []).length + (moment.dots || []).length;
   const liveUntil = Date.parse(moment.live_until || '');
   const wet = moment.taken_here === true && liveUntil > now;
   // The ink dries when "Live from here" turns to "Taken here", on the same kind of timer as today's pill.
@@ -88,6 +89,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
         <div className="sv-picture" style={box}>
           <StampLayer stamps={stamps} valueOf={(k) => values.get(k) ?? null} ink={wet ? 'wet' : 'dry'} />
           <PlayLayer moment={moment} />
+          <DotLayer moment={moment} />
         </div>
       )}
     </div>
@@ -184,7 +186,7 @@ export const studioViewer = {
       <StartPlanEntry moment={m} close={close} />
     </>
   ),
-  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m),
+  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m) || holdsForDots(m),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,
