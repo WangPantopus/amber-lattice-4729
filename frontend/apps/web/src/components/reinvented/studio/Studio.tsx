@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Clock3,
   Crop,
+  Mic,
   ImagePlus,
   LocateFixed,
   MapPin,
@@ -54,6 +55,8 @@ import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire } from '../play/PlayEdit';
 import type { PlayItem, PlayKind } from '../play/playTypes';
+import { SoundPanel } from '../sound/SoundPanel';
+import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
@@ -177,6 +180,11 @@ export default function Studio({
     [shape, setShape] = useState<{ w: number; h: number } | null>(null),
     [illuminate, setIlluminate] = useState(false),
     [pickedDot, setPickedDot] = useState<string | null>(null),
+    // Sound (phase 2, CONTRACT 7e): Voice Spark with its words, and place sound; sent after the Moment is made.
+    [voiceRec, setVoiceRec] = useState<Recording | null>(null),
+    [voiceWords, setVoiceWords] = useState(''),
+    [placeRec, setPlaceRec] = useState<Recording | null>(null),
+    [soundOpen, setSoundOpen] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
@@ -204,7 +212,9 @@ export default function Studio({
     drawerRef = useRef<HTMLElement>(null),
     textInput = useRef<HTMLInputElement>(null),
     mounted = useRef(true),
-    submitting = useRef(false);
+    submitting = useRef(false),
+    // The sound to send once the Moment exists (set as it is posted, read by deliver()).
+    pendingSound = useRef<{ voice: Recording | null; words: string; place: Recording | null; whispers: { id: string; audio: Recording }[] } | null>(null);
   useEffect(() => {
     mounted.current = true;
     const previous = document.body.style.overflow;
@@ -431,6 +441,8 @@ export default function Studio({
   const playOn = !postKind || (mode === 'media' && !!file && !isVideo);
   const canIlluminate = mode === 'media' && !!file && (!postKind || !isVideo);
   const aiOn = usePantopusAiOn(canIlluminate);
+  // Sound goes on a photo or video Moment under the person's own name (a voice tells who someone is), not yet on a post.
+  const canSound = canIlluminate && !postKind && !underPenName;
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
@@ -556,6 +568,26 @@ export default function Studio({
     const result = await postJob(job, signal, (s) => {
       if (mounted.current) setBusy(s);
     });
+    // Sound goes to the Moment once it exists (CONTRACT 7e); the Moment stands even if a sound doesn't make it.
+    const sounds = pendingSound.current;
+    pendingSound.current = null;
+    let soundFailed = false;
+    if (sounds && result[0]?.id) {
+      if (mounted.current) setBusy('Adding sound…');
+      const id = result[0].id;
+      // One at a time: each one is written into the Moment's own record, and two at once could lose one.
+      const sends: (() => Promise<unknown>)[] = [];
+      if (sounds.voice) sends.push(() => uploadSound(id, sounds.voice!, 'voice', { words: timedWords(sounds.words, sounds.voice!.ms) }));
+      else if (sounds.place) sends.push(() => uploadSound(id, sounds.place!, 'place'));
+      for (const w of sounds.whispers) sends.push(() => uploadSound(id, w.audio, 'whisper', { dot: w.id }));
+      for (const send of sends) {
+        try {
+          await send();
+        } catch {
+          soundFailed = true;
+        }
+      }
+    }
     if (!mounted.current) return;
     setJobs((old) => old.filter((j) => j.id !== job.id));
     const state = result.find((m) => m.state !== 'live')?.state;
@@ -569,6 +601,7 @@ export default function Studio({
             : state === 'ended'
               ? 'This Moment has ended.'
               : 'Moment shared.';
+    if (soundFailed) setError(msg + ' Its sound couldn’t be added.');
     if (file && index + 1 < files.length) {
       setIndex((i) => i + 1);
       setBusy('');
@@ -657,8 +690,8 @@ export default function Studio({
             ...(canGuess && guessSpot ? { guess: true as const } : {}),
             ...(kind === 'text'
               ? { text: text.trim(), background: bg }
-              : caption.trim() && i === 0
-                ? { caption: caption.trim() }
+              : (caption.trim() || (canSound && voiceRec && voiceWords.trim())) && i === 0
+                ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
             ...(file && capture?.file !== file && meta?.capturedAt ? { taken_at: meta.capturedAt } : {}),
             ...(area && !noPlace ? { show_area: true } : {}),
@@ -694,9 +727,9 @@ export default function Studio({
             ...(play.length && i === 0 && !postKind
               ? { play: playWire(play).map((it) => ({ ...it, ...frame.point(it.x, it.y), scale: frame.scale(it.scale) })) }
               : {}),
-            ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).length
+            ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).length
               ? {
-                  dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).map((d) => ({
+                  dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).map((d) => ({
                     ...d,
                     ...frame.point(d.x as number, d.y as number),
                     ...(d.box ? { box: frame.box(d.box as { x: number; y: number; w: number; h: number }) } : {}),
@@ -725,6 +758,14 @@ export default function Studio({
       }
       made = job;
       if (mounted.current) setJobs((old) => [...old, job]);
+      pendingSound.current = canSound
+        ? {
+            voice: voiceRec,
+            words: voiceWords,
+            place: placeRec,
+            whispers: dots.filter((d) => d.kind === 'whisper' && d.audio).map((d) => ({ id: d.id, audio: d.audio! })),
+          }
+        : null;
       await deliver(job, controller.signal);
     } catch (e) {
       if (isSwitchedOff(e)) {
@@ -1454,17 +1495,47 @@ export default function Studio({
                   </button>
                 </div>
               )}
+              {canSound && (
+                <div className="st-tool">
+                  <span aria-hidden="true">Sound</span>
+                  <button
+                    type="button"
+                    className="st-round"
+                    aria-label="Sound"
+                    aria-pressed={soundOpen}
+                    onClick={() => {
+                      setTool(null);
+                      setIlluminate(false);
+                      setSoundOpen(!soundOpen);
+                    }}
+                  >
+                    <Mic size={21} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
                 </>
               )}
             </div>
           )}
 
+          {composing && canSound && soundOpen && !tool && !illuminate && (
+            <SoundPanel
+              voice={voiceRec}
+              setVoice={setVoiceRec}
+              words={voiceWords}
+              setWords={setVoiceWords}
+              place={placeRec}
+              setPlace={setPlaceRec}
+              onDone={() => setSoundOpen(false)}
+            />
+          )}
           {composing && canIlluminate && illuminate && !tool && (
             <DotEditPanel
               dot={dots.find((d) => d.id === pickedDot) || null}
               count={dots.length}
               allowLink={!underPenName}
               allowThing={!isVideo && aiOn}
+              allowWhisper={canSound}
               onChange={(d) => setDots(dots.map((x) => (x.id === d.id ? d : x)))}
               onRemove={(id) => {
                 setDots(dots.filter((x) => x.id !== id));
