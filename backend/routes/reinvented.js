@@ -324,11 +324,12 @@ router.get('/field-guide', async (req, res) => {
 
 const aiSetting = require('../services/pulse/aiSetting');
 // `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". `cabinet_shown` (9d): "Show my cabinet to
-// people I know". Send any of them.
-const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean(), strands: Joi.boolean(), cabinet_shown: Joi.boolean() })
-  .or('pantopus_ai', 'strands', 'cabinet_shown');
+// people I know". `echoes` (9e): 'off', 'on' or 'names'. Send any of them.
+const settingsSchema = Joi.object({
+  pantopus_ai: Joi.boolean(), strands: Joi.boolean(), cabinet_shown: Joi.boolean(), echoes: Joi.string().valid('off', 'on', 'names'),
+}).or('pantopus_ai', 'strands', 'cabinet_shown', 'echoes');
 
-/** GET /settings — { pantopus_ai, strands, cabinet_shown }: the person's own switches, each on unless they turned it off. */
+/** GET /settings — { pantopus_ai, strands, cabinet_shown, echoes }: the person's own choices. */
 router.get('/settings', async (req, res) => {
   try {
     res.json(await aiSetting.settingsOf(req.user.id));
@@ -337,7 +338,7 @@ router.get('/settings', async (req, res) => {
   }
 });
 
-/** PATCH /settings — { pantopus_ai?, strands?, cabinet_shown? } (each true | false): answers the settings as GET does. */
+/** PATCH /settings — { pantopus_ai?, strands?, cabinet_shown? (true | false), echoes? ('off' | 'on' | 'names') }. */
 router.patch('/settings', async (req, res) => {
   try {
     const { error, value } = settingsSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
@@ -354,6 +355,11 @@ router.patch('/settings', async (req, res) => {
       logger.info('reinvented.cabinet_shown_set', { on: value.cabinet_shown });
       // eslint-disable-next-line global-require
       await require('../services/pulse/cabinet').setShown(req.user.id, value.cabinet_shown);
+    }
+    if (value.echoes !== undefined) {
+      logger.info('reinvented.echoes_set', { level: value.echoes });
+      // eslint-disable-next-line global-require
+      await require('../services/pulse/echoes').setLevel(req.user.id, value.echoes);
     }
     return res.json(await aiSetting.settingsOf(req.user.id));
   } catch (error) {
@@ -836,6 +842,19 @@ router.get('/poster/:year', async (req, res) => {
     res.json(await cabinet.posterOf(req.user.id, req.params.year));
   } catch (error) {
     sendError(res, error, 'poster');
+  }
+});
+
+// ─── Echoes and curiosity twins (CONTRACT 9e) ────────────────────────────────
+
+const echoes = require('../services/pulse/echoes');
+
+/** GET /echoes — the reader's own echoes of today and their twins, only when they take part (opt-in). */
+router.get('/echoes', async (req, res) => {
+  try {
+    res.json(await echoes.echoesFor(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'echoes');
   }
 });
 
