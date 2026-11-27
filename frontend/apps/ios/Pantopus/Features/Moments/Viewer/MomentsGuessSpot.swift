@@ -100,6 +100,8 @@ struct MomentsViewerPills: View {
         }
         // "Pulse, reinvented" phase 2: the Moment's voice or place sound (`MomentSoundLayer`).
         MomentSoundStrip(model: model)
+        // A step deck's steps and "Save the steps" (`MomentDeckStrip`).
+        MomentDeckStrip(model: model)
     }
 }
 

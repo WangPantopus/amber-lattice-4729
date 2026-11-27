@@ -401,9 +401,11 @@ public struct MomentLayersDTO: Sendable, Hashable {
     public let dots: [MomentDotDTO]
     /// Voice Spark or place sound (CONTRACT 7e), nil when none.
     public let sound: MomentSoundDTO?
+    /// The step deck this Moment is a step of (CONTRACT 7g, `MomentDeckDTOs.swift`), nil for any other Moment.
+    public let deck: MomentDeckDTO?
 
     private enum CodingKeys: String, CodingKey {
-        case play, mentions, dots, sound
+        case play, mentions, dots, sound, deck
     }
 
     init(from decoder: any Decoder) {
@@ -412,6 +414,7 @@ public struct MomentLayersDTO: Sendable, Hashable {
         mentions = (try? c?.decodeIfPresent(MomentLenientList<MomentAuthorDTO>.self, forKey: .mentions))?.items ?? []
         dots = (try? c?.decodeIfPresent(MomentLenientList<MomentDotDTO>.self, forKey: .dots))?.items.filter { $0.kind != .unknown } ?? []
         sound = try? c?.decodeIfPresent(MomentSoundDTO.self, forKey: .sound)
+        deck = try? c?.decodeIfPresent(MomentDeckDTO.self, forKey: .deck)
     }
 
     /// The before and after on a photo, if it has one (one at most).

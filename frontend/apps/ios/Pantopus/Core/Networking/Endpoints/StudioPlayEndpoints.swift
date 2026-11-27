@@ -54,6 +54,13 @@ public enum StudioPlayEndpoints {
         )
     }
 
+    /// `POST` / `DELETE /api/reinvented/moments/:id/deck/save` (CONTRACT 7g): "Save the steps" keeps the words of a step
+    /// deck (any step's id) in the reader's field guide, or lets them go. Route `backend/routes/reinvented.js:420`.
+    static func saveSteps(momentId: String, keep: Bool) -> Endpoint {
+        let path = "/api/reinvented/moments/\(part(momentId))/deck/save"
+        return keep ? Endpoint(method: .post, path: path, body: StudioEmptyBody()) : Endpoint(method: .delete, path: path)
+    }
+
     /// `PUT /api/reinvented/play/:id/:item` (CONTRACT 7b): the reader's answer (or a changed one); the item comes back
     /// with what they may now see. Route `backend/routes/reinvented.js:217`.
     static func answer(postId: String, item: String, body: MomentPlayAnswerBody) -> Endpoint {
@@ -183,16 +190,19 @@ struct FieldGuidePageDTO: Decodable {
     }
 
     let cards: [Entry]
+    /// Step decks saved with "Save the steps" (CONTRACT 7g), paged with the cards.
+    let decks: [SavedDeckDTO]
     let nextCursor: String?
 
     enum CodingKeys: String, CodingKey {
-        case cards
+        case cards, decks
         case nextCursor = "next_cursor"
     }
 
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cards = (try? c.decodeIfPresent(MomentLenientList<Entry>.self, forKey: .cards))?.items ?? []
+        decks = (try? c.decodeIfPresent(MomentLenientList<SavedDeckDTO>.self, forKey: .decks))?.items ?? []
         nextCursor = try? c.decodeIfPresent(String.self, forKey: .nextCursor)
     }
 }

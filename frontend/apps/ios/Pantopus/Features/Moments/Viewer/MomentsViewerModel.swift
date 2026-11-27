@@ -19,7 +19,7 @@ import UIKit
 final class MomentsViewerModel {
     private(set) var rings: [MomentRingDTO]
     private(set) var ringIndex: Int
-    private(set) var momentIndex: Int
+    var momentIndex: Int // also set by a step deck's scrub ("Pulse, reinvented", `MomentDeckStrip`)
     private(set) var moment: MomentDTO?
     private(set) var load: Load = .loading
     private(set) var image: UIImage?
