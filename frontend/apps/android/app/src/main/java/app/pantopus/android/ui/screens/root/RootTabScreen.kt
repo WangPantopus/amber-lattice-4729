@@ -3317,13 +3317,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
             // saying so. While the `moments` flag is off both are dropped.
             DeepLinkRouter.Destination.Moments -> {
                 if (DeepLinkRouter.momentsAnswer()) {
-                    navController.navigateToRootTab(PantopusRoute.Moments)
+                    navController.navigateToRootTab(if (pulseReinvented) PantopusRoute.momentsOffTab else PantopusRoute.Moments)
                 }
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.Moment -> {
                 if (DeepLinkRouter.momentsAnswer()) {
-                    navController.navigateToRootTab(PantopusRoute.Moments)
+                    // "Pulse, reinvented": every Moment is in Pulse while its switch is on, so the link plays it over Pulse.
+                    navController.navigateToRootTab(if (pulseReinvented) PantopusRoute.momentsOffTab else PantopusRoute.Moments)
                     if (momentsGate.queue(pending.id)) {
                         navController.navigate(MomentsRoutes.WATCH) { launchSingleTop = true }
                     } else {
@@ -3583,7 +3584,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     nav = navController,
                     external =
                         MomentsExternalRoutes(
-                            openMap = { navController.navigateToRootTab(PantopusRoute.Moments) },
+                            openMap = {
+                                navController.navigateToRootTab(if (pulseReinvented) PantopusRoute.momentsOffTab else PantopusRoute.Moments)
+                            },
                             openProfile = { userId, business ->
                                 val page = if (business) ChildRoutes.businessProfile(userId) else ChildRoutes.publicProfile(userId)
                                 navController.navigate(page)
