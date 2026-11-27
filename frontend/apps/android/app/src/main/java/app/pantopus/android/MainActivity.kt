@@ -34,6 +34,7 @@ import app.pantopus.android.data.moments.MomentsDot
 import app.pantopus.android.data.moments.MomentsFeature
 import app.pantopus.android.data.network.NetworkMonitor
 import app.pantopus.android.data.plans.PlansFeature
+import app.pantopus.android.data.pulse.PulseReinventedFeature
 import app.pantopus.android.data.realtime.SocketManager
 import app.pantopus.android.data.saved_places.TodayAreaStore
 import app.pantopus.android.data.store.SavedCopyReadAhead
@@ -112,6 +113,9 @@ class MainActivity : FragmentActivity() {
     /** The Moments tab's dot: read with the flag, and every few minutes while the app is open. */
     @Inject lateinit var momentsDot: MomentsDot
 
+    /** "Pulse, reinvented"'s one server switch (founder, 2026-11-26): read at sign-in and on every foreground. */
+    @Inject lateinit var pulseReinvented: PulseReinventedFeature
+
     /** The guidance cards' record: app opens (a cold start, or a return after 30 minutes) and the seen cards. */
     @Inject lateinit var guidance: GuidanceRepository
 
@@ -144,6 +148,7 @@ class MainActivity : FragmentActivity() {
         storeSync.start()
         plansFeature.start()
         momentsFeature.start()
+        pulseReinvented.start()
         guidance.start()
         observeAppLockPrivacyHold()
         lifecycleScope.launch {
@@ -221,6 +226,7 @@ class MainActivity : FragmentActivity() {
         storeSync.foregrounded()
         plansFeature.foregrounded()
         momentsFeature.foregrounded()
+        pulseReinvented.foregrounded()
         guidance.foregrounded()
         launchPushTokenSync()
     }
