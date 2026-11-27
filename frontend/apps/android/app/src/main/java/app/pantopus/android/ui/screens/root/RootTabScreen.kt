@@ -159,6 +159,9 @@ import app.pantopus.android.ui.screens.feed.FeedTopMenu
 import app.pantopus.android.ui.screens.feed.beacons.BeaconsFeedScreen
 import app.pantopus.android.ui.screens.feed.pulse.PulseAuthorLink
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
+import app.pantopus.android.ui.screens.feed.reinvented.ReinventedPulseActions
+import app.pantopus.android.ui.screens.feed.reinvented.ReinventedPulseGateViewModel
+import app.pantopus.android.ui.screens.feed.reinvented.ReinventedPulseScreen
 import app.pantopus.android.ui.screens.feed.rememberTouchExplorationEnabled
 import app.pantopus.android.ui.screens.following.FollowingScreen
 import app.pantopus.android.ui.screens.gigs.GigSearchScreen
@@ -2613,12 +2616,19 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val momentsGate: MomentsGateViewModel = hiltViewModel()
     val momentsOn by momentsGate.on.collectAsStateWithLifecycle()
     val momentsSettled by momentsGate.settled.collectAsStateWithLifecycle()
+    // "Pulse, reinvented" (PHASE-1 §2.1): while its switch is on for the person (and the server knows its routes), every
+    // Moment is in Pulse, so the Moments tab isn't drawn and Pulse is the new tab; off, the bar and Pulse are today's.
+    val reinventedGate: ReinventedPulseGateViewModel = hiltViewModel()
+    val pulseReinvented by reinventedGate.shows.collectAsStateWithLifecycle()
     // A person with a Home gets Today as the first tab and opens on it; until then Place is first (founder decision
     // 2026-11-21). Read once, when the tabs are made, from what the phone kept, so the bar never moves while the app
     // is in use: a home set up now shows Today first the next time the app opens. As on iPhone.
     val tabOrder: RootTabOrderViewModel = hiltViewModel()
     val todayFirst = rememberSaveable { tabOrder.todayFirst() }
-    val barTabs = remember(plansFlags.plans, momentsOn) { PantopusRoute.barTabs(plansFlags.plans, momentsOn, todayFirst) }
+    val barTabs =
+        remember(plansFlags.plans, momentsOn, pulseReinvented) {
+            PantopusRoute.barTabs(plansFlags.plans, momentsOn && !pulseReinvented, todayFirst)
+        }
     // Opening on Today: Place stays the start of the stack (its host holds the session's home, and links, the homes
     // sheet and Add Home reach it there), and Today opens over it as a tap on its tab does. Until the person first
     // goes to Place it draws nothing and reads nothing ([todayOpening]). A link that is already opening goes first.
@@ -2671,6 +2681,13 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
             navController.navigateToRootTab(PantopusRoute.momentsOffTab)
         }
     }
+    // With every Moment in Pulse, someone standing on the Moments tab (a restored tab) lands on Pulse.
+    LaunchedEffect(pulseReinvented, currentRoute) {
+        if (pulseReinvented && currentRoute == PantopusRoute.Moments) navController.navigateToRootTab(PantopusRoute.momentsOffTab)
+    }
+    // A server without the new Pulse's routes is asked again a minute later, on the next tab or return to the app.
+    LaunchedEffect(currentRoute) { reinventedGate.retryIfDue() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { reinventedGate.retryIfDue() }
     // The Moments tab's dot (something new near you since the tab was last open): it goes the moment the tab opens.
     val momentsDot by momentsGate.dot.collectAsStateWithLifecycle()
     val onMomentsTab = momentsOn && currentRoute == PantopusRoute.Moments
@@ -3609,6 +3626,20 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // density window is "Verified homes nearby" on Place, and Connections is in the side menu.
                     if (LaunchFeatures.pulseRedesign) {
                         LaunchedEffect(Unit) { navController.navigateToRootTab(PantopusRoute.Pulse) }
+                    } else if (pulseReinvented) {
+                        // "Pulse, reinvented" (phase 1), only while its switch is on: the one Pulse tab, beside today's feed.
+                        ReinventedPulseScreen(
+                            actions =
+                                ReinventedPulseActions(
+                                    onOpenMenu = openMenu,
+                                    onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
+                                    onWatch = { navController.navigate(MomentsRoutes.WATCH) { launchSingleTop = true } },
+                                    onCompose = { navController.navigate(MomentsRoutes.compose()) },
+                                    onOpenPlan = { planId -> navController.navigate(PlansRoutes.plan(planId)) },
+                                    onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
+                                ),
+                            scrollToTop = nearbyReselects,
+                        )
                     } else {
                         FeedScreen(
                             onOpenMenu = openMenu,

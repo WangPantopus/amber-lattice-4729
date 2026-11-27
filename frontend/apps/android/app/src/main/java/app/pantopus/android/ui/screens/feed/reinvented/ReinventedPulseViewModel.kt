@@ -1,0 +1,250 @@
+package app.pantopus.android.ui.screens.feed.reinvented
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.moments.MomentBriefDto
+import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
+import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.auth.AuthRepository
+import app.pantopus.android.data.location.LocationProvider
+import app.pantopus.android.data.location.PASSIVE_LOCATION_TIMEOUT_MILLIS
+import app.pantopus.android.data.moments.MomentsPlayback
+import app.pantopus.android.data.moments.MomentsRepository
+import app.pantopus.android.data.posts.PostsRepository
+import app.pantopus.android.data.pulse.ReinventedPoint
+import app.pantopus.android.data.pulse.ReinventedRepository
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * "Pulse, reinvented" phase 1 (PHASE-1 §2 pieces 2 to 5; CONTRACT 6a): the one Pulse tab's list. One request draws the
+ * first screen (`GET /api/reinvented/list`): the Moments that fade and the posts that stay, ordered by reach, with the
+ * distance bands and the chips this place has. Only while `pulse_reinvented` is on for the person: a refusal
+ * (`403 PULSE_REINVENTED_OFF`) turns the switch off and today's Pulse shows, and an older server (404) puts today's
+ * Pulse back until it is asked again a minute later ([app.pantopus.android.data.pulse.ReinventedServer]). The strip and
+ * the map's marks wait for the first page ([firstPage]), so nothing new competes with what opens the tab.
+ *
+ * Posts are today's Pulse cards with today's taps (reactions, Save, Repost, the post menu) through [cards], as on
+ * Today's Around you; a Moment plays in today's viewer ([watch]).
+ */
+@HiltViewModel
+class ReinventedPulseViewModel
+    @Inject
+    constructor(
+        private val repository: ReinventedRepository,
+        private val location: LocationProvider,
+        private val moments: MomentsRepository,
+        posts: PostsRepository,
+        private val auth: AuthRepository,
+    ) : ViewModel() {
+        private val _state = MutableStateFlow(ReinventedPulseState())
+        val state: StateFlow<ReinventedPulseState> = _state.asStateFlow()
+
+        private val _toast = MutableStateFlow<String?>(null)
+
+        /** What a card's tap left to say ("Saved."), for a few seconds. */
+        val toast: StateFlow<String?> = _toast.asStateFlow()
+
+        private val _firstPage = MutableStateFlow(false)
+
+        /** The list's first page has arrived: the strip and the map's marks may be read now. */
+        val firstPage: StateFlow<Boolean> = _firstPage.asStateFlow()
+
+        private val viewerId: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
+
+        /** The posts' cards and what the viewer's taps did to them. */
+        val cards: ProfilePostCards =
+            ProfilePostCards(
+                scope = viewModelScope,
+                posts = posts,
+                viewerId = { viewerId },
+                onToast = { _toast.value = it },
+                profileColors = false,
+            )
+
+        private var reading: Job? = null
+
+        /** Where the phone is, when it already knows: the list asks around it, else around the person's home. */
+        private var here: ReinventedPoint? = null
+
+        fun dismissToast() {
+            _toast.value = null
+        }
+
+        /** The list from its first page (opening the tab, pulling down, Try again). */
+        fun refresh() {
+            _state.update { it.copy(refreshing = it.items.isNotEmpty()) }
+            reading?.cancel()
+            reading = viewModelScope.launch { read(cursor = null) }
+        }
+
+        /** The next page, as the end of what shows nears. */
+        fun loadMore() {
+            val now = _state.value
+            val cursor = now.cursor ?: return
+            if (now.loadingMore || now.load != ReinventedPulseState.Load.Loaded || reading?.isActive == true) return
+            _state.update { it.copy(loadingMore = true) }
+            reading = viewModelScope.launch { read(cursor) }
+        }
+
+        fun pickChip(chip: String) {
+            if (chip == _state.value.chip) return
+            _state.update { it.copy(chip = chip) }
+            refresh()
+        }
+
+        /** The reach dial's choice: Close circle, or Around me within [miles]. Chips start again from All. */
+        fun pickReach(
+            reach: String,
+            miles: Int,
+        ) {
+            val now = _state.value
+            if (reach == now.reach && miles == now.miles) return
+            _state.update { it.copy(reach = reach, miles = miles, chip = ALL) }
+            refresh()
+        }
+
+        /** A Moment of the list or the strip plays in today's viewer; the screen then opens the viewer's route. */
+        fun watch(moment: MomentDto) {
+            moments.playback = MomentsPlayback(rings = listOf(moment.asRing(viewerId)), startIndex = 0, newOnly = false)
+        }
+
+        /** A ring (a person's Moments, a ring on the map) plays in today's viewer. */
+        fun watch(ring: MomentRingDto) {
+            moments.playback = MomentsPlayback(rings = listOf(ring), startIndex = 0, newOnly = false)
+        }
+
+        private suspend fun read(cursor: String?) {
+            val start = _state.value
+            if (cursor == null && start.items.isEmpty()) _state.update { it.copy(load = ReinventedPulseState.Load.Loading) }
+            // A tap made while this read is out keeps its value over what the read brings.
+            val revision = cards.actionRevision
+            if (here == null) here = place()
+            val answer =
+                repository.list(
+                    reach = start.reach,
+                    miles = start.miles.takeIf { start.reach == AROUND },
+                    chip = start.chip,
+                    at = here.takeIf { start.reach == AROUND },
+                    cursor = cursor,
+                )
+            when (answer) {
+                is NetworkResult.Success -> show(answer.data, appending = cursor != null, revision = revision)
+                is NetworkResult.Failure ->
+                    _state.update {
+                        it.copy(
+                            loadingMore = false,
+                            refreshing = false,
+                            load = if (it.items.isEmpty()) ReinventedPulseState.Load.Failed(FAILED) else it.load,
+                        )
+                    }
+            }
+        }
+
+        private fun show(
+            page: ReinventedListResponse,
+            appending: Boolean,
+            revision: Int,
+        ) {
+            // Only the two kinds this app draws: a Moment, or a post.
+            val fresh = page.items.filter { (it.type == MOMENT && it.moment != null) || (it.type == POST && it.post != null) }
+            val items = if (appending) (_state.value.items + fresh).distinctBy { it.type + it.id } else fresh
+            _state.update { now ->
+                now.copy(
+                    items = items,
+                    bands = if (appending) now.bands else page.bands,
+                    chips = if (appending) now.chips else page.chips?.takeIf { it.isNotEmpty() } ?: listOf(ALL),
+                    placeLabel = if (appending) now.placeLabel else page.place?.label,
+                    cursor = page.nextCursor,
+                    end = page.end,
+                    loadingMore = false,
+                    refreshing = false,
+                    load =
+                        if (page.needsPlace && items.isEmpty()) {
+                            ReinventedPulseState.Load.NeedsPlace
+                        } else {
+                            ReinventedPulseState.Load.Loaded
+                        },
+                )
+            }
+            cards.show(items.mapNotNull { it.post }, readRevision = revision)
+            _firstPage.value = true
+        }
+
+        /** The phone's own place, when location is allowed and a fix comes at once; else none (the server uses the home). */
+        private suspend fun place(): ReinventedPoint? {
+            val fix = location.cachedCoordinate() ?: location.requestCurrent(PASSIVE_LOCATION_TIMEOUT_MILLIS) ?: return null
+            return ReinventedPoint(fix.latitude, fix.longitude)
+        }
+
+        companion object {
+            const val AROUND = "around"
+            const val CLOSE = "close"
+            const val ALL = "all"
+            const val MOMENT = "moment"
+            const val POST = "post"
+            private const val FAILED = "Couldn't load Pulse. Check your connection and try again."
+        }
+    }
+
+/** What the new Pulse's list shows. */
+data class ReinventedPulseState(
+    val load: Load = Load.Loading,
+    /** Close circle (`close`) or Around me (`around`). */
+    val reach: String = ReinventedPulseViewModel.AROUND,
+    val miles: Int = DEFAULT_MILES,
+    val chip: String = ReinventedPulseViewModel.ALL,
+    val chips: List<String> = listOf(ReinventedPulseViewModel.ALL),
+    /** The town's name, to the reader only. */
+    val placeLabel: String? = null,
+    val items: List<ReinventedListItemDto> = emptyList(),
+    val bands: List<ReinventedBandDto> = emptyList(),
+    val cursor: String? = null,
+    /** "Caught up around you. Keep exploring?" on the last page. */
+    val end: String? = null,
+    val loadingMore: Boolean = false,
+    /** Pulled down to read again, with the list still on screen. */
+    val refreshing: Boolean = false,
+) {
+    sealed interface Load {
+        data object Loading : Load
+
+        data object Loaded : Load
+
+        /** Around me with no place at all: ask for one, as today's Pulse does. */
+        data object NeedsPlace : Load
+
+        data class Failed(
+            val message: String,
+        ) : Load
+    }
+
+    companion object {
+        const val DEFAULT_MILES = 25
+    }
+}
+
+/** One Moment as a ring of its own, to play it in today's viewer without reading it again. */
+internal fun MomentDto.asRing(viewerId: String?): MomentRingDto =
+    MomentRingDto(
+        id = "single_$id",
+        author = author,
+        latitude = latitude ?: 0.0,
+        longitude = longitude ?: 0.0,
+        placeLabel = placeLabel,
+        moments = listOf(MomentBriefDto(id, kind, createdAt, expiresAt, seen)),
+        unseenCount = if (seen) 0 else 1,
+        newestAt = createdAt,
+        mine = viewerId != null && author.id == viewerId,
+    )

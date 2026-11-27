@@ -256,6 +256,9 @@ object NetworkModule {
                 ),
             )
             .add(Instant::class.java, Rfc3339DateJsonAdapter().nullSafe())
+            // "Pulse, reinvented": the new Pulse tab's lists are read item by item (`@Lossy`), so one odd item never
+            // costs the screen. Only those lists carry the mark; nothing of today's reads through it.
+            .add(app.pantopus.android.data.api.models.reinvented.LossyListAdapterFactory)
             .addLast(KotlinJsonAdapterFactory())
             .build()
 
@@ -888,4 +891,10 @@ object NetworkModule {
     // Legacy aggregate — retained for existing AuthRepository / FeedScreen.
     @Provides @Singleton
     fun provideApiService(retrofit: Retrofit): ApiService = retrofit.create(ApiService::class.java)
+
+    /** "Pulse, reinvented" phase 1: the new Pulse tab's reads (`/api/reinvented/…`), only while its switch is on. */
+    @Provides
+    @Singleton
+    fun provideReinventedApi(retrofit: Retrofit): app.pantopus.android.data.api.services.ReinventedApi =
+        retrofit.create(app.pantopus.android.data.api.services.ReinventedApi::class.java)
 }

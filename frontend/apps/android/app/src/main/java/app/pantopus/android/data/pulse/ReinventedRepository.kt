@@ -1,0 +1,90 @@
+package app.pantopus.android.data.pulse
+
+import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import app.pantopus.android.data.api.net.NetworkError
+import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.api.net.safeApiCall
+import app.pantopus.android.data.api.services.ReinventedApi
+import app.pantopus.android.data.moments.serverCode
+import java.util.Locale
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** A point on the map, in degrees. */
+data class ReinventedPoint(
+    val latitude: Double,
+    val longitude: Double,
+)
+
+/** A box on the map, in degrees. */
+data class ReinventedBox(
+    val south: Double,
+    val west: Double,
+    val north: Double,
+    val east: Double,
+)
+
+/**
+ * The new Pulse tab's reads ([ReinventedApi]). A refusal that says the switch is off for this person
+ * (`403 PULSE_REINVENTED_OFF`, CONTRACT 1) turns it off at once and reads it again, so the tab goes back to today's
+ * Pulse; a server from before these routes (404) puts today's Pulse back too, until it is asked again a minute later
+ * ([ReinventedServer], PHASE-1 §3). Nobody ever sees "couldn't load" because the server is older.
+ */
+@Singleton
+class ReinventedRepository
+    @Inject
+    constructor(
+        private val api: ReinventedApi,
+        private val feature: PulseReinventedFeature,
+        private val server: ReinventedServer,
+    ) {
+        /** One page of the list (CONTRACT 6a). [miles] goes only with `around`. */
+        suspend fun list(
+            reach: String,
+            miles: Int?,
+            chip: String,
+            at: ReinventedPoint?,
+            cursor: String?,
+        ): NetworkResult<ReinventedListResponse> =
+            guarded { api.list(reach, miles, chip, at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor) }
+
+        /** The map for a box and a time (CONTRACT 6b). */
+        suspend fun map(
+            box: ReinventedBox,
+            time: String,
+        ): NetworkResult<ReinventedMapResponse> =
+            guarded { api.map(degrees(box.south), degrees(box.west), degrees(box.north), degrees(box.east), time) }
+
+        /** Alive right now (CONTRACT 6c). An older server's 404 only leaves the strip out. */
+        suspend fun strip(at: ReinventedPoint?): NetworkResult<ReinventedStripResponse> =
+            guarded(behindOn404 = false) { api.strip(at?.latitude?.let(::degrees), at?.longitude?.let(::degrees)) }
+
+        /** One page of Explore (CONTRACT 6f). */
+        suspend fun explore(
+            at: ReinventedPoint?,
+            cursor: String?,
+        ): NetworkResult<ReinventedExploreResponse> =
+            guarded { api.explore(at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor) }
+
+        private suspend fun <T> guarded(
+            behindOn404: Boolean = true,
+            call: suspend () -> T,
+        ): NetworkResult<T> {
+            val answer = safeApiCall { call() }
+            when (answer) {
+                is NetworkResult.Success -> server.caughtUp()
+                is NetworkResult.Failure ->
+                    if (answer.error.serverCode == StudioRepository.SWITCH_OFF) {
+                        feature.refusedOff()
+                    } else if (answer.error == NetworkError.NotFound && behindOn404) {
+                        server.markBehind()
+                    }
+            }
+            return answer
+        }
+
+        private fun degrees(value: Double): String = String.format(Locale.US, "%.5f", value)
+    }
