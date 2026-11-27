@@ -12,6 +12,10 @@ const pulseMap = require('../services/pulse/map');
 const atlas = require('../services/pulse/atlas');
 const explore = require('../services/pulse/explore');
 const keep = require('../services/pulse/keep');
+const wantToCome = require('../services/pulse/wantToCome');
+const planActions = require('../services/plans/planActions');
+const requireFeatureFlag = require('../middleware/requireFeatureFlag');
+const { contentCreationLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -163,6 +167,34 @@ router.delete('/atlas/:id', async (req, res) => {
     res.status(204).end();
   } catch (error) {
     sendError(res, error, 'atlas_delete');
+  }
+});
+
+// ─── "Want to come?" (CONTRACT 6g) ──────────────────────────────────────────
+
+/**
+ * POST /moments/:id/plan — the author starts a plan in Plans from their own Moment. The body is a plan as
+ * POST /api/plans takes it, and its answers and errors are Plans' own; `more`, `guests` and `extras` in the query
+ * say what this app can draw, as on the Plans routes. Never a business's plan.
+ */
+router.post('/moments/:id/plan', requireFeatureFlag('plans'), contentCreationLimiter, async (req, res) => {
+  try {
+    const user = {
+      ...req.user,
+      plansMore: req.query.more === '1',
+      plansGuests: req.query.guests === '1',
+      plansExtras: req.query.extras === '1',
+    };
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    res.status(201).json(await wantToCome.startPlan(user, req.params.id, body));
+  } catch (error) {
+    if (error instanceof planActions.PlanError) {
+      return res.status(error.status).json({ error: error.code, message: error.message, ...error.extra });
+    }
+    if (error.status && error.extra) {
+      return res.status(error.status).json({ error: error.message, code: error.code, ...error.extra });
+    }
+    return sendError(res, error, 'moment_plan');
   }
 });
 
