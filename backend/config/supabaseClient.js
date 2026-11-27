@@ -13,6 +13,19 @@ function withNodeRealtimeTransport(options = {}) {
   };
 }
 
+// A filter list too long for the gateway comes back as 414 (or 431), and a caller that ignores the error reads it
+// as "no rows". Each one is named in the log by its table, never its values: at most one line a minute per table.
+const tooLongWarnedAt = new Map();
+function warnRequestTooLong(requestUrl, status) {
+  const now = Date.now();
+  if (now - (tooLongWarnedAt.get(requestUrl.pathname) || 0) < 60_000) return;
+  tooLongWarnedAt.set(requestUrl.pathname, now);
+  // Required here: the logger isn't needed to build a client.
+  require('../utils/logger').warn('Database request refused as too long; split its id list', {
+    path: requestUrl.pathname, status, url_chars: requestUrl.href.length,
+  });
+}
+
 function createServerSupabaseClient(url, key, options = {}) {
   const fetchRequest = options.global?.fetch || globalThis.fetch;
   dbTiming.trackConnections(url);
@@ -34,6 +47,7 @@ function createServerSupabaseClient(url, key, options = {}) {
         try {
           const response = await fetchRequest(input, { ...init, signal });
           dbTiming.endCall(call, response);
+          if (response.status === 414 || response.status === 431) warnRequestTooLong(requestUrl, response.status);
           return response;
         } catch (error) {
           dbTiming.endCall(call, null);
