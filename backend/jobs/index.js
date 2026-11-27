@@ -25,6 +25,7 @@
 //   - fastCheckLocationLapse     → hourly at :17 (FASTVERIFY: a location check that missed its second match, told once)
 //   - momentsCleanup             → every 10 minutes (Moments: checks left behind, files 7 days after the end)
 //   - pulseStrands               → every 10 minutes (Pulse, reinvented: strands, "went because of you")
+//   - pulseMorningMail           → every hour (Pulse, reinvented: tomorrow's mail, at 7 in the morning)
 //   - pulseSeals                 → every 30 minutes (Pulse, reinvented: relics that open with rain)
 //   - momentsShareLater          → every minute (Moments shared later: the push to connections at their time)
 //   - cardMediaCleanup           → daily at 04:50 UTC (a card's own photo or voice nobody can read any more)
@@ -131,6 +132,7 @@ const { runPlansTick } = require('./planJobs');
 // Moments: picture checks left behind, and files deleted 7 days after the end
 const momentsCleanup = require('./momentsCleanup');
 const pulseStrands = require('./pulseStrands');
+const pulseMorningMail = require('./pulseMorningMail');
 const pulseSeals = require('./pulseSeals');
 const fastCheckLocationLapse = require('./fastCheckLocationLapse');
 const momentsShareLater = require('./momentsShareLater');
@@ -912,6 +914,11 @@ function startJobs(options = {}) {
   });
   // Every 30 minutes (Pulse, reinvented; switch on only): relics that open with rain (CONTRACT 8g).
   scheduleCron('15,45 * * * *', wrapJob('pulseSeals', pulseSeals), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+  // Every hour (Pulse, reinvented; switch on only): tomorrow's mail, sent at 7 in the morning (CONTRACT 8j).
+  scheduleCron('2 * * * *', wrapJob('pulseMorningMail', pulseMorningMail), {
     scheduled: true,
     timezone: 'UTC',
   });

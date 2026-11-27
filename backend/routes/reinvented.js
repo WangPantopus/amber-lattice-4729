@@ -618,4 +618,17 @@ router.post('/seals/:id/open', async (req, res) => {
   }
 });
 
+// ─── Tomorrow's mail and "Mail it" (CONTRACT 8j) ─────────────────────────────
+
+const postcards = require('../services/pulse/postcards');
+
+/** POST /moments/:id/mail — { to }: the sender's own Moment, as a postcard in a connection's Mail tab. */
+router.post('/moments/:id/mail', contentCreationLimiter, async (req, res) => {
+  try {
+    res.status(201).json(await postcards.mailIt(req.user.id, req.params.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'moment_mail');
+  }
+});
+
 module.exports = router;
