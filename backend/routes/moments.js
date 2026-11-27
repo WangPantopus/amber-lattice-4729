@@ -27,6 +27,7 @@ const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
 const retake = require('../services/pulse/retake');
+const pinboard = require('../services/pulse/pinboard');
 const eyesOn = require('../services/pulse/eyesOn');
 const mentions = require('../services/pulse/mentions');
 
@@ -380,7 +381,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'pinboard', 'pinboard_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -408,6 +409,8 @@ router.post('/', createLimiter, async (req, res) => {
     }
     // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
     const retakeAsk = studio ? retake.parse(req.body) : null;
+    // Pinboards (CONTRACT 8i): start one (`pinboard.prompt`) or add a piece (`pinboard_of`).
+    const pinboardAsk = studio ? pinboard.parse(req.body) : null;
     // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
     const guess = Boolean(studio) && req.body?.guess === true;
     if (guess && (!['photo', 'video'].includes(body.kind) || body.location.source === 'none')) {
@@ -542,6 +545,8 @@ router.post('/', createLimiter, async (req, res) => {
     // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
     const studioAtHome = atHome || (!unplaced && !markHomeClear);
     if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
+    pinboard.checkPosting(pinboardAsk, { kind: body.kind, underPenName });
+    const pinboardStartId = pinboardAsk?.of ? await pinboard.checkPiece(req.user.id, pinboardAsk.of) : null;
     let retakeStartId = null;
     if (retakeAsk) {
       retake.checkPosting(retakeAsk, {
@@ -589,6 +594,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
         ...(eyesOnFor ? { eyes_on_for: eyesOnFor } : {}),
+        // Pinboards (CONTRACT 8i): a start or a piece; it stays.
+        ...(pinboardAsk ? pinboard.keptPart(pinboardAsk, pinboardStartId) : {}),
         // Retake (CONTRACT 8e): a start or a frame; it stays, kept as a post that stays.
         ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
