@@ -188,13 +188,78 @@ async function stampsFor(posts) {
  * The shown stamps, the playable items and the dots of each of these posts that the Studio made, for `viewerId`
  * (CONTRACT 6d, 7b, 7c): { stamps, play, dots }, each by post id. The answers are read alongside the post's own row, never after the page.
  */
-async function readerParts(posts, viewerId) {
+// How many Studio rows, and answers, a box read takes before the list falls back to reading the page's own (partsInBox).
+const BOX_ROWS = 1000;
+
+/**
+ * The Studio rows of the posts in a box and the answers on those with playable items, read BESIDE a list's posts read
+ * (the list knows its place first), so the page's Studio parts cost no round after the posts (the opening time, LEAD-3
+ * 09:06). Answers null when the box held more than one read takes: the list then reads the page's own.
+ */
+async function partsInBox({ south, west, north, east }) {
+  const pad = 0.03;
+  const { data, error } = await supabaseAdmin.from('PostStudio').select('post_id, studio, post:Post!inner(latitude, longitude)')
+    .gte('post.latitude', south - pad).lte('post.latitude', north + pad)
+    .gte('post.longitude', west - pad).lte('post.longitude', east + pad)
+    .limit(BOX_ROWS);
+  if (error) throw new Error(`Failed to load the posts' Studio parts: ${error.message}`);
+  if ((data || []).length >= BOX_ROWS) return null;
+  // A page post this read can't have covered (no point inside the padded box) is read by id after all (readerParts).
+  const covered = (post) => {
+    const lat = post?.latitude ?? post?.effective_latitude;
+    const lng = post?.longitude ?? post?.effective_longitude;
+    return lat != null && lng != null && lat >= south - 0.02 && lat <= north + 0.02 && lng >= west - 0.02 && lng <= east + 0.02;
+  };
+  return finishParts(data, covered);
+}
+
+/** The same as partsInBox for the posts of these people (Close circle): a page post by anyone else is read by id after. */
+async function partsByPeople(userIds) {
+  const people = [...new Set((userIds || []).map(String))];
+  if (!people.length || people.length > 300) return null;
+  const { data, error } = await supabaseAdmin.from('PostStudio').select('post_id, studio, post:Post!inner(user_id)')
+    .in('post.user_id', people).order('created_at', { ascending: false }).limit(BOX_ROWS);
+  if (error) throw new Error(`Failed to load the posts' Studio parts: ${error.message}`);
+  if ((data || []).length >= BOX_ROWS) return null;
+  const set = new Set(people);
+  return finishParts(data, (post) => set.has(String(post?.user_id)));
+}
+
+async function finishParts(data, covered) {
+  const rows = (data || []).map((row) => ({ post_id: row.post_id, studio: row.studio }));
+  const playIds = rows.filter((row) => row.studio?.play?.length).map((row) => row.post_id);
+  const askIds = rows.filter((row) => row.studio?.eyes_on?.until).map((row) => row.post_id);
+  const [answers, eyes] = await Promise.all([
+    playIds.length ? play.answersOn(playIds) : new Map(),
+    // eslint-disable-next-line global-require
+    askIds.length ? require('./eyesOn').answerCounts(askIds) : new Map(),
+  ]);
+  if ([...answers.values()].reduce((n, list) => n + list.length, 0) >= play.MAX_ANSWERS_READ) return null;
+  return { rows, answers, eyes, covered };
+}
+
+async function readerParts(posts, viewerId, { inBox = null, recentPasses = null } = {}) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
   if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() };
-  const [{ data, error }, answers] = await Promise.all([
-    supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
-    play.answersOn(ids).catch(() => null),
-  ]);
+  // Read beside the posts when the list could (partsInBox); otherwise the page's own rows now.
+  let boxed = inBox ? await inBox.catch(() => null) : null;
+  // A page post the early read could not cover (a repost of someone else's post, a post with no point) is read by id.
+  const uncovered = boxed ? (posts || []).filter((post) => post?.id && !boxed.covered(post)).map((post) => post.id) : [];
+  if (boxed && uncovered.length) {
+    const [extra, extraAnswers] = await Promise.all([
+      supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', uncovered),
+      play.answersOn(uncovered).catch(() => null),
+    ]);
+    if (extra.error || !extraAnswers) boxed = null;
+    else boxed = { ...boxed, rows: [...boxed.rows, ...(extra.data || [])], answers: new Map([...boxed.answers, ...extraAnswers]) };
+  }
+  const wanted = new Set(ids);
+  const [{ data, error }, answers] = boxed
+    ? [{ data: boxed.rows.filter((row) => wanted.has(row.post_id)), error: null }, boxed.answers]
+    : await Promise.all([
+      supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
+      play.answersOn(ids).catch(() => null),
+    ]);
   if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
   const rows = data || [];
   const stamps = new Map(rows.map((row) => [row.post_id, shownOf(row.studio)]));
@@ -215,10 +280,10 @@ async function readerParts(posts, viewerId) {
       .catch(() => new Map()),
     // Passing on (CONTRACT 8f): who carried these posts, and what a pass carries.
     // eslint-disable-next-line global-require
-    require('./passOn').partsFor(posts, viewerId, studios).catch(() => new Map()),
+    require('./passOn').partsFor(posts, viewerId, studios, { recent: recentPasses }).catch(() => new Map()),
     // Eyes on (CONTRACT 8f): whether the Ask is open and how many answered.
     // eslint-disable-next-line global-require
-    require('./eyesOn').partsFor(studios).catch(() => new Map()),
+    require('./eyesOn').partsFor(studios, { counts: boxed?.eyes || null }).catch(() => new Map()),
   ]);
   return { stamps, dots, play: played, mentions: mentioned, passes, eyes };
 }
@@ -243,4 +308,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, partsInBox, partsByPeople, stampsInBox, withStamps, EXPLORE_TYPES };

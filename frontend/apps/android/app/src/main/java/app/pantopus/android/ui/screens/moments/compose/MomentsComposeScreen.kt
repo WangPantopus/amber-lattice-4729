@@ -285,6 +285,8 @@ fun MomentsComposeScreen(
                 onEdit = viewModel::editMarks,
                 onClose = viewModel::closeMarks,
                 video = (state.media as? MomentMediaFile.Video)?.file,
+                // "Pulse, reinvented": opened from the Studio, Text offers its letterings.
+                studio = studio,
             )
         }
         // The place picker (the Pulse composer's) around the Moment's pin: venues within reach of it, and search.

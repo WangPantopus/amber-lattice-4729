@@ -13,7 +13,8 @@ extension MomentsComposerModel {
     /// "Guess the spot" may be made here: a photo or video with a place, away from home. The server checks again
     /// (`400 MOMENT_INVALID`, `422 GUESS_AT_HOME`).
     var offersGuess: Bool {
-        guard let draft, draft.kind != .text, !noLocationOn, pin != nil else { return false }
+        // A Pulse post made from it ("+ Ask / Kind") isn't a Guess the spot.
+        guard let draft, draft.kind != .text, !noLocationOn, pin != nil, studioPostKind == nil else { return false }
         return place?.atHome != true
     }
 }

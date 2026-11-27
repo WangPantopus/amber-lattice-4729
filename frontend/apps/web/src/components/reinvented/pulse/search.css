@@ -1,0 +1,154 @@
+/* Ask the map and Atlas search (Pulse, reinvented, phase 4, CONTRACT 9b). */
+.am-ask,
+.as-search {
+  display: grid;
+  gap: 6px;
+}
+.am-ask {
+  margin-top: 10px;
+}
+.am-form,
+.as-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 12px;
+  height: 40px;
+  border: 1px solid var(--rp-line, rgb(var(--app-border)));
+  border-radius: 999px;
+  background: var(--rp-paper, rgb(var(--app-surface)));
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+}
+.am-form input,
+.as-form input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--rp-ink, rgb(var(--app-text)));
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.am-form:focus-within,
+.as-form:focus-within {
+  border-color: var(--rp-brand, #0b6b9a);
+}
+.am-clear,
+.as-clear {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.am-said {
+  margin: 0 4px;
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 12px;
+}
+/* The map's lit and dimmed pins. */
+.rp-pin-dim {
+  opacity: 0.28;
+  filter: grayscale(0.6);
+}
+.rp-pin-lit {
+  box-shadow: 0 0 0 3px #fde047, 0 0 18px 6px #fde04799;
+}
+.rp-pin-words {
+  position: absolute;
+  left: 50%;
+  bottom: -20px;
+  transform: translateX(-50%);
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #fde047;
+  color: #422006;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+/* Atlas search's results. */
+.as-results {
+  display: grid;
+  gap: 10px;
+}
+.as-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.as-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.as-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.as-open:hover {
+  background: var(--rp-wash, rgb(var(--app-surface-muted)));
+}
+.as-thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--rp-wash, rgb(var(--app-surface-muted)));
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+}
+.as-thumb-card {
+  background: #ecfdf5;
+  color: #047857;
+}
+.as-words {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.as-words strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-words small {
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 12px;
+}
+.as-pin {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rp-brand, #0b6b9a);
+  cursor: pointer;
+}

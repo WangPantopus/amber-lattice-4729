@@ -104,7 +104,8 @@ public struct PulseTabRoot: View {
     public var body: some View {
         // A fold or a turn replaces the layout inside (one stack or two columns); this stays, so it sees the change.
         ZStack {
-            tabContent
+            // "Pulse, reinvented": the Studio the new Pulse's + opens is presented here, outside the navigation stack.
+            tabContent.modifier(ReinventedStudioCover())
         }
         .onChange(of: rootTabs.selected, initial: true) { _, selected in
             detailModels.tabSelected(selected == RootTab.pulseHome)

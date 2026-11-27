@@ -1,0 +1,85 @@
+/* "Eyes on near you" in the Pulse list (phase 3, CONTRACT 8f): open Asks near the reader, each answerable. */
+.eo-near {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--rp-line, rgb(var(--app-border)));
+  border-radius: 18px;
+  background: var(--rp-wash, rgb(var(--app-surface-muted)));
+  color: var(--rp-ink, rgb(var(--app-text)));
+}
+.eo-title,
+.eo-offer p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 13px;
+  font-weight: 700;
+}
+.eo-offer p {
+  align-items: flex-start;
+  font-weight: 500;
+}
+.eo-offer p svg {
+  flex: none;
+  margin-top: 2px;
+}
+.eo-list {
+  display: grid;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.eo-ask {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.eo-ask .mo-face {
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
+.eo-body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.eo-body strong {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.eo-body small,
+.eo-offer small {
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 12px;
+}
+.eo-answer {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rp-brand, #0b6b9a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.eo-answer:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.eo-offer .eo-answer {
+  margin-top: 10px;
+}
+.eo-offer small {
+  display: block;
+  margin-top: 6px;
+}

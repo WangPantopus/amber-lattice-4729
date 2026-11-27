@@ -1,0 +1,77 @@
+/* Homes talk to homes (Pulse, reinvented, phase 4, CONTRACT 9f): lit windows, never a place. */
+.hw-windows {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.hw-windows h3 {
+  margin: 0;
+  color: rgb(var(--app-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+.hw-windows ul {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 2px;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+.hw-windows li {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 14px;
+  background: rgb(var(--app-surface));
+}
+.hw-pane {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  width: 30px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 6px;
+  background: #334155;
+}
+.hw-pane i {
+  border-radius: 2px;
+  background: #1e293b;
+}
+.hw-windows li[data-lit] .hw-pane {
+  background: #92400e;
+  box-shadow: 0 0 14px 2px #fbbf2466;
+}
+.hw-windows li[data-lit] .hw-pane i {
+  background: #fde68a;
+}
+.hw-words {
+  display: grid;
+}
+.hw-words strong {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hw-words small {
+  color: rgb(var(--app-text-muted));
+  font-size: 11px;
+}
+/* The member's own choice on a circle's page. */
+.hw-choice {
+  display: grid;
+  gap: 6px;
+}
+.hw-choice .cc-inline input {
+  min-width: 0;
+}
+.hw-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 12px;
+}

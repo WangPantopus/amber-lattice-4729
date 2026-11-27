@@ -138,11 +138,12 @@ async function checkAnswer(userId, askId, { kind, source, latitude, longitude, a
 }
 
 /** For the Asks on a page (switch-on reader): `eyes_on: { open, until, answers }` by post id, from their Studio rows. */
-async function partsFor(studios) {
+async function partsFor(studios, { counts: early = null } = {}) {
   const asks = [...studios.entries()].filter(([, studio]) => studio?.eyes_on?.until);
   const out = new Map();
   if (!asks.length) return out;
-  const counts = await answerCounts(asks.map(([id]) => id));
+  // Counts read beside a list's posts (postStudio.partsInBox) are used when they cover every Ask here.
+  const counts = early && asks.every(([id]) => early.has(id)) ? early : await answerCounts(asks.map(([id]) => id));
   for (const [id, studio] of asks) {
     out.set(id, { eyes_on: { open: Date.parse(studio.eyes_on.until) > Date.now(), until: studio.eyes_on.until, answers: counts.get(id) || 0 } });
   }

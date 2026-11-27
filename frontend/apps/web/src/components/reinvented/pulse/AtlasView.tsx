@@ -9,7 +9,12 @@ import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/r
 import { colors } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { useBackWhenMissing } from '../serverBehind';
-import { deleteForGood, readAtlas, type AtlasPage, type ListMoment } from './listApi';
+import { deleteForGood, readAtlas, type AtlasPage, type ListMoment, type Point } from './listApi';
+import AtlasSearch from './AtlasSearch';
+import Cabinet from '../cabinet/Cabinet';
+import Echoes from '../echoes/Echoes';
+import PosterView, { posterYear } from '../cabinet/Poster';
+import { useMe } from '@/lib/me';
 import { WentBecauseOfYou } from '../strands/Strands';
 
 const dayWords = (iso: string) =>
@@ -94,8 +99,28 @@ export function AtlasItem({ moment: m, account, onClose, onDeleted }: { moment: 
 }
 
 /** My Atlas by date, in the list's place. */
-export default function AtlasView({ account, onOpen }: { account: string; onOpen(m: ListMoment): void }) {
+export default function AtlasView({
+  account,
+  constellations,
+  onOpen,
+  onFound,
+  onPlace,
+}: {
+  account: string;
+  /** Curiosity constellations near the reader (CONTRACT 9c), drawn under the search while it isn't showing results. */
+  constellations?: React.ReactNode;
+  onOpen(m: ListMoment): void;
+  /** A Moment Atlas search found (CONTRACT 9b): the reader's own opens as in My Atlas, another person's in the viewer. */
+  onFound(m: ListMoment): void;
+  /** Jump to a result's pin. */
+  onPlace(p: Point): void;
+}) {
   const reread = useRereadSwitch();
+  // Atlas search's results show in place of the days while there are some.
+  const [searching, setSearching] = useState(false);
+  // The yearly poster (CONTRACT 9d), opened from My Atlas.
+  const [poster, setPoster] = useState(false);
+  const me = useMe().data;
   const atlas = useInfiniteQuery({
     queryKey: ['reinvented', 'atlas', account],
     queryFn: ({ pageParam, signal }) => readAtlas(pageParam, signal),
@@ -144,10 +169,23 @@ export default function AtlasView({ account, onOpen }: { account: string; onOpen
     );
   return (
     <div className="rp-atlas">
-      <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
-      <WentBecauseOfYou />
-      {!days.length && <p className="rp-empty">Nothing here yet. The Moments you post from now on are kept here.</p>}
-      {days.map((d) => (
+      <AtlasSearch account={account} onMoment={onFound} onPlace={onPlace} onSearching={setSearching} />
+      {!searching && (
+        <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
+      )}
+      {!searching && <Echoes account={account} />}
+      {!searching && <Cabinet personId={account} viewerId={account} own />}
+      {!searching && (
+        <button type="button" className="cb-poster-open" onClick={() => setPoster(true)}>
+          <span>Your {posterYear()} poster</span>
+          <small>Only you see it</small>
+        </button>
+      )}
+      {poster && <PosterView account={account} name={(me as { firstName?: string; name?: string } | undefined)?.firstName || 'My'} onClose={() => setPoster(false)} />}
+      {!searching && constellations}
+      {!searching && <WentBecauseOfYou />}
+      {!searching && !days.length && <p className="rp-empty">Nothing here yet. The Moments you post from now on are kept here.</p>}
+      {!searching && days.map((d) => (
         <section key={d.day} aria-label={d.day}>
           <h3 className="rp-atlas-day">{d.day}</h3>
           <div className="rp-atlas-grid">
@@ -160,8 +198,8 @@ export default function AtlasView({ account, onOpen }: { account: string; onOpen
           </div>
         </section>
       ))}
-      <div ref={sentinel} className="rp-sentinel" />
-      {isFetchingNextPage && <p className="rp-muted rp-center">Loading more…</p>}
+      {!searching && <div ref={sentinel} className="rp-sentinel" />}
+      {!searching && isFetchingNextPage && <p className="rp-muted rp-center">Loading more…</p>}
     </div>
   );
 }

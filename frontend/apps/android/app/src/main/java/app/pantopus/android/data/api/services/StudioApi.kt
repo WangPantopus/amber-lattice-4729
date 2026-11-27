@@ -1,5 +1,6 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.moments.MomentDailySpotResponse
 import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.moments.MomentGuessBody
@@ -9,10 +10,12 @@ import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
 import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * The requests only "Pulse, reinvented"'s new screens send (CONTRACT sections 2 to 4), and only while
@@ -59,4 +62,14 @@ interface StudioApi {
         @Path("id") id: String,
         @Body body: MomentGuessBody,
     ): MomentGuessResponse
+
+    /**
+     * `GET /api/moments/daily-spot` (CONTRACT 5d): today's guess-the-spot Moment for the town at this point, or null.
+     * Route `backend/routes/moments.js` (daily-spot).
+     */
+    @GET("api/moments/daily-spot")
+    suspend fun dailySpot(
+        @Query("latitude") latitude: Double,
+        @Query("longitude") longitude: Double,
+    ): MomentDailySpotResponse
 }

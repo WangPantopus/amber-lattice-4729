@@ -261,6 +261,8 @@ internal fun MomentsMarksEditor(
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     onClose: (keep: Boolean) -> Unit,
     video: File? = null,
+    // "Pulse, reinvented"'s Studio: its letterings in Text.
+    studio: Boolean = false,
 ) {
     var asksDiscard by remember { mutableStateOf(false) }
     val cancel = { if (editing.changed) asksDiscard = true else onClose(false) }
@@ -312,7 +314,7 @@ internal fun MomentsMarksEditor(
             MomentMarksTool.Text -> {
                 val density = LocalDensity.current
                 val keyboard = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
-                TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }))
+                TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }), studio = studio)
             }
             MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools)
             MomentMarksTool.Resize ->

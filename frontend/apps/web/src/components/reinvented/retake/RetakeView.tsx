@@ -150,13 +150,16 @@ export default function RetakeView({
             <div className="rt-actions">
               {r!.want_to_go > 0 && <span className="rt-note">{r!.want_to_go} want to go</span>}
               {r!.can_add ? (
-                <button
-                  type="button"
-                  className="rt-add"
-                  onClick={() => onAdd({ id: r!.start_id, title: r!.title, ghost: frames[0]?.media_url || frames[0]?.thumb_url || null })}
-                >
-                  Add your frame
-                </button>
+                <>
+                  <span className="rt-note">Your frame stays in this Retake.</span>
+                  <button
+                    type="button"
+                    className="rt-add"
+                    onClick={() => onAdd({ id: r!.start_id, title: r!.title, ghost: frames[0]?.media_url || frames[0]?.thumb_url || null })}
+                  >
+                    Add your frame
+                  </button>
+                </>
               ) : (
                 <span className="rt-note">Stand where the first picture was taken to add a frame.</span>
               )}
