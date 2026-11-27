@@ -80,6 +80,8 @@ const FLOAT_FLAG = 'moment_float';
 // Pulse, reinvented (founder 2026-11-26): the one switch for the new direction (the Studio's stamps, and more later).
 // Off for a person, every answer here is today's.
 const REINVENTED_FLAG = 'pulse_reinvented';
+// How long after a Moment goes out its author may still change its caption, stamps and who sees it (PATCH /:id).
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const FEET_PER_M = 3.28084;
 const HEIGHT_STEP_FT = 10;
 // Below the Dead Sea's shore or above where airliners fly, the reading is wrong: it isn't shown.
@@ -488,6 +490,19 @@ async function flagOnFor(name, viewer) {
   }
 }
 
+/**
+ * Until when the author may still change the Moment (PATCH /:id): EDIT_WINDOW_MS after it went out, that is after the
+ * later of when everyone reads it was posted and when it went live (a photo after its upload and check, one shared
+ * later at its time). Null once that has passed, and for a Moment that ended or is held for review.
+ */
+function editableUntil(row, now = Date.now()) {
+  const state = momentState(row, now);
+  if (state === 'ended' || state === 'held') return null;
+  const out = Math.max(Date.parse(shownAt(row)) || 0, wentLiveAt(row) || 0);
+  const until = out + EDIT_WINDOW_MS;
+  return Number.isFinite(until) && until > now ? new Date(until).toISOString() : null;
+}
+
 function briefOf(row, seen) {
   return { id: row.id, kind: meta(row).kind, created_at: shownAt(row), expires_at: answeredEnd(row), seen };
 }
@@ -552,8 +567,11 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     reaction_counts: own ? reactionCounts || [] : null,
     // Pulse, reinvented (only for a reader with the switch on): the stamps its author placed, with the values the
     // server kept when it was posted (momentStamps.js).
+    // `edited_at`: when its author last changed it (PATCH /:id); `editable_until`: the author's own, while they still may.
     ...(reinvented ? {
       stamps: momentStamps.shownStamps(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) }),
+      edited_at: m.edited_at || null,
+      editable_until: own ? editableUntil(row) : null,
     } : {}),
   };
 }
@@ -1297,6 +1315,7 @@ module.exports = {
   KINDS, HOURS, MAX_HOURS, LONG_MAX_HOURS, validHours, storedHours, answeredEnd, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
+  EDIT_WINDOW_MS, editableUntil,
   newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment,

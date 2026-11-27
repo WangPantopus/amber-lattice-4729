@@ -793,6 +793,64 @@ router.post('/:id/report', actionLimiter, async (req, res) => {
   }
 });
 
+// ─── Changing one's own Moment (Pulse, reinvented) ─────────────────────────
+
+const editSchema = Joi.object({
+  caption: Joi.string().trim().max(100).allow('', null),
+  // The whole new list of placements (momentStamps.parsePlacements checks it); the values stay those kept at posting.
+  stamps: Joi.any(),
+  audience: Joi.string().valid(...store.AUDIENCES),
+}).or('caption', 'stamps', 'audience');
+
+/**
+ * PATCH /:id — the author changes the caption, the stamps or who sees it, for 15 minutes after it went out
+ * (store.editableUntil). Only while `pulse_reinvented` is on for them: with it off this route isn't here, and the
+ * request goes on to the answer today's server gives for a path it doesn't have. A text card has no caption; a Moment
+ * with no location stays with connections and one under a made-up name with people nearby. Nobody is notified; others
+ * read the change on their next read.
+ */
+router.patch('/:id', actionLimiter, async (req, res, next) => {
+  try {
+    if (!(await store.reinventedOn(req.user))) return next();
+    const id = momentId(req);
+    const changes = parseBody(editSchema, req.body);
+    const stamps = changes.stamps === undefined ? undefined : momentStamps.parsePlacements(changes.stamps);
+    const row = await store.ownMoment(id, req.user.id);
+    if (!row) throw store.fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
+    const state = store.momentState(row);
+    if (state === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
+    if (!store.editableUntil(row)) {
+      throw store.fail(409, 'MOMENT_EDIT_CLOSED', state === 'held'
+        ? "This Moment can't be changed while Pantopus reviews it."
+        : 'A Moment can be changed for 15 minutes after it goes out.');
+    }
+    const m = store.meta(row);
+    const underPenName = penName.isPenNameRow(row);
+    if (changes.caption !== undefined && m.kind === 'text') throw store.fail(400, 'MOMENT_INVALID', 'A text card has no caption.');
+    if (changes.audience === 'nearby' && row.latitude == null) {
+      throw store.fail(400, 'MOMENT_INVALID', 'A Moment with no location goes only to your connections.');
+    }
+    if (changes.audience === 'connections' && underPenName) {
+      throw store.fail(400, 'PEN_NAME_AUDIENCE', 'A made-up name can post to people nearby only. The fewer people who see a Moment, the easier it is to guess who made it.');
+    }
+    if (underPenName && changes.caption) {
+      const refusal = await penName.gate.wordsRefusal([changes.caption]);
+      if (refusal) throw store.fail(refusal.status, refusal.code, refusal.message);
+    }
+    const updated = await store.updateMoment(row, {
+      ...(changes.caption !== undefined ? { content: changes.caption || '' } : {}),
+      ...(changes.audience ? { audience: changes.audience } : {}),
+      moment: { ...(stamps !== undefined ? { stamps } : {}), edited_at: new Date().toISOString() },
+    }, { archived_at: null });
+    if (!updated) throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
+    logger.info('moments.edited', { momentId: id, caption: changes.caption !== undefined, audience: changes.audience || null,
+      ...(stamps !== undefined ? { stamps: stamps.length } : {}) });
+    res.json({ moment: await oneMoment(updated, req.user.id) });
+  } catch (error) {
+    sendError(res, error, 'edit');
+  }
+});
+
 /** DELETE /:id — the author deletes their Moment; its files go unless a review holds them. */
 router.delete('/:id', actionLimiter, async (req, res) => {
   try {
