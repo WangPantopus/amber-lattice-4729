@@ -1,7 +1,9 @@
 package app.pantopus.android.data.pulse
 
+import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
@@ -79,6 +81,12 @@ class ReinventedRepository
 
         /** Delete for good (CONTRACT 6e): a Moment held for review answers 409 with the server's words. */
         suspend fun deleteForGood(momentId: String): NetworkResult<Unit> = guarded(behindOn404 = false) { api.deleteForGood(momentId) }
+
+        /** "Keep this?" answered (CONTRACT 6d): yes keeps it as a post that stays, for the same people. */
+        suspend fun keep(
+            momentId: String,
+            keep: Boolean,
+        ): NetworkResult<MomentEnvelope> = guarded(behindOn404 = false) { api.keep(momentId, ReinventedKeepBody(keep)) }
 
         private suspend fun <T> guarded(
             behindOn404: Boolean = true,
