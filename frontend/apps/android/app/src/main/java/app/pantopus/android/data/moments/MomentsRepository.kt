@@ -6,6 +6,7 @@ import app.pantopus.android.data.api.models.moments.CreateMomentBody
 import app.pantopus.android.data.api.models.moments.MomentAdultConfirmResponse
 import app.pantopus.android.data.api.models.moments.MomentBriefDto
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.moments.MomentGuessSpotDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
 import app.pantopus.android.data.api.models.moments.MomentPointBody
 import app.pantopus.android.data.api.models.moments.MomentReplyBody
@@ -85,6 +86,11 @@ class MomentsRepository
          * `float_on`); null while they don't.
          */
         val floatSun: StateFlow<MomentSunDto?> = _floatSun.asStateFlow()
+
+        private val _guessSpots = MutableStateFlow<List<MomentGuessSpotDto>>(emptyList())
+
+        /** "Pulse, reinvented": the latest map read's guess-the-spot Moments (CONTRACT 5d); empty while the switch is off. */
+        val guessSpots: StateFlow<List<MomentGuessSpotDto>> = _guessSpots.asStateFlow()
 
         private val _watched = MutableStateFlow<Set<String>>(emptySet())
 
@@ -170,6 +176,7 @@ class MomentsRepository
             _rings.value = emptyList()
             _heightsOn.value = false
             _floatSun.value = null
+            _guessSpots.value = emptyList()
             _watched.value = emptySet()
             _reported.value = emptySet()
             _mapNote.value = null
@@ -217,6 +224,7 @@ class MomentsRepository
                     _heightsOn.value = result.data.heightsOn
                     _floatSun.value = result.data.sun.takeIf { result.data.floatOn }
                     _scheduled.value = result.data.scheduled.filter { it.state == "scheduled" }
+                    _guessSpots.value = result.data.guessSpots.orEmpty().filter { it.momentId != null }
                     NetworkResult.Success(all)
                 }
                 is NetworkResult.Failure -> result
