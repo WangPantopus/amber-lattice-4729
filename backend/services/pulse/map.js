@@ -211,4 +211,4 @@ async function stripFor(user, { latitude = null, longitude = null } = {}) {
   return { live_here: liveHere, plans_soon: plansSoon, people };
 }
 
-module.exports = { mapFor, stripFor, TIMES };
+module.exports = { mapFor, stripFor, TIMES, BACK, FORWARD, backSince };
