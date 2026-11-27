@@ -17,6 +17,7 @@ const { timezoneFromCoordinates } = require('../../utils/timezone');
 const { haversineMeters } = require('../../utils/trustState');
 const logger = require('../../utils/logger');
 const list = require('./list');
+const postStudio = require('./postStudio');
 
 const TIMES = ['live', 'today', 'week', 'all', 'tonight', 'weekend'];
 const BACK = ['today', 'week', 'all'];
@@ -72,19 +73,21 @@ async function mapFor(user, box, { time = 'live' } = {}) {
   const userId = user.id;
   const forward = FORWARD.includes(time);
   const since = backSince(time, box);
-  const [rings, posts, tickets, spots, heights, float] = await Promise.all([
+  const [rings, posts, tickets, spots, heights, float, stamps] = await Promise.all([
     forward ? [] : store.mapRings(userId, box),
     forward ? [] : feedService.getMapFeed({ userId, surface: 'place', ...box, limit: MAX_MARKS }),
     orEmpty(ticketsFor(user, box, time), 'map_tickets'),
     orEmpty(momentGuess.guessSpotsIn(userId, box), 'map_guess_spots'),
     store.heightsOn(user),
     store.floatOn(user),
+    // A post made in the Studio shows its stamps (CONTRACT 6d), read alongside; a failed read only leaves them off.
+    forward ? new Map() : orEmpty(postStudio.stampsInBox(box), 'map_stamps', new Map()),
   ]);
   // Back: the reader's own Moments posted in the window (an ended Moment of someone else stays ended).
   const shownRings = BACK.includes(time)
     ? rings.filter((ring) => ring.mine && (since == null || Date.parse(ring.newest_at) >= since))
     : rings;
-  const marks = posts
+  const marks = postStudio.withStamps(posts, stamps)
     .filter((post) => post.latitude != null && post.longitude != null)
     .filter((post) => since == null || Date.parse(post.created_at) >= since)
     .map(markOf)

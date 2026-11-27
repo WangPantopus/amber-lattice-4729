@@ -17,6 +17,7 @@ const store = require('../moments/momentStore');
 const momentPlace = require('../moments/momentPlace');
 const { resolveLocation } = require('../context/locationResolver');
 const { postScopeAccess } = require('./readAccess');
+const postStudio = require('./postStudio');
 const { haversineMeters } = require('../../utils/trustState');
 
 const MILE = 1609.344;
@@ -38,7 +39,11 @@ const BANDS = [
 const CHIPS = {
   all: { moments: true, posts: {} },
   live: { moments: true, posts: null },
-  learn: { moments: false, posts: { postTypes: ['ask_local'], keep: (post) => post.resolution === 'answered' } },
+  // Learn: answered Asks and Local Updates (LEAD-2, 02:28: the Studio's Learning is today's Local Update).
+  learn: {
+    moments: false,
+    posts: { postTypes: ['ask_local', 'local_update'], keep: (post) => post.post_type === 'local_update' || post.resolution === 'answered' },
+  },
   spots: { moments: false, posts: { postTypes: ['share', 'recommendation'] } },
   ask: { moments: false, posts: { postTypes: ['ask_local'], keep: (post) => post.resolution !== 'answered' } },
   plans: { moments: false, posts: { postTypes: ['event'] } },
@@ -444,9 +449,12 @@ function prepare(userId, itemsRead) {
 async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next }) {
   const ready = await (readyRead || Promise.resolve(new Map())).catch(() => new Map());
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);
-  const [moments, chips] = await Promise.all([
+  const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
+  const [moments, chips, stamps] = await Promise.all([
     rows.length ? store.serializeMoments(rows, userId) : [],
     chipsRead || null,
+    // A post made in the Studio shows its stamps here (CONTRACT 6d); a failed read only leaves them off.
+    postStudio.stampsFor(pagePosts).catch(() => new Map()),
   ]);
   const byId = new Map([...ready, ...moments.map((moment) => [moment.id, moment])]);
   const bandKey = (index) => (index == null ? null : bands[index]?.band ?? null);
@@ -456,7 +464,8 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
       return moment ? { type: 'moment', id: moment.id, band: bandKey(item.bandIndex), moment } : null;
     }
     const { distance_meters: _distance, ...post } = item.post;
-    return { type: 'post', id: post.id, band: bandKey(item.bandIndex), post };
+    const shown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post;
+    return { type: 'post', id: post.id, band: bandKey(item.bandIndex), post: shown };
   }).filter(Boolean);
   return {
     reach,

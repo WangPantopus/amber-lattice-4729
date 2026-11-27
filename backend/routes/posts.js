@@ -357,6 +357,13 @@ const createPostSchema = Joi.object({
     /** Sports Pulse starter / composer template (matches mobile SPORTS_PULSE_STARTERS keys). */
     starter_key: Joi.string().valid('anyone_watching', 'best_place_watch', 'youth_signups', 'pickup_weekend').optional(),
   }).unknown(true).optional(),
+  // Pulse, reinvented (coord CONTRACT 6d): what the Studio adds to a post, only while the author's switch is on (403
+  // PULSE_REINVENTED_OFF otherwise). Today's apps never send it. Checked again by services/pulse/postStudio.
+  studio: Joi.object({
+    stamps: Joi.array().max(20),
+    elevation: Joi.object().allow(null),
+    explore: Joi.boolean(),
+  }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
     return helpers.error('any.custom', { message: 'Share and Offer posts are created in Pulse.' });
@@ -1115,6 +1122,20 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
     // of who may post where runs on the real account. Only at the end is the row saved under the system account.
     const underPenName = bodyPostAs === 'pen_name';
     const rawPostAs = underPenName ? 'personal' : bodyPostAs;
+    // Pulse, reinvented (coord CONTRACT 6d): the Studio's stamps and Explore, read only while the author's switch is on.
+    // Sent while it is off: 403 PULSE_REINVENTED_OFF and nothing is posted, so the app goes back to today's screens.
+    let studioParsed = null;
+    if (req.body.studio !== undefined) {
+      if (!(await reinventedFor(req.user.id))) {
+        const { REINVENTED_OFF } = require('../services/moments/momentStore');
+        return res.status(REINVENTED_OFF.status).json({ error: REINVENTED_OFF.message, code: REINVENTED_OFF.code });
+      }
+      try {
+        studioParsed = require('../services/pulse/postStudio').parse(req.body.studio);
+      } catch (studioError) {
+        return res.status(400).json({ error: studioError.message, code: 'POST_INVALID' });
+      }
+    }
     // P2.4 / unified-IA §4.1 — defense-in-depth. Persona-context posts
     // must go through the audience-zone composer (P2.5) and the
     // /api/personas/:id/posts (or broadcast) routes, not /api/posts.
@@ -1836,6 +1857,10 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       postData.id = postId;
       postData.post_metadata = { ...postData.post_metadata, _create_request_hash: requestHash };
     }
+    // The Studio's part, worked out from the row about to be written and kept beside it once the post exists (6d).
+    const studioRow = studioParsed
+      ? await require('../services/pulse/postStudio').studioFor({ userId, row: postData, parsed: studioParsed, underPenName })
+      : null;
     const insertPost = () => (postId
       ? supabaseAdmin.from('Post').upsert(postData, { onConflict: 'id', ignoreDuplicates: true })
       : supabaseAdmin.from('Post').insert(postData)).select(selection).maybeSingle();
@@ -1854,6 +1879,14 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
     if (error || !post) {
       logger.error('Error creating post', { error: error?.message || 'No receipt', userId });
       return res.status(500).json({ error: 'Failed to create post' });
+    }
+    // The Studio's part (6d), kept beside the post: a failure leaves the post without its stamps, never unposted.
+    if (studioRow) {
+      try {
+        await require('../services/pulse/postStudio').save(post.id, studioRow);
+      } catch (studioError) {
+        logger.warn('posts.studio_save_failed', { postId: post.id, error: studioError.message });
+      }
     }
     // Two posts that passed a Pulse limit at once: the later one is undone (contract §2.5).
     if (pulse && !pulseRetry) {

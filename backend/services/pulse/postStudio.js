@@ -1,0 +1,100 @@
+'use strict';
+
+// Pulse, reinvented, phase 1: what the Studio adds to a post its author made there (coord CONTRACT 6d), kept in its own
+// table `PostStudio` (migration 20261127104500; one row per post, deleted with it, no app role reads it), never on the
+// Post row: today's reads select every column or pass post_metadata on as stored. Written by POST /api/posts while the
+// author's switch is on; read only by the new routes (list, map), alongside their other reads.
+//
+// The stamps work as a Moment's (momentStamps): the author places them, the server fills every value at the point
+// everyone sees, and the home rules decide what is kept and shown.
+
+const supabaseAdmin = require('../../config/supabaseAdmin');
+const momentStamps = require('../moments/momentStamps');
+const momentPlace = require('../moments/momentPlace');
+const store = require('../moments/momentStore');
+const { displayedPoint } = require('./distanceText');
+
+// The kinds a post may be shown in Explore as (6f): never an Ask, an Offer, a Heads-up or a Lost and found.
+const EXPLORE_TYPES = ['recommendation', 'local_update', 'event', 'share'];
+
+/** The Studio's placements and height reading from the body's `studio`; 400 for a malformed list (momentStamps). */
+function parse(studio) {
+  return { ...momentStamps.parseStudio(studio || {}), explore: studio?.explore === true };
+}
+
+/**
+ * The `studio` column for a post about to be written (`row`, as it will be stored): the placements, every stamp's
+ * value filled now at the point everyone sees, and Explore when it may be. `underPenName`: under a made-up name.
+ */
+async function studioFor({ userId, row, parsed, underPenName = false }) {
+  const point = displayedPoint(row);
+  const placed = Boolean(point);
+  const [atHome, town] = placed
+    ? await Promise.all([
+      momentPlace.isAtHome(userId, row.latitude, row.longitude, { onFailure: true }),
+      momentPlace.townAt(point.latitude, point.longitude),
+    ])
+    : [false, null];
+  const stampValues = await momentStamps.valuesFor({
+    userId,
+    point: placed ? point : { latitude: null, longitude: null },
+    placeLabel: row.location_name,
+    town,
+    atHome,
+    penName: underPenName,
+    elevation: underPenName ? null : store.shownAltitude(parsed.reading, {
+      atHome, showArea: row.location_precision !== 'exact_place', unplaced: !placed, floating: false,
+    }),
+  });
+  const explore = parsed.explore && placed && !atHome && !underPenName && EXPLORE_TYPES.includes(row.post_type);
+  return {
+    v: 1,
+    stamps: parsed.placements,
+    stamp_values: stampValues,
+    // The home rules, checked again on every read (momentStamps.valueOf): nothing kept says more than they allow.
+    guard: { at_home: atHome, pen_name: Boolean(underPenName), placed },
+    ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
+  };
+}
+
+/** Keeps the Studio's part of a post just written. A failure is logged by the caller; the post stands without it. */
+async function save(postId, studio) {
+  const { error } = await supabaseAdmin.from('PostStudio').insert({ post_id: postId, studio });
+  if (error) throw new Error(`Failed to keep the post's stamps: ${error.message}`);
+}
+
+function shownOf(studio) {
+  const guard = studio?.guard || {};
+  return momentStamps.shownStamps(studio, { atHome: Boolean(guard.at_home), penName: Boolean(guard.pen_name), placed: guard.placed !== false });
+}
+
+/** The shown stamps of each of these posts that the Studio made (6d), by post id; one read for the page. */
+async function stampsFor(posts) {
+  const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const { data, error } = await supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids);
+  if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
+  return new Map((data || []).map((row) => [row.post_id, shownOf(row.studio)]));
+}
+
+/**
+ * The shown stamps of the Studio-made posts whose stored point is in the box (widened as the map's own post read is),
+ * by post id: read alongside the map's posts, never after them. Only the posts the map then lists use theirs.
+ */
+async function stampsInBox({ south, west, north, east }) {
+  const pad = 0.02;
+  const { data, error } = await supabaseAdmin.from('PostStudio').select('post_id, studio, post:Post!inner(latitude, longitude)')
+    .gte('post.latitude', south - pad).lte('post.latitude', north + pad)
+    .gte('post.longitude', west - pad).lte('post.longitude', east + pad)
+    .limit(1000);
+  if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
+  return new Map((data || []).map((row) => [row.post_id, shownOf(row.studio)]));
+}
+
+/** The posts with the stamps the Studio gave them (`stamps`, only on those; every other post as it came). */
+function withStamps(posts, stamps) {
+  if (!stamps?.size) return posts;
+  return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
+}
+
+module.exports = { parse, studioFor, save, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
