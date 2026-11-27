@@ -253,6 +253,10 @@ async function listFor(userId, {
   // Which Pulse read scopes the reader has is read once for every post read below.
   const scopeAccessRead = postScopeAccess(userId);
   scopeAccessRead.catch(() => {});
+  // The newest passes (CONTRACT 8f) are read beside the posts, so the page's "passed" parts need no read after them.
+  // eslint-disable-next-line global-require
+  const recentPasses = require('./passOn').recentPasses();
+  recentPasses.catch(() => {});
   // An All first page says its chips from the posts its own reads saw (chipsFromPage); every read is noted here.
   const chipsFromReads = firstPage && chip === 'all';
   const seen = [];
@@ -296,7 +300,7 @@ async function listFor(userId, {
     });
     if (chipsFromReads) chipsRead = chipsFromPage(chipContext, seen, complete);
     return answer({
-      userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items,
+      userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items, recentPasses,
       next: part.done ? null : { b: 0, p: part.posts, m: part.mark, ...(circle ? { ci: circle } : {}) },
     });
   }
@@ -425,7 +429,7 @@ async function listFor(userId, {
   }
   const town = await townRead;
   return answer({
-    userId, reach, miles, chip, chipsRead, readyRead, place: { label: town }, bands: bandsUpTo(miles, town), items, next, studioInBox,
+    userId, reach, miles, chip, chipsRead, readyRead, place: { label: town }, bands: bandsUpTo(miles, town), items, next, studioInBox, recentPasses,
   });
 }
 
@@ -473,12 +477,12 @@ function prepare(userId, itemsRead) {
 }
 
 /** The page as the apps read it: Moments serialized as GET /api/moments/:id answers them, posts as the feed lists them. */
-async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null }) {
+async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null, recentPasses = null }) {
   const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
   // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read
   // only leaves them off. Started as soon as the page's posts are known, beside the Moments still being made ready (the
   // opening time, LEAD-3 09:06).
-  const studioRead = postStudio.readerParts(pagePosts, userId, { inBox: studioInBox })
+  const studioRead = postStudio.readerParts(pagePosts, userId, { inBox: studioInBox, recentPasses })
     .catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() }));
   const ready = await (readyRead || Promise.resolve(new Map())).catch(() => new Map());
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);

@@ -206,12 +206,17 @@ async function partsInBox({ south, west, north, east }) {
   if ((data || []).length >= BOX_ROWS) return null;
   const rows = (data || []).map((row) => ({ post_id: row.post_id, studio: row.studio }));
   const playIds = rows.filter((row) => row.studio?.play?.length).map((row) => row.post_id);
-  const answers = playIds.length ? await play.answersOn(playIds) : new Map();
+  const askIds = rows.filter((row) => row.studio?.eyes_on?.until).map((row) => row.post_id);
+  const [answers, eyes] = await Promise.all([
+    playIds.length ? play.answersOn(playIds) : new Map(),
+    // eslint-disable-next-line global-require
+    askIds.length ? require('./eyesOn').answerCounts(askIds) : new Map(),
+  ]);
   if ([...answers.values()].reduce((n, list) => n + list.length, 0) >= play.MAX_ANSWERS_READ) return null;
-  return { rows, answers };
+  return { rows, answers, eyes };
 }
 
-async function readerParts(posts, viewerId, { inBox = null } = {}) {
+async function readerParts(posts, viewerId, { inBox = null, recentPasses = null } = {}) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
   if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() };
   // Read beside the posts when the list could (partsInBox); otherwise the page's own rows now.
@@ -243,10 +248,10 @@ async function readerParts(posts, viewerId, { inBox = null } = {}) {
       .catch(() => new Map()),
     // Passing on (CONTRACT 8f): who carried these posts, and what a pass carries.
     // eslint-disable-next-line global-require
-    require('./passOn').partsFor(posts, viewerId, studios).catch(() => new Map()),
+    require('./passOn').partsFor(posts, viewerId, studios, { recent: recentPasses }).catch(() => new Map()),
     // Eyes on (CONTRACT 8f): whether the Ask is open and how many answered.
     // eslint-disable-next-line global-require
-    require('./eyesOn').partsFor(studios).catch(() => new Map()),
+    require('./eyesOn').partsFor(studios, { counts: boxed?.eyes || null }).catch(() => new Map()),
   ]);
   return { stamps, dots, play: played, mentions: mentioned, passes, eyes };
 }

@@ -46,7 +46,24 @@ async function check(userId, quotedPostId) {
  * For the posts on a page (switch-on reader): `passed` on an original ({ count, carriers }: the passes this reader may
  * see) and `passed_on` on a pass ({ from, carried_by }), by post id. One read of the passes, only when there are any.
  */
-async function partsFor(posts, viewerId, studios) {
+// How many recent passes a list reads beside its posts (recentPasses) before it falls back to reading by the page's ids.
+const RECENT_PASSES = 500;
+
+/**
+ * The newest passes there are, read BESIDE a list's posts read (the opening time, LEAD-3 09:22): partsFor then takes the
+ * page's from them, with no read after the posts. Null when there are more than one read takes: partsFor reads by ids.
+ */
+async function recentPasses() {
+  // eslint-disable-next-line global-require
+  const { POST_READ_SELECT } = require('./readAccess');
+  const { data, error } = await supabaseAdmin.from('PostStudio')
+    .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).not('studio->passed_on->>from', 'is', null)
+    .is('post.archived_at', null).order('created_at', { ascending: false }).limit(RECENT_PASSES);
+  if (error) throw new Error(`Failed to load passes: ${error.message}`);
+  return (data || []).length >= RECENT_PASSES ? null : data || [];
+}
+
+async function partsFor(posts, viewerId, studios, { recent = null } = {}) {
   const out = new Map();
   const ids = [...new Set((posts || []).map((p) => p?.id).filter(Boolean))];
   if (!ids.length) return out;
@@ -54,9 +71,13 @@ async function partsFor(posts, viewerId, studios) {
   const store = require('../moments/momentStore');
   // eslint-disable-next-line global-require
   const { canReadPost, POST_READ_SELECT } = require('./readAccess');
-  const { data, error } = await supabaseAdmin.from('PostStudio')
-    .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).in('studio->passed_on->>from', ids)
-    .is('post.archived_at', null).order('created_at', { ascending: false }).limit(500);
+  const early = recent ? await recent.catch(() => null) : null;
+  const wanted = new Set(ids);
+  const { data, error } = early
+    ? { data: early.filter((row) => wanted.has(row.studio?.passed_on?.from)), error: null }
+    : await supabaseAdmin.from('PostStudio')
+      .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).in('studio->passed_on->>from', ids)
+      .is('post.archived_at', null).order('created_at', { ascending: false }).limit(500);
   if (error) throw new Error(`Failed to load passes: ${error.message}`);
   const passes = [];
   for (const row of data || []) {
@@ -76,4 +97,4 @@ async function partsFor(posts, viewerId, studios) {
   return out;
 }
 
-module.exports = { check, partsFor };
+module.exports = { check, partsFor, recentPasses };
