@@ -178,12 +178,18 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (list.error && isSwitchedOff(list.error)) void reread();
   }, [list.error, reread]);
+  // The list's first page has come (or failed) once. The map's marks and the strip wait for it, so nothing goes out beside
+  // what opens the tab (LEAD-2 09:22: they follow the first page, never precede it).
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    if (list.data || list.error) setOpened(true);
+  }, [list.data, list.error]);
 
   // The map's own read for the box in view and the time row's choice (CONTRACT §6b); it follows the list's first page.
   const map = useQuery({
     queryKey: ['reinvented', 'map', account, time, box],
     queryFn: ({ signal }) => readMap(box!, time, signal),
-    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore',
+    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && opened,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
@@ -226,7 +232,7 @@ export default function ReinventedPulse() {
   const strip = useQuery({
     queryKey: ['reinvented', 'strip', account, point?.latitude ?? null, point?.longitude ?? null],
     queryFn: ({ signal }) => readStrip(point, signal),
-    enabled: !!account,
+    enabled: !!account && opened,
     staleTime: 60_000,
     refetchInterval: 60_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
