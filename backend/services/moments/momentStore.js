@@ -711,20 +711,22 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
   const planRead = wantToCome.anyStarted(rows)
     ? reinventedOn(viewerId).then((on) => (on ? wantToCome.plansFor(rows, viewerId) : new Map()))
     : Promise.resolve(new Map());
-  await markOwn(rows, viewerId);
+  // The switch is read beside markOwn (a cached flag), so the switch-on reads below run beside today's, not after them
+  // (the opening time, LEAD-3 09:22). With the switch off for the reader, today's reads are exactly as before.
+  const [, reinvented] = await Promise.all([markOwn(rows, viewerId), reinventedOn(viewerId)]);
   const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
   const linked = rows.filter((r) => momentState(r) !== 'ended' || (keptEnded && isOwn(r, viewerId) && keptFilesOf(r))
     || (keptPosts && Boolean(meta(r).kept_post_at) && keptFilesOf(r)));
-  const [authors, marks, links, counts, heights, reinvented] = await Promise.all([
+  const todayRead = Promise.all([
     authorsFor(rows),
     viewerMarks(viewerId, ids),
     media.signedLinks(undefined, linkKeys(linked)),
     reactionCountsFor(ownIds),
     heightsOn(viewerId),
-    reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes, pinboards] = reinvented
-    ? await Promise.all([
+  todayRead.catch(() => {});
+  const newRead = reinvented
+    ? Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
       // Playable items (CONTRACT 7b): one read of the answers for the Moments that carry any.
@@ -742,7 +744,10 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       // Pinboards (CONTRACT 8i): one read of the starts and pieces, only when a row is part of one.
       rows.some((r) => meta(r).pinboard) ? require('../pulse/pinboard').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()];
+    : Promise.resolve([new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()]);
+  newRead.catch(() => {});
+  const [authors, marks, links, counts, heights] = await todayRead;
+  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes, pinboards] = await newRead;
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,

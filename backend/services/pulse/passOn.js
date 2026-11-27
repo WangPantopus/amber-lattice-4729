@@ -46,7 +46,28 @@ async function check(userId, quotedPostId) {
  * For the posts on a page (switch-on reader): `passed` on an original ({ count, carriers }: the passes this reader may
  * see) and `passed_on` on a pass ({ from, carried_by }), by post id. One read of the passes, only when there are any.
  */
-async function partsFor(posts, viewerId, studios) {
+// How many recent passes a list reads beside its posts (recentPasses) before it falls back to reading by the page's ids.
+const RECENT_PASSES = 500;
+
+/**
+ * The newest passes there are, read BESIDE a list's posts read (the opening time, LEAD-3 09:22): partsFor then takes the
+ * page's from them, with no read after the posts. Null when there are more than one read takes: partsFor reads by ids.
+ */
+async function recentPasses() {
+  // eslint-disable-next-line global-require
+  const { POST_READ_SELECT } = require('./readAccess');
+  const { data, error } = await supabaseAdmin.from('PostStudio')
+    .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).not('studio->passed_on->>from', 'is', null)
+    .is('post.archived_at', null).order('created_at', { ascending: false }).limit(RECENT_PASSES);
+  if (error) throw new Error(`Failed to load passes: ${error.message}`);
+  if ((data || []).length >= RECENT_PASSES) return null;
+  // The carriers' names too, beside the posts (a pass's author is the person who carried it).
+  // eslint-disable-next-line global-require
+  const authors = data.length ? await require('../moments/momentStore').loadAuthors(data.map((r) => r.post.user_id)) : new Map();
+  return { rows: data, authors };
+}
+
+async function partsFor(posts, viewerId, studios, { recent = null } = {}) {
   const out = new Map();
   const ids = [...new Set((posts || []).map((p) => p?.id).filter(Boolean))];
   if (!ids.length) return out;
@@ -54,16 +75,22 @@ async function partsFor(posts, viewerId, studios) {
   const store = require('../moments/momentStore');
   // eslint-disable-next-line global-require
   const { canReadPost, POST_READ_SELECT } = require('./readAccess');
-  const { data, error } = await supabaseAdmin.from('PostStudio')
-    .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).in('studio->passed_on->>from', ids)
-    .is('post.archived_at', null).order('created_at', { ascending: false }).limit(500);
+  const early = recent ? await recent.catch(() => null) : null;
+  const wanted = new Set(ids);
+  const { data, error } = early
+    ? { data: early.rows.filter((row) => wanted.has(row.studio?.passed_on?.from)), error: null }
+    : await supabaseAdmin.from('PostStudio')
+      .select(`post_id, studio, post:Post!inner(${POST_READ_SELECT}, created_at)`).in('studio->passed_on->>from', ids)
+      .is('post.archived_at', null).order('created_at', { ascending: false }).limit(500);
   if (error) throw new Error(`Failed to load passes: ${error.message}`);
   const passes = [];
   for (const row of data || []) {
     if (await canReadPost(row.post, viewerId).catch(() => false)) passes.push(row);
   }
   const ownPasses = (posts || []).filter((p) => studios.get(p.id)?.passed_on?.from);
-  const authors = await store.loadAuthors([...passes.map((r) => r.post.user_id), ...ownPasses.map((p) => p.user_id)]);
+  const needed = [...new Set([...passes.map((r) => String(r.post.user_id)), ...ownPasses.map((p) => String(p.user_id))])];
+  // Names read beside the posts (recentPasses) when they cover everyone needed; otherwise read now.
+  const authors = early && needed.every((id) => early.authors.has(id)) ? early.authors : await store.loadAuthors(needed);
   for (const id of ids) {
     const mine = passes.filter((r) => r.studio.passed_on.from === id);
     if (mine.length) {
@@ -76,4 +103,4 @@ async function partsFor(posts, viewerId, studios) {
   return out;
 }
 
-module.exports = { check, partsFor };
+module.exports = { check, partsFor, recentPasses };
