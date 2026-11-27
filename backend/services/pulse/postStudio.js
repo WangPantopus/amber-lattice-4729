@@ -108,6 +108,49 @@ async function save(postId, studio) {
   if (error) throw new Error(`Failed to keep the post's stamps: ${error.message}`);
 }
 
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  if (typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => sameValue(a[key], b[key]));
+}
+
+function missingFunction(error) {
+  return error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function/i.test(error?.message || '');
+}
+
+/**
+ * Sets the keys that `change(studio)` works out from the post's kept value, in one statement that merges only them and
+ * only while they still hold what was read (post_studio_update, migration 20261127140000), so writes at the same moment
+ * keep each other; when another write changed them first, reads again and works it out again. Answers the new kept
+ * value, or null when the post has none.
+ */
+async function changeStudio(postId, current, change) {
+  let kept = current;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const set = change(kept || {});
+    if (!set || !Object.keys(set).length) return kept;
+    const same = Object.fromEntries(Object.keys(set).map((key) => [key, kept?.[key] ?? null]));
+    const { data, error } = await supabaseAdmin.rpc('post_studio_update', { p_post_id: postId, p_studio: set, p_same: same })
+      .select('studio').maybeSingle();
+    if (error && missingFunction(error)) {
+      // A database without the function yet: today's whole-value write.
+      const next = { ...(kept || {}), ...set };
+      const { error: plainError } = await supabaseAdmin.from('PostStudio').update({ studio: next }).eq('post_id', postId);
+      if (plainError) throw new Error(`Failed to keep the change: ${plainError.message}`);
+      return next;
+    }
+    if (error) throw new Error(`Failed to keep the change: ${error.message}`);
+    if (data) return data.studio;
+    const { data: fresh, error: readError } = await supabaseAdmin.from('PostStudio').select('studio').eq('post_id', postId).maybeSingle();
+    if (readError) throw new Error(`Failed to read the post's kept value: ${readError.message}`);
+    if (!fresh || Object.keys(same).every((key) => sameValue(fresh.studio?.[key] ?? null, same[key]))) return null;
+    kept = fresh.studio;
+  }
+  throw Object.assign(new Error('This post is changing right now. Try again in a moment.'), { status: 409, code: 'POST_BUSY' });
+}
+
 function shownOf(studio) {
   const guard = studio?.guard || {};
   return momentStamps.shownStamps(studio, { atHome: Boolean(guard.at_home), penName: Boolean(guard.pen_name), placed: guard.placed !== false });
@@ -168,4 +211,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };
