@@ -360,8 +360,9 @@ public struct RootTabView: View {
                 // (Nearby while the Pulse redesign is off).
                 if !isOn, model.selected == .plans { model.selected = RootTab.pulseHome }
             }
-            .onChange(of: momentsFlags.moments) { _, isOn in
-                // The Moments tab goes with its switch; a reader on it lands on Pulse.
+            .onChange(of: momentsOnBar) { _, isOn in
+                // The Moments tab goes with its switch (and while "Pulse, reinvented" is on, every Moment is in
+                // Pulse); a reader on it lands on Pulse.
                 if !isOn, model.selected == .moments { model.selected = RootTab.pulseHome }
             }
             .modifier(MomentsDotUpdates(account: signedInUserID, isOn: momentsFlags.moments, onTab: model.selected == .moments))
@@ -375,7 +376,7 @@ public struct RootTabView: View {
                 // A tab that isn't kept (Plans or Moments switched off, Mail
                 // without the Mailbox) lands on the nearest one that is.
                 // Messages is always kept, off the bar.
-                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
+                let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsOnBar, todayFirst: model.todayFirst)
                 if !hosted.contains(selected) { model.selected = Self.nearestTab(to: selected, on: hosted) }
             }
             .onChange(of: chatBadgeStore.unreadMessages) { _, unread in
@@ -704,8 +705,8 @@ extension RootTabView {
     /// container; the bar is drawn above it. Messages is kept but not drawn on
     /// the bar, which lights the tab it was opened from.
     private var drawnTabs: some View {
-        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
-        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsFlags.moments, todayFirst: model.todayFirst)
+        let onBar = RootTab.barTabs(plans: plansFlags.plans, moments: momentsOnBar, todayFirst: model.todayFirst)
+        let hosted = RootTab.hostedTabs(plans: plansFlags.plans, moments: momentsOnBar, todayFirst: model.todayFirst)
         let showsBar = model.barHiders.isEmpty
         return RootTabBarPlacementReader { verticalEdge in
             ZStack(alignment: verticalEdge.map { $0 == .leading ? .leading : .trailing } ?? .bottom) {
@@ -1168,4 +1169,12 @@ final class ChatBadgeStore {
 #Preview {
     RootTabView()
         .environment(AuthManager.previewSignedIn)
+}
+
+extension RootTabView {
+    /// The Moments tab is on the bar: its switch on, and "Pulse, reinvented" off (PHASE-1 §2.1: while that switch is
+    /// on, every Moment is in Pulse and the Moments tab isn't drawn).
+    var momentsOnBar: Bool {
+        momentsFlags.moments && !(PulseReinventedFlags.shared.isOn && !ReinventedServer.shared.behind)
+    }
 }

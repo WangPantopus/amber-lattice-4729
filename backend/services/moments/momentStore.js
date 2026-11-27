@@ -544,7 +544,8 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null, unsealed = false }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null,
+  unsealed = false, pinboards = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -636,6 +637,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       replies: shownReplies.repliesOf(row, replyCounts),
       // Retake (CONTRACT 8e): the Retake this Moment starts or joined, as this reader may see it; null for any other.
       retake: retakes?.get(row.id) || null,
+      // Pinboards (CONTRACT 8i): the pinboard this Moment starts or is a piece of; null for any other.
+      pinboard: pinboards?.get(row.id) || null,
       // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
       mentions: mentioned?.get(row.id) || [],
       // A sealed Moment (CONTRACT 8g): how and when it opens, and whether it has; null for any other.
@@ -720,7 +723,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes] = reinvented
+  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes, pinboards] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
@@ -736,8 +739,10 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       require('../pulse/mentions').shownFor(rows, viewerId, (r) => meta(r).mentions).catch(() => new Map()),
       // Retake (CONTRACT 8e): one read of the starts and frames, only when a row is part of one.
       rows.some((r) => meta(r).retake) ? require('../pulse/retake').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
+      // Pinboards (CONTRACT 8i): one read of the starts and pieces, only when a row is part of one.
+      rows.some((r) => meta(r).pinboard) ? require('../pulse/pinboard').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -760,6 +765,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     mentioned,
     retakes,
     unsealed,
+    pinboards,
   }));
 }
 

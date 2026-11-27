@@ -174,6 +174,8 @@ extension MomentsComposerModel {
         body.postAs = postsUnderMadeUpName ? "pen_name" : nil
         // The Studio's "Guess the spot" (CONTRACT 5a), only where it may be made; left out otherwise.
         body.guess = offersGuess && studioGuess ? true : nil
+        // The Studio's "Also show in Explore" (CONTRACT 6f), only where it may be; left out otherwise.
+        body.explore = offersExplore && studioExplore ? true : nil
         // The Studio's stamps, and the phone's height for an elevation stamp; left out otherwise.
         if !studioStamps.isEmpty {
             body.stamps = studioStamps

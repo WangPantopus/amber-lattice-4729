@@ -649,6 +649,28 @@ router.get('/strip/sky', async (req, res) => {
   }
 });
 
+// ─── Pinboards and the crowd freeze (CONTRACT 8i) ────────────────────────────
+
+const pinboard = require('../services/pulse/pinboard');
+
+/** GET /pinboards/:id — a pinboard (from its start or any piece): its pieces, as the reader may see them. */
+router.get('/pinboards/:id', async (req, res) => {
+  try {
+    res.json(await pinboard.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'pinboard');
+  }
+});
+
+/** GET /crowd/:id — the scene around one Live photo or video, from the phones there in the same minute (or null). */
+router.get('/crowd/:id', async (req, res) => {
+  try {
+    res.json(await pinboard.crowdOf(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'crowd');
+  }
+});
+
 // ─── Tomorrow's mail and "Mail it" (CONTRACT 8j) ─────────────────────────────
 
 const postcards = require('../services/pulse/postcards');

@@ -225,6 +225,9 @@ public struct PulseTabRoot: View {
                 onRefresh: refreshQuietCard,
                 isActive: path.isEmpty && rootTabs.selected == .pulse && presentedSurface == nil
             )
+        } else if PulseReinventedFlags.shared.isOn, !ReinventedServer.shared.behind {
+            // "Pulse, reinvented" (phase 1), only while its switch is on: the one Pulse tab, beside today's feed.
+            ReinventedPulseView { path.open(.post(postId: $0), sideBySide: isSideBySide) }
         } else {
             // Launch cut #11 off: the October 13 feed, `GET /api/posts/feed`.
             FeedView(
