@@ -28,7 +28,7 @@ struct MomentsStudioRail: View {
                 tool("Text", id: "moments.studio.rail.text") {
                     // "Aa" is lettering, not an icon (board B2).
                     Text("Aa").font(.system(size: 17, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
-                } action: { model.openMarks(.text) }
+                } action: { model.openStudioMarks(.text) }
             }
             if let openTray, !model.noLocationOn {
                 tool("Stamps and Play", id: "moments.studio.rail.stamps") {
@@ -38,7 +38,7 @@ struct MomentsStudioRail: View {
             if model.offersMarks {
                 tool("Draw", id: "moments.studio.rail.draw") {
                     Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
-                } action: { model.openMarks(.draw) }
+                } action: { model.openStudioMarks(.draw) }
             }
             if model.offersResize {
                 tool("Resize", id: "moments.studio.rail.resize") {

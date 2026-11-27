@@ -45,6 +45,9 @@ struct MomentsComposerChoice: View {
                 request.model.postsUnderMadeUpName = false
                 // Nor stamps: today's server refuses them while the switch is off.
                 request.model.studioStamps = []
+                // Nor the Studio's pens and letterings: today's Text and Draw make lines and labels as before. What was
+                // already drawn or written stays on the picture.
+                request.model.marking.studio = nil
             }
         }
     }
@@ -68,7 +71,7 @@ struct MomentsStudioComposer: View {
             Color.black.ignoresSafeArea()
             if model.marking.isOpen, let media = model.markedMedia {
                 // Text and Draw: today's editor, in this stack (not a cover), so a fold keeps it.
-                MomentsMarksEditor(model: model, media: media)
+                MomentsMarksEditor(model: model, media: media, studio: true)
                     .environment(\.colorScheme, .dark)
             } else if model.draft != nil {
                 // Posted: the next of several picked together takes the screen; after the last, the composer closes.

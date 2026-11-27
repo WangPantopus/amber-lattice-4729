@@ -284,7 +284,8 @@ struct MomentsMarksTextLayer: View {
             prompt: Text("Type here").foregroundColor(Color(uiColor: look.ink).opacity(0.6)),
             axis: .vertical
         )
-        .font(.system(size: em, weight: .bold))
+        // Today's bold letters, or the Studio's lettering (`MomentMarks+Studio`).
+        .font(label.font.font(em))
         .multilineTextAlignment(.center)
         .foregroundStyle(Color(uiColor: look.ink))
         .tint(Color(uiColor: look.ink))

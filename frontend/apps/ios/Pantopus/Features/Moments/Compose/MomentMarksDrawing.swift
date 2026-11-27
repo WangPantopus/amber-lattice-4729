@@ -28,6 +28,11 @@ enum MomentMarksDrawing {
         defer { context.restoreGState() }
         context.setLineCap(.round)
         context.setLineJoin(.round)
+        // The Studio's lines (a highlighter, an arrow, an eraser, an ink from the photo): `+Studio`.
+        if marks.strokes.contains(where: \.isStudio) {
+            drawStudio(marks.strokes, in: context, size: size)
+            return drawLabels(marks.labels, in: context, size: size, aspect: aspect ?? size.width / size.height)
+        }
         for stroke in marks.strokes where !stroke.points.isEmpty {
             // The signature pen's smoothing: curves through the points, a dot for a tap.
             let points = stroke.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
@@ -114,7 +119,8 @@ extension MomentMarksDrawing {
         paragraph.lineBreakMode = .byWordWrapping
         paragraph.minimumLineHeight = em * lineHeight
         paragraph.maximumLineHeight = em * lineHeight
-        let font = UIFont.systemFont(ofSize: em, weight: .bold)
+        // The Studio's letters (`MomentMarks+Studio`); today's otherwise.
+        let font = label.font == .standard ? UIFont.systemFont(ofSize: em, weight: .bold) : label.font.uiFont(em)
         let look = looks(label)
         let words = NSAttributedString(
             string: label.text,
@@ -158,7 +164,8 @@ extension MomentMarksDrawing {
 
     /// The widest single word of `label`, in the same units as `lay`: its letters shrink until this fits on a line.
     static func longestWord(_ label: MomentMarks.Label) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: label.size * unit, weight: .bold)
+        let em = label.size * unit
+        let font = label.font == .standard ? UIFont.systemFont(ofSize: em, weight: .bold) : label.font.uiFont(em)
         let widest = label.text.split(whereSeparator: \.isWhitespace)
             .map { NSAttributedString(string: String($0), attributes: [.font: font]).size().width }
             .max() ?? 0
@@ -181,6 +188,8 @@ extension MomentMarksDrawing {
     /// Plain: letters in the ink with a thin dark edge (light for black ink). Label: letters in the ink on black at
     /// 66% (white at 88% for black ink). Sign: a plate in the ink, dark letters on light inks, white on black and red.
     static func looks(_ label: MomentMarks.Label) -> Look {
+        // An ink from the photo (the Studio's, `+Studio`).
+        if let tint = label.tint { return studioLook(label, tint: tint) }
         let ink = MomentsPalette.ink(label.ink.rawValue)
         let dark = MomentsPalette.ink(MomentMarks.Ink.black.rawValue)
         let black = label.ink == .black

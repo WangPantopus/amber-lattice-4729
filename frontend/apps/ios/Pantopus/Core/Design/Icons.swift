@@ -483,6 +483,10 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
     case sparkle
     /// Guidance cards: Today's "Around you" (local headlines).
     case newspaper
+    /// The Studio's Draw ("Pulse, reinvented"): the highlighter, the eraser and the eyedropper.
+    case highlighter
+    case eraser
+    case pipette
 
     /// SF Symbol name used to render this icon. Chosen for closest visual
     /// parity with the Lucide source; designers can later swap the
@@ -871,6 +875,9 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
         case .cake: "birthday.cake"
         case .sparkle: "sparkle"
         case .newspaper: "newspaper"
+        case .highlighter: "highlighter"
+        case .eraser: "eraser"
+        case .pipette: "eyedropper"
         }
     }
 }
