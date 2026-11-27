@@ -2,7 +2,7 @@
 // map and the deck always agree on what is there and in which order.
 
 import type { Ring } from '@pantopus/api/endpoints/moments';
-import type { Box, ListMoment, MapData, MapMark, MapTicket, Point } from './listApi';
+import type { Box, ExploreItem, ListMoment, MapData, MapMark, MapTicket, Point } from './listApi';
 
 export type Pin =
   | { key: string; type: 'ring'; ring: Ring; point: Point }
@@ -48,11 +48,31 @@ export function keptPins(moments: ListMoment[] | undefined): Pin[] {
   return pins.sort((a, b) => a.point.longitude - b.point.longitude || a.key.localeCompare(b.key));
 }
 
-/** Explore on the map: the Moments in view in Explore, at the point everyone sees, west to east as above. */
-export function explorePins(moments: ListMoment[]): Pin[] {
+/**
+ * Explore on the map: what is in view in Explore, at the point everyone sees, west to east as above. A Moment is its
+ * ring; a post is drawn as the map's own post mark, and opens as one.
+ */
+export function explorePins(items: ExploreItem[]): Pin[] {
   const pins: Pin[] = [];
-  for (const m of moments)
-    if (!m.no_location && finite(m.latitude) && finite(m.longitude))
-      pins.push({ key: `explore:${m.id}`, type: 'explore', moment: m, point: { latitude: m.latitude, longitude: m.longitude } });
+  for (const it of items) {
+    if (it.type === 'moment') {
+      const m = it.moment;
+      if (!m.no_location && finite(m.latitude) && finite(m.longitude))
+        pins.push({ key: `explore:${m.id}`, type: 'explore', moment: m, point: { latitude: m.latitude, longitude: m.longitude } });
+      continue;
+    }
+    const p = it.post as unknown as Record<string, unknown>;
+    const lat = p.effective_latitude ?? p.latitude,
+      lng = p.effective_longitude ?? p.longitude;
+    const latitude = typeof lat === 'string' ? Number(lat) : lat,
+      longitude = typeof lng === 'string' ? Number(lng) : lng;
+    if (finite(latitude) && finite(longitude))
+      pins.push({
+        key: `mark:${it.post.id}`,
+        type: 'mark',
+        mark: { id: it.post.id, latitude, longitude, heads_up: false, post: it.post },
+        point: { latitude, longitude },
+      });
+  }
   return pins.sort((a, b) => a.point.longitude - b.point.longitude || a.key.localeCompare(b.key));
 }
