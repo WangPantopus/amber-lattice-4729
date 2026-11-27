@@ -148,9 +148,12 @@ async function summariesFor(rows, viewerId) {
   return out;
 }
 
-function seasonOf(iso) {
+// Seasons follow the place (LEAD-3 06:53): south of the equator they flip.
+const FLIP = { winter: 'summer', spring: 'fall', summer: 'winter', fall: 'spring' };
+function seasonOf(iso, latitude = null) {
   const month = DateTime.fromISO(iso).setZone(ZONE).month;
-  return [12, 1, 2].includes(month) ? 'winter' : month <= 5 ? 'spring' : month <= 8 ? 'summer' : 'fall';
+  const north = [12, 1, 2].includes(month) ? 'winter' : month <= 5 ? 'spring' : month <= 8 ? 'summer' : 'fall';
+  return Number(latitude) < 0 ? FLIP[north] : north;
 }
 
 /** GET /retakes/:id — the Retake (from its start or any frame) as `viewerId` may see it. */
@@ -183,7 +186,7 @@ async function view(id, viewerId) {
         at: row.created_at,
         date_label: DateTime.fromISO(row.created_at).setZone(ZONE).toFormat('LLL d'),
         weather: store.meta(row).stamp_values?.weather?.kind || null,
-        season: seasonOf(row.created_at),
+        season: seasonOf(row.created_at, start.latitude),
         thumb_url: links.get(keyOf(row, 'thumb_key')) || links.get(keyOf(row, 'key')) || null,
         media_url: links.get(keyOf(row, 'key')) || null,
       })),
