@@ -528,8 +528,25 @@ async function itemAnswer(target, item, viewerId) {
 /** GET /play/:id — the post's items and dots for this reader. */
 async function playOf(id, viewerId) {
   const target = await reach(id, viewerId);
-  const map = await playFor([{ id: target.id, items: target.items, own: target.own, open: target.open }], viewerId);
-  return { play: map.get(target.id) || [], dots: dotsFor(target.dots, target.cards) };
+  const [map, stamps] = await Promise.all([
+    playFor([{ id: target.id, items: target.items, own: target.own, open: target.open }], viewerId),
+    stampsOf(target, viewerId),
+  ]);
+  return { play: map.get(target.id) || [], dots: dotsFor(target.dots, target.cards), stamps };
+}
+
+/**
+ * The post's stamps as the reader is shown them (CONTRACT 7b, asked by the web's post page): a Moment's from the reader's
+ * own Moment answer (so a hidden spot's or an unopened relic's stamps stay hidden), a Studio post's as the Place map shows
+ * them; [] for one without any.
+ */
+async function stampsOf(target, viewerId) {
+  if (target.moment) {
+    const [moment] = await momentStore().serializeMoments([target.moment], viewerId, { keptPosts: true });
+    return Array.isArray(moment?.stamps) ? moment.stamps : [];
+  }
+  // eslint-disable-next-line global-require
+  return target.studio ? require('./postStudio').shownOf(target.studio) : [];
 }
 
 /**
