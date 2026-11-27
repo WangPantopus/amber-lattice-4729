@@ -173,6 +173,7 @@ function parseDots(value, { photo = false, media = false, penName = false, thing
     if (seen.has(dot.id)) throw new Error(`dots[${index}]: each dot needs its own id.`);
     seen.add(dot.id);
     if (dot.kind === 'link' && penName) throw new Error("A made-up name can't post a link.");
+    if (dot.kind === 'whisper' && penName) throw new Error("A made-up name can't carry sound: a voice tells who you are.");
     if (dot.kind === 'thing' && !photo) throw new Error(`dots[${index}]: a thing to name needs a photo.`);
     const stored = { ...dot, kind: raw.kind, x: round(dot.x, 4), y: round(dot.y, 4) };
     if (dot.kind === 'thing') {

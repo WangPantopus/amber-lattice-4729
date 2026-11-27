@@ -5,7 +5,7 @@
 // dot. They are media like a Moment's video: stored in the same private bucket, in the Moment's own folder (so the 7-day
 // cleanup, Delete, Delete for good and a deleted account remove them with its picture, and a kept Moment keeps them),
 // handed out as the same short signed links, only while the Moment's picture link is. Speech becomes words on the phone;
-// the server keeps the words and their times as sent, and checks them as typed words are checked.
+// the server keeps the words and their times as sent. Never under a made-up name: a voice tells who someone is.
 
 const media = require('../moments/momentMedia');
 const penName = require('../penName');
@@ -47,8 +47,14 @@ function parseWords(raw, durationMs) {
   });
 }
 
+// A browser's sound must be what it says it is (LEAD-3): WebM starts 1A 45 DF A3, Ogg starts "OggS".
+const MAGIC = { 'audio/webm': Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), 'audio/ogg': Buffer.from('OggS', 'latin1') };
+
 /** The sound's length: read from an MP4-family file, or the app's own measure for the web's formats. */
 function lengthOf(file, type, sentMs) {
+  if (MAGIC[type] && !file.buffer.subarray(0, MAGIC[type].length).equals(MAGIC[type])) {
+    throw invalid('This sound is not the kind of file it says it is.');
+  }
   if (MP4_TYPES.includes(type)) {
     try {
       return media.videoFacts(file.buffer).durationMs;
@@ -72,6 +78,8 @@ async function upload(id, user, file, fields) {
   if (store.momentState(row) === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   const m = store.meta(row);
   if (!['photo', 'video'].includes(m.kind)) throw invalid('Sound goes on a photo or a video.');
+  // No sound under a made-up name (LEAD-3, told to the founder): a person's own voice tells who they are.
+  if (penName.isPenNameRow(row)) throw store.fail(400, 'PEN_NAME_NO_SOUND', "A made-up name can't carry sound: a voice tells who you are.");
   const kind = String(fields.kind || '');
   if (!KINDS.includes(kind)) throw invalid('kind must be voice, place or whisper.');
   if (!file?.buffer?.length) throw invalid('Send the sound as "file".');
@@ -87,10 +95,6 @@ async function upload(id, user, file, fields) {
     throw invalid('Send the id of a whisper dot on this Moment.');
   }
   const words = kind === 'voice' ? parseWords(fields.words, durationMs) : null;
-  if (words?.length && penName.isPenNameRow(row)) {
-    const refusal = await penName.gate.wordsRefusal([words.map((word) => word.w).join(' ')]);
-    if (refusal) throw store.fail(refusal.status, refusal.code, refusal.message);
-  }
   const bucket = await media.privateBucket(m.media?.bucket);
   const key = media.keyFor(media.folderOwner(row), row.id, kind === 'whisper' ? `whisper-${dotId.replace(/[^a-z0-9]/g, '')}` : `sound-${kind}`,
     media.sha256(file.buffer), EXT[type]);
