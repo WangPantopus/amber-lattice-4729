@@ -913,4 +913,31 @@ router.delete('/mentions/:id', async (req, res) => {
   }
 });
 
+// ─── Live beams (CONTRACT 9h) ─────────────────────────────────────────────────
+
+const liveBeams = require('../services/pulse/beams');
+
+const beamsSchema = Joi.object({
+  south: Joi.number().min(-90).max(90).required(),
+  west: Joi.number().min(-180).max(180).required(),
+  north: Joi.number().min(-90).max(90).required(),
+  east: Joi.number().min(-180).max(180).required(),
+  zoom: Joi.number().min(0).max(25),
+});
+
+/** GET /beams — the map's box: where three or more live photos by three or more people all point. */
+router.get('/beams', async (req, res) => {
+  try {
+    const { error, value } = beamsSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'BEAMS_INVALID' });
+    const { zoom: _zoom, ...box } = value;
+    if (box.south >= box.north || box.west >= box.east) {
+      return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'BEAMS_INVALID' });
+    }
+    return res.json(await liveBeams.beamsIn(req.user, box));
+  } catch (error) {
+    return sendError(res, error, 'beams');
+  }
+});
+
 module.exports = router;
