@@ -527,6 +527,8 @@ router.post('/', createLimiter, async (req, res) => {
         }),
         // Guess the spot: the town it is in (for the daily spot), when one was found.
         ...(guess ? { guess: { v: 1, town: labels.area_label && labels.area_label !== momentPlace.FALLBACK_LABEL ? labels.area_label : null } } : {}),
+        // My Atlas (CONTRACT 6e): posted with the switch on, its files are kept for its author (jobs/momentsCleanup).
+        kept: true,
       };
     }
     const { row, created } = await store.insertMoment(draft, id, underPenName ? { userId: req.user.id, pen } : null);
