@@ -51,6 +51,8 @@ import { discardJob, keepJob, pendingJobs, postJob, type Job } from '@/component
 import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
+import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire } from '../play/PlayEdit';
+import type { PlayItem, PlayKind } from '../play/playTypes';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
@@ -164,6 +166,9 @@ export default function Studio({
     [stamps, setStamps] = useState<PlacedStamp[]>([]),
     [picked, setPicked] = useState<StampKind | null>(null),
     [trayOpen, setTrayOpen] = useState(false),
+    // Playable items (phase 2, CONTRACT 7b) and the kind whose form is open in the tray.
+    [play, setPlay] = useState<PlayItem[]>([]),
+    [making, setMaking] = useState<PlayKind | 'dial' | null>(null),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
@@ -670,6 +675,7 @@ export default function Studio({
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
               : {}),
+            ...(play.length && i === 0 && !postKind ? { play: playWire(play) } : {}),
             ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
               ? {
                   elevation: {
@@ -1280,6 +1286,8 @@ export default function Studio({
                 safe={STAMP_SAFE}
               />
             )}
+            {/* Playable items go on Moments for now: a post's picture can't draw them on the web yet (QUESTIONS, 05:55). */}
+            {composing && !postKind && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
           </div>
           {!camera && <div className="st-shade-top" aria-hidden="true" />}
           {!camera && <div className="st-shade-bottom" aria-hidden="true" />}
@@ -1537,13 +1545,24 @@ export default function Studio({
                     )}
                   </div>
                 )}
-                {canGuess && (
-                  <>
-                    <p className="st-tray-head">
-                      <strong>Play</strong>
-                      <span>Things people can touch</span>
-                    </p>
-                    <div className="st-tray-stamps st-tray-play">
+                <p className="st-tray-head">
+                  <strong>Play</strong>
+                  <span>{making ? PLAY_MAKERS.find((m) => m.kind === making)?.label : 'Things people can touch'}</span>
+                </p>
+                {making ? (
+                  <PlayMaker
+                    kind={making}
+                    taken={play}
+                    onAdd={(item) => {
+                      setMaking(null);
+                      if (!item) return;
+                      setPlay([...play, item]);
+                      setTrayOpen(false);
+                    }}
+                  />
+                ) : (
+                  <div className="st-tray-stamps st-tray-play">
+                    {canGuess && (
                       <button
                         type="button"
                         aria-pressed={guessSpot}
@@ -1555,8 +1574,16 @@ export default function Studio({
                         <i aria-hidden="true" />
                         Guess the spot
                       </button>
-                    </div>
-                  </>
+                    )}
+                    {postKind && <p className="st-hint">Polls, boards and the rest go on Moments for now.</p>}
+                    {!postKind && PLAY_MAKERS.map((m) => (
+                      <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
+                        <i aria-hidden="true" />
+                        {m.label}
+                      </button>
+                    ))}
+                    {!postKind && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
+                  </div>
                 )}
               </section>
             </>

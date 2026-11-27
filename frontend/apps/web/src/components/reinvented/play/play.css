@@ -374,3 +374,74 @@
   outline: 3px solid #7dd3fc;
   outline-offset: 2px;
 }
+
+/* The Studio (PlayEdit.tsx): an item placed while composing is its reader card, closed, moved by dragging. */
+.pl-item[data-edit] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pl-preview {
+  pointer-events: none;
+}
+.pl-edit-bar {
+  position: absolute;
+  top: -1.2em;
+  right: -0.6em;
+  display: flex;
+  gap: 0.3em;
+}
+.pl-edit-bar button {
+  display: grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #0f172a;
+  color: #fff;
+  cursor: pointer;
+}
+.pl-edit-bar svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+.pl-maker {
+  display: grid;
+  gap: 10px;
+}
+.pl-field {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.pl-field input,
+.pl-field-row > input:not([type='radio']) {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+}
+.pl-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pl-field-row > input[type='radio'] {
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  accent-color: #0369a1;
+}

@@ -106,7 +106,8 @@ interface CardProps<K extends PlayItem['kind']> {
   send(body: PlayAnswer | null): Promise<boolean>;
 }
 
-function Card({ item, busy, send }: { item: PlayItem; busy: boolean; send(body: PlayAnswer | null): Promise<boolean> }) {
+/** One item's card. The Studio draws it with `open: false` and no results, as a preview of what readers get. */
+export function Card({ item, busy, send }: { item: PlayItem; busy: boolean; send(body: PlayAnswer | null): Promise<boolean> }) {
   switch (item.kind) {
     case 'poll':
       return <Poll item={item} busy={busy} send={send} />;
