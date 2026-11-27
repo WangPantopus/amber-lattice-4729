@@ -215,6 +215,16 @@ async function partPage({ readPosts, moments, posts: postCursor, mark, room }) {
 
 // ─── The list ──────────────────────────────────────────────────────────────
 
+/**
+ * The live Moments of a read and the Moments their authors kept as posts ("Keep this?", CONTRACT 6d), each once: a
+ * kept one is listed after its end too, as a post that stays. A failed read of the kept ones leaves only them out.
+ */
+async function withKept(liveRead, keptRead) {
+  const [live, kept] = await Promise.all([liveRead, keptRead.catch(() => [])]);
+  const seenIds = new Set(live.map((entry) => entry.row.id));
+  return [...live, ...kept.filter((entry) => !seenIds.has(entry.row.id))];
+}
+
 function momentItem(entry, bandIndex = null) {
   return { type: 'moment', key: { at: micros(store.shownAt(entry.row)), id: entry.row.id }, row: entry.row, bandIndex };
 }
@@ -257,7 +267,8 @@ async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'al
     const connectionsRead = store.connectionIds(userId);
     // The Moments are read when the chip shows them, or on the first page to say whether `live` has any.
     const shownRead = shape.moments || firstPage
-      ? connectionsRead.then((ids) => store.shownOfPeople(userId, [String(userId), ...ids]))
+      ? connectionsRead.then((ids) => withKept(store.shownOfPeople(userId, [String(userId), ...ids]),
+        store.shownKept(userId, { people: [String(userId), ...ids] })))
       : Promise.resolve([]);
     const momentsRead = shape.moments ? shownRead : Promise.resolve([]);
     const chipContext = { userId, reach, scopeAccessRead, momentsRead: shownRead };
@@ -292,7 +303,8 @@ async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'al
   const reachM = bands[bands.length - 1].outerM;
   // The Moments are read when the chip shows them, or on the first page to say whether `live` has any.
   const shownRead = shape.moments || firstPage
-    ? store.shownInBox(userId, boxAround(place.latitude, place.longitude, reachM)).then((entries) => entries
+    ? withKept(store.shownInBox(userId, boxAround(place.latitude, place.longitude, reachM)),
+      store.shownKept(userId, { box: boxAround(place.latitude, place.longitude, reachM) })).then((entries) => entries
       .map((entry) => {
         const meters = haversineMeters(place.latitude, place.longitude, entry.point.latitude, entry.point.longitude);
         return Number.isFinite(meters) ? momentItem(entry, bandIndexOf(meters, bands)) : null;
@@ -439,7 +451,7 @@ function cutWhole(whole, moments, bands, limit) {
 /** The Moments among `itemsRead` as GET /api/moments/:id answers them, by id (a failed read leaves them to answer()). */
 function prepare(userId, itemsRead) {
   const read = itemsRead
-    .then((items) => store.serializeMoments(items.map((item) => item.row), userId))
+    .then((items) => store.serializeMoments(items.map((item) => item.row), userId, { keptPosts: true }))
     .then((moments) => new Map(moments.map((moment) => [moment.id, moment])));
   read.catch(() => {});
   return read;
@@ -451,7 +463,7 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
   const rows = items.filter((item) => item.type === 'moment' && !ready.has(item.row.id)).map((item) => item.row);
   const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
   const [moments, chips, stamps] = await Promise.all([
-    rows.length ? store.serializeMoments(rows, userId) : [],
+    rows.length ? store.serializeMoments(rows, userId, { keptPosts: true }) : [],
     chipsRead || null,
     // A post made in the Studio shows its stamps here (CONTRACT 6d); a failed read only leaves them off.
     postStudio.stampsFor(pagePosts).catch(() => new Map()),
@@ -461,7 +473,9 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
   const out = items.map((item) => {
     if (item.type === 'moment') {
       const moment = byId.get(item.row.id);
-      return moment ? { type: 'moment', id: moment.id, band: bandKey(item.bandIndex), moment } : null;
+      if (!moment) return null;
+      // A Moment its author kept as a post is drawn as a post that stays (CONTRACT 6d).
+      return { type: 'moment', id: moment.id, band: bandKey(item.bandIndex), ...(moment.kept ? { kept: true } : {}), moment };
     }
     const { distance_meters: _distance, ...post } = item.post;
     const shown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post;

@@ -531,14 +531,18 @@ function briefOf(row, seen) {
  * counts (`reactionCounts` from reactionCountsFor).
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
-  heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false }) {
+  heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
+  keptPosts = false, keepOffer = false }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
   const state = momentState(row);
   const point = displayedPoint(row);
   // `keptEnded` (My Atlas only): the author's own kept Moment shows its picture to them after it ended too.
-  const showMedia = state === 'live' || (own && state !== 'ended') || (keptEnded && own && keptFilesOf(row));
+  const showMedia = state === 'live' || (own && state !== 'ended') || (keptEnded && own && keptFilesOf(row))
+    // `keptPosts` (the new routes only): a Moment its author kept as a post ("Keep this?", CONTRACT 6d) shows its
+    // picture to the people who may see it after it ended.
+    || (keptPosts && Boolean(m.kept_post_at) && keptFilesOf(row));
   const stored = m.media || null;
   const answer = {
     id: row.id,
@@ -594,6 +598,9 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       editable_until: own ? editableUntil(row) : null,
       // Explore (CONTRACT 6f): on the author's own, whether it is shown there.
       ...(own ? { explore: Boolean(m.explore) } : {}),
+      // "Keep this?" (CONTRACT 6d): on the author's own, whether to ask now; on any Moment, whether it was kept.
+      ...(own ? { keep_offer: Boolean(keepOffer) } : {}),
+      kept: Boolean(m.kept_post_at),
       // The author's own, while they may still edit it: every kind's kept value, so an edit offers the whole tray.
       stamp_choices: own && editableUntil(row)
         ? momentStamps.choicesOf(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) })
@@ -656,12 +663,13 @@ function keptFilesOf(row) {
  * Full Moments for `viewerId` (each row already checked visible), in the given order. `keptEnded` (My Atlas only, the
  * author's own list): their kept Moments that ended keep their pictures for them.
  */
-async function serializeMoments(rows, viewerId, { keptEnded = false } = {}) {
+async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false } = {}) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   await markOwn(rows, viewerId);
   const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
-  const linked = rows.filter((r) => momentState(r) !== 'ended' || (keptEnded && isOwn(r, viewerId) && keptFilesOf(r)));
+  const linked = rows.filter((r) => momentState(r) !== 'ended' || (keptEnded && isOwn(r, viewerId) && keptFilesOf(r))
+    || (keptPosts && Boolean(meta(r).kept_post_at) && keptFilesOf(r)));
   const [authors, marks, links, counts, heights, reinvented] = await Promise.all([
     authorsFor(rows),
     viewerMarks(viewerId, ids),
@@ -670,9 +678,12 @@ async function serializeMoments(rows, viewerId, { keptEnded = false } = {}) {
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses] = reinvented
-    ? await Promise.all([signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId)])
-    : [new Map(), new Map()];
+  const [signals, guesses, offers] = reinvented
+    ? await Promise.all([
+      signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
+      keepOffers(rows.filter((r) => isOwn(r, viewerId))),
+    ])
+    : [new Map(), new Map(), new Set()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -686,7 +697,86 @@ async function serializeMoments(rows, viewerId, { keptEnded = false } = {}) {
     signalCounts: signals.get(row.id) || null,
     guess: guesses.get(row.id) || null,
     keptEnded,
+    keptPosts,
+    keepOffer: offers.has(row.id),
   }));
+}
+
+// "Keep this?" (CONTRACT 6d): asked once, in a Moment's last two hours.
+const KEEP_OFFER_MS = 2 * HOUR_MS;
+
+/** Whether "Keep this?" may be asked about the author's own Moment now, before looking for replies. */
+function keepOfferable(row, now = Date.now()) {
+  const m = meta(row);
+  return momentState(row, now) === 'live' && !penName.isPenNameRow(row) && !m.kept_post_at && !m.keep_answered_at
+    && Date.parse(row.story_expires_at) - now <= KEEP_OFFER_MS;
+}
+
+/** The ids among the author's own `rows` that "Keep this?" asks about now: offerable, with at least one reply. */
+async function keepOffers(rows) {
+  const candidates = rows.filter((row) => keepOfferable(row));
+  if (!candidates.length) return new Set();
+  const replied = await repliedMoments(candidates);
+  return new Set(candidates.filter((row) => replied.has(row.id)).map((row) => row.id));
+}
+
+/**
+ * Which of these Moments someone other than their author replied to (a reply is a chat message naming it, in the
+ * replier's direct chat with the author: momentChat.replyToMoment). Read narrowly: only the authors' own chats
+ * (ChatParticipant by user), and only messages written since the earliest of these Moments went out, so the chat
+ * table's (room_id, created_at) index serves it however many messages it holds.
+ */
+async function repliedMoments(rows) {
+  if (!rows.length) return new Set();
+  const authors = new Map(rows.map((row) => [row.id, String(row.user_id)]));
+  const since = new Date(Math.min(...rows.map((row) => Date.parse(row.created_at)))).toISOString();
+  const rooms = (await readInBatches([...new Set(authors.values())], (batch) => supabaseAdmin.from('ChatParticipant')
+    .select('room_id').in('user_id', batch).limit(5000), 'chats')).map((row) => row.room_id);
+  if (!rooms.length) return new Set();
+  const ids = rows.map((row) => row.id);
+  const found = new Set();
+  for (const batch of chunks([...new Set(rooms)])) {
+    const { data, error } = await supabaseAdmin.from('ChatMessage').select('user_id, moment_id:metadata->moment->>id')
+      .in('room_id', batch).gte('created_at', since).eq('deleted', false)
+      .in('metadata->moment->>id', ids).limit(1000);
+    if (error) throw new Error(`Failed to load replies: ${error.message}`);
+    for (const message of data || []) {
+      if (String(message.user_id) !== authors.get(message.moment_id)) found.add(message.moment_id);
+    }
+  }
+  return found;
+}
+
+/**
+ * Moments their authors kept as posts ("Keep this?") that `viewerId` may see, live or ended, as [{ row, point }]: in
+ * a box (their shown point inside it) or by these people. The same rules as the map and the rings decide.
+ */
+async function shownKept(viewerId, { box = null, people = null } = {}) {
+  let query = supabaseAdmin.from('Post').select(MOMENT_SELECT)
+    .eq('is_story', true)
+    .is('archived_at', null)
+    .eq('moderation_state', 'live')
+    .not('post_metadata->moment->>kept_post_at', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(MAX_MAP_ROWS);
+  if (box) {
+    query = query.gte('latitude', box.south - MAX_DISPLAY_OFFSET_DEGREES).lte('latitude', box.north + MAX_DISPLAY_OFFSET_DEGREES)
+      .gte('longitude', box.west - MAX_DISPLAY_OFFSET_DEGREES).lte('longitude', box.east + MAX_DISPLAY_OFFSET_DEGREES);
+  }
+  if (people) {
+    if (!people.length) return [];
+    query = query.in('user_id', people.slice(0, 1000));
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to load kept Moments: ${error.message}`);
+  const rows = data || [];
+  if (!rows.length) return [];
+  const [ctx, reported] = await Promise.all([
+    viewerContext(viewerId, rows.map((r) => r.user_id), null, rows), reportedIds(viewerId)]);
+  return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id) && listedFor(row, viewerId))
+    .map((row) => ({ row, point: displayedPoint(row) }))
+    .filter(({ point }) => !box || (point.latitude != null && point.latitude >= box.south && point.latitude <= box.north
+      && point.longitude >= box.west && point.longitude <= box.east));
 }
 
 /**
@@ -1416,4 +1506,6 @@ module.exports = {
   authorKey, isOwn, markOwn, authorsFor, ownMoment, listedFor,
   // Pulse, reinvented's list (services/pulse/list.js).
   shownInBox, shownOfPeople, MAX_MAP_SPAN_DEGREES,
+  // "Keep this?" (services/pulse/keep.js, list.js).
+  shownKept, keepOfferable, repliedMoments,
 };
