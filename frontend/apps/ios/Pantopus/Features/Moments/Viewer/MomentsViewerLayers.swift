@@ -79,13 +79,18 @@ struct MomentLayersOverlay: View {
     @State private var flags = PulseReinventedFlags.shared
 
     var body: some View {
-        // Clear underneath so the layers always have the picture's size (the stamps draw nothing without stamps).
-        ZStack {
-            Color.clear
-            MomentStampsOverlay(moment: moment, picture: picture)
-            if flags.isOn, moment.kind != .text, !moment.layers.dots.isEmpty {
-                MomentDotsOverlay(moment: moment, picture: picture)
+        if flags.isOn {
+            // Clear underneath so the layers always have the picture's size (the stamps draw nothing without stamps).
+            ZStack {
+                Color.clear
+                MomentStampsOverlay(moment: moment, picture: picture)
+                if moment.kind != .text, !moment.layers.dots.isEmpty {
+                    MomentDotsOverlay(moment: moment, picture: picture)
+                }
             }
+        } else {
+            // With the switch off: exactly today's overlay.
+            MomentStampsOverlay(moment: moment, picture: picture)
         }
     }
 }
