@@ -141,6 +141,8 @@ export default function MomentViewer(props: Props) {
   const halt =
     paused || holding || typing || hidden || !!sheet || busy || mediaFailed || !!note || !!(moment && props.studio?.holds(moment, account));
   const present = !!moment && (moment.kind === 'text' || ready) && !mediaFailed;
+  // A loop (only with `studio`): its span repeats, muted, for as long as a photo shows.
+  const loop = !!moment && moment.kind === 'video' && !!props.studio?.loops?.(moment);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000);
@@ -170,7 +172,7 @@ export default function MomentViewer(props: Props) {
     else void v.play().catch(() => setPaused(true));
   }, [halt, moment?.id, moment?.kind, ready, mediaFailed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!present || halt || moment?.kind === 'video' || moment?.state !== 'live') return;
+    if (!present || halt || (moment?.kind === 'video' && !loop) || moment?.state !== 'live') return;
     let last = performance.now();
     const timer = setInterval(() => {
       const at = performance.now();
@@ -183,7 +185,7 @@ export default function MomentViewer(props: Props) {
       }
     }, 70);
     return () => clearInterval(timer);
-  }, [present, halt, step, moment?.kind, moment?.state]);
+  }, [present, halt, step, moment?.kind, moment?.state, loop]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
@@ -302,14 +304,14 @@ export default function MomentViewer(props: Props) {
                 src={moment.media_url}
                 poster={moment.poster_url || undefined}
                 playsInline
-                muted={muted}
+                muted={muted || loop}
                 preload="auto"
                 onLoadedData={() => setReady(true)}
                 onError={() => setMediaFailed(true)}
-                onEnded={() => step(1)}
+                onEnded={loop ? undefined : () => step(1)}
                 onTimeUpdate={(e) => {
                   const v = e.currentTarget;
-                  if (v.duration > 0) setProgress(v.currentTime / v.duration);
+                  if (!loop && v.duration > 0) setProgress(v.currentTime / v.duration);
                 }}
               />
             ) : (
@@ -480,7 +482,7 @@ export default function MomentViewer(props: Props) {
                 </button>
               </form>
             )}
-            {moment.kind === 'video' && (
+            {moment.kind === 'video' && !loop && (
               <button aria-label={muted ? 'Turn sound on' : 'Mute video'} onClick={() => setMuted((v) => !v)}>
                 {muted ? <VolumeX /> : <Volume2 />}
               </button>

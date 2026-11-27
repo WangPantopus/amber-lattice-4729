@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { paintMedia, paintOverlay, type Artwork, type Stroke, type XY } from '@/components/moments/momentArtwork';
+import { useSpanLoop, type LoopSpan } from '../loop/loop';
 
 export type StudioTool = 'text' | 'draw' | 'resize' | null;
 /** Draw's brushes (design, the Studio's rail: "Draw: brush, highlighter, arrow, eyedropper, eraser"). */
@@ -73,6 +74,7 @@ export default function StudioPicture({
   onBeforeStrokes,
   fill = true,
   onPicture,
+  loop = null,
 }: {
   file: File;
   art: Artwork;
@@ -91,6 +93,8 @@ export default function StudioPicture({
   fill?: boolean;
   /** The picture as it loaded (a video once its first frame is in), for reading its colours. */
   onPicture?(el: HTMLImageElement | HTMLVideoElement, width: number, height: number): void;
+  /** A loop (CONTRACT 7j): the video plays only this part, over and over, as the new viewers will. */
+  loop?: LoopSpan | null;
 }) {
   const [url, setUrl] = useState(''),
     [unreadable, setUnreadable] = useState(false),
@@ -109,6 +113,9 @@ export default function StudioPicture({
     setUnreadable(false);
     return () => URL.revokeObjectURL(u);
   }, [file]);
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  useEffect(() => setVideo(media.current instanceof HTMLVideoElement ? media.current : null), [url]);
+  useSpanLoop(loop ? video : null, loop);
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d');
     if (ctx) {
