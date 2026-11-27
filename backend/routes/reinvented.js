@@ -323,8 +323,10 @@ router.get('/field-guide', async (req, res) => {
 // ─── The person's own Pantopus AI switch (CONTRACT 7d) ──────────────────────
 
 const aiSetting = require('../services/pulse/aiSetting');
-// `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". Send either or both.
-const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean(), strands: Joi.boolean() }).or('pantopus_ai', 'strands');
+// `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". `echoes` (9e): 'off', 'on' or 'names'.
+// Send any of them.
+const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean(), strands: Joi.boolean(), echoes: Joi.string().valid('off', 'on', 'names') })
+  .or('pantopus_ai', 'strands', 'echoes');
 
 /** GET /settings — { pantopus_ai, strands }: the person's own switches, each on unless they turned it off. */
 router.get('/settings', async (req, res) => {
@@ -347,6 +349,11 @@ router.patch('/settings', async (req, res) => {
     if (value.strands !== undefined) {
       logger.info('reinvented.strands_set', { on: value.strands });
       await aiSetting.setStrands(req.user.id, value.strands);
+    }
+    if (value.echoes !== undefined) {
+      logger.info('reinvented.echoes_set', { level: value.echoes });
+      // eslint-disable-next-line global-require
+      await require('../services/pulse/echoes').setLevel(req.user.id, value.echoes);
     }
     return res.json(await aiSetting.settingsOf(req.user.id));
   } catch (error) {
@@ -761,6 +768,19 @@ router.post('/atlas/search', searchLimiter, async (req, res) => {
     res.json(await search.atlasSearch(req.user.id, { q: value.q, cursor: value.cursor || null }));
   } catch (error) {
     sendError(res, error, 'atlas_search');
+  }
+});
+
+// ─── Echoes and curiosity twins (CONTRACT 9e) ────────────────────────────────
+
+const echoes = require('../services/pulse/echoes');
+
+/** GET /echoes — the reader's own echoes of today and their twins, only when they take part (opt-in). */
+router.get('/echoes', async (req, res) => {
+  try {
+    res.json(await echoes.echoesFor(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'echoes');
   }
 });
 
