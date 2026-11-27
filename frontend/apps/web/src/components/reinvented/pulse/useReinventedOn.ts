@@ -35,11 +35,13 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
       // Storage refused (private window): the server's answer still decides each time.
     }
     const csrf = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]+)`))?.[1];
-    const value = known ? keptValue(csrf ? decodeURIComponent(csrf) : null) : null;
+    // While the server is behind, the cookie is left out too, so /app/feed's server render is today's Pulse (no flash of
+    // the new one before it falls back); it comes back once the server answers.
+    const value = known && !behind ? keptValue(csrf ? decodeURIComponent(csrf) : null) : null;
     document.cookie = value
       ? `${KEPT_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`
       : `${KEPT_COOKIE}=; path=/; max-age=0; samesite=lax`;
-  }, [account, known]);
+  }, [account, known, behind]);
   if (behind) return false;
   if (known !== undefined) return known;
   if (keptOnServer) return true;
