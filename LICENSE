@@ -1,0 +1,68 @@
+Pantopus Source-Available License (View Only)
+
+Copyright (c) 2026 Pantopus, Inc. All rights reserved.
+
+This repository and everything in it, including source code, compiled code,
+designs, images, text, data and documentation (together, the "Software"),
+belongs to Pantopus, Inc. ("Pantopus"), except the third-party components
+described in section 5. The Software is published for viewing only. It is not
+open source, and no license is granted except as this file states.
+
+1. What you may do
+
+   You may view the Software on GitHub. While the repository is public on
+   GitHub, GitHub's Terms of Service let GitHub users view it and fork it
+   within GitHub. Nothing in this license takes away a right those terms
+   require, and this license grants nothing beyond them.
+
+2. What you may not do
+
+   Unless Pantopus has given you permission in writing, you may not, in whole
+   or in part:
+
+   a. copy, download, clone or store the Software outside GitHub, except the
+      temporary copies your browser or device makes while you view it;
+   b. modify, adapt or translate the Software, or make works based on it;
+   c. distribute, publish, sublicense, sell, rent or lend the Software, or
+      otherwise make it available to anyone;
+   d. run, deploy or host the Software, use it in any product or service,
+      commercial or not, or use it to build a product or service that
+      competes with Pantopus;
+   e. use the Software to train, fine-tune or evaluate machine-learning or
+      artificial-intelligence models, or add it to any dataset; or
+   f. remove or change any copyright, license or other notice in it.
+
+3. Names and marks
+
+   This license grants no right to use the name "Pantopus" or any Pantopus
+   logo, trademark or trade dress.
+
+4. Ending permission
+
+   If you break this license, any permission you had under it ends at once.
+   Using the Software in a way this license does not allow infringes
+   Pantopus's copyright.
+
+5. Third-party components
+
+   Some parts of the Software were made by others and carry their own
+   licenses, for example fonts under the SIL Open Font License and the Gradle
+   wrapper under the Apache License 2.0. Those parts stay under their own
+   licenses, and this license does not limit the rights those licenses give.
+   Any other license name attached to Pantopus's own code, such as a "license"
+   field in a package manifest, does not apply; this license does.
+
+6. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE AND NON-INFRINGEMENT. TO THE EXTENT THE LAW ALLOWS,
+   PANTOPUS WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY
+   ARISING FROM THE SOFTWARE OR ITS USE.
+
+7. The Pantopus apps and services
+
+   This license covers this repository only. Use of the Pantopus apps,
+   website and services is governed by the Pantopus Terms of Service.
+
+To ask for permission, write to privacy@pantopus.com.
