@@ -134,4 +134,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, shownOf, stampsFor, stampsInBox, withStamps, EXPLORE_TYPES };
