@@ -228,15 +228,21 @@ async function stampsPreview(userId, at, labels, atHome, weather) {
  * and the pin stays where it was taken: no pin is ever farther from the photo than a place may be picked. With no
  * place named (the one at the spot itself) "that" is the shorter distance from before November 17, 2026
  * (pickWithinM's `picked: false`), so that pin moves no farther than it did.
+ *
+ * `floatAway` (a Moment under a made-up name): away from home with no place picked, it floats over its area too, never
+ * where it was taken (founder 2026-11-27; docs/product/made-up-names/README.md, Moments, "It floats").
  */
-async function skyPlacement(userId, body) {
+async function skyPlacement(userId, body, { floatAway = false } = {}) {
   const { latitude, longitude } = body.location;
   // A home read that fails counts as at home: the Moment floats and keeps no height, so a failure never shows where its
   // author lives (the post still succeeds).
   const atHome = await momentPlace.isAtHome(userId, latitude, longitude, { onFailure: true });
-  if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
   const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
-  if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
+  const picked = body.pin === 'place' || Boolean(body.venue_id) || Boolean(venueKey);
+  if (atHome || body.show_area || (floatAway && !picked)) {
+    return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
+  }
+  if (!picked) return { atHome, venue: null, area: null };
   const within = await momentPlace.pickWithinM(latitude, longitude, { picked: Boolean(body.venue_id || venueKey) });
   let venue = null;
   if (body.venue_id) {
@@ -404,7 +410,7 @@ router.post('/', createLimiter, async (req, res) => {
       ? momentSchedule.shareAtFor(body.share_later, Date.now(),
         await momentSchedule.zoneFor(req.user.id, body.location.latitude, body.location.longitude))
       : null;
-    const placed = sky ? await skyPlacement(req.user.id, body) : null;
+    const placed = sky ? await skyPlacement(req.user.id, body, { floatAway: underPenName }) : null;
     // A venue picked in the place picker moves the pin to it and names it; found again here by its id near the pin.
     const venue = sky ? placed.venue : body.venue_id && !body.show_area
       ? await momentPlace.venueNear(body.venue_id, body.location.latitude, body.location.longitude)
