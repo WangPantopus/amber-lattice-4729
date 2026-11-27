@@ -45,7 +45,7 @@ struct MomentsComposeRequest: Identifiable {
     let id = UUID()
     let model: MomentsComposerModel
     /// "Pulse, reinvented" was on for the person when + was tapped: the Studio (`MomentsStudioComposer`) opens, and
-    /// stays until it closes. Off, today's composer.
+    /// stays while the switch stays on (`MomentsComposerChoice`). Off, today's composer.
     var studio = false
 }
 
@@ -93,11 +93,7 @@ public struct MomentsTabRoot: View {
             )
         }
         .fullScreenCover(item: $composing) { request in
-            if request.studio {
-                MomentsStudioComposer(model: request.model) { composing = nil }
-            } else {
-                MomentsComposer(model: request.model) { composing = nil }
-            }
+            MomentsComposerChoice(request: request) { composing = nil }
         }
         .onChange(of: flags.moments) { _, isOn in
             // Moments switched off: nothing of Moments is left open (the bar drops this tab).
