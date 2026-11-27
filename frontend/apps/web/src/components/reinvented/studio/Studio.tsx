@@ -209,6 +209,8 @@ export default function Studio({
     [deckNote, setDeckNote] = useState(false),
     // Mentions (§7h): the connections picked after "@" in the words, and where the caret is in which field.
     [mentioned, setMentioned] = useState<Mentioned[]>([]),
+    // Replies everyone can see (§8a): null keeps the server's default (on for Friends, off for Nearby).
+    [repliesShown, setRepliesShown] = useState<boolean | null>(null),
     [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -821,6 +823,7 @@ export default function Studio({
               : (caption.trim() || (canSound && voiceRec && voiceWords.trim())) && i === 0
                 ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
+            ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
               ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
               : {}),
@@ -1072,6 +1075,7 @@ export default function Studio({
   // Something would be lost by going back: a picture, words on it or a drawing, a caption, the words of a card.
   const unsaved = mode === 'media' ? !!file : mode === 'text' && (!!text.trim() || stamps.length > 0);
   function backToStart() {
+    setRepliesShown(null);
     setDiscarding(false);
     setAskedPost(false);
     setTool(null);
@@ -1390,6 +1394,23 @@ export default function Studio({
               Also show in Explore
             </label>
             <p className="st-note">People anywhere can see this, with its place.</p>
+          </div>
+        )}
+        {!postKind && !underPenName && (
+          <div className="st-group" role="group" aria-label="Replies">
+            <label className="st-check">
+              <input
+                type="checkbox"
+                checked={repliesShown ?? (noPlace || audience === 'connections')}
+                onChange={(e) => setRepliesShown(e.target.checked)}
+              />
+              Replies everyone can see
+            </label>
+            <p className="st-note">
+              {repliesShown ?? (noPlace || audience === 'connections')
+                ? 'People who see this Moment can read and add replies under it. You can hide them later.'
+                : 'Replies come to you privately, in your messages.'}
+            </p>
           </div>
         )}
         {deckOffered && (
