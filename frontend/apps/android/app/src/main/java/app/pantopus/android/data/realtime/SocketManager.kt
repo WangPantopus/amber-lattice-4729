@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import timber.log.Timber
@@ -419,7 +421,9 @@ class SocketManager
             staleToken: String?,
             generation: Long,
         ) {
-            when (val outcome = authRepository.get().refreshTokens()) {
+            // Going to the background cancels this job. A refresh already sent must still save its answer, or the
+            // server holds a rotated token the app never kept; the checks below decide what to do with the result.
+            when (val outcome = withContext(NonCancellable) { authRepository.get().refreshTokens() }) {
                 is AuthRepository.RefreshOutcome.Rotated -> {
                     val shouldReconnect =
                         synchronized(stateLock) {

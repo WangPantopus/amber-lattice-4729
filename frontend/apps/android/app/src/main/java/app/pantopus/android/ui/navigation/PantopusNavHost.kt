@@ -39,6 +39,7 @@ import app.pantopus.android.ui.screens.profile.NamePromptHost
 import app.pantopus.android.ui.screens.root.ProvideScrollAwayHeaders
 import app.pantopus.android.ui.screens.root.RootTabScreen
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 /** Mirrors iOS `auth.welcomeBackToast`; present only while the toast is up. */
@@ -89,20 +90,22 @@ fun PantopusNavHost(viewModel: RootViewModel = hiltViewModel()) {
         // into DeepLinkRouter so RootTabScreen consumers navigate.
         val signedIn = authState as? AuthRepository.State.SignedIn
         if (signedIn != null && prev !is AuthRepository.State.SignedIn) {
+            // Taking the parked link and opening it is one step: this effect restarts when the signed-in profile
+            // changes, and a restart between the two would lose the link.
+            val parked =
+                withContext(NonCancellable) {
+                    PendingDeepLinkStore.takeAsync(userId = signedIn.user.id)?.also { DeepLinkRouter.handle(it) }
+                }
+            // After the take: a link stashed during launch asks for the login screen from the storage lane.
             DeepLinkRouter.acknowledgeLoginPresentation()
-            val parked = PendingDeepLinkStore.takeAsync(userId = signedIn.user.id)
-            if (parked != null) {
-                withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle(parked) }
-            } else if (prev is AuthRepository.State.SignedOut || prev is AuthRepository.State.Resumable) {
+            if (parked == null && (prev is AuthRepository.State.SignedOut || prev is AuthRepository.State.Resumable)) {
                 // Signing in or up (not a session restored at launch) may also open a household invitation emailed
                 // to this address before it had an account, else a plan invitation.
                 val homeInvite = viewModel.unopenedHomeInvite()
                 if (homeInvite != null) {
-                    withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle("/invite/$homeInvite") }
+                    DeepLinkRouter.handle("/invite/$homeInvite")
                 } else {
-                    viewModel.unopenedPlanInvite()?.let { planId ->
-                        withContext(PendingDeepLinkStore.ioDispatcher) { DeepLinkRouter.handle("/plans/$planId") }
-                    }
+                    viewModel.unopenedPlanInvite()?.let { planId -> DeepLinkRouter.handle("/plans/$planId") }
                 }
             }
         }
