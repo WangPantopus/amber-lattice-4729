@@ -591,6 +591,10 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       stamps: momentStamps.shownStamps(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) }),
       edited_at: m.edited_at || null,
       editable_until: own ? editableUntil(row) : null,
+      // The author's own, while they may still edit it: every kind's kept value, so an edit offers the whole tray.
+      stamp_choices: own && editableUntil(row)
+        ? momentStamps.choicesOf(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) })
+        : null,
       // The five signals: the viewer's own reaction as a signal, and the author's counts by signal.
       my_signal: own ? null : mySignal,
       signal_counts: own ? signalCounts || [] : null,

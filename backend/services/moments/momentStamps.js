@@ -251,6 +251,17 @@ function shownStamps(moment, guard) {
   }).filter(Boolean);
 }
 
+/**
+ * The kept value of every kind, for the author's own Moment while it may still be edited (`stamp_choices`, CONTRACT
+ * 3): an edit may place any of them. Null for a kind with no value (and every kind of a Moment posted with the switch
+ * off, which kept none).
+ */
+function choicesOf(moment, guard) {
+  const out = {};
+  for (const kind of KINDS) out[kind] = valueOf(kind, moment?.stamp_values, guard);
+  return out;
+}
+
 /** The tray's values before posting (POST /place-preview `stamps: true`): each kind's value as a post now would keep it. */
 function previewOf(values, guard) {
   const out = {};
@@ -259,6 +270,6 @@ function previewOf(values, guard) {
 }
 
 module.exports = {
-  KINDS, MIN_HOME_MILES, parsePlacements, parseReading, parseStudio, valuesFor, valueOf, shownStamps, previewOf,
+  KINDS, MIN_HOME_MILES, choicesOf, parsePlacements, parseReading, parseStudio, valuesFor, valueOf, shownStamps, previewOf,
   sunsetStamp, sunsetMs, homeMileBand, HOME_MILE_BANDS, takenMs,
 };
