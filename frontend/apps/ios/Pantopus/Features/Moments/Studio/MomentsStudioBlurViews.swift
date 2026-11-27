@@ -15,7 +15,8 @@ struct MomentsStudioBlurOffer: View {
     let open: () -> Void
 
     var body: some View {
-        if let state = model.studioBlur, state.blurred == nil, !state.searching, !state.spots.isEmpty {
+        // Only for what the phone found (a box drawn by hand was the person's own choice already).
+        if let state = model.studioBlur, state.blurred == nil, !state.searching, state.spots.contains(where: { $0.kind != .hand }) {
             Button(action: open) {
                 HStack(spacing: Spacing.s2) {
                     Icon(.eyeOff, size: 16, strokeWidth: 2.2, color: .white)
@@ -100,6 +101,7 @@ struct MomentsStudioBlurSheet: View {
                 .opacity(model.studioBlur?.spots.contains(where: \.blur) ?? false ? 1 : 0.5)
                 .accessibilityIdentifier("moments.studio.blur.apply")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s5)
             .padding(.bottom, Spacing.s4)

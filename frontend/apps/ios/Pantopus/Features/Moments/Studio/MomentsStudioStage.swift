@@ -58,6 +58,9 @@ struct MomentsStudioStage: View {
                 closeButton
                 Spacer(minLength: Spacing.s2)
                 MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate, openBlur: openBlur)
+                    // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
+                    .opacity(blurByHand ? 0 : 1)
+                    .allowsHitTesting(!blurByHand)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
