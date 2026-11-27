@@ -8,6 +8,7 @@ import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.location.LocationProvider
@@ -56,6 +57,11 @@ class ReinventedPulseViewModel
         /** What a card's tap left to say ("Saved."), for a few seconds. */
         val toast: StateFlow<String?> = _toast.asStateFlow()
 
+        private val _strip = MutableStateFlow<ReinventedStripResponse?>(null)
+
+        /** Alive right now, over the list; read only after the list's first page ([readStrip]). */
+        val strip: StateFlow<ReinventedStripResponse?> = _strip.asStateFlow()
+
         private val _firstPage = MutableStateFlow(false)
 
         /** The list's first page has arrived: the strip and the map's marks may be read now. */
@@ -89,8 +95,17 @@ class ReinventedPulseViewModel
             reading = viewModelScope.launch { read(cursor = null) }
         }
 
-        /** The next page, as the end of what shows nears. */
+        /** The next page, as the end of what shows nears (in Explore, only when "Keep exploring?" is tapped). */
         fun loadMore() {
+            val now = _state.value
+            if (now.reach == EXPLORE && now.pause != null) return
+            loadNext()
+        }
+
+        /** "Keep exploring?": Explore's next page. */
+        fun keepExploring() = loadNext()
+
+        private fun loadNext() {
             val now = _state.value
             val cursor = now.cursor ?: return
             if (now.loadingMore || now.load != ReinventedPulseState.Load.Loaded || reading?.isActive == true) return
@@ -111,8 +126,27 @@ class ReinventedPulseViewModel
         ) {
             val now = _state.value
             if (reach == now.reach && miles == now.miles) return
-            _state.update { it.copy(reach = reach, miles = miles, chip = ALL) }
+            // Another reach is another list: it starts empty, so nothing of the last one shows under the new pill.
+            _state.update {
+                it.copy(
+                    reach = reach,
+                    miles = miles,
+                    chip = ALL,
+                    items = emptyList(),
+                    cursor = null,
+                    end = null,
+                    pause = null,
+                )
+            }
             refresh()
+        }
+
+        /** Alive right now (CONTRACT 6c), around the same place as the list; an answer that fails keeps the last one. */
+        fun readStrip() {
+            viewModelScope.launch {
+                val answer = repository.strip(here) as? NetworkResult.Success ?: return@launch
+                _strip.value = answer.data
+            }
         }
 
         /** A Moment of the list or the strip plays in today's viewer; the screen then opens the viewer's route. */
@@ -131,6 +165,7 @@ class ReinventedPulseViewModel
             // A tap made while this read is out keeps its value over what the read brings.
             val revision = cards.actionRevision
             if (here == null) here = place()
+            if (start.reach == EXPLORE) return readExplore(cursor, revision)
             val answer =
                 repository.list(
                     reach = start.reach,
@@ -141,6 +176,49 @@ class ReinventedPulseViewModel
                 )
             when (answer) {
                 is NetworkResult.Success -> show(answer.data, appending = cursor != null, revision = revision)
+                is NetworkResult.Failure ->
+                    _state.update {
+                        it.copy(
+                            loadingMore = false,
+                            refreshing = false,
+                            load = if (it.items.isEmpty()) ReinventedPulseState.Load.Failed(FAILED) else it.load,
+                        )
+                    }
+            }
+        }
+
+        /** Explore (CONTRACT 6f): the picked ten on the first page, then newest with variety, pausing at "Keep exploring?". */
+        private suspend fun readExplore(
+            cursor: String?,
+            revision: Int,
+        ) {
+            when (val answer = repository.explore(here, cursor)) {
+                is NetworkResult.Success -> {
+                    val page = answer.data
+                    val keep = { item: ReinventedListItemDto ->
+                        (item.type == MOMENT && item.moment != null) || (item.type == POST && item.post != null)
+                    }
+                    val picked = page.picked.filter(keep)
+                    val fresh = picked + page.items.filter(keep)
+                    val appending = cursor != null
+                    val items = if (appending) (_state.value.items + fresh).distinctBy { it.type + it.id } else fresh
+                    _state.update { now ->
+                        now.copy(
+                            items = items,
+                            bands = emptyList(),
+                            chips = listOf(ALL),
+                            pickedCount = if (appending) now.pickedCount else picked.size,
+                            cursor = page.nextCursor,
+                            end = if (page.nextCursor == null) EXPLORE_END else null,
+                            pause = page.pause,
+                            loadingMore = false,
+                            refreshing = false,
+                            load = ReinventedPulseState.Load.Loaded,
+                        )
+                    }
+                    cards.show(items.mapNotNull { it.post }, readRevision = revision)
+                    _firstPage.value = true
+                }
                 is NetworkResult.Failure ->
                     _state.update {
                         it.copy(
@@ -168,6 +246,8 @@ class ReinventedPulseViewModel
                     placeLabel = if (appending) now.placeLabel else page.place?.label,
                     cursor = page.nextCursor,
                     end = page.end,
+                    pause = null,
+                    pickedCount = 0,
                     loadingMore = false,
                     refreshing = false,
                     load =
@@ -191,6 +271,8 @@ class ReinventedPulseViewModel
         companion object {
             const val AROUND = "around"
             const val CLOSE = "close"
+            const val EXPLORE = "explore"
+            private const val EXPLORE_END = "That's everything for now."
             const val ALL = "all"
             const val MOMENT = "moment"
             const val POST = "post"
@@ -216,7 +298,17 @@ data class ReinventedPulseState(
     val loadingMore: Boolean = false,
     /** Pulled down to read again, with the list still on screen. */
     val refreshing: Boolean = false,
+    /** Explore: how many of the first items are "Today, elsewhere". */
+    val pickedCount: Int = 0,
+    /** Explore pauses here ("Keep exploring?") until the person asks for more. */
+    val pause: String? = null,
 ) {
+    /** Explore has more and waits for "Keep exploring?". */
+    val pausedForMore: Boolean
+        get() = inExplorePause && cursor != null && !loadingMore
+
+    private val inExplorePause: Boolean get() = reach == ReinventedPulseViewModel.EXPLORE && pause != null
+
     sealed interface Load {
         data object Loading : Load
 
