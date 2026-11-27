@@ -3,6 +3,7 @@ package app.pantopus.android.data.moments
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentLooks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksPainter
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
@@ -35,9 +36,11 @@ object MomentMarksFlatten {
         marks: MomentMarks,
         placement: MomentPlacement? = null,
     ): File {
+        // "Pulse, reinvented"'s Studio: the film look over the photo as it came (the same bitmap with none).
+        val looked = MomentLooks.applied(picture, marks.look)
         val drawn =
             if (placement == null) {
-                picture.copy(Bitmap.Config.ARGB_8888, true) ?: error("Couldn't copy the photo.")
+                looked.copy(Bitmap.Config.ARGB_8888, true) ?: error("Couldn't copy the photo.")
             } else {
                 Bitmap.createBitmap(MomentPlacement.CANVAS_WIDTH, MomentPlacement.CANVAS_HEIGHT, Bitmap.Config.ARGB_8888)
             }
@@ -48,12 +51,13 @@ object MomentMarksFlatten {
             val width = drawn.width.toFloat()
             val height = drawn.height.toFloat()
             if (placement != null) {
-                MomentPlacementPainter.draw(canvas, picture, placement, MomentPlacementPainter.backdrop(picture), width, height)
+                MomentPlacementPainter.draw(canvas, looked, placement, MomentPlacementPainter.backdrop(looked), width, height)
             }
             MomentMarksPainter.draw(canvas, marks, width, height)
             written = FileOutputStream(out).use { drawn.compress(Bitmap.CompressFormat.JPEG, QUALITY, it) }
         } finally {
             drawn.recycle()
+            if (looked !== picture) looked.recycle()
             // Half a file never stays behind.
             if (!written) out.delete()
         }

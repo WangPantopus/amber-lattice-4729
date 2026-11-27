@@ -110,6 +110,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacedStill
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
+import app.pantopus.android.ui.screens.moments.compose.marks.rememberLooked
 import app.pantopus.android.ui.screens.moments.studio.MomentsStudioStep
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
 import app.pantopus.android.ui.theme.PantopusColors
@@ -254,6 +255,10 @@ fun MomentsComposeScreen(
                         onMadeUp = viewModel::setMadeUp,
                         onStamps = viewModel::setStamps,
                         onGuess = viewModel::setGuess,
+                        onLook = viewModel::setLook,
+                        onPhotostrip = viewModel::photostrip,
+                        onTrayOpen = viewModel::readLookPicture,
+                        lookPicture = viewModel.marksPicture,
                     )
                 } else {
                     ReviewStep(
@@ -280,7 +285,8 @@ fun MomentsComposeScreen(
         state.marking?.let { editing ->
             val picture by viewModel.marksPicture.collectAsStateWithLifecycle()
             MomentsMarksEditor(
-                picture = picture,
+                // "Pulse, reinvented": the Studio's film look shows over the photo (none in today's composer).
+                picture = rememberLooked(picture, editing.marks.look),
                 editing = editing,
                 onEdit = viewModel::editMarks,
                 onClose = viewModel::closeMarks,
