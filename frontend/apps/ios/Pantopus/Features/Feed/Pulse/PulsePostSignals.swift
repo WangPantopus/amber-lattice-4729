@@ -15,8 +15,8 @@ import UIKit
 
 /// A post's signals as the server sent them: each chosen signal's count, most first (ties in the order offered), and
 /// the reader's own.
-struct PostSignals: Sendable, Hashable {
-    struct Count: Sendable, Hashable {
+struct PostSignals: Hashable {
+    struct Count: Hashable {
         let signal: MomentSignal
         let count: Int
     }
@@ -93,10 +93,9 @@ struct PostSignals: Sendable, Hashable {
         let order = MomentSignal.allCases
         return byKind.filter { $0.value > 0 }
             .map { Count(signal: $0.key, count: $0.value) }
-            .sorted {
-                $0.count == $1.count
-                    ? (order.firstIndex(of: $0.signal) ?? 0) < (order.firstIndex(of: $1.signal) ?? 0)
-                    : $0.count > $1.count
+            .sorted { first, second in
+                if first.count != second.count { return first.count > second.count }
+                return (order.firstIndex(of: first.signal) ?? 0) < (order.firstIndex(of: second.signal) ?? 0)
             }
     }
 }
