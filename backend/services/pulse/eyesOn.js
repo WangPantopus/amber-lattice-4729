@@ -79,11 +79,20 @@ async function openAsks({ box = null, ids = null }) {
 async function answerCounts(askIds) {
   const counts = new Map(askIds.map((id) => [id, 0]));
   if (!askIds.length) return counts;
-  const { data, error } = await supabaseAdmin.from('Post').select('post_metadata->moment->>eyes_on_for')
+  const { data, error } = await supabaseAdmin.from('Post')
+    .select('eyes_on_for:post_metadata->moment->>eyes_on_for, seal:post_metadata->moment->seal, guess:post_metadata->moment->guess, story_expires_at')
     .eq('is_story', true).in('post_metadata->moment->>eyes_on_for', askIds).is('archived_at', null).eq('moderation_state', 'live')
     .limit(2000);
   if (error) throw new Error(`Failed to count answers: ${error.message}`);
+  // eslint-disable-next-line global-require
+  const { isSealed } = require('./seal');
+  // eslint-disable-next-line global-require
+  const { hasEnded } = require('../moments/momentStore');
   for (const row of data || []) {
+    // An unopened relic (8g) and a live guess the spot (5b) are counted nowhere until they open or end.
+    const asRow = { post_metadata: { moment: { seal: row.seal || undefined } }, story_expires_at: row.story_expires_at };
+    if (row.seal && isSealed(asRow)) continue;
+    if (row.guess && !hasEnded(asRow)) continue;
     const id = row.eyes_on_for;
     if (counts.has(id)) counts.set(id, counts.get(id) + 1);
   }
