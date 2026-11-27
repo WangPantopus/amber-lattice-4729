@@ -632,19 +632,20 @@ router.get('/map', async (req, res) => {
     const box = parseBody(mapSchema, req.query);
     if (box.south >= box.north || box.west >= box.east) throw store.fail(400, 'MOMENT_INVALID', 'Send a map area with south < north and west < east.');
     // `unplaced`: connections' Moments with no location (and the caller's own), for the row of faces, whatever the box.
-    const [rings, unplaced, heights, float, sky] = await Promise.all([
-      store.mapRings(req.user.id, box), store.unplacedRings(req.user.id), store.heightsOn(req.user), store.floatOn(req.user),
-      store.skyOn(req.user),
-    ]);
-    const answer = { rings, unplaced, heights_on: heights, float_on: float };
     // Guess the spot (Pulse, reinvented; CONTRACT 5d): the live guess-the-spot Moments in view, with no point, only for
-    // a reader with the switch on. A failed read leaves them out; the map still answers.
-    if (await store.reinventedOn(req.user)) {
-      answer.guess_spots = await momentGuess.guessSpotsIn(req.user.id, box).catch((error) => {
+    // a reader with the switch on, read alongside the rings. A failed read leaves them out; the map still answers.
+    const guessSpots = async () => ((await store.reinventedOn(req.user))
+      ? momentGuess.guessSpotsIn(req.user.id, box).catch((error) => {
         logger.warn('moments.guess_spots_failed', { error: error.message });
         return [];
-      });
-    }
+      })
+      : undefined);
+    const [rings, unplaced, heights, float, sky, spots] = await Promise.all([
+      store.mapRings(req.user.id, box), store.unplacedRings(req.user.id), store.heightsOn(req.user), store.floatOn(req.user),
+      store.skyOn(req.user), guessSpots(),
+    ]);
+    const answer = { rings, unplaced, heights_on: heights, float_on: float };
+    if (spots) answer.guess_spots = spots;
     // The Sky (share later): the caller's own Moments waiting for their time, for their own row ("Shares at 6:40 pm"),
     // soonest first. Never anyone else's, never on the map; only while the Sky is on for the caller.
     if (sky) {

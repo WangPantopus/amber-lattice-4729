@@ -10,6 +10,7 @@ const { createHash } = require('node:crypto');
 const { DateTime } = require('luxon');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const { haversineMeters } = require('../../utils/trustState');
+const { MAX_DISPLAY_OFFSET_DEGREES } = require('../../utils/locationPrivacy');
 const { timezoneFromCoordinates } = require('../../utils/timezone');
 
 const FEET_PER_M = 3.28084;
@@ -102,8 +103,31 @@ const GRID_STEP = 0.1;
 const FALLBACK_ZONE = 'America/Los_Angeles';
 const MAX_CANDIDATES = 500;
 
+const cellOf = (degrees) => Math.round(degrees / GRID_STEP);
+
 function gridKey(latitude, longitude) {
-  return `g:${Math.round(latitude / GRID_STEP)}:${Math.round(longitude / GRID_STEP)}`;
+  return `g:${cellOf(latitude)}:${cellOf(longitude)}`;
+}
+
+/**
+ * The box grown out to the edges of the 0.1° cells it touches (the cells gridKey names). The map lists a spot when its
+ * shown point's cell overlaps the box, so the list is the same anywhere inside a cell: zooming in to a few streets, or
+ * halving the box again and again, never says more than the cell about where it is.
+ */
+function cellBox({ south, west, north, east }) {
+  return {
+    south: (cellOf(south) - 0.5) * GRID_STEP,
+    north: (cellOf(north) + 0.5) * GRID_STEP,
+    west: (cellOf(west) - 0.5) * GRID_STEP,
+    east: (cellOf(east) + 0.5) * GRID_STEP,
+  };
+}
+
+/** Whether a point's 0.1° cell overlaps the box (compared cell by cell, as gridKey counts them). */
+function cellOverlaps(point, { south, west, north, east }) {
+  const lat = cellOf(point.latitude);
+  const lng = cellOf(point.longitude);
+  return lat >= cellOf(south) && lat <= cellOf(north) && lng >= cellOf(west) && lng <= cellOf(east);
 }
 
 /** The town a guess-the-spot Moment counts in: its kept town's label, else its point's cell. Null with no point. */
@@ -147,10 +171,13 @@ async function dailyPick(townKey, day) {
   if (townKey.startsWith('t:')) {
     query = query.eq('post_metadata->moment->guess->>town', townKey.slice(2));
   } else {
+    // The stored point, widened by what a shown point may move from it; the cell is checked on the shown point below.
     const [, latKey, lngKey] = townKey.split(':').map(Number);
     query = query.is('post_metadata->moment->guess->>town', null)
-      .gte('latitude', (latKey - 0.5) * GRID_STEP).lt('latitude', (latKey + 0.5) * GRID_STEP)
-      .gte('longitude', (lngKey - 0.5) * GRID_STEP).lt('longitude', (lngKey + 0.5) * GRID_STEP);
+      .gte('latitude', (latKey - 0.5) * GRID_STEP - MAX_DISPLAY_OFFSET_DEGREES)
+      .lt('latitude', (latKey + 0.5) * GRID_STEP + MAX_DISPLAY_OFFSET_DEGREES)
+      .gte('longitude', (lngKey - 0.5) * GRID_STEP - MAX_DISPLAY_OFFSET_DEGREES)
+      .lt('longitude', (lngKey + 0.5) * GRID_STEP + MAX_DISPLAY_OFFSET_DEGREES);
   }
   const { data, error } = await query;
   if (error) throw new Error(`Failed to load guess-the-spot Moments: ${error.message}`);
@@ -187,14 +214,16 @@ async function dailySpotFor(viewerId, latitude, longitude) {
 }
 
 /**
- * The map's `guess_spots` for `viewerId` in the box (CONTRACT 5d): the live guess-the-spot Moments there they may see
- * and didn't write, newest first, with no point: [{ moment_id, author, kind, thumb_url, created_at, expires_at,
- * guessed, daily }]. A small picture that can't be signed only costs the picture.
+ * The map's `guess_spots` for `viewerId` in the box (CONTRACT 5d): the live guess-the-spot Moments whose 0.1° cell
+ * overlaps it (cellBox) that they may see and didn't write, newest first, with no point: [{ moment_id, author, kind,
+ * thumb_url, created_at, expires_at, guessed, daily }]. A small picture that can't be signed only costs the picture.
  */
-async function guessSpotsIn(viewerId, { south, west, north, east }) {
+async function guessSpotsIn(viewerId, box) {
   const store = require('./momentStore');
   const media = require('./momentMedia');
   const nowIso = new Date().toISOString();
+  // The stored points, in the cells the box touches widened by what a shown point may move from its stored one.
+  const { south, west, north, east } = cellBox(box);
   const { data, error } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT)
     .eq('is_story', true)
     .gt('story_expires_at', nowIso)
@@ -202,8 +231,8 @@ async function guessSpotsIn(viewerId, { south, west, north, east }) {
     .eq('moderation_state', 'live')
     .eq('post_metadata->moment->>state', 'live')
     .not('post_metadata->moment->guess', 'is', null)
-    .gte('latitude', south - 0.05).lte('latitude', north + 0.05)
-    .gte('longitude', west - 0.05).lte('longitude', east + 0.05)
+    .gte('latitude', south - MAX_DISPLAY_OFFSET_DEGREES).lte('latitude', north + MAX_DISPLAY_OFFSET_DEGREES)
+    .gte('longitude', west - MAX_DISPLAY_OFFSET_DEGREES).lte('longitude', east + MAX_DISPLAY_OFFSET_DEGREES)
     .order('created_at', { ascending: false })
     .limit(MAX_CANDIDATES);
   if (error) throw new Error(`Failed to load guess-the-spot Moments: ${error.message}`);
@@ -216,7 +245,7 @@ async function guessSpotsIn(viewerId, { south, west, north, east }) {
   const shown = rows.filter((row) => {
     if (store.isOwn(row, viewerId) || !store.canSee(row, ctx) || reported.has(row.id)) return false;
     const point = store.displayedPoint(row);
-    return point.latitude >= south && point.latitude <= north && point.longitude >= west && point.longitude <= east;
+    return point.latitude != null && cellOverlaps(point, box);
   });
   if (!shown.length) return [];
   // Each town's daily spot, worked out the same way GET /daily-spot does it, for the towns in view.
