@@ -60,6 +60,8 @@ internal fun ReinventedPulseHeader(
     onPickReach: (String, Int) -> Unit,
     time: String,
     onPickTime: (String) -> Unit,
+    atlas: Boolean = false,
+    onAtlas: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var showsDial by rememberSaveable { mutableStateOf(false) }
@@ -82,7 +84,9 @@ internal fun ReinventedPulseHeader(
             ScopePill(state, onClick = { showsDial = true }, modifier = Modifier.weight(1f))
             Floating(!onList) { MessagesButton(testTag = "reinventedPulse.chat") }
         }
-        ViewSwitch(height, onHeight)
+        ViewSwitch(height, atlas, onHeight, onAtlas)
+        // My Atlas has no chips and no time row.
+        if (atlas) return@Column
         if (height == ReinventedHeight.Map) {
             ReinventedTimeRow(time, onPickTime)
         } else if (state.chips.size > 1 && state.reach != ReinventedPulseViewModel.EXPLORE) {
@@ -166,7 +170,9 @@ internal fun scopeTitle(state: ReinventedPulseState): String =
 @Composable
 private fun ViewSwitch(
     height: ReinventedHeight,
+    atlas: Boolean,
     onHeight: (ReinventedHeight) -> Unit,
+    onAtlas: (Boolean) -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
     Row(
@@ -180,8 +186,19 @@ private fun ViewSwitch(
                 .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        SwitchButton("List", PantopusIcon.List, on = height != ReinventedHeight.Map) { onHeight(ReinventedHeight.List) }
-        SwitchButton("Map", PantopusIcon.Map, on = height == ReinventedHeight.Map) { onHeight(ReinventedHeight.Map) }
+        SwitchButton("List", PantopusIcon.List, on = !atlas && height != ReinventedHeight.Map) {
+            onAtlas(false)
+            onHeight(ReinventedHeight.List)
+        }
+        SwitchButton("Map", PantopusIcon.Map, on = !atlas && height == ReinventedHeight.Map) {
+            onAtlas(false)
+            onHeight(ReinventedHeight.Map)
+        }
+        // My Atlas: the person's own kept Moments in the list's place, and on the map.
+        SwitchButton("Atlas", PantopusIcon.Layers, on = atlas) {
+            onAtlas(true)
+            if (height == ReinventedHeight.Map) onHeight(ReinventedHeight.Middle)
+        }
     }
 }
 

@@ -56,6 +56,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -105,6 +106,7 @@ fun ReinventedPulseScreen(
     scrollToTop: Flow<Unit>? = null,
     viewModel: ReinventedPulseViewModel = hiltViewModel(),
     mapModel: ReinventedMapViewModel = hiltViewModel(),
+    atlasModel: ReinventedAtlasViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val cards by viewModel.cards.cards.collectAsStateWithLifecycle()
@@ -121,7 +123,14 @@ fun ReinventedPulseScreen(
     }
     val nowMs = rememberMinuteClock()
     val watch = remember(viewModel, actions) { ReinventedWatch(viewModel, actions.onWatch) }
-    val list: @Composable (Modifier) -> Unit = { modifier ->
+    var atlas by rememberSaveable { mutableStateOf(false) }
+    val atlasState by atlasModel.state.collectAsStateWithLifecycle()
+    val atlasHook = rememberAtlasHook(atlas, atlasState, atlasModel) { atlas = it }
+    val list: @Composable (Modifier) -> Unit = ReinventedPulseScreenList@{ modifier ->
+        if (atlas) {
+            ReinventedAtlasList(atlasState, atlasModel::openMoment, atlasModel::loadMore, atlasModel::retry, modifier)
+            return@ReinventedPulseScreenList
+        }
         ReinventedListPane(
             pane = ReinventedPane(state, cards, nowMs, listState),
             viewModel = viewModel,
@@ -142,9 +151,11 @@ fun ReinventedPulseScreen(
         mapModel = mapModel,
         onOpenMoment = watch::moment,
         onOpenRing = watch::ring,
+        atlas = atlasHook,
         list = list,
     )
     ReinventedCardSheets(viewModel.cards, cards, actions.onQuotePost)
+    ReinventedAtlasItem(atlasState, atlasModel::close, atlasModel::askDelete, atlasModel::keep, atlasModel::deleteForGood)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         ReinventedToast(toast, onDismiss = viewModel::dismissToast)
     }
@@ -173,6 +184,34 @@ private fun ReadsInOrder(
             viewModel.readStrip()
         }
     }
+}
+
+/** My Atlas's hook: entering it reads its first page and the kept Moments in the box the map already shows. */
+@Composable
+private fun rememberAtlasHook(
+    on: Boolean,
+    state: ReinventedAtlasState,
+    model: ReinventedAtlasViewModel,
+    onToggle: (Boolean) -> Unit,
+): ReinventedAtlasHook {
+    var lastBox by remember { mutableStateOf<ReinventedBox?>(null) }
+    val pins = remember(state.onMap) { state.onMap.mapNotNull { it.asKeptPin() } }
+    return ReinventedAtlasHook(
+        on = on,
+        pins = pins,
+        onToggle = { now ->
+            onToggle(now)
+            if (now) {
+                model.open()
+                lastBox?.let(model::moved)
+            }
+        },
+        onMoved = { box ->
+            lastBox = box
+            if (on) model.moved(box)
+        },
+        onOpen = model::openMoment,
+    )
 }
 
 /** The time now, a minute at a time, for each Moment's time left. */
@@ -278,9 +317,12 @@ private fun ReinventedPulseLayout(
     mapModel: ReinventedMapViewModel,
     onOpenMoment: (MomentDto) -> Unit,
     onOpenRing: (MomentRingDto) -> Unit,
+    atlas: ReinventedAtlasHook,
     list: @Composable (Modifier) -> Unit,
 ) {
-    val mapState by mapModel.state.collectAsStateWithLifecycle()
+    val pulseMap by mapModel.state.collectAsStateWithLifecycle()
+    // In My Atlas the map's pins are the person's own kept Moments.
+    val mapState = if (atlas.on) pulseMap.copy(items = atlas.pins, deck = atlas.pins) else pulseMap
     val flight by mapModel.flight.collectAsStateWithLifecycle()
     val camera = rememberReinventedCamera()
     // A card swiped to, or a place tapped in the list: the map glides there.
@@ -311,8 +353,11 @@ private fun ReinventedPulseLayout(
             camera = camera,
             focused = mapState.focused.takeIf { height == ReinventedHeight.Map },
             bottomPadding = if (height == ReinventedHeight.Map) PEEK else full - rest,
-            onMoved = mapModel::moved,
-            onOpen = { item -> openMapItem(item, actions, onOpenMoment, onOpenRing) },
+            onMoved = { box ->
+                atlas.onMoved(box)
+                if (!atlas.on) mapModel.moved(box)
+            },
+            onOpen = { item -> openPin(item, atlas, actions, onOpenMoment, onOpenRing) },
         )
         Panel(
             top = top,
@@ -336,13 +381,15 @@ private fun ReinventedPulseLayout(
             onPickReach = onPickReach,
             time = mapState.time,
             onPickTime = mapModel::pickTime,
+            atlas = atlas.on,
+            onAtlas = atlas.onToggle,
             modifier = Modifier.onSizeChanged { headerPx = it.height },
         )
         if (height == ReinventedHeight.Map) {
             ReinventedPeekDeck(
                 deck = mapState.deck,
                 onFocus = mapModel::focus,
-                onOpen = { item -> openMapItem(item, actions, onOpenMoment, onOpenRing) },
+                onOpen = { item -> openPin(item, atlas, actions, onOpenMoment, onOpenRing) },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = PEEK + Spacing.s2),
             )
         } else {
@@ -429,6 +476,17 @@ private fun restOf(
         ReinventedHeight.Middle -> header + full / 3
         ReinventedHeight.Map -> full - PEEK
     }
+
+/** A pin in My Atlas opens its kept Moment there; elsewhere as [openMapItem]. */
+private fun openPin(
+    item: ReinventedMapItem,
+    atlas: ReinventedAtlasHook,
+    actions: ReinventedPulseActions,
+    onOpenMoment: (MomentDto) -> Unit,
+    onOpenRing: (MomentRingDto) -> Unit,
+) {
+    if (atlas.on && item is ReinventedMapItem.Kept) atlas.onOpen(item.kept.moment) else openMapItem(item, actions, onOpenMoment, onOpenRing)
+}
 
 /** A pin on the map: a ring plays its Moments, a mark opens its post, a kept Moment plays, a ticket opens its plan. */
 private fun openMapItem(
