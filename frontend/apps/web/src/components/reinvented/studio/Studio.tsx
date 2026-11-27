@@ -130,6 +130,7 @@ export default function Studio({
   onClose,
   onDone,
   onSwitchedOff,
+  retakeOf = null,
 }: {
   account: string;
   draft?: MomentChatDraft | null;
@@ -137,6 +138,8 @@ export default function Studio({
   onDone(msg: string): void;
   /** The server said the switch is off for this person (CONTRACT §1): today's composer takes over with these words. */
   onSwitchedOff?(words: MomentChatDraft): void;
+  /** Adding a frame to a Retake (CONTRACT 8e): its first picture shows as a ghost to line up with. */
+  retakeOf?: { id: string; title: string; ghost: string | null } | null;
 }) {
   const wide = useWide();
   const [files, setFiles] = useState<File[]>([]),
@@ -211,6 +214,10 @@ export default function Studio({
     [mentioned, setMentioned] = useState<Mentioned[]>([]),
     // Replies everyone can see (§8a): null keeps the server's default (on for Friends, off for Nearby).
     [repliesShown, setRepliesShown] = useState<boolean | null>(null),
+    // Starting a Retake (§8e): a title makes this photo the first of one; and the ghost while adding a frame.
+    [retakeTitle, setRetakeTitle] = useState(''),
+    [startRetake, setStartRetake] = useState(false),
+    [ghostOn, setGhostOn] = useState(true),
     [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -460,7 +467,8 @@ export default function Studio({
   const isVideo = !!file && (file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.name));
   // A post is one photo or the words. Under a made-up name a post is words only, of its own four kinds, to people
   // nearby (made-up-names contract; LEAD-2 03:03), so there the Studio offers those for the words.
-  const kindsOffered = underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text';
+  const kindsOffered =
+    !retakeOf && (underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
   // Playable items and dots go on a Moment, or on a Pulse post with its one photo (the new Pulse draws them over it,
@@ -558,6 +566,9 @@ export default function Studio({
       el?.setSelectionRange(next.caret, next.caret);
     });
   }
+  // A Retake starts on one photo Moment with its exact place (not the area, not without one), under one's own name.
+  const retakeOffered = !retakeOf && mode === 'media' && !!file && !isVideo && files.length === 1 && !underPenName && !noPlace && !area && !postKind;
+  const retakeOut = retakeOf ? { retake_of: retakeOf.id } : retakeOffered && startRetake && retakeTitle.trim() ? { retake: { title: retakeTitle.trim().slice(0, 60) } } : {};
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
@@ -824,6 +835,7 @@ export default function Studio({
                 ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
             ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
+            ...(i === 0 ? retakeOut : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
               ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
               : {}),
@@ -1413,6 +1425,25 @@ export default function Studio({
             </p>
           </div>
         )}
+        {retakeOffered && (
+          <div className="st-group" role="group" aria-label="Retake">
+            <label className="st-check">
+              <input type="checkbox" checked={startRetake} onChange={(e) => setStartRetake(e.target.checked)} />
+              Start a Retake
+            </label>
+            <p className="st-note">Others who stand here later add their own picture of this same view. It stays.</p>
+            {startRetake && (
+              <input
+                className="st-retake-title"
+                value={retakeTitle}
+                maxLength={60}
+                onChange={(e) => setRetakeTitle(e.target.value)}
+                placeholder="Its name, like The cedar bench"
+                aria-label="The Retake’s name"
+              />
+            )}
+          </div>
+        )}
         {deckOffered && (
           <div className="st-group" role="group" aria-label="Steps">
             <label className="st-check">
@@ -1544,6 +1575,10 @@ export default function Studio({
                 )}
               </div>
             ) : null}
+            {retakeOf?.ghost && ghostOn && (
+              // eslint-disable-next-line @next/next/no-img-element -- the Retake's first picture, to line up with
+              <img className="st-ghost" src={retakeOf.ghost} alt="" aria-hidden="true" />
+            )}
             {composing && kept.length > 0 && (
               <StampLayer
                 stamps={kept}
@@ -1583,6 +1618,11 @@ export default function Studio({
 
           {!camera && (
             <div className="st-top">
+              {retakeOf && (
+                <button type="button" className="st-retake-banner" aria-pressed={ghostOn} onClick={() => setGhostOn(!ghostOn)}>
+                  Adding to “{retakeOf.title}” · {ghostOn ? 'Hide the first picture' : 'Show the first picture'}
+                </button>
+              )}
               <button
                 type="button"
                 className="st-round"
