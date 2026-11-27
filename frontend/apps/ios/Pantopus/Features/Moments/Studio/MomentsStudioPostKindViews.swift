@@ -71,7 +71,7 @@ struct MomentsStudioKindRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Keep it a Moment, not a \(kind.name.lowercased())")
+            .accessibilityLabel("Keep it a Moment instead")
             .accessibilityIdentifier("moments.studio.kind.clear")
         }
         .padding(.leading, 12)
