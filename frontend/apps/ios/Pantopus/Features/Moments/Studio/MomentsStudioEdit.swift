@@ -8,7 +8,8 @@
 //  Studio on it: the picture as posted (it can't change, so no Text, Draw or
 //  Resize), its stamps to move, size, turn, add or take off, the caption, and
 //  Nearby or Friends. "Save" sends only what changed. Nobody is told, and
-//  nothing marks it as edited for others.
+//  nothing marks it as edited for others. A text card opens the same way,
+//  drawn as the card: its stamps and who sees it (a card has no caption).
 //
 
 import SwiftUI
@@ -48,7 +49,7 @@ final class MomentsStudioEditModel {
 
     /// Edit is offered on one's own photo or video Moment while the switch is on and its window holds.
     static func offers(_ moment: MomentDTO?, mine: Bool, now: Date = Date()) -> Bool {
-        guard mine, PulseReinventedFlags.shared.isOn, let moment, moment.kind != .text,
+        guard mine, PulseReinventedFlags.shared.isOn, let moment,
               let until = moment.editableUntil.flatMap(MomentTime.parse) else { return false }
         return until > now
     }
@@ -198,7 +199,12 @@ struct MomentsStudioEdit: View {
             let startScale = min(max(Double(full.width / max(frame.width, 1)), 0.25), 4)
             ZStack {
                 Color.black
-                if let picture {
+                if model.moment.kind == .text {
+                    // The card as posted; its stamps sit on the card, as the viewer draws them.
+                    MomentsTextCard(text: model.moment.text ?? "", background: model.moment.background)
+                        .frame(width: full.width, height: full.height)
+                        .accessibilityLabel("Your card, as posted")
+                } else if let picture {
                     Image(uiImage: picture)
                         .resizable()
                         .scaledToFill()
@@ -279,19 +285,8 @@ struct MomentsStudioEdit: View {
 
     private func lower(safeBottom: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
-            TextField("", text: $model.caption, prompt: Text("Add a caption").foregroundColor(.white.opacity(0.7)), axis: .vertical)
-                .scaledFont(22, weight: .bold)
-                .foregroundStyle(.white)
-                .tint(.white)
-                .lineLimit(1...3)
-                .focused($writing)
-                .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
-                .onChange(of: model.caption) { _, text in
-                    if text.count > 100 { model.caption = String(text.prefix(100)) }
-                }
-                .accessibilityLabel("Caption")
-                .accessibilityIdentifier("moments.edit.caption")
-                .padding(.horizontal, Spacing.s4)
+            // A text card has no caption (CONTRACT 3): its words are the card.
+            if model.moment.kind != .text { captionField }
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(model.problem ?? model.windowLine(at: context.date))
@@ -317,6 +312,22 @@ struct MomentsStudioEdit: View {
                     .fill(Color.black.opacity(0.78))
             )
         }
+    }
+
+    private var captionField: some View {
+        TextField("", text: $model.caption, prompt: Text("Add a caption").foregroundColor(.white.opacity(0.7)), axis: .vertical)
+            .scaledFont(22, weight: .bold)
+            .foregroundStyle(.white)
+            .tint(.white)
+            .lineLimit(1...3)
+            .focused($writing)
+            .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
+            .onChange(of: model.caption) { _, text in
+                if text.count > 100 { model.caption = String(text.prefix(100)) }
+            }
+            .accessibilityLabel("Caption")
+            .accessibilityIdentifier("moments.edit.caption")
+            .padding(.horizontal, Spacing.s4)
     }
 
     private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
