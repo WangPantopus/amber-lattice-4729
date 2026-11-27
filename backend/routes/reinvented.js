@@ -583,4 +583,17 @@ router.get('/retakes/:id', async (req, res) => {
   }
 });
 
+// ─── Eyes on (CONTRACT 8f) ──────────────────────────────────────────────────
+
+const eyesOn = require('../services/pulse/eyesOn');
+
+/** POST /eyes-on/near — { latitude, longitude } in the body (never in the address, never kept): open Eyes-on Asks near you. */
+router.post('/eyes-on/near', async (req, res) => {
+  try {
+    res.json(await eyesOn.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'eyes_on');
+  }
+});
+
 module.exports = router;
