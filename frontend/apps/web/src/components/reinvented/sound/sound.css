@@ -89,3 +89,27 @@
     transition: none;
   }
 }
+
+/* Recording in the Studio (SoundPanel.tsx). */
+.sd-panel {
+  display: grid;
+  gap: 10px;
+}
+.sd-rec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.sd-rec .st-chip svg {
+  width: 16px;
+  height: 16px;
+}
+.sd-rec audio {
+  height: 34px;
+  max-width: 220px;
+}
+.sd-recording {
+  background: #b91c1c;
+  color: #fff;
+}

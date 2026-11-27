@@ -6,6 +6,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { get } from '@pantopus/api/client';
+import { RecordButton } from '../sound/SoundPanel';
+import type { Recording } from '../sound/record';
 import './dots.css';
 
 export const MAX_DOTS = 8;
@@ -13,7 +15,7 @@ export const MAX_DOTS = 8;
 /** A dot while composing: any kind's fields, so switching kinds keeps what was typed. */
 export interface DotDraft {
   id: string;
-  kind: 'note' | 'rating' | 'link' | 'thing';
+  kind: 'note' | 'rating' | 'link' | 'thing' | 'whisper';
   x: number;
   y: number;
   text: string;
@@ -22,6 +24,8 @@ export interface DotDraft {
   url: string;
   title: string;
   size: number;
+  /** A whisper's three seconds, sent after the Moment is made (§7e). */
+  audio: Recording | null;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -29,7 +33,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 export function newDot(taken: readonly DotDraft[], x: number, y: number): DotDraft {
   let n = 1;
   while (taken.some((d) => d.id === `dot-${n}`)) n++;
-  return { id: `dot-${n}`, kind: 'note', x, y, text: '', label: '', stars: 4, url: '', title: '', size: 0.24 };
+  return { id: `dot-${n}`, kind: 'note', x, y, text: '', label: '', stars: 4, url: '', title: '', size: 0.24, audio: null };
 }
 
 function thingBox(d: DotDraft) {
@@ -55,6 +59,7 @@ export function dotReady(d: DotDraft): boolean {
   if (d.kind === 'note') return !!d.text.trim();
   if (d.kind === 'rating') return !!d.label.trim() && d.stars >= 1 && d.stars <= 5;
   if (d.kind === 'link') return !!httpsUrl(d.url);
+  if (d.kind === 'whisper') return !!d.audio;
   return true;
 }
 
@@ -62,14 +67,20 @@ export function dotReady(d: DotDraft): boolean {
  * What the server takes (§7c): each ready dot's kind and fields; unfinished ones are left out, and so are kinds this
  * post can't carry (a thing on a video, a link under a made-up name).
  */
-export function dotsWire(drafts: readonly DotDraft[], { things, links }: { things: boolean; links: boolean }): Record<string, unknown>[] {
-  return drafts.filter((d) => dotReady(d) && (things || d.kind !== 'thing') && (links || d.kind !== 'link')).map((d) => {
-    const at = { id: d.id, x: +d.x.toFixed(3), y: +d.y.toFixed(3) };
-    if (d.kind === 'note') return { ...at, kind: 'note', text: d.text.trim() };
-    if (d.kind === 'rating') return { ...at, kind: 'rating', label: d.label.trim(), stars: d.stars };
-    if (d.kind === 'link') return { ...at, kind: 'link', url: httpsUrl(d.url)!, ...(d.title.trim() ? { title: d.title.trim() } : {}) };
-    return { ...at, kind: 'thing', box: thingBox(d), ...(d.label.trim() ? { label: d.label.trim() } : {}) };
-  });
+export function dotsWire(
+  drafts: readonly DotDraft[],
+  { things, links, whispers = false }: { things: boolean; links: boolean; whispers?: boolean },
+): Record<string, unknown>[] {
+  return drafts
+    .filter((d) => dotReady(d) && (things || d.kind !== 'thing') && (links || d.kind !== 'link') && (whispers || d.kind !== 'whisper'))
+    .map((d) => {
+      const at = { id: d.id, x: +d.x.toFixed(3), y: +d.y.toFixed(3) };
+      if (d.kind === 'note') return { ...at, kind: 'note', text: d.text.trim() };
+      if (d.kind === 'rating') return { ...at, kind: 'rating', label: d.label.trim(), stars: d.stars };
+      if (d.kind === 'link') return { ...at, kind: 'link', url: httpsUrl(d.url)!, ...(d.title.trim() ? { title: d.title.trim() } : {}) };
+      if (d.kind === 'whisper') return { ...at, kind: 'whisper' };
+      return { ...at, kind: 'thing', box: thingBox(d), ...(d.label.trim() ? { label: d.label.trim() } : {}) };
+    });
 }
 
 /** The person's own Pantopus AI choice (§7d): a thing to name is offered only while it is on. */
@@ -142,6 +153,7 @@ const KINDS: { kind: DotDraft['kind']; label: string }[] = [
   { kind: 'rating', label: 'Rating' },
   { kind: 'link', label: 'Link' },
   { kind: 'thing', label: 'A thing to name' },
+  { kind: 'whisper', label: 'Whisper' },
 ];
 
 /** The panel for the picked dot: its kind and words, and Remove. */
@@ -150,6 +162,7 @@ export function DotEditPanel({
   count,
   allowLink,
   allowThing,
+  allowWhisper = false,
   onChange,
   onRemove,
   onDone,
@@ -158,6 +171,8 @@ export function DotEditPanel({
   count: number;
   allowLink: boolean;
   allowThing: boolean;
+  /** A three-second voice whisper: a Moment under the author's own name only (§7e). */
+  allowWhisper?: boolean;
   onChange(d: DotDraft): void;
   onRemove(id: string): void;
   onDone(): void;
@@ -172,7 +187,7 @@ export function DotEditPanel({
       ) : (
         <>
           <div className="st-tray-stamps" role="group" aria-label="What the dot holds">
-            {KINDS.filter((k) => (k.kind !== 'link' || allowLink) && (k.kind !== 'thing' || allowThing)).map((k) => (
+            {KINDS.filter((k) => (k.kind !== 'link' || allowLink) && (k.kind !== 'thing' || allowThing) && (k.kind !== 'whisper' || allowWhisper)).map((k) => (
               <button key={k.kind} type="button" aria-pressed={dot.kind === k.kind} onClick={() => set({ kind: k.kind })}>
                 {k.label}
               </button>
@@ -198,6 +213,12 @@ export function DotEditPanel({
               <input className="dt-input" value={dot.url} maxLength={500} placeholder="https://…" aria-label="Link" inputMode="url" onChange={(e) => set({ url: e.target.value })} />
               <input className="dt-input" value={dot.title} maxLength={60} placeholder="Title (optional)" aria-label="Link title" onChange={(e) => set({ title: e.target.value })} />
               {dot.url.trim() && !httpsUrl(dot.url) && <p className="st-hint">Only an https link.</p>}
+            </div>
+          )}
+          {dot.kind === 'whisper' && (
+            <div className="dt-row">
+              <RecordButton kind="whisper" value={dot.audio} onChange={(r) => set({ audio: r })} />
+              <p className="st-hint">A reader hears it when they tap the dot.</p>
             </div>
           )}
           {dot.kind === 'thing' && (
