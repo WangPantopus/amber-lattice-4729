@@ -123,6 +123,8 @@ struct MomentsStudioStage: View {
                 MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.
                 MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
+                // Playable items (phase 2), over the stamps.
+                MomentsStudioPlayLayer(model: model, picture: stampPicture)
                 // Illuminate's dots (phase 2), over the stamps.
                 MomentsStudioDotLayer(model: model, picture: stampPicture, open: openIlluminate)
                 // Blur before posting (phase 2): the spots found, and boxes drawn by hand.
@@ -172,7 +174,7 @@ struct MomentsStudioStage: View {
         .task(id: model.blurKey) { await model.findBlurSpots() }
         .sheet(isPresented: $showsTray) {
             MomentsStudioTray(model: model, stamps: stamps) { showsTray = false }
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)

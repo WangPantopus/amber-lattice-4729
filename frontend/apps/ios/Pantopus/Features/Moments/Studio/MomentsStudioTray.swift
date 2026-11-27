@@ -17,6 +17,20 @@ struct MomentsStudioTray: View {
     let onDone: () -> Void
 
     var body: some View {
+        // Scrolls: phase 2's Play maker can be taller than the sheet.
+        ScrollView {
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s5)
+                .padding(.bottom, Spacing.s4)
+        }
+        .task { if stamps.reading != .read { await stamps.read(model: model) } }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.studio.tray")
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
                 Text("Checked by Pantopus")
@@ -65,13 +79,9 @@ struct MomentsStudioTray: View {
             if model.offersGuess {
                 MomentsStudioGuessRow(model: model)
             }
-            Spacer(minLength: 0)
+            // Phase 2's playable items (`MomentsStudioPlayMaker`).
+            MomentsStudioPlayMaker(model: model, onDone: onDone)
         }
-        .padding(.horizontal, Spacing.s4)
-        .padding(.top, Spacing.s5)
-        .task { if stamps.reading != .read { await stamps.read(model: model) } }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("moments.studio.tray")
     }
 
     private func chip(_ kind: MomentStampKind) -> some View {
