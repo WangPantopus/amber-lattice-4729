@@ -21,12 +21,17 @@ import {
   ChevronDown,
   Clock3,
   Crop,
+  Eraser,
   EyeOff,
+  Highlighter,
   Mic,
   ImagePlus,
   LocateFixed,
   MapPin,
   MessageCircleQuestion,
+  MoveUpRight,
+  PenLine,
+  Pipette,
   Plus,
   RotateCw,
   Type,
@@ -37,7 +42,7 @@ import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/com
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
-import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
+import { blankArt, edited, inks, type Stroke } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import { cutToShape, sideBySide } from './beforeAfter';
@@ -65,7 +70,7 @@ import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
-import StudioPicture, { type StudioTool } from './StudioPicture';
+import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPicture';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
 import {
@@ -184,6 +189,10 @@ export default function Studio({
   const [tool, setTool] = useState<StudioTool>(null),
     [ink, setInk] = useState(inks[0]),
     [pen, setPen] = useState(pens[1]),
+    // Draw's brush, the eyedropper while it waits for a tap, and the lines as they were before each step, for Undo.
+    [brush, setBrush] = useState<StudioBrush>('pen'),
+    [picking, setPicking] = useState(false),
+    [strokesBefore, setStrokesBefore] = useState<Stroke[][]>([]),
     // Up to five colours the picture is mostly made of, beside the six inks (design: "colors sampled from the photo").
     [photoInks, setPhotoInks] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false),
@@ -256,6 +265,18 @@ export default function Studio({
   // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
   const postRequest = useRef<string | null>(null);
   const drawer = drawerOpen || wide;
+  // The eyedropper waits for one tap only while Text or Draw stays open.
+  useEffect(() => setPicking(false), [tool]);
+  // Undo: the lines as they were before the last line or rub; else today's step, the last line off.
+  const undoStroke = () => {
+    if (strokesBefore.length) {
+      setArt({ ...art, strokes: strokesBefore[strokesBefore.length - 1] });
+      setStrokesBefore(strokesBefore.slice(0, -1));
+    } else setArt({ ...art, strokes: art.strokes.slice(0, -1) });
+  };
+  // A colour taken from the picture that is neither an ink nor one of the photo's own: shown as its own swatch.
+  const shownColour = tool === 'draw' ? ink : art.color;
+  const tookColour = !inks.includes(shownColour) && !photoInks.includes(shownColour);
   const handle = useRef<AbortController | null>(null),
     input = useRef<HTMLInputElement>(null),
     drawerRef = useRef<HTMLElement>(null),
@@ -319,6 +340,8 @@ export default function Studio({
     setReading(!!file);
     setArt(blankArt());
     setPhotoInks([]);
+    setStrokesBefore([]);
+    setPicking(false);
     setTool(null);
     setCaption(file ? draftCaption.current : '');
     if (file) draftCaption.current = '';
@@ -1149,6 +1172,7 @@ export default function Studio({
     setIndex(0);
     setCapture(null);
     setArt(blankArt());
+    setStrokesBefore([]);
     setCaption('');
     setText('');
     setMode('none');
@@ -1667,6 +1691,14 @@ export default function Studio({
                 tool={tool}
                 ink={ink}
                 pen={pen}
+                brush={brush}
+                picking={picking}
+                onPick={(c) => {
+                  if (tool === 'draw') setInk(c);
+                  else setArt({ ...art, color: c });
+                  setPicking(false);
+                }}
+                onBeforeStrokes={(before) => setStrokesBefore((list) => [...list.slice(-49), before])}
                 onPicture={
                   showAfter
                     ? undefined
@@ -2045,7 +2077,39 @@ export default function Studio({
                     onClick={() => (tool === 'draw' ? setInk(v) : setArt({ ...art, color: v }))}
                   />
                 ))}
+                {tookColour && (
+                  <button type="button" aria-label="The colour you took from the photo" aria-pressed="true" style={{ background: shownColour }} />
+                )}
+                {mode === 'media' && file && (
+                  <button
+                    type="button"
+                    className="st-dropper"
+                    aria-label="Take a colour from the photo"
+                    aria-pressed={picking}
+                    onClick={() => setPicking(!picking)}
+                  >
+                    <Pipette size={15} aria-hidden="true" />
+                  </button>
+                )}
               </div>
+              )}
+              {picking && <small className="st-hint">Tap the picture to take its colour.</small>}
+              {tool === 'draw' && (
+                <div className="st-pens" role="group" aria-label="Brush">
+                  {(
+                    [
+                      ['pen', 'Pen', PenLine],
+                      ['highlighter', 'Highlighter', Highlighter],
+                      ['arrow', 'Arrow', MoveUpRight],
+                      ['eraser', 'Eraser', Eraser],
+                    ] as const
+                  ).map(([v, label, Icon]) => (
+                    <button type="button" key={v} aria-pressed={v === brush} onClick={() => setBrush(v)}>
+                      <Icon size={15} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               )}
               {tool === 'draw' && (
                 <div className="st-pens">
@@ -2062,8 +2126,8 @@ export default function Studio({
                   ))}
                   <button
                     type="button"
-                    disabled={!art.strokes.length}
-                    onClick={() => setArt({ ...art, strokes: art.strokes.slice(0, -1) })}
+                    disabled={!art.strokes.length && !strokesBefore.length}
+                    onClick={undoStroke}
                   >
                     <Undo2 size={15} aria-hidden="true" />
                     Undo
