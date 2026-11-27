@@ -20,8 +20,11 @@ type PlayMoment = Moment & { play?: PlayItem[] };
 
 /** The viewer holds still while the reader has an item left to answer (the author never: theirs are closed to them). */
 export function holdsForPlay(m: Moment): boolean {
-  return waitingItems((m as PlayMoment).play).length > 0;
+  return waitingItems((m as PlayMoment).play).length > 0 || fogged.has(m.id);
 }
+
+// Moments whose fog the reader hasn't wiped yet: the viewer holds still on them.
+const fogged = new Set<string>();
 
 const pct = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -80,10 +83,29 @@ export default function PlayLayer({ moment, post = false }: { moment: Moment; po
   const account = useMe().data?.id;
   // The author reads the question box's answers and the board's notes, and may remove one (§7b, the author's side).
   const owner = account && moment.author?.id === account ? moment.id : undefined;
+  // A swatch's colour being tried, per item (on this screen only; the picture is never changed).
+  const [trying, setTrying] = useState<Record<string, string | null>>({});
   if (!play.length) return null;
+  const fog = play.find((p) => p.kind === 'fog');
   return (
     <div className="pl-layer">
-      {play.map((item) => (
+      {play.map((item) =>
+        item.kind === 'swatch' && trying[item.id] ? (
+          <span
+            key={`tint-${item.id}`}
+            className="pl-tint"
+            aria-hidden="true"
+            style={{
+              left: `${item.box.x * 100}%`,
+              top: `${item.box.y * 100}%`,
+              width: `${item.box.w * 100}%`,
+              height: `${item.box.h * 100}%`,
+              background: trying[item.id]!,
+            }}
+          />
+        ) : null,
+      )}
+      {play.filter((item) => item.kind !== 'fog').map((item) => (
         <div
           key={item.id}
           className="pl-item"
@@ -101,7 +123,11 @@ export default function PlayLayer({ moment, post = false }: { moment: Moment; po
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <Card item={item} busy={answer.busy === item.id} send={(body) => answer.send(item.id, body)} owner={owner} />
+          {item.kind === 'swatch' ? (
+            <Swatch item={item} trying={trying[item.id] ?? null} onTry={(c) => setTrying({ ...trying, [item.id]: c })} />
+          ) : (
+            <Card item={item} busy={answer.busy === item.id} send={(body) => answer.send(item.id, body)} owner={owner} />
+          )}
           {answer.error?.item === item.id && (
             <p className="pl-error" role="alert">
               {answer.error.text}
@@ -109,6 +135,7 @@ export default function PlayLayer({ moment, post = false }: { moment: Moment; po
           )}
         </div>
       ))}
+      {fog && <Fog momentId={moment.id} />}
     </div>
   );
 }
@@ -155,6 +182,23 @@ export function Card({
       return <Guess item={item} busy={busy} send={send} />;
     case 'countdown':
       return <Countdown item={item} />;
+    case 'quote':
+      return (
+        <figure className="pl-card pl-quote">
+          <blockquote>“{item.text}”</blockquote>
+          {item.source && <figcaption>{item.source}</figcaption>}
+        </figure>
+      );
+    case 'fog':
+      // Only the Studio draws it as a card (the viewer frosts the whole picture instead).
+      return (
+        <div className="pl-card">
+          <p className="pl-q">Fog</p>
+          <p className="pl-foot">The picture opens frosted; readers wipe it clear.</p>
+        </div>
+      );
+    case 'swatch':
+      return <Swatch item={item} trying={null} onTry={() => {}} />;
     default:
       return null;
   }
@@ -590,6 +634,100 @@ function Answers({ postId, item, what }: { postId: string; item: string; what: '
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** A swatch's colours (§7g): tap one to try it over its area, tap again or "Original" to see the picture as it is. */
+function Swatch({ item, trying, onTry }: { item: Extract<PlayItem, { kind: 'swatch' }>; trying: string | null; onTry(c: string | null): void }) {
+  return (
+    <div className="pl-card">
+      <p className="pl-q">Try a colour</p>
+      <div className="pl-swatches" role="group" aria-label="Colours to try">
+        {item.colors.map((c) => (
+          <button key={c} type="button" aria-label={`Try ${c}`} aria-pressed={trying === c} style={{ background: c }} onClick={() => onTry(trying === c ? null : c)} />
+        ))}
+      </div>
+      <p className="pl-foot">
+        {trying ? (
+          <>
+            Trying it on (not the real photo).{' '}
+            <button type="button" className="pl-link" onClick={() => onTry(null)}>
+              Original
+            </button>
+          </>
+        ) : (
+          'The photo stays as it is.'
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Fog (§7g): the picture opens frosted and the reader wipes it clear on their own screen, by dragging (or "Clear it").
+ * Drawn from the picture itself where the page can (a frosted copy over it); otherwise a frosted pane.
+ */
+function Fog({ momentId }: { momentId: string }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const wiped = useRef(0);
+  const [clear, setClear] = useState(false),
+    [touched, setTouched] = useState(false);
+  useEffect(() => {
+    fogged.add(momentId);
+    return () => {
+      fogged.delete(momentId);
+    };
+  }, [momentId]);
+  useEffect(() => {
+    if (clear) fogged.delete(momentId);
+  }, [clear, momentId]);
+  useEffect(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const box = c.getBoundingClientRect();
+    c.width = Math.max(1, Math.round(box.width));
+    c.height = Math.max(1, Math.round(box.height));
+    const ctx = c.getContext('2d')!;
+    // The picture under this layer: the viewer's own <img>, or a Studio post's.
+    const host = c.closest('.sv-stamps, .rp-studio-pic')?.parentElement;
+    const img = host?.querySelector<HTMLImageElement>('img.mo-watch-media, .rp-studio-pic > img') || null;
+    try {
+      if (img && img.complete && img.naturalWidth) {
+        ctx.filter = 'blur(16px)';
+        ctx.drawImage(img, -20, -20, c.width + 40, c.height + 40);
+        ctx.filter = 'none';
+        ctx.fillStyle = 'rgba(236, 242, 247, 0.45)';
+      } else ctx.fillStyle = 'rgba(214, 224, 232, 0.94)';
+    } catch {
+      ctx.fillStyle = 'rgba(214, 224, 232, 0.94)';
+    }
+    ctx.fillRect(0, 0, c.width, c.height);
+  }, []);
+  function wipe(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.buttons === 0 && e.type === 'pointermove') return;
+    const c = canvas.current!;
+    const b = c.getBoundingClientRect();
+    const ctx = c.getContext('2d')!;
+    const r = Math.max(18, c.width * 0.08);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(e.clientX - b.left, e.clientY - b.top, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    setTouched(true);
+    wiped.current += (Math.PI * r * r) / (c.width * c.height);
+    // Most of it wiped: the rest lifts by itself.
+    if (wiped.current > 0.9) setClear(true);
+  }
+  if (clear) return null;
+  return (
+    <div className="pl-fog" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <canvas ref={canvas} aria-label="Frosted: wipe it clear" onPointerDown={wipe} onPointerMove={wipe} />
+      {!touched && <span className="pl-fog-hint">Wipe it clear</span>}
+      <button type="button" className="pl-fog-clear" onClick={() => setClear(true)}>
+        Clear it
+      </button>
     </div>
   );
 }

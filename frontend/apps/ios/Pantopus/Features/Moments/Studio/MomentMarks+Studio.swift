@@ -187,6 +187,12 @@ struct MomentsStudioTools {
     var pickedCutout: UUID?
     /// "Also show in Explore" ("Pulse, reinvented" phase 1, CONTRACT 6f, `MomentsStudioExplore`).
     var explore = false
+    /// Film looks (`MomentsStudioLooks`): the look picked, and the photo as it was before any look, so another look
+    /// starts from it again.
+    var look = MomentsStudioLook.original
+    var lookOriginal: UIImage?
+    /// The photo the look made: while the picture is still that one, the look and its original hold.
+    var lookResult: UIImage?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

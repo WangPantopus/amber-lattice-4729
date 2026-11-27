@@ -3,7 +3,8 @@
  * time itself. This job:
  *   1. finishes a picture check an upload left running (the process restarted mid-check), and checks again the live
  *      Moments whose check couldn't run (no AI key, a timeout), until it gives up after momentCheck.MAX_ATTEMPTS;
- *   2. deletes the files of Moments that ended 7 days ago, unless a review holds them (held, or a report still open).
+ *   2. deletes the files of Moments that ended 7 days ago, unless a review holds them (held, or a report still open);
+ *   3. checks again the cutouts pinned on a picture whose check couldn't run, and deletes the files of removed pins.
  * Each step leaves the rows it finishes behind (their state changes), and pages past the ones it can't finish yet, so
  * none can block the rest.
  */
@@ -92,12 +93,29 @@ function purgeEnded() {
   (row) => store.purgeFiles(row), 'purge');
 }
 
+// Pins on a Moment's picture (Pulse, reinvented; coord CONTRACT 8b): cutouts whose picture check couldn't run are
+// checked again, and the files of removed pins are deleted. Only rows the switch-on routes wrote; none exist otherwise.
+async function pinHousekeeping() {
+  const pins = require('../services/pulse/pins');
+  const result = { pinsChecked: 0, pinFiles: 0 };
+  try {
+    result.pinsChecked = await pins.recheckCutouts();
+    result.pinFiles = await pins.sweepRemovedFiles();
+  } catch (error) {
+    logger.warn('[momentsCleanup] pins failed', { error: error.message });
+  }
+  return result;
+}
+
 async function momentsCleanup() {
   const nowIso = new Date().toISOString();
   const stuck = await finishStuckChecks(nowIso);
   const rechecked = await recheck(nowIso);
   const purged = await purgeEnded();
-  if (stuck || rechecked || purged) logger.info('[momentsCleanup] done', { stuck, rechecked, purged });
+  const { pinsChecked, pinFiles } = await pinHousekeeping();
+  if (stuck || rechecked || purged || pinsChecked || pinFiles) {
+    logger.info('[momentsCleanup] done', { stuck, rechecked, purged, pinsChecked, pinFiles });
+  }
 }
 
 module.exports = momentsCleanup;

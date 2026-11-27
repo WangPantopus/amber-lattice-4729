@@ -16,6 +16,7 @@ import { signOut } from '@/lib/signOut';
 import { setMe, useMe } from '@/lib/me';
 import { useProfileGuidance } from '@/components/guidance/profileGuidance';
 import PenNameSettings from '@/components/penName/PenNameSettings';
+import PantopusAiSetting from '@/components/reinvented/settings/PantopusAiSetting';
 
 type SettingField = 'email_notifications' | 'push_notifications' | 'profile_visibility' | 'show_email' | 'show_phone';
 
@@ -264,6 +265,9 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+
+          {/* Pulse, reinvented: the person's own Pantopus AI choice, drawn only while the switch is on (CONTRACT §7d) */}
+          <PantopusAiSetting />
 
           {/* Security — where you're logged in, trusted devices, sign out everywhere */}
           <div className="bg-surface rounded-xl border border-app p-6">
