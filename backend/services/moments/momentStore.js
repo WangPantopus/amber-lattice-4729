@@ -640,6 +640,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       mentions: mentioned?.get(row.id) || [],
       // A sealed Moment (CONTRACT 8g): how and when it opens, and whether it has; null for any other.
       seal: m.seal ? require('../pulse/seal').sealAnswer(row) : null,
+      // A Convergence it joined (CONTRACT 8h): which one and whether it is open; null for any other.
+      convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
