@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useMe } from '@/lib/me';
 import { useHydrated } from '@/hooks/useHydrated';
 import { usePulseReinvented } from '../usePulseReinvented';
+import { useServerBehind } from '../serverBehind';
 import { CSRF_COOKIE, KEPT_COOKIE, keptValue } from './keptCookie';
 
 const KEPT = 'pantopus.pulseReinvented.';
@@ -22,6 +23,8 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
   const account = useMe().data?.id ?? null;
   const flag = usePulseReinvented(enabled);
   const hydrated = useHydrated();
+  // A server older than this website (a new route answered 404): today's screens for a while, as when off.
+  const behind = useServerBehind();
   const known = flag.data ? flag.data.enabled === true : undefined;
   useEffect(() => {
     if (!account || known === undefined) return;
@@ -37,6 +40,7 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
       ? `${KEPT_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`
       : `${KEPT_COOKIE}=; path=/; max-age=0; samesite=lax`;
   }, [account, known]);
+  if (behind) return false;
   if (known !== undefined) return known;
   if (keptOnServer) return true;
   if (!hydrated || !account) return false;
