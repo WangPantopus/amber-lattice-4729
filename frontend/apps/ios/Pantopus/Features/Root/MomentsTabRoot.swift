@@ -44,6 +44,9 @@ final class MomentsNavigator {
 struct MomentsComposeRequest: Identifiable {
     let id = UUID()
     let model: MomentsComposerModel
+    /// "Pulse, reinvented" was on for the person when + was tapped: the Studio (`MomentsStudioComposer`) opens, and
+    /// stays until it closes. Off, today's composer.
+    var studio = false
 }
 
 public struct MomentsTabRoot: View {
@@ -90,7 +93,11 @@ public struct MomentsTabRoot: View {
             )
         }
         .fullScreenCover(item: $composing) { request in
-            MomentsComposer(model: request.model) { composing = nil }
+            if request.studio {
+                MomentsStudioComposer(model: request.model) { composing = nil }
+            } else {
+                MomentsComposer(model: request.model) { composing = nil }
+            }
         }
         .onChange(of: flags.moments) { _, isOn in
             // Moments switched off: nothing of Moments is left open (the bar drops this tab).
@@ -174,7 +181,9 @@ public struct MomentsTabRoot: View {
                 guard !rings.isEmpty else { return }
                 watch(MomentsWatchRequest(rings: rings, start: start, newOnly: newOnly))
             },
-            compose: { composing = MomentsComposeRequest(model: MomentsComposerModel()) },
+            compose: {
+                composing = MomentsComposeRequest(model: MomentsComposerModel(), studio: PulseReinventedFlags.shared.isOn)
+            },
             areaPicker: { showsAreaPicker = true }
         )
     }

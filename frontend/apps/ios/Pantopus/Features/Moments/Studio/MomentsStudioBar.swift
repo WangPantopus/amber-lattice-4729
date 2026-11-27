@@ -1,0 +1,230 @@
+//
+//  MomentsStudioBar.swift
+//  Pantopus
+//
+//  The Studio's tool rail and its one bar at the bottom (board B2).
+//
+//  The rail, at the right: each tool is its word beside a round button. Phase
+//  0 step 2 carries today's tools, Text, Draw and Resize, which open today's
+//  marks editor (`MomentsMarksEditor`) in that tool; the board's other tools
+//  arrive with the steps that build them.
+//
+//  The bar: who sees it (Nearby or Friends, today's "Everyone nearby" and "My
+//  connections"), a pill reading how long it shows and where ("Fades in 24
+//  hours / Lacamas Lake") that opens the drawer, and Post.
+//
+
+import SwiftUI
+
+struct MomentsStudioRail: View {
+    let model: MomentsComposerModel
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: Spacing.s3) {
+            if model.offersMarks {
+                tool("Text", id: "moments.studio.rail.text") {
+                    // "Aa" is lettering, not an icon (board B2).
+                    Text("Aa").font(.system(size: 17, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
+                } action: { model.openMarks(.text) }
+                tool("Draw", id: "moments.studio.rail.draw") {
+                    Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
+                } action: { model.openMarks(.draw) }
+            }
+            if model.offersResize {
+                tool("Resize", id: "moments.studio.rail.resize") {
+                    Icon(.maximize, size: 19, strokeWidth: 2.2, color: .white)
+                } action: { model.openMarks(.resize) }
+            }
+        }
+        // Off while a Post is going (it would swap the file being sent).
+        .disabled(model.isPosting)
+        .opacity(model.isPosting ? 0.5 : 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tools")
+    }
+
+    private func tool(
+        _ name: String,
+        id: String,
+        @ViewBuilder glyph: () -> some View,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 4, x: 0, y: 1)
+                glyph()
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.42)))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(id)
+    }
+}
+
+struct MomentsStudioBar: View {
+    let model: MomentsComposerModel
+    /// The first Moment made at home that shows only its area says why, once (`MomentsStudioStage`).
+    var explainsHomeArea = false
+    let onPosted: () -> Void
+    let openDrawer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s3) {
+            HStack(spacing: Spacing.s2) {
+                audienceChip(.nearby, "Nearby", id: "moments.studio.audience.nearby")
+                audienceChip(.connections, "Friends", id: "moments.studio.audience.friends")
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 10) {
+                pill
+                postButton
+            }
+            if explainsHomeArea {
+                Text(SkyWords.homeTitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.s1)
+                    .accessibilityIdentifier("moments.studio.homeArea")
+            }
+        }
+        .padding(.horizontal, Spacing.s4)
+        .padding(.top, Spacing.s4)
+        .padding(.bottom, Spacing.s3)
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24, style: .continuous)
+                .fill(Theme.Color.appSurface)
+                .ignoresSafeArea(edges: .bottom)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.studio.bar")
+    }
+
+    // MARK: Who sees it
+
+    private func audienceChip(_ value: MomentAudience, _ title: String, id: String) -> some View {
+        // A Moment with no location goes only to connections: "Nearby" needs a place.
+        let selected = (model.noLocationOn ? .connections : model.audience) == value
+        let usable = !model.noLocationOn || value == .connections
+        return Button { model.audience = value } label: {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(selected ? Theme.Color.appText : Color.white.opacity(usable ? 1 : 0.4))
+                .padding(.horizontal, Spacing.s4)
+                .frame(height: 38)
+                .background(Capsule().fill(selected ? Color.white : Color.white.opacity(0.08)))
+                .overlay(Capsule().stroke(Color.white.opacity(selected ? 0 : 0.22), lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        // The selected chip is white: its word is the light scheme's ink.
+        .environment(\.colorScheme, selected ? .light : .dark)
+        .disabled(!usable || model.isPosting)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier(id)
+    }
+
+    // MARK: How long, and where
+
+    private var pill: some View {
+        Button(action: openDrawer) {
+            HStack(spacing: 10) {
+                Icon(.clock, size: 20, strokeWidth: 2.2, color: .white)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(pillTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(pillPlace)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
+                Icon(.chevronDown, size: 16, strokeWidth: 2.4, color: Color.white.opacity(0.8))
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isPosting)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(pillTitle), \(pillPlace)")
+        .accessibilityHint("Shows where it pins, how long it shows, and when it shares")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("moments.studio.pill")
+    }
+
+    private var hoursWords: String {
+        model.hours == 1 ? "1 hour" : "\(model.hours) hours"
+    }
+
+    /// "Fades in 24 hours", or with "Share later" picked, "Shares at 6:40 pm".
+    private var pillTitle: String {
+        if let sharesAt = model.sharesAt { return SkyWords.sharesAt(sharesAt) }
+        return "Fades in \(hoursWords)"
+    }
+
+    /// Where it pins, as the Post sheet's place row says it, and "Area · Camas, WA" for one at home that shows only its
+    /// area; with "Share later", how long it shows first.
+    private var pillPlace: String {
+        let place = Self.showsHomeArea(model) ? "Area · \(homeTown)" : model.placeLine
+        return model.sharesAt == nil ? place : "\(hoursWords) · \(place)"
+    }
+
+    private var homeTown: String {
+        model.sky?.area?.label ?? model.place?.areaLabel ?? model.place?.placeLabel ?? "this area"
+    }
+
+    /// Made at home, it shows only its area (under the Sky always; before it, with "Show the area instead").
+    static func showsHomeArea(_ model: MomentsComposerModel) -> Bool {
+        model.place?.atHome == true && model.floats && !model.noLocationOn
+    }
+
+    // MARK: Post
+
+    private var postButton: some View {
+        Button {
+            Keyboard.close()
+            Task {
+                if await model.post() { onPosted() }
+            }
+        } label: {
+            ZStack {
+                HStack(spacing: 6) {
+                    Text(postWord)
+                        .font(.system(size: 17, weight: .bold))
+                    Icon(.arrowRight, size: 18, strokeWidth: 2.4, color: .white)
+                }
+                .foregroundStyle(.white)
+                .opacity(model.isPosting ? 0 : 1)
+                if model.isPosting { ProgressView().tint(.white) }
+            }
+            .padding(.horizontal, 22)
+            .frame(minHeight: 54)
+            .background(Capsule().fill(Theme.Color.primarySolid))
+            .opacity(model.canPost ? 1 : 0.5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.canPost)
+        .accessibilityLabel(model.postLabel)
+        .accessibilityIdentifier("moments.studio.post")
+    }
+
+    /// "Post", or "Post 2 of 3" while several picked together go one by one.
+    private var postWord: String {
+        model.pickedPosition.map { "Post \($0)" } ?? "Post"
+    }
+}
