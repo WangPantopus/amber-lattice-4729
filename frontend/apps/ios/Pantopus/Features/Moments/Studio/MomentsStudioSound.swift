@@ -66,8 +66,14 @@ extension MomentsComposerModel {
         }
         guard !sends.isEmpty else { return }
         Task { @MainActor in
+            var refused: [(what: String, why: String)] = []
             for send in sends {
-                await send.upload(momentId: moment.id)
+                if let why = await send.upload(momentId: moment.id) { refused.append((send.what, why)) }
+            }
+            // The Studio has usually closed by now: one alert tells the author what isn't on their Moment, and why.
+            if let first = refused.first {
+                let title = refused.count == 1 ? "\(first.what) wasn't added" : "Some of your sound wasn't added"
+                await MomentsSoundRefusalAlert.show(title, refused.count == 1 ? first.why : refused.map(\.why).joined(separator: "\n"))
             }
         }
     }
@@ -80,15 +86,63 @@ struct MomentsSoundSend {
     var dot: String?
     var words: [MomentSoundWord]?
 
+    /// "Your voice", for the words that tell its author it wasn't added.
+    var what: String {
+        switch kind {
+        case "voice": "Your voice"
+        case "place": "Your place sound"
+        default: "Your whisper"
+        }
+    }
+
+    /// Sends it; nil when it went on, else what to tell its author: the server's own sentence where it gave one. A 503
+    /// or a lost connection is tried once more; `403 PULSE_REINVENTED_OFF` reads the switch again at once (CONTRACT 7e).
     @MainActor
-    func upload(momentId: String) async {
+    func upload(momentId: String) async -> String? {
         defer { try? FileManager.default.removeItem(at: recording.file) }
-        guard let data = try? Data(contentsOf: recording.file) else { return }
+        guard let data = try? Data(contentsOf: recording.file) else { return "It couldn't be read on your iPhone." }
         var fields = ["kind": kind, "duration_ms": String(recording.durationMs)]
         if let dot { fields["dot"] = dot }
         if let words, let json = try? JSONEncoder().encode(words) { fields["words"] = String(data: json, encoding: .utf8) }
         let file = MultipartFile(fieldName: "file", filename: "\(kind).m4a", mimeType: "audio/mp4", data: data)
-        _ = try? await MultipartUploader.shared.uploadMomentSound(momentId: momentId, file: file, fields: fields)
+        var failure = StudioPlayFailure(status: 0, code: nil, words: nil)
+        for attempt in 0..<2 {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(2)) }
+            guard let answer = try? await MultipartUploader.shared.uploadMomentSound(momentId: momentId, file: file, fields: fields) else {
+                // A lost connection: once more.
+                continue
+            }
+            if (200..<300).contains(answer.status) { return nil }
+            let json = (try? JSONSerialization.jsonObject(with: answer.body)) as? [String: Any]
+            failure = StudioPlayFailure(status: answer.status, code: json?["code"] as? String, words: json?["error"] as? String)
+            if failure.code == "PULSE_REINVENTED_OFF" { await PulseReinventedFlags.shared.recheck() }
+            // Storage down: once more; any other answer stands.
+            guard answer.status == 503 else { break }
+        }
+        return failure.message("It couldn't be sent. Try again on a new Moment.")
+    }
+}
+
+/// The one alert that tells a Moment's author its sound wasn't added, over whatever is on screen once the Studio closed.
+@MainActor
+enum MomentsSoundRefusalAlert {
+    static func show(_ title: String, _ message: String) async {
+        // Let the Studio's own cover finish closing first.
+        try? await Task.sleep(for: .milliseconds(700))
+        guard let top = topViewController() else { return }
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        top.present(alert, animated: true)
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes
+        let scene = (scenes.first { $0.activationState == .foregroundActive } as? UIWindowScene) ?? scenes.first as? UIWindowScene
+        var top = (scene?.windows.first { $0.isKeyWindow } ?? scene?.windows.first)?.rootViewController
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
     }
 }
 
