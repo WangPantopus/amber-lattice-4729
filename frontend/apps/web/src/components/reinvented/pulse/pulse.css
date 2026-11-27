@@ -720,6 +720,35 @@
     opacity: 0.55;
   }
 }
+/* The one camera's + (phase 1 piece 11): over the list and the map, bottom right; above the peek deck at the Map
+   height. */
+.rp-create {
+  position: absolute;
+  z-index: 800;
+  right: 16px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 28px;
+  background: #0369a1;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(3, 105, 161, 0.35), 0 2px 6px rgba(15, 23, 42, 0.25);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rp-create:hover {
+  background: #075985;
+}
+.rp-create:focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
+.rp-board[data-height='map'] .rp-create {
+  bottom: 196px;
+}
+
 .rp-toast {
   position: absolute;
   z-index: 900;

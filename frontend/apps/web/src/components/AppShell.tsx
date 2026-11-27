@@ -740,7 +740,8 @@ function AppShellInner({ children, publicPage = false }: { children: React.React
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       {/* A page anyone can open (a person's profile) has nothing to create for someone signed out. */}
-      {publicPage && !user ? null : (
+      {/* The new Pulse has its own + (Pulse, reinvented: it opens the Studio); today's Pulse keeps this one. */}
+      {(publicPage && !user) || reinventedPulse ? null : (
         <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
       )}
       {!isMapWorkspace && <FloatingChatWidget />}

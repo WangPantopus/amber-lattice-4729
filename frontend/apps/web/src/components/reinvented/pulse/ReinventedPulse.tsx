@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { ChevronDown, LocateFixed } from 'lucide-react';
+import { ChevronDown, LocateFixed, Plus } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { Post } from '@pantopus/api';
 import { useMe } from '@/lib/me';
@@ -32,6 +32,8 @@ import './pulse.css';
 
 const PulseMap = dynamic(() => import('./PulseMap'), { ssr: false, loading: () => <div className="rp-map" /> });
 const MomentViewer = dynamic(() => import('@/components/moments/MomentViewer'), { ssr: false });
+// One camera for everything (phase 1 piece 11): + opens the Studio, where a Moment or, with "+ Ask / Kind", a post is made.
+const Composer = dynamic(() => import('../MomentComposerEntry'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -65,6 +67,7 @@ export default function ReinventedPulse() {
   const closeDial = useCallback(() => setScopeOpen(false), []);
   const [miles, setMiles] = useState(25);
   const [toast, setToast] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -134,7 +137,12 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (strip.error && isSwitchedOff(strip.error)) void reread();
   }, [strip.error, reread]);
-  const onBox = useCallback((b: Box) => setBox(roundBox(b)), []);
+  // A box with no height (the map laid out before the sheet settles, at phone width) is never read: the server answers
+  // 400 to it.
+  const onBox = useCallback((b: Box) => {
+    const r = roundBox(b);
+    if (r.north > r.south && r.east > r.west) setBox(r);
+  }, []);
 
   const pages = list.data?.pages;
   const first = pages?.[0];
@@ -555,6 +563,23 @@ export default function ReinventedPulse() {
           )}
         </div>
       </section>
+
+      {!creating && (
+        <button type="button" className="rp-create" aria-label="Create" title="Create" onClick={() => setCreating(true)}>
+          <Plus size={24} strokeWidth={2.6} aria-hidden />
+        </button>
+      )}
+      {creating && account && (
+        <Composer
+          account={account}
+          onClose={() => setCreating(false)}
+          onDone={(msg) => {
+            setCreating(false);
+            setToast(msg);
+            void client.invalidateQueries({ queryKey: ['reinvented'] });
+          }}
+        />
+      )}
 
       {toast && (
         <div className="rp-toast" role="status">
