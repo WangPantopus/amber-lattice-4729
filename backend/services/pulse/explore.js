@@ -16,6 +16,7 @@ const momentGuess = require('../moments/momentGuess');
 const feedService = require('../feedService');
 const postStudio = require('./postStudio');
 const list = require('./list');
+const places = require('./places');
 const logger = require('../../utils/logger');
 
 const MAX_CANDIDATES = 2000;
@@ -177,6 +178,27 @@ function decodeCursor(text) {
 
 const below = (item, cursor) => !cursor || item.at < cursor.at || (item.at === cursor.at && item.id < cursor.id);
 
+const FOLLOWED = 10;
+const FOLLOWED_PER_AUTHOR = 2;
+
+const followedWhy = (place) => `From ${place.label}, a place you follow`;
+
+/** Where the reader is shown an item: a post's point from its own answer, a Moment's shown point. */
+function pointOf(item) {
+  if (item.type === 'post') return { latitude: item.post?.latitude ?? null, longitude: item.post?.longitude ?? null };
+  return store.displayedPoint(item.row);
+}
+
+/** These items, newest first as given, with at most `cap` from one author. */
+function byAuthorCap(items, cap) {
+  const count = new Map();
+  return items.filter((item) => {
+    const n = count.get(item.authorKey) || 0;
+    count.set(item.authorKey, n + 1);
+    return n < cap;
+  });
+}
+
 function pickedWhy(count) {
   return `Picked today: ${count} ${count === 1 ? 'person' : 'people'} marked it`;
 }
@@ -184,26 +206,34 @@ function pickedWhy(count) {
 /** GET /api/reinvented/explore for `userId` (CONTRACT 6f). */
 async function exploreFor(userId, { latitude = null, longitude = null, cursor: cursorText = null } = {}) {
   const cursor = decodeCursor(cursorText);
-  const [moments_, posts, place] = await Promise.all([
+  const [moments_, posts, place, followed] = await Promise.all([
     candidates(userId),
     postCandidates(userId).catch((error) => {
       logger.warn('reinvented.explore_posts_failed', { error: error.message });
       return [];
     }),
     list.readerPlace(userId, latitude, longitude),
+    // Places the reader follows (CONTRACT 9c); a read that fails only leaves them out.
+    places.placesOf(userId),
   ]);
   const all = [...moments_, ...posts];
   const readerTown = place ? await momentGuess.townKeyAt(place.latitude, place.longitude) : null;
   const elsewhere = all.filter((item) => item.townKey !== readerTown);
   const marked = elsewhere.length ? await peopleWhoMarked(elsewhere) : new Map();
-  const picked = pickToday(elsewhere, marked);
+  // Near a place the reader follows (CONTRACT 9c): up to 10, newest first, at most 2 per author, ahead of the rest.
+  const nearFollowed = new Map(elsewhere.map((item) => [item.id, places.nearOf(followed, pointOf(item))]).filter(([, p]) => p));
+  const fromFollowed = byAuthorCap(elsewhere.filter((item) => nearFollowed.has(item.id)).sort(newestFirst), FOLLOWED_PER_AUTHOR)
+    .slice(0, FOLLOWED);
+  const followedIds = new Set(fromFollowed.map((item) => item.id));
+  const picked = pickToday(elsewhere.filter((item) => !followedIds.has(item.id)), marked);
   const pickedIds = new Set(picked.map((item) => item.id));
-  const rest = elsewhere.filter((item) => !pickedIds.has(item.id)).sort(newestFirst).filter((item) => below(item, cursor));
+  const rest = elsewhere.filter((item) => !pickedIds.has(item.id) && !followedIds.has(item.id)).sort(newestFirst)
+    .filter((item) => below(item, cursor));
   const pageItems = rest.slice(0, PAGE);
   const more = rest.length > PAGE;
   const shown = withVariety(pageItems);
   const firstPage = !cursor;
-  const rows = [...(firstPage ? picked : []), ...shown].filter((item) => item.type === 'moment').map((item) => item.row);
+  const rows = [...(firstPage ? [...fromFollowed, ...picked] : []), ...shown].filter((item) => item.type === 'moment').map((item) => item.row);
   const moments = new Map((await store.serializeMoments(rows, userId)).map((moment) => [moment.id, moment]));
   const entry = (item, why) => {
     if (item.type === 'post') return { type: 'post', id: item.id, post: item.post, why };
@@ -211,8 +241,10 @@ async function exploreFor(userId, { latitude = null, longitude = null, cursor: c
     return moment ? { type: 'moment', id: moment.id, moment, why } : null;
   };
   return {
+    followed: firstPage ? fromFollowed.map((item) => entry(item, followedWhy(nearFollowed.get(item.id)))).filter(Boolean) : null,
     picked: firstPage ? picked.map((item) => entry(item, pickedWhy(marked.get(item.id)))).filter(Boolean) : null,
-    items: shown.map((item) => entry(item, item.town ? `New from ${item.town}` : 'New elsewhere')).filter(Boolean),
+    items: shown.map((item) => entry(item, nearFollowed.has(item.id) ? followedWhy(nearFollowed.get(item.id))
+      : item.town ? `New from ${item.town}` : 'New elsewhere')).filter(Boolean),
     // The page's oldest Moment, so the next page starts below everything this one held, whatever its order.
     next_cursor: more ? encodeCursor(pageItems[pageItems.length - 1]) : null,
     pause: more ? 'Keep exploring?' : null,
