@@ -570,21 +570,26 @@ async function createBulkNotifications(notifications, { sendPush = true } = {}) 
 
         for (let i = 0; i < eligible.length; i += PUSH_CONCURRENCY) {
           const batch = eligible.slice(i, i + PUSH_CONCURRENCY);
-          await Promise.allSettled(batch.map((notif) => {
-            emitDesktopAlert(notif);
-            return pushService.sendToUser(notif.user_id, {
-              title: notif.title,
-              body: notif.body || '',
-              data: {
-                notificationId: notif.id,
-                type: notif.type,
-                link: notif.link || null,
-                ...(notif.metadata || {}),
-                recipient_user_id: notif.user_id,
-              },
-            }).catch((err) => {
+          await Promise.allSettled(batch.map(async (notif) => {
+            try {
+              // A later batch leaves seconds after the inbox check above, so a post-linked notice is checked again
+              // right before it leaves (docs/product/pulse-build/02-contract.md §5); one with no post reads nothing.
+              if (!(await readableNotifications([notif])).length) return;
+              emitDesktopAlert(notif);
+              await pushService.sendToUser(notif.user_id, {
+                title: notif.title,
+                body: notif.body || '',
+                data: {
+                  notificationId: notif.id,
+                  type: notif.type,
+                  link: notif.link || null,
+                  ...(notif.metadata || {}),
+                  recipient_user_id: notif.user_id,
+                },
+              });
+            } catch (err) {
               logger.warn('Bulk push delivery failed (non-blocking)', { error: err.message });
-            });
+            }
           }));
         }
       })().catch((err) => {
