@@ -15,6 +15,7 @@ const store = require('../moments/momentStore');
 const { displayedPoint } = require('./distanceText');
 const { haversineMeters } = require('../../utils/trustState');
 const play = require('./play');
+const mentions = require('./mentions');
 
 // The Live mark's checks for a post's weather and sunset (CONTRACT 6d): a fix this fresh, this near the post's pin.
 const FIX_MAX_AGE_MS = 5 * 60 * 1000;
@@ -38,6 +39,8 @@ function parse(studio, { penName = false, things = true } = {}) {
     explore: studio?.explore === true,
     // Playable items (CONTRACT 7b); a malformed list throws, answered 400 POST_INVALID.
     play: play.parseItems(studio?.play),
+    // Mentions in the caption (CONTRACT 7h): who is kept is decided in studioFor, once the post's audience is known.
+    mentions: mentions.parse(studio?.mentions),
     // Dots on the picture (CONTRACT 7c); no link under a made-up name. The Studio uploads a post's photo after making
     // the post, so a thing's photo is looked for when its field card is asked for (7d), not here.
     dots: play.parseDots(studio?.dots, { media: true, photo: true, penName, things }),
@@ -90,6 +93,14 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     }),
   });
   const explore = parsed.explore && placed && !atHome && !underPenName && EXPLORE_TYPES.includes(row.post_type);
+  // Mentions (CONTRACT 7h): the author's connections who may read the post as it will be stored (today's read rule),
+  // not blocked either way; none under a made-up name.
+  const mentioned = parsed.mentions?.length
+    ? await mentions.keep(parsed.mentions, userId, {
+      penName: underPenName,
+      maySee: (person) => require('./readAccess').canReadPost({ ...row, user_id: userId, is_story: false }, person),
+    })
+    : [];
   return {
     v: 1,
     stamps: parsed.placements,
@@ -99,6 +110,7 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     ...(parsed.play?.length ? { play: parsed.play } : {}),
     ...(parsed.dots?.length ? { dots: parsed.dots } : {}),
     ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
+    ...(mentioned.length ? { mentions: mentioned } : {}),
   };
 }
 
@@ -128,7 +140,7 @@ async function stampsFor(posts) {
  */
 async function readerParts(posts, viewerId) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
-  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map() };
+  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map() };
   const [{ data, error }, answers] = await Promise.all([
     supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
     play.answersOn(ids).catch(() => null),
@@ -145,7 +157,13 @@ async function readerParts(posts, viewerId) {
     own: String(byId.get(row.post_id)?.user_id) === String(viewerId),
     open: true,
   }));
-  return { stamps, dots, play: answers ? await play.playFor(withItems, viewerId, { answers }) : new Map() };
+  const [played, mentioned] = await Promise.all([
+    answers ? play.playFor(withItems, viewerId, { answers }) : new Map(),
+    // Mentions (CONTRACT 7h), without people hidden from this reader.
+    mentions.shownFor(rows.map((row) => ({ id: row.post_id, list: row.studio?.mentions })), viewerId, (row) => row.list)
+      .catch(() => new Map()),
+  ]);
+  return { stamps, dots, play: played, mentions: mentioned };
 }
 
 /**
