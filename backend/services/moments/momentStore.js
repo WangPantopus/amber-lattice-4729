@@ -532,7 +532,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false }) {
+  keptPosts = false, keepOffer = false, plan = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -610,11 +610,13 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       signal_counts: own ? signalCounts || [] : null,
       // Guess the spot: how many guessed and this reader's own guess; null on any other Moment.
       guess: momentGuess.isGuess(row) ? (guess || { count: 0, mine: null }) : null,
+      // "Want to come?" (CONTRACT 6g): the plan this Moment started, as Plans shows it to this reader, or null.
+      plan,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
   const hideSpot = reinvented && momentGuess.isGuess(row) && !own && !guess?.mine && state !== 'ended';
-  return hideSpot ? momentGuess.withoutSpot(answer) : answer;
+  return hideSpot ? { ...momentGuess.withoutSpot(answer), plan: null } : answer;
 }
 
 /** The author's counts by signal (Pulse, reinvented), by Moment id: [{ signal, count }]. */
@@ -666,6 +668,12 @@ function keptFilesOf(row) {
 async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts = false } = {}) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
+  // "Want to come?" (CONTRACT 6g): the plans these Moments started, read from the start beside everything else, and
+  // only for a reader with the switch on.
+  const wantToCome = require('../pulse/wantToCome');
+  const planRead = wantToCome.anyStarted(rows)
+    ? reinventedOn(viewerId).then((on) => (on ? wantToCome.plansFor(rows, viewerId) : new Map()))
+    : Promise.resolve(new Map());
   await markOwn(rows, viewerId);
   const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
   const linked = rows.filter((r) => momentState(r) !== 'ended' || (keptEnded && isOwn(r, viewerId) && keptFilesOf(r))
@@ -678,12 +686,12 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers] = reinvented
+  const [signals, guesses, offers, plans] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
-      keepOffers(rows.filter((r) => isOwn(r, viewerId))),
+      keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
     ])
-    : [new Map(), new Map(), new Set()];
+    : [new Map(), new Map(), new Set(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -699,6 +707,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     keptEnded,
     keptPosts,
     keepOffer: offers.has(row.id),
+    plan: plans.get(row.id) || null,
   }));
 }
 
