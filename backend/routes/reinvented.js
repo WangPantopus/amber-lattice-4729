@@ -890,4 +890,27 @@ router.get('/sounds', async (req, res) => {
   }
 });
 
+// ─── A mentioned person's own mentions (CONTRACT 7h) ─────────────────────────
+
+const mentionsMine = require('../services/pulse/mentions');
+
+/** GET /mentions — the Moments and Studio posts that mention the reader, that they may see now. */
+router.get('/mentions', async (req, res) => {
+  try {
+    res.json(await mentionsMine.mentionsOf(req.user.id, typeof req.query.cursor === 'string' ? req.query.cursor.slice(0, 40) : null));
+  } catch (error) {
+    sendError(res, error, 'mentions');
+  }
+});
+
+/** DELETE /mentions/:id — takes the reader's own mention off a Moment or a Studio post. */
+router.delete('/mentions/:id', async (req, res) => {
+  try {
+    await mentionsMine.removeMine(req.user.id, String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'mentions_remove');
+  }
+});
+
 module.exports = router;
