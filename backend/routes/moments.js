@@ -392,7 +392,7 @@ router.post('/', createLimiter, async (req, res) => {
     if (deck) await stepDeck.checkStep(req.user.id, deck, retryId(req.user.id, body.client_request_id));
     if (studio) {
       try {
-        play = playItems.parseItems(req.body?.play);
+        play = playItems.parseItems(req.body?.play, Date.now(), { photo: body.kind === 'photo' });
         mentionIds = mentions.parse(req.body?.mentions);
         dots = playItems.parseDots(req.body?.dots, {
           photo: body.kind === 'photo', media: body.kind !== 'text', penName: body.post_as === 'pen_name',

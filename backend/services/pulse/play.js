@@ -13,7 +13,7 @@ const logger = require('../../utils/logger');
 const { loadChatPeople } = require('../chatPeople');
 const blockService = require('../blockService');
 
-const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown', 'quote', 'fog', 'swatch'];
+const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown', 'quote', 'fog', 'swatch', 'before_after'];
 // The kinds a reader answers (PostAnswer); the others are only drawn (CONTRACT 7g).
 const ANSWERED = ['poll', 'slider', 'board', 'question', 'guess'];
 const MAX_ITEMS = 4;
@@ -71,6 +71,9 @@ const SCHEMAS = {
   // CONTRACT 7g: drawn only, never answered.
   quote: Joi.object({ ...placement, kind: Joi.string(), text: line(280).required(), source: Joi.string().trim().max(80).allow('', null) }),
   fog: Joi.object({ ...placement, kind: Joi.string() }),
+  // Before and after (LEAD-3 05:19): the Studio draws the two photos side by side into the one picture (left before,
+  // right after); the new viewer shows one half over the other with a curtain. Only its two words are kept.
+  before_after: Joi.object({ ...placement, kind: Joi.string(), before: line(24).allow(null), after: line(24).allow(null) }),
   swatch: Joi.object({
     ...placement,
     kind: Joi.string(),
@@ -88,7 +91,7 @@ const round = (value, places) => Math.round(value * 10 ** places) / 10 ** places
  * The items in `value` as stored, or throws an Error whose message says what is wrong (the caller answers 400 with its
  * own code). Null or missing: [].
  */
-function parseItems(value, now = Date.now()) {
+function parseItems(value, now = Date.now(), { photo = true } = {}) {
   if (value == null) return [];
   if (!Array.isArray(value)) throw new Error('play must be a list.');
   if (value.length > MAX_ITEMS) throw new Error(`play holds at most ${MAX_ITEMS} items.`);
@@ -101,6 +104,10 @@ function parseItems(value, now = Date.now()) {
     if (seen.has(item.id)) throw new Error(`play[${index}]: each item needs its own id.`);
     if (/^[ck]-/.test(item.id)) throw new Error(`play[${index}]: an id can't start with c- or k-.`);
     if (raw.kind === 'fog' && value.filter((other) => other?.kind === 'fog').length > 1) throw new Error('play holds one fog at most.');
+    if (raw.kind === 'before_after') {
+      if (!photo) throw new Error('Before and after goes on a photo.');
+      if (value.filter((other) => other?.kind === 'before_after').length > 1) throw new Error('play holds one before and after at most.');
+    }
     seen.add(item.id);
     const stored = {
       ...item,
@@ -120,6 +127,10 @@ function parseItems(value, now = Date.now()) {
       }
     }
     if (raw.kind === 'quote') stored.source = item.source || null;
+    if (raw.kind === 'before_after') {
+      stored.before = item.before || 'Before';
+      stored.after = item.after || 'After';
+    }
     if (raw.kind === 'swatch') {
       const box = { x: round(item.box.x, 4), y: round(item.box.y, 4), w: round(item.box.w, 4), h: round(item.box.h, 4) };
       stored.box = box;
@@ -137,7 +148,7 @@ function parseItems(value, now = Date.now()) {
 /** Every word an author typed in these items, for the made-up-name words check (with the caption, as one check). */
 function wordsOf(items) {
   return (items || []).flatMap((item) => [
-    item.question, item.prompt, item.title, item.left, item.right, item.text, item.source,
+    item.question, item.prompt, item.title, item.left, item.right, item.text, item.source, item.before, item.after,
     ...(item.options || []),
     item.x_axis?.left, item.x_axis?.right, item.y_axis?.bottom, item.y_axis?.top, item.range?.unit,
   ]).filter((word) => typeof word === 'string' && word.trim());
