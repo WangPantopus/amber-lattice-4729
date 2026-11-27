@@ -132,6 +132,7 @@ export default function Studio({
   onSwitchedOff,
   retakeOf = null,
   eyesOnFor = null,
+  pinboardOf = null,
 }: {
   account: string;
   draft?: MomentChatDraft | null;
@@ -143,6 +144,8 @@ export default function Studio({
   retakeOf?: { id: string; title: string; ghost: string | null } | null;
   /** Answering an Eyes-on Ask with a Live photo from the place (CONTRACT 8f). */
   eyesOnFor?: { id: string; question: string } | null;
+  /** Adding a piece to a pinboard (CONTRACT 8i). */
+  pinboardOf?: { id: string; prompt: string } | null;
 }) {
   const wide = useWide();
   const [files, setFiles] = useState<File[]>([]),
@@ -226,6 +229,9 @@ export default function Studio({
     [sealAt, setSealAt] = useState(''),
     // A convergence (§8h): a Live photo shared nearby may join tonight's sky; on by default, one tap to leave out.
     [joinSky, setJoinSky] = useState(true),
+    // Starting a pinboard (§8i): a prompt others add their pieces to.
+    [boardPrompt, setBoardPrompt] = useState(''),
+    [startBoard, setStartBoard] = useState(false),
     [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -476,7 +482,7 @@ export default function Studio({
   // A post is one photo or the words. Under a made-up name a post is words only, of its own four kinds, to people
   // nearby (made-up-names contract; LEAD-2 03:03), so there the Studio offers those for the words.
   const kindsOffered =
-    !retakeOf && !eyesOnFor && (underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
+    !retakeOf && !eyesOnFor && !pinboardOf && (underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
   // Playable items and dots go on a Moment, or on a Pulse post with its one photo (the new Pulse draws them over it,
@@ -593,6 +599,12 @@ export default function Studio({
         : sealPlaceOk
           ? { seal: { opens: sealWhen } }
           : {};
+  const boardOffered = !retakeOf && !eyesOnFor && !pinboardOf && !postKind && !underPenName && mode === 'media' && !!file && !isVideo;
+  const boardOut = pinboardOf
+    ? { pinboard_of: pinboardOf.id }
+    : boardOffered && startBoard && boardPrompt.trim()
+      ? { pinboard: { prompt: boardPrompt.trim().slice(0, 80) } }
+      : {};
   const skyOffered = !retakeOf && !eyesOnFor && !postKind && !underPenName && mode === 'media' && !!file && !isVideo && audience !== 'connections' && !noPlace && !area;
   const retakeOut = retakeOf ? { retake_of: retakeOf.id } : retakeOffered && startRetake && retakeTitle.trim() ? { retake: { title: retakeTitle.trim().slice(0, 60) } } : {};
   /** The items that go out: a before and after only with its after photo. */
@@ -863,6 +875,7 @@ export default function Studio({
             ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
             ...(i === 0 ? retakeOut : {}),
             ...(i === 0 ? sealOut : {}),
+            ...(i === 0 ? boardOut : {}),
             ...(i === 0 && skyOffered && joinSky ? { join_convergence: true } : {}),
             ...(i === 0 && eyesOnFor ? { eyes_on_for: eyesOnFor.id } : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
@@ -1470,6 +1483,25 @@ export default function Studio({
             </p>
           </div>
         )}
+        {boardOffered && (
+          <div className="st-group" role="group" aria-label="Pinboard">
+            <label className="st-check">
+              <input type="checkbox" checked={startBoard} onChange={(e) => setStartBoard(e.target.checked)} />
+              Start a pinboard
+            </label>
+            <p className="st-note">A prompt others add their own photo to for a week, one each. It stays.</p>
+            {startBoard && (
+              <input
+                className="st-retake-title"
+                value={boardPrompt}
+                maxLength={80}
+                onChange={(e) => setBoardPrompt(e.target.value)}
+                placeholder="Best fall tree on your walk"
+                aria-label="The pinboard’s prompt"
+              />
+            )}
+          </div>
+        )}
         {skyOffered && (
           <div className="st-group" role="group" aria-label="Tonight's sky">
             <label className="st-check">
@@ -1708,6 +1740,7 @@ export default function Studio({
 
           {!camera && (
             <div className="st-top">
+              {pinboardOf && <span className="st-retake-banner">Adding your piece to “{pinboardOf.prompt}”</span>}
               {eyesOnFor && (
                 <span className="st-retake-banner">Answering “{eyesOnFor.question}” with a Live photo</span>
               )}

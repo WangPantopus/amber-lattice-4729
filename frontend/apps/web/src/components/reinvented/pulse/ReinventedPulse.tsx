@@ -33,6 +33,7 @@ import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
 import { convergenceOf, convergenceTitle } from '../sky/Convergence';
+import { pinboardOf } from '../pinboard/Pinboard';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -43,6 +44,7 @@ const Composer = dynamic(() => import('../MomentComposerEntry'), { ssr: false })
 const Studio = dynamic(() => import('../studio/Studio'), { ssr: false });
 const RetakeView = dynamic(() => import('../retake/RetakeView'), { ssr: false });
 const ConvergenceView = dynamic(() => import('../sky/Convergence'), { ssr: false });
+const PinboardView = dynamic(() => import('../pinboard/Pinboard'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -84,6 +86,9 @@ export default function ReinventedPulse() {
   const [retakeOpen, setRetakeOpen] = useState<string | null>(null);
   // A convergence (CONTRACT 8h) opened from its row.
   const [skyOpen, setSkyOpen] = useState<string | null>(null);
+  // A pinboard (CONTRACT 8i) opened from its row, and one being added to.
+  const [boardOpen, setBoardOpen] = useState<string | null>(null);
+  const [addingPiece, setAddingPiece] = useState<{ id: string; prompt: string } | null>(null);
   const [addingFrame, setAddingFrame] = useState<{ id: string; title: string; ghost: string | null } | null>(null);
   // Answering an Eyes-on Ask with a Live photo (CONTRACT 8f).
   const [answering, setAnswering] = useState<{ id: string; question: string } | null>(null);
@@ -361,7 +366,16 @@ export default function ReinventedPulse() {
       const deck = deckOf(it.moment);
       const retake = retakeOf(it.moment);
       const sky = convergenceOf(it.moment);
-      const key = deck ? `${it.moment.author?.id}:${deck.id}` : retake ? `retake:${retake.start_id}` : sky ? `sky:${sky.id}` : null;
+      const board = pinboardOf(it.moment);
+      const key = deck
+        ? `${it.moment.author?.id}:${deck.id}`
+        : retake
+          ? `retake:${retake.start_id}`
+          : sky
+            ? `sky:${sky.id}`
+            : board
+              ? `board:${board.start_id}`
+              : null;
       if (!key) return true;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -403,6 +417,11 @@ export default function ReinventedPulse() {
       const sky = item?.type === 'moment' ? convergenceOf(item.moment) : null;
       if (sky) {
         setSkyOpen(sky.id);
+        return;
+      }
+      const board = item?.type === 'moment' ? pinboardOf(item.moment) : null;
+      if (board) {
+        setBoardOpen(board.start_id);
         return;
       }
       const steps = item?.type === 'moment' ? deckOf(item.moment)?.steps : undefined;
@@ -746,7 +765,9 @@ export default function ReinventedPulse() {
                               ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}`
                               : convergenceOf(item.moment)
                                 ? convergenceTitle(convergenceOf(item.moment)!)
-                                : undefined
+                                : pinboardOf(item.moment)
+                                  ? `Pinboard · ${pinboardOf(item.moment)!.pieces} ${pinboardOf(item.moment)!.pieces === 1 ? 'piece' : 'pieces'}`
+                                  : undefined
                           }
                           />
                         </div>
@@ -763,7 +784,9 @@ export default function ReinventedPulse() {
                               ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}`
                               : convergenceOf(item.moment)
                                 ? convergenceTitle(convergenceOf(item.moment)!)
-                                : undefined
+                                : pinboardOf(item.moment)
+                                  ? `Pinboard · ${pinboardOf(item.moment)!.pieces} ${pinboardOf(item.moment)!.pieces === 1 ? 'piece' : 'pieces'}`
+                                  : undefined
                           }
                         />
                       ) : (
@@ -793,6 +816,28 @@ export default function ReinventedPulse() {
         </button>
       )}
       {skyOpen && <ConvergenceView id={skyOpen} onClose={() => setSkyOpen(null)} />}
+      {boardOpen && (
+        <PinboardView
+          id={boardOpen}
+          onClose={() => setBoardOpen(null)}
+          onAdd={(start) => {
+            setBoardOpen(null);
+            setAddingPiece(start);
+          }}
+        />
+      )}
+      {addingPiece && account && (
+        <Studio
+          account={account}
+          pinboardOf={addingPiece}
+          onClose={() => setAddingPiece(null)}
+          onDone={(msg) => {
+            setAddingPiece(null);
+            setToast(msg);
+            void client.invalidateQueries({ queryKey: ['reinvented'] });
+          }}
+        />
+      )}
       {retakeOpen && (
         <RetakeView
           id={retakeOpen}
