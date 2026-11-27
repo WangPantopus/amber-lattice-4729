@@ -5,14 +5,16 @@
 //  "Made-up name" in the Studio's bar ("Pulse, reinvented" phase 0 step 2; the made-up-names contract,
 //  `docs/product/made-up-names/README.md`, "Moments"). A Moment under the person's made-up name goes to people
 //  nearby only, floats over its area (or sits at a public place its own picture was taken at), and carries no Live
-//  mark, weather or height; it takes reactions, not replies. Away from home the server takes it only pinned at a public
-//  place, so the Studio pins it at the place that names the spot (today's "Pin it at a place"). The chip shows only while
-//  `/api/pen-names/me` says the
-//  person may use one and the Moment has a place; picked before there is a name, the name screen opens first.
+//  mark, weather or height; it takes reactions, not replies. It floats over its area by default, at home and away
+//  (founder, 2026-11-27: "Yes, fix it"; the server's #4950): the pill reads "Area · <town>". Away from home, "Pin it at a
+//  place" in the drawer stays the author's own choice, and then the pill reads "At <place>". The chip shows only while
+//  `/api/pen-names/me` says the person may use one and the Moment has a place; picked before there is a name, the name
+//  screen opens first.
 //
 //  It is sent as `post_as: "pen_name"` with an ordinary Moment's body (`MomentsComposerModel.postsUnderMadeUpName`).
 //
 
+import CoreLocation
 import SwiftUI
 
 /// Who sees it, as the Studio's chips say it.
@@ -32,9 +34,23 @@ extension MomentsComposerModel {
         sky?.area?.label ?? place?.areaLabel ?? place?.placeLabel ?? "this area"
     }
 
-    /// Under a made-up name at home it floats over its area; elsewhere it sits at a public place.
+    /// Under a made-up name it floats over its area: always at home, and away from home unless its author pinned it at a
+    /// public place ("Pin it at a place"; the server floats it the same way when no place is picked, #4950).
     var madeUpFloats: Bool {
-        postsUnderMadeUpName && place?.atHome == true
+        guard postsUnderMadeUpName, !noLocationOn else { return false }
+        if place?.atHome == true { return true }
+        return sky != nil && !pinsHere
+    }
+
+    /// Away from home under a made-up name, "Pin it at a place" is the author's choice in the drawer.
+    var offersMadeUpPin: Bool {
+        postsUnderMadeUpName && sky != nil && place?.atHome != true && !noLocationOn
+    }
+
+    /// The disc the drawer's small map draws while a made-up name's Moment floats away from home (at home `skyDisc`).
+    var madeUpDisc: (center: CLLocationCoordinate2D, radiusM: Double)? {
+        guard madeUpFloats, let area = sky?.area else { return nil }
+        return (CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude), area.radiusM)
     }
 
     /// The made-up name can be offered: the person may use one, and the Moment has a place.
@@ -58,9 +74,7 @@ extension MomentsComposerModel {
             if noLocation { setNoLocation(false) }
             showHeight = false
             live.showWeather = false
-            // Away from home the server takes a made-up name's Moment only at a public place (`pin: "place"`): the
-            // one that names the spot, which the drawer can change. At home it floats over its area.
-            if place?.atHome != true, sky?.canPin == true, sky?.place != nil || pickedVenue != nil { pinsAtPlace = true }
+            // It floats over its area by default; a public place is pinned only when its author picks one in the drawer.
             // Nor a stamp that says how high or how far from home.
             studioStamps.removeAll { MomentsStudioStamps.notUnderMadeUpName.contains($0.kind) }
         }

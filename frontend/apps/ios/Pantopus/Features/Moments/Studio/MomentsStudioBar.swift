@@ -202,8 +202,7 @@ struct MomentsStudioBar: View {
     /// Where it pins, as the Post sheet's place row says it, and "Area · Camas, WA" for one at home that shows only its
     /// area; with "Share later", how long it shows first.
     private var pillPlace: String {
-        // Under a made-up name it shows over its area too (the server picks it).
-        // Under a made-up name at home it floats over its area too; elsewhere it reads its place.
+        // Under a made-up name it floats over its area too, unless its author pinned it at a place ("At <place>").
         let place = Self.showsHomeArea(model) || model.madeUpFloats ? "Area · \(homeTown)" : model.placeLine
         return model.sharesAt == nil ? place : "\(hoursWords) · \(place)"
     }
