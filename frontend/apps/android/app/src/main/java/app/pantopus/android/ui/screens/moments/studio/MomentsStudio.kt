@@ -132,6 +132,7 @@ internal fun MomentsStudioStep(
     sky: MomentsSkyActions,
     onMadeUp: (Boolean) -> Unit = {},
     onStamps: (List<MomentStampPlacement>) -> Unit = {},
+    onGuess: (Boolean) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
@@ -221,6 +222,8 @@ internal fun MomentsStudioStep(
                 )
                 Spacer(Modifier.height(Spacing.s3))
             }
+            // "Guess the spot" picked: what others will see.
+            StudioGuessLine(state)
             // A caption goes with a photo or a video; a text card is its own words.
             if (state.media != null) {
                 StudioCaption(
@@ -293,7 +296,7 @@ internal fun MomentsStudioStep(
                 studio = true,
             )
         }
-        StudioStampTray(visible = tray, state = state, onStamps = onStamps, onDone = { tray = false })
+        StudioStampTray(visible = tray, state = state, onStamps = onStamps, onDone = { tray = false }, onGuess = onGuess)
         if (fullMap) {
             state.postMapSpot?.let { spot ->
                 MomentsPostFullMap(

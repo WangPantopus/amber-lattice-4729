@@ -253,6 +253,7 @@ fun MomentsComposeScreen(
                         sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                         onMadeUp = viewModel::setMadeUp,
                         onStamps = viewModel::setStamps,
+                        onGuess = viewModel::setGuess,
                     )
                 } else {
                     ReviewStep(
