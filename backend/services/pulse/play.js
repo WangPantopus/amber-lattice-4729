@@ -85,6 +85,7 @@ function parseItems(value, now = Date.now()) {
     const { error, value: item } = SCHEMAS[raw.kind].validate(raw, { abortEarly: true, stripUnknown: true });
     if (error) throw new Error(`play[${index}]: ${error.details[0].message.replace(/"/g, '')}`);
     if (seen.has(item.id)) throw new Error(`play[${index}]: each item needs its own id.`);
+    if (/^[ck]-/.test(item.id)) throw new Error(`play[${index}]: an id can't start with c- or k-.`);
     seen.add(item.id);
     const stored = {
       ...item,
@@ -125,8 +126,10 @@ function wordsOf(items) {
 
 const DOT_KINDS = ['note', 'rating', 'link', 'thing'];
 const MAX_DOTS = 8;
+// A dot's answers (a field card's correction, a collect) are kept under `c-<id>` and `k-<id>` (dotItem), so a dot's id
+// leaves room for the prefix, and a play item's id never starts with one.
 const dotPlace = {
-  id: placement.id,
+  id: Joi.string().pattern(/^[a-z0-9_-]{1,38}$/).required(),
   x: placement.x,
   y: placement.y,
 };
@@ -179,6 +182,11 @@ function parseDots(value, { photo = false, media = false, penName = false } = {}
     if (dot.kind === 'link') stored.title = dot.title || null;
     return stored;
   });
+}
+
+/** The PostAnswer item a dot's answer of this kind is kept under: `c-<id>` a correction, `k-<id>` a collect. */
+function dotItem(kind, dotId) {
+  return `${kind === 'collect' ? 'k' : 'c'}-${dotId}`;
 }
 
 /** Every word an author typed in these dots, for the made-up-name words check. */
@@ -340,10 +348,10 @@ async function playFor(posts, viewerId, { answers: given = null } = {}) {
   const [answers, connections, blocked] = await Promise.all([
     given || answersOn(ids),
     needsPeople ? connectionIds(viewerId) : [],
-    needsPeople ? blockService.blockedUserIds(viewerId).catch(() => new Set()) : new Set(),
+    needsPeople ? hiddenPeople(viewerId) : new Set(),
   ]);
   const connected = new Set(connections.map(String));
-  const blockedSet = new Set([...(blocked || [])].map(String));
+  const blockedSet = blocked;
   // The people a face names: the reader and their connections among the answerers of a board or a dial.
   const named = new Set();
   for (const post of withItems) {
@@ -376,6 +384,21 @@ async function answersOn(postIds) {
     byItem.get(key).push(row);
   }
   return byItem;
+}
+
+/**
+ * The people whose answers this reader never sees (LEAD-2, 7b): blocked either way, and muted by the reader. A read
+ * that fails hides nobody's answers but still names only connections.
+ */
+async function hiddenPeople(viewerId) {
+  try {
+    // eslint-disable-next-line global-require
+    const filters = await require('../feedService').getMuteAndHideFilters(viewerId);
+    return new Set([...(filters.blockedUserIds || []), ...(filters.mutedUserIds || []), ...(filters.momentMutedIds || [])].map(String));
+  } catch (error) {
+    logger.warn('play.hidden_people_unavailable', { error: error.message });
+    return new Set([...(await blockService.blockedUserIds(viewerId).catch(() => new Set()))].map(String));
+  }
 }
 
 // Required when used, not at the top: momentStore requires this file for its answers.
@@ -528,20 +551,26 @@ async function takeBack(id, itemId, viewerId) {
 /** GET /play/:id/:item/answers — the question box's answers or a board's notes, for the author only, newest first. */
 async function authorAnswers(id, itemId, viewerId, cursor) {
   const target = await reach(id, viewerId);
-  const item = itemOf(target, itemId);
-  if (!target.own || !['question', 'board'].includes(item.kind)) throw notFound();
+  // A thing dot's field card corrections ("Not right?", CONTRACT 7d) are read here too.
+  const thing = target.dots.find((dot) => dot.id === itemId && dot.kind === 'thing');
+  const item = thing ? { id: dotItem('correction', thing.id), kind: 'correction' } : itemOf(target, itemId);
+  if (!target.own || !['question', 'board', 'correction'].includes(item.kind)) throw notFound();
   const offset = Math.max(0, Number.parseInt(cursor || '0', 10) || 0);
   let query = supabaseAdmin.from('PostAnswer').select('id, user_id, value, updated_at')
     .eq('post_id', id).eq('item', item.id).order('updated_at', { ascending: false }).range(offset, offset + AUTHOR_PAGE);
   if (item.kind === 'board') query = query.not('value->>note', 'is', null);
+  if (item.kind === 'correction') query = query.eq('kind', 'correction');
   const { data, error } = await query;
   if (error) throw new Error(`Failed to load the answers: ${error.message}`);
-  const rows = (data || []).slice(0, AUTHOR_PAGE);
+  const hidden = await hiddenPeople(viewerId);
+  const rows = (data || []).slice(0, AUTHOR_PAGE).filter((row) => !hidden.has(String(row.user_id)));
   const people = await loadChatPeople(rows.map((row) => row.user_id));
   return {
     answers: rows.map((row) => ({
       id: row.id,
-      ...(item.kind === 'question' ? { text: row.value?.text || '' } : { note: row.value?.note || '' }),
+      ...(item.kind === 'question' ? { text: row.value?.text || '' }
+        : item.kind === 'correction' ? { name: row.value?.name || '', note: row.value?.note || null }
+          : { note: row.value?.note || '' }),
       at: row.updated_at,
       person: personOf(row.user_id, people),
     })),
@@ -562,5 +591,5 @@ async function removeAnswer(id, itemId, answerId, viewerId) {
 
 module.exports = {
   KINDS, MAX_ITEMS, parseItems, wordsOf, parseAnswer, itemFor, playFor, answersOn,
-  DOT_KINDS, MAX_DOTS, parseDots, wordsOfDots, dotsFor, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
+  DOT_KINDS, MAX_DOTS, parseDots, wordsOfDots, dotsFor, dotItem, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
 };
