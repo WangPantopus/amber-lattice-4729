@@ -47,6 +47,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
+import app.pantopus.android.ui.screens.moments.studio.sentGuess
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -217,6 +218,8 @@ data class MomentsComposeUiState(
     val madeUp: Boolean = false,
     /** "Pulse, reinvented"'s Studio: the stamps placed on the picture (CONTRACT 2b). Only the Studio sets them. */
     val stamps: List<MomentStampPlacement> = emptyList(),
+    /** "Pulse, reinvented"'s Studio: "Guess the spot" picked (CONTRACT 5a). Only the Studio sets it. */
+    val guess: Boolean = false,
 ) {
     val kind: String
         get() =
@@ -709,7 +712,14 @@ class MomentsComposeViewModel
                     val next = waiting.first()
                     waiting = waiting.drop(1)
                     if (open(next)) {
-                        _state.update { it.copy(posting = false, pickedAt = it.pickedTogether - waiting.size, stamps = emptyList()) }
+                        _state.update {
+                            it.copy(
+                                posting = false,
+                                pickedAt = it.pickedTogether - waiting.size,
+                                stamps = emptyList(),
+                                guess = false,
+                            )
+                        }
                         return@launch
                     }
                 }
@@ -867,6 +877,7 @@ class MomentsComposeViewModel
                     pickedTogether = 0,
                     pickedAt = 0,
                     stamps = emptyList(),
+                    guess = false,
                 )
             }
         }
@@ -953,11 +964,17 @@ class MomentsComposeViewModel
         /** The Studio's stamps, moved, sized, turned, put on or taken off. */
         fun setStamps(stamps: List<MomentStampPlacement>) = _state.update { it.copy(stamps = stamps) }
 
+        /** The Studio's "Guess the spot", on or off. */
+        fun setGuess(on: Boolean) = _state.update { it.copy(guess = on) }
+
         /**
          * Today's Post screen takes the Moment from the Studio (the switch went off): the picture and the words stay; the
          * stamps and the made-up name, which today's screens don't offer, go. Nothing changes when there were none.
          */
-        fun leaveStudio() = _state.update { if (it.stamps.isEmpty() && !it.madeUp) it else it.copy(stamps = emptyList(), madeUp = false) }
+        fun leaveStudio() =
+            _state.update {
+                if (it.stamps.isEmpty() && !it.madeUp && !it.guess) it else it.copy(stamps = emptyList(), madeUp = false, guess = false)
+            }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
         fun setPinAtPlace(on: Boolean) = _state.update { it.withPinAtPlace(on) }
@@ -1064,6 +1081,7 @@ class MomentsComposeViewModel
                         // The Studio's stamps that may show on this Moment, and the height for an elevation stamp.
                         stamps = current.sentStamps,
                         elevation = current.stampElevation(usable),
+                        guess = current.sentGuess,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
