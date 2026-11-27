@@ -1,0 +1,133 @@
+Pantopus Proprietary License (View Only)
+
+Copyright (c) 2026 Pantopus, Inc. All rights reserved.
+
+READ THIS BEFORE GOING FURTHER. THIS IS NOT OPEN SOURCE. COPYING OR USING
+ANY PART OF THIS REPOSITORY WITHOUT WRITTEN PERMISSION FROM PANTOPUS, INC.
+IS COPYRIGHT INFRINGEMENT, AND PANTOPUS WILL ENFORCE ITS RIGHTS.
+
+This repository and everything in it, including source code, compiled code,
+designs, images, text, data, database schemas, prompts and documentation, in
+every version and branch (together, the "Software"), is owned by Pantopus,
+Inc. ("Pantopus"), except the third-party components described in section 8.
+The Software is protected by United States copyright law, international
+treaties and other laws. Pantopus grants no license, by implication, estoppel
+or otherwise, except as this file states.
+
+1. Acceptance
+
+   By viewing, cloning, downloading or otherwise accessing the Software, you
+   accept this license. If you do not accept it, do not access the Software.
+
+2. The only thing you may do
+
+   You may view the Software on GitHub. While the repository is public on
+   GitHub, GitHub's Terms of Service let GitHub users view it and fork it
+   within GitHub. Nothing in this license takes away a right those terms
+   require, and this license grants nothing beyond them. A fork remains the
+   Software and remains under this license.
+
+3. What you may not do
+
+   Unless Pantopus has given you permission in a writing signed by an
+   officer of Pantopus, you may not, in whole or in any part, however small:
+
+   a. copy, download, clone, mirror, archive or store the Software outside
+      GitHub, except the temporary copies your browser or device makes while
+      you view it;
+   b. modify, adapt or translate the Software, or make any work based on or
+      derived from it;
+   c. distribute, publish, post, sublicense, sell, rent or lend the
+      Software, or otherwise make it available to anyone;
+   d. run, compile, deploy or host the Software, or use it in any product,
+      service or project, commercial or not;
+   e. use the Software, its structure, its design or its documentation as a
+      reference or guide to build a product or service that copies or
+      competes with Pantopus;
+   f. use the Software to train, fine-tune, evaluate or prompt
+      machine-learning or artificial-intelligence models, or add it to any
+      dataset or index;
+   g. scrape or harvest the Software by automated means, except search
+      engines indexing GitHub's pages; or
+   h. remove, alter or hide any copyright, license or other notice in it.
+
+   Each of these acts, done by you or by anyone acting for you or with your
+   help, breaks this license.
+
+4. Consequences
+
+   Any use of the Software that this license does not allow infringes
+   Pantopus's copyright. Pantopus may, where the law allows, seek:
+
+   a. court orders stopping the infringement, and the impounding and
+      destruction of infringing copies (17 U.S.C. sections 502 and 503);
+   b. its actual damages and all of the infringer's profits from the
+      infringement (17 U.S.C. section 504(b));
+   c. instead of actual damages, statutory damages of up to $30,000 for each
+      work infringed, and up to $150,000 for each work infringed willfully
+      (17 U.S.C. section 504(c));
+   d. its full costs and reasonable attorneys' fees (17 U.S.C. section 505);
+   e. statutory damages of $2,500 to $25,000 for each removal or alteration
+      of copyright management information, including the notices in this
+      file (17 U.S.C. sections 1202 and 1203); and
+   f. takedown of infringing copies wherever they are hosted, under the
+      Digital Millennium Copyright Act (17 U.S.C. section 512).
+
+   Willful infringement for commercial advantage or private financial gain
+   can also be a federal crime (17 U.S.C. section 506 and 18 U.S.C. section
+   2319). Pantopus may refer such cases to law enforcement.
+
+   If you break this license, you agree to pay Pantopus's reasonable
+   attorneys' fees and costs of enforcing it, in addition to any other
+   remedy. Pantopus's remedies are cumulative, and a delay or failure to
+   enforce any part of this license does not waive it.
+
+5. Ending permission
+
+   If you break this license, any permission you had under it ends at once
+   and without notice. You must then stop all use of the Software and
+   permanently delete every copy you or anyone acting for you has, and
+   confirm the deletion in writing if Pantopus asks. Copies made while the
+   repository was public remain subject to this license if the repository
+   becomes private.
+
+6. Names and marks
+
+   This license grants no right to use the name "Pantopus" or any Pantopus
+   logo, trademark or trade dress.
+
+7. No warranty and no liability
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE AND NON-INFRINGEMENT. TO THE EXTENT THE LAW ALLOWS,
+   PANTOPUS WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY
+   ARISING FROM THE SOFTWARE OR ITS USE.
+
+8. Third-party components
+
+   Some parts of the Software were made by others and carry their own
+   licenses, for example fonts under the SIL Open Font License and the Gradle
+   wrapper under the Apache License 2.0. Those parts stay under their own
+   licenses, and this license does not limit the rights those licenses give.
+   Any other license name attached to Pantopus's own code, such as a "license"
+   field in a package manifest, does not apply; this license does.
+
+9. Governing law and courts
+
+   This license is governed by the laws of the State of Delaware and the
+   federal law of the United States, without regard to conflict-of-laws
+   rules. Disputes will be resolved in the state or federal courts located in
+   Delaware, and you consent to their jurisdiction. Pantopus may also seek a
+   court order to stop infringement in any court that has jurisdiction.
+
+10. Other terms
+
+   If a court holds any part of this license unenforceable, that part will be
+   enforced to the fullest extent the law allows and the rest of the license
+   stays in effect. This license covers this repository only. Use of the
+   Pantopus apps, website and services is governed by the Pantopus Terms of
+   Service.
+
+To ask for permission or to report a copy of the Software, write to
+privacy@pantopus.com.

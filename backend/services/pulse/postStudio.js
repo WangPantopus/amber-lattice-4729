@@ -17,9 +17,15 @@ const { displayedPoint } = require('./distanceText');
 // The kinds a post may be shown in Explore as (6f): never an Ask, an Offer, a Heads-up or a Lost and found.
 const EXPLORE_TYPES = ['recommendation', 'local_update', 'event', 'share'];
 
-/** The Studio's placements and height reading from the body's `studio`; 400 for a malformed list (momentStamps). */
+/**
+ * The Studio's placements, height reading and photo time from the body's `studio`; 400 for a malformed list
+ * (momentStamps) or a `taken_at` that isn't a date. `takenAt`: a picture from the library (CONTRACT 6d), null for one
+ * taken now.
+ */
 function parse(studio) {
-  return { ...momentStamps.parseStudio(studio || {}), explore: studio?.explore === true };
+  const takenAt = studio?.taken_at == null || studio.taken_at === '' ? null : String(studio.taken_at);
+  if (takenAt && !Number.isFinite(Date.parse(takenAt))) throw new Error('taken_at must be a date.');
+  return { ...momentStamps.parseStudio(studio || {}), explore: studio?.explore === true, takenAt };
 }
 
 /**
@@ -42,6 +48,9 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     town,
     atHome,
     penName: underPenName,
+    // A picture from the library isn't "now": no weather or sunset, and its time is the photo's (as a Moment's).
+    fresh: !parsed.takenAt,
+    takenAt: parsed.takenAt,
     elevation: underPenName ? null : store.shownAltitude(parsed.reading, {
       atHome, showArea: row.location_precision !== 'exact_place', unplaced: !placed, floating: false,
     }),

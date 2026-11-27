@@ -379,7 +379,7 @@ This is a solo founder project (YP). For major changes, open an issue first.
 
 ## License & Links
 
-- **License:** ISC — Copyright (c) 2026 Pantopus Platform
+- **License:** Proprietary, view only — Copyright (c) 2026 Pantopus, Inc. All rights reserved. See [LICENSE](LICENSE).
 - **API docs (local):** http://localhost:8000/api-docs
 
 ---
