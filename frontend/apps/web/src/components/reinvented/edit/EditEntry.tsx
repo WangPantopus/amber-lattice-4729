@@ -26,7 +26,10 @@ export function EditEntry({ moment, close }: { moment: EditableMoment; close(): 
   // Only where something can change: a caption (photo or video), who sees it (a personal Moment with a place: Nearby or
   // Friends), or stamps on it. A card with no place and no stamps has nothing to change.
   const changeable =
-    moment.kind !== 'text' || (!moment.no_location && moment.author.id === account) || !!moment.stamps?.length;
+    moment.kind !== 'text' ||
+    (!moment.no_location && moment.author.id === account) ||
+    !!moment.stamps?.length ||
+    Object.values(moment.stamp_choices || {}).some((v) => v != null);
   useEffect(() => {
     if (!(until > Date.now())) return;
     const t = setTimeout(() => setNow(Date.now()), Math.min(until - Date.now() + 50, 30_000));
