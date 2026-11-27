@@ -28,6 +28,10 @@ struct ReinventedPulseView: View {
     @State private var dragged: CGFloat = 0
     @State private var watching: MomentsWatchSession?
     @State private var showsDial = false
+    /// My Atlas (CONTRACT 6e, `ReinventedAtlas`): the switch's third choice, and the kept Moment opened from it.
+    @State private var atlas = ReinventedAtlasModel()
+    @State private var inAtlas = false
+    @State private var atlasItem: MomentDTO?
     /// "This Moment has ended." after a link to one that can't be played.
     @State private var linkNote: String?
     @Environment(\.colorScheme) private var colorScheme
@@ -51,9 +55,10 @@ struct ReinventedPulseView: View {
                 VStack(spacing: Spacing.s2) {
                     topRow
                     viewSwitch
-                    if height == .map {
+                    // My Atlas has no time row and no chips.
+                    if height == .map, !inAtlas {
                         ReinventedTimeRow(model: map)
-                    } else if model.reach != "explore" {
+                    } else if model.reach != "explore", !inAtlas {
                         chipsRow
                     }
                 }
@@ -63,6 +68,12 @@ struct ReinventedPulseView: View {
         }
         .task { await model.refresh() }
         .task { await strip.read() }
+        .sheet(item: $atlasItem) { moment in
+            ReinventedAtlasItem(moment: moment, model: atlas) { atlasItem = nil }
+                .presentationDetents([.large])
+                // A Moment deleted for good leaves the map too.
+                .onDisappear { if inAtlas { map.reread() } }
+        }
         // A Moment's link or notice (PHASE-1 §3): with every Moment in Pulse, it plays here.
         .onChange(of: MomentsNavigator.shared.pending, initial: true) { _, _ in playLinked() }
         .alert(linkNote ?? "", isPresented: Binding(get: { linkNote != nil }, set: { if !$0 { linkNote = nil } })) {
@@ -162,8 +173,9 @@ struct ReinventedPulseView: View {
     /// The big List | Map switch (the middle height reads as List).
     private var viewSwitch: some View {
         HStack(spacing: 4) {
-            switchButton("List", icon: .list, on: height != .map) { setHeight(.list) }
-            switchButton("Map", icon: .map, on: height == .map) { setHeight(.map) }
+            switchButton("List", icon: .list, on: !inAtlas && height != .map) { show(atlas: false, at: .list) }
+            switchButton("Map", icon: .map, on: !inAtlas && height == .map) { show(atlas: false, at: .map) }
+            switchButton("Atlas", icon: .bookmark, on: inAtlas) { show(atlas: true, at: .list) }
         }
         .padding(4)
         .background(Capsule().fill(Theme.Color.appSurface))
@@ -226,6 +238,13 @@ struct ReinventedPulseView: View {
 
     // MARK: - The list over the map
 
+    /// List, Map or Atlas: Atlas shows the person's kept Moments in the list's place and on the map.
+    private func show(atlas: Bool, at next: Height) {
+        inAtlas = atlas
+        map.show(atlas: atlas)
+        setHeight(next)
+    }
+
     private func setHeight(_ next: Height) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { height = next }
     }
@@ -259,14 +278,18 @@ struct ReinventedPulseView: View {
                 .accessibilityAddTraits(.isButton)
                 .onTapGesture { setHeight(height == .map ? .middle : height == .middle ? .list : .middle) }
                 .accessibilityIdentifier("reinventedPulse.handle")
-            ReinventedPulseList(
-                model: model,
-                strip: strip.strip,
-                onOpenPost: onOpenPost,
-                onOpenMoment: open,
-                onOpenRing: { ring in open(.ring(ring)) },
-                onRefreshStrip: { await strip.read() }
-            )
+            if inAtlas {
+                ReinventedAtlasView(model: atlas) { atlasItem = $0 }
+            } else {
+                ReinventedPulseList(
+                    model: model,
+                    strip: strip.strip,
+                    onOpenPost: onOpenPost,
+                    onOpenMoment: open,
+                    onOpenRing: { ring in open(.ring(ring)) },
+                    onRefreshStrip: { await strip.read() }
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .frame(height: max(geo.size.height - min(max(panelTop(in: geo) + dragged, 120), geo.size.height - 64), 64), alignment: .top)
@@ -322,7 +345,7 @@ struct ReinventedPulseView: View {
         case let .mark(mark):
             onOpenPost(mark.post.id)
         case let .kept(kept):
-            open(kept.moment)
+            if inAtlas { atlasItem = kept.moment } else { open(kept.moment) }
         case let .ticket(ticket):
             DeepLinkRouter.shared.handle(path: "/plans/\(ticket.id)")
         }

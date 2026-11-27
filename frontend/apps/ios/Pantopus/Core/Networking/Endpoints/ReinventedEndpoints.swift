@@ -66,4 +66,27 @@ public enum ReinventedEndpoints {
         if let cursor { query["cursor"] = cursor }
         return Endpoint(method: .get, path: "/api/reinvented/explore", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
     }
+
+    /// `GET /api/reinvented/atlas` (CONTRACT 6e): My Atlas by date, newest first, 30 a page. Route
+    /// `backend/routes/reinvented.js` (atlas).
+    static func atlas(cursor: String?) -> Endpoint {
+        var query = ["limit": "30"]
+        if let cursor { query["cursor"] = cursor }
+        return Endpoint(method: .get, path: "/api/reinvented/atlas", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
+    }
+
+    /// `GET /api/reinvented/atlas` with a box (CONTRACT 6e): every kept Moment in it, for the map.
+    static func atlasBox(south: Double, west: Double, north: Double, east: Double) -> Endpoint {
+        let query = [
+            "south": String(format: "%.5f", south), "west": String(format: "%.5f", west),
+            "north": String(format: "%.5f", north), "east": String(format: "%.5f", east)
+        ]
+        return Endpoint(method: .get, path: "/api/reinvented/atlas", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
+    }
+
+    /// `DELETE /api/reinvented/atlas/:id` (CONTRACT 6e): Delete for good. `204`; `409 MOMENT_HELD` while under review.
+    static func deleteForGood(id: String) -> Endpoint {
+        let id = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return Endpoint(method: .delete, path: "/api/reinvented/atlas/\(id)")
+    }
 }
