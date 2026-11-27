@@ -537,16 +537,16 @@ async function playOf(id, viewerId) {
  * the kept part (a Moment's post_metadata.moment, a post's PostStudio.studio) to the parts that change.
  */
 async function keepWith(target, change) {
+  // Worked out from the kept value as it is when written, so writes at the same moment keep each other (LEAD-3).
   if (target.moment) {
-    const store = momentStore();
-    const updated = await store.updateMoment(target.moment, { moment: change(target.moment.post_metadata?.moment || {}) });
+    const updated = await momentStore().changeMoment(target.moment, (kept) => change(kept || {}));
     if (!updated) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
     return;
   }
   if (!target.studio) throw notFound();
-  const next = { ...target.studio, ...change(target.studio) };
-  const { error } = await supabaseAdmin.from('PostStudio').update({ studio: next }).eq('post_id', target.id);
-  if (error) throw new Error(`Failed to keep the change: ${error.message}`);
+  // eslint-disable-next-line global-require
+  const kept = await require('./postStudio').changeStudio(target.id, target.studio, change);
+  if (!kept) throw notFound();
 }
 
 /** DELETE /dots/:id/:dot — the author removes one dot (and its field card) from their post. */

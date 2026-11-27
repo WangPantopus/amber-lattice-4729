@@ -15,6 +15,7 @@ const store = require('../moments/momentStore');
 const { displayedPoint } = require('./distanceText');
 const { haversineMeters } = require('../../utils/trustState');
 const play = require('./play');
+const mentions = require('./mentions');
 
 // The Live mark's checks for a post's weather and sunset (CONTRACT 6d): a fix this fresh, this near the post's pin.
 const FIX_MAX_AGE_MS = 5 * 60 * 1000;
@@ -38,6 +39,8 @@ function parse(studio, { penName = false, things = true } = {}) {
     explore: studio?.explore === true,
     // Playable items (CONTRACT 7b); a malformed list throws, answered 400 POST_INVALID.
     play: play.parseItems(studio?.play),
+    // Mentions in the caption (CONTRACT 7h): who is kept is decided in studioFor, once the post's audience is known.
+    mentions: mentions.parse(studio?.mentions),
     // Dots on the picture (CONTRACT 7c); no link under a made-up name. The Studio uploads a post's photo after making
     // the post, so a thing's photo is looked for when its field card is asked for (7d), not here.
     dots: play.parseDots(studio?.dots, { media: true, photo: true, penName, things }),
@@ -90,6 +93,14 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     }),
   });
   const explore = parsed.explore && placed && !atHome && !underPenName && EXPLORE_TYPES.includes(row.post_type);
+  // Mentions (CONTRACT 7h): the author's connections who may read the post as it will be stored (today's read rule),
+  // not blocked either way; none under a made-up name.
+  const mentioned = parsed.mentions?.length
+    ? await mentions.keep(parsed.mentions, userId, {
+      penName: underPenName,
+      maySee: (person) => require('./readAccess').canReadPost({ ...row, user_id: userId, is_story: false }, person),
+    })
+    : [];
   return {
     v: 1,
     stamps: parsed.placements,
@@ -99,6 +110,7 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     ...(parsed.play?.length ? { play: parsed.play } : {}),
     ...(parsed.dots?.length ? { dots: parsed.dots } : {}),
     ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
+    ...(mentioned.length ? { mentions: mentioned } : {}),
   };
 }
 
@@ -106,6 +118,49 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
 async function save(postId, studio) {
   const { error } = await supabaseAdmin.from('PostStudio').insert({ post_id: postId, studio });
   if (error) throw new Error(`Failed to keep the post's stamps: ${error.message}`);
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  if (typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => sameValue(a[key], b[key]));
+}
+
+function missingFunction(error) {
+  return error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function/i.test(error?.message || '');
+}
+
+/**
+ * Sets the keys that `change(studio)` works out from the post's kept value, in one statement that merges only them and
+ * only while they still hold what was read (post_studio_update, migration 20261127140000), so writes at the same moment
+ * keep each other; when another write changed them first, reads again and works it out again. Answers the new kept
+ * value, or null when the post has none.
+ */
+async function changeStudio(postId, current, change) {
+  let kept = current;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const set = change(kept || {});
+    if (!set || !Object.keys(set).length) return kept;
+    const same = Object.fromEntries(Object.keys(set).map((key) => [key, kept?.[key] ?? null]));
+    const { data, error } = await supabaseAdmin.rpc('post_studio_update', { p_post_id: postId, p_studio: set, p_same: same })
+      .select('studio').maybeSingle();
+    if (error && missingFunction(error)) {
+      // A database without the function yet: today's whole-value write.
+      const next = { ...(kept || {}), ...set };
+      const { error: plainError } = await supabaseAdmin.from('PostStudio').update({ studio: next }).eq('post_id', postId);
+      if (plainError) throw new Error(`Failed to keep the change: ${plainError.message}`);
+      return next;
+    }
+    if (error) throw new Error(`Failed to keep the change: ${error.message}`);
+    if (data) return data.studio;
+    const { data: fresh, error: readError } = await supabaseAdmin.from('PostStudio').select('studio').eq('post_id', postId).maybeSingle();
+    if (readError) throw new Error(`Failed to read the post's kept value: ${readError.message}`);
+    if (!fresh || Object.keys(same).every((key) => sameValue(fresh.studio?.[key] ?? null, same[key]))) return null;
+    kept = fresh.studio;
+  }
+  throw Object.assign(new Error('This post is changing right now. Try again in a moment.'), { status: 409, code: 'POST_BUSY' });
 }
 
 function shownOf(studio) {
@@ -128,7 +183,7 @@ async function stampsFor(posts) {
  */
 async function readerParts(posts, viewerId) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
-  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map() };
+  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map() };
   const [{ data, error }, answers] = await Promise.all([
     supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
     play.answersOn(ids).catch(() => null),
@@ -145,7 +200,13 @@ async function readerParts(posts, viewerId) {
     own: String(byId.get(row.post_id)?.user_id) === String(viewerId),
     open: true,
   }));
-  return { stamps, dots, play: answers ? await play.playFor(withItems, viewerId, { answers }) : new Map() };
+  const [played, mentioned] = await Promise.all([
+    answers ? play.playFor(withItems, viewerId, { answers }) : new Map(),
+    // Mentions (CONTRACT 7h), without people hidden from this reader.
+    mentions.shownFor(rows.map((row) => ({ id: row.post_id, list: row.studio?.mentions })), viewerId, (row) => row.list)
+      .catch(() => new Map()),
+  ]);
+  return { stamps, dots, play: played, mentions: mentioned };
 }
 
 /**
@@ -168,4 +229,4 @@ function withStamps(posts, stamps) {
   return posts.map((post) => (stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id) } : post));
 }
 
-module.exports = { parse, studioFor, save, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };
+module.exports = { parse, studioFor, save, changeStudio, shownOf, stampsFor, readerParts, stampsInBox, withStamps, EXPLORE_TYPES };

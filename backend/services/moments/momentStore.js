@@ -536,7 +536,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map() }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -626,6 +626,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       deck: stepDeck.deckOf(m, decks, row.user_id),
       // Replies people can see (CONTRACT 8a): shown or not, how many this reader may see, and whether they may reply.
       replies: shownReplies.repliesOf(row, replyCounts),
+      // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
+      mentions: mentioned?.get(row.id) || [],
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
@@ -702,7 +704,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays, decks, replyCounts] = reinvented
+  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
@@ -714,8 +716,10 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       rows.some((r) => meta(r).deck) ? stepDeck.decksFor(rows, viewerId) : new Map(),
       // Replies people can see (CONTRACT 8a): one count for the page, only of the Moments that show them.
       shownReplies.countsFor(rows, viewerId).catch(() => new Map()),
+      // Mentions (CONTRACT 7h): one read of the people, only when a row mentions anyone.
+      require('../pulse/mentions').shownFor(rows, viewerId, (r) => meta(r).mentions).catch(() => new Map()),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -735,6 +739,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     play: plays.get(row.id) || null,
     decks,
     replyCounts,
+    mentioned,
   }));
 }
 
@@ -1419,7 +1424,66 @@ async function insertMoment(row, id = null, penWriter = null) {
 }
 
 /** Writes `changes` (post_metadata.moment fields under `moment`) when the row still matches `expect`. */
-async function updateMoment(row, { moment, ...columns }, expect = {}) {
+// Writes sent at the same moment keep each other (coord, LEAD-3 2026-11-27): a write that changes the kept values
+// (post_metadata.moment) of a Moment posted with the switch on runs as one statement that merges only its own keys into
+// the row as it is then (moment_metadata_update, migration 20261127140000), instead of writing back the whole value it
+// read; only while the switch is on for anyone (mergedWriteOn). Only these columns and filters go through it; any other
+// write, and every write while the switch is off for everyone, is the plain update below, as before.
+const MERGED_COLUMNS = ['content', 'audience', 'story_expires_at'];
+const MOMENT_KEY_FILTER = /^post_metadata->moment->>([a-z_]+)$/;
+const MERGE_RETRY_MS = 60 * 1000;
+let mergeMissingSince = 0;
+
+function mergeFilters(expect) {
+  const filters = {};
+  for (const [column, value] of Object.entries(expect)) {
+    const key = MOMENT_KEY_FILTER.exec(column)?.[1];
+    if (key && value === null) (filters.moment_null = filters.moment_null || []).push(key);
+    else if (column === 'archived_at' && value === null) filters.unarchived = true;
+    else if (column === 'moderation_state' && typeof value === 'string') filters.moderation_state = value;
+    else return null;
+  }
+  return filters;
+}
+
+/**
+ * Whether a write to this Moment may take the merged path (LEAD-3, 06:10): only a Moment posted with the switch on (the
+ * Studio branch marks it `kept`), and only while `pulse_reinvented` is on for anyone at all (the cached flag row). Every
+ * other Moment, and every Moment while the switch is off for everyone, is written exactly as today.
+ */
+async function mergedWriteOn(row) {
+  if (!meta(row).kept) return false;
+  try {
+    const flag = await getFlag(REINVENTED_FLAG);
+    return Boolean(flag && (flag.enabled_globally || flag.enabled_for_internal_team || (flag.beta_user_ids || []).length));
+  } catch (error) {
+    logger.warn('moments.flag_failed', { flag: REINVENTED_FLAG, error: error.message });
+    return false;
+  }
+}
+
+function missingFunction(error) {
+  return error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function/i.test(error?.message || '');
+}
+
+/**
+ * Updates a Moment's columns and kept values (`moment`: the keys to set), only while `expect`'s filters hold. Answers
+ * the updated row, or null when it isn't there or a filter doesn't hold. `same` (key -> the value the write was worked
+ * out from): only if those keys still hold it (changeMoment).
+ */
+async function updateMoment(row, { moment, ...columns }, expect = {}, { same } = {}) {
+  const filters = moment ? mergeFilters(expect) : null;
+  if (filters && Object.keys(columns).every((column) => MERGED_COLUMNS.includes(column))
+    && Date.now() - mergeMissingSince > MERGE_RETRY_MS && await mergedWriteOn(row)) {
+    const { data, error } = await supabaseAdmin.rpc('moment_metadata_update', {
+      p_id: row.id, p_moment: moment, p_columns: columns, p_expect: same ? { ...filters, moment_same: same } : filters,
+    }).select(MOMENT_SELECT).maybeSingle();
+    if (!error) return data || null;
+    if (!missingFunction(error)) throw new Error(`Failed to update the Moment: ${error.message}`);
+    // A database without the function yet: today's write, and the function is tried again in a minute.
+    mergeMissingSince = Date.now();
+    logger.warn('moments.merge_update_missing', { error: error.message });
+  }
   const next = { ...columns };
   if (moment) next.post_metadata = { ...row.post_metadata, moment: { ...meta(row), ...moment } };
   let query = supabaseAdmin.from('Post').update(next).eq('id', row.id).eq('is_story', true);
@@ -1429,6 +1493,37 @@ async function updateMoment(row, { moment, ...columns }, expect = {}) {
   const { data, error } = await query.select(MOMENT_SELECT).maybeSingle();
   if (error) throw new Error(`Failed to update the Moment: ${error.message}`);
   return data || null;
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  if (typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => sameValue(a[key], b[key]));
+}
+
+/**
+ * Sets the kept values that `change(moment)` works out from the Moment's current ones (a map of field cards, a list of
+ * dots), only if those keys still hold what it read; when another write changed them first, reads the Moment again and
+ * works the change out again (a few tries). Answers the updated row, or null when the Moment isn't there or `expect`
+ * doesn't hold.
+ */
+async function changeMoment(row, change, expect = {}) {
+  let current = row;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const set = change(meta(current));
+    if (!set || !Object.keys(set).length) return current;
+    const same = Object.fromEntries(Object.keys(set).map((key) => [key, meta(current)[key] ?? null]));
+    const updated = await updateMoment(current, { moment: set }, expect, { same });
+    if (updated) return updated;
+    const fresh = await loadMoment(current.id);
+    // Nothing it read has changed: the Moment itself refused (it ended, or a filter doesn't hold).
+    if (!fresh || Object.keys(same).every((key) => sameValue(meta(fresh)[key] ?? null, same[key]))) return null;
+    current = fresh;
+  }
+  throw fail(409, 'MOMENT_BUSY', 'This Moment is changing right now. Try again in a moment.');
 }
 
 /**
@@ -1537,7 +1632,7 @@ module.exports = {
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   EDIT_WINDOW_MS, editableUntil,
-  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, changeMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment, listedFor,
   // Pulse, reinvented's list (services/pulse/list.js).
