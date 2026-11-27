@@ -11,6 +11,8 @@
 
 import Foundation
 
+// swiftlint:disable file_length
+
 /// What a Moment holds.
 public enum MomentKind: String, Codable, Sendable, Hashable {
     case photo, video, text
@@ -261,6 +263,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let plan: MomentPlanDTO?
     /// Phase 2's layers on the picture (CONTRACT 7; `MomentPlayDTOs.swift`): empty with the switch off.
     public let layers: MomentLayersDTO
+    /// Phase 3's parts (CONTRACT 8; `MomentTogetherDTOs.swift`): nothing there with the switch off.
+    public let together: MomentTogetherDTO
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -323,6 +327,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         keepOffer = MomentGuessStateDTO.keepOffer(from: decoder)
         plan = MomentPlanDTO.read(from: decoder)
         layers = MomentLayersDTO(from: decoder)
+        together = MomentTogetherDTO(from: decoder)
     }
 
     public var media: URL? {
