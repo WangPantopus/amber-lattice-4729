@@ -1,0 +1,31 @@
+/* "Want to come?" over the viewer's picture (phase 1 piece 12): the Moment's plan, opening it in Plans. */
+.wc-plan {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 76px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: #fff7ed;
+  color: #9a3412;
+  text-decoration: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.wc-plan > span {
+  min-width: 0;
+  display: grid;
+}
+.wc-plan strong {
+  font-size: 15px;
+}
+.wc-plan small {
+  overflow: hidden;
+  font-size: 12px;
+  color: #7c2d12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -17,6 +17,7 @@ import { isSignal, SIGNALS, SIGNAL_WORDS, SignalIcon, type Signal } from './sign
 import { EditEntry, SavedNote } from '../edit/EditEntry';
 import { GuessOverPicture, holdsForGuess } from '../guess/GuessSpot';
 import { holdsForKeep, KeepOverPicture } from '../keep/KeepThis';
+import { PlanOverPicture, StartPlanEntry } from '../plan/WantToCome';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null };
@@ -170,9 +171,15 @@ export const studioViewer = {
       <SavedNote id={m.id} />
       <GuessOverPicture moment={m} />
       <KeepOverPicture moment={m} />
+      <PlanOverPicture moment={m} />
     </>
   ),
-  menu: (m: Moment, close: () => void) => <EditEntry moment={m} close={close} />,
+  menu: (m: Moment, close: () => void) => (
+    <>
+      <EditEntry moment={m} close={close} />
+      <StartPlanEntry moment={m} close={close} />
+    </>
+  ),
   holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
