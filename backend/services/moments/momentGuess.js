@@ -276,5 +276,5 @@ async function guessSpotsIn(viewerId, box) {
 
 module.exports = {
   isGuess, distanceLabel, guessesFor, recordGuess, withoutSpot, SPOT_STAMPS,
-  townKeyOf, townKeyAt, dayAt, dailyPick, dailySpotFor, guessSpotsIn,
+  townKeyOf, townKeyAt, dayAt, dailyPick, dailySpotFor, guessSpotsIn, gridKey,
 };
