@@ -81,7 +81,7 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
     }
     return { el, size: [44, 44] };
   }
-  if (pin.type === 'kept') {
+  if (pin.type === 'kept' || pin.type === 'explore') {
     const m = pin.moment;
     const el = document.createElement('span');
     el.className = 'rp-ring rp-ring-kept';
@@ -118,6 +118,7 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
 
 function pinTitle(pin: Pin): string {
   if (pin.type === 'kept') return 'Your Moment';
+  if (pin.type === 'explore') return `${pin.moment.author.name}’s Moment`;
   if (pin.type === 'ring') return `${pin.ring.author.name}’s Moments`;
   if (pin.type === 'mark') return pin.mark.heads_up ? 'Heads-up' : pin.mark.post.title || 'Post';
   return `Plan: ${pin.ticket.title}`;
@@ -228,7 +229,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
           iconSize: size ?? undefined,
           iconAnchor: size ? [size[0] / 2, size[1] / 2] : undefined,
         }),
-        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' || pin.type === 'kept' ? 2000 : pin.type === 'mark' ? 1000 : 0,
+        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' || pin.type === 'kept' || pin.type === 'explore' ? 2000 : pin.type === 'mark' ? 1000 : 0,
         keyboard: true,
         title: pinTitle(pin),
       });

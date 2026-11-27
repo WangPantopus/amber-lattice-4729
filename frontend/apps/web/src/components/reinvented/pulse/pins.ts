@@ -8,7 +8,8 @@ export type Pin =
   | { key: string; type: 'ring'; ring: Ring; point: Point }
   | { key: string; type: 'mark'; mark: MapMark; point: Point }
   | { key: string; type: 'ticket'; ticket: MapTicket; point: Point }
-  | { key: string; type: 'kept'; moment: ListMoment; point: Point };
+  | { key: string; type: 'kept'; moment: ListMoment; point: Point }
+  | { key: string; type: 'explore'; moment: ListMoment; point: Point };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
@@ -44,5 +45,14 @@ export function keptPins(moments: ListMoment[] | undefined): Pin[] {
   for (const m of moments || [])
     if (!m.no_location && finite(m.latitude) && finite(m.longitude))
       pins.push({ key: `kept:${m.id}`, type: 'kept', moment: m, point: { latitude: m.latitude, longitude: m.longitude } });
+  return pins.sort((a, b) => a.point.longitude - b.point.longitude || a.key.localeCompare(b.key));
+}
+
+/** Explore on the map: the Moments in view in Explore, at the point everyone sees, west to east as above. */
+export function explorePins(moments: ListMoment[]): Pin[] {
+  const pins: Pin[] = [];
+  for (const m of moments)
+    if (!m.no_location && finite(m.latitude) && finite(m.longitude))
+      pins.push({ key: `explore:${m.id}`, type: 'explore', moment: m, point: { latitude: m.latitude, longitude: m.longitude } });
   return pins.sort((a, b) => a.point.longitude - b.point.longitude || a.key.localeCompare(b.key));
 }

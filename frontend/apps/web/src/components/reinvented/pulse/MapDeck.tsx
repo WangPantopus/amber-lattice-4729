@@ -33,7 +33,7 @@ export function TimeRow({ time, onTime }: { time: MapTime; onTime(t: MapTime): v
 }
 
 function Card({ pin, now }: { pin: Pin; now: number }) {
-  if (pin.type === 'kept') {
+  if (pin.type === 'kept' || pin.type === 'explore') {
     const m = pin.moment;
     const src = m.kind === 'video' ? m.poster_url : m.kind === 'photo' ? m.media_url : null;
     return (
@@ -42,7 +42,11 @@ function Card({ pin, now }: { pin: Pin; now: number }) {
           {src && <img src={src} alt="" loading="lazy" />}
         </span>
         <span className="rp-card-words">
-          <strong>{new Date(m.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+          <strong>
+            {pin.type === 'explore'
+              ? m.author.name
+              : new Date(m.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          </strong>
           {m.place_label && <span className="rp-card-line">{m.place_label}</span>}
           {m.caption && <span className="rp-card-line">{m.caption}</span>}
         </span>

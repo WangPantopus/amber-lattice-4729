@@ -2,7 +2,8 @@
 
 // The reach dial (Pulse, reinvented, phase 1, board B15), opened from the scope pill: how far Pulse looks, each choice
 // with one line saying what it shows and how it is ordered, and "No hidden ranking". In this phase Close circle is the
-// people the person is connected with (circles of 2 to 8 are phase 3); Around me reaches 1 to 25 miles.
+// people the person is connected with (circles of 2 to 8 are phase 3); Around me reaches 1 to 25 miles; Explore is the
+// world: ten picked a day, then the newest (the rules page says how).
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -49,13 +50,14 @@ export default function ReachDial({ reach, miles, place, onReach, onMiles, onClo
   const lines: Record<Reach, { name: string; line: string }> = {
     close: { name: 'Close circle', line: 'People you’re connected with · newest first' },
     around: { name: 'Around me', line: `${place ? `${place}, out` : 'Out'} to ${draft} ${draft === 1 ? 'mile' : 'miles'} · nearest first` },
+    explore: { name: 'Explore', line: 'The world · ten picked a day, then newest' },
   };
   return (
     // data-covers-shell: on a phone the panel covers the shell bars (AppShell lifts the page over them while it is open).
     <div ref={panel} className="rp-dial" role="dialog" aria-label="How far do you want to see?" data-covers-shell="">
       <h2 className="rp-dial-title">How far do you want to see?</h2>
       <div className="rp-dial-choices" role="radiogroup" aria-label="Reach">
-        {(['close', 'around'] as const).map((r) => (
+        {(['close', 'around', 'explore'] as const).map((r) => (
           <button
             key={r}
             type="button"
