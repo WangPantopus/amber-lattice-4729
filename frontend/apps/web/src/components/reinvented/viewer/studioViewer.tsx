@@ -25,6 +25,7 @@ import type { PlayItem } from '../play/playTypes';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import { DeckBar } from '../deck/StepDeck';
 import { withMentions, type MentionPerson } from '../mentions/Mentions';
+import { holdsForReplies, RepliesOverPicture, RepliesShownEntry } from '../replies/Replies';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -187,6 +188,7 @@ export const studioViewer = {
     <>
       <ViewerStamps moment={m as StudioMoment} />
       <DeckBar moment={m} />
+      <RepliesOverPicture moment={m} />
       <SavedNote id={m.id} />
       <GuessOverPicture moment={m} />
       <KeepOverPicture moment={m} />
@@ -197,9 +199,10 @@ export const studioViewer = {
     <>
       <EditEntry moment={m} close={close} />
       <StartPlanEntry moment={m} close={close} />
+      <RepliesShownEntry moment={m} close={close} />
     </>
   ),
-  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m) || holdsForDots(m) || holdsForSound(m),
+  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m) || holdsForDots(m) || holdsForSound(m) || holdsForReplies(m),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,

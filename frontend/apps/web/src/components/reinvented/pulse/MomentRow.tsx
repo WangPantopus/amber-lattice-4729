@@ -4,13 +4,14 @@
 // picture is cut to a square around its stamps, so the stamps its author placed stay on the part one sees.
 
 import type { KeyboardEvent } from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, MessageCircle } from 'lucide-react';
 import { MomentFace } from '@/components/moments/MomentFace';
 import { colors } from '@/components/moments/momentState';
 import StampLayer from '../stamps/StampLayer';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import type { PlayItem } from '../play/playTypes';
 import { withMentions, type MentionPerson } from '../mentions/Mentions';
+import { repliesOf } from '../replies/Replies';
 import type { StampKind } from '../stamps/stampTypes';
 import { isSignal, SIGNAL_WORDS, SignalIcon } from '../viewer/signals';
 import { isLiveHere, timeLeft, type ListMoment, type Point } from './listApi';
@@ -54,6 +55,9 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
   const mine = isSignal(m.my_signal) ? m.my_signal : null;
   // People the author mentioned (§7h): their names in the words link to their profiles.
   const mentions = (m as ListMoment & { mentions?: MentionPerson[] }).mentions;
+  // Replies everyone can see (§8a): how many, when the Moment shows them.
+  const replies = repliesOf(m);
+  const replyCount = replies?.shown ? replies.count : 0;
   const counts = (m.signal_counts || []).filter((s) => isSignal(s.signal) && s.count > 0).slice(0, 3);
   const open = () => onOpen(m.id);
   const onKey = (e: KeyboardEvent) => {
@@ -102,7 +106,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
           </span>
         )}
       </div>
-      {(m.caption || mine || counts.length > 0 || point) && (
+      {(m.caption || mine || counts.length > 0 || replyCount > 0 || point) && (
         <div className="rp-moment-foot">
           {m.caption && <p className="rp-moment-caption">{withMentions(m.caption, mentions)}</p>}
           <div className="rp-moment-actions">
@@ -112,6 +116,12 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
                 {SIGNAL_WORDS[s.signal as keyof typeof SIGNAL_WORDS]} {s.count}
               </span>
             ))}
+            {replyCount > 0 && (
+              <span className="rp-signal-count">
+                <MessageCircle size={15} aria-hidden />
+                {replyCount === 1 ? '1 reply' : `${replyCount} replies`}
+              </span>
+            )}
             {mine && (
               <span className="rp-signal-count rp-signal-mine">
                 <SignalIcon signal={mine} />

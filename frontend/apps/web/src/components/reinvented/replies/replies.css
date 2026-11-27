@@ -1,0 +1,181 @@
+/* Replies people can see on a Moment (Replies.tsx, CONTRACT 8a), inside the viewer's stage. */
+.rl-chip {
+  position: absolute;
+  top: 122px;
+  right: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(12, 18, 24, 0.66);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.rl-chip svg {
+  width: 16px;
+  height: 16px;
+}
+.rl-chip[aria-expanded='true'] {
+  background: #fff;
+  color: #15191e;
+}
+.rl-panel {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  max-height: 68%;
+  border-radius: 18px 18px 0 0;
+  background: #10191e;
+  color: #fff;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  cursor: auto;
+  user-select: text;
+}
+.rl-head {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 14px 52px 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.rl-head strong {
+  font-size: 15px;
+}
+.rl-head span {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+.rl-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rl-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 12px;
+  overflow-y: auto;
+  list-style: none;
+}
+.rl-reply {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+}
+.rl-reply > :first-child {
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+.rl-words {
+  min-width: 0;
+  flex: 1;
+}
+.rl-words p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.rl-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rl-when {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+}
+.rl-actions,
+.rl-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+.rl-actions button,
+.rl-reasons button,
+.rl-more {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.rl-reasons button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.rl-note {
+  padding: 10px 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+.rl-error {
+  margin: 0 16px 6px;
+  color: #fca5a5;
+  font-size: 13px;
+}
+.rl-compose {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.rl-compose textarea {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  resize: none;
+}
+.rl-compose button {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 20px;
+  background: #fff;
+  color: #15191e;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rl-compose button:disabled {
+  opacity: 0.55;
+}
+.rl-panel :focus-visible,
+.rl-chip:focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
