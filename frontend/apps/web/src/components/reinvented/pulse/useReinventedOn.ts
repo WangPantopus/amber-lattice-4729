@@ -58,6 +58,17 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
 }
 
 /**
+ * For a page that exists only for the new Pulse (circles, the field guide): true once it is certain the switch is off for
+ * this person (the server said so, or its read failed and nothing is kept on), so the page answers today's 404 rather
+ * than naming what isn't there. While not known yet it is false: the page shows nothing until it is.
+ */
+export function useKnownOff(): boolean {
+  const on = useReinventedOn();
+  const flag = usePulseReinvented();
+  return !on && (flag.data !== undefined || flag.isError);
+}
+
+/**
  * For a page anyone can open (a public profile): whether the switch is on for this viewer as far as this device knows,
  * with no request at all: another screen's switch read if there was one, else the viewer's kept answer. A signed-out
  * visitor (no viewer) is always off.

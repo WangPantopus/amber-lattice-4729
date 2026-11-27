@@ -8,7 +8,8 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { del, get } from '@pantopus/api/client';
-import { useReinventedOn } from '../pulse/useReinventedOn';
+import { notFound } from 'next/navigation';
+import { useKnownOff, useReinventedOn } from '../pulse/useReinventedOn';
 
 interface GuideCard {
   post_id: string;
@@ -43,6 +44,7 @@ function web(url: string): string | null {
 
 export default function FieldGuide() {
   const on = useReinventedOn();
+  const off = useKnownOff();
   const guide = useInfiniteQuery({
     queryKey: KEY,
     queryFn: ({ pageParam, signal }) => get<Page>('/api/reinvented/field-guide', pageParam ? { cursor: pageParam } : {}, { signal }),
@@ -51,12 +53,9 @@ export default function FieldGuide() {
     enabled: on,
   });
   const [busy, setBusy] = useState<string | null>(null);
-  if (!on)
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-10 text-center text-app-secondary">
-        <p>Your field guide isn’t on for you right now.</p>
-      </div>
-    );
+  // With the switch off this page is today's 404, as before it existed; nothing shows while that isn't known yet.
+  if (off) notFound();
+  if (!on) return null;
   const pages = guide.data?.pages || [];
   const cards = pages.flatMap((p) => p.cards);
   const decks = pages[0]?.decks || [];
