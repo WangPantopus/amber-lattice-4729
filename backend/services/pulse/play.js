@@ -156,7 +156,7 @@ const DOT_SCHEMAS = {
  * own code). `photo`: the post's picture is a photo (a `thing` needs one); `media`: it has a picture at all; `penName`:
  * under a made-up name (no links). Null or missing: [].
  */
-function parseDots(value, { photo = false, media = false, penName = false } = {}) {
+function parseDots(value, { photo = false, media = false, penName = false, things = true } = {}) {
   if (value == null) return [];
   if (!Array.isArray(value)) throw new Error('dots must be a list.');
   if (!value.length) return [];
@@ -181,7 +181,9 @@ function parseDots(value, { photo = false, media = false, penName = false } = {}
     }
     if (dot.kind === 'link') stored.title = dot.title || null;
     return stored;
-  });
+  // `things: false`: the author keeps Pantopus AI off, so no photo of theirs goes to the model: a thing to name is not
+  // kept (the Studio doesn't offer one then); notes, ratings and links are.
+  }).filter((dot) => things || dot.kind !== 'thing');
 }
 
 /** The PostAnswer item a dot's answer of this kind is kept under: `c-<id>` a correction, `k-<id>` a collect. */
@@ -454,7 +456,7 @@ async function reach(id, viewerId) {
   if (!readable) throw notFound();
   if (studio.error) throw new Error(`Failed to load the post's items: ${studio.error.message}`);
   const kept = studio.data?.studio || {};
-  return { id, items: kept.play || [], dots: kept.dots || [], cards: kept.cards || {}, own, open: true, moment: null, studio: studio.data ? kept : null };
+  return { id, items: kept.play || [], dots: kept.dots || [], cards: kept.cards || {}, own, open: true, moment: null, studio: studio.data ? kept : null, row };
 }
 
 /**

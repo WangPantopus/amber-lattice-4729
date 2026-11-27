@@ -29,7 +29,7 @@ const EXPLORE_TYPES = ['recommendation', 'local_update', 'event', 'share'];
  * (momentStamps) or a `taken_at` that isn't a date. `takenAt`: a picture from the library (CONTRACT 6d), null for one
  * taken now.
  */
-function parse(studio, { penName = false } = {}) {
+function parse(studio, { penName = false, things = true } = {}) {
   const takenAt = studio?.taken_at == null || studio.taken_at === '' ? null : String(studio.taken_at);
   if (takenAt && !Number.isFinite(Date.parse(takenAt))) throw new Error('taken_at must be a date.');
   const fix = studio?.fix && typeof studio.fix === 'object' ? studio.fix : null;
@@ -40,7 +40,7 @@ function parse(studio, { penName = false } = {}) {
     play: play.parseItems(studio?.play),
     // Dots on the picture (CONTRACT 7c); no link under a made-up name. The Studio uploads a post's photo after making
     // the post, so a thing's photo is looked for when its field card is asked for (7d), not here.
-    dots: play.parseDots(studio?.dots, { media: true, photo: true, penName }),
+    dots: play.parseDots(studio?.dots, { media: true, photo: true, penName, things }),
     takenAt,
     takenHere: studio?.taken_here === true,
     fix: fix && Number.isFinite(Number(fix.latitude)) && Number.isFinite(Number(fix.longitude))

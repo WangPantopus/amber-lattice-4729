@@ -1139,7 +1139,9 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
         return res.status(REINVENTED_OFF.status).json({ error: REINVENTED_OFF.message, code: REINVENTED_OFF.code });
       }
       try {
-        studioParsed = require('../services/pulse/postStudio').parse(req.body.studio, { penName: underPenName });
+        const things = Array.isArray(req.body.studio?.dots) && req.body.studio.dots.some((dot) => dot?.kind === 'thing')
+          ? await require('../services/pulse/aiSetting').aiOn(req.user.id) : true;
+        studioParsed = require('../services/pulse/postStudio').parse(req.body.studio, { penName: underPenName, things });
       } catch (studioError) {
         return res.status(400).json({ error: studioError.message, code: 'POST_INVALID' });
       }

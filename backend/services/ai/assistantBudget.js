@@ -152,8 +152,6 @@ const DRAFT_ENDPOINTS = [
   'draft/gig', 'draft/listing', 'draft/listing-vision', 'draft/post', 'draft/post-suggestion', 'draft/pickup-schedule',
   'draft/radon-result', 'draft/mail-opening', 'draft/card-note', 'draft/support_train', 'draft/open_slots_nudge',
   'draft/magic-task', 'summarize/mail', 'place-brief',
-  // A Pulse field card's one call, on the first tap (services/pulse/fieldCard.js).
-  'field_card',
 ];
 
 let draftMemo = { count: 0, until: 0 };

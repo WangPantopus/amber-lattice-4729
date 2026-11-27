@@ -379,6 +379,9 @@ router.post('/', createLimiter, async (req, res) => {
         play = playItems.parseItems(req.body?.play);
         dots = playItems.parseDots(req.body?.dots, {
           photo: body.kind === 'photo', media: body.kind !== 'text', penName: body.post_as === 'pen_name',
+          // A thing to name sends its photo to Pantopus AI: only while the author keeps it on (CONTRACT 7d).
+          things: Array.isArray(req.body?.dots) && req.body.dots.some((dot) => dot?.kind === 'thing')
+            ? await require('../services/pulse/aiSetting').aiOn(req.user.id) : true,
         });
       } catch (playError) {
         throw store.fail(400, 'MOMENT_INVALID', playError.message);

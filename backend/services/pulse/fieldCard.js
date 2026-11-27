@@ -13,8 +13,9 @@ const logger = require('../../utils/logger');
 const s3 = require('../s3Service');
 const { getAnthropicClient, resolveModel, DRAFT_MODEL } = require('../../config/anthropic');
 const { complete, AIRefusalError } = require('../ai/llm');
-const { checkDraftBudget } = require('../ai/assistantBudget');
+const { isAssistantOff } = require('../ai/assistantBudget');
 const play = require('./play');
+const aiSetting = require('./aiSetting');
 
 const MODEL = resolveModel(process.env.ANTHROPIC_FIELD_CARD_MODEL, DRAFT_MODEL);
 const ENDPOINT = 'field_card';
@@ -33,6 +34,19 @@ const SOURCE_HOSTS = [
   'www.wildlife.ca.gov', 'wildlife.ca.gov',
 ];
 const SOURCE_SUFFIXES = ['.edu', '.gov'];
+// A source is asked once before a card is kept; a page that doesn't answer in time is replaced by a search on a guide.
+const SOURCE_CHECK_MS = 3000;
+const LIVING_KINDS = ['plant', 'berry', 'seed', 'mushroom', 'fungus', 'tree', 'flower', 'bird', 'animal', 'insect'];
+// Words that speak of eating, taste, safety or touching: never on a card for something one might eat (CONTRACT 7d).
+const EATING_WORDS = /\b(eat|eats|eating|eaten|edible|inedible|taste|tastes|tasty|flavou?r|cook|cooked|cooking|forag\w*|safe|safely|safety|harmless|poison\w*|toxic|toxin\w*|deadly|touch|touching|handle|handling|consum\w*|medicinal|delicious)\b/i;
+// Field cards' own daily numbers (LEAD-3, 04:06): apart from the draft caps, so a busy day of cards never stops
+// "Write it with AI". Env with defaults in code.
+function positiveInt(value, fallback) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+const PERSON_DAILY = () => positiveInt(process.env.FIELD_CARD_PERSON_DAILY, 30);
+const GLOBAL_DAILY = () => positiveInt(process.env.FIELD_CARD_GLOBAL_DAILY, 2000);
 
 const SCHEMA = {
   type: 'object',
@@ -64,6 +78,70 @@ function fail(status, code, message) {
 }
 
 const inFlight = new Map();
+
+/**
+ * Whether this person may make a new card now: Pantopus AI on Pantopus-wide, and under field cards' own numbers for
+ * the person (24 hours) and for everyone (since midnight UTC), counted from AIRequestLog. A count that can't be read
+ * lets the card through, as the draft caps do.
+ */
+async function cardBudget(userId) {
+  if (isAssistantOff()) return { status: 503, code: 'AI_DISABLED', message: 'Pantopus AI is paused right now. Please try again later.' };
+  try {
+    const day = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const midnight = new Date();
+    midnight.setUTCHours(0, 0, 0, 0);
+    const [mine, everyone] = await Promise.all([
+      supabaseAdmin.from('AIRequestLog').select('id', { count: 'exact', head: true }).eq('endpoint', ENDPOINT).eq('user_id', userId).gte('created_at', day),
+      supabaseAdmin.from('AIRequestLog').select('id', { count: 'exact', head: true }).eq('endpoint', ENDPOINT).gte('created_at', midnight.toISOString()),
+    ]);
+    if (mine.error || everyone.error) throw new Error((mine.error || everyone.error).message);
+    if ((mine.count || 0) >= PERSON_DAILY()) return { status: 429, code: 'AI_BUDGET', message: 'Pantopus AI has named a lot for you today. Try again tomorrow.' };
+    if ((everyone.count || 0) >= GLOBAL_DAILY()) return { status: 429, code: 'AI_BUDGET', message: 'Pantopus AI has named a lot today. Try again tomorrow.' };
+  } catch (error) {
+    logger.warn('field_card.budget_unreadable', { error: error.message });
+  }
+  return null;
+}
+
+/**
+ * The source as kept: the model's page when it answers within SOURCE_CHECK_MS (it is on the short list of field guides
+ * and public agencies, so it is safe to ask), else a search for the thing on a known guide, which always opens.
+ */
+async function openingSource(source, { name, scientific, kind }) {
+  if (source) {
+    // A redirect is followed only to an address that is itself on the short list, hop by hop (LEAD-3, 04:17).
+    let url = source.url;
+    const deadline = AbortSignal.timeout(SOURCE_CHECK_MS);
+    try {
+      for (let hop = 0; hop < 4 && url; hop += 1) {
+        const answer = await fetch(url, { method: 'GET', redirect: 'manual', signal: deadline, headers: { 'user-agent': 'Pantopus field card check' } });
+        if (answer.ok) return { ...source, url };
+        const next = answer.status >= 300 && answer.status < 400 ? answer.headers.get('location') : null;
+        url = next ? safeSource(source.title, new URL(next, url).toString())?.url || null : null;
+      }
+    } catch {
+      // Falls through to a search on a known guide.
+    }
+  }
+  const query = encodeURIComponent(scientific || name);
+  return LIVING_KINDS.includes(kind)
+    ? { title: `iNaturalist: ${scientific || name}`, url: `https://www.inaturalist.org/search?q=${query}` }
+    : { title: `Wikipedia: ${name}`, url: `https://en.wikipedia.org/w/index.php?search=${query}` };
+}
+
+// A name that itself claims safety or eating (never a name that warns: "Poison hemlock" stays as it is).
+const SAFE_NAME = /\b(edible|eatable|safe|harmless|tasty|delicious)\b/i;
+
+/**
+ * "Never safe to eat", made certain in code on the model's own words (LEAD-3, 04:17): for something one might eat, a
+ * `why` that speaks of eating, taste, safety or touching is dropped. The name is never edited: one that claims safety or
+ * eating gives way to the scientific name, or to no name. The caution stays either way.
+ */
+function withoutEating(card, kind, scientific) {
+  if (!EATABLE_KINDS.includes(kind)) return card;
+  const name = card.name && SAFE_NAME.test(card.name) ? (scientific && !SAFE_NAME.test(scientific) ? scientific : null) : card.name;
+  return { ...card, name, why: card.why && EATING_WORDS.test(card.why) ? null : card.why };
+}
 
 /** A source link only from the known field guides and public agencies, https only; null otherwise. */
 function safeSource(title, url) {
@@ -170,20 +248,34 @@ async function makeCard(target, dot, viewerId) {
   if (reply.inputTokens || reply.outputTokens) {
     await logCall(viewerId, { status: 'success', latency_ms: Date.now() - started, input_tokens: reply.inputTokens, output_tokens: reply.outputTokens });
   }
+  const kind = typeof parsed.kind === 'string' ? parsed.kind : 'other';
   const named = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 80) : null;
+  const scientificSaid = named && typeof parsed.scientific === 'string' && parsed.scientific.trim() ? parsed.scientific.trim().slice(0, 80) : null;
+  const words = withoutEating({ name: named, why: String(parsed.why || '').trim().slice(0, 200) || null }, kind, scientificSaid);
+  const scientific = words.name ? scientificSaid : null;
   return {
     v: 1,
-    name: named,
+    name: words.name,
     likely: true,
-    scientific: named && typeof parsed.scientific === 'string' && parsed.scientific.trim() ? parsed.scientific.trim().slice(0, 80) : null,
-    why: String(parsed.why || '').trim().slice(0, 200) || null,
-    source: named ? safeSource(parsed.source_title, parsed.source_url) : null,
-    caution: EATABLE_KINDS.includes(parsed.kind) ? CAUTION : null,
+    scientific,
+    why: words.why,
+    source: words.name ? await openingSource(safeSource(parsed.source_title, parsed.source_url), { name: words.name, scientific, kind }) : null,
+    caution: EATABLE_KINDS.includes(kind) ? CAUTION : null,
     named_by: 'Pantopus AI',
     made_at: new Date().toISOString(),
     model: MODEL,
     corrections: 0,
   };
+}
+
+/**
+ * Whether the post's author has Pantopus AI on. A made-up name's post says nothing of who wrote it here: its things were
+ * checked against the author's switch when it was posted (play.parseDots), so it counts as on.
+ */
+async function authorAiOn(target) {
+  const row = target.moment || target.row;
+  if (!row || row.identity_context_type === 'pen_name' || !row.user_id) return true;
+  return aiSetting.aiOnOrThrow(row.user_id);
 }
 
 function thingOf(target, dotId) {
@@ -221,11 +313,17 @@ async function cardFor(id, dotId, viewerId) {
   const dot = thingOf(target, dotId);
   if (target.cards?.[dotId]) return { card: await shownFor(target, dotId, target.cards[dotId], viewerId) };
   if (target.moment && !target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
+  // A person's own Pantopus AI switch (CONTRACT 7d): the reader's (nothing is written for them), then the author's (no
+  // photo of theirs goes to the model). A kept card is shown either way, above.
+  // A choice that can't be read makes no call: 503 PANTOPUS_AI_UNAVAILABLE, try again.
+  const [readerOn, authorOn] = await Promise.all([aiSetting.aiOnOrThrow(viewerId), authorAiOn(target)]);
+  if (!readerOn) throw aiSetting.offError();
+  if (!authorOn) throw fail(403, 'FIELD_CARD_OFF', 'The author keeps Pantopus AI off for their photos.');
   const key = `${id}:${dotId}`;
   if (!inFlight.has(key)) {
     const making = (async () => {
-      const blocked = await checkDraftBudget(viewerId);
-      if (blocked) throw fail(blocked.error === 'AI_DISABLED' ? 503 : 429, blocked.error, blocked.message);
+      const blocked = await cardBudget(viewerId);
+      if (blocked) throw fail(blocked.status, blocked.code, blocked.message);
       const card = await makeCard(target, dot, viewerId);
       // Kept with the post; a card another tap kept meanwhile (on another server) stays.
       await play.keepWith(target, (kept) => ({ cards: { [dotId]: card, ...(kept.cards || {}) } }));
