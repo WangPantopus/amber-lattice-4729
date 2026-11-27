@@ -95,6 +95,11 @@ data class AdminClaimDto(
     val claimant: AdminClaimUserDto?,
     /** On a claim waiting on the claimant (Request info): documents they sent after the request. */
     @Json(name = "documents_since_request") val documentsSinceRequest: Int? = null,
+    /**
+     * Who an open claim waits on: `claimant` until a document is in (and after Request info until they answer),
+     * `reviewer` otherwise. Null from a server that doesn't send it, and once the claim is decided.
+     */
+    @Json(name = "waiting_on") val waitingOn: String? = null,
 )
 
 /**
@@ -107,6 +112,13 @@ data class AdminClaimsResponse(
     val claims: List<AdminClaimDto>,
     val total: Int,
     @Json(name = "oldest_age_seconds") val oldestAgeSeconds: Int? = null,
+    /**
+     * Pending bucket: claims on this page a reviewer can act on now, claims waiting on the claimant, and the age
+     * of the oldest one a reviewer can act on. Null from a server that doesn't send them.
+     */
+    @Json(name = "ready_count") val readyCount: Int? = null,
+    @Json(name = "waiting_on_claimant_count") val waitingOnClaimantCount: Int? = null,
+    @Json(name = "oldest_ready_age_seconds") val oldestReadyAgeSeconds: Int? = null,
 )
 
 /**

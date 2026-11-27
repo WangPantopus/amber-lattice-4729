@@ -234,6 +234,21 @@ public final class ReviewClaimDetailViewModel {
         return ok
     }
 
+    /// What Request info suggests asking on a claim with no document at all: the one approval needs. Empty
+    /// when the claim already has documents, where the reviewer writes their own question.
+    static func suggestedQuestion(_ detail: AdminClaimDetailResponse) -> String {
+        guard detail.evidence.isEmpty else { return "" }
+        return detail.claim.claimType == "resident"
+            ? "Please upload a document that shows you live at this address, like a utility bill or lease."
+            : "Please upload a document that shows you own this home, like a deed, closing statement or property tax bill."
+    }
+
+    /// Opening Request info with nothing drafted starts from the suggested ask; the reviewer can change it.
+    public func prepareChallengeComposer() {
+        guard challengeQuestion.isEmpty, case let .loaded(detail) = state else { return }
+        challengeQuestion = Self.suggestedQuestion(detail)
+    }
+
     /// Reset composer state — called on successful send + on dismiss so a
     /// fresh open never inherits stale picks.
     public func resetChallengeComposer() {

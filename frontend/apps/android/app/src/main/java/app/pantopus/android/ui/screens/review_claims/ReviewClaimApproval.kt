@@ -103,7 +103,19 @@ object ReviewClaimApproval {
         when (proof) {
             "verified" -> "Document checked" to "A reviewer verified a document."
             "pending" -> "Document waiting for your check" to "Open private documents and verify it."
-            else -> "No document yet" to "The claimant is asked to upload one."
+            else -> "No document yet" to "The claimant hasn’t uploaded one yet."
+        }
+
+    /**
+     * What Request info suggests asking on a claim with no document at all: the one approval needs. Empty when
+     * the claim already has documents, where the reviewer writes their own question.
+     */
+    fun suggestedQuestion(detail: AdminClaimDetailResponse): String =
+        when {
+            detail.evidence.isNotEmpty() -> ""
+            detail.claim.claimType == "resident" ->
+                "Please upload a document that shows you live at this address, like a utility bill or lease."
+            else -> "Please upload a document that shows you own this home, like a deed, closing statement or property tax bill."
         }
 }
 
@@ -127,13 +139,20 @@ fun ReviewClaimApprovalPanel(
                 .border(1.dp, PantopusColors.appBorder, RoundedCornerShape(Radii.xl))
                 .testTag("reviewClaimDetail_approval"),
     ) {
-        val (identityTitle, identityDetail) = ReviewClaimApproval.identityLine(approval)
+        // The reviewer's own confirmation shows as done here; it's saved when they approve.
+        val attested = identityAttested && !approval.identityConfirmed && !identityFailed
+        val (identityTitle, identityDetail) =
+            if (attested) {
+                "You confirmed their identity" to "Saved with the claim when you approve."
+            } else {
+                ReviewClaimApproval.identityLine(approval)
+            }
         ApprovalLine(
             icon = PantopusIcon.IdCard,
             title = identityTitle,
             detail = identityDetail,
-            done = approval.identityConfirmed,
-            waiting = approval.identity == "processing",
+            done = approval.identityConfirmed || attested,
+            waiting = !attested && approval.identity == "processing",
             modifier = Modifier.testTag("reviewClaimDetail_approvalIdentity"),
         )
         if (!approval.identityConfirmed && !identityFailed) {

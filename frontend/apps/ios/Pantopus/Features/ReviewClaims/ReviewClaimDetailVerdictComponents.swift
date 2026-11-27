@@ -246,3 +246,30 @@ private struct VerdictButton: View {
         style == .accept ? Theme.Color.primary600.opacity(0.28) : .clear
     }
 }
+
+// MARK: - Terminal-state banner
+
+struct TerminalStateBanner: View {
+    let state: String
+
+    var body: some View {
+        HStack(spacing: Spacing.s2) {
+            Icon(.info, size: 20, color: Theme.Color.appTextSecondary)
+            Text(message)
+                .scaledFont(13)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+            Spacer(minLength: Spacing.s0)
+        }
+        .padding(Spacing.s3)
+        .background(Theme.Color.appSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: Radii.xl))
+    }
+
+    private var message: String {
+        switch state {
+        case "approved": "This claim has been accepted. No further action."
+        case "rejected": "This claim has been rejected. No further action."
+        default: "This claim is in state \"\(state)\" and isn't reviewable from here."
+        }
+    }
+}

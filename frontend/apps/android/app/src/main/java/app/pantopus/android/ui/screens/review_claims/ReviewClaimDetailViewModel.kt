@@ -301,6 +301,12 @@ class ReviewClaimDetailViewModel
             return ok
         }
 
+        /** Opening Request info with nothing drafted starts from the suggested ask; the reviewer can change it. */
+        fun prepareChallengeComposer() {
+            val detail = (_state.value as? ReviewClaimDetailUiState.Loaded)?.detail ?: return
+            if (_challengeQuestion.value.isEmpty()) _challengeQuestion.value = ReviewClaimApproval.suggestedQuestion(detail)
+        }
+
         /** Reset composer state — on send + on dismiss. */
         fun resetChallengeComposer() {
             _selectedReasons.value = emptySet()

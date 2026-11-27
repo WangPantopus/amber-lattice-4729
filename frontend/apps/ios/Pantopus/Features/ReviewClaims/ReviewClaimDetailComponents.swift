@@ -121,10 +121,12 @@ struct ClaimSummaryTile: View {
                     .scaledFont(12, weight: .medium)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                 summaryLayout {
-                    Text(value)
-                        .scaledFont(14, weight: .semibold)
-                        .fontDesign(.monospaced)
-                        .foregroundStyle(Theme.Color.primaryInkStrong)
+                    if !value.isEmpty {
+                        Text(value)
+                            .scaledFont(14, weight: .semibold)
+                            .fontDesign(.monospaced)
+                            .foregroundStyle(Theme.Color.primaryInkStrong)
+                    }
                     Text(descriptor)
                         .scaledFont(13.5, weight: .medium)
                         .foregroundStyle(Theme.Color.appTextStrong)

@@ -86,6 +86,9 @@ public struct AdminClaimDTO: Decodable, Sendable, Hashable, Identifiable {
     public let evidenceCount: Int
     /// On a claim waiting on the claimant (Request info): documents they sent after the request.
     public var documentsSinceRequest: Int?
+    /// Who an open claim waits on: `claimant` until a document is in (and after Request info until they
+    /// answer), `reviewer` otherwise. Nil from a server that doesn't send it, and once the claim is decided.
+    public var waitingOn: String?
     public let home: AdminClaimHomeDTO?
     public let claimant: AdminClaimUserDTO?
 
@@ -99,6 +102,7 @@ public struct AdminClaimDTO: Decodable, Sendable, Hashable, Identifiable {
         case updatedAt = "updated_at"
         case evidenceCount = "evidence_count"
         case documentsSinceRequest = "documents_since_request"
+        case waitingOn = "waiting_on"
         case home, claimant
     }
 }
@@ -110,10 +114,18 @@ public struct AdminClaimsResponse: Decodable, Sendable, Hashable {
     public let claims: [AdminClaimDTO]
     public let total: Int
     public let oldestAgeSeconds: Int?
+    /// Pending bucket: claims on this page a reviewer can act on now, claims waiting on the claimant, and the
+    /// age of the oldest one a reviewer can act on. Nil from a server that doesn't send them.
+    public var readyCount: Int?
+    public var waitingOnClaimantCount: Int?
+    public var oldestReadyAgeSeconds: Int?
 
     private enum CodingKeys: String, CodingKey {
         case claims, total
         case oldestAgeSeconds = "oldest_age_seconds"
+        case readyCount = "ready_count"
+        case waitingOnClaimantCount = "waiting_on_claimant_count"
+        case oldestReadyAgeSeconds = "oldest_ready_age_seconds"
     }
 }
 

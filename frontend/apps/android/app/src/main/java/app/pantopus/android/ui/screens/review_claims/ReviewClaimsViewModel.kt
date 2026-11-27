@@ -64,6 +64,9 @@ class ReviewClaimsViewModel
         private val rowsCache: MutableMap<AdminClaimBucket, List<AdminClaimDto>> = mutableMapOf()
         private var oldestAgeSeconds: Int? = null
 
+        /** Pending page summary from the server: ready to review, waiting on the claimant, oldest ready age. */
+        private var pendingSummary: Triple<Int, Int, Int?>? = null
+
         private val _state = MutableStateFlow<ListOfRowsUiState>(ListOfRowsUiState.Loading)
         val state: StateFlow<ListOfRowsUiState> = _state.asStateFlow()
 
@@ -133,6 +136,10 @@ class ReviewClaimsViewModel
                     rowsCache[target] = result.data.claims
                     if (target == AdminClaimBucket.Pending) {
                         oldestAgeSeconds = result.data.oldestAgeSeconds
+                        pendingSummary =
+                            result.data.readyCount?.let {
+                                Triple(it, result.data.waitingOnClaimantCount ?: 0, result.data.oldestReadyAgeSeconds)
+                            }
                     }
                     // Only rerender if the bucket is still selected — a
                     // fast tab swap shouldn't blow the user's current tab
@@ -176,6 +183,25 @@ class ReviewClaimsViewModel
             val cached = rowsCache[AdminClaimBucket.Pending] ?: emptyList()
             if (bucket != AdminClaimBucket.Pending || cached.isEmpty()) {
                 _banner.value = null
+                return
+            }
+            // What a reviewer can act on, apart from claims waiting on the claimant for a document.
+            val summary = pendingSummary
+            if (summary != null && summary.second > 0) {
+                val (ready, waiting, oldestReady) = summary
+                val waitingText = "$waiting waiting on the claimant"
+                val oldest = AdminClaimTimeFormat.oldestAge(oldestReady)
+                _banner.value =
+                    if (ready == 0) {
+                        BannerConfig(PantopusIcon.Gavel, "Nothing to review right now", waitingText, tint = BannerCtaTint.Warning)
+                    } else {
+                        BannerConfig(
+                            icon = PantopusIcon.Gavel,
+                            title = "$ready ${if (ready == 1) "claim" else "claims"} to review",
+                            subtitle = "Oldest: $oldest · $waitingText",
+                            tint = BannerCtaTint.Warning,
+                        )
+                    }
                 return
             }
             val pending = _counts.value?.pending ?: cached.size
