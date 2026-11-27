@@ -63,6 +63,16 @@ PRs, screenshots and chat. Preserve unrelated local work.
   when it opens, from what it kept on the device the last time it read the
   person's homes, so the bar never moves while the app is in use; the desktop
   web sidebar keeps its order, and the web still opens on Place.
+  On November 26 the founder approved "Pulse, reinvented" behind one server switch, `pulse_reinvented` (a
+  `FeatureFlag` row: off, chosen accounts, or everyone; never a build key or a launch-cut key), and on November 27
+  asked for every phase of it to be built. While the switch is on for a person, Moments joins Pulse: the bar is
+  Today · Place · Mail · Pulse · Plans (Today or Place first by the November 21 rule, Mail while the Mailbox is on,
+  Plans while Plans is on), the Moments tab is not drawn, and Pulse is a list laid over a live map under a
+  List | Map | Atlas switch; the desktop web sidebar keeps its order and drops only Moments. While the switch is off,
+  the bar, Pulse and the Moments tab are exactly as the paragraphs above say. Nothing of today's is deleted: both sets
+  of screens ship in every build and the switch picks, so switching back is immediate. The side menu button stays on
+  the top screen of every tab. The switch is on for staging and off in production until the founder turns it on, and
+  only the founder removes today's screens.
   The founder doesn't want "Neighborhood" as a name in the app. The side menu
   (☰) is on the top screen of every tab on iOS and Android; web keeps its
   sidebar and menu. New tabs and redesigned tab screens keep the menu button,
