@@ -222,6 +222,8 @@ struct MomentsStudioBar: View {
     private var postButton: some View {
         Button {
             Keyboard.close()
+            // Cutouts become part of the picture before it goes up.
+            model.drawInStudioCutouts()
             Task {
                 if await model.post() {
                     onPosted()

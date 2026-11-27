@@ -344,4 +344,49 @@ router.patch('/settings', async (req, res) => {
   }
 });
 
+// ─── Voice and sound as media (CONTRACT 7e) ─────────────────────────────────
+
+const multer = require('multer');
+const soundMedia = require('../services/pulse/sound');
+
+const soundUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: soundMedia.MAX_BYTES.voice, files: 1, fields: 8, parts: 10, fieldSize: 32 * 1024, fieldNameSize: 40 },
+}).single('file');
+
+function receiveSound(req, res, next) {
+  soundUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'This sound is too large to post.', code: 'MEDIA_TOO_LARGE' });
+    return res.status(400).json({ error: 'Send the sound as "file", with kind, duration_ms and (for a voice) words.', code: 'SOUND_INVALID' });
+  });
+}
+
+/** POST /moments/:id/sound — the author's voice, place sound, or a dot's whisper on their own Moment. */
+router.post('/moments/:id/sound', contentCreationLimiter, receiveSound, async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    }
+    const row = await soundMedia.upload(req.params.id, req.user, req.file, req.body || {});
+    const [moment] = await store.serializeMoments([row], req.user.id);
+    return res.json({ moment });
+  } catch (error) {
+    return sendError(res, error, 'sound');
+  }
+});
+
+/** DELETE /moments/:id/sound?kind=voice|place — the author takes it off. */
+router.delete('/moments/:id/sound', async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    }
+    await soundMedia.remove(req.params.id, req.user, String(req.query.kind || ''));
+    return res.status(204).end();
+  } catch (error) {
+    return sendError(res, error, 'sound_remove');
+  }
+});
+
 module.exports = router;

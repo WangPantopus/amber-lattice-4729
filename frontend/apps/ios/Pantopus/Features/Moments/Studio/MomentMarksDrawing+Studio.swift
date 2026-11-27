@@ -12,9 +12,27 @@ import SwiftUI
 import UIKit
 
 extension MomentMarksDrawing {
-    /// The lines, when one of them is the Studio's: on a layer of their own, so the eraser takes out lines and never
-    /// the picture under them. In order, as drawn: a line drawn after an erase is whole.
-    static func drawStudio(_ strokes: [MomentMarks.Stroke], in context: CGContext, size: CGSize) {
+    /// Marks with something only the Studio makes: words behind the subject first, then the subject over them, then
+    /// the lines, the cutouts, and the other words. Without a subject every word is in front.
+    static func drawStudio(_ marks: MomentMarks, in context: CGContext, size: CGSize, aspect: CGFloat) {
+        let subject = marks.hasBehind ? marks.subject : nil
+        if let subject {
+            drawLabels(marks.labels.filter(\.behind), in: context, size: size, aspect: aspect)
+            context.saveGState()
+            UIGraphicsPushContext(context)
+            subject.image.draw(in: CGRect(origin: .zero, size: size))
+            UIGraphicsPopContext()
+            context.restoreGState()
+        }
+        drawLines(marks.strokes, in: context, size: size)
+        drawCutouts(marks.cutouts, in: context, size: size)
+        drawLabels(subject == nil ? marks.labels : marks.labels.filter { !$0.behind }, in: context, size: size, aspect: aspect)
+    }
+
+    /// The lines, on a layer of their own so the eraser takes out lines and never the picture under them. In order, as
+    /// drawn: a line drawn after an erase is whole.
+    private static func drawLines(_ strokes: [MomentMarks.Stroke], in context: CGContext, size: CGSize) {
+        guard !strokes.isEmpty else { return }
         context.saveGState()
         defer { context.restoreGState() }
         context.beginTransparencyLayer(auxiliaryInfo: nil)

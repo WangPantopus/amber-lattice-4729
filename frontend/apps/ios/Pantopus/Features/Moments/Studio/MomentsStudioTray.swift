@@ -50,6 +50,9 @@ struct MomentsStudioTray: View {
                     }
                 }
             }
+            if model.studioCutoutSurface != nil {
+                MomentsStudioYourCutouts(model: model, onPlaced: onDone)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.s4)

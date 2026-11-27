@@ -46,6 +46,7 @@ const momentWeather = require('./momentWeather');
 const momentStamps = require('./momentStamps');
 const momentGuess = require('./momentGuess');
 const playItems = require('../pulse/play');
+const soundMedia = require('../pulse/sound');
 const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -615,8 +616,10 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       plan,
       // Playable items (CONTRACT 7b), with what this reader may see of the answers; [] when none.
       play: play || [],
-      // Dots on the picture (CONTRACT 7c), a thing's with its kept field card; [] when none.
-      dots: playItems.dotsFor(m.dots, m.cards),
+      // Dots on the picture (CONTRACT 7c), a thing's with its kept field card and a whisper's sound (7e); [] when none.
+      dots: playItems.dotsFor(m.dots, m.cards, { whispers: m.whispers, links, show: Boolean(showMedia) }),
+      // Voice Spark or place sound (CONTRACT 7e), its link given exactly when the picture's is.
+      sound: soundMedia.soundOf(m, links, Boolean(showMedia)),
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
@@ -656,7 +659,9 @@ async function reactionCountsFor(ids) {
 function linkKeys(rows) {
   return rows.flatMap((row) => {
     const stored = meta(row).media;
-    return stored ? [stored.key, stored.poster_key].filter(Boolean) : [];
+    // A Moment's sound and whispers (Pulse, reinvented, CONTRACT 7e) are signed in the same call; only answers to a
+    // reader with the switch on hand them out.
+    return [...(stored ? [stored.key, stored.poster_key].filter(Boolean) : []), ...soundMedia.soundKeys(meta(row))];
   });
 }
 
