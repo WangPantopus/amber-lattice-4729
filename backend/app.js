@@ -769,18 +769,21 @@ const gracefulShutdown = async (signal) => {
   require('./services/chatPushDelivery').stop();
   await require('./services/syncChangedService').stop();
   await require('./services/propertyRecords/counts').flush();
-  require('./services/push/apnsClient').close();
-  require('./services/push/fcmClient').close();
-  await require('./config/directDb').close();
 
   // Disconnect Socket.io clients first: an open socket would keep the HTTP
   // server from closing until the timeout. They reconnect, to the new process
   // during a release. io.close() then closes the HTTP server, which stops
   // accepting connections and lets running requests finish.
   io.close(() => {
-    clearTimeout(forceTimer);
     logger.info('Socket.io and HTTP server closed');
-    process.exit(0);
+    // The push senders and the direct-read pool serve requests, so they close only once the running ones are done:
+    // closed before, a request still running would open a new pool and a new connection to Apple.
+    require('./services/push/apnsClient').close();
+    require('./services/push/fcmClient').close();
+    require('./config/directDb').close().finally(() => {
+      clearTimeout(forceTimer);
+      process.exit(0);
+    });
   });
 };
 
