@@ -31,6 +31,7 @@ import AliveStrip from './AliveStrip';
 import { useLinkedMoment } from './momentLinks';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
+import { retakeOf } from '../retake/RetakeView';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -38,6 +39,8 @@ const PulseMap = dynamic(() => import('./PulseMap'), { ssr: false, loading: () =
 const MomentViewer = dynamic(() => import('@/components/moments/MomentViewer'), { ssr: false });
 // One camera for everything (phase 1 piece 11): + opens the Studio, where a Moment or, with "+ Ask / Kind", a post is made.
 const Composer = dynamic(() => import('../MomentComposerEntry'), { ssr: false });
+const Studio = dynamic(() => import('../studio/Studio'), { ssr: false });
+const RetakeView = dynamic(() => import('../retake/RetakeView'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -75,6 +78,9 @@ export default function ReinventedPulse() {
   const [miles, setMiles] = useState(25);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // A Retake opened from its row, and one being added to (CONTRACT 8e).
+  const [retakeOpen, setRetakeOpen] = useState<string | null>(null);
+  const [addingFrame, setAddingFrame] = useState<{ id: string; title: string; ghost: string | null } | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -341,13 +347,15 @@ export default function ReinventedPulse() {
 
   // ── Moments ──
   // A step deck (§7g) is one row, its first step in the list, and the viewer goes through all its steps from there.
+  // A Retake (CONTRACT 8e) is one row too: its first frame in the list opens the whole Retake.
   const shown = useMemo(() => {
     const seen = new Set<string>();
     return items.filter((it) => {
       if (it.type !== 'moment') return true;
       const deck = deckOf(it.moment);
-      if (!deck) return true;
-      const key = `${it.moment.author?.id}:${deck.id}`;
+      const retake = retakeOf(it.moment);
+      const key = deck ? `${it.moment.author?.id}:${deck.id}` : retake ? `retake:${retake.start_id}` : null;
+      if (!key) return true;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -378,8 +386,13 @@ export default function ReinventedPulse() {
   );
   const openMoment = useCallback(
     (id: string) => {
-      // A deck's row opens at its first step.
+      // A deck's row opens at its first step; a Retake's row opens the Retake.
       const item = shown.find((it) => it.type === 'moment' && it.id === id);
+      const retake = item?.type === 'moment' ? retakeOf(item.moment) : null;
+      if (retake) {
+        setRetakeOpen(retake.start_id);
+        return;
+      }
       const steps = item?.type === 'moment' ? deckOf(item.moment)?.steps : undefined;
       const start = steps?.length ? steps[0] : id;
       setViewing({ id: start, ids: momentIds.includes(start) ? momentIds : [start] });
@@ -715,6 +728,7 @@ export default function ReinventedPulse() {
                             onPlace={flyTo}
                             kept
                             steps={deckOf(item.moment)?.count}
+                            tag={retakeOf(item.moment) ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}` : undefined}
                           />
                         </div>
                       ) : item.type === 'moment' ? (
@@ -725,6 +739,7 @@ export default function ReinventedPulse() {
                           onOpen={openMoment}
                           onPlace={flyTo}
                           steps={deckOf(item.moment)?.count}
+                          tag={retakeOf(item.moment) ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}` : undefined}
                         />
                       ) : (
                         <PostRow
@@ -750,6 +765,28 @@ export default function ReinventedPulse() {
         <button type="button" className="rp-create" aria-label="Create" title="Create" onClick={() => setCreating(true)}>
           <Plus size={24} strokeWidth={2.6} aria-hidden />
         </button>
+      )}
+      {retakeOpen && (
+        <RetakeView
+          id={retakeOpen}
+          onClose={() => setRetakeOpen(null)}
+          onAdd={(start) => {
+            setRetakeOpen(null);
+            setAddingFrame(start);
+          }}
+        />
+      )}
+      {addingFrame && account && (
+        <Studio
+          account={account}
+          retakeOf={addingFrame}
+          onClose={() => setAddingFrame(null)}
+          onDone={(msg) => {
+            setAddingFrame(null);
+            setToast(msg);
+            void client.invalidateQueries({ queryKey: ['reinvented'] });
+          }}
+        />
       )}
       {creating && account && (
         <Composer
