@@ -156,7 +156,9 @@ module.exports = async function neighborhoodPreviewRefresh() {
     if (!geohashCounts.has(gh)) geohashCounts.set(gh, 0);
   }
 
-  // 4. Fetch existing preview rows for comparison BEFORE upserting (chunked <=100 geohashes)
+  // 4. Fetch existing preview rows for comparison BEFORE upserting (chunked <=100 geohashes).
+  // A cell whose row can't be read would look as if no milestone had been announced, and its people would be told
+  // again, so a failed read ends this run; the next one, 15 minutes later, reads them all again.
   const geohashes = Array.from(geohashCounts.keys());
   if (geohashes.length === 0) return;
 
@@ -169,10 +171,10 @@ module.exports = async function neighborhoodPreviewRefresh() {
 
     if (fetchErr) {
       logger.warn('neighborhoodPreviewRefresh: failed to fetch existing previews', { error: fetchErr.message });
-    } else {
-      for (const row of existingRows || []) {
-        existingByGeohash.set(row.geohash, row);
-      }
+      return;
+    }
+    for (const row of existingRows || []) {
+      existingByGeohash.set(row.geohash, row);
     }
   }
 
@@ -255,17 +257,25 @@ module.exports = async function neighborhoodPreviewRefresh() {
 
     const userIds = [...new Set(occupants.map((o) => o.user_id))];
 
-    // Check which users already received a density_milestone notification today (chunked <=100)
+    // Check which users already received a density_milestone notification today (chunked <=100). If that can't be
+    // read, this cell waits for the next run rather than telling someone twice.
     const alreadyNotified = new Set();
+    let recentFailed = false;
     for (const userChunk of chunkArray(userIds, IN_CHUNK_SIZE)) {
-      const { data: recentNotifs } = await supabaseAdmin
+      const { data: recentNotifs, error: recentErr } = await supabaseAdmin
         .from('Notification')
         .select('user_id')
         .eq('type', 'density_milestone')
         .in('user_id', userChunk)
         .gte('created_at', `${today}T00:00:00Z`);
+      if (recentErr) {
+        logger.warn('neighborhoodPreviewRefresh: failed to read today\'s milestone notices', { error: recentErr.message });
+        recentFailed = true;
+        break;
+      }
       for (const n of recentNotifs || []) alreadyNotified.add(n.user_id);
     }
+    if (recentFailed) continue;
 
     const eligibleUserIds = userIds.filter((id) => !alreadyNotified.has(id));
 
