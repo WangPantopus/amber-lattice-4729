@@ -84,6 +84,12 @@ async function mutate({ homeId = null, claimId, actorId, action, reviewToken = n
       await require('./notificationService')[method]({ userId: result.claimantId, homeId: result.homeId,
         homeName: claim.address || 'your home', claimId, claimType: claim.claimType,
         reason: action === 'reject' ? reviewerNote || undefined : undefined, note: reviewerNote });
+      // Request info also goes by email, so a claimant who doesn't open the app hears it. Not awaited: the reviewer's
+      // answer doesn't wait for the mailer.
+      if (action === 'request_more_info') {
+        require('./homeClaimNotices').emailMoreInfo({ userId: result.claimantId, homeId: result.homeId, claimId,
+          claimType: claim.claimType, address: claim.address, note: reviewerNote }).catch(() => {});
+      }
     } catch (error) { logger.warn('Claim review notification failed after commit', { claimId, errorCode: error.code }); }
   }
   // A rejected residency document takes off the Verified mark a bill read gave (FASTVERIFY), and says so.

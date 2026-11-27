@@ -300,9 +300,11 @@ function getStatusConfig(
       return {
         icon: '\uD83D\uDCC4',
         iconBg: 'bg-amber-100',
-        title: 'Your document is under review',
+        // This state outlasts the claim: it also shows after a claim was declined, withdrawn or closed for having no
+        // document, when nothing is under review. So the words hold either way.
+        title: 'Verify with a document',
         // No review time is promised while document review is undecided (founder, 2026-10-06).
-        body: 'Your uploaded documents are waiting for a Pantopus reviewer.',
+        body: 'A Pantopus reviewer checks the document you upload, and you get a notification when it\'s decided. If you haven\'t uploaded one yet, add it below.',
       };
     case 'provisional':
       if (access?.is_in_challenge_window) {
