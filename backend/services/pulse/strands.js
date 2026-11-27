@@ -115,6 +115,11 @@ async function strandOf(post, source, kind = 'went') {
   // while the post is still within its look back.
   const liveGuess = (row) => row.is_story && momentGuess().isGuess(row) && !store.hasEnded(row);
   if (liveGuess(source) || liveGuess(post)) return null;
+  // Nor a sealed Moment that hasn't opened (CONTRACT 8g): it is listed nowhere, so a strand must not say one was left
+  // there. Once it opens it is an ordinary Moment again.
+  // eslint-disable-next-line global-require
+  const sealed = (row) => row.is_story && Boolean(store.meta(row).seal) && require('./seal').isSealed(row);
+  if (sealed(source) || sealed(post)) return null;
   // "Went because of you" needs the new post at the marked one's place; a Retake frame and a pass are their own link.
   if (kind === 'went' && !samePlace(source, post)) return null;
   const [sourceOn, blocked, hiddenBySource, hiddenByFollower, homeA, homeB] = await Promise.all([
@@ -277,6 +282,10 @@ async function list(userId, { side, cursor } = {}) {
     const follower = byId.get(row.follower_post_id);
     const source = byId.get(row.source_post_id);
     if (!follower || !source || blocked.has(other(row)) || !ons.get(other(row))) continue;
+    // A post deleted since (a Moment is archived, not removed), or held for review or removed by moderation, takes its
+    // strand off both lists (CONTRACT 8c: "a follower who deletes the post leaves the list").
+    const standing = (post) => !post.archived_at && !post.is_archived && post.moderation_state === 'live';
+    if (!standing(follower) || !standing(source)) continue;
     // The source's author sees a follower's post only as today's rules let them (it may have changed since).
     if (!mine && !(await maySee(follower, userId))) continue;
     visible.push(row);

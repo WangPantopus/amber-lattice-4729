@@ -1,0 +1,45 @@
+/* Echoes and curiosity twins (Pulse, reinvented, phase 4, CONTRACT 9e). */
+.ec-echoes {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff7ed, #fdf2f8);
+  color: #431407;
+}
+.ec-echoes h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.ec-echoes ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ec-echoes li {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.ec-echoes li button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #fdba74;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.ec-echoes small {
+  color: #9a3412;
+  font-size: 12px;
+}

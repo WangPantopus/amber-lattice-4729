@@ -257,6 +257,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let guess: MomentGuessStateDTO?
     /// "Keep this?" (CONTRACT 6d): on one's own Moment with a reply, in its last two hours, until answered once.
     public let keepOffer: Bool
+    /// "Want to come?" (CONTRACT 6g, `MomentPlan.swift`): the plan this Moment started, as this reader may see it.
+    public let plan: MomentPlanDTO?
     /// Phase 2's layers on the picture (CONTRACT 7; `MomentPlayDTOs.swift`): empty with the switch off.
     public let layers: MomentLayersDTO
 
@@ -319,6 +321,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         stampChoices = (try? c.decodeIfPresent(MomentStampChoices.self, forKey: .stampChoices))?.values ?? [:]
         guess = MomentGuessStateDTO(from: decoder)
         keepOffer = MomentGuessStateDTO.keepOffer(from: decoder)
+        plan = MomentPlanDTO.read(from: decoder)
         layers = MomentLayersDTO(from: decoder)
     }
 

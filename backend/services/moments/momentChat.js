@@ -63,8 +63,12 @@ async function momentQuotes(messages, readerId = null) {
     const blocked = new Set(others ? [...await require('../blockService').blockedUserIds(readerId)].map(String) : []);
     const acrossBlock = (row) => blocked.has(String(row.user_id));
     // A picture, or a text card's color and words, only while the Moment is live: not once it ended, nor while it's
-    // held for review, nor across a block.
-    const shown = (row) => Boolean(row) && !hasEnded(row) && row.moderation_state === 'live' && !acrossBlock(row);
+    // held for review, nor across a block. Nor while it is sealed (Pulse, reinvented; CONTRACT 8g): until it opens,
+    // nobody but its author sees what it holds, and a chat's quote is shared by both sides. Only a Moment that carries a
+    // seal is checked, so every other quote is as before.
+    // eslint-disable-next-line global-require
+    const sealed = (row) => Boolean(meta(row).seal) && require('../pulse/seal').isSealed(row);
+    const shown = (row) => Boolean(row) && !hasEnded(row) && row.moderation_state === 'live' && !acrossBlock(row) && !sealed(row);
     const thumbKey = (row) => (shown(row) ? meta(row).media?.thumb_key || null : null);
     const links = await media.signedLinks(undefined, [...rows.values()].map(thumbKey).filter(Boolean));
     for (const [id, stored] of named) {

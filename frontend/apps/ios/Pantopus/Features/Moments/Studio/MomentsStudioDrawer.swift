@@ -36,7 +36,7 @@ struct MomentsStudioDrawer: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .background(Theme.Color.appSurface)
-            .navigationTitle("Where and how long")
+            .navigationTitle(model.studioPostKind?.name ?? "Where and how long")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -63,6 +63,11 @@ struct MomentsStudioDrawer: View {
 
     private var options: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // A post made from it (CONTRACT 6d): the kind's own details first; a Moment's own rows (the Live mark,
+            // the area, the height and the weather, "Share later", how long) don't apply to it.
+            if let kind = model.studioPostKind {
+                MomentsStudioKindDetails(model: model, kind: kind)
+            }
             if !model.noLocationOn {
                 MomentsPostMap(
                     pin: model.pin,
@@ -82,7 +87,7 @@ struct MomentsStudioDrawer: View {
             .padding(.top, Spacing.s2)
             if let taken = model.takenLine {
                 rows.takenRow(taken).padding(.top, 2)
-            } else if model.showsLive, !madeUp {
+            } else if model.showsLive, !madeUp, !asPost {
                 rows.liveRow.padding(.top, 2)
             }
             if madeUp {
@@ -114,35 +119,43 @@ struct MomentsStudioDrawer: View {
                 rows.pinRow.padding(.top, Spacing.s2)
             }
             if !madeUp {
-                if !model.noLocationOn {
+                if !model.noLocationOn, !asPost {
                     Group { if model.sky != nil { rows.pinRow } else { areaRow } }
                         .padding(.top, Spacing.s2)
                 }
                 rows.noLocationRow
                     .padding(.top, model.noLocationOn ? Spacing.s2 : 0)
-                if model.offersHeight, let feet = model.heightFeet {
+                // A post's height, weather and time are its stamps', which the server fills.
+                if !asPost, model.offersHeight, let feet = model.heightFeet {
                     rows.heightRow(feet: feet)
-                } else if model.greysHeight {
+                } else if !asPost, model.greysHeight {
                     rows.greyHeightRow
                 }
-                if model.offersWeather, let weather = model.live.weather {
+                if !asPost, model.offersWeather, let weather = model.live.weather {
                     rows.weatherRow(weather)
                 }
             }
-            if model.sky != nil, !model.shareLaterChoices.isEmpty {
+            if model.sky != nil, !model.shareLaterChoices.isEmpty, !asPost {
                 rows.shareLaterRow
             }
             if model.offersExplore {
                 MomentsStudioExploreRow(model: model)
             }
-            Text("How long")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Color.appTextSecondary)
-                .padding(.horizontal, Spacing.s1)
-                .padding(.top, Spacing.s4)
-                .accessibilityAddTraits(.isHeader)
-            durations.padding(.top, Spacing.s2)
+            if !asPost {
+                Text("How long")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .padding(.horizontal, Spacing.s1)
+                    .padding(.top, Spacing.s4)
+                    .accessibilityAddTraits(.isHeader)
+                durations.padding(.top, Spacing.s2)
+            }
         }
+    }
+
+    /// Made into one of today's Pulse posts ("+ Ask / Kind").
+    private var asPost: Bool {
+        model.studioPostKind != nil
     }
 
     /// Posted under the made-up name (`MomentsStudioMadeUpName`).

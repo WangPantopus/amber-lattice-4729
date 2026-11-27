@@ -32,10 +32,11 @@ extension MomentsViewerModel {
         return guess.mine == nil
     }
 
-    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), and while its author
-    /// hasn't answered "Keep this?".
+    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), while its author
+    /// hasn't answered "Keep this?", while "Want to come?" has the plan composer open, and while phase 2's layers hold it
+    /// (`playHolds`).
     var guessCovers: Bool {
-        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits || playHolds
+        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits || MomentPlanStart.shared.seed != nil || playHolds
     }
 
     /// "Keep this?" waits for its author's answer (CONTRACT 6d).
@@ -77,6 +78,7 @@ struct MomentsViewerPills: View {
         if let meta = model.metaPills {
             MomentsMetaPills(meta: meta)
         }
+        MomentsViewerPlan(model: model)
         if model.keepWaits {
             MomentKeepCard(model: model)
                 .padding(.horizontal, Spacing.s4)

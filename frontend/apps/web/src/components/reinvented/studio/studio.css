@@ -1015,3 +1015,54 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
+/* Draw's eyedropper: a round button in the colour row; the picture takes one tap for it. */
+.st-inks .st-dropper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--st-soft);
+  color: #fff;
+}
+.st-inks .st-dropper[aria-pressed='true'] {
+  background: #fff;
+  color: var(--st-night);
+}
+.st-picture canvas[data-picking] {
+  cursor: crosshair;
+}
+/* Film looks: each look on a small copy of the photo, one row that scrolls sideways; the one picked is ringed. */
+.st-filmlooks {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -2px;
+  padding: 2px;
+}
+.st-filmlooks button {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.st-filmlooks img {
+  width: 60px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 3px solid transparent;
+}
+.st-filmlooks button[aria-pressed='true'] {
+  opacity: 1;
+  font-weight: 800;
+}
+.st-filmlooks button[aria-pressed='true'] img {
+  border-color: #7dd3fc;
+}

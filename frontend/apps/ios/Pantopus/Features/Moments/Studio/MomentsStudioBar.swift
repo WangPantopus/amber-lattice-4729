@@ -202,6 +202,10 @@ struct MomentsStudioBar: View {
 
     /// "Fades in 24 hours", or with "Share later" picked, "Shares at 6:40 pm".
     private var pillTitle: String {
+        // A post made from it (CONTRACT 6d): how long the kind stays.
+        if let kind = model.studioPostKind {
+            return kind.pillTitle(eventStart: model.studioPost.eventStart, eventEnd: model.studioPost.eventEnd)
+        }
         if let sharesAt = model.sharesAt { return SkyWords.sharesAt(sharesAt) }
         return "Fades in \(hoursWords)"
     }
@@ -211,6 +215,8 @@ struct MomentsStudioBar: View {
     private var pillPlace: String {
         // Under a made-up name it floats over its area too, unless its author pinned it at a place ("At <place>").
         let place = Self.showsHomeArea(model) || model.madeUpFloats ? "Area · \(homeTown)" : model.placeLine
+        // A post with no place goes to the author's connections.
+        if model.studioPostKind != nil { return model.studioPostPlaced ? place : "Your connections" }
         return model.sharesAt == nil ? place : "\(hoursWords) · \(place)"
     }
 
@@ -230,8 +236,16 @@ struct MomentsStudioBar: View {
             Keyboard.close()
             // Cutouts become part of the picture before it goes up.
             model.drawInStudioCutouts()
+            // A post (CONTRACT 6d): a detail it still needs opens the drawer at it, with the reason.
+            if let blocker = model.studioKindBlocker {
+                model.error = blocker.message
+                if blocker.inDrawer { openDrawer() }
+                return
+            }
             Task {
-                if await model.post() {
+                if model.studioPostKind != nil {
+                    if await model.postStudioKind() { onPosted() }
+                } else if await model.post() {
                     onPosted()
                 } else if !model.studioStamps.isEmpty {
                     // Stamps are the Studio's own: refused, the switch may be off now (CONTRACT 1). Read it again; off,

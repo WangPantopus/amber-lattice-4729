@@ -12,7 +12,9 @@ import SwiftUI
 extension MomentsComposerModel {
     /// "Also show in Explore" may be chosen: people nearby, with a place, away from home, under the person's own name.
     var offersExplore: Bool {
+        // As a Pulse post ("+ Ask / Kind"), only a Spot, Learning or Event (CONTRACT 6d).
         !postsUnderMadeUpName && !noLocationOn && pin != nil && audience == .nearby && place?.atHome != true
+            && studioPostKind?.mayGoToExplore != false
     }
 
     /// The Studio's "Also show in Explore", held with its other tools; only the Studio sets it.

@@ -30,7 +30,7 @@ type Here = { latitude: number; longitude: number };
 type Finding = 'idle' | 'busy' | 'refused';
 
 /** The browser's position: read quietly only when the reader already allowed it, otherwise on their tap. */
-function useHere(given: Here | null) {
+export function useHere(given: Here | null) {
   const [here, setHere] = useState<Here | null>(null);
   const [finding, setFinding] = useState<Finding>('idle');
   const find = useCallback(() => {

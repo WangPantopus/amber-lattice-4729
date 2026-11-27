@@ -21,12 +21,17 @@ import {
   ChevronDown,
   Clock3,
   Crop,
+  Eraser,
   EyeOff,
+  Highlighter,
   Mic,
   ImagePlus,
   LocateFixed,
   MapPin,
   MessageCircleQuestion,
+  MoveUpRight,
+  PenLine,
+  Pipette,
   Plus,
   RotateCw,
   Type,
@@ -37,7 +42,7 @@ import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/com
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
-import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
+import { blankArt, edited, inks, type Stroke } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import { cutToShape, sideBySide } from './beforeAfter';
@@ -65,7 +70,8 @@ import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
-import StudioPicture, { type StudioTool } from './StudioPicture';
+import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPicture';
+import { FILM_LOOKS, lookPreviews, photostrip, withLook, type FilmLook } from './looks';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
 import {
@@ -184,8 +190,23 @@ export default function Studio({
   const [tool, setTool] = useState<StudioTool>(null),
     [ink, setInk] = useState(inks[0]),
     [pen, setPen] = useState(pens[1]),
+    // Draw's brush, the eyedropper while it waits for a tap, and the lines as they were before each step, for Undo.
+    [brush, setBrush] = useState<StudioBrush>('pen'),
+    [picking, setPicking] = useState(false),
+    [strokesBefore, setStrokesBefore] = useState<Stroke[][]>([]),
+    // Film looks (phase 0 step 5): the look picked, this photo in it (the photo itself is kept, so another look starts
+    // from it again), the tray's small copies, and a look or a photostrip being drawn.
+    [look, setLook] = useState<FilmLook>('original'),
+    [lookFile, setLookFile] = useState<File | null>(null),
+    [lookThumbs, setLookThumbs] = useState<Partial<Record<FilmLook, string>> | null>(null),
+    [lookBusy, setLookBusy] = useState(false),
+    [stripBusy, setStripBusy] = useState(false),
     // Up to five colours the picture is mostly made of, beside the six inks (design: "colors sampled from the photo").
     [photoInks, setPhotoInks] = useState<string[]>([]);
+  // The photo a look being drawn belongs to: a look finished after the photo changed is dropped.
+  const lookFor = useRef<File | undefined>(undefined);
+  // Photostrips made here: they open whole, never cropped to fill the frame.
+  const strips = useRef(new WeakSet<File>());
   const [drawerOpen, setDrawerOpen] = useState(false),
     [discarding, setDiscarding] = useState(false),
     [askedPost, setAskedPost] = useState(false),
@@ -256,6 +277,18 @@ export default function Studio({
   // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
   const postRequest = useRef<string | null>(null);
   const drawer = drawerOpen || wide;
+  // The eyedropper waits for one tap only while Text or Draw stays open.
+  useEffect(() => setPicking(false), [tool]);
+  // Undo: the lines as they were before the last line or rub; else today's step, the last line off.
+  const undoStroke = () => {
+    if (strokesBefore.length) {
+      setArt({ ...art, strokes: strokesBefore[strokesBefore.length - 1] });
+      setStrokesBefore(strokesBefore.slice(0, -1));
+    } else setArt({ ...art, strokes: art.strokes.slice(0, -1) });
+  };
+  // A colour taken from the picture that is neither an ink nor one of the photo's own: shown as its own swatch.
+  const shownColour = tool === 'draw' ? ink : art.color;
+  const tookColour = !inks.includes(shownColour) && !photoInks.includes(shownColour);
   const handle = useRef<AbortController | null>(null),
     input = useRef<HTMLInputElement>(null),
     drawerRef = useRef<HTMLElement>(null),
@@ -319,6 +352,12 @@ export default function Studio({
     setReading(!!file);
     setArt(blankArt());
     setPhotoInks([]);
+    setStrokesBefore([]);
+    setPicking(false);
+    lookFor.current = file;
+    setLook('original');
+    setLookFile(null);
+    setLookThumbs(null);
     setTool(null);
     setCaption(file ? draftCaption.current : '');
     if (file) draftCaption.current = '';
@@ -497,7 +536,7 @@ export default function Studio({
   // Boxes belong to one photo: a new picture starts with none.
   useEffect(() => setBlurs([]), [file]);
   // Before and after goes on one photo (the before), with the after beside it in the same picture.
-  const canPair = canBlur && files.length === 1;
+  const canPair = canBlur && files.length === 1 && look === 'original';
   const pairItem = beforeAfterOf(play);
   const hasPair = !!pairItem;
   const pair = hasPair && !!afterFile && canPair;
@@ -505,6 +544,67 @@ export default function Studio({
   // A step deck: two to four photos or videos chosen together, under the person's own name, as Moments.
   const deckOffered = mode === 'media' && files.length >= 2 && files.length <= 4 && !underPenName && !postKind;
   const deckOn = asDeck && deckOffered;
+  // Film looks go on one photo (not a video, a before and after, or a step deck), as on the iPhone.
+  const offersLooks = canBlur && !hasPair && !deckOn;
+  // The photostrip: this photo and up to three photos picked with it, one under the other, as one picture and one
+  // Moment. Offered before anything is drawn, placed or blurred on this photo, as on the iPhone.
+  const stripPartners =
+    offersLooks && look === 'original' && !edited(art) && !blurs.length && !stamps.length && !play.length
+      ? files.slice(index + 1).filter((f) => f.type.startsWith('image/') && !/\.(heic|heif)$/i.test(f.name)).slice(0, 3)
+      : [];
+  // The tray's small copies of the photo in each look, made once per photo when the tray opens. A photo the browser
+  // can't read offers no looks.
+  useEffect(() => {
+    if (!trayOpen || !offersLooks || !file || lookThumbs) return undefined;
+    let live = true;
+    lookPreviews(file).then(
+      (made) => live && setLookThumbs(made),
+      () => live && setLookThumbs({}),
+    );
+    return () => {
+      live = false;
+    };
+  }, [trayOpen, offersLooks, file, lookThumbs]);
+  async function pickFilmLook(next: FilmLook) {
+    if (!file || next === look || lookBusy) return;
+    if (next === 'original') {
+      setLook('original');
+      setLookFile(null);
+      return;
+    }
+    const from = file;
+    setLookBusy(true);
+    try {
+      const made = await withLook(from, next);
+      if (!mounted.current || lookFor.current !== from) return;
+      setLook(next);
+      setLookFile(made);
+    } catch (e) {
+      if (mounted.current) setError(messageOf(e, 'This look couldn’t be drawn.'));
+    } finally {
+      if (mounted.current) setLookBusy(false);
+    }
+  }
+  async function makeStrip() {
+    if (!file || !stripPartners.length || stripBusy) return;
+    const from = file,
+      partners = stripPartners;
+    setStripBusy(true);
+    try {
+      const strip = await photostrip([from, ...partners]);
+      if (!mounted.current) return;
+      strips.current.add(strip);
+      // The strip takes this photo's place; the photos in it leave the queue ("2 of 3" counts Moments).
+      setFiles((old) =>
+        old[index] !== from ? old : [...old.slice(0, index), strip, ...old.slice(index + 1).filter((f) => !partners.includes(f))],
+      );
+      setTrayOpen(false);
+    } catch (e) {
+      if (mounted.current) setError(messageOf(e, 'This strip couldn’t be made.'));
+    } finally {
+      if (mounted.current) setStripBusy(false);
+    }
+  }
   const deckId = useRef<string | null>(null);
   useEffect(() => {
     setAsDeck(false);
@@ -814,7 +914,7 @@ export default function Studio({
       // The look's font is in before the words are drawn into the picture that is posted.
       if (file && art.text.trim()) await fontReady(art.font, art.text);
       let prepared = file
-        ? await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, (f) =>
+        ? await prepareMedia(canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file, art, limits.data?.video || fallback, controller.signal, (f) =>
             setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
           )
         : [];
@@ -985,7 +1085,7 @@ export default function Studio({
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
-        const [first] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const [first] = await prepareMedia(canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file, art, limits.data?.video || fallback, controller.signal, () => {});
         const prepared = await withAfter(first);
         photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
       }
@@ -1149,6 +1249,7 @@ export default function Studio({
     setIndex(0);
     setCapture(null);
     setArt(blankArt());
+    setStrokesBefore([]);
     setCaption('');
     setText('');
     setMode('none');
@@ -1661,12 +1762,21 @@ export default function Studio({
               />
             ) : gate ? null : mode === 'media' && file ? (
               <StudioPicture
-                file={showAfter ? afterFile! : file}
+                file={showAfter ? afterFile! : lookFile ?? file}
+                fill={!strips.current.has(file)}
                 art={art}
                 onChange={setArt}
                 tool={tool}
                 ink={ink}
                 pen={pen}
+                brush={brush}
+                picking={picking}
+                onPick={(c) => {
+                  if (tool === 'draw') setInk(c);
+                  else setArt({ ...art, color: c });
+                  setPicking(false);
+                }}
+                onBeforeStrokes={(before) => setStrokesBefore((list) => [...list.slice(-49), before])}
                 onPicture={
                   showAfter
                     ? undefined
@@ -2045,7 +2155,39 @@ export default function Studio({
                     onClick={() => (tool === 'draw' ? setInk(v) : setArt({ ...art, color: v }))}
                   />
                 ))}
+                {tookColour && (
+                  <button type="button" aria-label="The colour you took from the photo" aria-pressed="true" style={{ background: shownColour }} />
+                )}
+                {mode === 'media' && file && (
+                  <button
+                    type="button"
+                    className="st-dropper"
+                    aria-label="Take a colour from the photo"
+                    aria-pressed={picking}
+                    onClick={() => setPicking(!picking)}
+                  >
+                    <Pipette size={15} aria-hidden="true" />
+                  </button>
+                )}
               </div>
+              )}
+              {picking && <small className="st-hint">Tap the picture to take its colour.</small>}
+              {tool === 'draw' && (
+                <div className="st-pens" role="group" aria-label="Brush">
+                  {(
+                    [
+                      ['pen', 'Pen', PenLine],
+                      ['highlighter', 'Highlighter', Highlighter],
+                      ['arrow', 'Arrow', MoveUpRight],
+                      ['eraser', 'Eraser', Eraser],
+                    ] as const
+                  ).map(([v, label, Icon]) => (
+                    <button type="button" key={v} aria-pressed={v === brush} onClick={() => setBrush(v)}>
+                      <Icon size={15} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               )}
               {tool === 'draw' && (
                 <div className="st-pens">
@@ -2062,8 +2204,8 @@ export default function Studio({
                   ))}
                   <button
                     type="button"
-                    disabled={!art.strokes.length}
-                    onClick={() => setArt({ ...art, strokes: art.strokes.slice(0, -1) })}
+                    disabled={!art.strokes.length && !strokesBefore.length}
+                    onClick={undoStroke}
                   >
                     <Undo2 size={15} aria-hidden="true" />
                     Undo
@@ -2111,6 +2253,39 @@ export default function Studio({
                       </p>
                     )}
                   </div>
+                )}
+                {offersLooks && lookThumbs?.original && (
+                  <>
+                    <p className="st-tray-head">
+                      <strong>Film looks</strong>
+                      <span>{lookBusy ? 'Drawing the look…' : 'Colour and tone only'}</span>
+                    </p>
+                    <div className="st-filmlooks" role="group" aria-label="Film looks">
+                      {FILM_LOOKS.map(({ look: l, title }) => (
+                        <button key={l} type="button" aria-pressed={look === l} disabled={lookBusy} onClick={() => void pickFilmLook(l)}>
+                          {/* eslint-disable-next-line @next/next/no-img-element -- a small copy made on this device */}
+                          <img src={lookThumbs[l]} alt="" />
+                          <span>{title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {stripPartners.length > 0 && (
+                  <>
+                    <p className="st-tray-head">
+                      <strong>Photostrip</strong>
+                      <span>One picture, one Moment</span>
+                    </p>
+                    <div className="st-tray-stamps">
+                      <button type="button" disabled={stripBusy} onClick={() => void makeStrip()}>
+                        <ImagePlus size={17} aria-hidden="true" />
+                        {stripBusy
+                          ? 'Making the strip…'
+                          : `This and the next ${stripPartners.length === 1 ? 'photo' : `${stripPartners.length} photos`} in one strip`}
+                      </button>
+                    </div>
+                  </>
                 )}
                 <p className="st-tray-head">
                   <strong>Play</strong>

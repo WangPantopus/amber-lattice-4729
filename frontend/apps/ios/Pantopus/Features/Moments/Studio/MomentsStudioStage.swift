@@ -70,6 +70,10 @@ struct MomentsStudioStage: View {
                     .padding(.horizontal, Spacing.s4)
                     .padding(.bottom, Spacing.s3)
             }
+            // "+ Ask / Kind" (phase 1, CONTRACT 6d): the picture or the words become one of today's Pulse posts.
+            MomentsStudioKindRow(model: model)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s3)
             notes
             if model.studioGuess, model.offersGuess {
                 MomentsStudioGuessNote()
@@ -195,10 +199,11 @@ struct MomentsStudioStage: View {
     /// The caption, written on the picture. Return finishes it.
     private var caption: some View {
         @Bindable var model = model
+        // As a post, the words are the post's (up to 500 characters) and the prompt says what to write.
         return TextField(
             "",
-            text: $model.caption,
-            prompt: Text("Add a caption").foregroundColor(Color.white.opacity(0.75)),
+            text: model.studioPostKind == nil ? $model.caption : model.studioPostWordsBinding,
+            prompt: Text(model.studioPostKind.map(\.wordsPrompt) ?? "Add a caption").foregroundColor(Color.white.opacity(0.75)),
             axis: .vertical
         )
         .font(.system(size: 22, weight: .bold))
@@ -214,7 +219,16 @@ struct MomentsStudioStage: View {
             model.caption = typed.replacingOccurrences(of: "\n", with: "")
             writing = false
         }
-        .accessibilityLabel("Caption")
+        .onChange(of: model.studioPost.words) { _, typed in
+            guard typed.contains("\n") else { return }
+            model.studioPost.words = typed.replacingOccurrences(of: "\n", with: "")
+            writing = false
+        }
+        // A kind no longer offered (a made-up name picked for a photo, say): it is a Moment again, with its words.
+        .onChange(of: model.studioPostKind == nil) { _, gone in
+            if gone { model.clearStudioKind() }
+        }
+        .accessibilityLabel(model.studioPostKind == nil ? "Caption" : "What it's about")
         .accessibilityIdentifier("moments.studio.caption")
     }
 

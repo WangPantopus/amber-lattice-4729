@@ -11,6 +11,10 @@ import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { useBackWhenMissing } from '../serverBehind';
 import { deleteForGood, readAtlas, type AtlasPage, type ListMoment, type Point } from './listApi';
 import AtlasSearch from './AtlasSearch';
+import Cabinet from '../cabinet/Cabinet';
+import Echoes from '../echoes/Echoes';
+import PosterView, { posterYear } from '../cabinet/Poster';
+import { useMe } from '@/lib/me';
 import { WentBecauseOfYou } from '../strands/Strands';
 
 const dayWords = (iso: string) =>
@@ -114,6 +118,9 @@ export default function AtlasView({
   const reread = useRereadSwitch();
   // Atlas search's results show in place of the days while there are some.
   const [searching, setSearching] = useState(false);
+  // The yearly poster (CONTRACT 9d), opened from My Atlas.
+  const [poster, setPoster] = useState(false);
+  const me = useMe().data;
   const atlas = useInfiniteQuery({
     queryKey: ['reinvented', 'atlas', account],
     queryFn: ({ pageParam, signal }) => readAtlas(pageParam, signal),
@@ -166,6 +173,15 @@ export default function AtlasView({
       {!searching && (
         <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
       )}
+      {!searching && <Echoes account={account} />}
+      {!searching && <Cabinet personId={account} viewerId={account} own />}
+      {!searching && (
+        <button type="button" className="cb-poster-open" onClick={() => setPoster(true)}>
+          <span>Your {posterYear()} poster</span>
+          <small>Only you see it</small>
+        </button>
+      )}
+      {poster && <PosterView account={account} name={(me as { firstName?: string; name?: string } | undefined)?.firstName || 'My'} onClose={() => setPoster(false)} />}
       {!searching && constellations}
       {!searching && <WentBecauseOfYou />}
       {!searching && !days.length && <p className="rp-empty">Nothing here yet. The Moments you post from now on are kept here.</p>}

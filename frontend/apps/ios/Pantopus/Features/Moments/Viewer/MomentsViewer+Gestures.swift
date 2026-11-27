@@ -197,6 +197,11 @@ extension MomentsViewer {
             Button("Edit") { editing = model.moment }
                 .accessibilityIdentifier("moments.menu.edit")
         }
+        // "Want to come?" (CONTRACT 6g): a plan in Plans from one's own live Moment, only while the switch is on.
+        if MomentPlanStart.offers(model.moment, mine: model.isMine), let moment = model.moment {
+            Button("Want to come? Start a plan") { MomentPlanStart.shared.seed = PlanMomentSeed(moment: moment) }
+                .accessibilityIdentifier("moments.menu.startPlan")
+        }
         Button("Save to Photos") {
             let moment = model.moment
             let card = moment?.kind == .text ? MomentsCardPicture.render(text: moment?.text ?? "", background: moment?.background) : nil

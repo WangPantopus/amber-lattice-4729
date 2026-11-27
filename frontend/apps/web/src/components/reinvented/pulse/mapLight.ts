@@ -68,3 +68,17 @@ export interface Beam {
 export function readBeams(box: Box, signal?: AbortSignal): Promise<{ beams: Beam[] }> {
   return get<{ beams: Beam[] }>('/api/reinvented/beams', { ...box }, { signal });
 }
+
+/** One place sound on the map (CONTRACT 9g): only what its author kept as place sound for people nearby. */
+export interface PlaceSound {
+  moment_id: string;
+  latitude: number;
+  longitude: number;
+  url: string;
+  duration_ms: number;
+  at: string;
+}
+
+export function readSounds(box: Box, time: string, signal?: AbortSignal): Promise<{ sounds: PlaceSound[] }> {
+  return get<{ sounds: PlaceSound[] }>('/api/reinvented/sounds', { ...box, time }, { signal });
+}
