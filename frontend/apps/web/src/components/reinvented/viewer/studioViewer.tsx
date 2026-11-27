@@ -24,6 +24,7 @@ import SoundLayer, { hasSound, holdsForSound } from '../sound/SoundLayer';
 import type { PlayItem } from '../play/playTypes';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import { DeckBar } from '../deck/StepDeck';
+import { withMentions, type MentionPerson } from '../mentions/Mentions';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -202,4 +203,5 @@ export const studioViewer = {
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,
+  caption: (m: Moment) => withMentions(m.caption || '', (m as Moment & { mentions?: MentionPerson[] }).mentions),
 };

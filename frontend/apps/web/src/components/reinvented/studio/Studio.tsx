@@ -42,6 +42,7 @@ import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import { cutToShape, sideBySide } from './beforeAfter';
 import { beforeAfterOf } from '../play/BeforeAfter';
+import { MentionPicker, mentionIds, type Mentioned } from '../mentions/Mentions';
 import {
   colors,
   deviceFix,
@@ -206,6 +207,9 @@ export default function Studio({
     // A step deck (§7g): the photos or videos chosen together, posted one by one as the steps of one recipe or repair.
     [asDeck, setAsDeck] = useState(false),
     [deckNote, setDeckNote] = useState(false),
+    // Mentions (§7h): the connections picked after "@" in the words, and where the caret is in which field.
+    [mentioned, setMentioned] = useState<Mentioned[]>([]),
+    [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
@@ -496,6 +500,7 @@ export default function Studio({
   // A new before, or the item taken off: the after goes with it. A recording belongs to its own picture too (each step
   // of a deck has its own voice tip).
   useEffect(() => {
+    setMentioned([]);
     setVoiceRec(null);
     setVoiceWords('');
     setPlaceRec(null);
@@ -532,6 +537,24 @@ export default function Studio({
     setBusy('Putting before and after side by side…');
     const after = afterBlurs.length ? await blurInto(afterFile, afterBlurs) : afterFile;
     return { file: await sideBySide(prepared.file, after, art) };
+  }
+  // Mentions go out under the person's own name only (a mention says who they know).
+  const canMention = !underPenName;
+  const captionRef = useRef<HTMLInputElement>(null),
+    wordsRef = useRef<HTMLTextAreaElement>(null);
+  function followCaret(field: 'caption' | 'words', el: HTMLInputElement | HTMLTextAreaElement) {
+    setCaretAt({ field, at: el.selectionStart ?? el.value.length });
+  }
+  function pickMention(field: 'caption' | 'words', next: { text: string; caret: number; person: Mentioned }) {
+    if (field === 'caption') setCaption(next.text);
+    else setText(next.text);
+    setMentioned((old) => (old.some((p) => p.id === next.person.id) ? old : [...old, next.person]));
+    setCaretAt({ field, at: next.caret });
+    const el = field === 'caption' ? captionRef.current : wordsRef.current;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(next.caret, next.caret);
+    });
   }
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
@@ -798,6 +821,9 @@ export default function Studio({
               : (caption.trim() || (canSound && voiceRec && voiceWords.trim())) && i === 0
                 ? { caption: (caption.trim() || voiceWords.trim()).slice(0, 100) }
                 : {}),
+            ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
+              ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
+              : {}),
             ...(file && capture?.file !== file && meta?.capturedAt ? { taken_at: meta.capturedAt } : {}),
             ...(area && !noPlace ? { show_area: true } : {}),
             ...(placement === 'place' && !area
@@ -914,6 +940,7 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
+          mentions?: string[];
           play?: Record<string, unknown>[];
           dots?: Record<string, unknown>[];
           taken_at?: string;
@@ -972,6 +999,7 @@ export default function Studio({
               }
             : {}),
           ...(toExplore ? { explore: true } : {}),
+          ...(canMention && mentionIds(words, mentioned).length ? { mentions: mentionIds(words, mentioned) } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
             : {}),
@@ -1477,13 +1505,22 @@ export default function Studio({
             ) : mode === 'text' ? (
               <div className="st-words">
                 <textarea
+                  ref={wordsRef}
                   aria-label="Your words"
                   maxLength={200}
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    followCaret('words', e.target);
+                  }}
+                  onSelect={(e) => followCaret('words', e.currentTarget)}
+                  onBlur={() => setTimeout(() => setCaretAt((c) => (c?.field === 'words' ? null : c)), 150)}
                   placeholder="What’s happening here?"
                 />
                 <small>{text.length}/200</small>
+                {caretAt?.field === 'words' && (
+                  <MentionPicker text={text} caret={caretAt.at} picked={mentioned} enabled={canMention} onPick={(n) => pickMention('words', n)} />
+                )}
               </div>
             ) : null}
             {composing && kept.length > 0 && (
@@ -2063,14 +2100,23 @@ export default function Studio({
                 </div>
               ) : (
                 <>
+                  {mode === 'media' && file && !tool && caretAt?.field === 'caption' && (
+                    <MentionPicker text={caption} caret={caretAt.at} picked={mentioned} enabled={canMention} onPick={(n) => pickMention('caption', n)} />
+                  )}
                   {mode === 'media' && file && !tool && (
                     <input
+                      ref={captionRef}
                       className="st-caption"
                       aria-label={postKind ? 'What it’s about' : 'Caption'}
                       maxLength={postKind ? 500 : 100}
                       value={caption}
                       disabled={!!busy}
-                      onChange={(e) => setCaption(e.target.value)}
+                      onChange={(e) => {
+                        setCaption(e.target.value);
+                        followCaret('caption', e.target);
+                      }}
+                      onSelect={(e) => followCaret('caption', e.currentTarget)}
+                      onBlur={() => setTimeout(() => setCaretAt((c) => (c?.field === 'caption' ? null : c)), 150)}
                       placeholder={postKind === 'ask_local' ? 'Ask something' : postKind ? 'Say what it’s about' : 'Add a caption'}
                     />
                   )}
