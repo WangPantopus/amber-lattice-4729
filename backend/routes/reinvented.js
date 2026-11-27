@@ -389,4 +389,33 @@ router.delete('/moments/:id/sound', async (req, res) => {
   }
 });
 
+// ─── "Save the steps" of a step deck (CONTRACT 7g) ───────────────────────────
+
+const stepDeck = require('../services/pulse/deck');
+
+/** POST /moments/:id/deck/save — keeps the words of the deck's steps in the reader's field guide. */
+router.post('/moments/:id/deck/save', contentCreationLimiter, async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This step deck could not be found.', code: 'PLAY_NOT_FOUND' });
+    }
+    return res.json(await stepDeck.saveSteps(req.params.id, req.user.id));
+  } catch (error) {
+    return sendError(res, error, 'deck_save');
+  }
+});
+
+/** DELETE /moments/:id/deck/save — lets them go. */
+router.delete('/moments/:id/deck/save', async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This step deck could not be found.', code: 'PLAY_NOT_FOUND' });
+    }
+    await stepDeck.unsaveSteps(req.params.id, req.user.id);
+    return res.status(204).end();
+  } catch (error) {
+    return sendError(res, error, 'deck_unsave');
+  }
+});
+
 module.exports = router;

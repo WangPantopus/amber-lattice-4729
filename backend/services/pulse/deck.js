@@ -70,4 +70,91 @@ function deckOf(m, decks) {
   return { id: deck.id, index: deck.index, count: deck.count, steps: decks.get(deck.id) || [] };
 }
 
-module.exports = { parseDeck, checkFirstStep, decksFor, deckOf, MAX_STEPS };
+// ─── "Save the steps" (CONTRACT 7g; LEAD-3 04:31) ───────────────────────────
+// The reader's field guide keeps a deck as one PostAnswer row (kind collect, item k-deck) on the deck's first step: only
+// words (each step's caption and its voice tip's words), never a picture or a sound, so nothing of the author's media
+// outlives the Moments. It opens the deck while the deck is open to the reader or its author kept it, and it goes from
+// the guide when the author deletes the Moments (it stays when they only fade).
+
+const SAVE_ITEM = 'k-deck';
+
+function fail(status, code, message) {
+  return Object.assign(new Error(message), { status, code });
+}
+
+/** All steps of a deck, as stored, in order. */
+async function stepRows(deckId) {
+  const { data, error } = await supabaseAdmin.from('Post')
+    .select('id, user_id, content, archived_at, archive_reason, story_expires_at, post_metadata')
+    .eq('is_story', true).eq('post_metadata->moment->deck->>id', deckId).limit(MAX_STEPS * 2);
+  if (error) throw new Error(`Failed to read the deck: ${error.message}`);
+  return (data || []).sort((a, b) => a.post_metadata.moment.deck.index - b.post_metadata.moment.deck.index);
+}
+
+/** Whether the author deleted this step (Delete, or Delete for good), not only let it fade. */
+function deletedByAuthor(row) {
+  const m = row?.post_metadata?.moment || {};
+  return Boolean(m.deleted_for_good_at) || (row?.archived_at && row.archive_reason === 'manual');
+}
+
+/** POST /moments/:id/deck/save — keeps the words of the deck's steps the reader may see in their field guide. */
+async function saveSteps(momentId, viewerId) {
+  const store = momentStore();
+  const [moment] = await store.openMoments([momentId], viewerId);
+  const deck = moment && store.meta(moment).deck;
+  if (!deck) throw fail(404, 'PLAY_NOT_FOUND', 'This step deck could not be found.');
+  const rows = await stepRows(deck.id);
+  const visible = new Set((await store.openMoments(rows.map((row) => row.id), viewerId)).map((row) => row.id));
+  const first = rows.find((row) => row.post_metadata.moment.deck.index === 1);
+  if (!first) throw fail(404, 'PLAY_NOT_FOUND', 'This step deck could not be found.');
+  const steps = rows.filter((row) => visible.has(row.id)).map((row) => {
+    const m = row.post_metadata.moment;
+    return {
+      index: m.deck.index,
+      caption: row.content || null,
+      words: Array.isArray(m.sound?.words) && m.sound.kind === 'voice' ? m.sound.words.map((word) => word.w).join(' ').slice(0, 1200) : null,
+    };
+  });
+  const value = { deck: deck.id, count: deck.count, steps };
+  const { error } = await supabaseAdmin.from('PostAnswer').upsert({
+    post_id: first.id, user_id: viewerId, item: SAVE_ITEM, kind: 'collect', value, updated_at: new Date().toISOString(),
+  }, { onConflict: 'post_id,item,user_id' });
+  if (error) throw new Error(`Failed to save the steps: ${error.message}`);
+  return { saved: { deck_id: deck.id, first_moment_id: first.id, steps } };
+}
+
+/** DELETE /moments/:id/deck/save — lets the saved steps go (any step's id, even after the deck faded). */
+async function unsaveSteps(momentId, viewerId) {
+  const { data, error } = await supabaseAdmin.from('Post').select('post_metadata').eq('id', momentId).eq('is_story', true).maybeSingle();
+  if (error) throw new Error(`Failed to read the deck: ${error.message}`);
+  const deckId = data?.post_metadata?.moment?.deck?.id;
+  if (!deckId) return;
+  const first = (await stepRows(deckId)).find((row) => row.post_metadata.moment.deck.index === 1);
+  if (!first) return;
+  const { error: deleteError } = await supabaseAdmin.from('PostAnswer').delete()
+    .eq('post_id', first.id).eq('item', SAVE_ITEM).eq('user_id', viewerId);
+  if (deleteError) throw new Error(`Failed to let the steps go: ${deleteError.message}`);
+}
+
+/**
+ * The field guide's saved decks among these collect rows: dropped when the author deleted the deck's first step; `open`
+ * while the reader may open it now, or its author kept it.
+ */
+async function savedDecks(rows, viewerId) {
+  const store = momentStore();
+  const firstIds = rows.map((row) => row.post_id);
+  if (!firstIds.length) return [];
+  const { data, error } = await supabaseAdmin.from('Post').select('id, archived_at, archive_reason, post_metadata').in('id', firstIds);
+  if (error) throw new Error(`Failed to read the saved decks: ${error.message}`);
+  const firsts = new Map((data || []).map((row) => [row.id, row]));
+  const live = new Set((await store.openMoments(firstIds, viewerId)).map((row) => row.id));
+  return rows.filter((row) => firsts.has(row.post_id) && !deletedByAuthor(firsts.get(row.post_id))).map((row) => ({
+    deck_id: row.value?.deck || null,
+    first_moment_id: row.post_id,
+    saved_at: row.created_at,
+    steps: Array.isArray(row.value?.steps) ? row.value.steps : [],
+    open: live.has(row.post_id) || Boolean(firsts.get(row.post_id)?.post_metadata?.moment?.kept_post_at),
+  }));
+}
+
+module.exports = { parseDeck, checkFirstStep, decksFor, deckOf, MAX_STEPS, saveSteps, unsaveSteps, savedDecks, SAVE_ITEM };
