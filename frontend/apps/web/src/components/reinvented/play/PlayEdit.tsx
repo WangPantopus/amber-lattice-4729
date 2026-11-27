@@ -121,30 +121,47 @@ function Text({ value, set, max, placeholder }: { value: string; set(v: string):
  * The form for one kind, in the tray. `onAdd` gets the item, placed in the picture's middle (null to go back), and for a
  * before and after the photo chosen as the after.
  */
+/** Where a form starts when Illuminate suggested its kind (CONTRACT 7i): only what the caption already says. */
+export interface PlayStart {
+  /** The question, prompt or before label. */
+  text?: string;
+  /** A poll's choices. */
+  options?: string[];
+  /** A guess of a number (a range) rather than of choices. */
+  number?: boolean;
+  /** The swatch slider's colours. */
+  colors?: string[];
+  /** The after label, and the after photo (a second photo picked with this one). */
+  second?: string;
+  afterPhoto?: File;
+}
+
 export function PlayMaker({
   kind,
   taken,
   onAdd,
+  start,
 }: {
   kind: PlayKind | 'dial';
   taken: readonly PlayItem[];
   onAdd(item: PlayItem | null, after?: File): void;
+  start?: PlayStart;
 }) {
-  const [q, setQ] = useState(''),
-    [options, setOptions] = useState(['', '']),
-    [a, setA] = useState(''),
+  const [q, setQ] = useState(start?.text ?? ''),
+    [options, setOptions] = useState(start?.options?.length ? start.options.slice(0, 4) : ['', '']),
+    [a, setA] = useState(start?.second ?? ''),
     [b, setB] = useState(''),
     [c, setC] = useState(''),
     [d, setD] = useState(''),
-    [mode, setMode] = useState<'choices' | 'number'>('choices'),
+    [mode, setMode] = useState<'choices' | 'number'>(start?.number ? 'number' : 'choices'),
     [right, setRight] = useState(0),
     [min, setMin] = useState('0'),
     [max, setMax] = useState('100'),
     [unit, setUnit] = useState(''),
     [answer, setAnswer] = useState(''),
     [ends, setEnds] = useState(''),
-    [colors, setColors] = useState<string[]>(['#2f6f8f', '#c2410c']),
-    [afterPhoto, setAfterPhoto] = useState<File | null>(null);
+    [colors, setColors] = useState<string[]>(start?.colors?.length ? start.colors.slice(0, 6) : ['#2f6f8f', '#c2410c']),
+    [afterPhoto, setAfterPhoto] = useState<File | null>(start?.afterPhoto ?? null);
   const base = kind === 'dial' ? 'slider' : kind;
   let n = 1;
   while (taken.some((p) => p.id === `${base}-${n}`)) n++;
@@ -335,7 +352,8 @@ export function PlayMaker({
               The photo you have is the before. Choose the after: both go out side by side as one picture, the same size
               and shape, and readers drag a curtain between them.
             </p>
-            <Field label="The after photo">
+            {start?.afterPhoto && afterPhoto === start.afterPhoto && <p className="st-hint">The after is the second photo you picked.</p>}
+            <Field label={start?.afterPhoto ? 'Or choose another after photo' : 'The after photo'}>
               <input
                 type="file"
                 accept="image/*"
