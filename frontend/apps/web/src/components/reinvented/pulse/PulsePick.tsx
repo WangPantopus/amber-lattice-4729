@@ -9,8 +9,9 @@ const ReinventedPulse = dynamic(() => import('./ReinventedPulse'), { ssr: false 
 
 /**
  * /app/feed picks its screen (Pulse, reinvented, phase 1): the one Pulse tab while `pulse_reinvented` is on for the
- * person, today's Pulse (`children`, untouched) otherwise. Off, unknown or unread, it is today's at once.
+ * person, today's Pulse (`children`, untouched) otherwise. Off, unknown or unread, it is today's at once. `kept`: the
+ * server render saw the person's kept answer (a cookie), so a person whose switch was on starts on the new Pulse.
  */
-export default function PulsePick({ children }: { children: ReactNode }) {
-  return useReinventedOn() ? <ReinventedPulse /> : <>{children}</>;
+export default function PulsePick({ children, kept = false }: { children: ReactNode; kept?: boolean }) {
+  return useReinventedOn(true, kept) ? <ReinventedPulse /> : <>{children}</>;
 }
