@@ -93,13 +93,22 @@ async function checkFrame(userId, of, point) {
     || haversineMeters(at.latitude, at.longitude, point.latitude, point.longitude) > NEAR_M) {
     throw fail(422, 'RETAKE_TOO_FAR', 'Stand where the first picture was taken to add your frame.');
   }
-  const { data, error } = await supabaseAdmin.from('Post').select('created_at').eq('is_story', true).eq('user_id', userId)
-    .eq('post_metadata->moment->retake->>of', start.id).gte('created_at', new Date(Date.now() - AGAIN_MS).toISOString()).limit(1);
-  if (error) throw new Error(`Failed to read your frames: ${error.message}`);
-  if ((data || []).length || (String(start.user_id) === String(userId) && Date.now() - Date.parse(start.created_at) < AGAIN_MS)) {
+  if (await tooSoon(userId, start)) {
     throw fail(429, 'RETAKE_TOO_SOON', 'You added a frame here a little while ago. Come back later in the day.');
   }
   return start.id;
+}
+
+/**
+ * Whether `userId` added to this Retake in the last 6 hours (a frame of theirs, or the start itself if it is theirs):
+ * the one rule behind both the refusal (429 RETAKE_TOO_SOON) and the Retake's `can_add`, so the two always agree.
+ */
+async function tooSoon(userId, start) {
+  if (String(start.user_id) === String(userId) && Date.now() - Date.parse(start.created_at) < AGAIN_MS) return true;
+  const { data, error } = await supabaseAdmin.from('Post').select('created_at').eq('is_story', true).eq('user_id', userId)
+    .eq('post_metadata->moment->retake->>of', start.id).gte('created_at', new Date(Date.now() - AGAIN_MS).toISOString()).limit(1);
+  if (error) throw new Error(`Failed to read your frames: ${error.message}`);
+  return Boolean((data || []).length);
 }
 
 /** The kept part of a Retake Moment: { retake, kept_post_at } (it stays, as "Keep this?" keeps one). */
@@ -168,13 +177,15 @@ async function view(id, viewerId) {
   // eslint-disable-next-line global-require
   const media = require('../moments/momentMedia');
   const keyOf = (row, which) => (store.meta(row).purged_at ? null : store.meta(row).media?.[which] || null);
-  const [authors, links, wants] = await Promise.all([
+  const [authors, links, wants, soon] = await Promise.all([
     store.loadAuthors(frames.map((r) => r.user_id)),
     media.signedLinks(undefined, frames.flatMap((r) => [keyOf(r, 'thumb_key'), keyOf(r, 'key')]).filter(Boolean)),
     supabaseAdmin.from('PostLike').select('id', { count: 'exact', head: true }).eq('post_id', start.id).eq('reaction', 'want_to_go'),
+    // The same 6-hour rule the posting refuses with (RETAKE_TOO_SOON), read beside the others.
+    tooSoon(viewerId, start),
   ]);
   const liveGuess = momentGuess().isGuess(start) && !store.hasEnded(start);
-  const canAdd = !liveGuess && !(String(start.user_id) === String(viewerId) && Date.now() - Date.parse(start.created_at) < AGAIN_MS);
+  const canAdd = !liveGuess && !soon;
   return {
     retake: {
       start_id: start.id,
