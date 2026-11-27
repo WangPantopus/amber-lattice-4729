@@ -23,6 +23,8 @@ struct MomentsStudioRail: View {
     var openTray: (() -> Void)?
     /// Illuminate (phase 2): dots on things in the picture (`MomentsStudioIlluminate`).
     var openIlluminate: (() -> Void)?
+    /// Blur before posting (phase 2, `MomentsStudioBlurSheet`).
+    var openBlur: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Spacing.s3) {
@@ -46,6 +48,11 @@ struct MomentsStudioRail: View {
                 tool("Draw", id: "moments.studio.rail.draw") {
                     Icon(.pencil, size: 20, strokeWidth: 2.2, color: .white)
                 } action: { model.openStudioMarks(.draw) }
+            }
+            if let openBlur, model.offersBlur {
+                tool("Blur", id: "moments.studio.rail.blur") {
+                    Icon(.eyeOff, size: 19, strokeWidth: 2.2, color: .white)
+                } action: { openBlur() }
             }
             if model.offersResize, model.studioPair == nil {
                 tool("Resize", id: "moments.studio.rail.resize") {
