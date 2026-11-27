@@ -115,6 +115,11 @@ async function strandOf(post, source, kind = 'went') {
   // while the post is still within its look back.
   const liveGuess = (row) => row.is_story && momentGuess().isGuess(row) && !store.hasEnded(row);
   if (liveGuess(source) || liveGuess(post)) return null;
+  // Nor a sealed Moment that hasn't opened (CONTRACT 8g): it is listed nowhere, so a strand must not say one was left
+  // there. Once it opens it is an ordinary Moment again.
+  // eslint-disable-next-line global-require
+  const sealed = (row) => row.is_story && Boolean(store.meta(row).seal) && require('./seal').isSealed(row);
+  if (sealed(source) || sealed(post)) return null;
   // "Went because of you" needs the new post at the marked one's place; a Retake frame and a pass are their own link.
   if (kind === 'went' && !samePlace(source, post)) return null;
   const [sourceOn, blocked, hiddenBySource, hiddenByFollower, homeA, homeB] = await Promise.all([

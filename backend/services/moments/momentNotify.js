@@ -237,6 +237,10 @@ async function notifyConnections(row) {
     if (row?.identity_context_type === 'pen_name') return;
     // Nor a guess-the-spot Moment (Pulse, reinvented): the push names its place, which is the answer.
     if (store.meta(row).guess) return;
+    // Nor a sealed Moment (Pulse, reinvented; CONTRACT 8g): it is listed nowhere until it opens, and a push would lead
+    // to it. Only a switch-on author's Moment carries a seal.
+    // eslint-disable-next-line global-require
+    if (store.meta(row).seal && require('../pulse/seal').isSealed(row)) return;
     if (!row || store.momentState(row) !== 'live' || store.meta(row).notify) return;
     const author = (await store.loadAuthors([row.user_id])).get(String(row.user_id));
     // Only people's Moments notify.

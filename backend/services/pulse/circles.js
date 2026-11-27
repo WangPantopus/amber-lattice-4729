@@ -296,7 +296,8 @@ async function fadedFor(viewerId, authorIds, fromIso, toIso) {
   const rows = (data || []).filter((row) => !penName.isPenNameRow(row));
   if (!rows.length) return [];
   const [ctx, reported] = await Promise.all([store.viewerContext(viewerId, rows.map((r) => r.user_id), null, rows), store.reportedIds(viewerId)]);
-  return rows.filter((row) => store.canSee(row, ctx) && !reported.has(row.id));
+  // listedFor: a sealed Moment that hasn't opened (CONTRACT 8g) is in no magazine but its author's, though its day ended.
+  return rows.filter((row) => store.canSee(row, ctx) && !reported.has(row.id) && store.listedFor(row, viewerId));
 }
 
 /** GET /circles/:id/magazine?week= — the circle's week, laid out, for a member who is in. */
@@ -315,7 +316,9 @@ async function magazine(userId, id, week = null, tz = null) {
   const fading = (circle.members || []).filter((m) => m.state === 'in' && m.keep_faded && people.includes(String(m.user_id)))
     .map((m) => String(m.user_id));
   const [{ data: posts, error }, live, kept, faded] = await Promise.all([
+    // A plan's own post (distributed only to Plans) is no Pulse post: today's feeds never list it, nor does the magazine.
     supabaseAdmin.from('Post').select(POST_SELECT()).in('user_id', people).eq('is_story', false)
+      .or('distribution_targets.is.null,distribution_targets.not.cs.{plans}')
       .gte('created_at', fromIso).lt('created_at', toIso).is('archived_at', null).eq('moderation_state', 'live')
       .order('created_at', { ascending: false }).limit(200),
     // Moments still live, and Moments their author made posts that stay with "Keep this?" (CONTRACT 6d).
