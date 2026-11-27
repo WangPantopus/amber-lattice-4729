@@ -45,6 +45,8 @@ const Studio = dynamic(() => import('../studio/Studio'), { ssr: false });
 const RetakeView = dynamic(() => import('../retake/RetakeView'), { ssr: false });
 const ConvergenceView = dynamic(() => import('../sky/Convergence'), { ssr: false });
 const PinboardView = dynamic(() => import('../pinboard/Pinboard'), { ssr: false });
+// Tonight in <town> (CONTRACT 8k): the town's film of the day, from 8 pm, on Around me.
+const TownFilm = dynamic(() => import('./TownFilm'), { ssr: false });
 // Open Eyes-on Asks near where the reader is now (CONTRACT 8f), on Around me.
 const EyesOnNear = dynamic(() => import('../eyeson/EyesOnNear'), { ssr: false });
 
@@ -709,6 +711,9 @@ export default function ReinventedPulse() {
             </div>
           ) : (
             <>
+              {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
+                <TownFilm account={account} place={fallback} ready={!!first} now={now} onPlay={(ids, start) => setViewing({ id: start, ids })} />
+              )}
               {strip.data && (chip === 'all' || chip === 'live') && (
                 <AliveStrip
                   strip={strip.data}
