@@ -18,12 +18,14 @@ import { EditEntry, SavedNote } from '../edit/EditEntry';
 import { GuessOverPicture, holdsForGuess } from '../guess/GuessSpot';
 import { holdsForKeep, KeepOverPicture } from '../keep/KeepThis';
 import { PlanOverPicture, StartPlanEntry } from '../plan/WantToCome';
+import PlayLayer, { holdsForPlay } from '../play/PlayLayer';
+import type { PlayItem } from '../play/playTypes';
 import './studioViewer.css';
 
-type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null };
+type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[] };
 
 /**
- * The stamps, laid over the picture as the viewer draws it (centred and fitted, `object-fit: contain`), so a stamp
+ * The stamps and the playable items (phase 2), laid over the picture as the viewer draws it (centred and fitted, `object-fit: contain`), so a stamp
  * sits on the same part of the picture it was placed on. A text card is its 9:16 card.
  */
 function ViewerStamps({ moment }: { moment: StudioMoment }) {
@@ -31,6 +33,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [now, setNow] = useState(Date.now);
   const stamps = moment.stamps || [];
+  const playing = (moment.play || []).length;
   const liveUntil = Date.parse(moment.live_until || '');
   const wet = moment.taken_here === true && liveUntil > now;
   // The ink dries when "Live from here" turns to "Taken here", on the same kind of timer as today's pill.
@@ -41,7 +44,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
   }, [wet, liveUntil, now]);
   useEffect(() => {
     const stage = ref.current?.parentElement;
-    if (!stage || !stamps.length) return;
+    if (!stage || !(stamps.length || playing)) return;
     const media = stage.querySelector<HTMLImageElement | HTMLVideoElement>('.mo-watch-media');
     const measure = () => {
       const sw = stage.clientWidth,
@@ -76,14 +79,15 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
       media?.removeEventListener('load', measure);
       media?.removeEventListener('loadedmetadata', measure);
     };
-  }, [stamps.length, moment.media_url, moment.kind]);
-  if (!stamps.length) return null;
+  }, [stamps.length, playing, moment.media_url, moment.kind]);
+  if (!stamps.length && !playing) return null;
   const values = new Map<StampKind, unknown>(stamps.map((s) => [s.kind, s.value]));
   return (
     <div ref={ref} className="sv-stamps">
       {box && (
         <div className="sv-picture" style={box}>
           <StampLayer stamps={stamps} valueOf={(k) => values.get(k) ?? null} ink={wet ? 'wet' : 'dry'} />
+          <PlayLayer moment={moment} />
         </div>
       )}
     </div>
@@ -180,7 +184,7 @@ export const studioViewer = {
       <StartPlanEntry moment={m} close={close} />
     </>
   ),
-  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account),
+  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,

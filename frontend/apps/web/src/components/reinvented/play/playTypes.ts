@@ -1,0 +1,113 @@
+// Playable items on a post or a Moment (Pulse, reinvented, phase 2; coord/CONTRACT.md §7b): a poll, a slider or the
+// spectrum dial, the board ("where do you stand"), the question box, guess and reveal, and a countdown. Each sits on
+// the picture as a stamp does (x, y, scale, rotation). Only for a reader whose switch is on: everyone else, and the apps
+// in the stores, see the plain picture and its words.
+
+import { del, put } from '@pantopus/api/client';
+
+export type PlayKind = 'poll' | 'slider' | 'board' | 'question' | 'guess' | 'countdown';
+
+export interface PlayPerson {
+  id: string;
+  name: string | null;
+  first_name: string | null;
+  avatar_url: string | null;
+  initials: string | null;
+}
+
+/** A face on a board or along the dial: the reader's own first, then newest. `person` is null for anyone the reader isn't connected with. */
+export interface PlayFace {
+  x: number;
+  y?: number;
+  note?: string | null;
+  mine: boolean;
+  person: PlayPerson | null;
+}
+
+interface Base {
+  id: string;
+  kind: PlayKind;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  /** Whether answers are taken now: false once the Moment ended, on a countdown, and for the author. */
+  open: boolean;
+}
+
+export type PlayItem =
+  | (Base & {
+      kind: 'poll';
+      question: string;
+      options: string[];
+      mine: { choice: number } | null;
+      results: { counts: number[]; total: number } | null;
+    })
+  | (Base & {
+      kind: 'slider';
+      question: string;
+      left: string;
+      right: string;
+      look: 'slider' | 'dial';
+      emoji?: string | null;
+      mine: { value: number } | null;
+      results: { average: number | null; count: number; faces?: PlayFace[] } | null;
+    })
+  | (Base & {
+      kind: 'board';
+      question: string;
+      x_axis: { left: string; right: string };
+      y_axis: { bottom: string; top: string };
+      mine: { x: number; y: number; note?: string | null } | null;
+      results: { count: number; faces: PlayFace[] } | null;
+    })
+  | (Base & {
+      kind: 'question';
+      prompt: string;
+      mine: { text: string } | null;
+      results: { count: number } | null;
+    })
+  | (Base & {
+      kind: 'guess';
+      prompt: string;
+      options?: string[];
+      range?: { min: number; max: number; unit?: string | null };
+      /** There only after the reader's try, and for the author. */
+      answer?: number;
+      mine: { choice?: number; value?: number; right?: boolean; off_by?: number } | null;
+      results: { counts: number[]; total: number } | { average: number | null; count: number } | null;
+    })
+  | (Base & {
+      kind: 'countdown';
+      title: string;
+      ends_at: string;
+      mine: null;
+      results: null;
+    });
+
+export type PlayAnswer =
+  | { choice: number }
+  | { value: number }
+  | { x: number; y: number; note?: string }
+  | { text: string };
+
+const path = (postId: string, item: string) => `/api/reinvented/play/${encodeURIComponent(postId)}/${encodeURIComponent(item)}`;
+
+/** Answer (or change one's answer); the item comes back with what this reader may now see. */
+export function answerPlay(postId: string, item: string, body: PlayAnswer) {
+  return put<{ item: PlayItem }>(path(postId, item), body);
+}
+
+/** Take one's answer back (not a guess). */
+export function takeBackPlay(postId: string, item: string) {
+  return del(path(postId, item));
+}
+
+/** The items a reader may answer now: open, and not yet answered. */
+export function waitingItems(play: readonly PlayItem[] | undefined | null): PlayItem[] {
+  return (play || []).filter((p) => p.open && p.kind !== 'countdown' && !p.mine);
+}
+
+export function isPlayList(value: unknown): value is PlayItem[] {
+  return Array.isArray(value) && value.every((p) => p && typeof p === 'object' && typeof (p as PlayItem).id === 'string');
+}

@@ -1,0 +1,376 @@
+/* Playable items over a picture (components/reinvented/play). Like the stamps, sizes are container units of the
+   picture's width, so an item sits at the same place and size everywhere: at scale 1 an item is 240/402 of the width
+   across (the board 252/402), its words 14/402 of it. `--s` is the item's scale. */
+.pl-layer {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+  pointer-events: none;
+}
+.pl-item {
+  position: absolute;
+  width: 17.143em;
+  font-size: calc(3.483cqw * var(--s, 1));
+  transform-origin: center;
+  pointer-events: auto;
+  cursor: default;
+}
+.pl-item[data-kind='board'] {
+  width: 18em;
+}
+.pl-card {
+  display: grid;
+  gap: 0.6em;
+  padding: 0.85em;
+  border-radius: 1.1em;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  box-shadow: 0 0.4em 1.6em rgba(0, 0, 0, 0.28);
+  line-height: 1.25;
+}
+.pl-q {
+  margin: 0;
+  font-weight: 750;
+  font-size: 1.07em;
+  overflow-wrap: anywhere;
+}
+.pl-foot {
+  margin: 0;
+  color: #475569;
+  font-size: 0.82em;
+}
+.pl-mine {
+  margin: 0;
+  font-size: 0.93em;
+  overflow-wrap: anywhere;
+}
+.pl-error {
+  margin: 0.4em 0 0;
+  padding: 0.35em 0.6em;
+  border-radius: 0.6em;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fecaca;
+  font-size: 0.8em;
+}
+.pl-options {
+  display: grid;
+  gap: 0.4em;
+}
+.pl-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  min-height: 2.5em;
+  padding: 0 0.8em;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.8em;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 0.93em;
+  font-weight: 650;
+  text-align: left;
+}
+.pl-option:not(:disabled) {
+  cursor: pointer;
+}
+.pl-option:not(:disabled):hover {
+  border-color: #0369a1;
+}
+.pl-option[aria-pressed='true'] {
+  border-color: #0369a1;
+  box-shadow: inset 0 0 0 1px #0369a1;
+}
+.pl-option[data-right] {
+  border-color: #047857;
+  box-shadow: inset 0 0 0 1px #047857;
+}
+.pl-option:disabled {
+  color: inherit;
+  opacity: 1;
+}
+.pl-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #e0f2fe;
+}
+.pl-option[data-right] .pl-bar {
+  background: #d1fae5;
+}
+.pl-option-words,
+.pl-share {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.pl-option-words svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+}
+.pl-share {
+  font-variant-numeric: tabular-nums;
+}
+.pl-track {
+  position: relative;
+  padding: 1.6em 0 0.2em;
+}
+.pl-track input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: #0369a1;
+}
+.pl-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+  color: #475569;
+  font-size: 0.8em;
+  font-weight: 650;
+}
+.pl-avg {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: #0369a1;
+  font-size: 0.72em;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.pl-avg::after {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 1.4em;
+  margin: 0.15em auto 0;
+  background: #0369a1;
+}
+.pl-track[data-look='dial'] .pl-face {
+  top: 0;
+  bottom: auto;
+}
+.pl-board {
+  position: relative;
+  padding: 1.5em 0.35em;
+  border-radius: 0.9em;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+/* The axis words, as board B9 draws them: top and bottom over the board, left and right inside it on the middle line. */
+.pl-axis {
+  position: absolute;
+  z-index: 1;
+  width: max-content;
+  max-width: 34%;
+  color: #334155;
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+.pl-axis[data-at='top'],
+.pl-axis[data-at='bottom'] {
+  left: 50%;
+  max-width: 90%;
+  transform: translateX(-50%);
+}
+.pl-axis[data-at='top'] {
+  top: 0.45em;
+}
+.pl-axis[data-at='bottom'] {
+  bottom: 0.45em;
+}
+.pl-axis[data-at='left'],
+.pl-axis[data-at='right'] {
+  top: 50%;
+  padding: 0.1em 0.25em;
+  transform: translateY(-50%);
+  background: #f8fafc;
+}
+.pl-axis[data-at='left'] {
+  left: 0.5em;
+  text-align: left;
+}
+.pl-axis[data-at='right'] {
+  right: 0.5em;
+  text-align: right;
+}
+.pl-board-area {
+  position: relative;
+  aspect-ratio: 1;
+  background:
+    linear-gradient(#cbd5e1, #cbd5e1) center / 1px 100% no-repeat,
+    linear-gradient(#cbd5e1, #cbd5e1) center / 100% 1px no-repeat;
+  cursor: crosshair;
+}
+.pl-face {
+  top: 0;
+  bottom: auto;
+}
+.pl-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.25em;
+  padding: 0.3em;
+  border-radius: 0.9em;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.pl-axis {
+  color: #334155;
+  font-size: 0.72em;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.pl-axis[data-at='top'] {
+  grid-area: 1 / 1 / 2 / 4;
+}
+.pl-axis[data-at='bottom'] {
+  grid-area: 3 / 1 / 4 / 4;
+}
+.pl-axis[data-at='left'] {
+  grid-area: 2 / 1;
+  align-self: center;
+  max-width: 4.5em;
+}
+.pl-axis[data-at='right'] {
+  grid-area: 2 / 3;
+  align-self: center;
+  max-width: 4.5em;
+}
+.pl-board-area {
+  position: relative;
+  grid-area: 2 / 2;
+  aspect-ratio: 1;
+  background:
+    linear-gradient(#cbd5e1, #cbd5e1) center / 1px 100% no-repeat,
+    linear-gradient(#cbd5e1, #cbd5e1) center / 100% 1px no-repeat;
+  cursor: crosshair;
+}
+.pl-face {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
+  padding: 0;
+  overflow: visible;
+  transform: translate(-50%, 50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #64748b;
+  color: #fff;
+  font: inherit;
+  font-size: 0.72em;
+  font-weight: 750;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.pl-face img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.pl-face[data-mine] {
+  z-index: 2;
+  width: 2.6em;
+  height: 2.6em;
+  border-color: #0369a1;
+  background: #fff;
+  color: #0f172a;
+}
+.pl-tip {
+  position: absolute;
+  bottom: calc(100% + 0.4em);
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 0.35em 0.7em;
+  border-radius: 0.6em;
+  background: #0f172a;
+  color: #fff;
+  font-size: 1.1em;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.pl-row {
+  display: flex;
+  gap: 0.4em;
+}
+.pl-input {
+  flex: 1;
+  min-width: 0;
+  height: 2.5em;
+  padding: 0 0.8em;
+  border: 1px solid #cbd5e1;
+  border-radius: 1.25em;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.93em;
+}
+.pl-send {
+  height: 2.5em;
+  padding: 0 1em;
+  border: 0;
+  border-radius: 1.25em;
+  background: #0369a1;
+  color: #fff;
+  font: inherit;
+  font-size: 0.93em;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pl-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pl-round {
+  display: grid;
+  place-items: center;
+  width: 2.5em;
+  height: 2.5em;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #0f172a;
+  cursor: pointer;
+}
+.pl-round svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+.pl-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0369a1;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.pl-countdown {
+  text-align: center;
+}
+.pl-time {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pl-item :focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
