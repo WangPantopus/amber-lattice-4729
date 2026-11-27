@@ -2,6 +2,8 @@ package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.moments.MomentGuessBody
+import app.pantopus.android.data.api.models.moments.MomentGuessResponse
 import app.pantopus.android.data.api.models.moments.MomentSignalResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
@@ -47,4 +49,14 @@ interface StudioApi {
         @Path("id") id: String,
         @Body body: MomentEditBody,
     ): MomentEnvelope
+
+    /**
+     * `POST /api/moments/:id/guess` (CONTRACT 5c): the reader's one guess at a guess-the-spot Moment; a second one
+     * answers the first again. Route `backend/routes/moments.js` (guess).
+     */
+    @POST("api/moments/{id}/guess")
+    suspend fun guess(
+        @Path("id") id: String,
+        @Body body: MomentGuessBody,
+    ): MomentGuessResponse
 }

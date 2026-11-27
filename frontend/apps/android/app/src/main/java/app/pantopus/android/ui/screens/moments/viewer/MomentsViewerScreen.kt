@@ -234,6 +234,8 @@ fun MomentsViewerScreen(
     var holding by remember { mutableStateOf(false) }
     // "Pulse, reinvented": your own Moment open in the Studio's 15-minute edit; never set while the switch is off.
     var editing by remember { mutableStateOf<MomentDto?>(null) }
+    // "Pulse, reinvented": guess the spot's map open over the Moment.
+    var guessing by remember { mutableStateOf(false) }
     // After a save, the Moment holds still while "Moment updated" shows.
     var updatedNote by remember { mutableStateOf(false) }
     LaunchedEffect(updatedNote) {
@@ -261,7 +263,7 @@ fun MomentsViewerScreen(
     val touched = handling || holding || typing || reacting
     val paused =
         touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
-            editing != null || updatedNote
+            editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true)
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -763,6 +765,8 @@ fun MomentsViewerScreen(
                 // at its spot (API v4.1); "Taken Oct 3" for a photo taken more than a day before it was posted (v3.3).
                 moment?.takeIf { state.load is ViewerLoad.Ready }?.let { shown ->
                     MomentMetaPills(moment = shown, modifier = Modifier.padding(start = 58.dp, top = 2.dp, end = 12.dp))
+                    // "Pulse, reinvented": guess the spot.
+                    if (studio) MomentGuessPill(shown, mine, onOpen = { guessing = true }, Modifier.padding(start = 58.dp, top = 6.dp))
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way
@@ -884,6 +888,19 @@ fun MomentsViewerScreen(
             controller = toast,
             modifier = Modifier.padding(bottom = BOTTOM_BAR - Spacing.s6 + keyboardPadding),
         )
+        // "Pulse, reinvented": guess the spot's map over the Moment.
+        if (guessing) {
+            moment?.let { shown ->
+                MomentGuessSheet(
+                    moment = shown,
+                    onGuessed = { full ->
+                        guessing = false
+                        viewModel.edited(full)
+                    },
+                    onClose = { guessing = false },
+                )
+            }
+        }
         // "Pulse, reinvented": the 15-minute edit over your Moment.
         editing?.let { own ->
             MomentsStudioEdit(

@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -82,6 +84,12 @@ import javax.inject.Inject
  * its stamps to move, size, turn, add or take off, the caption, and Nearby or Friends. "Save" sends only what changed.
  * Nobody is told, and nothing marks it as edited for others.
  */
+
+/**
+ * A screen drawn over the viewer takes every touch itself, so none falls through to the viewer under it (which would
+ * turn to the next Moment or close).
+ */
+fun Modifier.takesEveryTouch(): Modifier = pointerInput(Unit) { detectTapGestures { } }
 
 /** Edit is offered on one's own photo or video Moment while its window holds (the server sends it only then). */
 fun MomentDto.editableNow(now: Instant = Instant.now()): Boolean =
@@ -186,7 +194,7 @@ fun MomentsStudioEdit(
         }
     val close = { if (draft.changed) draft.asksDiscard = true else onClose() }
     BackHandler(enabled = !draft.tray) { close() }
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black).testTag("moments.studio.edit")) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black).takesEveryTouch().testTag("moments.studio.edit")) {
         AsyncImage(
             model = rememberMomentImage(moment.mediaUrl ?: moment.posterUrl, MomentImages.mediaKey(moment.id)),
             contentDescription = "Your Moment",

@@ -2,6 +2,8 @@ package app.pantopus.android.data.pulse
 
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentEditBody
+import app.pantopus.android.data.api.models.moments.MomentGuessBody
+import app.pantopus.android.data.api.models.moments.MomentGuessResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewDto
 import app.pantopus.android.data.api.net.NetworkResult
@@ -65,6 +67,16 @@ class StudioRepository
                     if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
                     answer
                 }
+            }
+
+        /** The reader's one guess at a guess-the-spot Moment (CONTRACT 5c): how far off, and the Moment in full. */
+        suspend fun guess(
+            momentId: String,
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<MomentGuessResponse> =
+            safeApiCall { api.guess(momentId, MomentGuessBody(latitude, longitude)) }.also { answer ->
+                if ((answer as? NetworkResult.Failure)?.error?.serverCode == SWITCH_OFF) feature.refusedOff()
             }
 
         companion object {
