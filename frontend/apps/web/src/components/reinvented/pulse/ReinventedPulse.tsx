@@ -30,6 +30,7 @@ import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import { useLinkedMoment } from './momentLinks';
 import ReachDial from './ReachDial';
+import { DeckNav, deckOf } from '../deck/StepDeck';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -328,8 +329,52 @@ export default function ReinventedPulse() {
   };
 
   // ── Moments ──
-  const momentIds = useMemo(() => items.filter((it) => it.type === 'moment').map((it) => it.id), [items]);
-  const openMoment = useCallback((id: string) => setViewing({ id, ids: momentIds.includes(id) ? momentIds : [id] }), [momentIds]);
+  // A step deck (§7g) is one row, its first step in the list, and the viewer goes through all its steps from there.
+  const shown = useMemo(() => {
+    const seen = new Set<string>();
+    return items.filter((it) => {
+      if (it.type !== 'moment') return true;
+      const deck = deckOf(it.moment);
+      if (!deck) return true;
+      const key = `${it.moment.author?.id}:${deck.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [items]);
+  const momentIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          shown.flatMap((it) => {
+            if (it.type !== 'moment') return [];
+            const steps = deckOf(it.moment)?.steps;
+            return steps?.length ? steps : [it.id];
+          }),
+        ),
+      ],
+    [shown],
+  );
+  // Another step of a deck; a step opened alone (a link, a notice) gets the deck's steps as its run.
+  const selectStep = useCallback(
+    (id: string, steps: string[]) =>
+      setViewing((v) => {
+        if (!v) return v;
+        const ids = v.ids.length > 1 && v.ids.includes(id) ? v.ids : steps;
+        return v.id === id && ids === v.ids ? v : { id, ids };
+      }),
+    [],
+  );
+  const openMoment = useCallback(
+    (id: string) => {
+      // A deck's row opens at its first step.
+      const item = shown.find((it) => it.type === 'moment' && it.id === id);
+      const steps = item?.type === 'moment' ? deckOf(item.moment)?.steps : undefined;
+      const start = steps?.length ? steps[0] : id;
+      setViewing({ id: start, ids: momentIds.includes(start) ? momentIds : [start] });
+    },
+    [momentIds, shown],
+  );
   // A Moment's link (`/app/moments/<id>`, a notice, a share) arrives here as `?moment=<id>` and opens in the viewer.
   const openLinked = useCallback((id: string) => setViewing({ id, ids: [id] }), []);
   useLinkedMoment(openLinked);
@@ -624,7 +669,7 @@ export default function ReinventedPulse() {
                 </div>
               )}
               <ol className="rp-items">
-                {items.map((item) => {
+                {shown.map((item) => {
                   const label = item.band ? bandLabels.get(item.band) || null : null;
                   const line = reach === 'around' && item.band && item.band !== prevBand ? label : null;
                   prevBand = item.band;
@@ -643,10 +688,25 @@ export default function ReinventedPulse() {
                               Kept · stays
                             </span>
                           </div>
-                          <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={openMoment} onPlace={flyTo} kept />
+                          <MomentRow
+                            moment={item.moment}
+                            bandLabel={label}
+                            now={now}
+                            onOpen={openMoment}
+                            onPlace={flyTo}
+                            kept
+                            steps={deckOf(item.moment)?.count}
+                          />
                         </div>
                       ) : item.type === 'moment' ? (
-                        <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={openMoment} onPlace={flyTo} />
+                        <MomentRow
+                          moment={item.moment}
+                          bandLabel={label}
+                          now={now}
+                          onOpen={openMoment}
+                          onPlace={flyTo}
+                          steps={deckOf(item.moment)?.count}
+                        />
                       ) : (
                         <PostRow
                           post={item.post}
@@ -704,26 +764,28 @@ export default function ReinventedPulse() {
         />
       )}
       {viewing && account && (
-        <MomentViewer
-          key={viewing.id}
-          id={viewing.id}
-          account={account}
-          ids={viewing.ids}
-          wide={false}
-          onClose={() => setViewing(null)}
-          onSelect={(id) => setViewing((v) => (v ? { ...v, id } : v))}
-          onSeen={() => undefined}
-          onWatchedPlace={() => undefined}
-          onRemove={(id) => {
-            setViewing(null);
-            dropItem(id);
-          }}
-          onPlace={(p) => {
-            setViewing(null);
-            flyTo(p);
-          }}
-          studio={studioViewer}
-        />
+        <DeckNav.Provider value={selectStep}>
+          <MomentViewer
+            key={viewing.id}
+            id={viewing.id}
+            account={account}
+            ids={viewing.ids}
+            wide={false}
+            onClose={() => setViewing(null)}
+            onSelect={(id) => setViewing((v) => (v ? { ...v, id } : v))}
+            onSeen={() => undefined}
+            onWatchedPlace={() => undefined}
+            onRemove={(id) => {
+              setViewing(null);
+              dropItem(id);
+            }}
+            onPlace={(p) => {
+              setViewing(null);
+              flyTo(p);
+            }}
+            studio={studioViewer}
+          />
+        </DeckNav.Provider>
       )}
     </div>
   );

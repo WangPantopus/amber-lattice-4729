@@ -375,6 +375,8 @@ const createPostSchema = Joi.object({
     mentions: Joi.array().allow(null),
     // Passing on (CONTRACT 8f): this quote post passes the quoted post on from where its writer is.
     passed_on: Joi.boolean(),
+    // Eyes on (CONTRACT 8f): an Ask that people there now answer with a Live photo.
+    eyes_on: Joi.boolean(),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
