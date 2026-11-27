@@ -376,7 +376,7 @@ router.post('/', createLimiter, async (req, res) => {
     let play = [];
     let dots = [];
     const deck = studio ? stepDeck.parseDeck(req.body?.deck, { kind: body.kind, penName: body.post_as === 'pen_name' }) : null;
-    if (deck) await stepDeck.checkFirstStep(req.user.id, deck);
+    if (deck) await stepDeck.checkStep(req.user.id, deck, retryId(req.user.id, body.client_request_id));
     if (studio) {
       try {
         play = playItems.parseItems(req.body?.play);

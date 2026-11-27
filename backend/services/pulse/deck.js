@@ -30,14 +30,22 @@ function parseDeck(value, { kind, penName }) {
   return { v: 1, id: deck.id.toLowerCase(), index: deck.index, count: deck.count };
 }
 
-/** A step after the first needs the deck's first step, posted by the same person. */
-async function checkFirstStep(userId, deck) {
-  if (!deck || deck.index === 1) return;
-  const { data, error } = await supabaseAdmin.from('Post').select('id')
-    .eq('is_story', true).eq('user_id', userId)
-    .eq('post_metadata->moment->deck->>id', deck.id).eq('post_metadata->moment->deck->>index', '1').limit(1);
+/**
+ * A deck belongs to one author (LEAD-3, 04:47): every read of a deck is by its author and its id together, so another
+ * person's Moment with the same id is a deck of its own and never one of these steps; nothing reads every stored Moment
+ * (the reads use the author index). A step after the first needs the deck's first step by the same person, and each
+ * step is posted once (`retryRowId`: the row a retry of the same tap would make, let through so the route answers it).
+ */
+async function checkStep(userId, deck, retryRowId = null) {
+  if (!deck) return;
+  const { data, error } = await supabaseAdmin.from('Post').select('id, post_metadata')
+    .eq('is_story', true).eq('user_id', userId).eq('post_metadata->moment->deck->>id', deck.id).limit(MAX_STEPS * 4);
   if (error) throw new Error(`Failed to read the deck: ${error.message}`);
-  if (!data?.length) throw momentStore().fail(400, 'MOMENT_INVALID', "Post the deck's first step before the others.");
+  const rows = (data || []).filter((row) => row.id !== retryRowId);
+  const fail = (message) => momentStore().fail(400, 'MOMENT_INVALID', message);
+  const mine = rows.map((row) => row.post_metadata?.moment?.deck?.index);
+  if (mine.includes(deck.index)) throw fail('This step of the deck is already posted.');
+  if (deck.index > 1 && !mine.includes(1)) throw fail("Post the deck's first step before the others.");
 }
 
 /**
@@ -46,16 +54,24 @@ async function checkFirstStep(userId, deck) {
  */
 async function decksFor(rows, viewerId) {
   const store = momentStore();
-  const ids = [...new Set(rows.map((row) => store.meta(row).deck?.id).filter(Boolean))];
+  // A deck is its author's: steps are gathered by the author and the id together, so another person's Moment that
+  // carries the same id is never one of its steps (LEAD-3, 04:47). The read is on the authors' own rows.
+  const owners = new Map(rows.filter((row) => store.meta(row).deck?.id).map((row) => [store.meta(row).deck.id, String(row.user_id)]));
+  const ids = [...owners.keys()];
   const out = new Map();
   if (!ids.length) return out;
-  const { data, error } = await supabaseAdmin.from('Post').select('id, post_metadata')
-    .eq('is_story', true).in('post_metadata->moment->deck->>id', ids).limit(ids.length * MAX_STEPS * 2);
+  const { data, error } = await supabaseAdmin.from('Post').select('id, user_id, post_metadata')
+    .eq('is_story', true).in('user_id', [...new Set(owners.values())]).in('post_metadata->moment->deck->>id', ids)
+    .limit(ids.length * MAX_STEPS * 2);
   if (error) throw new Error(`Failed to read the decks: ${error.message}`);
-  const visible = new Set((await store.openMoments((data || []).map((row) => row.id), viewerId)).map((row) => row.id));
-  for (const row of data || []) {
+  const own = (data || []).filter((row) => owners.get(row.post_metadata?.moment?.deck?.id) === String(row.user_id));
+  const visible = new Set((await store.openMoments(own.map((row) => row.id), viewerId)).map((row) => row.id));
+  const seen = new Set();
+  for (const row of own) {
     const deck = row.post_metadata?.moment?.deck;
-    if (!deck || !visible.has(row.id)) continue;
+    // One Moment per step.
+    if (!deck || !visible.has(row.id) || seen.has(`${deck.id}:${deck.index}`)) continue;
+    seen.add(`${deck.id}:${deck.index}`);
     if (!out.has(deck.id)) out.set(deck.id, []);
     out.get(deck.id).push({ id: row.id, index: deck.index });
   }
@@ -82,13 +98,19 @@ function fail(status, code, message) {
   return Object.assign(new Error(message), { status, code });
 }
 
-/** All steps of a deck, as stored, in order. */
-async function stepRows(deckId) {
+/** All steps of a deck by its author, as stored, one per step, in order. */
+async function stepRows(deckId, authorId) {
   const { data, error } = await supabaseAdmin.from('Post')
-    .select('id, user_id, content, archived_at, archive_reason, story_expires_at, post_metadata')
-    .eq('is_story', true).eq('post_metadata->moment->deck->>id', deckId).limit(MAX_STEPS * 2);
+    .select('id, user_id, content, archived_at, archive_reason, story_expires_at, post_metadata, created_at')
+    .eq('is_story', true).eq('user_id', authorId).eq('post_metadata->moment->deck->>id', deckId)
+    .order('created_at', { ascending: true }).limit(MAX_STEPS * 2);
   if (error) throw new Error(`Failed to read the deck: ${error.message}`);
-  return (data || []).sort((a, b) => a.post_metadata.moment.deck.index - b.post_metadata.moment.deck.index);
+  const byIndex = new Map();
+  for (const row of data || []) {
+    const index = row.post_metadata.moment.deck.index;
+    if (!byIndex.has(index)) byIndex.set(index, row);
+  }
+  return [...byIndex.values()].sort((a, b) => a.post_metadata.moment.deck.index - b.post_metadata.moment.deck.index);
 }
 
 /** Whether the author deleted this step (Delete, or Delete for good), not only let it fade. */
@@ -103,7 +125,7 @@ async function saveSteps(momentId, viewerId) {
   const [moment] = await store.openMoments([momentId], viewerId);
   const deck = moment && store.meta(moment).deck;
   if (!deck) throw fail(404, 'PLAY_NOT_FOUND', 'This step deck could not be found.');
-  const rows = await stepRows(deck.id);
+  const rows = await stepRows(deck.id, moment.user_id);
   const visible = new Set((await store.openMoments(rows.map((row) => row.id), viewerId)).map((row) => row.id));
   const first = rows.find((row) => row.post_metadata.moment.deck.index === 1);
   if (!first) throw fail(404, 'PLAY_NOT_FOUND', 'This step deck could not be found.');
@@ -125,11 +147,11 @@ async function saveSteps(momentId, viewerId) {
 
 /** DELETE /moments/:id/deck/save — lets the saved steps go (any step's id, even after the deck faded). */
 async function unsaveSteps(momentId, viewerId) {
-  const { data, error } = await supabaseAdmin.from('Post').select('post_metadata').eq('id', momentId).eq('is_story', true).maybeSingle();
+  const { data, error } = await supabaseAdmin.from('Post').select('user_id, post_metadata').eq('id', momentId).eq('is_story', true).maybeSingle();
   if (error) throw new Error(`Failed to read the deck: ${error.message}`);
   const deckId = data?.post_metadata?.moment?.deck?.id;
   if (!deckId) return;
-  const first = (await stepRows(deckId)).find((row) => row.post_metadata.moment.deck.index === 1);
+  const first = (await stepRows(deckId, data.user_id)).find((row) => row.post_metadata.moment.deck.index === 1);
   if (!first) return;
   const { error: deleteError } = await supabaseAdmin.from('PostAnswer').delete()
     .eq('post_id', first.id).eq('item', SAVE_ITEM).eq('user_id', viewerId);
@@ -157,4 +179,4 @@ async function savedDecks(rows, viewerId) {
   }));
 }
 
-module.exports = { parseDeck, checkFirstStep, decksFor, deckOf, MAX_STEPS, saveSteps, unsaveSteps, savedDecks, SAVE_ITEM };
+module.exports = { parseDeck, checkStep, decksFor, deckOf, MAX_STEPS, saveSteps, unsaveSteps, savedDecks, SAVE_ITEM };
