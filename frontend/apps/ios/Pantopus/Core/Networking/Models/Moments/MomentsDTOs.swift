@@ -258,6 +258,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// Guess the spot ("Pulse, reinvented", CONTRACT 5; `MomentGuessDTOs.swift`): nil on an ordinary Moment, and while
     /// the switch is off for the caller.
     public let guess: MomentGuessStateDTO?
+    /// "Keep this?" (CONTRACT 6d): on one's own Moment with a reply, in its last two hours, until answered once.
+    public let keepOffer: Bool
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -317,6 +319,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         editableUntil = try? c.decodeIfPresent(String.self, forKey: .editableUntil)
         stampChoices = (try? c.decodeIfPresent(MomentStampChoices.self, forKey: .stampChoices))?.values ?? [:]
         guess = MomentGuessStateDTO(from: decoder)
+        keepOffer = MomentGuessStateDTO.keepOffer(from: decoder)
     }
 
     public var media: URL? {

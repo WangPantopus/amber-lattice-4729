@@ -21,6 +21,8 @@ final class MomentGuessPrompt {
     static let shared = MomentGuessPrompt()
 
     var open: MomentDTO?
+    /// Moments whose "Keep this?" was answered in this run.
+    var keepAnswered: Set<String> = []
 }
 
 extension MomentsViewerModel {
@@ -30,9 +32,31 @@ extension MomentsViewerModel {
         return guess.mine == nil
     }
 
-    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does).
+    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), and while its author
+    /// hasn't answered "Keep this?".
     var guessCovers: Bool {
-        MomentGuessPrompt.shared.open != nil || guessWaits
+        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits
+    }
+
+    /// "Keep this?" waits for its author's answer (CONTRACT 6d).
+    var keepWaits: Bool {
+        guard PulseReinventedFlags.shared.isOn, let moment, isMine, moment.keepOffer else { return false }
+        return !MomentGuessPrompt.shared.keepAnswered.contains(moment.id)
+    }
+
+    /// The author's answer: yes keeps it as a post that stays, for the same people, until they remove it.
+    func answerKeep(_ keep: Bool) async {
+        guard let moment else { return }
+        MomentGuessPrompt.shared.keepAnswered.insert(moment.id)
+        do {
+            let _: MomentEnvelope = try await MomentsAPI.send(StudioEndpoints.keep(momentId: moment.id, keep: keep))
+            cache.forget(moment.id)
+            if keep { show(Toast(text: "Kept. It stays for the same people until you remove it.")) }
+        } catch {
+            MomentGuessPrompt.shared.keepAnswered.remove(moment.id)
+            show(Toast(text: (error as? MomentsFailure)?.message ?? "Couldn't keep it. Try again."))
+            await PulseReinventedFlags.shared.recheck()
+        }
     }
 
     /// The guess went in: the Moment is read again, now in full (its place and stamps).
@@ -52,6 +76,11 @@ struct MomentsViewerPills: View {
     var body: some View {
         if let meta = model.metaPills {
             MomentsMetaPills(meta: meta)
+        }
+        if model.keepWaits {
+            MomentKeepCard(model: model)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s2)
         }
         if PulseReinventedFlags.shared.isOn, let moment = model.moment, let guess = moment.guess {
             MomentGuessPill(guess: guess, mine: model.isMine) { prompt.open = moment }
@@ -255,5 +284,43 @@ private struct GuessPinMark: View {
     var body: some View {
         Icon(.mapPin, size: 30, strokeWidth: 2.4, color: color)
             .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+    }
+}
+
+/// "Keep this?" on one's own Moment that drew replies, before it fades (CONTRACT 6d).
+struct MomentKeepCard: View {
+    let model: MomentsViewerModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            Text("Keep this?")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+            Text("It drew replies. Keep it as a post that stays, for the same people, until you remove it.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Spacing.s2) {
+                Button("Keep it") { Task { await model.answerKeep(true) } }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Spacing.s4)
+                    .frame(height: 36)
+                    .background(Capsule().fill(Theme.Color.primarySolid))
+                    .accessibilityIdentifier("moments.viewer.keep.yes")
+                Button("Not now") { Task { await model.answerKeep(false) } }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Spacing.s4)
+                    .frame(height: 36)
+                    .background(Capsule().stroke(.white.opacity(0.6), lineWidth: 1))
+                    .accessibilityIdentifier("moments.viewer.keep.no")
+            }
+        }
+        .padding(Spacing.s3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black.opacity(0.6)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.viewer.keep")
     }
 }
