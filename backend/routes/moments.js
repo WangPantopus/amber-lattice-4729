@@ -29,6 +29,7 @@ const momentStamps = require('../services/moments/momentStamps');
 const retake = require('../services/pulse/retake');
 const pinboard = require('../services/pulse/pinboard');
 const eyesOn = require('../services/pulse/eyesOn');
+const seal = require('../services/pulse/seal');
 const mentions = require('../services/pulse/mentions');
 
 /** The mentions kept on a new Moment (CONTRACT 7h), as the Moment's own field: { mentions } or nothing. */
@@ -381,7 +382,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'pinboard', 'pinboard_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -409,6 +410,8 @@ router.post('/', createLimiter, async (req, res) => {
     }
     // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
     const retakeAsk = studio ? retake.parse(req.body) : null;
+    // Seal it (CONTRACT 8g): opens on a date, at a place or with rain; checked below, once the place is known.
+    const sealAsk = studio ? seal.parse(req.body) : null;
     // Pinboards (CONTRACT 8i): start one (`pinboard.prompt`) or add a piece (`pinboard_of`).
     const pinboardAsk = studio ? pinboard.parse(req.body) : null;
     // Guess the spot (CONTRACT 5a): a photo or video with a place; never at home (checked below, once home is known).
@@ -545,6 +548,7 @@ router.post('/', createLimiter, async (req, res) => {
     // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
     const studioAtHome = atHome || (!unplaced && !markHomeClear);
     if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
+    seal.checkPosting(sealAsk, { unplaced, floating: Boolean(area), showArea, atHome: studioAtHome, underPenName, guess });
     pinboard.checkPosting(pinboardAsk, { kind: body.kind, underPenName });
     const pinboardStartId = pinboardAsk?.of ? await pinboard.checkPiece(req.user.id, pinboardAsk.of) : null;
     let retakeStartId = null;
@@ -594,10 +598,14 @@ router.post('/', createLimiter, async (req, res) => {
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
         ...(eyesOnFor ? { eyes_on_for: eyesOnFor } : {}),
+        // Seal it (CONTRACT 8g): it stays, so it is there when it opens.
+        ...(sealAsk ? seal.keptPart(sealAsk) : {}),
         // Pinboards (CONTRACT 8i): a start or a piece; it stays.
         ...(pinboardAsk ? pinboard.keptPart(pinboardAsk, pinboardStartId) : {}),
         // Retake (CONTRACT 8e): a start or a frame; it stays, kept as a post that stays.
         ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
+        // Convergences (CONTRACT 8h): "Join tonight's sky: your photo stays in the piece", the author's own choice.
+        ...(req.body?.join_convergence === true ? { convergence_join: true } : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.

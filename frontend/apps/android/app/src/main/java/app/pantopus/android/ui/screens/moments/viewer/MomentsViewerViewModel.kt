@@ -506,6 +506,9 @@ class MomentsViewerViewModel
             load()
         }
 
+        /** "Pulse, reinvented": your Moment as its 15-minute edit saved it. */
+        fun edited(moment: MomentDto) = replaceMoment(moment)
+
         private fun replaceMoment(moment: MomentDto) {
             loaded[moment.id] = moment to (loaded[moment.id]?.second ?: System.currentTimeMillis())
             _state.update { state -> if (state.moment?.id == moment.id) state.copy(load = ViewerLoad.Ready(moment)) else state }
