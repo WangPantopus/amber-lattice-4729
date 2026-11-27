@@ -120,6 +120,23 @@ async function tellReviewersAboutReply(claimId) {
     return await require('./adminAlerts').notifyClaimInfoSent({ claim, home: claim.home });
   } catch (_) { return false; }
 }
+// An ownership claim tells the review team when its first document arrives: until then there is nothing to review,
+// and a claim filed by adding a Home as its owner starts with none. A residency claim told them when it was filed
+// (routes/homeOwnership.js), and a claim answering Request info tells them through tellReviewersAboutReply.
+// Best effort: the upload stands either way.
+async function tellReviewersAboutFirstDocument(claimId) {
+  try {
+    const { data: claim } = await db.from('HomeOwnershipClaim')
+      .select('id, claim_type, state, claim_phase_v2, terminal_reason, merged_into_claim_id, expires_at, method, created_at, claimant_user_id, home:home_id ( city, state )')
+      .eq('id', claimId).maybeSingle();
+    if (!claim || claim.claim_type === 'resident' || claim.state === 'needs_more_info'
+      || !require('./homeClaimRoutingService').isOpenForReview(claim)) return false;
+    const { data: documents, error } = await db.from('HomeVerificationEvidence').select('id')
+      .eq('claim_id', claimId).neq('evidence_type', 'idv');
+    if (error || documents?.length !== 1) return false;
+    return await require('./adminAlerts').notifyClaimToReview({ claim, home: claim.home, claimantUserId: claim.claimant_user_id });
+  } catch (_) { return false; }
+}
 function sendError(res, error) {
   const safe = error?.code && (Object.hasOwn(MESSAGES, error.code) || error.code === 'CLAIM_REVIEW_UNAVAILABLE') ? error : failure();
   return res.status(safe.statusCode).json({ error: safe.message, code: safe.code });
@@ -131,4 +148,4 @@ async function recordProvider({ homeId, claimId, actorId, result }) {
   if (typeof receipt.evidenceId !== 'string') throw failure();
   return receipt;
 }
-module.exports = { read, mutate, recordProvider, sendError, tellReviewersAboutReply };
+module.exports = { read, mutate, recordProvider, sendError, tellReviewersAboutReply, tellReviewersAboutFirstDocument };
