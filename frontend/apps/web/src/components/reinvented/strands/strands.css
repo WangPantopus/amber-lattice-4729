@@ -1,0 +1,97 @@
+/* Strands (Strands.tsx, CONTRACT 8c): "Went because of you" at the top of My Atlas. */
+.sd-went {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 14px;
+}
+.sd-went h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 750;
+}
+.sd-new {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #0369a1;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sd-note {
+  margin: 0;
+  color: rgb(var(--app-text-secondary));
+  font-size: 12px;
+}
+.sd-went ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sd-day {
+  margin: 6px 0 2px;
+  color: rgb(var(--app-text-secondary));
+  font-size: 12px;
+  font-weight: 700;
+}
+.sd-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sd-group:hover,
+.sd-group:focus-visible {
+  background: rgba(127, 127, 127, 0.1);
+}
+.sd-group[data-unseen] {
+  background: rgba(3, 105, 161, 0.08);
+}
+.sd-faces {
+  display: flex;
+  flex: none;
+}
+.sd-faces > * {
+  width: 30px;
+  height: 30px;
+}
+.sd-faces > * + * {
+  margin-left: -8px;
+}
+.sd-words {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-size: 14px;
+}
+.sd-words span {
+  overflow: hidden;
+  color: rgb(var(--app-text-secondary));
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sd-more {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
