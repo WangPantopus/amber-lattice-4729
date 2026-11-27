@@ -804,15 +804,16 @@ const editSchema = Joi.object({
 
 /**
  * PATCH /:id — the author changes the caption, the stamps or who sees it, for 15 minutes after it went out
- * (store.editableUntil). Only while `pulse_reinvented` is on for them: with it off this route isn't here, and the
- * request goes on to the answer today's server gives for a path it doesn't have. A text card has no caption; a Moment
+ * (store.editableUntil). Only while `pulse_reinvented` is on for them: with it off, 403 PULSE_REINVENTED_OFF (today's
+ * apps never send this request). A text card has no caption; a Moment
  * with no location stays with connections and one under a made-up name with people nearby. Nobody is notified; others
  * read the change on their next read.
  */
-// Before anything else (the rate limit included, whose headers today's 404 doesn't carry): with the switch off this
-// route is skipped.
+// Before anything else, the rate limit included: with the switch off the edit answers 403 PULSE_REINVENTED_OFF
+// (store.reinventedOff), so an app still drawing the Studio re-reads the switch and goes back to today's screens.
 async function reinventedOnly(req, res, next) {
-  return (await store.reinventedOn(req.user)) ? next() : next('route');
+  if (await store.reinventedOn(req.user)) return next();
+  return sendError(res, store.reinventedOff(), 'edit');
 }
 
 router.patch('/:id', reinventedOnly, actionLimiter, async (req, res) => {
