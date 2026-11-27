@@ -5,7 +5,8 @@
 //  A thing's field card in the viewer ("Pulse, reinvented" phase 2, board B3; CONTRACT 7d and 7f). The first tap on a
 //  thing anyone makes is one Pantopus AI call on the server; the card is kept with the post, so every later tap reads
 //  it for free. It always says "likely", gives one line of why and a source a reader can open, never says a plant or a
-//  mushroom is safe to eat, and lets people say it's wrong. "Collect" keeps it in the reader's field guide.
+//  mushroom is safe to eat, and lets people say it's wrong. "Collect" keeps it in the reader's field guide. "Not
+//  right?" opens its own small sheet, so the keyboard never covers the card's fields on the photo.
 //
 
 import SwiftUI
@@ -20,6 +21,7 @@ struct MomentFieldCardView: View {
     @State private var fixing = false
     @State private var name = ""
     @State private var note = ""
+    @FocusState private var typing: Bool
     private let prompt = MomentDotPrompt.shared
 
     init(moment: MomentDTO, dot: MomentDotDTO) {
@@ -97,12 +99,9 @@ struct MomentFieldCardView: View {
             .font(.system(size: 12))
             .foregroundStyle(Color.white.opacity(0.72))
             .fixedSize(horizontal: false, vertical: true)
-        if fixing {
-            correctionForm
-        } else {
-            actions(card)
-        }
-        if let problem {
+        actions(card)
+            .sheet(isPresented: $fixing) { correctionSheet }
+        if let problem, !fixing {
             Text(problem)
                 .font(.system(size: 13))
                 .foregroundStyle(Color.white.opacity(0.85))
@@ -139,9 +138,39 @@ struct MomentFieldCardView: View {
         }
     }
 
+    /// "Not right?": what it is and how they know, in a sheet of its own over the viewer.
+    private var correctionSheet: some View {
+        VStack(alignment: .leading, spacing: Spacing.s3) {
+            Text("Not right?")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .accessibilityAddTraits(.isHeader)
+            Text("Say what you think it is. The card stays as it is; its author sees what people say.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Color.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+            correctionForm
+            if let problem {
+                Text(problem)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Spacing.s4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(white: 0.11).ignoresSafeArea())
+        .environment(\.colorScheme, .dark)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .onAppear { typing = true }
+    }
+
     private var correctionForm: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             input("What it is", text: $name, limit: 60, id: "name")
+                .focused($typing)
             input("How you know (optional)", text: $note, limit: 140, id: "note")
             HStack(spacing: Spacing.s2) {
                 button("Cancel") { fixing = false }

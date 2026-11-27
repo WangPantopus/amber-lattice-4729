@@ -86,6 +86,11 @@ struct MomentsFieldGuide: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .buttonStyle(.borderless)
             }
+            // Also as a swipe; here so it can be found.
+            Button("Let it go", role: .destructive) { Task { await letGo(entry) } }
+                .font(.system(size: 13.5, weight: .semibold))
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("moments.fieldGuide.letGo")
         }
         .padding(.vertical, 4)
         .swipeActions {
