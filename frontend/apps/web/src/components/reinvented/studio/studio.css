@@ -747,3 +747,7 @@
   border-color: #7dd3fc;
   background: #e0f2fe;
 }
+/* "This isn't on for you right now": above everything in the frame until the person continues. */
+.st-wentoff {
+  z-index: 6;
+}

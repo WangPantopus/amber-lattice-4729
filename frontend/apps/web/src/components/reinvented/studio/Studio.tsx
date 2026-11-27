@@ -263,10 +263,12 @@ export default function Studio({
         ? { kind: 'text', text, background: bg, hours, audience }
         : { kind: 'photo', caption: caption.trim() || null, hours, audience },
     );
+  // Before going back the person is told what comes with them (lead, 2026-11-27: the words, and the photo is picked
+  // again in today's composer).
+  const [wentOff, setWentOff] = useState(false);
   const switchedOff = isSwitchedOff(preview.error);
   useEffect(() => {
-    if (switchedOff) handBack();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the answer comes
+    if (switchedOff) setWentOff(true);
   }, [switchedOff]);
   useEffect(() => {
     if (p?.adult_confirmed) setAdult(true);
@@ -607,7 +609,8 @@ export default function Studio({
     } catch (e) {
       if (isSwitchedOff(e)) {
         if (made && !made.memoryOnly) await discardJob(made.id).catch(() => {});
-        handBack();
+        if (made && mounted.current) setJobs((old) => old.filter((j) => j.id !== made!.id));
+        if (mounted.current) setWentOff(true);
       }
       else if (mounted.current) setError(messageOf(e, 'Couldn’t share. Try again.'));
     } finally {
@@ -665,6 +668,7 @@ export default function Studio({
   }
   const trap = useDialogFocusTrap<HTMLDivElement>(() => {
     if (setupOpen) return;
+    if (wentOff) return handBack();
     if (discarding) setDiscarding(false);
     else if (trayOpen) setTrayOpen(false);
     else if (picked) setPicked(null);
@@ -1250,6 +1254,20 @@ export default function Studio({
             </div>
           )}
 
+          {wentOff && (
+            <div className="st-panel st-wentoff" role="alertdialog" aria-modal="true" aria-labelledby="st-off-title">
+              <h3 id="st-off-title">This isn’t on for you right now</h3>
+              <p>
+                {mode === 'text'
+                  ? 'Your words go with you to the Moment composer.'
+                  : 'Your caption goes with you to the Moment composer. Pick the photo again there.'}
+              </p>
+              <button type="button" className="st-post" autoFocus onClick={handBack}>
+                Continue
+              </button>
+            </div>
+          )}
+
           {discarding && (
             <div className="st-panel" role="alertdialog" aria-modal="true" aria-labelledby="st-discard-title">
               <h3 id="st-discard-title">Discard this Moment?</h3>
@@ -1280,7 +1298,7 @@ export default function Studio({
               )}
               {composing && underPenName && penMe?.pen_name && (
                 <p className="st-status">
-                  As {penMe.pen_name.name}. Others can’t see it’s you.
+                  Posting as {penMe.pen_name.name}. Others can&apos;t see it&apos;s you.
                   {penCheck.data?.warning ? ' ' + penCheck.data.warning : ''}
                 </p>
               )}
