@@ -2333,6 +2333,31 @@ async function getMapFeed(opts) {
   return enrichFeedPosts(shown.map(({ post }) => post), opts.userId);
 }
 
+/**
+ * Pulse, reinvented's Explore (coord CONTRACT 6f): of these post ids, the ones this viewer's Place map would show,
+ * wherever they are, by the map's own steps (1 to 6 of loadMapPosts with the ids in place of the box; a post without
+ * a displayed point has no pin), enriched as getMapFeed's. Called by nothing of today's.
+ *
+ * @returns {Promise<object[]>}
+ */
+async function getPlaceMapPostsByIds({ userId, ids }) {
+  const wanted = [...new Set((ids || []).filter(Boolean))].slice(0, 500);
+  if (!wanted.length) return [];
+  const filtersRead = settle(getMuteAndHideFilters(userId));
+  const scopeAccess = await postScopeAccess(userId);
+  let query = withoutOthersUnplacedPosts(scopeAccess.query(onlyShownPosts(supabaseAdmin
+    .from('Post')
+    .select(FEED_POST_COLUMNS)
+    .is('archived_at', null)))
+    .in('id', wanted), userId)
+    .overlaps('distribution_targets', ['place']);
+  if (aroundYouEnabled()) query = query.neq('origin', 'curator');
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to load Explore's posts: ${error.message}`);
+  const posts = await shownMapRows(withEmbedsToLoad(data || []), { userId, surface: 'place', filtersRead });
+  return enrichFeedPosts(posts.filter((post) => displayedPoint(post, userId)), userId);
+}
+
 // The most posts with no place the Connections map lists (the newest).
 const MAX_UNPLACED_POSTS = 50;
 
@@ -2413,6 +2438,7 @@ async function findNearestMapPost({ userId, surface = 'place', postType, latitud
 module.exports = {
   getListFeed,
   getMapFeed,
+  getPlaceMapPostsByIds,
   getUnplacedConnectionPosts,
   findNearestMapPost,
   getSportsFeed,
