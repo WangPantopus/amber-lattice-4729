@@ -14,6 +14,7 @@ import StampLayer from '../stamps/StampLayer';
 import type { ShownStamp, StampKind } from '../stamps/stampTypes';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isSignal, SIGNALS, SIGNAL_WORDS, SignalIcon, type Signal } from './signals';
+import { EditEntry, SavedNote } from '../edit/EditEntry';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null };
@@ -161,7 +162,13 @@ function SeenMark({ viewer }: { viewer: Viewer & { signal?: string | null } }) {
 }
 
 export const studioViewer = {
-  overPicture: (m: Moment) => <ViewerStamps moment={m as StudioMoment} />,
+  overPicture: (m: Moment) => (
+    <>
+      <ViewerStamps moment={m as StudioMoment} />
+      <SavedNote id={m.id} />
+    </>
+  ),
+  menu: (m: Moment, close: () => void) => <EditEntry moment={m} close={close} />,
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,

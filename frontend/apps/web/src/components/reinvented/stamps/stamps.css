@@ -16,6 +16,9 @@
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
+  /* Dragging a stamp moves it; it never selects the words on it. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .sp-layer[data-edit] .sp-stamp:focus-visible {
   outline: 3px solid #7dd3fc;
