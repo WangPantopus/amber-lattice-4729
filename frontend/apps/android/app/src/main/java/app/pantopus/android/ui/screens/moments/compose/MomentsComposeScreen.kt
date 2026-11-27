@@ -99,6 +99,7 @@ import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
 import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerLimits
 import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerSheet
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
+import app.pantopus.android.ui.screens.feed.reinvented.after.rememberStudioPost
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
@@ -245,7 +246,7 @@ fun MomentsComposeScreen(
                         onHours = viewModel::setHours,
                         onAudience = viewModel::setAudience,
                         onCaption = viewModel::setCaption,
-                        onPost = { viewModel.post() },
+                        onPost = rememberStudioPost(state, onDone = { close() }) { viewModel.post() },
                         onPlace = viewModel::pickPlace,
                         onFindPlace = { viewModel.findPlace(true) },
                         onNoLocation = viewModel::setNoLocation,

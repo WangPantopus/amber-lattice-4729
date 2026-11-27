@@ -897,4 +897,10 @@ object NetworkModule {
     @Singleton
     fun provideReinventedApi(retrofit: Retrofit): app.pantopus.android.data.api.services.ReinventedApi =
         retrofit.create(app.pantopus.android.data.api.services.ReinventedApi::class.java)
+
+    /** "Pulse, reinvented" phase 1, one camera: a Pulse post made in the Studio (`POST /api/posts` with `studio`). */
+    @Provides
+    @Singleton
+    fun provideStudioPostApi(retrofit: Retrofit): app.pantopus.android.data.api.services.StudioPostApi =
+        retrofit.create(app.pantopus.android.data.api.services.StudioPostApi::class.java)
 }
