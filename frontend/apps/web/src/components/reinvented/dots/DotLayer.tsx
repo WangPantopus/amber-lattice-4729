@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { BookmarkCheck, BookmarkPlus, ExternalLink, Star, Volume2, X } from 'lucide-react';
 import type { Moment } from '@pantopus/api/endpoints/moments';
 import { useMe } from '@/lib/me';
@@ -158,6 +159,7 @@ function DotBody({ moment, dot }: { moment: Moment; dot: Dot }) {
 
 function Thing({ moment, dot }: { moment: Moment; dot: Extract<Dot, { kind: 'thing' }> }) {
   const client = useQueryClient();
+  const router = useRouter();
   const reread = useRereadSwitch();
   const account = useMe().data?.id;
   const [card, setCard] = useState<FieldCard | null>(dot.card),
@@ -262,6 +264,11 @@ function Thing({ moment, dot }: { moment: Moment; dot: Extract<Dot, { kind: 'thi
             >
               {card.collected ? <BookmarkCheck aria-hidden="true" /> : <BookmarkPlus aria-hidden="true" />}
               {card.collected ? 'In your field guide' : 'Collect'}
+            </button>
+          )}
+          {card.collected && (
+            <button type="button" className="dt-button dt-quiet" onClick={() => router.push('/app/field-guide')}>
+              Open the guide
             </button>
           )}
           <button
