@@ -409,7 +409,7 @@ private fun MarksTool(
 }
 
 @Composable
-private fun RailTool(
+internal fun RailTool(
     label: String,
     spoken: String,
     enabled: Boolean,
@@ -487,7 +487,7 @@ private fun StudioTextCard(
 
 /** The caption, written on the picture (board B2); the same 100 letters as today's caption box. */
 @Composable
-private fun StudioCaption(
+internal fun StudioCaption(
     caption: String,
     enabled: Boolean,
     onCaption: (String) -> Unit,
@@ -568,7 +568,7 @@ private fun StudioBar(
 
 /** One "who sees it" chip: white while picked, an outline otherwise. */
 @Composable
-private fun StudioChip(
+internal fun StudioChip(
     text: String,
     on: Boolean,
     usable: Boolean,

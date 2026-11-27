@@ -1,5 +1,7 @@
 package app.pantopus.android.data.pulse
 
+import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewDto
 import app.pantopus.android.data.api.net.NetworkResult
@@ -51,6 +53,19 @@ class StudioRepository
                 }
             }
         }
+
+        /** The author's 15-minute edit (CONTRACT 3): the Moment as it is now. */
+        suspend fun edit(
+            momentId: String,
+            body: MomentEditBody,
+        ): NetworkResult<MomentDto> =
+            when (val answer = safeApiCall { api.edit(momentId, body) }) {
+                is NetworkResult.Success -> NetworkResult.Success(answer.data.moment)
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
+                    answer
+                }
+            }
 
         companion object {
             private val JSON = "application/json; charset=utf-8".toMediaType()
