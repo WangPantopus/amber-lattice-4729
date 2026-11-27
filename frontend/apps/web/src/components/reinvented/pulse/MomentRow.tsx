@@ -10,6 +10,7 @@ import { colors } from '@/components/moments/momentState';
 import StampLayer from '../stamps/StampLayer';
 import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import type { PlayItem } from '../play/playTypes';
+import { withMentions, type MentionPerson } from '../mentions/Mentions';
 import type { StampKind } from '../stamps/stampTypes';
 import { isSignal, SIGNAL_WORDS, SignalIcon } from '../viewer/signals';
 import { isLiveHere, timeLeft, type ListMoment, type Point } from './listApi';
@@ -51,6 +52,8 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
   const where = [m.place_label, bandLabel].filter(Boolean).join(' · ');
   const picture = m.kind === 'video' ? m.poster_url : m.media_url;
   const mine = isSignal(m.my_signal) ? m.my_signal : null;
+  // People the author mentioned (§7h): their names in the words link to their profiles.
+  const mentions = (m as ListMoment & { mentions?: MentionPerson[] }).mentions;
   const counts = (m.signal_counts || []).filter((s) => isSignal(s.signal) && s.count > 0).slice(0, 3);
   const open = () => onOpen(m.id);
   const onKey = (e: KeyboardEvent) => {
@@ -72,7 +75,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
           }}
         >
           {m.kind === 'text' ? (
-            <p className="rp-moment-text">{m.text}</p>
+            <p className="rp-moment-text">{withMentions(m.text || '', mentions)}</p>
           ) : pair && picture ? (
             <BeforeAfter src={picture} item={pair} still />
           ) : picture ? (
@@ -101,7 +104,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
       </div>
       {(m.caption || mine || counts.length > 0 || point) && (
         <div className="rp-moment-foot">
-          {m.caption && <p className="rp-moment-caption">{m.caption}</p>}
+          {m.caption && <p className="rp-moment-caption">{withMentions(m.caption, mentions)}</p>}
           <div className="rp-moment-actions">
             {counts.map((s) => (
               <span key={s.signal} className="rp-signal-count">
