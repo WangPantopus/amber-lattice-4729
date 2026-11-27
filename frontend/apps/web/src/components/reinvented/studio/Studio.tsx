@@ -124,6 +124,7 @@ export default function Studio({
     [pen, setPen] = useState(pens[1]);
   const [drawerOpen, setDrawerOpen] = useState(false),
     [discarding, setDiscarding] = useState(false),
+    [askedPost, setAskedPost] = useState(false),
     [homeNote, setHomeNote] = useState(false);
   const drawer = drawerOpen || wide;
   const handle = useRef<AbortController | null>(null),
@@ -456,17 +457,22 @@ export default function Studio({
       handle.current = null;
     }
   }
-  // Post: a setting that still needs the person opens the drawer at it, with the reason, instead of failing.
+  // Post: a setting that still needs the person opens the drawer at it, with the reason, instead of failing. The reason
+  // stays only while it still holds (today's composer's words).
+  const blocker =
+    !noPlace && !point
+      ? 'Choose Use my location, or select No location.'
+      : noPlace && p?.has_connections === false
+        ? 'A Moment without a location needs a connection.'
+        : homeWarning && !homeAck
+          ? 'Confirm the pin at your home, or choose Show area.'
+          : '';
   function tryPost() {
-    const open = (msg: string) => {
-      setError(msg);
-      setDrawerOpen(true);
-      requestAnimationFrame(() => drawerRef.current?.focus({ preventScroll: true }));
-    };
-    if (!noPlace && !point) return open('Choose Use my location, or select No location.');
-    if (noPlace && p?.has_connections === false) return open('A Moment without a location needs a connection.');
-    if (homeWarning && !homeAck) return open('Confirm the pin at your home, or choose Show area.');
-    void submit();
+    if (!blocker) return void submit();
+    setError('');
+    setAskedPost(true);
+    setDrawerOpen(true);
+    requestAnimationFrame(() => drawerRef.current?.focus({ preventScroll: true }));
   }
   function dismiss() {
     handle.current?.abort();
@@ -476,6 +482,7 @@ export default function Studio({
   const unsaved = mode === 'media' ? !!file : mode === 'text' && !!text.trim();
   function backToStart() {
     setDiscarding(false);
+    setAskedPost(false);
     setTool(null);
     setDrawerOpen(false);
     setFiles([]);
@@ -1009,9 +1016,9 @@ export default function Studio({
 
           {!gate && !camera && (
             <div className="st-foot">
-              {(busy || error) && (
-                <p className="st-status" role={error ? 'alert' : 'status'}>
-                  {busy || error}
+              {(busy || error || (askedPost && blocker)) && (
+                <p className="st-status" role={busy ? 'status' : 'alert'}>
+                  {busy || error || blocker}
                 </p>
               )}
               {mode === 'none' ? (
