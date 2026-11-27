@@ -28,13 +28,14 @@ const M_PER_DEG = 111320;
  * now, never at home, floating, shown as an area, under a made-up name or as a guess spot, and only when the compass was
  * good to 30°. Never an error: anything else is dropped.
  */
-function keptPart(value, { kind, source, takenAt, shareAt, atHome, floating, showArea, underPenName, guess }) {
+function keptPart(value, { kind, source, takenAt, shareAt, atHome, floating, showArea, underPenName, guess, audience }) {
   if (value == null || typeof value !== 'object') return {};
   const deg = Number(value.deg);
   const accuracy = Number(value.accuracy_deg);
   if (!Number.isFinite(deg) || deg < 0 || deg >= 360 || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > MAX_ACCURACY_DEG) return {};
   if (!['photo', 'video'].includes(kind) || source !== 'gps' || takenAt || shareAt) return {};
-  if (atHome || floating || showArea || underPenName || guess) return {};
+  // Only on a Moment shared with people nearby (LEAD-3 09:08 on 9h, rule 1).
+  if (atHome || floating || showArea || underPenName || guess || audience !== 'nearby') return {};
   return { heading: { v: 1, deg: (Math.round(deg / STEP_DEG) * STEP_DEG) % 360 } };
 }
 
@@ -79,7 +80,7 @@ async function beamsIn(user, box, now = Date.now()) {
   const store = momentStore();
   const userId = user.id;
   const { data, error } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT).eq('is_story', true)
-    .is('archived_at', null).eq('moderation_state', 'live').not('post_metadata->moment->heading', 'is', null)
+    .is('archived_at', null).eq('moderation_state', 'live').eq('audience', 'nearby').not('post_metadata->moment->heading->>deg', 'is', null)
     .gte('created_at', new Date(now - LOOK_BACK_MS).toISOString())
     .gte('latitude', box.south - PAD).lte('latitude', box.north + PAD).gte('longitude', box.west - PAD).lte('longitude', box.east + PAD)
     .order('created_at', { ascending: false }).limit(300);
@@ -138,4 +139,25 @@ async function beamsIn(user, box, now = Date.now()) {
   };
 }
 
-module.exports = { keptPart, beamsIn, crossing, offRay };
+/**
+ * A heading never outlives its Moment (LEAD-3, rule 3): the job (jobs/pulseBeams.js) takes it off every Moment that has
+ * ended, a kept one too. Does nothing while the switch is off for everyone (no read but the cached flag's). Answers how
+ * many it cleared.
+ */
+async function clearEnded(now = Date.now()) {
+  // eslint-disable-next-line global-require
+  if (!(await require('./strands').onForAnyone())) return 0;
+  const store = momentStore();
+  const { data, error } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT).eq('is_story', true)
+    .not('post_metadata->moment->heading->>deg', 'is', null).lte('story_expires_at', new Date(now).toISOString()).limit(500);
+  if (error) throw new Error(`Failed to load ended Moments with a heading: ${error.message}`);
+  let cleared = 0;
+  for (const row of data || []) {
+    // eslint-disable-next-line no-await-in-loop
+    const done = await store.changeMoment(row, (m) => (m.heading ? { heading: null } : null));
+    if (done) cleared += 1;
+  }
+  return cleared;
+}
+
+module.exports = { keptPart, beamsIn, clearEnded, crossing, offRay };

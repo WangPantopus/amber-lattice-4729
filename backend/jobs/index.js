@@ -29,6 +29,7 @@
 //   - pulseSeals                 → every 30 minutes (Pulse, reinvented: relics that open with rain)
 //   - pulseConvergence           → every 5 minutes (Pulse, reinvented: Convergences and the sky strip)
 //   - pulseSearchIndex           → every 2 minutes (Pulse, reinvented: the search index)
+//   - pulseBeams                 → every 10 minutes (Pulse, reinvented: a heading goes when its Moment ends)
 //   - momentsShareLater          → every minute (Moments shared later: the push to connections at their time)
 //   - cardMediaCleanup           → daily at 04:50 UTC (a card's own photo or voice nobody can read any more)
 //   - aroundYouFeeds             → hourly at :36 (Around you: wildfires, federal notices, road projects, calendars)
@@ -138,6 +139,7 @@ const pulseMorningMail = require('./pulseMorningMail');
 const pulseSeals = require('./pulseSeals');
 const pulseConvergence = require('./pulseConvergence');
 const pulseSearchIndex = require('./pulseSearchIndex');
+const pulseBeams = require('./pulseBeams');
 const fastCheckLocationLapse = require('./fastCheckLocationLapse');
 const momentsShareLater = require('./momentsShareLater');
 const cardMediaCleanup = require('./cardMediaCleanup');
@@ -933,6 +935,11 @@ function startJobs(options = {}) {
   });
   // Every 2 minutes (Pulse, reinvented; switch on only): the search index for Ask the map and Atlas search (CONTRACT 9a).
   scheduleCron('1-59/2 * * * *', wrapJob('pulseSearchIndex', pulseSearchIndex), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+  // Every 10 minutes (Pulse, reinvented; switch on only): a Moment's heading goes when the Moment ends (CONTRACT 9h).
+  scheduleCron('7-59/10 * * * *', wrapJob('pulseBeams', pulseBeams), {
     scheduled: true,
     timezone: 'UTC',
   });

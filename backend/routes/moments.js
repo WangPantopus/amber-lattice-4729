@@ -613,7 +613,7 @@ router.post('/', createLimiter, async (req, res) => {
         // Live beams (CONTRACT 9h): the way a photo taken here now faced; never at home, floating, an area, a made-up name or a guess spot.
         ...beams.keptPart(req.body?.heading, {
           kind: body.kind, source: body.location.source, takenAt: body.taken_at, shareAt, atHome: studioAtHome,
-          floating: Boolean(area), showArea, underPenName, guess,
+          floating: Boolean(area), showArea, underPenName, guess, audience: body.audience,
         }),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
