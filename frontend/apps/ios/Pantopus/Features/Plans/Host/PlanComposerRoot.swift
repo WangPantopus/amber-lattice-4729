@@ -35,7 +35,7 @@ struct PlanComposerRoot: View {
         // "Host again" (A5) opens on the preview of the same plan next week.
         _path = State(initialValue: start?.again != nil ? [.preview] : [])
         self.onFinish = onFinish
-        startsAtDetails = start != nil
+        startsAtDetails = start != nil && start?.fromMoment == nil
         samePeopleFrom = start?.samePeopleFrom
     }
 

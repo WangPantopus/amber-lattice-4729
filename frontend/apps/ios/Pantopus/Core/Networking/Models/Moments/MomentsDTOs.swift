@@ -260,6 +260,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let guess: MomentGuessStateDTO?
     /// "Keep this?" (CONTRACT 6d): on one's own Moment with a reply, in its last two hours, until answered once.
     public let keepOffer: Bool
+    /// "Want to come?" (CONTRACT 6g, `MomentPlan.swift`): the plan this Moment started, as this reader may see it.
+    public let plan: MomentPlanDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -320,6 +322,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         stampChoices = (try? c.decodeIfPresent(MomentStampChoices.self, forKey: .stampChoices))?.values ?? [:]
         guess = MomentGuessStateDTO(from: decoder)
         keepOffer = MomentGuessStateDTO.keepOffer(from: decoder)
+        plan = MomentPlanDTO.read(from: decoder)
     }
 
     public var media: URL? {
