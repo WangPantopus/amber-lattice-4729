@@ -70,6 +70,10 @@ data class ReinventedMapState(
     val center: ReinventedPoint? = null,
     val time: String = LIVE,
     val items: List<ReinventedMapItem> = emptyList(),
+    /** The peek deck's cards: Heads-ups first, then what was nearest the map's middle when each first came. */
+    val deck: List<ReinventedMapItem> = emptyList(),
+    /** The card the deck shows, and the pin it lights. */
+    val focused: String? = null,
 ) {
     /** Heads-ups last, so they draw over everything else. */
     val drawOrder: List<ReinventedMapItem> get() = items.filterNot { it.headsUp } + items.filter { it.headsUp }
@@ -95,6 +99,12 @@ class ReinventedMapViewModel
     ) : ViewModel() {
         private val _state = MutableStateFlow(ReinventedMapState())
         val state: StateFlow<ReinventedMapState> = _state.asStateFlow()
+
+        private val _flight = MutableStateFlow<ReinventedFlight?>(null)
+
+        /** Where the map glides next (a card swiped to, a place tapped in the list); the screen moves the camera. */
+        val flight: StateFlow<ReinventedFlight?> = _flight.asStateFlow()
+        private var flights = 0
 
         private var allowed = false
         private var box: ReinventedBox? = null
@@ -135,6 +145,18 @@ class ReinventedMapViewModel
         /** Read again (a pull on the list, coming back to the tab). */
         fun refresh() = readSoon(waitMs = 0L)
 
+        /** The deck moved to [item]: its pin lights and the map glides to it. */
+        fun focus(item: ReinventedMapItem) {
+            _state.update { it.copy(focused = item.id) }
+            flyTo(ReinventedPoint(item.latitude, item.longitude))
+        }
+
+        /** Glides the map to a place (a card's place, a pin the deck moved to). */
+        fun flyTo(point: ReinventedPoint) {
+            flights += 1
+            _flight.value = ReinventedFlight(point, flights)
+        }
+
         private fun readSoon(waitMs: Long) {
             if (!allowed) return
             val area = box ?: return
@@ -154,7 +176,7 @@ class ReinventedMapViewModel
                                 val lng = ticket.longitude ?: return@mapNotNull null
                                 ReinventedMapItem.Ticket(ticket, lat, lng)
                             }
-                    _state.update { if (it.time == time) it.copy(items = items) else it }
+                    _state.update { if (it.time == time) it.copy(items = items, deck = arrange(it.deck, items, area)) else it }
                 }
         }
 
@@ -162,3 +184,35 @@ class ReinventedMapViewModel
             const val SETTLE_MS = 350L
         }
     }
+
+/** One glide of the map; [serial] tells two glides to the same place apart. */
+data class ReinventedFlight(
+    val point: ReinventedPoint,
+    val serial: Int,
+)
+
+/**
+ * The deck's cards: those already in it keep their places (swiping moves the map, which reads again, and must never
+ * reshuffle what is under the thumb), then the new ones, Heads-ups first and the rest nearest the box's middle first.
+ */
+internal fun arrange(
+    deck: List<ReinventedMapItem>,
+    items: List<ReinventedMapItem>,
+    box: ReinventedBox,
+): List<ReinventedMapItem> {
+    val byId = items.associateBy { it.id }
+    val kept = deck.mapNotNull { byId[it.id] }
+    val keptIds = kept.mapTo(mutableSetOf()) { it.id }
+    val middleLat = (box.south + box.north) / 2
+    val middleLng = (box.west + box.east) / 2
+    val fresh =
+        items
+            .filterNot { it.id in keptIds }
+            .sortedWith(
+                compareByDescending<ReinventedMapItem> { it.headsUp }
+                    .thenBy { squared(it.latitude - middleLat) + squared(it.longitude - middleLng) },
+            )
+    return kept + fresh
+}
+
+private fun squared(value: Double): Double = value * value

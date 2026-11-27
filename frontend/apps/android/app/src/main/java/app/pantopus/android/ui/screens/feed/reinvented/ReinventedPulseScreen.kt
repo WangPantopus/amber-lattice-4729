@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,10 +56,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 
@@ -95,7 +99,6 @@ data class ReinventedPulseActions(
  * the list below: how it opens), List (full screen) and Map (full screen). Pull the handle up or down, or tap the
  * switch. Built beside today's feed (`FeedScreen`), which shows whenever the switch is off.
  */
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun ReinventedPulseScreen(
     actions: ReinventedPulseActions,
@@ -105,17 +108,8 @@ fun ReinventedPulseScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val cards by viewModel.cards.cards.collectAsStateWithLifecycle()
-    val firstPage by viewModel.firstPage.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
-    // The same timing line as today's Pulse ("pulse"), so the two open times can be laid side by side.
-    app.pantopus.android.core.perf.ReportContentShown(
-        "pulse",
-        state.load == ReinventedPulseState.Load.Loaded || state.load == ReinventedPulseState.Load.NeedsPlace,
-    )
-    // The list is read once when the tab first opens (it stays while the person visits other tabs) and when pulled.
-    LaunchedEffect(Unit) { if (state.items.isEmpty()) viewModel.refresh() }
-    // Nothing else is read before the first page has arrived.
-    LaunchedEffect(firstPage) { if (firstPage) mapModel.allow() }
+    ReadsInOrder(viewModel, mapModel, state)
     var height by rememberSaveable { mutableStateOf(ReinventedHeight.Middle) }
     BackHandler(enabled = height != ReinventedHeight.Middle) { height = ReinventedHeight.Middle }
     val listState = rememberLazyListState()
@@ -125,35 +119,18 @@ fun ReinventedPulseScreen(
             height = ReinventedHeight.Middle
         }
     }
-    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(MINUTE_MS)
-            nowMs = System.currentTimeMillis()
-        }
-    }
-    val openMoment: (MomentDto) -> Unit = { moment ->
-        viewModel.watch(moment)
-        actions.onWatch()
-    }
-    val pull =
-        rememberPullRefreshState(refreshing = state.refreshing, onRefresh = {
-            viewModel.refresh()
-            mapModel.refresh()
-        })
-    val listActions =
-        ReinventedListActions(
-            cards = reinventedCardActions(viewModel.cards, actions.onOpenPost),
-            onOpenMoment = openMoment,
-            onRefresh = viewModel::refresh,
-            onLoadMore = viewModel::loadMore,
-            onShowCircle = { viewModel.pickReach(ReinventedPulseViewModel.CLOSE, state.miles) },
-        )
+    val nowMs = rememberMinuteClock()
+    val watch = remember(viewModel, actions) { ReinventedWatch(viewModel, actions.onWatch) }
     val list: @Composable (Modifier) -> Unit = { modifier ->
-        Box(modifier.pullRefresh(pull)) {
-            ReinventedPulseList(state, cards, nowMs, listState, listActions)
-            PullRefreshIndicator(state.refreshing, pull, Modifier.align(Alignment.TopCenter))
-        }
+        ReinventedListPane(
+            pane = ReinventedPane(state, cards, nowMs, listState),
+            viewModel = viewModel,
+            mapModel = mapModel,
+            watch = watch,
+            actions = actions,
+            onToMiddle = { if (height == ReinventedHeight.List) height = ReinventedHeight.Middle },
+            modifier = modifier,
+        )
     }
     ReinventedPulseLayout(
         height = height,
@@ -163,16 +140,128 @@ fun ReinventedPulseScreen(
         onPickChip = viewModel::pickChip,
         onPickReach = viewModel::pickReach,
         mapModel = mapModel,
-        onOpenMoment = openMoment,
-        onOpenRing = { ring ->
-            viewModel.watch(ring)
-            actions.onWatch()
-        },
+        onOpenMoment = watch::moment,
+        onOpenRing = watch::ring,
         list = list,
     )
     ReinventedCardSheets(viewModel.cards, cards, actions.onQuotePost)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         ReinventedToast(toast, onDismiss = viewModel::dismissToast)
+    }
+}
+
+/**
+ * The reads in their order: the list's first page when the tab first opens (it stays while the person visits other
+ * tabs), and only once it has arrived the map's marks and Alive right now. Also the timing line today's Pulse writes
+ * ("pulse"), so the two open times can be laid side by side.
+ */
+@Composable
+private fun ReadsInOrder(
+    viewModel: ReinventedPulseViewModel,
+    mapModel: ReinventedMapViewModel,
+    state: ReinventedPulseState,
+) {
+    val firstPage by viewModel.firstPage.collectAsStateWithLifecycle()
+    app.pantopus.android.core.perf.ReportContentShown(
+        "pulse",
+        state.load == ReinventedPulseState.Load.Loaded || state.load == ReinventedPulseState.Load.NeedsPlace,
+    )
+    LaunchedEffect(Unit) { if (state.items.isEmpty()) viewModel.refresh() }
+    LaunchedEffect(firstPage) {
+        if (firstPage) {
+            mapModel.allow()
+            viewModel.readStrip()
+        }
+    }
+}
+
+/** The time now, a minute at a time, for each Moment's time left. */
+@Composable
+private fun rememberMinuteClock(): Long {
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(MINUTE_MS)
+            nowMs = System.currentTimeMillis()
+        }
+    }
+    return nowMs
+}
+
+/** Plays a Moment, or a person's ring, in today's viewer. */
+private class ReinventedWatch(
+    private val viewModel: ReinventedPulseViewModel,
+    private val onWatch: () -> Unit,
+) {
+    fun moment(moment: MomentDto) {
+        viewModel.watch(moment)
+        onWatch()
+    }
+
+    fun ring(ring: MomentRingDto) {
+        viewModel.watch(ring)
+        onWatch()
+    }
+}
+
+/** What the list pane draws. */
+private data class ReinventedPane(
+    val state: ReinventedPulseState,
+    val cards: List<PulsePostCardContent>,
+    val nowMs: Long,
+    val listState: LazyListState,
+)
+
+/** The list with Alive right now over it, pulled down to read everything again. */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+@Suppress("LongParameterList") // The pane, its two view-models, and where its taps go.
+private fun ReinventedListPane(
+    pane: ReinventedPane,
+    viewModel: ReinventedPulseViewModel,
+    mapModel: ReinventedMapViewModel,
+    watch: ReinventedWatch,
+    actions: ReinventedPulseActions,
+    onToMiddle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state = pane.state
+    val strip by viewModel.strip.collectAsStateWithLifecycle()
+    val pull =
+        rememberPullRefreshState(refreshing = state.refreshing, onRefresh = {
+            viewModel.refresh()
+            mapModel.refresh()
+            viewModel.readStrip()
+        })
+    val listActions =
+        ReinventedListActions(
+            cards = reinventedCardActions(viewModel.cards, actions.onOpenPost),
+            onOpenMoment = watch::moment,
+            onRefresh = viewModel::refresh,
+            onLoadMore = viewModel::loadMore,
+            onShowCircle = { viewModel.pickReach(ReinventedPulseViewModel.CLOSE, state.miles) },
+            onShowOnMap = { point ->
+                mapModel.flyTo(point)
+                onToMiddle()
+            },
+            onExplore = { viewModel.pickReach(ReinventedPulseViewModel.EXPLORE, state.miles) },
+            onKeepExploring = viewModel::keepExploring,
+        )
+    val stripActions = ReinventedStripActions(onOpenMoment = watch::moment, onOpenPlan = actions.onOpenPlan, onOpenRing = watch::ring)
+    Box(modifier.pullRefresh(pull)) {
+        ReinventedPulseList(
+            state,
+            pane.cards,
+            pane.nowMs,
+            pane.listState,
+            listActions,
+            // Alive right now is local: Explore has none.
+            top =
+                strip?.takeIf { !it.isEmpty && state.reach != ReinventedPulseViewModel.EXPLORE }?.let { alive ->
+                    { ReinventedAliveStrip(alive, stripActions) }
+                },
+        )
+        PullRefreshIndicator(state.refreshing, pull, Modifier.align(Alignment.TopCenter))
     }
 }
 
@@ -192,7 +281,13 @@ private fun ReinventedPulseLayout(
     list: @Composable (Modifier) -> Unit,
 ) {
     val mapState by mapModel.state.collectAsStateWithLifecycle()
+    val flight by mapModel.flight.collectAsStateWithLifecycle()
     val camera = rememberReinventedCamera()
+    // A card swiped to, or a place tapped in the list: the map glides there.
+    LaunchedEffect(flight) {
+        val to = flight?.point ?: return@LaunchedEffect
+        camera.animate(CameraUpdateFactory.newLatLng(LatLng(to.latitude, to.longitude)), FLY_MS)
+    }
     val density = LocalDensity.current
     BoxWithConstraints(
         modifier =
@@ -214,6 +309,7 @@ private fun ReinventedPulseLayout(
         ReinventedPulseMap(
             state = mapState,
             camera = camera,
+            focused = mapState.focused.takeIf { height == ReinventedHeight.Map },
             bottomPadding = if (height == ReinventedHeight.Map) PEEK else full - rest,
             onMoved = mapModel::moved,
             onOpen = { item -> openMapItem(item, actions, onOpenMoment, onOpenRing) },
@@ -238,24 +334,41 @@ private fun ReinventedPulseLayout(
             onHeight = onHeight,
             onPickChip = onPickChip,
             onPickReach = onPickReach,
+            time = mapState.time,
+            onPickTime = mapModel::pickTime,
             modifier = Modifier.onSizeChanged { headerPx = it.height },
         )
-        if (height != ReinventedHeight.Map) {
-            FloatingActionButton(
-                onClick = actions.onCompose,
-                containerColor = PantopusColors.primary600,
-                shape = CircleShape,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = Spacing.s4, bottom = Spacing.s4)
-                        .size(58.dp)
-                        .testTag("reinventedPulse.add")
-                        .semantics { contentDescription = "Add a Moment" },
-            ) {
-                PantopusIconImage(icon = PantopusIcon.Plus, contentDescription = null, size = 26.dp, strokeWidth = 2.6f, tint = Color.White)
-            }
+        if (height == ReinventedHeight.Map) {
+            ReinventedPeekDeck(
+                deck = mapState.deck,
+                onFocus = mapModel::focus,
+                onOpen = { item -> openMapItem(item, actions, onOpenMoment, onOpenRing) },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = PEEK + Spacing.s2),
+            )
+        } else {
+            AddButton(actions.onCompose, Modifier.align(Alignment.BottomEnd))
         }
+    }
+}
+
+/** + : the Studio, as the Moments tab's + opens it. */
+@Composable
+private fun AddButton(
+    onCompose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FloatingActionButton(
+        onClick = onCompose,
+        containerColor = PantopusColors.primary600,
+        shape = CircleShape,
+        modifier =
+            modifier
+                .padding(end = Spacing.s4, bottom = Spacing.s4)
+                .size(58.dp)
+                .testTag("reinventedPulse.add")
+                .semantics { contentDescription = "Add a Moment" },
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Plus, contentDescription = null, size = 26.dp, strokeWidth = 2.6f, tint = Color.White)
     }
 }
 
@@ -335,3 +448,4 @@ private fun openMapItem(
 private val PEEK = 64.dp
 private val HANDLE = 22.dp
 private const val MINUTE_MS = 60_000L
+private const val FLY_MS = 600

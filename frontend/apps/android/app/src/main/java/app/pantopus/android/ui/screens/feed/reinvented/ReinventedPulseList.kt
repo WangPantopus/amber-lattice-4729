@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
@@ -53,6 +54,7 @@ import app.pantopus.android.ui.screens.profile.profilePostHasOptions
 import app.pantopus.android.ui.screens.shared.feed.FeedSkeletonCard
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
@@ -119,7 +121,7 @@ private fun LoadedRows(
     modifier: Modifier,
     top: (@Composable () -> Unit)?,
 ) {
-    val rows = remember(state.items, state.bands, cards) { state.rows(cards) }
+    val rows = remember(state.items, state.bands, state.reach, state.pickedCount, cards) { state.rows(cards) }
     // More is read as the end of what shows nears, never while a read is out.
     val nearEnd by remember {
         derivedStateOf {
@@ -134,26 +136,51 @@ private fun LoadedRows(
         contentPadding = PaddingValues(bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        top?.let { strip -> item(key = "top") { strip() } }
+        // Always the first slot, empty until the strip comes: the strip then grows in place at the top instead of
+        // landing above the row the list keeps in view.
+        item(key = "top") { top?.invoke() }
         if (state.items.isEmpty()) item(key = "empty") { EmptyNote(state.reach) }
         items(rows, key = { it.key }) { row ->
             when (row) {
                 is ReinventedRow.Band -> BandLine(row)
                 is ReinventedRow.Moment ->
                     if (row.kept) {
-                        KeptCard(row.moment) { actions.onOpenMoment(row.moment) }
+                        KeptCard(row.moment, actions.onShowOnMap) { actions.onOpenMoment(row.moment) }
                     } else {
-                        ReinventedMomentRow(row.moment, nowMs) { actions.onOpenMoment(row.moment) }
+                        ReinventedMomentRow(row.moment, nowMs, onShowOnMap = actions.onShowOnMap) { actions.onOpenMoment(row.moment) }
                     }
                 is ReinventedRow.Post -> PostThatStays(row.card, actions.cards)
+                is ReinventedRow.Heading -> Heading(row.words)
+                is ReinventedRow.Why -> WhyLine(row.words)
             }
         }
-        item(key = "end") { EndLine(state) }
+        item(key = "end") { EndLine(state, actions) }
     }
 }
 
 @Composable
-private fun EndLine(state: ReinventedPulseState) {
+private fun EndLine(
+    state: ReinventedPulseState,
+    actions: ReinventedListActions,
+) {
+    val pause = state.pause
+    if (state.pausedForMore && pause != null) {
+        // Explore pauses: more only when asked.
+        Text(
+            text = pause,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = PantopusColors.primary600,
+            textAlign = TextAlign.Center,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClick = actions.onKeepExploring)
+                    .padding(vertical = Spacing.s4)
+                    .testTag("reinventedPulse.keepExploring"),
+        )
+        return
+    }
     if (state.cursor != null) {
         Box(Modifier.fillMaxWidth().padding(vertical = Spacing.s4), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(modifier = Modifier.height(24.dp), strokeWidth = 2.dp, color = PantopusColors.primary600)
@@ -161,14 +188,65 @@ private fun EndLine(state: ReinventedPulseState) {
         return
     }
     val end = state.end ?: return
+    if (state.reach == ReinventedPulseViewModel.EXPLORE && state.items.isEmpty()) return
+    // "Caught up around you. Keep exploring?": the words open Explore.
+    val opensExplore = state.reach != ReinventedPulseViewModel.EXPLORE && end.endsWith("Keep exploring?")
     Text(
         text = end,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
         color = PantopusColors.appTextSecondary,
         textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.s5, horizontal = Spacing.s4).testTag("reinventedPulse.end"),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (opensExplore) {
+                        Modifier.clickable(
+                            role = Role.Button,
+                            onClickLabel = "Explore",
+                            onClick = actions.onExplore,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(vertical = Spacing.s5, horizontal = Spacing.s4)
+                .testTag("reinventedPulse.end"),
     )
+}
+
+@Composable
+private fun Heading(words: String) {
+    Text(
+        text = words,
+        fontSize = 17.sp,
+        fontWeight = FontWeight.Bold,
+        color = PantopusColors.appText,
+        modifier = Modifier.padding(horizontal = Spacing.s4).padding(top = Spacing.s2).semantics { heading() },
+    )
+}
+
+/** "Why am I seeing this?", in one line. */
+@Composable
+private fun WhyLine(words: String) {
+    Row(
+        modifier =
+            Modifier
+                .padding(horizontal = Spacing.s4)
+                .semantics(mergeDescendants = true) { contentDescription = "Why you're seeing this: $words" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.Info,
+            contentDescription = null,
+            size = 13.dp,
+            strokeWidth = 2.2f,
+            tint = PantopusColors.appTextSecondary,
+        )
+        Text(words, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = PantopusColors.appTextSecondary)
+    }
 }
 
 @Composable
@@ -180,7 +258,7 @@ private fun EmptyNote(reach: String) {
     ) {
         Text(reinventedEmptyTitle(reach), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText)
         Text(
-            REINVENTED_EMPTY_LINE,
+            reinventedEmptyLine(reach),
             fontSize = 14.sp,
             color = PantopusColors.appTextSecondary,
             textAlign = TextAlign.Center,
@@ -253,6 +331,7 @@ private fun PostThatStays(
 @Composable
 private fun KeptCard(
     moment: MomentDto,
+    onShowOnMap: (ReinventedPoint) -> Unit,
     onOpen: () -> Unit,
 ) {
     val shape = RoundedCornerShape(Radii.lg)
@@ -275,7 +354,7 @@ private fun KeptCard(
             color = PantopusColors.primary600,
             modifier = Modifier.padding(horizontal = Spacing.s4).padding(top = Spacing.s3),
         )
-        ReinventedMomentRow(moment, nowMs = 0L, kept = true, onOpen = onOpen)
+        ReinventedMomentRow(moment, nowMs = 0L, kept = true, onShowOnMap = onShowOnMap, onOpen = onOpen)
     }
 }
 
@@ -285,6 +364,7 @@ internal fun ReinventedMomentRow(
     moment: MomentDto,
     nowMs: Long,
     kept: Boolean = false,
+    onShowOnMap: ((ReinventedPoint) -> Unit)? = null,
     onOpen: () -> Unit,
 ) {
     val left = if (kept) "" else momentTimeLeft(moment.expiresAt, nowMs)
@@ -317,6 +397,18 @@ internal fun ReinventedMomentRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 val words = listOfNotNull(who, left.ifEmpty { null }, moment.placeLabel?.ifBlank { null })
+                momentPoint(moment)?.takeIf { onShowOnMap != null }?.let { point ->
+                    PantopusIconImage(
+                        icon = PantopusIcon.MapPin,
+                        contentDescription = "Show ${moment.placeLabel ?: "this place"} on the map",
+                        size = 15.dp,
+                        tint = Color.White,
+                        modifier =
+                            Modifier.clickable(
+                                role = Role.Button,
+                            ) { onShowOnMap?.invoke(point) }.testTag("reinventedPulse.place.${moment.id}"),
+                    )
+                }
                 Text(
                     text = words.joinToString("  ·  "),
                     fontSize = 13.sp,
@@ -373,6 +465,14 @@ internal fun MomentPicture(
             AsyncImage(model = request, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+/** The point everyone sees for a Moment; none for one with no place. */
+private fun momentPoint(moment: MomentDto): ReinventedPoint? {
+    if (moment.noLocation) return null
+    val lat = moment.latitude ?: return null
+    val lng = moment.longitude ?: return null
+    return ReinventedPoint(lat, lng)
 }
 
 private val MOMENT_HEIGHT = 380.dp

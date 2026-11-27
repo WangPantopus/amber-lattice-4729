@@ -2,8 +2,12 @@
 
 package app.pantopus.android.ui.screens.feed.reinvented
 
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -39,6 +44,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.BuildConfig
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -48,8 +54,9 @@ import kotlin.math.roundToInt
 
 /**
  * The reach dial (PHASE-1 §2 piece 9; board B15), opened from the scope pill: Close circle and Around me (1 to 25
- * miles), each with one line saying what it shows and how it is ordered. Close circle is the people the person is
- * connected with (circles of 2 to 8 are phase 3).
+ * miles) and Explore, each with one line saying what it shows and how it is ordered, and "No hidden ranking" with the
+ * page anyone can read that says Explore's rules. Close circle is the people the person is connected with (circles of
+ * 2 to 8 are phase 3).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,7 +117,44 @@ internal fun ReinventedReachDial(
                             stateDescription = "$shownMiles miles"
                         }.testTag("reinventedPulse.dial.miles"),
             )
+            DialOption(
+                key = ReinventedPulseViewModel.EXPLORE,
+                on = reach == ReinventedPulseViewModel.EXPLORE,
+                title = "Explore",
+                icon = PantopusIcon.Globe,
+                line = "Anywhere else, only what its author chose to show. Ten picked by people today, then the newest.",
+            ) { onPick(ReinventedPulseViewModel.EXPLORE, shownMiles) }
+            Rules()
         }
+    }
+}
+
+/** "No hidden ranking." and the page anyone can read that says Explore's rules (the web's `/about/explore`). */
+@Composable
+private fun Rules() {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier.padding(top = Spacing.s2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        Text("No hidden ranking.", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+        Text(
+            text = "See the rules",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PantopusColors.primary600,
+            modifier =
+                Modifier
+                    .clickable(role = Role.Button) {
+                        val url = BuildConfig.PANTOPUS_WEB_BASE_URL.trimEnd('/') + "/about/explore"
+                        try {
+                            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(url))
+                        } catch (_: ActivityNotFoundException) {
+                            // No browser on this phone: the line stays.
+                        }
+                    }.testTag("reinventedPulse.dial.rules"),
+        )
     }
 }
 

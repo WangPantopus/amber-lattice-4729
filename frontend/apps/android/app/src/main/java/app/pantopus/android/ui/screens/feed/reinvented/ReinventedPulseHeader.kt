@@ -50,7 +50,7 @@ import app.pantopus.android.ui.theme.Spacing
  * each control floats on its own.
  */
 @Composable
-@Suppress("LongParameterList") // What it shows and the four choices it offers.
+@Suppress("LongParameterList") // What it shows and the five choices it offers.
 internal fun ReinventedPulseHeader(
     height: ReinventedHeight,
     state: ReinventedPulseState,
@@ -58,6 +58,8 @@ internal fun ReinventedPulseHeader(
     onHeight: (ReinventedHeight) -> Unit,
     onPickChip: (String) -> Unit,
     onPickReach: (String, Int) -> Unit,
+    time: String,
+    onPickTime: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showsDial by rememberSaveable { mutableStateOf(false) }
@@ -81,7 +83,11 @@ internal fun ReinventedPulseHeader(
             Floating(!onList) { MessagesButton(testTag = "reinventedPulse.chat") }
         }
         ViewSwitch(height, onHeight)
-        if (height != ReinventedHeight.Map && state.chips.size > 1) ChipsRow(state, onPickChip)
+        if (height == ReinventedHeight.Map) {
+            ReinventedTimeRow(time, onPickTime)
+        } else if (state.chips.size > 1 && state.reach != ReinventedPulseViewModel.EXPLORE) {
+            ChipsRow(state, onPickChip)
+        }
     }
     if (showsDial) {
         ReinventedReachDial(
@@ -128,7 +134,12 @@ private fun ScopePill(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        val icon = if (state.reach == ReinventedPulseViewModel.CLOSE) PantopusIcon.Users else PantopusIcon.MapPin
+        val icon =
+            when (state.reach) {
+                ReinventedPulseViewModel.CLOSE -> PantopusIcon.Users
+                ReinventedPulseViewModel.EXPLORE -> PantopusIcon.Globe
+                else -> PantopusIcon.MapPin
+            }
         PantopusIconImage(icon = icon, contentDescription = null, size = 16.dp, strokeWidth = 2.2f, tint = PantopusColors.primary600)
         Text(
             text = title,
@@ -147,6 +158,7 @@ private fun ScopePill(
 internal fun scopeTitle(state: ReinventedPulseState): String =
     when (state.reach) {
         ReinventedPulseViewModel.CLOSE -> "Close circle"
+        ReinventedPulseViewModel.EXPLORE -> "Explore"
         else -> state.placeLabel?.let { "$it · ${state.miles} mi" } ?: "Around me"
     }
 

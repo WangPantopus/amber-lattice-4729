@@ -81,6 +81,7 @@ private const val OPEN_ZOOM = 12.5f
 internal fun ReinventedPulseMap(
     state: ReinventedMapState,
     camera: CameraPositionState,
+    focused: String?,
     bottomPadding: Dp,
     onMoved: (ReinventedBox) -> Unit,
     onOpen: (ReinventedMapItem) -> Unit,
@@ -122,7 +123,7 @@ internal fun ReinventedPulseMap(
             contentPadding = PaddingValues(bottom = bottomPadding),
             onMapLoaded = { ready = true },
         )
-        if (ready) ReinventedMapPins(state.drawOrder, camera, onOpen)
+        if (ready) ReinventedMapPins(state.drawOrder, focused, camera, onOpen)
     }
 }
 
@@ -135,6 +136,7 @@ internal fun rememberReinventedCamera(): CameraPositionState =
 @Composable
 private fun ReinventedMapPins(
     items: List<ReinventedMapItem>,
+    focused: String?,
     camera: CameraPositionState,
     onOpen: (ReinventedMapItem) -> Unit,
 ) {
@@ -142,7 +144,15 @@ private fun ReinventedMapPins(
         modifier = Modifier.fillMaxSize(),
         content = {
             items.forEach { item ->
-                key(item.id) { ReinventedMapPin(item, focused = false, modifier = Modifier.clickable(role = Role.Button) { onOpen(item) }) }
+                key(
+                    item.id,
+                ) {
+                    ReinventedMapPin(
+                        item,
+                        focused = item.id == focused,
+                        modifier = Modifier.clickable(role = Role.Button) { onOpen(item) },
+                    )
+                }
             }
         },
     ) { measurables, constraints ->
