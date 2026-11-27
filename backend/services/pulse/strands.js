@@ -23,7 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // The read rule's own columns (readAccess.POST_READ_SELECT: canReadPost needs every one), and what strands use.
 // eslint-disable-next-line global-require
 const POST_SELECT = () => `${require('./readAccess').POST_READ_SELECT}, content, effective_latitude, effective_longitude, `
-  + 'location_precision, story_expires_at, created_at, post_type';
+  + 'location_precision, story_expires_at, created_at, post_type, geocode_place_id';
 
 // eslint-disable-next-line global-require
 const momentStore = () => require('../moments/momentStore');
@@ -46,6 +46,39 @@ function shownPoint(row) {
   }
   // eslint-disable-next-line global-require
   return require('./distanceText').displayedPoint(row);
+}
+
+/** The place a row names, when its author picked one: a Moment's venue, a post's tagged place. */
+function pickedPlaceOf(row) {
+  return row.is_story ? (momentStore().meta(row).venue_id || null) : (row.geocode_place_id || null);
+}
+
+/** Whether a row shows its exact point to everyone: a Moment not shown as an area and not floating. */
+function showsExact(row) {
+  return Boolean(row.is_story) && !momentStore().meta(row).show_area && !row.post_metadata?.area;
+}
+
+/**
+ * Whether two rows are at the same place, judged only on what both show (LEAD-3, the strands-and-areas note): the same
+ * picked place; or both exact and within NEAR_M; or, where either shows only an area, the same area (both points
+ * floored to the area everyone sees, the one area cell or the one floating area). Never their stored exact points.
+ */
+function samePlace(a, b) {
+  const [placeA, placeB] = [pickedPlaceOf(a), pickedPlaceOf(b)];
+  if (placeA && placeA === placeB) return true;
+  if (showsExact(a) && showsExact(b)) {
+    const [from, to] = [shownPoint(a), shownPoint(b)];
+    return Boolean(from && to) && haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude) <= NEAR_M;
+  }
+  const areaA = a.post_metadata?.area?.id || a.post_metadata?.moment?.area?.id || null;
+  const areaB = b.post_metadata?.area?.id || b.post_metadata?.moment?.area?.id || null;
+  if (areaA && areaA === areaB) return true;
+  // The area everyone sees: each point floored as a post's is (distanceText.displayedPoint), so the same cell is the
+  // same point.
+  // eslint-disable-next-line global-require
+  const floor = (row) => require('./distanceText').displayedPoint({ ...row, location_precision: 'approx_area' });
+  const [fa, fb] = [floor(a), floor(b)];
+  return Boolean(fa && fb) && Math.abs(fa.latitude - fb.latitude) < 1e-6 && Math.abs(fa.longitude - fb.longitude) < 1e-6;
 }
 
 /** Whether the row stands: live, not removed or held, not archived; a Moment not ended and not checking. */
@@ -82,11 +115,8 @@ async function strandOf(post, source, kind = 'went') {
   // while the post is still within its look back.
   const liveGuess = (row) => row.is_story && momentGuess().isGuess(row) && !store.hasEnded(row);
   if (liveGuess(source) || liveGuess(post)) return null;
-  // "Went because of you" needs the new post near the marked one; a Retake frame and a pass are their own link.
-  if (kind === 'went') {
-    const [from, to] = [shownPoint(source), shownPoint(post)];
-    if (!from || !to || haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude) > NEAR_M) return null;
-  }
+  // "Went because of you" needs the new post at the marked one's place; a Retake frame and a pass are their own link.
+  if (kind === 'went' && !samePlace(source, post)) return null;
   const [sourceOn, blocked, hiddenBySource, hiddenByFollower, homeA, homeB] = await Promise.all([
     store.reinventedOn(source.user_id),
     blockService.isBlocked(source.user_id, post.user_id),
@@ -320,4 +350,4 @@ async function remove(userId, id) {
   if (!data?.length) throw fail(404, 'STRAND_NOT_FOUND', 'This could not be found.');
 }
 
-module.exports = { findNew, list, markSeen, remove, strandOf, onForAnyone, NEAR_M, WANT_DAYS };
+module.exports = { findNew, list, markSeen, remove, strandOf, samePlace, onForAnyone, NEAR_M, WANT_DAYS };
