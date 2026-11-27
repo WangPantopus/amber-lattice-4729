@@ -797,4 +797,17 @@ router.delete('/places/:id', async (req, res) => {
   }
 });
 
+// ─── Curiosity constellations (CONTRACT 9c) ──────────────────────────────────
+
+const constellations = require('../services/pulse/constellations');
+
+/** POST /constellations — { latitude, longitude } in the body (never kept): Retakes, skies, specimens and answers near. */
+router.post('/constellations', async (req, res) => {
+  try {
+    res.json(await constellations.constellationsFor(req.user, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'constellations');
+  }
+});
+
 module.exports = router;
