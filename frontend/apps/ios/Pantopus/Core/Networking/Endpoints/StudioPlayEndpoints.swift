@@ -19,6 +19,119 @@ public enum StudioPlayEndpoints {
     static func removeDot(postId: String, dot: String) -> Endpoint {
         Endpoint(method: .delete, path: "/api/reinvented/dots/\(part(postId))/\(part(dot))")
     }
+
+    /// `POST /api/reinvented/dots/:id/:dot/card` (CONTRACT 7d): a thing's field card. The first tap makes it (one
+    /// Pantopus AI call); every later one answers the kept card. Route `backend/routes/reinvented.js:271`.
+    static func fieldCard(postId: String, dot: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/reinvented/dots/\(part(postId))/\(part(dot))/card", body: StudioEmptyBody())
+    }
+
+    /// `POST /api/reinvented/dots/:id/:dot/card/correction` (CONTRACT 7d): "Not right?", one per person per card.
+    /// Route `backend/routes/reinvented.js:280`.
+    static func correctCard(postId: String, dot: String, name: String, note: String?) -> Endpoint {
+        Endpoint(
+            method: .post,
+            path: "/api/reinvented/dots/\(part(postId))/\(part(dot))/card/correction",
+            body: FieldCardCorrectionBody(name: name, note: note)
+        )
+    }
+
+    /// `POST` / `DELETE /api/reinvented/dots/:id/:dot/collect` (CONTRACT 7f): keep the card in one's field guide, or let
+    /// it go. Route `backend/routes/reinvented.js:292`.
+    static func collect(postId: String, dot: String, keep: Bool) -> Endpoint {
+        let path = "/api/reinvented/dots/\(part(postId))/\(part(dot))/collect"
+        return keep ? Endpoint(method: .post, path: path, body: StudioEmptyBody()) : Endpoint(method: .delete, path: path)
+    }
+
+    /// `GET /api/reinvented/field-guide?cursor=` (CONTRACT 7f): the reader's own collected cards, newest first.
+    /// Route `backend/routes/reinvented.js:314`.
+    static func fieldGuide(cursor: String?) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "/api/reinvented/field-guide",
+            query: cursor.map { ["cursor": $0] } ?? [:],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+
+    /// `GET /api/reinvented/settings` (CONTRACT 7d): the person's own choices, `pantopus_ai` among them.
+    /// Route `backend/routes/reinvented.js:333`.
+    static let settings = Endpoint(method: .get, path: "/api/reinvented/settings", cachePolicy: .reloadIgnoringLocalCacheData)
+
+    /// `PATCH /api/reinvented/settings` with `{ "pantopus_ai": … }` (CONTRACT 7d). Route `backend/routes/reinvented.js:342`.
+    static func setPantopusAI(_ on: Bool) -> Endpoint {
+        Endpoint(method: .patch, path: "/api/reinvented/settings", body: PantopusAIChoiceBody(pantopusAI: on))
+    }
+}
+
+struct StudioEmptyBody: Encodable {}
+
+struct FieldCardCorrectionBody: Encodable {
+    let name: String
+    let note: String?
+}
+
+struct PantopusAIChoiceBody: Encodable {
+    let pantopusAI: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case pantopusAI = "pantopus_ai"
+    }
+}
+
+/// `{ "card": … }`, a field card's answer.
+struct FieldCardEnvelope: Decodable {
+    let card: MomentFieldCardDTO
+}
+
+/// The person's own choices (CONTRACT 7d): only `pantopus_ai` is read here.
+struct ReinventedChoicesDTO: Decodable {
+    let pantopusAI: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case pantopusAI = "pantopus_ai"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pantopusAI = (try? c.decodeIfPresent(Bool.self, forKey: .pantopusAI)) ?? true
+    }
+}
+
+/// One page of the reader's field guide (CONTRACT 7f).
+struct FieldGuidePageDTO: Decodable {
+    struct Entry: Decodable, Identifiable {
+        let postId: String
+        let dotId: String
+        let collectedAt: String?
+        let card: MomentFieldCardDTO
+        let open: Bool
+
+        var id: String {
+            "\(postId)/\(dotId)"
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case card, open
+            case postId = "post_id"
+            case dotId = "dot_id"
+            case collectedAt = "collected_at"
+        }
+    }
+
+    let cards: [Entry]
+    let nextCursor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case cards
+        case nextCursor = "next_cursor"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cards = (try? c.decodeIfPresent(MomentLenientList<Entry>.self, forKey: .cards))?.items ?? []
+        nextCursor = try? c.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
 }
 
 /// One of phase 2's requests went out and was refused: its status, the contract's code and the server's words.

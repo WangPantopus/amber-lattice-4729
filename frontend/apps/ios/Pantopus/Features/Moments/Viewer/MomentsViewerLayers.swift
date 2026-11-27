@@ -47,7 +47,7 @@ extension MomentsViewerModel {
     /// goes on with a tap.
     var playHolds: Bool {
         guard PulseReinventedFlags.shared.isOn, let moment else { return false }
-        if MomentDotPrompt.shared.open?.momentId == moment.id { return true }
+        if MomentDotPrompt.shared.open?.momentId == moment.id || MomentDotPrompt.shared.guideFrom == moment.id { return true }
         return moment.kind == .photo && moment.layers.beforeAfter != nil
     }
 }
@@ -65,6 +65,8 @@ final class MomentDotPrompt {
 
     var open: Open?
     var removed: Set<String> = []
+    /// The Moment whose collected card opened the reader's field guide over the viewer.
+    var guideFrom: String?
 
     func shown(_ moment: MomentDTO) -> [MomentDotDTO] {
         moment.layers.dots.filter { !removed.contains("\(moment.id)/\($0.id)") }
@@ -135,10 +137,15 @@ struct MomentDotsOverlay: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .position(
                             x: min(max(x, 156), max(geo.size.width - 156, 156)),
-                            y: y > geo.size.height * 0.55 ? y - 96 : y + 96
+                            y: y > geo.size.height * 0.55 ? y - (open.kind == .thing ? 150 : 96) : y + (open.kind == .thing ? 150 : 96)
                         )
                 }
             }
+        }
+        .sheet(isPresented: Binding(get: { prompt.guideFrom == moment.id }, set: { if !$0 { prompt.guideFrom = nil } })) {
+            MomentsFieldGuide { prompt.guideFrom = nil }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 }

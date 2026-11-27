@@ -1,0 +1,119 @@
+//
+//  MomentsFieldGuide.swift
+//  Pantopus
+//
+//  The reader's own field guide ("Pulse, reinvented" phase 2; CONTRACT 7f): the field cards they collected, newest
+//  first, 30 a page. Only the card's words are kept (no picture), so a card stays after the post ends. It is private
+//  to its owner: nobody else sees who collected what. Opened from a collected card in the viewer.
+//
+
+import SwiftUI
+
+struct MomentsFieldGuide: View {
+    let onClose: () -> Void
+    @Environment(\.openURL) private var openURL
+    @State private var entries: [FieldGuidePageDTO.Entry] = []
+    @State private var next: String?
+    @State private var reading = true
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if reading, entries.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel("Loading your field guide")
+                } else if failed, entries.isEmpty {
+                    EmptyState(
+                        icon: .bookmark,
+                        headline: "Your field guide couldn't load",
+                        subcopy: "Check your connection and try again.",
+                        cta: EmptyState.CTA(title: "Try again") { await load(reset: true) }
+                    )
+                } else if entries.isEmpty {
+                    EmptyState(
+                        icon: .bookmark,
+                        headline: "Nothing here yet",
+                        subcopy: "Tap a dot on a thing in someone's photo, then Collect its card."
+                    )
+                } else {
+                    list
+                }
+            }
+            .navigationTitle("Your field guide")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", action: onClose).accessibilityIdentifier("moments.fieldGuide.done")
+                }
+            }
+        }
+        .task { await load(reset: true) }
+        .accessibilityIdentifier("moments.fieldGuide")
+    }
+
+    private var list: some View {
+        List {
+            Section {
+                ForEach(entries) { entry in row(entry) }
+                if next != nil {
+                    Button("Show more") { Task { await load(reset: false) } }
+                        .disabled(reading)
+                        .accessibilityIdentifier("moments.fieldGuide.more")
+                }
+            } footer: {
+                Text("Only you see your field guide. Cards stay here after the post ends.")
+            }
+        }
+    }
+
+    private func row(_ entry: FieldGuidePageDTO.Entry) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            (Text("Likely \(entry.card.name ?? "something")").bold() + Text(entry.card.scientific.map { "  \($0)" } ?? "").italic())
+                .font(.system(size: 16))
+                .foregroundStyle(Theme.Color.appText)
+            Text(entry.card.why)
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+            if let caution = entry.card.caution {
+                Text(caution)
+                    .font(.system(size: 13.5, weight: .bold))
+                    .foregroundStyle(Theme.Color.warningStrong)
+            }
+            if let source = entry.card.source, let url = MomentDotCard.openable(source.url) {
+                Button(source.title) { openURL(url) }
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .buttonStyle(.borderless)
+            }
+        }
+        .padding(.vertical, 4)
+        .swipeActions {
+            Button("Let it go", role: .destructive) { Task { await letGo(entry) } }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.fieldGuide.card")
+    }
+
+    private func load(reset: Bool) async {
+        reading = true
+        failed = false
+        defer { reading = false }
+        do {
+            let page = try await StudioPlayAPI.send(StudioPlayEndpoints.fieldGuide(cursor: reset ? nil : next), as: FieldGuidePageDTO.self)
+            entries = reset ? page.cards : entries + page.cards.filter { card in !entries.contains { $0.id == card.id } }
+            next = page.nextCursor
+        } catch {
+            failed = true
+        }
+    }
+
+    private func letGo(_ entry: FieldGuidePageDTO.Entry) async {
+        do {
+            try await StudioPlayAPI.send(StudioPlayEndpoints.collect(postId: entry.postId, dot: entry.dotId, keep: false))
+            entries.removeAll { $0.id == entry.id }
+        } catch {
+            failed = entries.isEmpty
+        }
+    }
+}

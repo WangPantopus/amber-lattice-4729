@@ -95,7 +95,9 @@ struct MomentDotCard: View {
                 .accessibilityHint("Opens \(url.host() ?? "the site")")
                 .accessibilityIdentifier("moments.viewer.dot.open")
             }
-        case .thing, .whisper, .unknown:
+        case .thing:
+            MomentFieldCardView(moment: moment, dot: dot)
+        case .whisper, .unknown:
             EmptyView()
         }
     }
