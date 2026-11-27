@@ -36,3 +36,34 @@ data class MomentGuessResponse(
     val guess: MomentGuessResultDto? = null,
     val moment: MomentDto? = null,
 )
+
+/**
+ * A live guess-the-spot Moment on the map's read (CONTRACT 5d, `guess_spots`), with no point: who made it, a small
+ * picture, whether the reader guessed, and whether it is today's spot.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentGuessSpotDto(
+    @Json(name = "moment_id") val momentId: String? = null,
+    val author: MomentAuthorDto? = null,
+    val kind: String? = null,
+    @Json(name = "thumb_url") val thumbUrl: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "expires_at") val expiresAt: String? = null,
+    val guessed: Boolean = false,
+    val daily: Boolean = false,
+)
+
+/** Today's spot for a town (CONTRACT 5d): the same for everyone that day, with no storage. */
+@JsonClass(generateAdapter = true)
+data class MomentDailySpotDto(
+    @Json(name = "moment_id") val momentId: String? = null,
+    val town: String? = null,
+    val day: String? = null,
+    val guessed: Boolean = false,
+)
+
+/** `GET /api/moments/daily-spot`: today's spot, or null. */
+@JsonClass(generateAdapter = true)
+data class MomentDailySpotResponse(
+    @Json(name = "daily_spot") val dailySpot: MomentDailySpotDto? = null,
+)

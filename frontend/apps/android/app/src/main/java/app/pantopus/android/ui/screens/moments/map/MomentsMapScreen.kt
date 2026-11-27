@@ -702,6 +702,8 @@ private fun MomentsTopChrome(
             heights = heights,
             modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4, end = Spacing.s4),
         )
+        // "Pulse, reinvented": guess the spot, only while the switch is on and there is one here.
+        MomentsGuessSpotsChip(center = state.center, modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4))
     }
 }
 

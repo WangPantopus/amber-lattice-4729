@@ -1,5 +1,6 @@
 package app.pantopus.android.data.pulse
 
+import app.pantopus.android.data.api.models.moments.MomentDailySpotDto
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentGuessBody
@@ -77,6 +78,19 @@ class StudioRepository
         ): NetworkResult<MomentGuessResponse> =
             safeApiCall { api.guess(momentId, MomentGuessBody(latitude, longitude)) }.also { answer ->
                 if ((answer as? NetworkResult.Failure)?.error?.serverCode == SWITCH_OFF) feature.refusedOff()
+            }
+
+        /** Today's guess-the-spot Moment for the town at this point (CONTRACT 5d), or null. */
+        suspend fun dailySpot(
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<MomentDailySpotDto?> =
+            when (val answer = safeApiCall { api.dailySpot(latitude, longitude) }) {
+                is NetworkResult.Success -> NetworkResult.Success(answer.data.dailySpot?.takeIf { it.momentId != null })
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
+                    answer
+                }
             }
 
         companion object {

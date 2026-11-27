@@ -230,6 +230,8 @@ data class MomentsMapResponse(
      */
     @Json(name = "float_on") val floatOn: Boolean = false,
     val sun: MomentSunDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 5d): live guess-the-spot Moments here, with no point; only for a reader whose switch is on. */
+    @Json(name = "guess_spots") val guessSpots: List<MomentGuessSpotDto>? = null,
     /** The Sky: your own Moments waiting to share later, for your row only; empty while the Sky is off for you. */
     val scheduled: List<MomentDto> = emptyList(),
 )
