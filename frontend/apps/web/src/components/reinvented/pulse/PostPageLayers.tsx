@@ -22,9 +22,10 @@ interface Layers {
 
 /** The post page's picture with its layers, or null for today's. `onOpen` opens a picture full size (today's lightbox). */
 export function usePostPagePicture(post: Post | null | undefined, shown: readonly number[], onOpen: (index: number) => void): ReactNode {
-  const on = usePulseReinvented(!!post).data?.enabled === true;
   const index = shown.length === 1 ? shown[0] : -1;
   const picture = !!post && index >= 0 && !String(post.media_types?.[index] || 'image').startsWith('video');
+  // The switch is read only for a post that could have layers (LEAD-3 09:44).
+  const on = usePulseReinvented(picture).data?.enabled === true;
   const layers = useQuery({
     queryKey: ['reinvented', 'post-layers', post?.id ?? null],
     enabled: on && picture,

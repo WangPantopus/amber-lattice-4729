@@ -1,0 +1,85 @@
+/* The living map (Pulse, reinvented, phase 4, board B4): heights, shadows, lanterns, clouds, beacons, beams and night. */
+
+/* Night falls on the map when it falls there: the map's pictures darken; the pins keep their colours. */
+.rp-leaflet .leaflet-tile-pane {
+  filter: brightness(calc(1 - 0.55 * var(--rp-night, 0))) saturate(calc(1 - 0.35 * var(--rp-night, 0)));
+  transition: filter 1.5s ease;
+}
+.rp-leaflet.leaflet-container {
+  background: color-mix(in srgb, #e6e9ec calc(100% - 70% * var(--rp-night, 0)), #1b2433);
+}
+
+/* A Moment with a height floats at it (lifted by --rp-lift), its shadow on the ground away from the sun. */
+.rp-ring-float,
+.rp-ring-lantern {
+  translate: 0 calc(-1 * var(--rp-lift, 0px));
+}
+.rp-ring-ground {
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+.rp-ring-float .rp-ring-ground {
+  width: 30px;
+  height: 11px;
+  border-radius: 50%;
+  background: #0f172a4d;
+  filter: blur(2px);
+  transform: translate(calc(-50% + var(--rp-sun-x, 0px)), calc(-50% + var(--rp-lift, 0px) + var(--rp-sun-y, 0px)));
+}
+/* After sunset: a lantern on a thread down to its place. */
+.rp-ring-lantern {
+  box-shadow: 0 0 0 2px #fde68a, 0 0 22px 6px #fbbf2499;
+}
+.rp-ring-lantern .rp-ring-ground {
+  width: 2px;
+  height: var(--rp-lift, 0px);
+  background: linear-gradient(#fde68a, #fde68a33);
+  transform: translateX(-50%);
+}
+.rp-ring-height {
+  position: absolute;
+  left: 50%;
+  top: -18px;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #0f172acc;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}
+/* A Moment shown as an area: a soft cloud around it, not a point. */
+.rp-ring-cloud {
+  box-shadow: 0 2px 6px #0004, 0 0 0 8px #ffffff59, 0 0 26px 16px #ffffff73;
+}
+/* Plans glow as beacons. */
+.rp-ticket-beacon {
+  animation: rp-beacon 2.4s ease-in-out infinite;
+}
+@keyframes rp-beacon {
+  0%,
+  100% {
+    box-shadow: 0 2px 8px #0003, 0 0 0 0 #f9731655;
+  }
+  50% {
+    box-shadow: 0 2px 8px #0003, 0 0 0 8px #f9731600;
+  }
+}
+/* Live beams: faint light from each capture to where everyone was looking. */
+.rp-beam {
+  mix-blend-mode: screen;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-ticket-beacon {
+    animation: none;
+    box-shadow: 0 2px 8px #0003, 0 0 0 3px #f9731633;
+  }
+  .rp-leaflet .leaflet-tile-pane {
+    transition: none;
+  }
+}

@@ -29,6 +29,7 @@ import ExploreView from './ExploreView';
 import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import { useLinkedMoment, useLinkedSky } from './momentLinks';
+import { readBeams } from './mapLight';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -171,6 +172,16 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (map.error && isSwitchedOff(map.error)) void reread();
   }, [map.error, reread]);
+  // Live beams in the box (CONTRACT 9h), on the live map only. A server without the route draws none.
+  const beams = useQuery({
+    queryKey: ['reinvented', 'beams', account, box],
+    queryFn: ({ signal }) => readBeams(box!, signal),
+    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && time === 'live',
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    refetchInterval: 2 * 60_000,
+    retry: false,
+  });
   const atlasMap = useQuery({
     queryKey: ['reinvented', 'atlas-box', account, box],
     queryFn: ({ signal }) => readAtlasBox(box!, signal),
@@ -604,6 +615,8 @@ export default function ReinventedPulse() {
           selected={selected}
           onBox={onBox}
           onPick={onPick}
+          float={view === 'pulse' && reach !== 'explore' && !!map.data?.heights_on && !!map.data?.float_on}
+          beams={view === 'pulse' && reach !== 'explore' && time === 'live' ? beams.data?.beams : undefined}
         />
       </div>
       {height === 'map' && <div className="rp-map-top">{head}</div>}
