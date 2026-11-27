@@ -478,9 +478,9 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
     chipsRead || null,
     // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read only
     // leaves them off.
-    postStudio.readerParts(pagePosts, userId).catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map() })),
+    postStudio.readerParts(pagePosts, userId).catch(() => ({ stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map() })),
   ]);
-  const { stamps, play, dots, mentions } = studio;
+  const { stamps, play, dots, mentions, passes } = studio;
   const byId = new Map([...ready, ...moments.map((moment) => [moment.id, moment])]);
   const bandKey = (index) => (index == null ? null : bands[index]?.band ?? null);
   const out = items.map((item) => {
@@ -491,7 +491,9 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
       return { type: 'moment', id: moment.id, band: bandKey(item.bandIndex), ...(moment.kept ? { kept: true } : {}), moment };
     }
     const { distance_meters: _distance, ...post } = item.post;
-    const shown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id), play: play.get(post.id) || [], dots: dots.get(post.id) || [], mentions: mentions?.get(post.id) || [] } : post;
+    const studioShown = stamps.has(post.id) ? { ...post, stamps: stamps.get(post.id), play: play.get(post.id) || [], dots: dots.get(post.id) || [], mentions: mentions?.get(post.id) || [] } : post;
+    // Passing on (CONTRACT 8f): `passed` on an original, `passed_on` on a pass; only where there is one.
+    const shown = passes?.has(post.id) ? { ...studioShown, ...passes.get(post.id) } : studioShown;
     return { type: 'post', id: post.id, band: bandKey(item.bandIndex), post: shown };
   }).filter(Boolean);
   return {

@@ -373,6 +373,8 @@ const createPostSchema = Joi.object({
     dots: Joi.array().max(8).allow(null),
     // Mentions in the caption (CONTRACT 7h), checked by services/pulse/mentions.
     mentions: Joi.array().allow(null),
+    // Passing on (CONTRACT 8f): this quote post passes the quoted post on from where its writer is.
+    passed_on: Joi.boolean(),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
@@ -1146,6 +1148,15 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
         studioParsed = require('../services/pulse/postStudio').parse(req.body.studio, { penName: underPenName, things });
       } catch (studioError) {
         return res.status(400).json({ error: studioError.message, code: 'POST_INVALID' });
+      }
+      // Passing on (CONTRACT 8f): the quoted post must be one that may travel, passed once per person.
+      if (studioParsed.passedOn) {
+        try {
+          studioParsed.passedFrom = await require('../services/pulse/passOn').check(req.user.id, req.body.quotedPostId);
+        } catch (passError) {
+          if (!passError.status) throw passError;
+          return res.status(passError.status).json({ error: passError.message, code: passError.code });
+        }
       }
     }
     // P2.4 / unified-IA §4.1 — defense-in-depth. Persona-context posts
