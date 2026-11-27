@@ -14,6 +14,7 @@ import PlanKindFields, { readKindDetails } from './PlanKindFields';
 import PlanPublicPlace from './PlanPublicPlace';
 import PlanScheduleFields, { readRepeat, readTimes } from './PlanScheduleFields';
 import PlanBusinessFields, { readBusinessFields } from './PlanBusinessFields';
+import { startPlanFromMoment, useMomentPlanSeed, type MomentPlanSeed } from '@/components/reinvented/plan/WantToCome';
 
 const newer: plans.Kind[] = ['food_drinks', 'game_night', 'outdoors', 'something_else'];
 const onlineKinds: plans.Kind[] = [
@@ -33,11 +34,15 @@ export default function PlanForm({
   initial,
   againId,
   samePeople,
+  fromMoment,
 }: {
   initial?: plans.Detail;
   againId?: string;
   samePeople?: boolean;
+  /** Pulse, reinvented "Want to come?" (CONTRACT 6g): the author's own Moment the plan starts from. Unset: today's form. */
+  fromMoment?: string;
 }) {
+  const seed = useMomentPlanSeed(fromMoment);
   const again = useQuery({
     queryKey: ['plans', 'again', againId],
     queryFn: () => plans.detail(againId!),
@@ -62,6 +67,9 @@ export default function PlanForm({
     enabled: !initial && !hostId && !againId && occasionFlag && kindsFlag && privateFlag,
     retry: false,
   });
+  if (fromMoment && !seed.data) {
+    return <p role="status">{seed.isPending ? 'Loading your Moment…' : 'This Moment can’t start a plan.'}</p>;
+  }
   if (
     againId &&
     (!again.data || again.data.viewer.role !== 'host' || again.data.state !== 'ended' || again.data.business)
@@ -74,7 +82,7 @@ export default function PlanForm({
   }
   return (
     <>
-      {!initial && !!choices.data?.businesses.length && (
+      {!initial && !fromMoment && !!choices.data?.businesses.length && (
         <label className="mb-4 block text-sm font-medium">
           Host as
           <select className={fieldClass} value={hostId} onChange={(e) => setHostId(e.target.value)}>
@@ -92,7 +100,7 @@ export default function PlanForm({
           Retry business hosting options
         </button>
       )}
-      {!initial && !hostId && !againId && !!occasions.data?.occasions.length && (
+      {!initial && !hostId && !againId && !fromMoment && !!occasions.data?.occasions.length && (
         <label className={inputLabel}>
           Coming up
           <select
@@ -116,6 +124,7 @@ export default function PlanForm({
         again={again.data}
         samePeople={samePeople}
         occasion={hostId ? undefined : occasion}
+        fromMoment={seed.data}
       />
     </>
   );
@@ -127,12 +136,14 @@ function PlanEditor({
   again,
   samePeople,
   occasion,
+  fromMoment,
 }: {
   initial?: plans.Detail;
   business?: plans.BusinessHost;
   again?: plans.Detail;
   samePeople?: boolean;
   occasion?: plans.Occasion;
+  fromMoment?: MomentPlanSeed;
 }) {
   const [initial] = useState(current);
   const defaults = initial ?? again;
@@ -200,6 +211,8 @@ function PlanEditor({
         needsLocation && (!gps || Date.now() - Date.parse(gps.timestamp) > 240_000)
           ? await refreshGPS()
           : gps;
+      if ('create' in input && fromMoment && !('host_as' in input.create))
+        return startPlanFromMoment(fromMoment.id, { ...input.create, gps: fix ?? undefined });
       if ('create' in input) return plans.create({ ...input.create, gps: fix ?? undefined });
       return plans.edit(initial!.id, { ...input.changes, gps: fix ?? undefined });
     },
@@ -410,7 +423,7 @@ function PlanEditor({
             className={fieldClass}
             name="title"
             maxLength={80}
-            defaultValue={defaults?.title || occasion?.fills.title}
+            defaultValue={defaults?.title || fromMoment?.title || occasion?.fills.title}
             required
           />
         </label>
@@ -507,7 +520,7 @@ function PlanEditor({
               {effectivePlace === 'public' && (
                 <PlanPublicPlace
                   kind={kind}
-                  previous={again?.place_kind === 'public' ? again.place : undefined}
+                  previous={again?.place_kind === 'public' ? again.place : (fromMoment?.place as plans.Detail['place'] | undefined)}
                 />
               )}
               {effectivePlace === 'online' && (
