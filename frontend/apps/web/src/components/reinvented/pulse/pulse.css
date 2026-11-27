@@ -1319,3 +1319,12 @@
   justify-content: center;
   padding: 8px 16px 24px;
 }
+
+/* A Moment its author kept ("Keep this?"): a post that stays, so it takes the bordered look and a status line. */
+.rp-kept .rp-moment {
+  border: 1px solid var(--rp-line);
+}
+.rp-status[data-tone='kept'] {
+  background: #ecfdf5;
+  color: #065f46;
+}

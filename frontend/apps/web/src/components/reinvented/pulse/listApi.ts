@@ -28,7 +28,7 @@ export type ListMoment = Moment & {
 };
 
 export type ListItem =
-  | { type: 'moment'; id: string; band: string | null; moment: ListMoment }
+  | { type: 'moment'; id: string; band: string | null; moment: ListMoment; kept?: boolean }
   | { type: 'post'; id: string; band: string | null; post: Post };
 
 export interface Band {
