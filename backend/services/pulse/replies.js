@@ -55,17 +55,23 @@ function choiceAtPosting(value, { penName }) {
 async function countsFor(rows, viewerId) {
   const showing = await Promise.all(rows.map((row) => shownNow(row)));
   const shown = rows.filter((_, index) => showing[index]);
-  const counts = new Map(shown.map((row) => [row.id, { shown: true, count: 0 }]));
+  const counts = new Map(shown.map((row) => [row.id, { shown: true, count: 0, pins: 0 }]));
   if (!shown.length) return counts;
-  const [{ data, error }, hidden] = await Promise.all([
-    supabaseAdmin.from('PostComment').select('post_id, user_id').in('post_id', shown.map((row) => row.id))
+  const ids = shown.map((row) => row.id);
+  const [{ data, error }, pinRows, hidden] = await Promise.all([
+    supabaseAdmin.from('PostComment').select('id, post_id, user_id').in('post_id', ids)
       .eq('is_deleted', false).eq('moderation_state', 'live').limit(5000),
+    // Pins (CONTRACT 8b) are replies too: which of these replies are pins, read alongside.
+    supabaseAdmin.from('PostPin').select('reply_id').in('post_id', ids).limit(5000),
     play().hiddenPeople(viewerId),
   ]);
   if (error) throw new Error(`Failed to count the replies: ${error.message}`);
+  const pinIds = new Set((pinRows.data || []).map((pin) => pin.reply_id));
   for (const reply of data || []) {
     if (hidden.has(String(reply.user_id))) continue;
-    counts.get(reply.post_id).count += 1;
+    const entry = counts.get(reply.post_id);
+    entry.count += 1;
+    if (pinIds.has(reply.id)) entry.pins += 1;
   }
   return counts;
 }
@@ -73,8 +79,8 @@ async function countsFor(rows, viewerId) {
 /** A Moment's `replies` as a reader gets it (CONTRACT 8a). */
 function repliesOf(row, counts) {
   const store = momentStore();
-  const entry = counts.get(row.id) || { shown: false, count: 0 };
-  return { shown: entry.shown, count: entry.count, can_reply: entry.shown && store.momentState(row) === 'live' };
+  const entry = counts.get(row.id) || { shown: false, count: 0, pins: 0 };
+  return { shown: entry.shown, count: entry.count, pins: entry.pins, can_reply: entry.shown && store.momentState(row) === 'live' };
 }
 
 async function openFor(id, viewerId, liveOnly = true) {
@@ -147,6 +153,10 @@ async function remove(id, replyId, viewerId) {
   if (String(reply.user_id) !== String(viewerId) && !store.isOwn(row, viewerId)) throw fail(404, 'REPLY_NOT_FOUND', 'This reply could not be found.');
   const { error } = await supabaseAdmin.from('PostComment').update({ is_deleted: true }).eq('id', reply.id);
   if (error) throw new Error(`Failed to remove the reply: ${error.message}`);
+  // A pin (CONTRACT 8b) is a reply: its voice or cutout file goes with it, whoever removes it. A failure is left to the
+  // cleanup job, which deletes the files of removed pins.
+  // eslint-disable-next-line global-require
+  await require('./pins').replyRemoved(reply.id).catch((pinError) => logger.warn('moments.pin_file_left', { replyId: reply.id, error: pinError.message }));
   logger.info('moments.reply_shown_removed', { momentId: row.id, by_author: store.isOwn(row, viewerId) });
 }
 
@@ -172,4 +182,4 @@ async function setShown(id, viewerId, shown) {
   return updated;
 }
 
-module.exports = { shownOn, shownNow, choiceAtPosting, countsFor, repliesOf, list, create, remove, report, setShown };
+module.exports = { shownOn, shownNow, choiceAtPosting, countsFor, repliesOf, list, create, remove, report, setShown, openFor };

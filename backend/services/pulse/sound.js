@@ -140,4 +140,18 @@ function soundOf(m, links, show) {
   };
 }
 
-module.exports = { upload, remove, soundKeys, soundOf, KINDS, MAX_BYTES };
+/**
+ * A short voice file checked as a whisper's is (type, first bytes, length up to 3.5 s, size): { type, ext, durationMs }.
+ * For a voice bubble pinned on a picture (CONTRACT 8b).
+ */
+function checkShortVoice(file, sentMs) {
+  if (!file?.buffer?.length) throw invalid('Send the sound as "file".');
+  const type = String(file.mimetype || '').toLowerCase().split(';')[0];
+  if (![...MP4_TYPES, ...WEB_TYPES].includes(type)) throw invalid('Send the sound as M4A (or WebM or Ogg from a browser).');
+  if (file.buffer.length > MAX_BYTES.whisper) throw momentStore().fail(413, 'MEDIA_TOO_LARGE', 'This sound is too large to post.');
+  const durationMs = lengthOf(file, type, sentMs);
+  if (durationMs > MAX_MS.whisper + TOLERANCE_MS) throw invalid('This sound can be up to three seconds.');
+  return { type, ext: EXT[type], durationMs };
+}
+
+module.exports = { upload, remove, soundKeys, soundOf, checkShortVoice, KINDS, MAX_BYTES };
