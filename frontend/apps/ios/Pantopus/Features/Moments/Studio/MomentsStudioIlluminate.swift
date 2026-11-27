@@ -49,6 +49,7 @@ struct MomentsStudioIlluminate: View {
                     hint("Close this and drag each dot onto what it's about.")
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s5)
             .padding(.bottom, Spacing.s4)
