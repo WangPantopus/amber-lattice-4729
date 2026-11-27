@@ -323,52 +323,73 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
   }, [pins, float, sun, lit]);
 
   // Listen to the town: a small mark at each place sound; moving across the map plays the nearest one, louder nearer,
-  // one at a time, and stops when the pointer leaves it. Nothing plays until the reader turned Listen on.
+  // one at a time, and stops when the pointer leaves it. On a phone, where nothing moves without a finger down, a tap on
+  // a mark (drawn as a badge at the top right of its Moment's pin, above the pins) or near it plays that sound once, and
+  // a second tap stops it. Nothing plays until the reader turned Listen on.
   useEffect(() => {
     const map = mapRef.current;
     const layer = soundRef.current;
     if (!map || !layer) return undefined;
     layer.clearLayers();
     if (!sounds?.length) return undefined;
-    for (const s of sounds)
-      L.marker([s.latitude, s.longitude], {
-        icon: L.divIcon({ html: '<span class="rp-sound" aria-hidden="true">♪</span>', className: 'rp-leaflet-icon', iconSize: [26, 26], iconAnchor: [13, 13] }),
-        interactive: false,
-        keyboard: false,
-      }).addTo(layer);
-    let playing: { id: string; audio: HTMLAudioElement } | null = null;
+    let playing: { id: string; audio: HTMLAudioElement; tapped?: boolean } | null = null;
     const stop = () => {
       playing?.audio.pause();
       playing = null;
       ref.current?.removeAttribute('data-hearing');
     };
-    const hear = (e: L.LeafletMouseEvent) => {
+    const play = (s: PlaceSound, tapped: boolean, volume = 1) => {
+      stop();
+      const audio = new Audio(s.url);
+      audio.volume = volume;
+      audio.loop = !tapped;
+      playing = { id: s.moment_id, audio, tapped };
+      if (tapped) audio.addEventListener('ended', () => playing?.audio === audio && stop());
+      ref.current?.setAttribute('data-hearing', s.moment_id);
+      // A sound refused, or cut off by the next one starting, stops only itself.
+      void audio.play().catch(() => playing?.audio === audio && stop());
+    };
+    const tapOn = (s: PlaceSound) => (playing?.tapped && playing.id === s.moment_id ? stop() : play(s, true));
+    for (const s of sounds)
+      L.marker([s.latitude, s.longitude], {
+        icon: L.divIcon({ html: '<span class="rp-sound" aria-hidden="true">♪</span>', className: 'rp-leaflet-icon', iconSize: [26, 26], iconAnchor: [-6, 32] }),
+        title: 'Hear this place',
+        // Above every pin, lit ones included (they go up to 4000), so a tap on the badge always reaches it.
+        zIndexOffset: 5000,
+        keyboard: true,
+      })
+        .on('click', () => tapOn(s))
+        .addTo(layer);
+    const nearest = (at: L.Point) => {
       let best: { s: PlaceSound; d: number } | null = null;
       for (const s of sounds) {
-        const p = map.latLngToContainerPoint([s.latitude, s.longitude]);
-        const d = p.distanceTo(e.containerPoint);
+        const d = map.latLngToContainerPoint([s.latitude, s.longitude]).distanceTo(at);
         if (d <= HEAR_PX && (!best || d < best.d)) best = { s, d };
       }
+      return best;
+    };
+    const hear = (e: L.LeafletMouseEvent) => {
+      const best = nearest(e.containerPoint);
       if (!best) return stop();
       const volume = Math.max(0.15, 1 - best.d / HEAR_PX);
       if (playing?.id === best.s.moment_id) {
         playing.audio.volume = volume;
         return undefined;
       }
-      stop();
-      const audio = new Audio(best.s.url);
-      audio.volume = volume;
-      audio.loop = true;
-      playing = { id: best.s.moment_id, audio };
-      ref.current?.setAttribute('data-hearing', best.s.moment_id);
-      void audio.play().catch(() => stop());
+      play(best.s, false, volume);
       return undefined;
+    };
+    const tap = (e: L.LeafletMouseEvent) => {
+      const best = nearest(e.containerPoint);
+      return best ? tapOn(best.s) : stop();
     };
     map.on('mousemove', hear);
     map.on('mouseout', stop);
+    map.on('click', tap);
     return () => {
       map.off('mousemove', hear);
       map.off('mouseout', stop);
+      map.off('click', tap);
       stop();
     };
   }, [sounds]);

@@ -658,7 +658,7 @@ export default function ReinventedPulse() {
           {listening && (
             <small role="status">
               {sounds.data?.sounds.length
-                ? 'Put on headphones and move across the map: you hear the sounds people kept here.'
+                ? 'Put on headphones and move across the map, or tap a ♪: you hear the sounds people kept here.'
                 : sounds.isFetching
                   ? 'Finding sounds…'
                   : 'No sounds kept here. Move the map.'}
