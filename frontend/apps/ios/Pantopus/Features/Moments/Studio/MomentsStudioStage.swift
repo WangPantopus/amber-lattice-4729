@@ -84,6 +84,8 @@ struct MomentsStudioStage: View {
                 MomentsStudioPicture(model: model)
                     .overlay { legibility }
                     .clipped()
+                // Cutouts (step 4): a long press lifts one; under the stamps.
+                MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.
                 MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
             }

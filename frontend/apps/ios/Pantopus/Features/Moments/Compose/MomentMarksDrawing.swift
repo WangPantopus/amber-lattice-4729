@@ -28,10 +28,10 @@ enum MomentMarksDrawing {
         defer { context.restoreGState() }
         context.setLineCap(.round)
         context.setLineJoin(.round)
-        // The Studio's lines (a highlighter, an arrow, an eraser, an ink from the photo): `+Studio`.
-        if marks.strokes.contains(where: \.isStudio) {
-            drawStudio(marks.strokes, in: context, size: size)
-            return drawLabels(marks.labels, in: context, size: size, aspect: aspect ?? size.width / size.height)
+        // The Studio's lines (a highlighter, an arrow, an eraser, an ink from the photo) and words behind the subject:
+        // `+Studio`.
+        if marks.isStudio {
+            return drawStudio(marks, in: context, size: size, aspect: aspect ?? size.width / size.height)
         }
         for stroke in marks.strokes where !stroke.points.isEmpty {
             // The signature pen's smoothing: curves through the points, a dot for a tap.
