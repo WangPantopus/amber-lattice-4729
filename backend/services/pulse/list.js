@@ -295,12 +295,27 @@ async function listFor(userId, {
     const sortedRead = momentsRead.then((entries) => entries.map((entry) => momentItem(entry)).sort(newerFirst));
     // The Moments this page can hold are made ready while the posts are read (at most `limit`, the next in order).
     const readyRead = prepare(userId, sortedRead.then((all) => all.filter((item) => below(item.key, from?.mark ?? null)).slice(0, limit)));
+    // The page's first posts read starts now, beside the Moments' reads, not after them (the opening time, LEAD-3 09:22),
+    // and so do the Studio parts of the people's posts (the page reads by id only what that can't cover).
+    const firstCursor = from?.posts ?? null;
+    const firstRead = readPosts && firstCursor !== 'done' ? readPosts(firstCursor, limit) : null;
+    firstRead?.catch(() => {});
+    let firstUsed = false;
+    const readPostsEarly = readPosts && ((at, size) => {
+      if (!firstUsed && firstRead && at === firstCursor && size === limit) {
+        firstUsed = true;
+        return firstRead;
+      }
+      return readPosts(at, size);
+    });
+    const studioByPeople = shape.posts ? connectionsRead.then((ids) => postStudio.partsByPeople([String(userId), ...ids])) : null;
+    studioByPeople?.catch(() => {});
     const part = await partPage({
-      readPosts, moments: await sortedRead, posts: from?.posts ?? null, mark: from?.mark ?? null, room: limit,
+      readPosts: readPostsEarly, moments: await sortedRead, posts: firstCursor, mark: from?.mark ?? null, room: limit,
     });
     if (chipsFromReads) chipsRead = chipsFromPage(chipContext, seen, complete);
     return answer({
-      userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items, recentPasses,
+      userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items, recentPasses, studioInBox: studioByPeople,
       next: part.done ? null : { b: 0, p: part.posts, m: part.mark, ...(circle ? { ci: circle } : {}) },
     });
   }
