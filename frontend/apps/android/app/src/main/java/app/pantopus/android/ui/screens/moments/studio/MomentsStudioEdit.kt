@@ -152,6 +152,15 @@ private class EditDraft(
     val firstStamps = moment.stamps.orEmpty().mapNotNull { it.placement }
     var caption by mutableStateOf(moment.caption.orEmpty())
     var stamps by mutableStateOf(firstStamps)
+
+    // Mentions (CONTRACT 7h): who the caption names now; none under a made-up name.
+    private val madeUp = moment.author.madeUpName
+    private val firstMentions = moment.mentions.orEmpty().mapNotNull { m -> m.name?.let { StudioMention(m.id, it) } }
+    var mentions by mutableStateOf(firstMentions)
+
+    /** The ids whose "@Name" is still in the caption. */
+    private fun named(): List<String> =
+        if (madeUp) emptyList() else mentions.filter { "@${it.name}" in caption }.map { it.id }.distinct().take(5)
     var audience by mutableStateOf(moment.audience)
     var picked by mutableStateOf<String?>(null)
     var tray by mutableStateOf(false)
@@ -162,7 +171,12 @@ private class EditDraft(
 
     private val firstAudience = moment.audience
 
-    val changed: Boolean get() = caption.trim() != firstCaption || stamps != firstStamps || audience != firstAudience
+    val changed: Boolean
+        get() = caption.trim() != firstCaption || stamps != firstStamps || audience != firstAudience || mentionsChanged
+
+    private val firstNamed: List<String> = firstMentions.map { it.id }
+
+    private val mentionsChanged: Boolean get() = named() != firstNamed
 
     /** Only what changed: the caption ("" clears it), the whole stamps list, who sees it. */
     fun body(): MomentEditBody =
@@ -170,6 +184,7 @@ private class EditDraft(
             caption = caption.trim().takeIf { it != firstCaption },
             stamps = stamps.takeIf { it != firstStamps },
             audience = audience.takeIf { it != firstAudience },
+            mentions = named().takeIf { mentionsChanged },
         )
 }
 
@@ -361,6 +376,16 @@ private fun EditBottom(
             )
             Spacer(Modifier.height(Spacing.s3))
         }
+        // After "@" at the end of the caption: the author's connections (none under a made-up name).
+        StudioMentionRow(
+            caption = draft.caption,
+            madeUp = moment.author.madeUpName,
+            onPick = { person ->
+                draft.caption = captionWithMention(draft.caption, person).take(100)
+                draft.mentions = (draft.mentions + person).distinctBy { it.id }
+            },
+            modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s2),
+        )
         StudioCaption(
             caption = draft.caption,
             enabled = !draft.saving,
