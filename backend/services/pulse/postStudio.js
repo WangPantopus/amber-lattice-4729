@@ -29,7 +29,7 @@ const EXPLORE_TYPES = ['recommendation', 'local_update', 'event', 'share'];
  * (momentStamps) or a `taken_at` that isn't a date. `takenAt`: a picture from the library (CONTRACT 6d), null for one
  * taken now.
  */
-function parse(studio) {
+function parse(studio, { penName = false } = {}) {
   const takenAt = studio?.taken_at == null || studio.taken_at === '' ? null : String(studio.taken_at);
   if (takenAt && !Number.isFinite(Date.parse(takenAt))) throw new Error('taken_at must be a date.');
   const fix = studio?.fix && typeof studio.fix === 'object' ? studio.fix : null;
@@ -38,6 +38,9 @@ function parse(studio) {
     explore: studio?.explore === true,
     // Playable items (CONTRACT 7b); a malformed list throws, answered 400 POST_INVALID.
     play: play.parseItems(studio?.play),
+    // Dots on the picture (CONTRACT 7c); no link under a made-up name. The Studio uploads a post's photo after making
+    // the post, so a thing's photo is looked for when its field card is asked for (7d), not here.
+    dots: play.parseDots(studio?.dots, { media: true, photo: true, penName }),
     takenAt,
     takenHere: studio?.taken_here === true,
     fix: fix && Number.isFinite(Number(fix.latitude)) && Number.isFinite(Number(fix.longitude))
@@ -94,6 +97,7 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     // The home rules, checked again on every read (momentStamps.valueOf): nothing kept says more than they allow.
     guard: { at_home: atHome, pen_name: Boolean(underPenName), placed },
     ...(parsed.play?.length ? { play: parsed.play } : {}),
+    ...(parsed.dots?.length ? { dots: parsed.dots } : {}),
     ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
   };
 }
@@ -119,12 +123,12 @@ async function stampsFor(posts) {
 }
 
 /**
- * The shown stamps and the playable items of each of these posts that the Studio made, for `viewerId` (CONTRACT 6d,
- * 7b): { stamps, play }, each by post id. The answers are read alongside the post's own row, never after the page.
+ * The shown stamps, the playable items and the dots of each of these posts that the Studio made, for `viewerId`
+ * (CONTRACT 6d, 7b, 7c): { stamps, play, dots }, each by post id. The answers are read alongside the post's own row, never after the page.
  */
 async function readerParts(posts, viewerId) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
-  if (!ids.length) return { stamps: new Map(), play: new Map() };
+  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map() };
   const [{ data, error }, answers] = await Promise.all([
     supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
     play.answersOn(ids).catch(() => null),
@@ -132,6 +136,7 @@ async function readerParts(posts, viewerId) {
   if (error) throw new Error(`Failed to load the posts' stamps: ${error.message}`);
   const rows = data || [];
   const stamps = new Map(rows.map((row) => [row.post_id, shownOf(row.studio)]));
+  const dots = new Map(rows.map((row) => [row.post_id, play.dotsFor(row.studio?.dots, row.studio?.cards)]));
   const byId = new Map((posts || []).map((post) => [post.id, post]));
   const withItems = rows.filter((row) => row.studio?.play?.length).map((row) => ({
     id: row.post_id,
@@ -140,7 +145,7 @@ async function readerParts(posts, viewerId) {
     own: String(byId.get(row.post_id)?.user_id) === String(viewerId),
     open: true,
   }));
-  return { stamps, play: answers ? await play.playFor(withItems, viewerId, { answers }) : new Map() };
+  return { stamps, dots, play: answers ? await play.playFor(withItems, viewerId, { answers }) : new Map() };
 }
 
 /**

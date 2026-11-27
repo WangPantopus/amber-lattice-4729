@@ -121,6 +121,82 @@ function wordsOf(items) {
   ]).filter((word) => typeof word === 'string' && word.trim());
 }
 
+// ─── Dots: living objects (CONTRACT 7c) ─────────────────────────────────────
+
+const DOT_KINDS = ['note', 'rating', 'link', 'thing'];
+const MAX_DOTS = 8;
+const dotPlace = {
+  id: placement.id,
+  x: placement.x,
+  y: placement.y,
+};
+const unit = Joi.number().min(0).max(1);
+const DOT_SCHEMAS = {
+  note: Joi.object({ ...dotPlace, kind: Joi.string(), text: line(140).required() }),
+  rating: Joi.object({ ...dotPlace, kind: Joi.string(), label: line(40).required(), stars: Joi.number().integer().min(1).max(5).required() }),
+  link: Joi.object({
+    ...dotPlace,
+    kind: Joi.string(),
+    url: Joi.string().trim().max(500).uri({ scheme: ['https'] }).required(),
+    title: Joi.string().trim().max(60).allow('', null),
+  }),
+  thing: Joi.object({
+    ...dotPlace,
+    kind: Joi.string(),
+    box: Joi.object({ x: unit.required(), y: unit.required(), w: unit.greater(0).required(), h: unit.greater(0).required() }).required(),
+    label: Joi.string().trim().max(40).allow('', null),
+  }),
+};
+
+/**
+ * The dots in `value` as stored, or throws an Error whose message says what is wrong (the caller answers 400 with its
+ * own code). `photo`: the post's picture is a photo (a `thing` needs one); `media`: it has a picture at all; `penName`:
+ * under a made-up name (no links). Null or missing: [].
+ */
+function parseDots(value, { photo = false, media = false, penName = false } = {}) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new Error('dots must be a list.');
+  if (!value.length) return [];
+  if (!media) throw new Error('Dots go on a photo or a video.');
+  if (value.length > MAX_DOTS) throw new Error(`dots holds at most ${MAX_DOTS}.`);
+  const seen = new Set();
+  return value.map((raw, index) => {
+    if (raw?.kind === 'whisper') throw new Error(`dots[${index}]: a voice whisper can't be posted yet.`);
+    const schema = DOT_SCHEMAS[raw?.kind];
+    if (!schema) throw new Error(`dots[${index}]: kind must be one of ${DOT_KINDS.join(', ')}.`);
+    const { error, value: dot } = schema.validate(raw, { abortEarly: true, stripUnknown: true });
+    if (error) throw new Error(`dots[${index}]: ${error.details[0].message.replace(/"/g, '')}`);
+    if (seen.has(dot.id)) throw new Error(`dots[${index}]: each dot needs its own id.`);
+    seen.add(dot.id);
+    if (dot.kind === 'link' && penName) throw new Error("A made-up name can't post a link.");
+    if (dot.kind === 'thing' && !photo) throw new Error(`dots[${index}]: a thing to name needs a photo.`);
+    const stored = { ...dot, kind: raw.kind, x: round(dot.x, 4), y: round(dot.y, 4) };
+    if (dot.kind === 'thing') {
+      const box = { x: round(dot.box.x, 4), y: round(dot.box.y, 4), w: round(dot.box.w, 4), h: round(dot.box.h, 4) };
+      stored.box = { ...box, w: Math.min(box.w, 1 - box.x) || box.w, h: Math.min(box.h, 1 - box.y) || box.h };
+      stored.label = dot.label || null;
+    }
+    if (dot.kind === 'link') stored.title = dot.title || null;
+    return stored;
+  });
+}
+
+/** Every word an author typed in these dots, for the made-up-name words check. */
+function wordsOfDots(dots) {
+  return (dots || []).flatMap((dot) => [dot.text, dot.label, dot.title]).filter((word) => typeof word === 'string' && word.trim());
+}
+
+/** The dots as a reader gets them: as placed, a `thing` with its kept field card (7d) or null. */
+function dotsFor(dots, cards = {}) {
+  return (dots || []).map((dot) => (dot.kind === 'thing' ? { ...dot, card: cards?.[dot.id] ? shownCard(cards[dot.id]) : null } : dot));
+}
+
+/** A kept field card as every reader sees it (7d); the reader's own correction is added by the card route. */
+function shownCard(card) {
+  const { v: _v, model: _model, ...shown } = card || {};
+  return { ...shown, corrections: Number(card?.corrections) || 0, my_correction: null };
+}
+
 // ─── A reader's answer ──────────────────────────────────────────────────────
 
 const ANSWER_SCHEMAS = {
@@ -336,9 +412,12 @@ async function reach(id, viewerId) {
       if (openError.status === 404) throw notFound();
       throw openError;
     }
+    const m = moment.post_metadata?.moment || {};
     return {
       id,
-      items: moment.post_metadata?.moment?.play || [],
+      items: m.play || [],
+      dots: m.dots || [],
+      cards: m.cards || {},
       own: store.isOwn(moment, viewerId),
       open: store.momentState(moment) === 'live',
       moment,
@@ -351,7 +430,8 @@ async function reach(id, viewerId) {
   ]);
   if (!readable) throw notFound();
   if (studio.error) throw new Error(`Failed to load the post's items: ${studio.error.message}`);
-  return { id, items: studio.data?.studio?.play || [], own, open: true, moment: null };
+  const kept = studio.data?.studio || {};
+  return { id, items: kept.play || [], dots: kept.dots || [], cards: kept.cards || {}, own, open: true, moment: null, studio: studio.data ? kept : null };
 }
 
 /**
@@ -376,11 +456,40 @@ async function itemAnswer(target, item, viewerId) {
   return map.get(target.id)[0];
 }
 
-/** GET /play/:id — the post's items for this reader. */
+/** GET /play/:id — the post's items and dots for this reader. */
 async function playOf(id, viewerId) {
   const target = await reach(id, viewerId);
   const map = await playFor([{ id: target.id, items: target.items, own: target.own, open: target.open }], viewerId);
-  return { play: map.get(target.id) || [] };
+  return { play: map.get(target.id) || [], dots: dotsFor(target.dots, target.cards) };
+}
+
+/**
+ * Writes what the server keeps with a post after posting (its dots, its field cards) through `change`, a function from
+ * the kept part (a Moment's post_metadata.moment, a post's PostStudio.studio) to the parts that change.
+ */
+async function keepWith(target, change) {
+  if (target.moment) {
+    const store = momentStore();
+    const updated = await store.updateMoment(target.moment, { moment: change(target.moment.post_metadata?.moment || {}) });
+    if (!updated) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
+    return;
+  }
+  if (!target.studio) throw notFound();
+  const next = { ...target.studio, ...change(target.studio) };
+  const { error } = await supabaseAdmin.from('PostStudio').update({ studio: next }).eq('post_id', target.id);
+  if (error) throw new Error(`Failed to keep the change: ${error.message}`);
+}
+
+/** DELETE /dots/:id/:dot — the author removes one dot (and its field card) from their post. */
+async function removeDot(id, dotId, viewerId) {
+  const target = await reach(id, viewerId);
+  if (!target.own || !target.dots.some((dot) => dot.id === dotId)) throw notFound();
+  if (target.moment && !target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
+  await keepWith(target, (kept) => {
+    const { [dotId]: _gone, ...cards } = kept.cards || {};
+    return { dots: (kept.dots || []).filter((dot) => dot.id !== dotId), cards };
+  });
+  logger.info('play.dot_removed', { postId: id, moment: Boolean(target.moment) });
 }
 
 /** PUT /play/:id/:item — the reader's answer (CONTRACT 7b). A guess is one try: a second answers the first again. */
@@ -452,5 +561,6 @@ async function removeAnswer(id, itemId, answerId, viewerId) {
 }
 
 module.exports = {
-  KINDS, MAX_ITEMS, parseItems, wordsOf, parseAnswer, itemFor, playFor, answersOn, playOf, answer, takeBack, authorAnswers, removeAnswer,
+  KINDS, MAX_ITEMS, parseItems, wordsOf, parseAnswer, itemFor, playFor, answersOn,
+  DOT_KINDS, MAX_DOTS, parseDots, wordsOfDots, dotsFor, shownCard, removeDot, reach, keepWith, playOf, answer, takeBack, authorAnswers, removeAnswer,
 };
