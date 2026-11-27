@@ -747,12 +747,16 @@ async function othersMoment(req) {
 /**
  * PUT /:id/reaction — { emoji } (one of the post reactions) or { emoji: null } to take it back. With `pulse_reinvented`
  * on for the caller it also takes { signal } (one of the five signals, or null), and the answer adds `my_signal`;
- * `my_reaction` stays the emoji (a signal's nearest one), as every other answer says it.
+ * `my_reaction` stays the emoji (a signal's nearest one), as every other answer says it. A signal sent while the
+ * switch is off: 403 PULSE_REINVENTED_OFF.
  */
 router.put('/:id/reaction', actionLimiter, async (req, res) => {
   try {
     const reinvented = await store.reinventedOn(req.user);
-    const bySignal = reinvented && Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal');
+    const sentSignal = Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal');
+    // A signal from a person whose switch is off: the Studio-only answer, so their app goes back to today's screens.
+    if (sentSignal && !reinvented) throw store.reinventedOff();
+    const bySignal = reinvented && sentSignal;
     const raw = bySignal ? req.body.signal : req.body?.emoji;
     const emoji = raw === null ? null : bySignal ? normalizePostSignal(raw) : normalizePostReaction(raw);
     if (raw !== null && !emoji) {

@@ -3806,9 +3806,14 @@ router.post('/:id/like', verifyToken, async (req, res) => {
     const userId = req.user.id;
     // `reaction` sets the viewer's emoji (utils/postReaction.js) or, as null, takes it away. An emoji the apps don't
     // offer is refused before anything is read. `signal` (Pulse, reinvented: one of the five signals, or null) does the
-    // same for a viewer with the switch on; with it off the field is ignored, as before.
-    const bySignal = Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal')
-      && await reinventedFor(userId);
+    // same for a viewer with the switch on; with it off, the Studio-only answer (403 PULSE_REINVENTED_OFF), so the app
+    // goes back to today's screens. Today's apps never send it.
+    const sentSignal = Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'signal');
+    const bySignal = sentSignal && await reinventedFor(userId);
+    if (sentSignal && !bySignal) {
+      const { REINVENTED_OFF } = require('../services/moments/momentStore');
+      return res.status(REINVENTED_OFF.status).json({ error: REINVENTED_OFF.message, code: REINVENTED_OFF.code });
+    }
     const setsReaction = bySignal || (Boolean(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'reaction'));
     const sent = bySignal ? req.body.signal : req.body?.reaction;
     const reaction = setsReaction && sent !== null ? (bySignal ? normalizePostSignal(sent) : normalizePostReaction(sent)) : null;
