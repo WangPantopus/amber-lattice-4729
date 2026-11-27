@@ -37,11 +37,16 @@ struct MomentPinsOverlay: View {
                             .accessibilityHidden(true)
                     }
                     if let card = cardKind {
+                        // Beside its pin or spot, as a dot's card sits (above it in the lower half, below it in the
+                        // upper), so the Moment's own caption at the bottom never covers it.
+                        let anchor = anchor(card, in: frame)
                         cardView(card)
                             .frame(width: min(geo.size.width - 32, 320))
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxHeight: .infinity, alignment: .bottom)
-                            .padding(.bottom, 96)
+                            .position(
+                                x: min(max(anchor.x, 176), max(geo.size.width - 176, 176)),
+                                y: anchor.y > geo.size.height * 0.55 ? anchor.y - 110 : anchor.y + 110
+                            )
                     }
                 }
             }
@@ -101,6 +106,17 @@ struct MomentPinsOverlay: View {
         if store.dropping == moment.id, store.spot != nil { return .drop }
         if let open = store.open, let pin = store.pins[moment.id]?.first(where: { $0.id == open }) { return .pin(pin) }
         return nil
+    }
+
+    /// The point on screen the card belongs to: the chosen spot, or the open pin.
+    private func anchor(_ card: Card, in frame: CGRect) -> CGPoint {
+        switch card {
+        case .drop:
+            let spot = store.spot ?? CGPoint(x: 0.5, y: 0.5)
+            return CGPoint(x: frame.minX + spot.x * frame.width, y: frame.minY + spot.y * frame.height)
+        case let .pin(pin):
+            return CGPoint(x: frame.minX + pin.x * frame.width, y: frame.minY + pin.y * frame.height)
+        }
     }
 
     private func cardView(_ card: Card) -> some View {
