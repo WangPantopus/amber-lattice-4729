@@ -367,7 +367,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -554,6 +554,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(play.length ? { play } : {}),
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
+        // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
+        ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Explore (CONTRACT 6f): "Also show in Explore", kept only for a Moment with a place, to people nearby, not at
         // home and not under a made-up name (dropped anywhere else, never an error), with the town it is in.
         ...(req.body?.explore === true && !unplaced && body.audience === 'nearby' && !studioAtHome && !underPenName
