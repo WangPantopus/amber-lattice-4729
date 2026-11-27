@@ -18,7 +18,7 @@ import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import { colors } from '@/components/moments/momentState';
 import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
 import type { Pin } from './pins';
-import { liftOf, nightOf, shadowOf, sunPosition, type Beam, type Sun } from './mapLight';
+import { liftOf, nightOf, shadowOf, sunPosition, type Beam, type PlaceSound, type Sun } from './mapLight';
 import type { Lit } from './AskTheMap';
 import './sky.css';
 
@@ -48,7 +48,12 @@ interface Props {
   beams?: Beam[];
   /** Ask the map (CONTRACT 9b): these pins light up with the words they matched; the rest dim. */
   lit?: Lit | null;
+  /** Listen to the town (CONTRACT 9g): the place sounds in view, heard by moving across the map. */
+  sounds?: PlaceSound[] | null;
 }
+
+// How near, in pixels, the pointer must come to a place sound to hear it; it is louder nearer.
+const HEAR_PX = 80;
 
 /** What the sky does to a ring: its height and the sun over the map. */
 interface Sky {
@@ -189,11 +194,12 @@ function coveredInsets(mapEl: HTMLElement | null): { top: number; bottom: number
   return { top, bottom };
 }
 
-export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick, float = false, beams, lit = null }: Props) {
+export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick, float = false, beams, lit = null, sounds = null }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const beamRef = useRef<L.LayerGroup | null>(null);
+  const soundRef = useRef<L.LayerGroup | null>(null);
   // The sun over the map's centre, read again as the map moves and every minute.
   const [sun, setSun] = useState<Sun | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
@@ -213,6 +219,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
         .addTo(map);
     L.control.zoom({ position: 'topright' }).addTo(map);
     beamRef.current = L.layerGroup().addTo(map);
+    soundRef.current = L.layerGroup().addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     const light = () => {
@@ -249,6 +256,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
       mapRef.current = null;
       layerRef.current = null;
       beamRef.current = null;
+      soundRef.current = null;
     };
   }, []);
 
@@ -313,6 +321,57 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
       marker.addTo(layer);
     }
   }, [pins, float, sun, lit]);
+
+  // Listen to the town: a small mark at each place sound; moving across the map plays the nearest one, louder nearer,
+  // one at a time, and stops when the pointer leaves it. Nothing plays until the reader turned Listen on.
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = soundRef.current;
+    if (!map || !layer) return undefined;
+    layer.clearLayers();
+    if (!sounds?.length) return undefined;
+    for (const s of sounds)
+      L.marker([s.latitude, s.longitude], {
+        icon: L.divIcon({ html: '<span class="rp-sound" aria-hidden="true">♪</span>', className: 'rp-leaflet-icon', iconSize: [26, 26], iconAnchor: [13, 13] }),
+        interactive: false,
+        keyboard: false,
+      }).addTo(layer);
+    let playing: { id: string; audio: HTMLAudioElement } | null = null;
+    const stop = () => {
+      playing?.audio.pause();
+      playing = null;
+      ref.current?.removeAttribute('data-hearing');
+    };
+    const hear = (e: L.LeafletMouseEvent) => {
+      let best: { s: PlaceSound; d: number } | null = null;
+      for (const s of sounds) {
+        const p = map.latLngToContainerPoint([s.latitude, s.longitude]);
+        const d = p.distanceTo(e.containerPoint);
+        if (d <= HEAR_PX && (!best || d < best.d)) best = { s, d };
+      }
+      if (!best) return stop();
+      const volume = Math.max(0.15, 1 - best.d / HEAR_PX);
+      if (playing?.id === best.s.moment_id) {
+        playing.audio.volume = volume;
+        return undefined;
+      }
+      stop();
+      const audio = new Audio(best.s.url);
+      audio.volume = volume;
+      audio.loop = true;
+      playing = { id: best.s.moment_id, audio };
+      ref.current?.setAttribute('data-hearing', best.s.moment_id);
+      void audio.play().catch(() => stop());
+      return undefined;
+    };
+    map.on('mousemove', hear);
+    map.on('mouseout', stop);
+    return () => {
+      map.off('mousemove', hear);
+      map.off('mouseout', stop);
+      stop();
+    };
+  }, [sounds]);
 
   // Live beams: a faint line from each capture to where they all looked, and a glow there. Not tappable.
   useEffect(() => {

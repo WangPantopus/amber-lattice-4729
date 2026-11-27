@@ -83,3 +83,58 @@
     transition: none;
   }
 }
+
+/* Listen to the town (CONTRACT 9g): a mark at each place sound, and the toggle under the map's search. */
+.rp-sound {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #0f172acc;
+  color: #fde68a;
+  font-size: 14px;
+  box-shadow: 0 0 0 2px #fde68a66;
+}
+[data-hearing] .rp-sound {
+  animation: rp-sound 1.2s ease-in-out infinite;
+}
+@keyframes rp-sound {
+  50% {
+    box-shadow: 0 0 0 8px #fde68a00;
+  }
+}
+.rp-listen {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.rp-listen button {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--rp-line);
+  border-radius: 999px;
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rp-listen button[aria-pressed='true'] {
+  border-color: #b45309;
+  background: #fef3c7;
+  color: #78350f;
+}
+.rp-listen small {
+  color: var(--rp-muted);
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-hearing] .rp-sound {
+    animation: none;
+  }
+}
