@@ -26,6 +26,7 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
+const eyesOn = require('../services/pulse/eyesOn');
 const mentions = require('../services/pulse/mentions');
 
 /** The mentions kept on a new Moment (CONTRACT 7h), as the Moment's own field: { mentions } or nothing. */
@@ -378,7 +379,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'eyes_on_for'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -538,6 +539,12 @@ router.post('/', createLimiter, async (req, res) => {
     // Made at home, or from a pin moved off where the author stood at home (a failed home read counts as home).
     const studioAtHome = atHome || (!unplaced && !markHomeClear);
     if (guess && studioAtHome) throw store.fail(422, 'GUESS_AT_HOME', "Guess the spot can't be at your home.");
+    // Eyes on (CONTRACT 8f): an answer is a photo taken there now, never from the answerer's home.
+    const eyesOnFor = studio && req.body?.eyes_on_for != null
+      ? await eyesOn.checkAnswer(req.user.id, req.body.eyes_on_for, {
+        kind: body.kind, source: body.location.source, latitude: body.location.latitude, longitude: body.location.longitude, atHome: studioAtHome,
+      })
+      : null;
     if (studio) {
       // The values every stamp shows, read by the server now (never from the phone), at the point everyone sees. One
       // made at home, or from a pin moved off where the author stood at home, says no weather, height or distance.
@@ -568,6 +575,7 @@ router.post('/', createLimiter, async (req, res) => {
         ...(play.length ? { play } : {}),
         ...(dots.length ? { dots } : {}),
         ...(deck ? { deck } : {}),
+        ...(eyesOnFor ? { eyes_on_for: eyesOnFor } : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.

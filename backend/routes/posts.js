@@ -373,6 +373,8 @@ const createPostSchema = Joi.object({
     dots: Joi.array().max(8).allow(null),
     // Mentions in the caption (CONTRACT 7h), checked by services/pulse/mentions.
     mentions: Joi.array().allow(null),
+    // Eyes on (CONTRACT 8f): an Ask that people there now answer with a Live photo.
+    eyes_on: Joi.boolean(),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {

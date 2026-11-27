@@ -529,4 +529,17 @@ router.patch('/circles/:id', contentCreationLimiter, circleRoute((req) => circle
 router.delete('/circles/:id', circleRoute(async (req) => { await circles.remove(req.user.id, req.params.id); return null; }, 'circle_remove'));
 router.get('/circles/:id/magazine', circleRoute((req) => circles.magazine(req.user.id, req.params.id, req.query.week || null, req.query.tz || null), 'circle_magazine'));
 
+// ─── Eyes on (CONTRACT 8f) ──────────────────────────────────────────────────
+
+const eyesOn = require('../services/pulse/eyesOn');
+
+/** POST /eyes-on/near — { latitude, longitude } in the body (never in the address, never kept): open Eyes-on Asks near you. */
+router.post('/eyes-on/near', async (req, res) => {
+  try {
+    res.json(await eyesOn.near(req.user.id, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'eyes_on');
+  }
+});
+
 module.exports = router;
