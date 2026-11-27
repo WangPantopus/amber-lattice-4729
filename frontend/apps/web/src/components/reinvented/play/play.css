@@ -558,3 +558,106 @@
   border: 0;
   background: none;
 }
+
+/* Before and after (BeforeAfter.tsx, §7g): one half over the other, a curtain between them. */
+.pl-ba {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pl-ba-half {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+}
+.pl-ba-label {
+  position: absolute;
+  top: 10px;
+  max-width: 42%;
+  overflow: hidden;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(12, 18, 24, 0.62);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: opacity 0.15s;
+}
+.pl-ba-label[data-side='before'] {
+  left: 10px;
+}
+.pl-ba-label[data-side='after'] {
+  right: 10px;
+}
+/* The curtain: a 44px strip to grab, its line drawn in the middle, the knob halfway down. */
+.pl-ba-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44px;
+  margin-left: -22px;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.pl-ba[data-still] .pl-ba-line {
+  pointer-events: none;
+}
+.pl-ba-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 21px;
+  width: 2px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
+}
+.pl-ba-line i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgba(12, 18, 24, 0.55);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+.pl-ba-line i::before {
+  content: '‹ ›';
+  display: block;
+  color: #fff;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 30px;
+  text-align: center;
+}
+.pl-ba-line:focus-visible {
+  outline: none;
+}
+.pl-ba-line:focus-visible i {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
+/* A row in the list: the split stays in the middle, its words on either side of it, where any crop of the row keeps them. */
+.pl-ba[data-still] .pl-ba-label {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.pl-ba[data-still] .pl-ba-label[data-side='before'] {
+  left: auto;
+  right: calc(50% + 8px);
+}
+.pl-ba[data-still] .pl-ba-label[data-side='after'] {
+  right: auto;
+  left: calc(50% + 8px);
+}

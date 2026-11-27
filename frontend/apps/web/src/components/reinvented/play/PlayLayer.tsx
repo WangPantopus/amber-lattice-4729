@@ -20,7 +20,9 @@ type PlayMoment = Moment & { play?: PlayItem[] };
 
 /** The viewer holds still while the reader has an item left to answer (the author never: theirs are closed to them). */
 export function holdsForPlay(m: Moment): boolean {
-  return waitingItems((m as PlayMoment).play).length > 0 || fogged.has(m.id);
+  const play = (m as PlayMoment).play;
+  // A before and after holds too: the reader compares at their own pace and goes on when they choose.
+  return waitingItems(play).length > 0 || fogged.has(m.id) || (m.kind === 'photo' && !!play?.some((p) => p.kind === 'before_after'));
 }
 
 // Moments whose fog the reader hasn't wiped yet: the viewer holds still on them.
@@ -105,7 +107,7 @@ export default function PlayLayer({ moment, post = false }: { moment: Moment; po
           />
         ) : null,
       )}
-      {play.filter((item) => item.kind !== 'fog').map((item) => (
+      {play.filter((item) => item.kind !== 'fog' && item.kind !== 'before_after').map((item) => (
         <div
           key={item.id}
           className="pl-item"
@@ -199,6 +201,16 @@ export function Card({
       );
     case 'swatch':
       return <Swatch item={item} trying={null} onTry={() => {}} />;
+    case 'before_after':
+      // Only the Studio draws it as a card (readers get the curtain over the whole picture instead).
+      return (
+        <div className="pl-card">
+          <p className="pl-q">Before and after</p>
+          <p className="pl-foot">
+            {item.before || 'Before'} · {item.after || 'After'}. Readers drag a curtain between your two photos.
+          </p>
+        </div>
+      );
     default:
       return null;
   }

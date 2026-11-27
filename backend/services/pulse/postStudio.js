@@ -41,6 +41,8 @@ function parse(studio, { penName = false, things = true } = {}) {
     play: play.parseItems(studio?.play),
     // Mentions in the caption (CONTRACT 7h): who is kept is decided in studioFor, once the post's audience is known.
     mentions: mentions.parse(studio?.mentions),
+    // Passing on (CONTRACT 8f): checked by passOn.check in the route, which sets `passedFrom`.
+    passedOn: studio?.passed_on === true,
     // Eyes on (CONTRACT 8f): kept for an Ask with a place, not at home (studioFor).
     eyesOn: studio?.eyes_on === true,
     // Dots on the picture (CONTRACT 7c); no link under a made-up name. The Studio uploads a post's photo after making
@@ -113,6 +115,7 @@ async function studioFor({ userId, row, parsed, underPenName = false }) {
     ...(parsed.dots?.length ? { dots: parsed.dots } : {}),
     ...(explore ? { explore: { v: 1, town: town && town !== momentPlace.FALLBACK_LABEL ? town : null } } : {}),
     ...(mentioned.length ? { mentions: mentioned } : {}),
+    ...(parsed.passedFrom ? { passed_on: { v: 1, from: parsed.passedFrom } } : {}),
     // eslint-disable-next-line global-require
     ...require('./eyesOn').keptFor({ wanted: parsed.eyesOn, row, atHome }),
   };
@@ -187,7 +190,7 @@ async function stampsFor(posts) {
  */
 async function readerParts(posts, viewerId) {
   const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
-  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), eyes: new Map() };
+  if (!ids.length) return { stamps: new Map(), play: new Map(), dots: new Map(), mentions: new Map(), passes: new Map(), eyes: new Map() };
   const [{ data, error }, answers] = await Promise.all([
     supabaseAdmin.from('PostStudio').select('post_id, studio').in('post_id', ids),
     play.answersOn(ids).catch(() => null),
@@ -204,16 +207,20 @@ async function readerParts(posts, viewerId) {
     own: String(byId.get(row.post_id)?.user_id) === String(viewerId),
     open: true,
   }));
-  const [played, mentioned, eyes] = await Promise.all([
+  const studios = new Map(rows.map((row) => [row.post_id, row.studio || {}]));
+  const [played, mentioned, passes, eyes] = await Promise.all([
     answers ? play.playFor(withItems, viewerId, { answers }) : new Map(),
     // Mentions (CONTRACT 7h), without people hidden from this reader.
     mentions.shownFor(rows.map((row) => ({ id: row.post_id, list: row.studio?.mentions })), viewerId, (row) => row.list)
       .catch(() => new Map()),
+    // Passing on (CONTRACT 8f): who carried these posts, and what a pass carries.
+    // eslint-disable-next-line global-require
+    require('./passOn').partsFor(posts, viewerId, studios).catch(() => new Map()),
     // Eyes on (CONTRACT 8f): whether the Ask is open and how many answered.
     // eslint-disable-next-line global-require
-    require('./eyesOn').partsFor(new Map(rows.map((row) => [row.post_id, row.studio || {}]))).catch(() => new Map()),
+    require('./eyesOn').partsFor(studios).catch(() => new Map()),
   ]);
-  return { stamps, dots, play: played, mentions: mentioned, eyes };
+  return { stamps, dots, play: played, mentions: mentioned, passes, eyes };
 }
 
 /**

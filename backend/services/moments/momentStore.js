@@ -536,7 +536,7 @@ function briefOf(row, seen) {
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
   heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false,
-  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null }) {
+  keptPosts = false, keepOffer = false, plan = null, play = null, decks = new Map(), replyCounts = new Map(), mentioned = null, retakes = null }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -626,6 +626,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       deck: stepDeck.deckOf(m, decks, row.user_id),
       // Replies people can see (CONTRACT 8a): shown or not, how many this reader may see, and whether they may reply.
       replies: shownReplies.repliesOf(row, replyCounts),
+      // Retake (CONTRACT 8e): the Retake this Moment starts or joined, as this reader may see it; null for any other.
+      retake: retakes?.get(row.id) || null,
       // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
       mentions: mentioned?.get(row.id) || [],
     } : {}),
@@ -704,7 +706,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     heightsOn(viewerId),
     reinventedOn(viewerId),
   ]);
-  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned] = reinvented
+  const [signals, guesses, offers, plans, plays, decks, replyCounts, mentioned, retakes] = reinvented
     ? await Promise.all([
       signalCountsFor(ownIds), momentGuess.guessesFor(rows, viewerId),
       keepOffers(rows.filter((r) => isOwn(r, viewerId))), planRead,
@@ -718,8 +720,10 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
       shownReplies.countsFor(rows, viewerId).catch(() => new Map()),
       // Mentions (CONTRACT 7h): one read of the people, only when a row mentions anyone.
       require('../pulse/mentions').shownFor(rows, viewerId, (r) => meta(r).mentions).catch(() => new Map()),
+      // Retake (CONTRACT 8e): one read of the starts and frames, only when a row is part of one.
+      rows.some((r) => meta(r).retake) ? require('../pulse/retake').summariesFor(rows, viewerId).catch(() => new Map()) : new Map(),
     ])
-    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map()];
+    : [new Map(), new Map(), new Set(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()];
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
     viewerId,
@@ -740,6 +744,7 @@ async function serializeMoments(rows, viewerId, { keptEnded = false, keptPosts =
     decks,
     replyCounts,
     mentioned,
+    retakes,
   }));
 }
 
