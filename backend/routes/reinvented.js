@@ -858,4 +858,36 @@ router.get('/echoes', async (req, res) => {
   }
 });
 
+// ─── Homes talk to homes (CONTRACT 9f) ───────────────────────────────────────
+
+const homeWindows = require('../services/pulse/windows');
+
+/** GET /windows — the windows members of the reader's circles show them; lit when that member shared today. */
+router.get('/windows', async (req, res) => {
+  try {
+    res.json(await homeWindows.windowsFor(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'windows');
+  }
+});
+
+// ─── Listen to the town (CONTRACT 9g) ────────────────────────────────────────
+
+const townSounds = require('../services/pulse/sounds');
+
+/** GET /sounds — the map's box and time: the place sounds there, kept for people nearby. */
+router.get('/sounds', async (req, res) => {
+  try {
+    const { error, value } = mapSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'SOUNDS_INVALID' });
+    const { time, zoom: _zoom, ...box } = value;
+    if (box.south >= box.north || box.west >= box.east) {
+      return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'SOUNDS_INVALID' });
+    }
+    return res.json(await townSounds.soundsIn(req.user, box, { time }));
+  } catch (error) {
+    return sendError(res, error, 'sounds');
+  }
+});
+
 module.exports = router;
