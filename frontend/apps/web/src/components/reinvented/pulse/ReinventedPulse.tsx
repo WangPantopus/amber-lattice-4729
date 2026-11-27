@@ -27,6 +27,7 @@ import { explorePins, keptPins, pinsOf, roundBox, type Pin } from './pins';
 import ExploreView from './ExploreView';
 import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
+import { useLinkedMoment } from './momentLinks';
 import ReachDial from './ReachDial';
 import '@/components/moments/moments.css';
 import './pulse.css';
@@ -302,6 +303,9 @@ export default function ReinventedPulse() {
   // ── Moments ──
   const momentIds = useMemo(() => items.filter((it) => it.type === 'moment').map((it) => it.id), [items]);
   const openMoment = useCallback((id: string) => setViewing({ id, ids: momentIds.includes(id) ? momentIds : [id] }), [momentIds]);
+  // A Moment's link (`/app/moments/<id>`, a notice, a share) arrives here as `?moment=<id>` and opens in the viewer.
+  const openLinked = useCallback((id: string) => setViewing({ id, ids: [id] }), []);
+  useLinkedMoment(openLinked);
   const openExplored = useCallback(
     (id: string) => {
       const ids = exploreMoments.map((m) => m.id);
