@@ -179,6 +179,8 @@ data class MomentDto(
     val plan: MomentPlanDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8a): replies people can see on it, for a reader whose switch is on; else null. */
     val replies: MomentRepliesStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 7h): the people its caption mentions, for a reader whose switch is on; else null. */
+    val mentions: List<MomentAuthorDto>? = null,
 )
 
 /**
