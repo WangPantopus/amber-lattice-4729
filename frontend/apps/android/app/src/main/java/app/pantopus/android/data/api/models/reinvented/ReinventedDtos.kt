@@ -134,3 +134,9 @@ data class ReinventedAtlasResponse(
     @Lossy val moments: List<MomentDto> = emptyList(),
     @Json(name = "next_cursor") val nextCursor: String? = null,
 )
+
+/** `POST /api/reinvented/moments/:id/keep` (CONTRACT 6d): the author's one answer to "Keep this?". */
+@JsonClass(generateAdapter = true)
+data class ReinventedKeepBody(
+    val keep: Boolean,
+)

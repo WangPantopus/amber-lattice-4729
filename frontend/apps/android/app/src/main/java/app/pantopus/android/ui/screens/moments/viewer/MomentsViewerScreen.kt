@@ -145,6 +145,8 @@ import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.feed.pulseReportReasons
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentKeepThis
+import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
@@ -263,7 +265,8 @@ fun MomentsViewerScreen(
     val touched = handling || holding || typing || reacting
     val paused =
         touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
-            editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true)
+            editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true) ||
+            (studio && moment?.keepWaits(mine) == true)
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -767,6 +770,7 @@ fun MomentsViewerScreen(
                     MomentMetaPills(moment = shown, modifier = Modifier.padding(start = 58.dp, top = 2.dp, end = 12.dp))
                     // "Pulse, reinvented": guess the spot.
                     if (studio) MomentGuessPill(shown, mine, onOpen = { guessing = true }, Modifier.padding(start = 58.dp, top = 6.dp))
+                    if (studio) MomentKeepThis(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp, end = 12.dp))
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way

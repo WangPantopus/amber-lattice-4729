@@ -1,12 +1,16 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -86,6 +90,16 @@ interface ReinventedApi {
     suspend fun deleteForGood(
         @Path("id") id: String,
     )
+
+    /**
+     * `POST /api/reinvented/moments/:id/keep` (CONTRACT 6d): the author answers "Keep this?" once; answers the Moment.
+     * Route `backend/routes/reinvented.js` (moments/:id/keep).
+     */
+    @POST("api/reinvented/moments/{id}/keep")
+    suspend fun keep(
+        @Path("id") id: String,
+        @Body body: ReinventedKeepBody,
+    ): MomentEnvelope
 
     companion object {
         /** Moments on a page of My Atlas. */

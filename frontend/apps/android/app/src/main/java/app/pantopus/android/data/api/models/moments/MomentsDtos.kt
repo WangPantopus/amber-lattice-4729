@@ -171,6 +171,8 @@ data class MomentDto(
     @Json(name = "stamp_choices") val stampChoices: Map<String, MomentStampValueDto?>? = null,
     /** "Pulse, reinvented" (CONTRACT 5b): a guess-the-spot Moment's guesses, for a reader whose switch is on; else null. */
     val guess: MomentGuessStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 6d): "Keep this?" is offered on the author's own Moment; false from today's server. */
+    @Json(name = "keep_offer") val keepOffer: Boolean = false,
 )
 
 /**
