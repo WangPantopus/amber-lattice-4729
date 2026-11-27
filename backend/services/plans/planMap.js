@@ -34,8 +34,11 @@ function inBox(point, box) {
  * @param {{ south: number, west: number, north: number, east: number }} box
  * @param {object} query  the request's query: kinds, window, latitude/longitude (where the viewer is),
  *                        gps_latitude/gps_longitude/gps_timestamp
+ * @param {object} [options]  `businessPlans` (Pulse, reinvented only; unset everywhere else): an async function
+ *                        given the business plans the viewer may see, answering the Set of their ids to keep. The
+ *                        others are dropped before a venue's plans fold, so a kept later plan isn't hidden.
  */
-async function planPins(user, box, query = {}) {
+async function planPins(user, box, query = {}, { businessPlans = null } = {}) {
   if (!(await isFeatureEnabled('plans', user))) return [];
   const lat = num(query.latitude);
   const lng = num(query.longitude);
@@ -70,8 +73,13 @@ async function planPins(user, box, query = {}) {
     // The viewer's own private plans (host, invited, in or waiting): pins for them alone.
     planService.ownPrivatePlans(viewer, { kinds, online: false }),
   ]);
-  const rows = [...publicRows.filter((plan) => planService.isVisibleTo(plan, viewer)), ...ownPrivate]
+  let rows = [...publicRows.filter((plan) => planService.isVisibleTo(plan, viewer)), ...ownPrivate]
     .filter((plan) => !rules.isOnline(plan));
+  if (businessPlans) {
+    const theirs = rows.filter((plan) => plan.business_user_id);
+    const kept = theirs.length ? await businessPlans(theirs) : new Set();
+    rows = rows.filter((plan) => !plan.business_user_id || kept.has(plan.post_id));
+  }
   // One pin for a venue: a business's later plans there fold under its soonest (the list does the same), and
   // the list's filter (host=all|neighbors|businesses) filters the pins too.
   const wanted = viewer.biz ? planService.hostFilter(query.host) : 'all';
