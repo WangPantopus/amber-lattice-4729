@@ -17,6 +17,7 @@ import { colors, messageOf } from '@/components/moments/momentState';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type ShownStamp, type StampKind } from '../stamps/stampTypes';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import { isRouteGone, markServerBehind } from '../serverBehind';
 import { afterEdit } from './saved';
 import '../studio/studio.css';
 import './edit.css';
@@ -166,7 +167,11 @@ export default function MomentEdit({
       const code = (e as { code?: string } | null)?.code;
       // The switch went off: nothing changed on the Moment; the viewer goes back to today's once the switch is read.
       if (isSwitchedOff(e)) setWentOff(true);
-      else if (code === 'MOMENT_EDIT_CLOSED') timeUp();
+      // A server older than this website has no edit: the same, and today's screens until it catches up.
+      else if (isRouteGone(e)) {
+        markServerBehind();
+        setWentOff(true);
+      } else if (code === 'MOMENT_EDIT_CLOSED') timeUp();
       else if (code === 'MOMENT_ENDED') {
         // The viewer reads it again and says it ended, in today's words.
         void client.invalidateQueries({ queryKey: ['moments', 'watch', account, moment.id] });

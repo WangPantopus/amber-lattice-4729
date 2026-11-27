@@ -9,6 +9,7 @@ import { MapPin } from 'lucide-react';
 import { get } from '@pantopus/api/client';
 import type { Author, Kind, MapResult, Point } from '@pantopus/api/endpoints/moments';
 import { timeAgo } from '@/components/moments/momentState';
+import { useBackWhenMissing } from '../serverBehind';
 import './spots.css';
 
 interface Spot {
@@ -49,6 +50,8 @@ export default function GuessSpots({
     staleTime: 5 * 60_000,
     retry: false,
   });
+  // An older server has no today's spot (it reads the path as one Moment's id and answers 404).
+  useBackWhenMissing(daily.error);
   if (!on) return null;
   const today = daily.data?.daily_spot || null;
   const list = [...spots].sort((a, b) => Number(b.daily) - Number(a.daily));

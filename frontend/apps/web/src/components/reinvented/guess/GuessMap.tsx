@@ -16,6 +16,7 @@ import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { messageOf } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
+import { isRouteGone, markServerBehind } from '../serverBehind';
 import './guess.css';
 
 /** Where the guess map opens: where the reader's Moments map was last, else a wide view. */
@@ -96,6 +97,10 @@ export default function GuessMap({
         onClose();
       } else if (code === 'MOMENT_ENDED' || code === 'MOMENT_NOT_FOUND') {
         void client.invalidateQueries({ queryKey: ['moments', 'watch', account, moment.id] });
+        onClose();
+      } else if (isRouteGone(e)) {
+        // A server older than this website: today's screens until it catches up.
+        markServerBehind();
         onClose();
       } else setError(messageOf(e, 'Couldn’t send your guess. Try again.'));
     } finally {
