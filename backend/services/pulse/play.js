@@ -528,12 +528,15 @@ async function takeBack(id, itemId, viewerId) {
 /** GET /play/:id/:item/answers — the question box's answers or a board's notes, for the author only, newest first. */
 async function authorAnswers(id, itemId, viewerId, cursor) {
   const target = await reach(id, viewerId);
-  const item = itemOf(target, itemId);
-  if (!target.own || !['question', 'board'].includes(item.kind)) throw notFound();
+  // A thing dot's field card corrections ("Not right?", CONTRACT 7d) are read here too.
+  const thing = target.dots.find((dot) => dot.id === itemId && dot.kind === 'thing');
+  const item = thing ? { id: thing.id, kind: 'correction' } : itemOf(target, itemId);
+  if (!target.own || !['question', 'board', 'correction'].includes(item.kind)) throw notFound();
   const offset = Math.max(0, Number.parseInt(cursor || '0', 10) || 0);
   let query = supabaseAdmin.from('PostAnswer').select('id, user_id, value, updated_at')
     .eq('post_id', id).eq('item', item.id).order('updated_at', { ascending: false }).range(offset, offset + AUTHOR_PAGE);
   if (item.kind === 'board') query = query.not('value->>note', 'is', null);
+  if (item.kind === 'correction') query = query.eq('kind', 'correction');
   const { data, error } = await query;
   if (error) throw new Error(`Failed to load the answers: ${error.message}`);
   const rows = (data || []).slice(0, AUTHOR_PAGE);
@@ -541,7 +544,9 @@ async function authorAnswers(id, itemId, viewerId, cursor) {
   return {
     answers: rows.map((row) => ({
       id: row.id,
-      ...(item.kind === 'question' ? { text: row.value?.text || '' } : { note: row.value?.note || '' }),
+      ...(item.kind === 'question' ? { text: row.value?.text || '' }
+        : item.kind === 'correction' ? { name: row.value?.name || '', note: row.value?.note || null }
+          : { note: row.value?.note || '' }),
       at: row.updated_at,
       person: personOf(row.user_id, people),
     })),

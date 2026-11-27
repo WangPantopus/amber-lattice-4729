@@ -14,6 +14,7 @@ const explore = require('../services/pulse/explore');
 const keep = require('../services/pulse/keep');
 const wantToCome = require('../services/pulse/wantToCome');
 const play = require('../services/pulse/play');
+const fieldCard = require('../services/pulse/fieldCard');
 const planActions = require('../services/plans/planActions');
 const requireFeatureFlag = require('../middleware/requireFeatureFlag');
 const { contentCreationLimiter } = require('../middleware/rateLimiter');
@@ -259,6 +260,27 @@ router.delete('/dots/:id/:dot', async (req, res) => {
     res.status(204).end();
   } catch (error) {
     sendError(res, error, 'dot_remove');
+  }
+});
+
+// ─── Field cards (CONTRACT 7d) ──────────────────────────────────────────────
+
+/** POST /dots/:id/:dot/card — a thing's field card: the kept one, or made now with one Pantopus AI call and kept. */
+router.post('/dots/:id/:dot/card', contentCreationLimiter, async (req, res) => {
+  try {
+    res.json(await fieldCard.cardFor(req.params.id, req.params.dot, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'field_card');
+  }
+});
+
+/** POST /dots/:id/:dot/card/correction — "Not right?": { name, note }. */
+router.post('/dots/:id/:dot/card/correction', contentCreationLimiter, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    res.json(await fieldCard.correct(req.params.id, req.params.dot, req.user.id, body));
+  } catch (error) {
+    sendError(res, error, 'field_card_correction');
   }
 });
 
