@@ -58,7 +58,8 @@ final class TogetherStudio {
         var fields = TogetherCreateFields()
         switch context {
         case let .retakeFrame(startId, _, _):
-            fields.retakeOf = startId
+            // Only a photo joins a Retake; a text card or a video posts as an ordinary Moment.
+            if case .photo = model.draft { fields.retakeOf = startId }
         case nil:
             let title = String(retakeTitle.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
             if startsRetake, !title.isEmpty, model.offersRetake { fields.retake = .init(title: title) }
@@ -72,6 +73,12 @@ extension MomentsComposerModel {
     /// keys where this Studio chose some (`TogetherCreate`).
     func createEndpoint(_ body: MomentCreateBody, part: Int) -> Endpoint {
         TogetherCreate.endpoint(body, part: part, from: self)
+    }
+
+    /// The Studio holds a photo (a Retake's frame, an Eyes-on answer and a Retake's start are photos).
+    var isPhoto: Bool {
+        if case .photo = draft { return true }
+        return false
     }
 
     /// "Start a Retake" may be chosen (8e): one photo with an exact place, taken now, away from home, under the person's

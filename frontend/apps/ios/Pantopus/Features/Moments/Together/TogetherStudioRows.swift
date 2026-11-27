@@ -18,7 +18,7 @@ struct TogetherStudioRows: View {
         if flags.isOn {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 if case let .retakeFrame(_, title, ghost) = together.context {
-                    addingRow(title: title, hasGhost: ghost != nil)
+                    addingRow(title: title, hasGhost: ghost != nil, photo: model.isPhoto)
                 } else if model.offersRetake {
                     retakeRow
                 }
@@ -28,12 +28,14 @@ struct TogetherStudioRows: View {
     }
 
     /// "Adding to “The cedar bench”", and the first picture shown or hidden.
-    private func addingRow(title: String, hasGhost: Bool) -> some View {
+    private func addingRow(title: String, hasGhost: Bool, photo: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Adding to “\(title)”")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)
-            Text("Stand where the first picture was taken. Your frame joins the Retake and stays.")
+            Text(photo
+                ? "Stand where the first picture was taken. Your frame joins the Retake and stays."
+                : "Only a photo joins the Retake. This posts as an ordinary Moment.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
