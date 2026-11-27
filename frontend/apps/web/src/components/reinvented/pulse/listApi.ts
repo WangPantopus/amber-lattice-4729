@@ -2,7 +2,7 @@
 // by reach, for a reader whose switch is on. Shapes as the server sends them. A post here carries no distance: the only
 // distance anywhere in this list is its band.
 
-import { get } from '@pantopus/api/client';
+import { del, get } from '@pantopus/api/client';
 import type { Post } from '@pantopus/api';
 import type { Moment, Ring } from '@pantopus/api/endpoints/moments';
 import type { ShownStamp } from '../stamps/stampTypes';
@@ -180,4 +180,24 @@ export function startsIn(t: MapTicket, now: number): string {
   if (!Number.isFinite(start) || start <= now) return 'Now';
   const minutes = Math.ceil((start - now) / 60_000);
   return minutes < 60 ? `in ${minutes} min` : `in ${Math.round(minutes / 60)} h`;
+}
+
+// ── My Atlas (coord/CONTRACT.md §6e): the person's own kept Moments, private to them ──
+
+export interface AtlasPage {
+  moments: ListMoment[];
+  next_cursor?: string | null;
+}
+
+export function readAtlas(cursor: string | null, signal?: AbortSignal): Promise<AtlasPage> {
+  return get<AtlasPage>('/api/reinvented/atlas', cursor ? { cursor, limit: 30 } : { limit: 30 }, { signal });
+}
+
+export function readAtlasBox(box: Box, signal?: AbortSignal): Promise<AtlasPage> {
+  return get<AtlasPage>('/api/reinvented/atlas', box, { signal });
+}
+
+/** Delete for good: ends it if live, removes its files at once, and it leaves the Atlas. */
+export function deleteForGood(id: string): Promise<unknown> {
+  return del(`/api/reinvented/atlas/${encodeURIComponent(id)}`);
 }

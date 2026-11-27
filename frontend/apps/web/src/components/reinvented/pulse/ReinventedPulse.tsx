@@ -18,12 +18,13 @@ import { useMyHomeCenter } from '@/lib/myHomes';
 import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostReactions';
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
-import { CHIP_WORDS, isChip, readList, readMap, readStrip, type Box, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
+import { CHIP_WORDS, isChip, readAtlasBox, readList, readMap, readStrip, type Box, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
 import { PeekDeck, TimeRow } from './MapDeck';
-import { pinsOf, roundBox, type Pin } from './pins';
+import { keptPins, pinsOf, roundBox, type Pin } from './pins';
+import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import ReachDial from './ReachDial';
 import '@/components/moments/moments.css';
@@ -56,6 +57,9 @@ export default function ReinventedPulse() {
   const [time, setTime] = useState<MapTime>('live');
   const [box, setBox] = useState<Box | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // Pulse, or My Atlas (the switch's third choice): the person's own kept Moments in the list's place and on the map.
+  const [view, setView] = useState<'pulse' | 'atlas'>('pulse');
+  const [atlasItem, setAtlasItem] = useState<ListMoment | null>(null);
   const [fly, setFly] = useState<FlyTarget | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
   const closeDial = useCallback(() => setScopeOpen(false), []);
@@ -101,7 +105,7 @@ export default function ReinventedPulse() {
   const map = useQuery({
     queryKey: ['reinvented', 'map', account, time, box],
     queryFn: ({ signal }) => readMap(box!, time, signal),
-    enabled: !!account && !!box,
+    enabled: !!account && !!box && view === 'pulse',
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
@@ -109,7 +113,15 @@ export default function ReinventedPulse() {
   useEffect(() => {
     if (map.error && isSwitchedOff(map.error)) void reread();
   }, [map.error, reread]);
-  const pins = useMemo(() => pinsOf(map.data), [map.data]);
+  const atlasMap = useQuery({
+    queryKey: ['reinvented', 'atlas-box', account, box],
+    queryFn: ({ signal }) => readAtlasBox(box!, signal),
+    enabled: !!account && !!box && view === 'atlas',
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: (count, error) => !isSwitchedOff(error) && count < 1,
+  });
+  const pins = useMemo(() => (view === 'atlas' ? keptPins(atlasMap.data?.moments) : pinsOf(map.data)), [view, atlasMap.data, map.data]);
   // Alive right now (CONTRACT §6c), over the list; it follows the list's first page like the map.
   const strip = useQuery({
     queryKey: ['reinvented', 'strip', account, point?.latitude ?? null, point?.longitude ?? null],
@@ -266,7 +278,8 @@ export default function ReinventedPulse() {
   // ── The map's pins and the peek deck ──
   const openPin = useCallback(
     (pin: Pin) => {
-      if (pin.type === 'ring') {
+      if (pin.type === 'kept') setAtlasItem(pin.moment);
+      else if (pin.type === 'ring') {
         const ids = pin.ring.moments.map((m) => m.id);
         if (!ids.length) return;
         const start = pin.ring.moments.find((m) => !m.seen)?.id || ids[0];
@@ -310,7 +323,19 @@ export default function ReinventedPulse() {
     else if (dy > 36) setHeight((h) => DOWN[h]);
     else setHeight((h) => (h === 'middle' ? 'list' : 'middle'));
   };
-  const pick = (to: 'list' | 'map') => setHeight((h) => (h === to ? 'middle' : to));
+  const pick = (to: 'list' | 'map') => {
+    if (view === 'atlas') {
+      setView('pulse');
+      setSelected(null);
+      return setHeight(to === 'map' ? 'map' : 'middle');
+    }
+    setHeight((h) => (h === to ? 'middle' : to));
+  };
+  const toAtlas = () => {
+    setSelected(null);
+    setView((v) => (v === 'atlas' ? 'pulse' : 'atlas'));
+    setHeight((h) => (h === 'map' ? 'middle' : h));
+  };
 
   const locate = () => {
     if (!navigator.geolocation) return setLocating('refused');
@@ -361,15 +386,18 @@ export default function ReinventedPulse() {
       </div>
 
       <div className="rp-switch" role="group" aria-label="List or map">
-        <button type="button" aria-pressed={height !== 'map'} data-lit={height !== 'map' || undefined} onClick={() => pick('list')}>
+        <button type="button" aria-pressed={view === 'pulse' && height !== 'map'} data-lit={(view === 'pulse' && height !== 'map') || undefined} onClick={() => pick('list')}>
           List
         </button>
-        <button type="button" aria-pressed={height !== 'list'} data-lit={height !== 'list' || undefined} onClick={() => pick('map')}>
+        <button type="button" aria-pressed={view === 'pulse' && height !== 'list'} data-lit={(view === 'pulse' && height !== 'list') || undefined} onClick={() => pick('map')}>
           Map
+        </button>
+        <button type="button" aria-pressed={view === 'atlas'} data-lit={view === 'atlas' || undefined} onClick={toAtlas}>
+          Atlas
         </button>
       </div>
 
-      {chips.length > 1 && (
+      {view === 'pulse' && chips.length > 1 && (
         <div className="rp-chips" role="group" aria-label="Show">
           {chips.map((c) => (
             <button key={c} type="button" aria-pressed={chip === c} onClick={() => setChip(c)}>
@@ -438,7 +466,9 @@ export default function ReinventedPulse() {
           </div>
         )}
         <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
-          {list.isPending ? (
+          {view === 'atlas' && account ? (
+            <AtlasView account={account} onOpen={setAtlasItem} />
+          ) : list.isPending ? (
             <div className="rp-skeleton" role="status" aria-label="Loading Pulse">
               <span />
               <span />
@@ -532,6 +562,19 @@ export default function ReinventedPulse() {
         </div>
       )}
 
+      {atlasItem && account && (
+        <AtlasItem
+          moment={atlasItem}
+          account={account}
+          onClose={() => setAtlasItem(null)}
+          onDeleted={(id) => {
+            setAtlasItem(null);
+            dropFromAtlas(client, id);
+            dropItem(id);
+            setToast('Deleted for good.');
+          }}
+        />
+      )}
       {viewing && account && (
         <MomentViewer
           key={viewing.id}

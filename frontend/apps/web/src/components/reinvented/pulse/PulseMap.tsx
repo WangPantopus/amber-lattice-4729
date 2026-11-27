@@ -11,6 +11,7 @@ import L from 'leaflet';
 import '@/components/map/leaflet-setup';
 import { MAP_PUBLIC_TOKEN, RETINA_TILE_URL, TILE_ATTRIBUTION } from '@/components/map/constants';
 import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
+import { colors } from '@/components/moments/momentState';
 import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
 import type { Pin } from './pins';
 
@@ -80,6 +81,22 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
     }
     return { el, size: [44, 44] };
   }
+  if (pin.type === 'kept') {
+    const m = pin.moment;
+    const el = document.createElement('span');
+    el.className = 'rp-ring rp-ring-kept';
+    const inner = document.createElement('span');
+    inner.className = 'rp-ring-face';
+    const src = m.kind === 'video' ? m.poster_url : m.kind === 'photo' ? m.media_url : null;
+    if (src) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = src;
+      inner.appendChild(img);
+    } else inner.style.background = colors[m.background || 'teal'];
+    el.appendChild(inner);
+    return { el, size: [44, 44] };
+  }
   if (pin.type === 'mark') {
     const el = document.createElement('span');
     const headsUp = pin.mark.heads_up;
@@ -100,6 +117,7 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
 }
 
 function pinTitle(pin: Pin): string {
+  if (pin.type === 'kept') return 'Your Moment';
   if (pin.type === 'ring') return `${pin.ring.author.name}’s Moments`;
   if (pin.type === 'mark') return pin.mark.heads_up ? 'Heads-up' : pin.mark.post.title || 'Post';
   return `Plan: ${pin.ticket.title}`;
@@ -210,7 +228,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
           iconSize: size ?? undefined,
           iconAnchor: size ? [size[0] / 2, size[1] / 2] : undefined,
         }),
-        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' ? 2000 : pin.type === 'mark' ? 1000 : 0,
+        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' || pin.type === 'kept' ? 2000 : pin.type === 'mark' ? 1000 : 0,
         keyboard: true,
         title: pinTitle(pin),
       });

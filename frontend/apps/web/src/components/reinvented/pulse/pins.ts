@@ -2,12 +2,13 @@
 // map and the deck always agree on what is there and in which order.
 
 import type { Ring } from '@pantopus/api/endpoints/moments';
-import type { Box, MapData, MapMark, MapTicket, Point } from './listApi';
+import type { Box, ListMoment, MapData, MapMark, MapTicket, Point } from './listApi';
 
 export type Pin =
   | { key: string; type: 'ring'; ring: Ring; point: Point }
   | { key: string; type: 'mark'; mark: MapMark; point: Point }
-  | { key: string; type: 'ticket'; ticket: MapTicket; point: Point };
+  | { key: string; type: 'ticket'; ticket: MapTicket; point: Point }
+  | { key: string; type: 'kept'; moment: ListMoment; point: Point };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
@@ -35,4 +36,13 @@ export function pinsOf(data: MapData | undefined): Pin[] {
 export function roundBox(b: Box): Box {
   const r = (n: number) => Math.round(n * 1000) / 1000;
   return { south: r(b.south), west: r(b.west), north: r(b.north), east: r(b.east) };
+}
+
+/** My Atlas on the map: the person's own kept Moments with a place, oldest west to newest east as above. */
+export function keptPins(moments: ListMoment[] | undefined): Pin[] {
+  const pins: Pin[] = [];
+  for (const m of moments || [])
+    if (!m.no_location && finite(m.latitude) && finite(m.longitude))
+      pins.push({ key: `kept:${m.id}`, type: 'kept', moment: m, point: { latitude: m.latitude, longitude: m.longitude } });
+  return pins.sort((a, b) => a.point.longitude - b.point.longitude || a.key.localeCompare(b.key));
 }
