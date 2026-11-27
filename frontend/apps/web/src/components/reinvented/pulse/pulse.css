@@ -156,17 +156,253 @@
 .rp-board[data-height='list'] .rp-sheet {
   border-radius: 0;
 }
-.rp-board[data-height='map'] {
-  --rp-sheet-top: calc(100% - 178px);
+/* The Map height: the controls float over the top of the map, and the sheet is only the time row and the peek deck.
+ * The list stays mounted out of sight, so going back finds it where it was. */
+.rp-board[data-height='map'] .rp-sheet {
+  top: auto;
 }
 .rp-board[data-height='map'] .rp-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 70vh;
+  flex: none;
   visibility: hidden;
 }
-/* The page's + button sits at the bottom right on a phone: the tucked list keeps clear of it. */
+.rp-map-top {
+  position: absolute;
+  z-index: 600;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  padding-top: 10px;
+  border-radius: 18px;
+  background: var(--rp-paper);
+  box-shadow: 0 6px 24px #0003;
+}
+.rp-map-bottom {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+.rp-map-time {
+  position: absolute;
+  z-index: 600;
+  bottom: 16px;
+  left: calc(min(560px, 44%) + 16px);
+  right: 16px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.rp-map-time .rp-time {
+  pointer-events: auto;
+  box-shadow: 0 6px 24px #0003;
+}
+/* The page's + button sits at the bottom right on a phone: there the time row goes under the deck, beside the button. */
 @media (max-width: 1023px) {
-  .rp-board[data-height='map'] .rp-head {
-    padding-right: 84px;
+  .rp-board[data-height='map'] .rp-map-bottom {
+    padding-bottom: 18px;
   }
+  .rp-board[data-height='map'] .rp-time {
+    order: 2;
+    margin-right: 80px;
+  }
+}
+
+/* ── The time row ── */
+.rp-time {
+  display: flex;
+  gap: 4px;
+  margin: 0 16px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rp-ink) 7%, var(--rp-paper));
+}
+.rp-time::-webkit-scrollbar {
+  display: none;
+}
+.rp-time button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--rp-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.rp-time button[aria-pressed='true'] {
+  background: var(--rp-ink);
+  color: var(--rp-paper);
+}
+
+/* ── The peek deck ── */
+.rp-deck {
+  display: flex;
+  gap: 10px;
+  padding: 2px 16px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 16px;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.rp-deck::-webkit-scrollbar {
+  display: none;
+}
+.rp-card {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  width: min(300px, 80vw);
+  height: 112px;
+  padding: 10px;
+  border: 1px solid var(--rp-line);
+  border-radius: 18px;
+  background: var(--rp-paper);
+  color: var(--rp-ink);
+  text-align: left;
+  scroll-snap-align: center;
+}
+.rp-card[aria-current='true'] {
+  border-color: var(--rp-brand);
+  box-shadow: 0 0 0 2px var(--rp-brand) inset;
+}
+.rp-card-thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 90px;
+  height: 90px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--rp-wash);
+}
+.rp-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rp-card-words {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rp-card-wide {
+  width: 100%;
+}
+.rp-card-words strong {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-card-words .rp-card-clamp {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.rp-card-words .rp-status {
+  align-self: flex-start;
+  font-size: 12px;
+}
+.rp-card-line {
+  overflow: hidden;
+  color: var(--rp-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+.rp-card-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--rp-wash);
+  font-size: 12px;
+  font-weight: 600;
+}
+.rp-card-live {
+  background: var(--rp-live);
+  color: #fff;
+}
+.rp-deck-empty {
+  margin: 0 16px;
+  padding: 18px 12px;
+  border-radius: 16px;
+  background: var(--rp-paper);
+  color: var(--rp-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ── Map pins: tickets, the Live tag, a seen ring, the chosen pin ── */
+.rp-leaflet-free {
+  width: 0 !important;
+  height: 0 !important;
+}
+.rp-ticket {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: #fff;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px #0003;
+}
+.rp-ticket svg {
+  padding: 3px;
+  box-sizing: content-box;
+  border-radius: 8px;
+  background: #b54708;
+  color: #fff;
+}
+.rp-ring {
+  position: relative;
+}
+.rp-ring-seen {
+  background: #b9c2ca;
+}
+.rp-ring-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--rp-live);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.rp-pin-selected {
+  outline: 3px solid #fff;
+  box-shadow: 0 0 0 6px var(--rp-brand), 0 4px 14px #0006;
+  scale: 1.18;
+}
+.rp-ticket.rp-pin-selected {
+  scale: 1.08;
 }
 @media (prefers-reduced-motion: reduce) {
   .rp-sheet {
@@ -638,16 +874,25 @@
     margin-left: auto;
     margin-right: auto;
   }
-  .rp-board[data-height='map'] .rp-sheet {
+  .rp-map-top {
     top: 16px;
     left: 16px;
-    bottom: auto;
-    width: 420px;
+    right: auto;
+    width: 440px;
+  }
+  .rp-board[data-height='map'] .rp-sheet {
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+    padding-top: 12px;
     border: 1px solid var(--rp-line);
     border-radius: 18px;
     box-shadow: 0 8px 30px #0003;
   }
-  .rp-board[data-height='map'] .rp-list {
-    display: none;
+  .rp-board[data-height='map'] .rp-time {
+    align-self: center;
+    justify-self: center;
   }
 }

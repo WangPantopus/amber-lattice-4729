@@ -1,8 +1,9 @@
 'use client';
 
-// The live map behind the one Pulse list (phase 1, board B1). It draws what the list has loaded, at the point everyone
-// sees: a ring is a Moment, a mark on the ground is a post that stays, and a Heads-up is red, pulsing and on top. The
-// full map (its own read for the box and time, tickets, the time row, the peek deck) is the next step.
+// The one map behind the Pulse list (phase 1, board B4, flat). It draws its own read for the box in view and the time
+// row's choice (GET /api/reinvented/map, coord/CONTRACT.md §6b), each at the point everyone sees: a ring is a Moment,
+// a mark on the ground is a post that stays, a ticket is a plan, and a Heads-up is red, pulsing and always on top.
+// Before its first read it fits the list's first page, so one request still draws the first screen.
 // Leaflet touches `window` at import: this file is loaded with next/dynamic and `ssr: false` only.
 
 import { useEffect, useRef, useState } from 'react';
@@ -10,23 +11,29 @@ import L from 'leaflet';
 import '@/components/map/leaflet-setup';
 import { MAP_PUBLIC_TOKEN, RETINA_TILE_URL, TILE_ATTRIBUTION } from '@/components/map/constants';
 import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
-import { isLiveHere, type ListItem, type Point } from './listApi';
+import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
+import type { Pin } from './pins';
 
 export interface FlyTarget extends Point {
   serial: number;
+  /** Pan without zooming in (the peek deck gliding from pin to pin). */
+  keepZoom?: boolean;
 }
 
 interface Props {
-  items: ListItem[];
-  /** Changes when the list is read afresh (reach, chip, place): the map fits the new items once. */
+  pins: Pin[];
+  /** The list's first page, for the map's first view only. */
+  listItems: ListItem[];
+  /** Changes when the list is read afresh (reach, chip, place): the map fits the list once more. */
   fitKey: string;
-  /** Where to look when nothing in the list has a point: the person's home, else the whole country. */
+  /** Where to look when nothing in the list has a point: the person's home. */
   fallback: Point | null;
-  /** The share of the map's height the list covers at its bottom, so a fit keeps the marks in the part one sees. */
-  coveredBelow: number;
+  /** Changes when the list's height or the layout changes: the map keeps what was in view centred in the part left open. */
+  layoutKey: string;
   flyTo: FlyTarget | null;
-  onOpenMoment(id: string): void;
-  onOpenPost(id: string): void;
+  selected: string | null;
+  onBox(box: Box): void;
+  onPick(key: string): void;
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
@@ -44,51 +51,94 @@ export function itemPoint(item: ListItem): Point | null {
   return lat === null || lng === null ? null : { latitude: lat, longitude: lng };
 }
 
-function ringIcon(item: Extract<ListItem, { type: 'moment' }>, now: number): L.DivIcon {
-  const m = item.moment;
+const TICKET_PATH = 'M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z';
+
+function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, number] | null } {
+  if (pin.type === 'ring') {
+    const r = pin.ring;
+    const el = document.createElement('span');
+    const live = Date.parse(r.live_until || '') > now;
+    el.className = 'rp-ring' + (live ? ' rp-ring-live' : r.unseen_count > 0 ? '' : ' rp-ring-seen');
+    const inner = document.createElement('span');
+    inner.className = 'rp-ring-face';
+    if (r.author.avatar_url) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = r.author.avatar_url;
+      img.onerror = () => {
+        img.remove();
+        inner.textContent = r.author.initials || '';
+      };
+      inner.appendChild(img);
+    } else inner.textContent = r.author.initials || '';
+    el.appendChild(inner);
+    if (live) {
+      const tag = document.createElement('span');
+      tag.className = 'rp-ring-tag';
+      tag.textContent = 'Live';
+      el.appendChild(tag);
+    }
+    return { el, size: [44, 44] };
+  }
+  if (pin.type === 'mark') {
+    const el = document.createElement('span');
+    const headsUp = pin.mark.heads_up;
+    el.className = 'rp-mark' + (headsUp ? ' rp-mark-heads-up' : '');
+    el.dataset.kind = String(pin.mark.post.post_type || 'general');
+    el.textContent = headsUp ? '!' : '';
+    return { el, size: headsUp ? [34, 34] : [18, 18] };
+  }
+  const t = pin.ticket;
   const el = document.createElement('span');
-  el.className = 'rp-ring' + (isLiveHere(m, now) ? ' rp-ring-live' : '');
-  const inner = document.createElement('span');
-  inner.className = 'rp-ring-face';
-  if (m.author.avatar_url) {
-    const img = document.createElement('img');
-    img.alt = '';
-    img.src = m.author.avatar_url;
-    img.onerror = () => {
-      img.remove();
-      inner.textContent = m.author.initials || '';
-    };
-    inner.appendChild(img);
-  } else inner.textContent = m.author.initials || '';
-  el.appendChild(inner);
-  return L.divIcon({ html: el, className: 'rp-leaflet-icon', iconSize: [44, 44], iconAnchor: [22, 22] });
+  el.className = 'rp-ticket';
+  el.innerHTML = `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${TICKET_PATH}"/></svg>`;
+  const words = document.createElement('span');
+  const going = t.going_count ? ` · ${t.going_count} going` : '';
+  words.textContent = `${ticketWhen(t, now)}${going}`;
+  el.appendChild(words);
+  return { el, size: null };
 }
 
-function markIcon(item: Extract<ListItem, { type: 'post' }>): L.DivIcon {
-  const el = document.createElement('span');
-  const headsUp = item.post.post_type === 'alert';
-  el.className = 'rp-mark' + (headsUp ? ' rp-mark-heads-up' : '');
-  el.dataset.kind = String(item.post.post_type || 'general');
-  el.textContent = headsUp ? '!' : '';
-  const size = headsUp ? 34 : 18;
-  return L.divIcon({ html: el, className: 'rp-leaflet-icon', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+function pinTitle(pin: Pin): string {
+  if (pin.type === 'ring') return `${pin.ring.author.name}’s Moments`;
+  if (pin.type === 'mark') return pin.mark.heads_up ? 'Heads-up' : pin.mark.post.title || 'Post';
+  return `Plan: ${pin.ticket.title}`;
 }
 
-export default function PulseMap({ items, fitKey, fallback, coveredBelow, flyTo, onOpenMoment, onOpenPost }: Props) {
+/** How far the controls over the top of the map and the list over its bottom reach into it, in pixels. */
+function coveredInsets(mapEl: HTMLElement | null): { top: number; bottom: number } {
+  const board = mapEl?.closest('.rp-board');
+  if (!mapEl || !board) return { top: 0, bottom: 0 };
+  const m = mapEl.getBoundingClientRect();
+  const overlaps = (r: DOMRect) => r.width > 0 && r.left < m.right - 1 && r.right > m.left + 1;
+  let top = 0, bottom = 0;
+  const above = board.querySelector('.rp-map-top');
+  if (above) {
+    const r = above.getBoundingClientRect();
+    if (overlaps(r)) top = Math.max(0, Math.min(m.height, r.bottom - m.top));
+  }
+  const sheet = board.querySelector('.rp-sheet');
+  if (sheet) {
+    const r = sheet.getBoundingClientRect();
+    if (overlaps(r) && r.top < m.bottom) bottom = Math.max(0, Math.min(m.height, m.bottom - r.top));
+  }
+  return { top, bottom };
+}
+
+export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const elements = useRef(new Map<string, HTMLElement>());
   const fitted = useRef<string | null>(null);
-  const latest = useRef({ onOpenMoment, onOpenPost, coveredBelow });
-  latest.current = { onOpenMoment, onOpenPost, coveredBelow };
+  const latest = useRef({ onPick, onBox, selected });
+  latest.current = { onPick, onBox, selected };
+  const insets = useRef({ top: 0, bottom: 0 });
   const [tilesMissing, setTilesMissing] = useState(!MAP_PUBLIC_TOKEN);
 
   useEffect(() => {
     if (!ref.current) return undefined;
-    const map = L.map(ref.current, { zoomControl: false, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView(
-      [39.5, -98.35],
-      4,
-    );
+    const map = L.map(ref.current, { zoomControl: false, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([39.5, -98.35], 4);
     if (MAP_PUBLIC_TOKEN)
       createCachedTileLayer(RETINA_TILE_URL, TILE_ATTRIBUTION)
         .on('tileerror', () => setTilesMissing(true))
@@ -97,9 +147,20 @@ export default function PulseMap({ items, fitKey, fallback, coveredBelow, flyTo,
     L.control.zoom({ position: 'topright' }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    // The box in view, once the map has its first view; the map reads it again after each move.
+    let timer = 0;
+    map.on('moveend', () => {
+      if (!fitted.current) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const b = map.getBounds();
+        latest.current.onBox({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() });
+      }, 250);
+    });
     const resize = new ResizeObserver(() => map.invalidateSize());
     resize.observe(ref.current);
     return () => {
+      window.clearTimeout(timer);
       resize.disconnect();
       map.remove();
       mapRef.current = null;
@@ -107,55 +168,88 @@ export default function PulseMap({ items, fitKey, fallback, coveredBelow, flyTo,
     };
   }, []);
 
-  // The marks: Heads-ups last, so they sit on top.
+  // The first view: the list's points (or home), once per fresh list.
   useEffect(() => {
-    const map = mapRef.current, layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-    const now = Date.now();
-    const points: L.LatLngExpression[] = [];
-    const ordered = [...items].sort((a, b) => Number(a.type === 'post' && a.post.post_type === 'alert') - Number(b.type === 'post' && b.post.post_type === 'alert'));
-    for (const item of ordered) {
-      const point = itemPoint(item);
-      if (!point) continue;
-      points.push([point.latitude, point.longitude]);
-      const headsUp = item.type === 'post' && item.post.post_type === 'alert';
-      const marker = L.marker([point.latitude, point.longitude], {
-        icon: item.type === 'moment' ? ringIcon(item, now) : markIcon(item),
-        zIndexOffset: headsUp ? 2000 : item.type === 'moment' ? 1000 : 0,
-        keyboard: true,
-        title: item.type === 'moment' ? `${item.moment.author.name}’s Moment` : item.post.title || 'Post',
-      });
-      marker.on('click', () => (item.type === 'moment' ? latest.current.onOpenMoment(item.id) : latest.current.onOpenPost(item.id)));
-      marker.addTo(layer);
-    }
-    if (fitted.current === fitKey) return;
+    const map = mapRef.current;
+    if (!map || fitted.current === fitKey) return;
+    const points = listItems.map(itemPoint).filter((p): p is Point => !!p);
+    if (!points.length && !fallback && !listItems.length) return;
+    fitted.current = fitKey;
+    const cover = (insets.current = coveredInsets(ref.current));
     if (points.length) {
-      fitted.current = fitKey;
-      const height = map.getSize().y;
-      map.fitBounds(L.latLngBounds(points), {
+      map.fitBounds(L.latLngBounds(points.map((p) => [p.latitude, p.longitude] as L.LatLngTuple)), {
         maxZoom: 14,
-        paddingTopLeft: [40, 40],
-        paddingBottomRight: [40, 40 + Math.round(height * latest.current.coveredBelow)],
+        paddingTopLeft: [40, 40 + Math.round(cover.top)],
+        paddingBottomRight: [40, 40 + Math.round(cover.bottom)],
         animate: false,
       });
     } else if (fallback) {
-      fitted.current = fitKey;
       map.setView([fallback.latitude, fallback.longitude], 12, { animate: false });
+      map.panBy([0, (cover.bottom - cover.top) / 2], { animate: false });
     }
-  }, [items, fitKey, fallback]);
+    map.fire('moveend');
+  }, [listItems, fitKey, fallback]);
+
+  // The pins: tickets under marks under rings, and Heads-ups over everything.
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    elements.current.clear();
+    const now = Date.now();
+    for (const pin of pins) {
+      const { el, size } = pinElement(pin, now);
+      el.dataset.pin = pin.key;
+      if (pin.key === latest.current.selected) el.classList.add('rp-pin-selected');
+      elements.current.set(pin.key, el);
+      const headsUp = pin.type === 'mark' && pin.mark.heads_up;
+      const marker = L.marker([pin.point.latitude, pin.point.longitude], {
+        icon: L.divIcon({
+          html: el,
+          className: 'rp-leaflet-icon' + (size ? '' : ' rp-leaflet-free'),
+          iconSize: size ?? undefined,
+          iconAnchor: size ? [size[0] / 2, size[1] / 2] : undefined,
+        }),
+        zIndexOffset: headsUp ? 3000 : pin.type === 'ring' ? 2000 : pin.type === 'mark' ? 1000 : 0,
+        keyboard: true,
+        title: pinTitle(pin),
+      });
+      marker.on('click', () => latest.current.onPick(pin.key));
+      marker.addTo(layer);
+    }
+  }, [pins]);
+
+  useEffect(() => {
+    elements.current.forEach((el, key) => el.classList.toggle('rp-pin-selected', key === selected));
+  }, [selected]);
+
+  // The list moved to another height (or the window to another layout): what was in the middle of the open part of the
+  // map stays in the middle of the open part, once the list has finished moving.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const map = mapRef.current;
+      if (!map || !fitted.current) return;
+      const before = insets.current, after = coveredInsets(ref.current);
+      insets.current = after;
+      const dy = (after.bottom - after.top - (before.bottom - before.top)) / 2;
+      if (Math.abs(dy) > 2) map.panBy([0, dy], { animate: false });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [layoutKey]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!flyTo || !map) return;
-    // Centre the place in the part of the map the list leaves open.
-    const zoom = Math.max(map.getZoom(), 15);
-    const at = map.project([flyTo.latitude, flyTo.longitude], zoom).add([0, (map.getSize().y * latest.current.coveredBelow) / 2]);
-    map.flyTo(map.unproject(at, zoom), zoom, { duration: 0.6 });
+    // Centre the place in the part of the map left open.
+    const cover = coveredInsets(ref.current);
+    const zoom = flyTo.keepZoom ? map.getZoom() : Math.max(map.getZoom(), 15);
+    const at = map.project([flyTo.latitude, flyTo.longitude], zoom).add([0, (cover.bottom - cover.top) / 2]);
+    if (flyTo.keepZoom) map.panTo(map.unproject(at, zoom), { duration: 0.45 });
+    else map.flyTo(map.unproject(at, zoom), zoom, { duration: 0.6 });
   }, [flyTo]);
 
   return (
-    <div className="rp-map" aria-label="Map of what the list shows">
+    <div className="rp-map" aria-label="Map">
       <div ref={ref} className="rp-leaflet" role="application" aria-label="Map" />
       {tilesMissing && <p className="rp-map-note">Map pictures can’t load here</p>}
     </div>
