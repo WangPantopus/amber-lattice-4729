@@ -962,6 +962,30 @@ async function peopleRings(viewerId, userIds) {
   return ringsOf(viewerId, shown, { keyOf: (row) => `u_${authorKey(row)}_all`, previews: false });
 }
 
+/**
+ * The live Moments of these people (their own accounts, never under a made-up name) that `viewerId` may see, with a
+ * place or without, as [{ row, point }]: the same rules as the map and the rings (blocks, mutes, audience, reports,
+ * guess-the-spot hiding). Pulse, reinvented's Close circle (services/pulse/list.js).
+ */
+async function shownOfPeople(viewerId, userIds) {
+  const people = [...new Set((userIds || []).filter(Boolean).map(String))];
+  if (!people.length) return [];
+  const nowIso = new Date().toISOString();
+  const rows = (await readInBatches(people, (batch) => supabaseAdmin.from('Post').select(MOMENT_SELECT)
+    .eq('is_story', true)
+    .in('user_id', batch)
+    .gt('story_expires_at', nowIso)
+    .is('archived_at', null)
+    .eq('moderation_state', 'live')
+    .eq('post_metadata->moment->>state', 'live')
+    .limit(MAX_MAP_ROWS), "people's Moments")).filter((row) => momentState(row) === 'live');
+  if (!rows.length) return [];
+  const [ctx, reported] = await Promise.all([
+    viewerContext(viewerId, rows.map((r) => r.user_id), null, rows), reportedIds(viewerId)]);
+  return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id) && listedFor(row, viewerId))
+    .map((row) => ({ row, point: displayedPoint(row) }));
+}
+
 /** When a Moment went live: its end time less its hours (a photo's or video's time starts when its upload finishes). */
 function wentLiveAt(row) {
   return Date.parse(row.story_expires_at) - storedHours(row) * HOUR_MS;
@@ -1376,4 +1400,6 @@ module.exports = {
   newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment, listedFor,
+  // Pulse, reinvented's list (services/pulse/list.js).
+  shownInBox, shownOfPeople, MAX_MAP_SPAN_DEGREES,
 };

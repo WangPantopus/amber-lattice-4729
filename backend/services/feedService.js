@@ -1528,6 +1528,16 @@ async function getListFeed({
   includeEnded = false,
   // postScopeAccess(userId) when the caller started it earlier (GET /api/posts/feed, alongside the viewer's own place).
   scopeAccessRead = null,
+  // Pulse, reinvented's list (services/pulse/list.js) only; every other caller leaves them out and reads as before.
+  // `postTypes`: any of these types. `keep(post)`: a further test each shown post must pass, inside the rounds so a
+  // page still fills. `minRadiusMeters`: Place keeps only posts farther than this (one distance band). `globalPins:
+  // false` leaves the global pins off page 1. `withReachedAt`: the answer adds `reachedAt`, when each post reached the
+  // list (its write or the repost that lifted it), the time its cursor carries.
+  postTypes = null,
+  keep = null,
+  minRadiusMeters = null,
+  globalPins = true,
+  withReachedAt = false,
 }) {
   // 1. Validate surface
   if (!FEED_SURFACES.includes(surface)) {
@@ -1567,7 +1577,7 @@ async function getListFeed({
   const scopeAccess = await (scopeAccessRead || postScopeAccess(userId));
   // Connections lists only what connections wrote or reposted for the viewer and the viewer's own posts for them, so
   // the global pins (Pantopus-wide notices) lead the other surfaces only.
-  const globalPinsRead = isFirstPage && surface !== 'connections' ? settle(getGlobalPins(scopeAccess)) : null;
+  const globalPinsRead = isFirstPage && surface !== 'connections' && globalPins ? settle(getGlobalPins(scopeAccess)) : null;
   const initialCursorPinned = cursorPinRead ? await outcome(cursorPinRead) : null;
 
   // 2–4. Resolve author IDs and distribution target per surface
@@ -1652,6 +1662,7 @@ async function getListFeed({
       : onlyShownPosts(rows.is('archived_at', null)));
     // 6. postType and topic filters (topic=sports is its own lane, above)
     if (postType) query = query.eq('post_type', postType);
+    if (postTypes?.length) query = query.in('post_type', postTypes);
     if (topic) query = query.eq('topic', topic);
     // 7. tags filter
     if (tags?.length) query = query.overlaps('tags', tags);
@@ -1762,7 +1773,7 @@ async function getListFeed({
         if (!point) return false;
         const dist = haversineMeters(centerLat, centerLng, point.latitude, point.longitude);
         p.distance_meters = Math.round(dist);
-        return dist <= radiusMeters;
+        return dist <= radiusMeters && (minRadiusMeters == null || dist > minRadiusMeters);
       });
     }
 
@@ -1786,6 +1797,7 @@ async function getListFeed({
     if (filterPolitics) {
       posts = posts.filter(p => !isPoliticsPost(p));
     }
+    if (keep) posts = posts.filter(keep);
 
     accumulated.push(...posts);
 
@@ -1848,6 +1860,7 @@ async function getListFeed({
       hasMore,
     },
     ...(surface === 'connections' && !connectionGraph.connectionIds.length ? { emptyGraph: true } : {}),
+    ...(withReachedAt ? { reachedAt: reachedAtById } : {}),
   };
 }
 
