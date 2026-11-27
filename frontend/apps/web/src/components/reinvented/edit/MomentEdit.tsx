@@ -21,7 +21,13 @@ import { afterEdit } from './saved';
 import '../studio/studio.css';
 import './edit.css';
 
-export type EditableMoment = Moment & { stamps?: ShownStamp[]; editable_until?: string | null; edited_at?: string | null };
+export type EditableMoment = Moment & {
+  stamps?: ShownStamp[];
+  editable_until?: string | null;
+  edited_at?: string | null;
+  /** Every kind's kept value on one's own Moment while it may change (CONTRACT §3, #4946); null where none was kept. */
+  stamp_choices?: Partial<Record<StampKind, unknown>> | null;
+};
 
 const placements = (list: readonly PlacedStamp[]) =>
   list.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation }));
@@ -92,7 +98,11 @@ export default function MomentEdit({
     audience: moment.audience,
     stamps: (moment.stamps || []).filter((s) => STAMP_KINDS.includes(s.kind)),
   }));
-  const values = new Map<StampKind, unknown>(original.stamps.map((s) => [s.kind, s.value]));
+  // The tray: every stamp the server kept a value for when the Moment was posted, so one not placed then can go on now.
+  const values = new Map<StampKind, unknown>([
+    ...STAMP_KINDS.filter((k) => moment.stamp_choices?.[k] != null).map((k) => [k, moment.stamp_choices![k]] as const),
+    ...original.stamps.map((s) => [s.kind, s.value] as const),
+  ]);
   const [caption, setCaption] = useState(original.caption),
     [audience, setAudience] = useState<Audience>(original.audience),
     [stamps, setStamps] = useState<PlacedStamp[]>(() => placements(original.stamps)),
@@ -190,7 +200,8 @@ export default function MomentEdit({
     else if (picked) setPicked(null);
     else closeOrAsk();
   });
-  // Put a stamp taken off in this edit back where it was (its value is the one kept at posting).
+  // A stamp from the tray: one taken off in this edit goes back where it was; a new one takes a free spot inside the
+  // part every viewer shows, the postmark low on the left as in the Studio (board B2). Its value is the one kept.
   function toggleStamp(kind: StampKind) {
     setTrayOpen(false);
     if (stamps.some((s) => s.kind === kind)) {
@@ -199,8 +210,27 @@ export default function MomentEdit({
       return;
     }
     const was = original.stamps.find((s) => s.kind === kind);
-    if (!was) return;
-    setStamps([...stamps, ...placements([was])]);
+    if (was) {
+      setStamps([...stamps, ...placements([was])]);
+      setPicked(kind);
+      return;
+    }
+    if (!values.has(kind)) return;
+    const safe = safeBox(aspect);
+    const inside = ([x, y]: number[]) => [
+      Math.min(safe.x + safe.width - 0.12, Math.max(safe.x + 0.12, x)),
+      Math.min(safe.y + safe.height - 0.08, Math.max(safe.y + 0.08, y)),
+    ];
+    const slots = (
+      kind === 'postmark'
+        ? [[0.27, 0.66], [0.27, 0.42], [0.72, 0.66]]
+        : [[0.38, 0.52], [0.38, 0.45], [0.38, 0.38], [0.38, 0.31], [0.64, 0.6], [0.64, 0.52], [0.38, 0.8]]
+    ).map(inside);
+    const big = (k: StampKind) => k === 'postmark' || kind === 'postmark';
+    const near = (x: number, y: number) =>
+      stamps.some((st) => Math.abs(st.x - x) < (big(st.kind) ? 0.25 : 0.2) && Math.abs(st.y - y) < (big(st.kind) ? 0.12 : 0.06));
+    const [x, y] = slots.find(([sx, sy]) => !near(sx, sy)) || slots[0];
+    setStamps([...stamps, { kind, x, y, scale: 1, rotation: kind === 'postmark' ? -9 : 0 }]);
     setPicked(kind);
   }
 
@@ -294,7 +324,7 @@ export default function MomentEdit({
             </button>
           </div>
 
-          {original.stamps.length > 0 && open && (
+          {values.size > 0 && open && (
             <div className="st-rail" role="toolbar" aria-label="Tools" aria-orientation="vertical">
               <div className="st-tool">
                 <span aria-hidden="true">Stamps and Play</span>
