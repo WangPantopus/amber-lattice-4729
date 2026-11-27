@@ -675,7 +675,7 @@ export default function Studio({
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
               : {}),
-            ...(play.length && i === 0 ? { play: playWire(play) } : {}),
+            ...(play.length && i === 0 && !postKind ? { play: playWire(play) } : {}),
             ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
               ? {
                   elevation: {
@@ -739,7 +739,6 @@ export default function Studio({
           stamps: PlacedStamp[];
           elevation?: { meters: number; accuracy_m?: number | null };
           explore?: boolean;
-          play?: ReturnType<typeof playWire>;
           taken_at?: string;
           taken_here?: boolean;
           fix?: { latitude: number; longitude: number; fix_at: string };
@@ -784,7 +783,6 @@ export default function Studio({
         ...(underPenName ? {} : { profileVisibilityScope: 'local_context' as const, showOnProfile: true }),
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
-          ...(play.length ? { play: playWire(play) } : {}),
           ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
@@ -1288,7 +1286,8 @@ export default function Studio({
                 safe={STAMP_SAFE}
               />
             )}
-            {composing && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
+            {/* Playable items go on Moments for now: a post's picture can't draw them on the web yet (QUESTIONS, 05:55). */}
+            {composing && !postKind && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
           </div>
           {!camera && <div className="st-shade-top" aria-hidden="true" />}
           {!camera && <div className="st-shade-bottom" aria-hidden="true" />}
@@ -1576,13 +1575,14 @@ export default function Studio({
                         Guess the spot
                       </button>
                     )}
-                    {PLAY_MAKERS.map((m) => (
+                    {postKind && <p className="st-hint">Polls, boards and the rest go on Moments for now.</p>}
+                    {!postKind && PLAY_MAKERS.map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
                       </button>
                     ))}
-                    {play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
+                    {!postKind && play.length >= MAX_PLAY && <p className="st-hint">Up to {MAX_PLAY} on one post.</p>}
                   </div>
                 )}
               </section>
