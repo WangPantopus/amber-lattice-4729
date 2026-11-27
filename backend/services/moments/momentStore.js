@@ -43,6 +43,7 @@ const { shownReaction, reactionSummary } = require('../../utils/postReaction');
 const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
 const momentWeather = require('./momentWeather');
+const momentStamps = require('./momentStamps');
 const penName = require('../penName');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -76,6 +77,9 @@ const SKY_FLAG = 'sky_places';
 const FLOATING_HEIGHT_STEP_FT = 100;
 // Part D "float by day": Moments with an elevation float on the map, shadows where the sun is. Needs HEIGHTS_FLAG.
 const FLOAT_FLAG = 'moment_float';
+// Pulse, reinvented (founder 2026-11-26): the one switch for the new direction (the Studio's stamps, and more later).
+// Off for a person, every answer here is today's.
+const REINVENTED_FLAG = 'pulse_reinvented';
 const FEET_PER_M = 3.28084;
 const HEIGHT_STEP_FT = 10;
 // Below the Dead Sea's shore or above where airliners fly, the reading is wrong: it isn't shown.
@@ -454,6 +458,11 @@ async function skyOn(viewer) {
   return flagOnFor(SKY_FLAG, viewer);
 }
 
+/** Whether the new direction (`pulse_reinvented`) is on for `viewer`. Off for everyone until the founder turns it on. */
+async function reinventedOn(viewer) {
+  return flagOnFor(REINVENTED_FLAG, viewer);
+}
+
 /** One flag for one person, read from the cached flag row; any failure reads as off. */
 async function flagOnFor(name, viewer) {
   try {
@@ -478,7 +487,7 @@ function briefOf(row, seen) {
  * counts (`reactionCounts` from reactionCountsFor).
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
-  heights = false }) {
+  heights = false, reinvented = false }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
@@ -531,6 +540,11 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     my_reaction: own ? null : myReaction,
     viewer_count: own ? Number(row.view_count) || 0 : null,
     reaction_counts: own ? reactionCounts || [] : null,
+    // Pulse, reinvented (only for a reader with the switch on): the stamps its author placed, with the values the
+    // server kept when it was posted (momentStamps.js).
+    ...(reinvented ? {
+      stamps: momentStamps.shownStamps(m, { atHome: Boolean(m.at_home), penName: penName.isPenNameRow(row), placed: hasPlace(row) }),
+    } : {}),
   };
 }
 
@@ -561,12 +575,13 @@ async function serializeMoments(rows, viewerId) {
   const ids = rows.map((r) => r.id);
   await markOwn(rows, viewerId);
   const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
-  const [authors, marks, links, counts, heights] = await Promise.all([
+  const [authors, marks, links, counts, heights, reinvented] = await Promise.all([
     authorsFor(rows),
     viewerMarks(viewerId, ids),
     media.signedLinks(undefined, linkKeys(rows.filter((r) => momentState(r) !== 'ended'))),
     reactionCountsFor(ownIds),
     heightsOn(viewerId),
+    reinventedOn(viewerId),
   ]);
   return rows.map((row) => serializeMoment(row, {
     author: authors.get(String(authorKey(row))),
@@ -576,6 +591,7 @@ async function serializeMoments(rows, viewerId) {
     links,
     reactionCounts: counts.get(row.id) || null,
     heights,
+    reinvented,
   }));
 }
 
@@ -1271,7 +1287,7 @@ module.exports = {
   KINDS, HOURS, MAX_HOURS, LONG_MAX_HOURS, validHours, storedHours, answeredEnd, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
-  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment,
 };
