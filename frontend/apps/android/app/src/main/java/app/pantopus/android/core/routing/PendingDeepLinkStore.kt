@@ -1,14 +1,21 @@
-@file:Suppress("PackageNaming")
+@file:Suppress("PackageNaming", "TooManyFunctions")
 
 package app.pantopus.android.core.routing
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Looper
 import androidx.annotation.VisibleForTesting
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 @JsonClass(generateAdapter = true)
 internal data class PendingContentArrival(
@@ -25,8 +32,19 @@ object PendingDeepLinkStore {
     private val adapter = Moshi.Builder().build().adapter(PendingContentArrival::class.java).serializeNulls()
     private val storage = PendingContentArrivalPreferences()
 
-    @Synchronized
-    fun init(context: Context) = storage.init(context)
+    /**
+     * Single-lane IO dispatcher so Keystore / `EncryptedSharedPreferences`
+     * work never touches the Main thread and queued handoffs (e.g. cold-start
+     * stash in `MainActivity` followed by post-login `takeAsync` in
+     * `PantopusNavHost`) preserve strict FIFO order.
+     */
+    internal val ioDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val ioScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
+    fun init(context: Context) {
+        storage.init(context)
+        ioScope.launch { storage.warmUp() }
+    }
 
     /** No write succeeds unless the original is durably protected. */
     @Synchronized
@@ -43,8 +61,15 @@ object PendingDeepLinkStore {
             true
         }
 
+    suspend fun stashAsync(
+        path: String,
+        expectedUserId: String? = null,
+    ): Boolean = withContext(ioDispatcher) { stash(path, expectedUserId) }
+
     @Synchronized
     fun peek(now: Long = System.currentTimeMillis()): String? = safely(null) { read(now)?.path }
+
+    suspend fun peekAsync(now: Long = System.currentTimeMillis()): String? = withContext(ioDispatcher) { peek(now) }
 
     @Synchronized
     fun take(
@@ -56,6 +81,11 @@ object PendingDeepLinkStore {
             if (!storage.clearProtected()) return@safely null
             arrival.path.takeIf { arrival.expectedUserId == null || arrival.expectedUserId == userId }
         }
+
+    suspend fun takeAsync(
+        userId: String? = null,
+        now: Long = System.currentTimeMillis(),
+    ): String? = withContext(ioDispatcher) { take(userId, now) }
 
     /**
      * A content link opened while a stored session was still hydrating (cold
@@ -102,6 +132,23 @@ object PendingDeepLinkStore {
         safely(Unit) { storage.clearProtected() }
     }
 
+    suspend fun clearAsync() = withContext(ioDispatcher) { clear() }
+
+    /**
+     * Run [action] on [ioDispatcher] when invoked on the Android Main thread
+     * against real storage, and inline otherwise (background threads and
+     * in-memory JVM unit tests).
+     */
+    internal fun runOffMainIfNeeded(action: () -> Unit) {
+        if (!storage.isTestBound && isMainThread()) {
+            ioScope.launch { action() }
+        } else {
+            action()
+        }
+    }
+
+    private fun isMainThread(): Boolean = runCatching { Looper.myLooper() == Looper.getMainLooper() }.getOrDefault(false)
+
     private fun read(now: Long): PendingContentArrival? {
         val bytes = storage.raw()
         val arrival =
@@ -139,28 +186,51 @@ object PendingDeepLinkStore {
 }
 
 private const val ARRIVAL_TTL_MS = 24L * 60L * 60L * 1000L
+private const val LEGACY_PREFS_FILE = "pantopus_pending_deep_link"
+private const val PROTECTED_PREFS_FILE = "private_pending_deep_link_v1"
 
 private fun PendingContentArrival.isFresh(now: Long): Boolean = timestampMs > 0L && now - timestampMs <= ARRIVAL_TTL_MS
 
 /** Owns durable preference writes, their uncertain memory cache and legacy migration. */
 private class PendingContentArrivalPreferences {
+    private val lock = Any()
+
+    @Volatile
+    var isTestBound: Boolean = false
+        private set
+
+    @Volatile
     private var context: Context? = null
+
+    @Volatile
     private var prefs: SharedPreferences? = null
+
+    @Volatile
     private var legacy: SharedPreferences? = null
+
     private var uncertain = false
     private var uncertainValue: String? = null
 
     fun init(context: Context) {
-        if (this.context != null) return
-        this.context = context.applicationContext
-        legacy = context.applicationContext.getSharedPreferences("pantopus_pending_deep_link", Context.MODE_PRIVATE)
+        synchronized(lock) {
+            if (this.context != null) return
+            this.context = context.applicationContext
+        }
+    }
+
+    fun warmUp() {
+        if (isTestBound || prefs != null) return
+        runCatching {
+            legacyPrefs()
+            protected()
+        }.onFailure { Timber.w(it, "PendingDeepLinkStore warm-up failed") }
     }
 
     fun migrate(
         adapter: com.squareup.moshi.JsonAdapter<PendingContentArrival>,
         now: Long,
     ): PendingContentArrival? {
-        val old = legacy ?: return null
+        val old = legacyPrefs() ?: return null
         val path = old.getString("path", null)?.takeIf(String::isNotBlank) ?: return null
         val record =
             PendingContentArrival(
@@ -200,28 +270,43 @@ private class PendingContentArrivalPreferences {
 
     fun clearProtected(): Boolean = clearLegacy() && write(null)
 
-    fun clearLegacy(): Boolean = legacy?.let { if (it.all.isEmpty()) true else it.edit().clear().commit() } ?: true
+    fun clearLegacy(): Boolean = legacyPrefs()?.let { if (it.all.isEmpty()) true else it.edit().clear().commit() } ?: true
+
+    private fun legacyPrefs(): SharedPreferences? {
+        legacy?.let { return it }
+        if (isTestBound) return null
+        val app = context ?: return null
+        return synchronized(lock) {
+            legacy?.let { return@synchronized it }
+            if (isTestBound) return@synchronized null
+            app.getSharedPreferences(LEGACY_PREFS_FILE, Context.MODE_PRIVATE).also { legacy = it }
+        }
+    }
 
     private fun protected(): SharedPreferences {
         prefs?.let { return it }
-        val app = checkNotNull(context)
-        val master = MasterKey.Builder(app).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        return EncryptedSharedPreferences.create(
-            app,
-            "private_pending_deep_link_v1",
-            master,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        ).also { prefs = it }
+        return synchronized(lock) {
+            prefs?.let { return@synchronized it }
+            val app = checkNotNull(context)
+            openProtectedWithRecovery(app).also { prefs = it }
+        }
     }
+
+    // A damaged or unreadable file is cleared and made again; if Keystore still refuses, the exception reaches
+    // PendingDeepLinkStore.safely() so writes fail closed. The shared MasterKey is TokenStorage's to reset: resetting it
+    // here would leave the saved sign-in unreadable on the next launch.
+    private fun openProtectedWithRecovery(app: Context): SharedPreferences = EncryptedPrefsRecovery.open(app, PROTECTED_PREFS_FILE)
 
     fun bindForTesting(
         protected: SharedPreferences,
         oldPreferences: SharedPreferences?,
     ) {
-        prefs = protected
-        legacy = oldPreferences
-        uncertain = false
-        uncertainValue = null
+        synchronized(lock) {
+            isTestBound = true
+            prefs = protected
+            legacy = oldPreferences
+            uncertain = false
+            uncertainValue = null
+        }
     }
 }

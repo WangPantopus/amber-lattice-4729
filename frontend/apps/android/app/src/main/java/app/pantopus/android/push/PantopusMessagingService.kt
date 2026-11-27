@@ -72,6 +72,7 @@ class PantopusMessagingService : FirebaseMessagingService() {
 
     // FCM invokes Service callbacks on the main thread. Hop off it
     // before doing IO so the binder thread is freed quickly.
+    // Not cancelled in onDestroy: a token registration or sign-in refresh cut half-way can lose a rotated token.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {

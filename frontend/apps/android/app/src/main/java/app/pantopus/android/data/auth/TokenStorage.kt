@@ -6,8 +6,8 @@ import androidx.annotation.VisibleForTesting
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import timber.log.Timber
+import java.security.KeyStore
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -88,6 +90,8 @@ class TokenStorage
         @VisibleForTesting
         internal var prefsOverride: SharedPreferences? = null
 
+        private val prefsLock = Any()
+
         @Volatile
         private var cachedPrefs: SharedPreferences? = null
 
@@ -121,24 +125,23 @@ class TokenStorage
 
         private suspend fun <T> withPrefs(block: (SharedPreferences) -> T): T =
             withContext(Dispatchers.IO) {
-                val prefs = prefsOverride ?: cachedPrefs ?: openEncryptedPrefs().also { cachedPrefs = it }
+                val prefs = prefsOverride ?: openEncryptedPrefs()
                 maybeMigrateLegacy(prefs)
                 block(prefs)
             }
 
         private fun openEncryptedPrefs(): SharedPreferences {
-            val masterKey =
-                MasterKey
-                    .Builder(context)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build()
-            return EncryptedSharedPreferences.create(
-                context,
-                SECURE_PREFS_FILE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            cachedPrefs?.let { return it }
+            return synchronized(prefsLock) {
+                cachedPrefs?.let { return@synchronized it }
+                val opened =
+                    EncryptedPrefsRecovery.attempt(
+                        open = { EncryptedPrefsRecovery.open(context, SECURE_PREFS_FILE) },
+                        onFailure = { error -> resetMasterKeyAndReopen(context, error) },
+                    )
+                cachedPrefs = opened
+                opened
+            }
         }
 
         private suspend fun maybeMigrateLegacy(prefs: SharedPreferences) {
@@ -314,3 +317,27 @@ class TokenStorage
             _accessTokenFlow.value = null
         }
     }
+
+/**
+ * Last step after [EncryptedPrefsRecovery.open] retried and cleared this file and it still can't be opened: the
+ * shared MasterKey itself is unusable. Reset it and retry; if Keystore itself refuses to initialize, fall back to a
+ * volatile in-memory store (signed out, never plaintext on disk). Other encrypted files recover from the reset on
+ * their next open.
+ */
+private fun resetMasterKeyAndReopen(
+    context: Context,
+    error: Throwable,
+): SharedPreferences {
+    Timber.e(error, "secure_auth_tokens retry failed; resetting MasterKey alias and retrying")
+    runCatching {
+        KeyStore.getInstance(KeystoreBacking.ANDROID_KEYSTORE).apply {
+            load(null)
+            deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        }
+    }
+    runCatching { context.deleteSharedPreferences(SECURE_PREFS_FILE) }
+    return EncryptedPrefsRecovery.attempt(open = { EncryptedPrefsRecovery.create(context, SECURE_PREFS_FILE) }) { thirdError ->
+        Timber.e(thirdError, "secure_auth_tokens unavailable after Keystore reset; falling back to volatile store")
+        VolatileSharedPreferences()
+    }
+}

@@ -2,8 +2,7 @@ package app.pantopus.android.data.payments
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import app.pantopus.android.data.api.models.payments.TipOriginal
 import app.pantopus.android.data.api.models.payments.TipValidation
 import com.squareup.moshi.Moshi
@@ -39,14 +38,7 @@ class PersistentPendingGigTipStore internal constructor(
         @ApplicationContext context: Context,
         moshi: Moshi,
     ) : this(moshi, {
-        val master = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        EncryptedSharedPreferences.create(
-            context,
-            "private_gig_tips_v1",
-            master,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+        EncryptedPrefsRecovery.open(context, "private_gig_tips_v1")
     })
 
     private val adapter = moshi.adapter(TipOriginal::class.java)

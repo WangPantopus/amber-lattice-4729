@@ -169,7 +169,8 @@ object DeepLinkRouter {
          */
         data class Conversation(val id: String, val name: String? = null) : Destination
 
-        data class User(val id: String) : Destination
+        /** `tab` from `?tab=work` (e.g. an ask notification opens the asked person's Work tab). */
+        data class User(val id: String, val tab: String? = null) : Destination
 
         /** `pantopus://persona/:handle` or `/@handle` — public Beacon profile. */
         data class BeaconProfile(val handle: String) : Destination
@@ -463,8 +464,13 @@ object DeepLinkRouter {
         data object PlansTab : Destination
 
         /**
-         * Moments: `/moments/:id` (the push about a connection's new Moment, contract v3) plays that Moment over the
-         * Moments tab. Behind the `moments` flag; dropped while it is off.
+         * Moments: `/moments` (and `/app/moments`) selects the Moments tab. Behind the `moments` flag; dropped while off.
+         */
+        data object Moments : Destination
+
+        /**
+         * Moments: `/moments/:id` (and `/moment/:id`, the push about a connection's new Moment, contract v3) plays that
+         * Moment over the Moments tab. Behind the `moments` flag; dropped while it is off.
          */
         data class Moment(val id: String) : Destination
 
@@ -640,9 +646,12 @@ object DeepLinkRouter {
         if (current == null) {
             val normalized = Paths.normalizeIncoming(path)
             if (resolveString(normalized) is Destination.Unknown) return
-            if (PendingDeepLinkStore.stash(Paths.normalized(normalized), expectedUserId)) {
-                _parkedArrivals.value += 1
-                _prefersLoginPresentation.value = true
+            val persisted = Paths.normalized(normalized)
+            PendingDeepLinkStore.runOffMainIfNeeded {
+                if (PendingDeepLinkStore.stash(persisted, expectedUserId)) {
+                    _parkedArrivals.value += 1
+                    _prefersLoginPresentation.value = true
+                }
             }
             return
         }
@@ -784,7 +793,7 @@ object DeepLinkRouter {
     /** [isLaunchAvailable], and for a Plans page also the `plans` flag, for a Moment the `moments` flag. */
     private fun isLinkAvailable(destination: Destination): Boolean =
         (!isPlansDestination(destination) || plansEnabled()) &&
-            (destination !is Destination.Moment || momentsEnabled()) &&
+            ((destination !is Destination.Moment && destination != Destination.Moments) || momentsEnabled()) &&
             isLaunchAvailable(destination)
 
     /** The push about a connection's new Moment (contract v3, "Push and its switch"). */
@@ -806,13 +815,15 @@ object DeepLinkRouter {
     fun completeArrival(destination: Destination) {
         if (!retainsArrival(destination)) return
         val userId = signedInUserIdProvider() ?: return
-        PendingDeepLinkStore.completeArrival(userId) {
-            val stored = resolveString(it)
-            when (destination) {
-                is Destination.Conversation -> stored is Destination.Conversation && stored.id == destination.id
-                is Destination.HomeTask ->
-                    stored is Destination.HomeTask && stored.homeId == destination.homeId && stored.taskId == destination.taskId
-                else -> stored == destination
+        PendingDeepLinkStore.runOffMainIfNeeded {
+            PendingDeepLinkStore.completeArrival(userId) {
+                val stored = resolveString(it)
+                when (destination) {
+                    is Destination.Conversation -> stored is Destination.Conversation && stored.id == destination.id
+                    is Destination.HomeTask ->
+                        stored is Destination.HomeTask && stored.homeId == destination.homeId && stored.taskId == destination.taskId
+                    else -> stored == destination
+                }
             }
         }
     }
@@ -856,18 +867,22 @@ object DeepLinkRouter {
                 // signed-out content browser — so we still persist these for
                 // post-login replay rather than dropping them.
                 if (userId != null) {
-                    if (retainsArrival(destination)) {
-                        PendingDeepLinkStore.stash(persistencePath, expectedUserId = userId)
-                    } else {
-                        PendingDeepLinkStore.clear()
-                    }
                     _prefersLoginPresentation.value = false
                     _pending.value = destination
+                    PendingDeepLinkStore.runOffMainIfNeeded {
+                        if (retainsArrival(destination)) {
+                            PendingDeepLinkStore.stash(persistencePath, expectedUserId = userId)
+                        } else {
+                            PendingDeepLinkStore.clear()
+                        }
+                    }
                 } else {
-                    PendingDeepLinkStore.stash(persistencePath)
-                    _parkedArrivals.value += 1
                     _pending.value = null
-                    _prefersLoginPresentation.value = true
+                    PendingDeepLinkStore.runOffMainIfNeeded {
+                        PendingDeepLinkStore.stash(persistencePath)
+                        _parkedArrivals.value += 1
+                        _prefersLoginPresentation.value = true
+                    }
                 }
             }
         }
@@ -1147,11 +1162,18 @@ object DeepLinkRouter {
                     Destination.Unknown(raw)
                 }
             }
-            // Moments: `/moments/:id` (a connection's new Moment); its id is a UUID.
-            "moments" ->
-                segments.getOrNull(1)
-                    ?.takeIf { segments.size == 2 && MAIL_UUID.matches(it) }
-                    ?.let { Destination.Moment(it.lowercase()) } ?: Destination.Unknown(raw)
+            // Moments: bare `/moments` (and `/app/moments`) selects the Moments tab;
+            // `/moments/:id` and `/moment/:id` play that Moment (its id is a UUID).
+            "moments", "moment" ->
+                when {
+                    segments.size == 1 && first == "moments" -> Destination.Moments
+                    segments.size == 2 ->
+                        segments[1]
+                            .takeIf { MAIL_UUID.matches(it) }
+                            ?.let { Destination.Moment(it.lowercase()) }
+                            ?: Destination.Unknown(raw)
+                    else -> Destination.Unknown(raw)
+                }
             "plans" -> {
                 // Nearby Plans: `/plans/new`, `/plans/:id`, `/plans/:id/requests` (brief section 7) and `/plans/:id/guests`.
                 val id = segments.getOrNull(1)
@@ -1214,7 +1236,11 @@ object DeepLinkRouter {
             }
             "user", "users", "u" -> {
                 val id = segments.getOrNull(1)
-                if (id.isNullOrBlank()) Destination.Unknown(raw) else Destination.User(id)
+                if (id.isNullOrBlank()) {
+                    Destination.Unknown(raw)
+                } else {
+                    Destination.User(id, tab = tabQuery?.takeIf(String::isNotBlank))
+                }
             }
             "b" -> {
                 // Public business short link `pantopus://b/:username` and its

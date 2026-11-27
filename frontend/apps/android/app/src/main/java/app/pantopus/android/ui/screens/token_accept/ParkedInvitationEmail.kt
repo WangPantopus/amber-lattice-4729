@@ -11,7 +11,7 @@ import app.pantopus.android.data.api.services.TokenAcceptApi
  * address instead of an empty field (as the web does from the invite page).
  */
 internal suspend fun parkedInvitationEmail(api: TokenAcceptApi): String? {
-    val token = parkedInvitationToken(PendingDeepLinkStore.peek()) ?: return null
+    val token = parkedInvitationToken(PendingDeepLinkStore.peekAsync()) ?: return null
     val preview = runCatching { api.homeInvite(token) }.getOrNull() ?: return null
     if (preview.invitation?.status != "pending" || preview.expired == true) return null
     return preview.invitation.inviteeEmail?.trim()?.takeIf { '@' in it }

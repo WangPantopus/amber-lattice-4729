@@ -39,6 +39,18 @@ import app.pantopus.android.ui.screens.profile.NamePromptHost
 import app.pantopus.android.ui.screens.root.ProvideScrollAwayHeaders
 import app.pantopus.android.ui.screens.root.RootTabScreen
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+
+/**
+ * Takes the link parked through sign-in and opens it, as one step; true when there was one. The effect that calls
+ * this restarts when the signed-in profile changes, and a restart between the take and the open would lose the link.
+ */
+private suspend fun openParkedLink(userId: String): Boolean {
+    val parked = withContext(NonCancellable) { PendingDeepLinkStore.takeAsync(userId = userId) }
+    if (parked != null) DeepLinkRouter.handle(parked)
+    return parked != null
+}
 
 /** Mirrors iOS `auth.welcomeBackToast`; present only while the toast is up. */
 const val WELCOME_BACK_TOAST_TAG = "auth.welcomeBackToast"
@@ -88,11 +100,10 @@ fun PantopusNavHost(viewModel: RootViewModel = hiltViewModel()) {
         // into DeepLinkRouter so RootTabScreen consumers navigate.
         val signedIn = authState as? AuthRepository.State.SignedIn
         if (signedIn != null && prev !is AuthRepository.State.SignedIn) {
+            val openedParked = openParkedLink(signedIn.user.id)
+            // After the take: a link stashed during launch asks for the login screen from the storage lane.
             DeepLinkRouter.acknowledgeLoginPresentation()
-            val parked = PendingDeepLinkStore.take(userId = signedIn.user.id)
-            if (parked != null) {
-                DeepLinkRouter.handle(parked)
-            } else if (prev is AuthRepository.State.SignedOut || prev is AuthRepository.State.Resumable) {
+            if (!openedParked && (prev is AuthRepository.State.SignedOut || prev is AuthRepository.State.Resumable)) {
                 // Signing in or up (not a session restored at launch) may also open a household invitation emailed
                 // to this address before it had an account, else a plan invitation.
                 val homeInvite = viewModel.unopenedHomeInvite()

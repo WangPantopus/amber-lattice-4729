@@ -282,14 +282,10 @@ class NotificationDispatcher
             val stableTag = routing.chatNotificationKey?.takeIf { it.isNotBlank() }?.let { "chat:$it" }
             val notificationId = if (stableTag == null) Random.nextInt() else 0
             val contentIntent = buildContentIntent(routing)
-            // Replace `ic_launcher` with a dedicated monochrome notification
-            // icon (`ic_notification`) before public launch.
-            // Status-bar icons must be white-on-transparent per Android
-            // 5+; the launcher icon renders as a flat silhouette here.
             val notification =
                 NotificationCompat
                     .Builder(appContext, routing.channel.id)
-                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle(routing.title ?: appContext.getString(R.string.app_name))
                     .apply { routing.body?.let(::setContentText) }
                     // A long message or notice reads in full when the notification is expanded.
@@ -332,7 +328,7 @@ class NotificationDispatcher
         private fun publicVersion(channel: Channel) =
             NotificationCompat
                 .Builder(appContext, channel.id)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(appContext.getString(R.string.app_name))
                 .setContentText(
                     appContext.getString(if (channel == Channel.CHAT) R.string.notif_public_chat else R.string.notif_public_other),

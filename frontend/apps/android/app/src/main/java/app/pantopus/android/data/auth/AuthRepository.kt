@@ -1317,7 +1317,10 @@ class AuthRepository
                 // Once explicitly chosen, local teardown must finish even if the
                 // departing screen's coroutine is cancelled by navigation.
                 withContext(NonCancellable) {
-                    if (loginArrival != null && !PendingDeepLinkStore.stash(loginArrival)) return@withContext false
+                    if (loginArrival != null) {
+                        val stashed = withContext(PendingDeepLinkStore.ioDispatcher) { PendingDeepLinkStore.stash(loginArrival) }
+                        if (!stashed) return@withContext false
+                    }
                     val access = tokenStorage.accessToken()
                     val refresh = tokenStorage.refreshToken()
                     val userId = (_state.value as? State.SignedIn)?.user?.id ?: tokenStorage.userId()
@@ -1350,19 +1353,21 @@ class AuthRepository
             }
         }
 
-        private fun reconcileLoginArrival(
+        private suspend fun reconcileLoginArrival(
             loginArrival: String?,
             manual: Boolean,
             userId: String?,
         ) {
-            when {
-                loginArrival != null && PendingDeepLinkStore.peek() == loginArrival -> Unit
-                manual -> PendingDeepLinkStore.clear()
-                else -> {
-                    // Still hydrating the stored session (cold start): a link
-                    // stashed meanwhile belongs to the account being ended.
-                    if (_state.value == State.Unknown) PendingDeepLinkStore.adoptHydrationArrival(userId)
-                    PendingDeepLinkStore.retainForReauthentication(userId)
+            withContext(PendingDeepLinkStore.ioDispatcher) {
+                when {
+                    loginArrival != null && PendingDeepLinkStore.peek() == loginArrival -> Unit
+                    manual -> PendingDeepLinkStore.clear()
+                    else -> {
+                        // Still hydrating the stored session (cold start): a link
+                        // stashed meanwhile belongs to the account being ended.
+                        if (_state.value == State.Unknown) PendingDeepLinkStore.adoptHydrationArrival(userId)
+                        PendingDeepLinkStore.retainForReauthentication(userId)
+                    }
                 }
             }
         }
@@ -1397,7 +1402,7 @@ class AuthRepository
          */
         suspend fun eraseAllLocalState() {
             signOut(reason = SessionEndReason.expired(code = "ACCOUNT_DELETED"))
-            PendingDeepLinkStore.clear()
+            withContext(PendingDeepLinkStore.ioDispatcher) { PendingDeepLinkStore.clear() }
             runCatching { accountHints.delete() }
             _rememberedAccounts.value = emptyList()
             runCatching { deviceKeyStore.delete() }

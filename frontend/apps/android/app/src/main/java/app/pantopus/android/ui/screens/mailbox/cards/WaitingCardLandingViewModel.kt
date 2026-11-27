@@ -76,8 +76,8 @@ class WaitingCardLandingViewModel
         }
 
         /** A link is waiting to open (parked through sign-in, or pending now), or one already opened for [account]. */
-        private fun linkWaiting(account: String): Boolean =
-            linkFor == account || DeepLinkRouter.pending.value?.let(::opensInTabs) == true || PendingDeepLinkStore.peek() != null
+        private suspend fun linkWaiting(account: String): Boolean =
+            linkFor == account || DeepLinkRouter.pending.value?.let(::opensInTabs) == true || PendingDeepLinkStore.peekAsync() != null
 
         private fun signedInAccount(): String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 

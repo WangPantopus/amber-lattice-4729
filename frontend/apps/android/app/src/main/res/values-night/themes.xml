@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.Pantopus" parent="android:Theme.Material.NoActionBar">
+<!-- Pantopus currently renders the light palette (`PantopusTheme(darkTheme = false)`).
+     Align the night starting window with the light theme so cold launch in system dark
+     mode never flashes black before Compose paints `appSurface` and status-bar icons
+     stay dark and readable from the first frame. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Pantopus" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/pantopus_app_surface</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
 </resources>

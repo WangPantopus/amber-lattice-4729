@@ -442,6 +442,7 @@ import app.pantopus.android.ui.screens.posts.PulsePostDetailScreen
 import app.pantopus.android.ui.screens.profile.EditProfileScreen
 import app.pantopus.android.ui.screens.profile.NamePromptViewModel
 import app.pantopus.android.ui.screens.profile.OwnerNavigation
+import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_TAB_KEY
 import app.pantopus.android.ui.screens.profile.PUBLIC_PROFILE_USER_ID_KEY
 import app.pantopus.android.ui.screens.profile.PublicProfileScreen
 import app.pantopus.android.ui.screens.profile.professional.ProfessionalProfileScreen
@@ -1061,7 +1062,7 @@ private object ChildRoutes {
 
     fun propertyCorrection(homeId: String): String = "homes/$homeId/property/correction"
 
-    const val PUBLIC_PROFILE = "users/{$PUBLIC_PROFILE_USER_ID_KEY}"
+    const val PUBLIC_PROFILE = "users/{$PUBLIC_PROFILE_USER_ID_KEY}?$PUBLIC_PROFILE_TAB_KEY={$PUBLIC_PROFILE_TAB_KEY}"
 
     /** P1.6 — Typed Business **public** profile screen (A10.6). `businessId`
      *  is the business User UUID. Lives at the singular `business/{id}` so the
@@ -1670,8 +1671,16 @@ private object ChildRoutes {
         "mailbox/cards?${SendCardViewModel.SEND_CARD_TO_USER_KEY}=${java.net.URLEncoder.encode(userId, "UTF-8")}" +
             "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}=${java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")}"
 
-    /** Build the concrete path for a public profile. */
-    fun publicProfile(id: String): String = "users/$id"
+    /** Build the concrete path for a public profile, preserving an optional `?tab=` (e.g. `work`). */
+    fun publicProfile(
+        id: String,
+        tab: String? = null,
+    ): String =
+        if (tab.isNullOrBlank()) {
+            "users/$id"
+        } else {
+            "users/$id?$PUBLIC_PROFILE_TAB_KEY=${Uri.encode(tab)}"
+        }
 
     /** A Pulse card's author: a person's profile, or a business's page (`/business/:key`, as the post page opens it). */
     fun pulseAuthor(link: PulseAuthorLink): String =
@@ -3076,7 +3085,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.User -> {
-                navController.navigate(ChildRoutes.publicProfile(pending.id))
+                navController.navigate(ChildRoutes.publicProfile(pending.id, tab = pending.tab))
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.BeaconProfile -> {
@@ -3286,8 +3295,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 openPlansLink(PlansRoutes.host())
                 DeepLinkRouter.consume()
             }
-            // Moments: a connection's new Moment (its push) plays over the Moments tab, so Back lands on the map; one that
-            // ended or can't be seen any more leaves the map saying so. While the `moments` flag is off it's dropped.
+            // Moments: bare `/moments` selects the Moments tab; `/moments/:id` (and `/moment/:id`) plays that Moment
+            // over the Moments tab, so Back lands on the map; one that ended or can't be seen any more leaves the map
+            // saying so. While the `moments` flag is off both are dropped.
+            DeepLinkRouter.Destination.Moments -> {
+                if (DeepLinkRouter.momentsAnswer()) {
+                    navController.navigateToRootTab(PantopusRoute.Moments)
+                }
+                DeepLinkRouter.consume()
+            }
             is DeepLinkRouter.Destination.Moment -> {
                 if (DeepLinkRouter.momentsAnswer()) {
                     navController.navigateToRootTab(PantopusRoute.Moments)
@@ -5755,7 +5771,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 }
                 composable(
                     route = ChildRoutes.PUBLIC_PROFILE,
-                    arguments = listOf(navArgument(PUBLIC_PROFILE_USER_ID_KEY) { type = NavType.StringType }),
+                    arguments =
+                        listOf(
+                            navArgument(PUBLIC_PROFILE_USER_ID_KEY) { type = NavType.StringType },
+                            navArgument(PUBLIC_PROFILE_TAB_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
                 ) { profileEntry ->
                     val youViewModel: YouViewModel = hiltViewModel()
                     PublicProfileScreen(

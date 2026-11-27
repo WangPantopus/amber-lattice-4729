@@ -2,8 +2,7 @@ package app.pantopus.android.data.homes
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import app.pantopus.android.core.security.EncryptedPrefsRecovery
 import app.pantopus.android.data.api.models.homes.HomeTaskRecurrenceReceipt
 import app.pantopus.android.data.api.models.homes.HomeTaskRecurrenceRequest
 import com.squareup.moshi.JsonClass
@@ -109,14 +108,7 @@ class PersistentPendingHomeTaskRecurrenceStore
             }
 
         private fun open(): SharedPreferences {
-            val master = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-            return EncryptedSharedPreferences.create(
-                context,
-                "private_home_task_recurrence_v1",
-                master,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            return EncryptedPrefsRecovery.open(context, "private_home_task_recurrence_v1")
         }
 
         private fun key(scope: HomeTaskRecurrenceScope): String {

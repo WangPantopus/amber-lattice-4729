@@ -215,7 +215,7 @@ class MainActivity : FragmentActivity() {
         // for the on-screen conversation is skipped only while visible.
         activeChatThread.isForeground = true
         chatOutbox.foregrounded()
-        socketManager.reconnectNow()
+        socketManager.foregrounded()
         pilotEvents.enterForeground()
         appLockManager.appDidBecomeActive()
         storeSync.foregrounded()
@@ -233,6 +233,7 @@ class MainActivity : FragmentActivity() {
         // lock the app in the user's hands on every rotation.
         appLockManager.appDidEnterBackground(isConfigurationChange = isChangingConfigurations)
         if (!isChangingConfigurations) {
+            socketManager.backgrounded()
             pilotEvents.enterBackground()
             guidance.backgrounded()
             storeSync.backgrounded()
@@ -269,7 +270,8 @@ class MainActivity : FragmentActivity() {
         val destination = DeepLinkRouter.resolve(uri) as? DeepLinkRouter.Destination.HomeTask
         if (recipient == null || session == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return true
         if (destination == null || !destination.openDueDateEdit) return true
-        // Existing encrypted pending-route storage binds the cold login replay.
+        // Existing encrypted pending-route storage binds the cold login replay. Called here, not from a lifecycle
+        // coroutine: the router moves its own storage off the main thread, and a recreated Activity can't drop the link.
         DeepLinkRouter.handle(uri.toString(), expectedUserId = recipient)
         intent.removeExtra(ReminderActionReceiver.ACTION)
         lifecycleScope.launch {
