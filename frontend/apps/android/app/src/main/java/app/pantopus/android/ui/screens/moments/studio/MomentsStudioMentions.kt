@@ -80,6 +80,20 @@ internal fun mentionQuery(caption: String): String? {
     return query.takeIf { '\n' !in it && it.length <= LONGEST_QUERY }
 }
 
+/**
+ * Where "@[name]" stands in [caption] as a whole name: the places it starts, each not followed by a letter or a digit
+ * (so "@Ann" is not found inside "@Annabel Lee").
+ */
+internal fun mentionPlaces(
+    caption: String,
+    name: String,
+): List<Int> {
+    val words = "@$name"
+    return generateSequence(caption.indexOf(words).takeIf { it >= 0 }) { at -> caption.indexOf(words, at + 1).takeIf { it >= 0 } }
+        .filter { at -> caption.getOrNull(at + words.length)?.isLetterOrDigit() != true }
+        .toList()
+}
+
 /** [caption] with its "@query" at the end replaced by "@Name ". */
 internal fun captionWithMention(
     caption: String,
@@ -93,7 +107,7 @@ internal val MomentsComposeUiState.sentMentions: List<String>?
             null
         } else {
             mentions
-                .filter { "@${it.name}" in caption }
+                .filter { mentionPlaces(caption, it.name).isNotEmpty() }
                 .map { it.id }
                 .distinct()
                 .take(MOST_MENTIONED)

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentAuthorDto
+import app.pantopus.android.ui.screens.moments.studio.mentionPlaces
 
 /*
  * "Pulse, reinvented" (CONTRACT 7h), for a reader whose switch is on: the Moment's caption with each mentioned person's
@@ -37,13 +38,11 @@ internal fun mentionText(
     // Each mention's places in the caption, longest name first where two would overlap.
     val spans =
         mentions
-            .mapNotNull { person -> person.mentionName()?.let { "@$it" to person } }
+            .mapNotNull { person -> person.mentionName()?.let { it to person } }
             .sortedByDescending { it.first.length }
-            .flatMap { (words, person) ->
-                generateSequence(caption.indexOf(words)) { at -> caption.indexOf(words, at + 1).takeIf { it >= 0 } }
-                    .takeWhile { it >= 0 }
-                    .map { at -> at until at + words.length to person }
-                    .toList()
+            .flatMap { (name, person) ->
+                // Whole names only: "@Ann" is not a link inside "@Annabel Lee".
+                mentionPlaces(caption, name).map { at -> at until at + name.length + 1 to person }
             }.fold(emptyList<Pair<IntRange, MomentAuthorDto>>()) { kept, span ->
                 if (kept.any { it.first.first <= span.first.last && span.first.first <= it.first.last }) kept else kept + span
             }.sortedBy { it.first.first }
