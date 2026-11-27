@@ -35,37 +35,26 @@ struct ReinventedPulseView: View {
     /// "This Moment has ended." after a link to one that can't be played.
     @State private var linkNote: String?
     @Environment(\.colorScheme) private var colorScheme
+    /// Regular width (an iPad, the iPhone Duo open) puts the list and the map side by side where they fit.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
+        // Read in layout, so the first pass already picks over the map or beside it.
         GeometryReader { geo in
+            let sideBySide = ReinventedPulseColumns.fits(width: geo.size.width, sizeClass: horizontalSizeClass)
             ZStack(alignment: .top) {
                 ReinventedPulseMap(model: map, onOpen: open)
                     .ignoresSafeArea()
-                panel(in: geo)
-                if height == .map {
-                    ReinventedPeekDeck(model: map, onOpen: open)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, 76)
+                    .padding(.leading, ReinventedPulseColumns.mapInset(height, sideBySide: sideBySide))
+                if sideBySide {
+                    besideMap
                 } else {
-                    addButton
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(.trailing, Spacing.s4)
-                        .padding(.bottom, 92)
+                    overMap(in: geo)
                 }
-                VStack(spacing: Spacing.s2) {
-                    topRow
-                    viewSwitch
-                    // My Atlas has no time row and no chips.
-                    if height == .map, !inAtlas {
-                        ReinventedTimeRow(model: map)
-                    } else if model.reach != "explore", !inAtlas {
-                        chipsRow
-                    }
-                }
-                .padding(.bottom, Spacing.s2)
-                .background(height == .list ? Theme.Color.appBg : Color.clear)
             }
         }
+        // The tab keeps its pages to a reading column: where the map fits beside the list, Pulse takes the width.
+        .readableColumnWidens(from: ReinventedPulseColumns.widensFrom(sizeClass: horizontalSizeClass))
         .task { await model.refresh() }
         .task { await strip.read() }
         .sheet(item: $atlasItem) { moment in
@@ -115,11 +104,12 @@ struct ReinventedPulseView: View {
 
     // MARK: - Top
 
-    private var topRow: some View {
+    /// `floating`: round material buttons over the map; plain on the list's own background.
+    private func topRow(floating: Bool) -> some View {
         HStack(spacing: Spacing.s2) {
-            NavigationMenuButton(accessibilityIdentifier: "reinventedPulse.menu", floating: height != .list)
+            NavigationMenuButton(accessibilityIdentifier: "reinventedPulse.menu", floating: floating)
             scopePill
-            MessagesButton(accessibilityIdentifier: "reinventedPulse.chat", floating: height != .list)
+            MessagesButton(accessibilityIdentifier: "reinventedPulse.chat", floating: floating)
         }
         .padding(.horizontal, Spacing.s4)
     }
@@ -170,12 +160,14 @@ struct ReinventedPulseView: View {
         }
     }
 
-    /// The big List | Map switch (the middle height reads as List).
-    private var viewSwitch: some View {
+    /// The big List | Map switch (the middle height reads as List; side by side, as List and Map).
+    private func viewSwitch(sideBySide: Bool) -> some View {
         HStack(spacing: 4) {
-            switchButton("List", icon: .list, on: !inAtlas && height != .map) { show(atlas: false, at: .list) }
-            switchButton("Map", icon: .map, on: !inAtlas && height == .map) { show(atlas: false, at: .map) }
-            switchButton("Atlas", icon: .bookmark, on: inAtlas) { show(atlas: true, at: .list) }
+            switchButton("List", icon: .list, on: !inAtlas && height != .map) { pick(.list, sideBySide: sideBySide) }
+            switchButton("Map", icon: .map, on: !inAtlas && (sideBySide ? height != .list : height == .map)) {
+                pick(.map, sideBySide: sideBySide)
+            }
+            switchButton("Atlas", icon: .bookmark, on: inAtlas) { show(atlas: true, at: sideBySide ? .middle : .list) }
         }
         .padding(4)
         .background(Capsule().fill(Theme.Color.appSurface))
@@ -278,18 +270,7 @@ struct ReinventedPulseView: View {
                 .accessibilityAddTraits(.isButton)
                 .onTapGesture { setHeight(height == .map ? .middle : height == .middle ? .list : .middle) }
                 .accessibilityIdentifier("reinventedPulse.handle")
-            if inAtlas {
-                ReinventedAtlasView(model: atlas) { atlasItem = $0 }
-            } else {
-                ReinventedPulseList(
-                    model: model,
-                    strip: strip.strip,
-                    onOpenPost: onOpenPost,
-                    onOpenMoment: open,
-                    onOpenRing: { ring in open(.ring(ring)) },
-                    onRefreshStrip: { await strip.read() }
-                )
-            }
+            panelContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .frame(height: max(geo.size.height - min(max(panelTop(in: geo) + dragged, 120), geo.size.height - 64), 64), alignment: .top)
@@ -348,6 +329,84 @@ struct ReinventedPulseView: View {
             if inAtlas { atlasItem = kept.moment } else { open(kept.moment) }
         case let .ticket(ticket):
             DeepLinkRouter.shared.handle(path: "/plans/\(ticket.id)")
+        }
+    }
+}
+
+// MARK: - Over the map, or beside it
+
+extension ReinventedPulseView {
+    /// A phone, or a screen too narrow for both: the list rests over the map at three heights.
+    @ViewBuilder
+    private func overMap(in geo: GeometryProxy) -> some View {
+        panel(in: geo)
+        if height == .map {
+            ReinventedPeekDeck(model: map, onOpen: open)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 76)
+        } else {
+            addButton
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(.trailing, Spacing.s4)
+                .padding(.bottom, 92)
+        }
+        header(sideBySide: false)
+            .padding(.bottom, Spacing.s2)
+            .background(height == .list ? Theme.Color.appBg : Color.clear)
+    }
+
+    /// An iPad or the open iPhone Duo held sideways (PHASE-1 §2.2): the list and the map side by side.
+    private var besideMap: some View {
+        ReinventedPulseSideBySide(
+            height: height,
+            map: map,
+            showsTimeRow: !inAtlas && model.reach != "explore",
+            header: header(sideBySide: true),
+            content: panelContent,
+            add: addButton,
+            onOpen: open
+        )
+    }
+
+    /// The top row, the switch and the chips, or the time row at the Map height. My Atlas has no time row and no chips.
+    private func header(sideBySide: Bool) -> some View {
+        VStack(spacing: Spacing.s2) {
+            // Over the map the buttons float; side by side they stand on the list's background but at the Map height.
+            topRow(floating: sideBySide ? height == .map : height != .list)
+            viewSwitch(sideBySide: sideBySide)
+            if height == .map, !inAtlas {
+                ReinventedTimeRow(model: map)
+            } else if model.reach != "explore", !inAtlas {
+                chipsRow
+            }
+        }
+    }
+
+    /// The list, or My Atlas in its place.
+    @ViewBuilder private var panelContent: some View {
+        if inAtlas {
+            ReinventedAtlasView(model: atlas) { atlasItem = $0 }
+        } else {
+            ReinventedPulseList(
+                model: model,
+                strip: strip.strip,
+                onOpenPost: onOpenPost,
+                onOpenMoment: open,
+                onOpenRing: { ring in open(.ring(ring)) },
+                onRefreshStrip: { await strip.read() }
+            )
+        }
+    }
+
+    /// List or Map from the switch. Side by side the middle height shows both: the lit one tapped again goes back to
+    /// both, and from My Atlas List goes back to both.
+    private func pick(_ next: Height, sideBySide: Bool) {
+        if !sideBySide {
+            show(atlas: false, at: next)
+        } else if inAtlas {
+            show(atlas: false, at: next == .map ? .map : .middle)
+        } else {
+            show(atlas: false, at: height == next ? .middle : next)
         }
     }
 }
