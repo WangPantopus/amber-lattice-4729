@@ -187,6 +187,8 @@ struct MomentsStudioTools {
     var pickedCutout: UUID?
     /// "Also show in Explore" ("Pulse, reinvented" phase 1, CONTRACT 6f, `MomentsStudioExplore`).
     var explore = false
+    /// "+ Ask / Kind" (phase 1, CONTRACT 6d, `MomentsStudioPostKind`): the kind picked and its details.
+    var post = MomentsStudioPostDraft()
     /// Film looks (`MomentsStudioLooks`): the look picked, and the photo as it was before any look, so another look
     /// starts from it again.
     var look = MomentsStudioLook.original
