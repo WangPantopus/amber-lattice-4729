@@ -123,6 +123,9 @@ fun MomentsPostSheet(
     lowering: MomentsPostLowering? = null,
     // A tap on the small map opens it full screen ([MomentsPostFullMap]); null keeps the map still.
     onOpenMap: (() -> Unit)? = null,
+    // "Pulse, reinvented": the sheet as the Studio's drawer, without what the Studio's bar already holds (who sees it,
+    // the caption and Post). False, the sheet is today's.
+    studio: Boolean = false,
 ) {
     // "Don't show where": no pin, no map, connections only.
     val unplaced = state.noLocationOn
@@ -360,55 +363,57 @@ fun MomentsPostSheet(
                         }
                     }
                 }
-                SectionLabel("Who sees it")
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Spacing.s4)
-                            .height(40.dp)
-                            .clip(RoundedCornerShape(Radii.lg))
-                            .background(PantopusColors.appSurfaceSunken)
-                            .padding(3.dp)
-                            .semantics { contentDescription = "Who sees it" },
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    listOf("nearby" to "Everyone nearby", "connections" to "My connections").forEach { (key, text) ->
-                        // A Moment with no location goes only to connections: "Everyone nearby" needs a place.
-                        val on = key == if (unplaced) "connections" else state.audience
-                        val usable = !unplaced || key == "connections"
-                        Box(
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .fillMaxSize()
-                                    .then(if (on) Modifier.pantopusShadow(SegmentShadow, RoundedCornerShape(9.dp)) else Modifier)
-                                    .clip(RoundedCornerShape(9.dp))
-                                    .background(if (on) Color.White else Color.Transparent)
-                                    .clickable(enabled = usable, role = Role.RadioButton) { onAudience(key) }
-                                    .testTag("moments.post.audience.$key")
-                                    .clearAndSetSemantics {
-                                        contentDescription = text
-                                        role = Role.RadioButton
-                                        selected = on
-                                    },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = text,
-                                fontSize = 14.5.sp,
-                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
-                                color =
-                                    when {
-                                        on -> PantopusColors.appText
-                                        usable -> PantopusColors.appTextSecondary
-                                        else -> PantopusColors.appTextSecondary.copy(alpha = 0.45f)
-                                    },
-                            )
+                if (!studio) {
+                    SectionLabel("Who sees it")
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.s4)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(Radii.lg))
+                                .background(PantopusColors.appSurfaceSunken)
+                                .padding(3.dp)
+                                .semantics { contentDescription = "Who sees it" },
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        listOf("nearby" to "Everyone nearby", "connections" to "My connections").forEach { (key, text) ->
+                            // A Moment with no location goes only to connections: "Everyone nearby" needs a place.
+                            val on = key == if (unplaced) "connections" else state.audience
+                            val usable = !unplaced || key == "connections"
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .fillMaxSize()
+                                        .then(if (on) Modifier.pantopusShadow(SegmentShadow, RoundedCornerShape(9.dp)) else Modifier)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(if (on) Color.White else Color.Transparent)
+                                        .clickable(enabled = usable, role = Role.RadioButton) { onAudience(key) }
+                                        .testTag("moments.post.audience.$key")
+                                        .clearAndSetSemantics {
+                                            contentDescription = text
+                                            role = Role.RadioButton
+                                            selected = on
+                                        },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = text,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                                    color =
+                                        when {
+                                            on -> PantopusColors.appText
+                                            usable -> PantopusColors.appTextSecondary
+                                            else -> PantopusColors.appTextSecondary.copy(alpha = 0.45f)
+                                        },
+                                )
+                            }
                         }
                     }
                 }
-                if (state.media != null) {
+                if (state.media != null && !studio) {
                     Row(
                         modifier =
                             Modifier
@@ -456,26 +461,28 @@ fun MomentsPostSheet(
                     modifier = Modifier.padding(start = Spacing.s5, end = Spacing.s5, top = Spacing.s3).testTag("moments.post.error"),
                 )
             }
-            Spacer(Modifier.height(14.dp))
-            val sharesAt = state.sharesAt
-            SheetPrimaryButton(
-                label =
-                    when {
-                        // Post waits for the video to be made ready (sized, and split when it's long).
-                        state.posting && state.readying != null -> "Getting your video ready · ${(state.readying * 100).toInt()}%"
-                        state.posting -> "Posting…"
-                        // Several picked together: which one this is. The hours are on the sheet's own row either way.
-                        state.pickedTogether > 1 -> "Post ${state.pickedAt} of ${state.pickedTogether}"
-                        // A video longer than one Moment posts as several, one after another (contract v3.11).
-                        state.videoParts > 1 -> "Post as ${state.videoParts} Moments"
-                        // The Sky's "Share later": "Share at 6:40 pm · shows for 24 hours".
-                        sharesAt != null -> SkyWords.shareAtButton(sharesAt, state.hours)
-                        else -> "Post · shows for ${if (state.hours == 1) "1 hour" else "${state.hours} hours"}"
-                    },
-                onClick = onPost,
-                enabled = !state.posting && (state.pin != null || unplaced),
-                modifier = Modifier.padding(horizontal = Spacing.s4).testTag("moments.post.submit"),
-            )
+            if (!studio) {
+                Spacer(Modifier.height(14.dp))
+                val sharesAt = state.sharesAt
+                SheetPrimaryButton(
+                    label =
+                        when {
+                            // Post waits for the video to be made ready (sized, and split when it's long).
+                            state.posting && state.readying != null -> "Getting your video ready · ${(state.readying * 100).toInt()}%"
+                            state.posting -> "Posting…"
+                            // Several picked together: which one this is. The hours are on the sheet's own row either way.
+                            state.pickedTogether > 1 -> "Post ${state.pickedAt} of ${state.pickedTogether}"
+                            // A video longer than one Moment posts as several, one after another (contract v3.11).
+                            state.videoParts > 1 -> "Post as ${state.videoParts} Moments"
+                            // The Sky's "Share later": "Share at 6:40 pm · shows for 24 hours".
+                            sharesAt != null -> SkyWords.shareAtButton(sharesAt, state.hours)
+                            else -> "Post · shows for ${if (state.hours == 1) "1 hour" else "${state.hours} hours"}"
+                        },
+                    onClick = onPost,
+                    enabled = !state.posting && (state.pin != null || unplaced),
+                    modifier = Modifier.padding(horizontal = Spacing.s4).testTag("moments.post.submit"),
+                )
+            }
             Spacer(Modifier.height(Spacing.s6))
         }
         lowering?.let { MomentsPostStrip(lowering = it, onRaise = { lower(false) }, modifier = Modifier.align(Alignment.TopCenter)) }
