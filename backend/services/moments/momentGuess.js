@@ -70,12 +70,18 @@ async function recordGuess(row, viewerId, point, answer) {
 // The stamps that would give the answer away before a reader has guessed.
 const SPOT_STAMPS = new Set(['place', 'postmark', 'elevation', 'home_distance']);
 
-/** A serialized Moment with its spot left out (CONTRACT 5b), for a reader who hasn't guessed yet. */
+/**
+ * A serialized Moment with its spot left out (CONTRACT 5b), for a reader who hasn't guessed yet. It reads as a Moment
+ * with no location (`no_location`), so an app that knows nothing of guessing (2.1.6) draws it as one instead of a pin
+ * at 0, 0 with an empty place.
+ */
 function withoutSpot(moment) {
   return {
     ...moment,
     latitude: null,
     longitude: null,
+    no_location: true,
+    show_area: false,
     place_label: null,
     area: null,
     floating: false,
