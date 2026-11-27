@@ -6,8 +6,11 @@
 // no count, no push: its pin and place are the answer), and people whose switch is off can't open it at all
 // (momentStore.canSee). Once it ends it is an ordinary ended Moment.
 
+const { createHash } = require('node:crypto');
+const { DateTime } = require('luxon');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const { haversineMeters } = require('../../utils/trustState');
+const { timezoneFromCoordinates } = require('../../utils/timezone');
 
 const FEET_PER_M = 3.28084;
 const METERS_PER_MILE = 1609.344;
@@ -91,4 +94,158 @@ function withoutSpot(moment) {
   };
 }
 
-module.exports = { isGuess, distanceLabel, guessesFor, recordGuess, withoutSpot, SPOT_STAMPS };
+// ─── Finding them (CONTRACT 5d): the map's guess_spots and the daily spot ─────────────────────────────────────
+
+// A town is the label a guess-the-spot Moment kept when it was posted (its `guess.town`); where none was found, a cell
+// of 0.1 degree around its point (about 11 km), so the daily spot still works without town names.
+const GRID_STEP = 0.1;
+const FALLBACK_ZONE = 'America/Los_Angeles';
+const MAX_CANDIDATES = 500;
+
+function gridKey(latitude, longitude) {
+  return `g:${Math.round(latitude / GRID_STEP)}:${Math.round(longitude / GRID_STEP)}`;
+}
+
+/** The town a guess-the-spot Moment counts in: its kept town's label, else its point's cell. Null with no point. */
+function townKeyOf(row, point) {
+  const town = meta(row).guess?.town;
+  if (typeof town === 'string' && town) return `t:${town}`;
+  return point?.latitude == null ? null : gridKey(point.latitude, point.longitude);
+}
+
+/** The town a reader's point is in, worked out the same way (momentPlace.townAt; its fallback counts as none). */
+async function townKeyAt(latitude, longitude) {
+  const momentPlace = require('./momentPlace');
+  const town = await momentPlace.townAt(latitude, longitude);
+  return town && town !== momentPlace.FALLBACK_LABEL ? `t:${town}` : gridKey(latitude, longitude);
+}
+
+/** The town's local date at a point ("2026-11-27"). */
+function dayAt(latitude, longitude, now = Date.now()) {
+  return DateTime.fromMillis(now, { zone: timezoneFromCoordinates(latitude, longitude, FALLBACK_ZONE) }).toISODate();
+}
+
+const rank = (day, townKey, id) => createHash('sha256').update(`${day}|${townKey}|${id}`).digest('hex');
+
+/**
+ * The town's daily spot for `day`: among the town's live guess-the-spot Moments open to people nearby, the one whose
+ * hash of the day, the town and its id is lowest. The same for every reader; the reader's own visibility is checked
+ * after (store.canSee). Returns the row or null.
+ */
+async function dailyPick(townKey, day) {
+  const store = require('./momentStore');
+  const nowIso = new Date().toISOString();
+  let query = supabaseAdmin.from('Post').select(store.MOMENT_SELECT)
+    .eq('is_story', true)
+    .gt('story_expires_at', nowIso)
+    .is('archived_at', null)
+    .eq('moderation_state', 'live')
+    .eq('post_metadata->moment->>state', 'live')
+    .eq('audience', 'nearby')
+    .not('post_metadata->moment->guess', 'is', null)
+    .limit(MAX_CANDIDATES);
+  if (townKey.startsWith('t:')) {
+    query = query.eq('post_metadata->moment->guess->>town', townKey.slice(2));
+  } else {
+    const [, latKey, lngKey] = townKey.split(':').map(Number);
+    query = query.is('post_metadata->moment->guess->>town', null)
+      .gte('latitude', (latKey - 0.5) * GRID_STEP).lt('latitude', (latKey + 0.5) * GRID_STEP)
+      .gte('longitude', (lngKey - 0.5) * GRID_STEP).lt('longitude', (lngKey + 0.5) * GRID_STEP);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to load guess-the-spot Moments: ${error.message}`);
+  const live = (data || []).filter((row) => store.momentState(row) === 'live'
+    && townKeyOf(row, store.displayedPoint(row)) === townKey);
+  if (!live.length) return null;
+  return live.reduce((best, row) => (rank(day, townKey, row.id) < rank(day, townKey, best.id) ? row : best));
+}
+
+/**
+ * GET /daily-spot for `viewerId` at a point (CONTRACT 5d): { daily_spot: null | { moment_id, town, day, guessed } }.
+ * Null when the town has none today or the reader may not see the one picked (blocked, muted, reported).
+ */
+async function dailySpotFor(viewerId, latitude, longitude) {
+  const store = require('./momentStore');
+  const townKey = await townKeyAt(latitude, longitude);
+  const day = dayAt(latitude, longitude);
+  const row = await dailyPick(townKey, day);
+  if (!row) return { daily_spot: null };
+  const [ctx, reported] = await Promise.all([
+    store.viewerContext(viewerId, [row.user_id], null, [row]),
+    store.reportedIds(viewerId),
+  ]);
+  if (!store.canSee(row, ctx) || reported.has(row.id)) return { daily_spot: null };
+  const guesses = await guessesFor([row], viewerId);
+  return {
+    daily_spot: {
+      moment_id: row.id,
+      town: townKey.startsWith('t:') ? townKey.slice(2) : null,
+      day,
+      guessed: Boolean(guesses.get(row.id)?.mine),
+    },
+  };
+}
+
+/**
+ * The map's `guess_spots` for `viewerId` in the box (CONTRACT 5d): the live guess-the-spot Moments there they may see
+ * and didn't write, newest first, with no point: [{ moment_id, author, kind, thumb_url, created_at, expires_at,
+ * guessed, daily }]. A small picture that can't be signed only costs the picture.
+ */
+async function guessSpotsIn(viewerId, { south, west, north, east }) {
+  const store = require('./momentStore');
+  const media = require('./momentMedia');
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT)
+    .eq('is_story', true)
+    .gt('story_expires_at', nowIso)
+    .is('archived_at', null)
+    .eq('moderation_state', 'live')
+    .eq('post_metadata->moment->>state', 'live')
+    .not('post_metadata->moment->guess', 'is', null)
+    .gte('latitude', south - 0.05).lte('latitude', north + 0.05)
+    .gte('longitude', west - 0.05).lte('longitude', east + 0.05)
+    .order('created_at', { ascending: false })
+    .limit(MAX_CANDIDATES);
+  if (error) throw new Error(`Failed to load guess-the-spot Moments: ${error.message}`);
+  const rows = (data || []).filter((row) => store.momentState(row) === 'live');
+  if (!rows.length) return [];
+  const [ctx, reported] = await Promise.all([
+    store.viewerContext(viewerId, rows.map((row) => row.user_id), null, rows),
+    store.reportedIds(viewerId),
+  ]);
+  const shown = rows.filter((row) => {
+    if (store.isOwn(row, viewerId) || !store.canSee(row, ctx) || reported.has(row.id)) return false;
+    const point = store.displayedPoint(row);
+    return point.latitude >= south && point.latitude <= north && point.longitude >= west && point.longitude <= east;
+  });
+  if (!shown.length) return [];
+  // Each town's daily spot, worked out the same way GET /daily-spot does it, for the towns in view.
+  const towns = new Map();
+  for (const row of shown) {
+    const point = store.displayedPoint(row);
+    const key = townKeyOf(row, point);
+    if (key && !towns.has(key)) towns.set(key, dayAt(point.latitude, point.longitude));
+  }
+  const [authors, guesses, thumbs, picks] = await Promise.all([
+    store.authorsFor(shown),
+    guessesFor(shown, viewerId),
+    media.signedLinks(undefined, shown.map((row) => meta(row).media?.thumb_key).filter(Boolean)).catch(() => new Map()),
+    Promise.all([...towns].map(async ([key, day]) => (await dailyPick(key, day))?.id || null)),
+  ]);
+  const daily = new Set(picks.filter(Boolean));
+  return shown.map((row) => ({
+    moment_id: row.id,
+    author: authors.get(String(store.authorKey(row))),
+    kind: meta(row).kind,
+    thumb_url: (meta(row).media?.thumb_key && thumbs.get(meta(row).media.thumb_key)) || null,
+    created_at: store.shownAt(row),
+    expires_at: store.answeredEnd(row),
+    guessed: Boolean(guesses.get(row.id)?.mine),
+    daily: daily.has(row.id),
+  }));
+}
+
+module.exports = {
+  isGuess, distanceLabel, guessesFor, recordGuess, withoutSpot, SPOT_STAMPS,
+  townKeyOf, townKeyAt, dayAt, dailyPick, dailySpotFor, guessSpotsIn,
+};

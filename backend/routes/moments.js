@@ -637,6 +637,14 @@ router.get('/map', async (req, res) => {
       store.skyOn(req.user),
     ]);
     const answer = { rings, unplaced, heights_on: heights, float_on: float };
+    // Guess the spot (Pulse, reinvented; CONTRACT 5d): the live guess-the-spot Moments in view, with no point, only for
+    // a reader with the switch on. A failed read leaves them out; the map still answers.
+    if (await store.reinventedOn(req.user)) {
+      answer.guess_spots = await momentGuess.guessSpotsIn(req.user.id, box).catch((error) => {
+        logger.warn('moments.guess_spots_failed', { error: error.message });
+        return [];
+      });
+    }
     // The Sky (share later): the caller's own Moments waiting for their time, for their own row ("Shares at 6:40 pm"),
     // soonest first. Never anyone else's, never on the map; only while the Sky is on for the caller.
     if (sky) {
@@ -708,6 +716,20 @@ router.get('/people', async (req, res) => {
     res.json({ rings: await store.peopleRings(req.user.id, ids) });
   } catch (error) {
     sendError(res, error, 'people');
+  }
+});
+
+/**
+ * GET /daily-spot?latitude=&longitude= — the town's guess-the-spot Moment for today (Pulse, reinvented; CONTRACT 5d),
+ * the same for everyone, with no storage: { daily_spot: null | { moment_id, town, day, guessed } }. Only while the
+ * switch is on for the caller (403 PULSE_REINVENTED_OFF otherwise). Before GET /:id, which would take its path.
+ */
+router.get('/daily-spot', reinventedOnly, async (req, res) => {
+  try {
+    const at = parseBody(Joi.object(point), req.query);
+    res.json(await momentGuess.dailySpotFor(req.user.id, at.latitude, at.longitude));
+  } catch (error) {
+    sendError(res, error, 'daily_spot');
   }
 });
 
