@@ -136,17 +136,15 @@ final class ReinventedStrandsModel {
     }
 }
 
-/// At the top of My Atlas: "Went because of you", only when there is something to tell.
+/// At the top of My Atlas: "Went because of you", only when there is something to tell. My Atlas reads the model
+/// (`ReinventedAtlasView`): a task hung on this view would be dropped while it draws nothing.
 struct ReinventedWentBecauseOfYou: View {
-    @State private var model = ReinventedStrandsModel()
+    let model: ReinventedStrandsModel
 
     var body: some View {
-        Group {
-            if !model.groups.isEmpty {
-                section
-            }
+        if !model.groups.isEmpty {
+            section
         }
-        .task { await model.load() }
     }
 
     private var section: some View {
