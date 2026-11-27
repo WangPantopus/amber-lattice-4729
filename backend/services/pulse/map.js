@@ -9,6 +9,7 @@
 // flag), guess spots from momentGuess. This file picks among them by time and puts them in one answer.
 
 const { DateTime } = require('luxon');
+const supabaseAdmin = require('../../config/supabaseAdmin');
 const feedService = require('../feedService');
 const store = require('../moments/momentStore');
 const momentGuess = require('../moments/momentGuess');
@@ -46,12 +47,53 @@ function backSince(time, box, now = Date.now()) {
   return DateTime.fromMillis(now, { zone }).startOf('day').toMillis();
 }
 
+// How many people one read may name; a reader with more connections is matched plan by plan instead.
+const MAX_NAMED = 400;
+
+/**
+ * A business's plan only when someone the reader knows is going (CONTRACT 6g): the reader or one of their connections
+ * is in it (accepted). Never paid placement: what is kept keeps Plans' own order. The open business plans those people
+ * are in are read at once, beside Plans' own reads, so the map waits for no extra round.
+ */
+function knownGoing(userId) {
+  const read = store.connectionIds(userId).then(async (known) => {
+    const people = new Set([String(userId), ...known]);
+    if (people.size > MAX_NAMED) return { people, ids: null };
+    const { data, error } = await supabaseAdmin.from('PlanRequest')
+      .select('post_id, plan:Plan!inner(business_user_id, status)')
+      .in('user_id', [...people]).eq('status', 'accepted')
+      .eq('plan.status', 'open').not('plan.business_user_id', 'is', null)
+      .limit(2000);
+    if (error) throw new Error(`Failed to load who is going: ${error.message}`);
+    return { people, ids: new Set((data || []).map((row) => row.post_id)) };
+  }).catch((error) => {
+    // Without it no business's plan is shown; everyone else's plans are.
+    logger.warn('reinvented.known_going_failed', { error: error.message });
+    return { people: new Set(), ids: new Set() };
+  });
+  return async (plans) => {
+    const { people, ids } = await read;
+    if (ids) return ids;
+    const { data, error } = await supabaseAdmin.from('PlanRequest').select('post_id, user_id')
+      .in('post_id', plans.map((plan) => plan.post_id)).eq('status', 'accepted');
+    if (error) throw new Error(`Failed to load who is going: ${error.message}`);
+    return new Set((data || []).filter((row) => people.has(String(row.user_id))).map((row) => row.post_id));
+  };
+}
+
+/** Plans' pins for Pulse: a business's only when someone the reader knows is going, with the reason it is there. */
+async function pulsePins(user, box, window) {
+  const pins = await planPins(user, box, { window, more: '1', biz: '1' }, { businessPlans: knownGoing(user.id) });
+  return pins.map((pin) => (pin.business
+    ? { ...pin, why: pin.viewer_role === 'guest' ? "You're in" : 'Someone you know is going' }
+    : pin));
+}
+
 /** The plan pins for the time row: Plans' own windows; `tonight` is today's plans still on at 5 pm or later. */
 async function ticketsFor(user, box, time) {
   if (BACK.includes(time)) return [];
-  // A business's plan waits for server step 6 (shown when someone the reader knows is going): `biz` stays off.
   const window = time === 'weekend' ? 'weekend' : 'today';
-  const pins = await planPins(user, box, { window, more: '1' });
+  const pins = await pulsePins(user, box, window);
   if (time !== 'tonight') return pins;
   return pins.filter((pin) => {
     const zone = pin.timezone || FALLBACK_ZONE;
@@ -135,7 +177,7 @@ async function stripFor(user, { latitude = null, longitude = null } = {}) {
       .slice(0, MAX_LIVE_HERE)
       .map(({ moment, meters }) => ({ band: bands[list.bandIndexOf(meters, bands)]?.band ?? null, moment }));
   });
-  const soonRead = planPins(user, box, { window: 'now', more: '1' })
+  const soonRead = pulsePins(user, box, 'now')
     .then((pins) => pins.filter((pin) => haversineMeters(place.latitude, place.longitude, pin.latitude, pin.longitude)
       <= STRIP_MILES * 1609.344)
       .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
