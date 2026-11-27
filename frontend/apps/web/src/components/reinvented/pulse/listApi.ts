@@ -204,13 +204,13 @@ export function deleteForGood(id: string): Promise<unknown> {
 
 // ── Explore (coord/CONTRACT.md §6f): Moments their makers chose to show anywhere, never from the reader's own town ──
 
-export interface ExploreItem {
-  type: 'moment';
-  id: string;
-  moment: ListMoment;
-  /** "Picked today: 14 people marked it", "New from Kyoto", "New elsewhere". */
-  why: string;
-}
+/**
+ * A Moment, or a post made in the Studio whose maker chose "Also show in Explore" (§6f, with 6d). `why`: "Picked today:
+ * 14 people marked it", "New from Kyoto", "New elsewhere".
+ */
+export type ExploreItem =
+  | { type: 'moment'; id: string; moment: ListMoment; why: string }
+  | { type: 'post'; id: string; post: Post; why: string };
 
 export interface ExplorePage {
   /** "Today, elsewhere": up to ten, on the first page only (null after). */

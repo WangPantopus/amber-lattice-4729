@@ -19,7 +19,7 @@ import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostRea
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { useBackWhenMissing } from '../serverBehind';
-import { CHIP_WORDS, isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
+import { CHIP_WORDS, isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ExploreItem, type ExplorePage, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
@@ -45,6 +45,7 @@ const DOWN: Record<Height, Height> = { list: 'middle', middle: 'map', map: 'map'
 const REACH_NAMES: Record<Reach, string> = { close: 'Close circle', around: 'Around me', explore: 'The world' };
 
 type ListData = InfiniteData<ListPage, string | null>;
+type ExploreData = InfiniteData<ExplorePage, string | null>;
 
 export default function ReinventedPulse() {
   const router = useRouter();
@@ -119,9 +120,14 @@ export default function ReinventedPulse() {
     const pages = explore.data?.pages || [];
     return { picked: pages[0]?.picked || [], items: pages.flatMap((p) => p.items), pause: pages[pages.length - 1]?.pause ?? null };
   }, [explore.data]);
-  const exploreMoments = useMemo(() => [...explored.picked, ...explored.items].map((i) => i.moment), [explored]);
-  // What the map fits itself to in Explore: the Moments listed, wherever in the world they are.
-  const exploreListItems = useMemo<ListItem[]>(() => exploreMoments.map((m) => ({ type: 'moment', id: m.id, band: null, moment: m })), [exploreMoments]);
+  const exploreAll = useMemo(() => [...explored.picked, ...explored.items], [explored]);
+  const exploreMoments = useMemo(() => exploreAll.flatMap((i) => (i.type === 'moment' ? [i.moment] : [])), [exploreAll]);
+  // What the map fits itself to in Explore: the Moments and posts listed, wherever in the world they are.
+  const exploreListItems = useMemo<ListItem[]>(
+    () =>
+      exploreAll.map((i): ListItem => (i.type === 'moment' ? { type: 'moment', id: i.id, band: null, moment: i.moment } : { type: 'post', id: i.id, band: null, post: i.post })),
+    [exploreAll],
+  );
   // The switch went off between two reads: read it again, and PulsePick puts today's Pulse back.
   useEffect(() => {
     if (list.error && isSwitchedOff(list.error)) void reread();
@@ -148,8 +154,8 @@ export default function ReinventedPulse() {
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
   });
   const pins = useMemo(
-    () => (view === 'atlas' ? keptPins(atlasMap.data?.moments) : reach === 'explore' ? explorePins(exploreMoments) : pinsOf(map.data)),
-    [view, reach, atlasMap.data, exploreMoments, map.data],
+    () => (view === 'atlas' ? keptPins(atlasMap.data?.moments) : reach === 'explore' ? explorePins(exploreAll) : pinsOf(map.data)),
+    [view, reach, atlasMap.data, exploreAll, map.data],
   );
   // Alive right now (CONTRACT §6c), over the list; it follows the list's first page like the map.
   const strip = useQuery({
@@ -207,7 +213,7 @@ export default function ReinventedPulse() {
 
   // ── Posts: today's card, its answers patched into this list's pages ──
   const patchPost = useCallback(
-    (id: string, patch: (p: Post) => Partial<Post>) =>
+    (id: string, patch: (p: Post) => Partial<Post>) => {
       client.setQueriesData<ListData>({ queryKey: ['reinvented', 'list'] }, (old) =>
         old && {
           ...old,
@@ -216,17 +222,35 @@ export default function ReinventedPulse() {
             items: pg.items.map((it) => (it.type === 'post' && it.post.id === id ? { ...it, post: { ...it.post, ...patch(it.post) } } : it)),
           })),
         },
-      ),
+      );
+      // The same post in Explore (a Studio post shown anywhere): the same card, so the same answer.
+      const inExplore = <T extends ExploreItem>(it: T): T => (it.type === 'post' && it.post.id === id ? { ...it, post: { ...it.post, ...patch(it.post) } } : it);
+      client.setQueriesData<ExploreData>({ queryKey: ['reinvented', 'explore'] }, (old) =>
+        old && { ...old, pages: old.pages.map((pg) => ({ ...pg, picked: pg.picked && pg.picked.map(inExplore), items: pg.items.map(inExplore) })) },
+      );
+    },
     [client],
   );
   const dropItem = useCallback(
-    (id: string) =>
+    (id: string) => {
       client.setQueriesData<ListData>({ queryKey: ['reinvented', 'list'] }, (old) =>
         old && { ...old, pages: old.pages.map((pg) => ({ ...pg, items: pg.items.filter((it) => it.id !== id) })) },
-      ),
+      );
+      client.setQueriesData<ExploreData>({ queryKey: ['reinvented', 'explore'] }, (old) =>
+        old && {
+          ...old,
+          pages: old.pages.map((pg) => ({ ...pg, picked: pg.picked && pg.picked.filter((it) => it.id !== id), items: pg.items.filter((it) => it.id !== id) })),
+        },
+      );
+    },
     [client],
   );
-  const postOf = useCallback((id: string) => items.find((it): it is Extract<ListItem, { type: 'post' }> => it.type === 'post' && it.post.id === id)?.post, [items]);
+  const postOf = useCallback(
+    (id: string) =>
+      items.find((it): it is Extract<ListItem, { type: 'post' }> => it.type === 'post' && it.post.id === id)?.post ||
+      exploreAll.find((it): it is Extract<ExploreItem, { type: 'post' }> => it.type === 'post' && it.post.id === id)?.post,
+    [items, exploreAll],
+  );
   const busy = useCallback(async (id: string, work: () => Promise<void>) => {
     setBusyIds((s) => new Set(s).add(id));
     try {
@@ -540,6 +564,9 @@ export default function ReinventedPulse() {
                 onMore={() => void explore.fetchNextPage()}
                 onOpen={openExplored}
                 onPlace={flyTo}
+                renderPost={(post) => (
+                  <PostRow post={post} point={itemPoint({ type: 'post', id: post.id, band: null, post })} onPlace={flyTo} card={{ ...card, isLiking: busyIds.has(post.id) }} />
+                )}
               />
             )
           ) : list.isPending ? (

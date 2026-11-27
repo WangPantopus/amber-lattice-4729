@@ -2,10 +2,12 @@
 
 // Explore (Pulse, reinvented, phase 1 piece 10, board B10; coord/CONTRACT.md §6f): "Today, elsewhere", up to ten picked
 // a day by how many different people marked each (never by watch time), then the newest with variety, pausing with
-// "Keep exploring?" instead of running on. Every card answers "Why am I seeing this?". Only Moments their makers chose
-// to show anywhere are here, and never one from the reader's own town (the server decides all of it).
+// "Keep exploring?" instead of running on. Every card answers "Why am I seeing this?". Only Moments and Studio posts
+// their makers chose to show anywhere are here, and never one from the reader's own town (the server decides all of it).
+// A post draws as it does in the list (today's card under its status line), through `renderPost`.
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { Post } from '@pantopus/api';
 import Link from 'next/link';
 import { Compass } from 'lucide-react';
 import MomentRow from './MomentRow';
@@ -22,6 +24,7 @@ interface Props {
   onMore(): void;
   onOpen(id: string): void;
   onPlace(point: Point): void;
+  renderPost(post: Post): ReactNode;
 }
 
 function Why({ why }: { why: string }) {
@@ -36,10 +39,14 @@ function Why({ why }: { why: string }) {
   );
 }
 
-export default function ExploreView({ picked, items, pause, loading, more, now, onMore, onOpen, onPlace }: Props) {
+export default function ExploreView({ picked, items, pause, loading, more, now, onMore, onOpen, onPlace, renderPost }: Props) {
   const card = (item: ExploreItem) => (
-    <li key={item.id}>
-      <MomentRow moment={item.moment} bandLabel={null} now={now} onOpen={onOpen} onPlace={onPlace} />
+    <li key={`${item.type}:${item.id}`}>
+      {item.type === 'moment' ? (
+        <MomentRow moment={item.moment} bandLabel={null} now={now} onOpen={onOpen} onPlace={onPlace} />
+      ) : (
+        renderPost(item.post)
+      )}
       <Why why={item.why} />
     </li>
   );
@@ -72,7 +79,7 @@ export default function ExploreView({ picked, items, pause, loading, more, now, 
       {picked.length === 0 && items.length === 0 && !loading && (
         <div className="rp-empty">
           <Compass size={28} aria-hidden />
-          <p>Nothing from elsewhere right now. Moments show here when their makers choose “Also show in Explore”.</p>
+          <p>Nothing from elsewhere right now. Moments and posts show here when their makers choose “Also show in Explore”.</p>
           <Link className="rp-button rp-button-quiet" href={EXPLORE_RULES_PATH}>
             See the rules
           </Link>
