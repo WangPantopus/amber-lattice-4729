@@ -250,4 +250,16 @@ router.delete('/play/:id/:item/answers/:answer', async (req, res) => {
   }
 });
 
+// ─── Dots on the picture (CONTRACT 7c) ──────────────────────────────────────
+
+/** DELETE /dots/:id/:dot — the author removes one dot from their post. */
+router.delete('/dots/:id/:dot', async (req, res) => {
+  try {
+    await play.removeDot(req.params.id, req.params.dot, req.user.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'dot_remove');
+  }
+});
+
 module.exports = router;

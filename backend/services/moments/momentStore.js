@@ -615,6 +615,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       plan,
       // Playable items (CONTRACT 7b), with what this reader may see of the answers; [] when none.
       play: play || [],
+      // Dots on the picture (CONTRACT 7c), a thing's with its kept field card; [] when none.
+      dots: playItems.dotsFor(m.dots, m.cards),
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
