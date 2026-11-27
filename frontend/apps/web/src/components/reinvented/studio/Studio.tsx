@@ -53,6 +53,7 @@ import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
 import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire } from '../play/PlayEdit';
 import type { PlayItem, PlayKind } from '../play/playTypes';
+import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioTool } from './StudioPicture';
@@ -169,6 +170,10 @@ export default function Studio({
     // Playable items (phase 2, CONTRACT 7b) and the kind whose form is open in the tray.
     [play, setPlay] = useState<PlayItem[]>([]),
     [making, setMaking] = useState<PlayKind | 'dial' | null>(null),
+    // Illuminate (phase 2, CONTRACT 7c): dots on things in the photo, and the one being changed.
+    [dots, setDots] = useState<DotDraft[]>([]),
+    [illuminate, setIlluminate] = useState(false),
+    [pickedDot, setPickedDot] = useState<string | null>(null),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
     [homeNote, setHomeNote] = useState(false);
@@ -417,6 +422,10 @@ export default function Studio({
   const kindsOffered = underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text';
   const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
   const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
+  // Dots go on a photo or video Moment (a post's picture can't draw them on the web yet, as Play); a thing to name needs
+  // a photo and the author's Pantopus AI on; a link isn't for a made-up name.
+  const canIlluminate = mode === 'media' && !!file && !postKind;
+  const aiOn = usePantopusAiOn(canIlluminate);
   const words = mode === 'text' ? text : caption;
   // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
@@ -676,6 +685,9 @@ export default function Studio({
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, x, y, scale, rotation })) }
               : {}),
             ...(play.length && i === 0 && !postKind ? { play: playWire(play) } : {}),
+            ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }).length
+              ? { dots: dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName }) }
+              : {}),
             ...(i === 0 && kept.some((st) => st.kind === 'elevation') && altitude != null
               ? {
                   elevation: {
@@ -1288,6 +1300,24 @@ export default function Studio({
             )}
             {/* Playable items go on Moments for now: a post's picture can't draw them on the web yet (QUESTIONS, 05:55). */}
             {composing && !postKind && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
+            {composing && canIlluminate && (
+              <DotEditLayer
+                dots={dots}
+                active={illuminate && !busy}
+                selected={illuminate ? pickedDot : null}
+                onAdd={(x, y) => {
+                  if (dots.length >= MAX_DOTS) return;
+                  const d = newDot(dots, x, y);
+                  setDots([...dots, d]);
+                  setPickedDot(d.id);
+                }}
+                onSelect={(id) => {
+                  setIlluminate(true);
+                  setTool(null);
+                  setPickedDot(id);
+                }}
+              />
+            )}
           </div>
           {!camera && <div className="st-shade-top" aria-hidden="true" />}
           {!camera && <div className="st-shade-bottom" aria-hidden="true" />}
@@ -1373,11 +1403,49 @@ export default function Studio({
                   <Crop size={21} aria-hidden="true" />
                 </button>
               </div>
+              {canIlluminate && (
+                <div className="st-tool">
+                  <span aria-hidden="true">Illuminate</span>
+                  <button
+                    type="button"
+                    className="st-round"
+                    aria-label="Illuminate"
+                    aria-pressed={illuminate}
+                    onClick={() => {
+                      setTool(null);
+                      setPickedDot(null);
+                      setIlluminate(!illuminate);
+                    }}
+                  >
+                    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="4" />
+                      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
+                    </svg>
+                  </button>
+                </div>
+              )}
                 </>
               )}
             </div>
           )}
 
+          {composing && canIlluminate && illuminate && !tool && (
+            <DotEditPanel
+              dot={dots.find((d) => d.id === pickedDot) || null}
+              count={dots.length}
+              allowLink={!underPenName}
+              allowThing={!isVideo && aiOn}
+              onChange={(d) => setDots(dots.map((x) => (x.id === d.id ? d : x)))}
+              onRemove={(id) => {
+                setDots(dots.filter((x) => x.id !== id));
+                setPickedDot(null);
+              }}
+              onDone={() => {
+                setIlluminate(false);
+                setPickedDot(null);
+              }}
+            />
+          )}
           {composing && tool && (
             <div
               className="st-toolpanel"

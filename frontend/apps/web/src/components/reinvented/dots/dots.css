@@ -238,3 +238,33 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Illuminate in the Studio (DotEdit.tsx). */
+.dt-layer[data-edit] {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.dt-dot[data-unfinished] {
+  border-style: dashed;
+  animation: none;
+}
+.dt-dot[aria-pressed='true'] {
+  animation: none;
+  box-shadow: 0 0 0 4px rgba(125, 211, 252, 0.8);
+}
+.dt-panel {
+  display: grid;
+  gap: 10px;
+}
+.dt-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
