@@ -158,6 +158,8 @@ import app.pantopus.android.ui.screens.moments.components.MomentViewerSignals
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.components.rememberMomentImage
+import app.pantopus.android.ui.screens.moments.studio.MomentsStudioEdit
+import app.pantopus.android.ui.screens.moments.studio.editableNow
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -230,6 +232,16 @@ fun MomentsViewerScreen(
 
     // What stops the clock: a finger held down, typing a reply, the reactions or a menu open, the app away.
     var holding by remember { mutableStateOf(false) }
+    // "Pulse, reinvented": your own Moment open in the Studio's 15-minute edit; never set while the switch is off.
+    var editing by remember { mutableStateOf<MomentDto?>(null) }
+    // After a save, the Moment holds still while "Moment updated" shows.
+    var updatedNote by remember { mutableStateOf(false) }
+    LaunchedEffect(updatedNote) {
+        if (updatedNote) {
+            delay(UPDATED_NOTE_MS)
+            updatedNote = false
+        }
+    }
     var typing by remember { mutableStateOf(false) }
     var reacting by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -247,7 +259,9 @@ fun MomentsViewerScreen(
     // The notification shade or a system dialog over the app takes the window's focus without pausing the app.
     val covered = !LocalWindowInfo.current.isWindowFocused
     val touched = handling || holding || typing || reacting
-    val paused = touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered
+    val paused =
+        touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
+            editing != null || updatedNote
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -722,6 +736,13 @@ fun MomentsViewerScreen(
                         deleteFromMenu = true
                         confirmingDelete = true
                     },
+                    onEdit =
+                        moment?.takeIf { studio && mine && it.editableNow() }?.let { own ->
+                            {
+                                menuOpen = false
+                                editing = own
+                            }
+                        },
                     onReport = {
                         menuOpen = false
                         reporting = true
@@ -863,6 +884,19 @@ fun MomentsViewerScreen(
             controller = toast,
             modifier = Modifier.padding(bottom = BOTTOM_BAR - Spacing.s6 + keyboardPadding),
         )
+        // "Pulse, reinvented": the 15-minute edit over your Moment.
+        editing?.let { own ->
+            MomentsStudioEdit(
+                moment = own,
+                onSaved = { updated ->
+                    editing = null
+                    viewModel.edited(updated)
+                    updatedNote = true
+                    toast.show("Moment updated")
+                },
+                onClose = { editing = null },
+            )
+        }
     }
 
     if (reporting) {
@@ -1239,6 +1273,8 @@ private fun ViewerHeader(
     onReport: () -> Unit,
     onMute: () -> Unit,
     onBlock: () -> Unit,
+    /** "Pulse, reinvented": Edit on your own Moment, while the switch is on and its 15 minutes hold; null hides it. */
+    onEdit: (() -> Unit)? = null,
     /** The place is a button that shows it on the map; none for a Moment with no location or a page coming in. */
     onPlace: (() -> Unit)? = null,
     /** The face and the name open the author's profile; none on your own Moment, the Pantopus account's or a page coming in. */
@@ -1397,7 +1433,7 @@ private fun ViewerHeader(
                     modifier = Modifier.semantics { testTagsAsResourceId = true },
                 ) {
                     if (mine) {
-                        OwnMenuItems(onSave = onSave, onDelete = onDelete)
+                        OwnMenuItems(onSave = onSave, onDelete = onDelete, onEdit = onEdit)
                         return@DropdownMenu
                     }
                     DropdownMenuItem(
@@ -1448,7 +1484,16 @@ private fun ViewerHeader(
 private fun OwnMenuItems(
     onSave: () -> Unit,
     onDelete: () -> Unit,
+    onEdit: (() -> Unit)? = null,
 ) {
+    if (onEdit != null) {
+        DropdownMenuItem(
+            text = { Text("Edit", color = Color.White) },
+            leadingIcon = { PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 18.dp, tint = Color.White) },
+            onClick = onEdit,
+            modifier = Modifier.testTag("moments.menu.edit"),
+        )
+    }
     DropdownMenuItem(
         text = { Text("Save to Photos", color = Color.White) },
         leadingIcon = {
@@ -2073,6 +2118,9 @@ private const val MAX_ZOOM = 4f
 private const val ZOOM_BACK_DAMPING = 0.82f
 private const val ENDED_NOTICE_MS = 1_200L
 private const val MUTED_NOTE_MS = 4_000L
+
+/** How long the Moment holds still after its edit saved, while "Moment updated" shows. */
+private const val UPDATED_NOTE_MS = 2_500L
 private const val SAVE_NOTE_MS = 2_500L
 private const val POP_MS = 550
 

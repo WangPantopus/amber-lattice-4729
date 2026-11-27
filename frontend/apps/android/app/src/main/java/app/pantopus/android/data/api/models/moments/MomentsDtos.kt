@@ -21,6 +21,8 @@ data class MomentAuthorDto(
     val verified: Boolean = false,
     /** `person`, `business` or `pantopus`. */
     val kind: String = "person",
+    /** Posted under a made-up name (made-up-names contract); false from a server without it. */
+    @Json(name = "made_up_name") val madeUpName: Boolean = false,
 )
 
 /** One Moment in a ring, oldest first (the order they play in). */
@@ -163,6 +165,10 @@ data class MomentDto(
     val stamps: List<MomentStampDto>? = null,
     /** "Pulse, reinvented" (CONTRACT 4): the signal you gave it (one of the five), for a person whose switch is on. */
     @Json(name = "my_signal") val mySignal: String? = null,
+    /** "Pulse, reinvented" (CONTRACT 3): until when its author may still change it; the author's own, switch on only. */
+    @Json(name = "editable_until") val editableUntil: String? = null,
+    /** "Pulse, reinvented" (CONTRACT 3): every stamp's kept value an edit may place, by kind (null where none). */
+    @Json(name = "stamp_choices") val stampChoices: Map<String, MomentStampValueDto?>? = null,
 )
 
 /**

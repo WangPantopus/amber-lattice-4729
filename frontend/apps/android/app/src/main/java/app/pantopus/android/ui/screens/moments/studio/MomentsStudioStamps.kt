@@ -318,25 +318,55 @@ internal fun StudioStampLayer(
     // A picked stamp that can't show any more (a made-up name picked, say) is let go.
     LaunchedEffect(shown.map { it.kind }, ui.picked) { if (ui.picked != null && shown.none { it.kind == ui.picked }) stamps.pick(null) }
     val picture = rememberStudioPicture(state)
+    StampsOnPicture(
+        shown = shown,
+        all = state.stamps,
+        values = values,
+        picture = picture,
+        wet = state.stampsWet,
+        enabled = !state.posting,
+        picked = ui.picked,
+        onPick = stamps::pick,
+        onStamps = onStamps,
+    )
+}
+
+/**
+ * Stamps over a picture of [picture]'s size drawn to fill the screen (a text card: the screen itself), each an object to
+ * drag, pinch, turn and pick, kept inside the part every viewer shows. [shown] are the ones drawn; [all] is the whole
+ * list a move rewrites. The Studio and the 15-minute edit both use it.
+ */
+@Composable
+internal fun StampsOnPicture(
+    shown: List<MomentStampPlacement>,
+    all: List<MomentStampPlacement>,
+    values: Map<String, MomentStampValueDto>,
+    picture: IntSize?,
+    wet: Boolean,
+    enabled: Boolean,
+    picked: String?,
+    onPick: (String?) -> Unit,
+    onStamps: (List<MomentStampPlacement>) -> Unit,
+) {
     if (shown.isEmpty()) return
     BoxWithConstraints(modifier = Modifier.fillMaxSize().testTag("moments.studio.stamps")) {
         val frame = stampFrame(picture, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
         val box = MomentMarkRules.labelBox(frame.width / max(frame.height, 1f))
         // A tap on the picture away from every stamp lets go of the picked one.
-        if (ui.picked != null) {
-            Box(modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { stamps.pick(null) } })
+        if (picked != null) {
+            Box(modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onPick(null) } })
         }
         shown.forEach { placement ->
             StudioPlacedStamp(
                 placement = placement,
                 value = values[placement.kind],
-                all = state.stamps,
+                all = all,
                 frame = frame,
                 safe = Rect(box.left, box.top, box.right, box.bottom),
-                wet = state.stampsWet,
-                picked = ui.picked == placement.kind,
-                enabled = !state.posting,
-                onPick = stamps::pick,
+                wet = wet,
+                picked = picked == placement.kind,
+                enabled = enabled,
+                onPick = onPick,
                 onStamps = onStamps,
             )
         }
@@ -502,10 +532,48 @@ internal fun StudioStampTray(
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
-    BackHandler(enabled = visible, onBack = onDone)
-    val configuration = LocalConfiguration.current
-    val screen = with(LocalDensity.current) { Size(configuration.screenWidthDp.dp.toPx(), configuration.screenHeightDp.dp.toPx()) }
+    val screen = rememberScreenSize()
     val picture = rememberStudioPicture(state)
+    StampTray(
+        visible = visible,
+        reading = ui.reading,
+        offered = state.stampValues(ui.values),
+        placed = state.stamps,
+        onRetry = { state.pin?.let { stamps.read(it.latitude, it.longitude, again = true) } },
+        onDone = onDone,
+    ) { kind, placed ->
+        if (placed) {
+            onStamps(state.stamps.filterNot { it.kind == kind })
+        } else {
+            onStamps(state.stamps + firstSpot(kind, state.stamps, picture, screen))
+            stamps.pick(kind)
+            onDone()
+        }
+    }
+}
+
+/** The screen's size in pixels, where a picture is drawn to fill it. */
+@Composable
+internal fun rememberScreenSize(): Size {
+    val configuration = LocalConfiguration.current
+    return with(LocalDensity.current) { Size(configuration.screenWidthDp.dp.toPx(), configuration.screenHeightDp.dp.toPx()) }
+}
+
+/**
+ * The "Stamps and Play" tray over the picture: the stamps [offered] here (by kind, with what each reads), [placed]
+ * ones shown picked; a tap on a chip calls [onChip] with whether it was on the picture. The Studio and the edit use it.
+ */
+@Composable
+internal fun StampTray(
+    visible: Boolean,
+    reading: StampReading,
+    offered: Map<String, MomentStampValueDto>,
+    placed: List<MomentStampPlacement>,
+    onRetry: () -> Unit,
+    onDone: () -> Unit,
+    onChip: (kind: String, placed: Boolean) -> Unit,
+) {
+    BackHandler(enabled = visible, onBack = onDone)
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
             Box(
@@ -541,19 +609,7 @@ internal fun StudioStampTray(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s3),
             ) {
                 TrayHeader()
-                TrayStamps(
-                    ui = ui,
-                    state = state,
-                    onRetry = { state.pin?.let { stamps.read(it.latitude, it.longitude, again = true) } },
-                ) { kind, placed ->
-                    if (placed) {
-                        onStamps(state.stamps.filterNot { it.kind == kind })
-                    } else {
-                        onStamps(state.stamps + firstSpot(kind, state.stamps, picture, screen))
-                        stamps.pick(kind)
-                        onDone()
-                    }
-                }
+                TrayStamps(reading = reading, offered = offered, placed = placed, onRetry = onRetry, onChip = onChip)
                 Spacer(Modifier.height(Spacing.s1))
             }
         }
@@ -579,13 +635,13 @@ private fun TrayHeader() {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TrayStamps(
-    ui: StudioStampsUi,
-    state: MomentsComposeUiState,
+    reading: StampReading,
+    offered: Map<String, MomentStampValueDto>,
+    placed: List<MomentStampPlacement>,
     onRetry: () -> Unit,
     onChip: (kind: String, placed: Boolean) -> Unit,
 ) {
-    val offered = state.stampValues(ui.values)
-    when (ui.reading) {
+    when (reading) {
         StampReading.Reading ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
@@ -613,8 +669,8 @@ private fun TrayStamps(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                     offered.forEach { (kind, value) ->
-                        val placed = state.stamps.any { it.kind == kind }
-                        TrayChip(kind = kind, value = value, placed = placed) { onChip(kind, placed) }
+                        val on = placed.any { it.kind == kind }
+                        TrayChip(kind = kind, value = value, placed = on) { onChip(kind, on) }
                     }
                 }
             }
@@ -664,7 +720,7 @@ private fun TrayChip(
  * Where a stamp from the tray first sits, at its natural size on this screen: the postmark at the left a little below the
  * middle, turned a little, as on board B2; the others stacked beside it; all inside the part every viewer shows.
  */
-private fun firstSpot(
+internal fun firstSpot(
     kind: String,
     placed: List<MomentStampPlacement>,
     picture: IntSize?,
