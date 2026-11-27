@@ -58,6 +58,12 @@ struct MomentsStudioStage: View {
             .padding(.top, Spacing.s2)
             Spacer(minLength: Spacing.s4)
             if model.draft != .text {
+                // "@" in the caption offers the author's connections (CONTRACT 7h, `MomentsStudioMentions`).
+                if let query = model.typingMention {
+                    MomentsStudioMentionPicker(model: model, query: query)
+                        .padding(.horizontal, Spacing.s4)
+                        .padding(.bottom, Spacing.s2)
+                }
                 caption
                     .padding(.horizontal, Spacing.s4)
                     .padding(.bottom, Spacing.s3)

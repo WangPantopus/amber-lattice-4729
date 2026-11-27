@@ -146,7 +146,7 @@ extension MomentsViewer {
                 }
                 .overlay(alignment: .bottom) {
                     if let caption = model.moment?.caption, !caption.isEmpty, model.moment?.kind != .text, !isReplying {
-                        MomentsCaptionPill(caption: caption).padding(.bottom, captionBottom)
+                        MomentsMentionCaption(caption: caption, moment: model.moment, onPerson: openMention).padding(.bottom, captionBottom)
                     }
                 }
                 .overlay {

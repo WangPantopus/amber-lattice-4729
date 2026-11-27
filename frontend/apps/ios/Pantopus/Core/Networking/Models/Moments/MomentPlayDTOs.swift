@@ -227,14 +227,17 @@ struct MomentLenientList<Item: Decodable>: Decodable {
 public struct MomentLayersDTO: Sendable, Hashable {
     /// The playable items (CONTRACT 7b, 7g), `[]` when none.
     public let play: [MomentPlayItem]
+    /// The people mentioned in the caption (CONTRACT 7h), in the order sent, as this reader may see them; `[]` when none.
+    public let mentions: [MomentAuthorDTO]
 
     private enum CodingKeys: String, CodingKey {
-        case play
+        case play, mentions
     }
 
     init(from decoder: any Decoder) {
         let c = try? decoder.container(keyedBy: CodingKeys.self)
         play = (try? c?.decodeIfPresent(MomentLenientList<MomentPlayItem>.self, forKey: .play))?.items.filter { $0.kind != .unknown } ?? []
+        mentions = (try? c?.decodeIfPresent(MomentLenientList<MomentAuthorDTO>.self, forKey: .mentions))?.items ?? []
     }
 
     /// The before and after on a photo, if it has one (one at most).

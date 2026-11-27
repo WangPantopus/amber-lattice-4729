@@ -178,6 +178,8 @@ extension MomentsComposerModel {
         body.explore = offersExplore && studioExplore ? true : nil
         // The Studio's playable items (CONTRACT 7b, 7g); nil, so left out, when there are none.
         body.play = studioPlay
+        // The Studio's mentions in the caption (CONTRACT 7h), never under a made-up name; left out when none.
+        body.mentions = studioMentions(in: caption)
         // The Studio's stamps, and the phone's height for an elevation stamp; left out otherwise.
         if !studioStamps.isEmpty {
             body.stamps = studioStamps

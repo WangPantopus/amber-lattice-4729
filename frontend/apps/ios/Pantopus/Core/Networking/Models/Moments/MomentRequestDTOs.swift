@@ -96,6 +96,8 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var explore: Bool?
     /// The Studio's playable items (CONTRACT 7b, 7g: a before and after, ...); left out when there are none.
     public var play: [MomentPlayItem]?
+    /// The Studio's mentions in the caption (CONTRACT 7h): up to five connections' ids; left out when none.
+    public var mentions: [String]?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
@@ -103,7 +105,7 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
         case takenHere = "taken_here"
         case showWeather = "show_weather"
         case postAs = "post_as"
-        case stamps, elevation, guess, explore, play
+        case stamps, elevation, guess, explore, play, mentions
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

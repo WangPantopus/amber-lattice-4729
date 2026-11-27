@@ -240,7 +240,7 @@ extension MomentsViewer {
                 .overlay(alignment: .bottom) {
                     // The caption gives way to a reply being written, and to a photo being pinched bigger.
                     if let caption = model.moment?.caption, !caption.isEmpty, model.moment?.kind != .text, !isReplying, !zooming {
-                        MomentsCaptionPill(caption: caption).padding(.bottom, 63)
+                        MomentsMentionCaption(caption: caption, moment: model.moment, onPerson: openMention).padding(.bottom, 63)
                     }
                 }
                 .overlay {
