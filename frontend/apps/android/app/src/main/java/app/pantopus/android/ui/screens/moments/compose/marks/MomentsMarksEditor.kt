@@ -265,6 +265,8 @@ internal fun MomentsMarksEditor(
     studio: Boolean = false,
 ) {
     var asksDiscard by remember { mutableStateOf(false) }
+    // "Pulse, reinvented"'s Studio: up to five colours from the picture, under the six inks.
+    val photo = remember(picture, studio) { picture?.takeIf { studio }?.let(MomentPhotoColors::of).orEmpty() }
     val cancel = { if (editing.changed) asksDiscard = true else onClose(false) }
     BackHandler(onBack = cancel)
     Box(
@@ -314,9 +316,9 @@ internal fun MomentsMarksEditor(
             MomentMarksTool.Text -> {
                 val density = LocalDensity.current
                 val keyboard = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
-                TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }), studio = studio)
+                TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }), studio = studio, photo = photo)
             }
-            MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools)
+            MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools, photo)
             MomentMarksTool.Resize ->
                 ResizeTools(
                     editing,
@@ -347,11 +349,16 @@ private fun DrawTools(
     editing: MomentMarksEditing,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     modifier: Modifier,
+    photo: List<Int> = emptyList(),
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         MarksHint("Draw with your finger.")
         Spacer(Modifier.height(Spacing.s3))
-        Inks(picked = editing.ink, onPick = { ink -> onEdit { it.copy(ink = ink) } }, group = "Ink color")
+        Inks(picked = editing.ink, onPick = {
+                ink ->
+            onEdit { it.copy(ink = ink, drawTint = null) }
+        }, group = "Ink color", picking = editing.drawTint)
+        PhotoColors(photo = photo, picked = editing.drawTint, onPick = { color -> onEdit { it.copy(drawTint = color) } })
     }
 }
 
@@ -848,13 +855,15 @@ internal fun Inks(
     picked: MomentInk,
     onPick: (MomentInk) -> Unit,
     group: String,
+    // "Pulse, reinvented"'s Studio: a colour from the photo is picked instead, so no ink shows picked.
+    picking: Int? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = group },
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     ) {
         MomentInk.entries.forEach { ink ->
-            val on = ink == picked
+            val on = ink == picked && picking == null
             Box(
                 modifier =
                     Modifier

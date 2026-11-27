@@ -421,8 +421,9 @@ private fun LabelField(
                 color = letterColor,
                 fontSize = letters.toSp(),
                 lineHeight = (letters * MomentMarkRules.LINE_HEIGHT).toSp(),
-                fontWeight = FontWeight.Bold,
-                // The Studio's lettering; today's bold system font (no family) for Classic.
+                // The Studio's lettering asks its typeface's own weight, as the painter draws it; today's bold system font
+                // (no family) for Classic.
+                fontWeight = if (label.font == MomentFont.Classic) FontWeight.Bold else label.font.weight,
                 fontFamily = label.font.takeIf { it != MomentFont.Classic }?.let { FontFamily(it.typeface) },
                 textAlign = TextAlign.Center,
                 // Unhinted, like the painter's letters, so the words wrap where the photo's do.
@@ -500,8 +501,9 @@ internal fun TextTools(
     editing: MomentMarksEditing,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     modifier: Modifier = Modifier,
-    // "Pulse, reinvented"'s Studio: the ten letterings over the looks.
+    // "Pulse, reinvented"'s Studio: the ten letterings over the looks, and colours from the photo under the inks.
     studio: Boolean = false,
+    photo: List<Int> = emptyList(),
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (!editing.typing) {
@@ -534,7 +536,10 @@ internal fun TextTools(
         }
         Spacer(Modifier.height(14.dp))
         Box(Modifier.keepsKeyboard()) {
-            Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } }, group = "Text color")
+            Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } }, group = "Text color", picking = editing.textTint)
+        }
+        Box(Modifier.keepsKeyboard()) {
+            PhotoColors(photo = photo, picked = editing.textTint, onPick = { color -> onEdit { it.tinted(color) } })
         }
     }
 }
