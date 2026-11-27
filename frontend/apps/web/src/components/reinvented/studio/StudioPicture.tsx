@@ -71,6 +71,7 @@ export default function StudioPicture({
   picking = false,
   onPick,
   onBeforeStrokes,
+  fill = true,
   onPicture,
 }: {
   file: File;
@@ -86,6 +87,8 @@ export default function StudioPicture({
   onPick?(color: string): void;
   /** The lines as they were before a line is drawn or rubbed out, so Undo can put them back. */
   onBeforeStrokes?(strokes: Stroke[]): void;
+  /** A tall picture opens filling the frame (a phone's own shot); false opens it whole (a photostrip). */
+  fill?: boolean;
   /** The picture as it loaded (a video once its first frame is in), for reading its colours. */
   onPicture?(el: HTMLImageElement | HTMLVideoElement, width: number, height: number): void;
 }) {
@@ -155,7 +158,7 @@ export default function StudioPicture({
   // little that falls outside cropped as it is posted; a wide or square one opens whole, as today. Resize changes it.
   const measured = (w: number, h: number) => {
     setDimensions({ w, h });
-    if (!w || !h || fitted.current === url) return;
+    if (!w || !h || fitted.current === url || !fill) return;
     fitted.current = url;
     const cover = Math.max(9 / w, 16 / h) / Math.min(9 / w, 16 / h);
     if (cover > 1 && cover <= 1.35 && art.zoom === 1 && !art.rotation && !art.offset.x && !art.offset.y)
