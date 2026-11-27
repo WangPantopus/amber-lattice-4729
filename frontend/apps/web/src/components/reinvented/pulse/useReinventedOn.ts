@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useMe } from '@/lib/me';
 import { useHydrated } from '@/hooks/useHydrated';
 import { usePulseReinvented } from '../usePulseReinvented';
@@ -18,6 +19,9 @@ const KEPT = 'pantopus.pulseReinvented.';
  * `enabled`: whether this screen may send the read itself (the bar and sidebar only while `moments` is on; the feed page
  * always). Another screen's read answers every caller, as the query is shared. `keptOnServer`: the server render saw the
  * kept-answer cookie, so the page starts on the new screen (the same on the server and in the first browser render).
+ *
+ * It asks for "my profile" itself (useMe), so never mount it on a page a signed-out visitor can open (a public profile):
+ * use `useKnownOn` there.
  */
 export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
   const account = useMe().data?.id ?? null;
@@ -48,6 +52,22 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
   if (!hydrated || !account) return false;
   try {
     return localStorage.getItem(KEPT + account) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * For a page anyone can open (a public profile): whether the switch is on for this viewer as far as this device knows,
+ * with no request at all: another screen's switch read if there was one, else the viewer's kept answer. A signed-out
+ * visitor (no viewer) is always off.
+ */
+export function useKnownOn(viewerId: string | null): boolean {
+  const flag = useQuery<{ enabled?: boolean }>({ queryKey: ['featureFlag', 'pulse_reinvented'], enabled: false });
+  if (!viewerId) return false;
+  if (flag.data) return flag.data.enabled === true;
+  try {
+    return localStorage.getItem(KEPT + viewerId) === '1';
   } catch {
     return false;
   }

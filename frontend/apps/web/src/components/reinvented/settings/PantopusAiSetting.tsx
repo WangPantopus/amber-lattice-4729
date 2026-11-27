@@ -14,7 +14,8 @@ const KEY = ['reinvented', 'settings'];
 
 // The person's own choices (CONTRACT 7d, 8c): Pantopus AI, and whether their Want to go and their posts may tell someone
 // "you went because of them" (on unless they turned it off).
-type Choices = { pantopus_ai: boolean; strands?: boolean };
+// The cabinet (CONTRACT 9d): whether people they know may see it (on unless they turned it off).
+type Choices = { pantopus_ai: boolean; strands?: boolean; cabinet_shown?: boolean };
 
 export default function PantopusAiSetting() {
   const on = useReinventedOn();
@@ -31,6 +32,7 @@ export default function PantopusAiSetting() {
   if (!on || !settings.data) return null;
   const checked = settings.data.pantopus_ai === true;
   const strands = settings.data.strands !== false;
+  const cabinet = settings.data.cabinet_shown !== false;
   async function change(field: keyof Choices, next: boolean) {
     if (busy || !settings.data) return;
     const before = settings.data;
@@ -95,6 +97,19 @@ export default function PantopusAiSetting() {
           {toggle('Tell people when their post led me somewhere', strands, 'strands')}
         </div>
         <StrandsImIn />
+      </div>
+      <div className="bg-surface rounded-xl border border-app p-6">
+        <h2 className="text-lg font-semibold text-app mb-4">Your cabinet</h2>
+        <div className="flex items-center justify-between gap-4 py-3">
+          <div className="flex-1">
+            <p className="font-medium text-app">Show my cabinet to people I know</p>
+            <p className="text-sm text-app-secondary">
+              Places stood, heights, specimens, questions helped, strands and canvases. Never who follows you. Off: only you see
+              it.
+            </p>
+          </div>
+          {toggle('Show my cabinet to people I know', cabinet, 'cabinet_shown')}
+        </div>
       </div>
     </>
   );
