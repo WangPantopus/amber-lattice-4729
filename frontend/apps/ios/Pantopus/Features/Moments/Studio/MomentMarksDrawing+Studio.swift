@@ -88,12 +88,13 @@ extension MomentMarksDrawing {
     }
 
     /// A label's colors in an ink from the photo, as `looks` gives them for the six: plain letters with an edge that
-    /// stands out from them, a dark (or, for a dark ink, light) label under them, or a sign in the ink with letters
-    /// that read on it.
+    /// stands out from them, a dark (or, for a darker ink, light) label under them, or a sign in the ink with letters
+    /// that read on it. Photos give many middling dark inks (olive, slate): from 0.4 down they take the light label, so
+    /// the words always read.
     static func studioLook(_ label: MomentMarks.Label, tint: MomentMarks.Tint) -> Look {
         let ink = tint.uiColor
         let dark = MomentsPalette.ink(MomentMarks.Ink.black.rawValue)
-        let deep = tint.lightness < 0.25
+        let deep = tint.lightness < 0.4
         switch label.style {
         case .plain:
             return Look(ink: ink, plate: nil, edge: deep ? UIColor.white.withAlphaComponent(0.7) : UIColor.black.withAlphaComponent(0.45))
