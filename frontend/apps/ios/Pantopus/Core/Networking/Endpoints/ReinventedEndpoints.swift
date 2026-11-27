@@ -27,4 +27,21 @@ public enum ReinventedEndpoints {
         if let cursor { query["cursor"] = cursor }
         return Endpoint(method: .get, path: "/api/reinvented/list", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
     }
+
+    /// `GET /api/reinvented/map` (CONTRACT 6b): rings, marks, tickets and kept Moments for a box and a time (`live`,
+    /// `today`, `week`, `all`, `tonight`, `weekend`). Route `backend/routes/reinvented.js:71` (map).
+    static func map(south: Double, west: Double, north: Double, east: Double, time: String) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "/api/reinvented/map",
+            query: [
+                "south": String(format: "%.5f", south),
+                "west": String(format: "%.5f", west),
+                "north": String(format: "%.5f", north),
+                "east": String(format: "%.5f", east),
+                "time": time
+            ],
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
 }

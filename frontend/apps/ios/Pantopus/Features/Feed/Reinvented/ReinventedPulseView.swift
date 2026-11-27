@@ -22,6 +22,7 @@ struct ReinventedPulseView: View {
     let onOpenPost: (String) -> Void
 
     @State private var model = ReinventedPulseModel()
+    @State private var map = ReinventedMapModel()
     @State private var height: Height = .middle
     @State private var dragged: CGFloat = 0
     @State private var watching: MomentsWatchSession?
@@ -30,13 +31,18 @@ struct ReinventedPulseView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .top) {
-                ReinventedPulseMapBackdrop()
+                ReinventedPulseMap(model: map, onOpen: open)
                     .ignoresSafeArea()
                 panel(in: geo)
+                if height == .map {
+                    ReinventedPeekDeck(model: map, onOpen: open)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 76)
+                }
                 VStack(spacing: Spacing.s2) {
                     topRow
                     viewSwitch
-                    if height != .map { chipsRow }
+                    if height == .map { ReinventedTimeRow(model: map) } else { chipsRow }
                 }
                 .padding(.bottom, Spacing.s2)
                 .background(height == .list ? Theme.Color.appBg : Color.clear)
@@ -233,17 +239,18 @@ struct ReinventedPulseView: View {
         let ring = MomentRingDTO(moment: moment, mine: model.isMine(moment))
         watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
     }
-}
 
-/// The live map behind the list (rings, marks and tickets come with the map piece; here it is where you are).
-struct ReinventedPulseMapBackdrop: View {
-    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
-
-    var body: some View {
-        Map(position: $position) {
-            UserAnnotation()
+    /// A pin or a card on the map: a ring plays its Moments, a mark opens its post, a ticket its plan in Plans.
+    private func open(_ item: ReinventedMapModel.Item) {
+        switch item {
+        case let .ring(ring):
+            watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
+        case let .mark(mark):
+            onOpenPost(mark.post.id)
+        case let .kept(kept):
+            open(kept.moment)
+        case let .ticket(ticket):
+            DeepLinkRouter.shared.handle(path: "/plans/\(ticket.id)")
         }
-        .mapControls {}
-        .accessibilityIdentifier("reinventedPulse.map")
     }
 }
