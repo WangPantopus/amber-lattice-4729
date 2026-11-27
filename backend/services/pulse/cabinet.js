@@ -17,7 +17,7 @@ const ZONE = 'America/Los_Angeles';
 const CHOICE = 'cabinet_shown';
 const MAX_ROWS = 5000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MOMENT_COLUMNS = 'id, latitude, longitude, created_at, post_metadata';
+const MOMENT_COLUMNS = 'id, latitude, longitude, created_at, post_metadata, moderation_state, story_expires_at';
 
 function fail(status, code, message) {
   return Object.assign(new Error(message), { status, code });
@@ -90,9 +90,11 @@ async function numbersOf(userId, range = null) {
   // the highest point comes only from a height the person showed (the Moment's own height, or a placed elevation stamp).
   for (const row of moments) {
     const m = row.post_metadata?.moment || {};
-    // An unopened relic (8g) hasn't been shown yet either.
+    // An unopened relic (8g) hasn't been shown yet either; nor a live guess the spot (5b: its place and height are the
+    // answer until it ends), nor a Moment held for review or removed.
     // eslint-disable-next-line global-require
     if (m.at_home || (m.seal && require('./seal').isSealed(row))) continue;
+    if (row.moderation_state !== 'live' || (m.guess && !store.hasEnded(row))) continue;
     const floating = Boolean(row.post_metadata?.area);
     if (row.latitude != null && row.longitude != null && !floating) {
       places.add(m.venue_id ? `v:${m.venue_id}` : `${Math.floor(row.latitude * 100)}:${Math.floor(row.longitude * 100)}`);
