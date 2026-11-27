@@ -31,6 +31,7 @@ import app.pantopus.android.data.moments.PreparedVideo
 import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.plans.PlanGpsFix
 import app.pantopus.android.data.plans.PlanLocationResolver
+import app.pantopus.android.data.pulse.PulseReinventedFeature
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
@@ -342,6 +343,7 @@ class MomentsComposeViewModel
         private val locations: PlanLocationResolver,
         private val auth: AuthRepository,
         @ApplicationContext private val context: Context,
+        private val pulse: PulseReinventedFeature,
     ) : ViewModel() {
         /** The sheet opens with the "How long" and "Who sees it" this person posted with last time (on this phone). */
         private val choices = context.getSharedPreferences(CHOICES_PREFS, Context.MODE_PRIVATE)
@@ -951,6 +953,12 @@ class MomentsComposeViewModel
         /** The Studio's stamps, moved, sized, turned, put on or taken off. */
         fun setStamps(stamps: List<MomentStampPlacement>) = _state.update { it.copy(stamps = stamps) }
 
+        /**
+         * Today's Post screen takes the Moment from the Studio (the switch went off): the picture and the words stay; the
+         * stamps and the made-up name, which today's screens don't offer, go. Nothing changes when there were none.
+         */
+        fun leaveStudio() = _state.update { if (it.stamps.isEmpty() && !it.madeUp) it else it.copy(stamps = emptyList(), madeUp = false) }
+
         /** The Sky's rows (`MomentsComposeSky.kt`). */
         fun setPinAtPlace(on: Boolean) = _state.update { it.withPinAtPlace(on) }
 
@@ -1277,6 +1285,9 @@ class MomentsComposeViewModel
                     _state.update { it.copy(notice = "You've posted ${it.limits.dailyLimit} Moments today. Try again tomorrow.") }
                 "MEDIA_TOO_LONG" ->
                     _state.update { it.copy(notice = "A Moment's video can be up to ${it.limits.spoken(it.limits.videoMs)}.") }
+                // "Pulse, reinvented": the Studio's post refused, the switch is off for this person now (CONTRACT 1).
+                // Today's Post screen takes the Moment as it is, and Post goes again from there.
+                "PULSE_REINVENTED_OFF" -> pulse.refusedOff()
                 else -> _state.update { it.copy(notice = error.message) }
             }
         }

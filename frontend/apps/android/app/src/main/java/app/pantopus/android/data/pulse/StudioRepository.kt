@@ -14,7 +14,8 @@ import javax.inject.Singleton
 
 /**
  * The Studio's own requests ([StudioApi]). A refusal that says the switch is off for this person
- * (`403 PULSE_REINVENTED_OFF`, CONTRACT 1) reads the switch again at once, so the app goes back to today's screens.
+ * (`403 PULSE_REINVENTED_OFF`, CONTRACT 1) turns it off at once and reads it again, so the app goes back to today's
+ * screens.
  */
 @Singleton
 class StudioRepository
@@ -31,7 +32,7 @@ class StudioRepository
             when (val answer = safeApiCall { api.stampsPreview(MomentStampsPreviewBody(latitude, longitude)) }) {
                 is NetworkResult.Success -> NetworkResult.Success(answer.data.stamps ?: MomentStampsPreviewDto())
                 is NetworkResult.Failure -> {
-                    if (answer.error.serverCode == SWITCH_OFF) feature.refresh()
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
                     answer
                 }
             }
