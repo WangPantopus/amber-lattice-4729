@@ -206,6 +206,11 @@ data class MomentsComposeUiState(
     val shot: CameraShot? = null,
     /** "Show the weather": on unless this person turned it off last time (kept per account on this phone). */
     val showWeather: Boolean = true,
+    /**
+     * "Pulse, reinvented"'s Studio: under the person's made-up name. People nearby only, with a place; no height, no
+     * Live mark, no weather (made-up-names contract, "Moments"). Only the Studio sets it.
+     */
+    val madeUp: Boolean = false,
 ) {
     val kind: String
         get() =
@@ -280,7 +285,8 @@ data class MomentsComposeUiState(
      * The "Show elevation" row is on the sheet: only where the server allows it (heights are on for you and the spot
      * isn't your home), for an exact pin, with a reading. Never for an area or with no location.
      */
-    val offersHeight: Boolean get() = place?.canShowHeight == true && (sky || !showArea) && !noLocationOn && heightFeet != null
+    val offersHeight: Boolean
+        get() = place?.canShowHeight == true && (sky || !showArea) && !noLocationOn && heightFeet != null && !madeUp
 
     /** What goes with the post: the reading, only while the row is on the sheet and switched on. */
     val shownHeight: MomentAltitudeBody?
@@ -295,7 +301,7 @@ data class MomentsComposeUiState(
     val offersLive: Boolean
         get() =
             shot != null && media != null && pin?.capture == false && takenAt == null && !noLocationOn && !floats &&
-                place?.atHome == false
+                place?.atHome == false && !madeUp
 
     /** "31°F · Snow" for "Show the weather": the preview's reading at the fix, while the Live line shows; null without one. */
     val weatherLine: String? get() = place?.weather?.takeIf { offersLive }?.line()?.first
@@ -921,6 +927,19 @@ class MomentsComposeViewModel
 
         fun setAudience(audience: String) = _state.update { it.copy(audience = audience) }
 
+        /**
+         * The Studio's "Made-up name", or back to the person's own name. Under it: people nearby only, with a place. It
+         * floats over its area (the founder, 2026-11-27); "Pin it at a place" stays the author's own choice in the drawer.
+         */
+        fun setMadeUp(on: Boolean) =
+            _state.update {
+                when {
+                    on == it.madeUp -> it
+                    on -> it.copy(madeUp = true, audience = "nearby", noLocation = false, showArea = it.showArea || !it.sky)
+                    else -> it.copy(madeUp = false)
+                }
+            }
+
         fun setShowArea(on: Boolean) = _state.update { it.copy(showArea = on) }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
@@ -1024,6 +1043,7 @@ class MomentsComposeViewModel
                         // still holds for this pin (a re-read fix or the LOCATION_TOO_OLD retry included); the server checks again.
                         takenHere = true.takeIf { current.liveFor(usable, now) },
                         showWeather = true.takeIf { current.weatherFor(usable, now) },
+                        postAs = "pen_name".takeIf { current.madeUp },
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)

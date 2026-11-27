@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.exclude
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostFullMap
@@ -79,6 +81,11 @@ import app.pantopus.android.ui.screens.moments.compose.postPlaceKind
 import app.pantopus.android.ui.screens.moments.compose.postPlaceLabel
 import app.pantopus.android.ui.screens.moments.compose.sharesAt
 import app.pantopus.android.ui.screens.moments.compose.skyAtHome
+import app.pantopus.android.ui.screens.moments.compose.skyPlaceName
+import app.pantopus.android.ui.screens.pennames.PenNameChoiceViewModel
+import app.pantopus.android.ui.screens.pennames.PenNamePostAsUi
+import app.pantopus.android.ui.screens.pennames.PenNameSetupSheet
+import app.pantopus.android.ui.screens.pennames.PenNameVoice
 import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -119,9 +126,21 @@ internal fun MomentsStudioStep(
     onShowHeight: (Boolean) -> Unit,
     onShowWeather: (Boolean) -> Unit,
     sky: MomentsSkyActions,
+    onMadeUp: (Boolean) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
+    penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
     var drawer by rememberSaveable { mutableStateOf(false) }
+    // "Made-up name" (made-up-names contract, "Moments"): offered once `/api/pen-names/me` has answered, checked at the pin.
+    val postAs by penNames.postAs.collectAsStateWithLifecycle()
+    val setupOpen by penNames.setupOpen.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { penNames.load() }
+    LaunchedEffect(state.pin?.latitude, state.pin?.longitude) { penNames.checkAt(state.pin?.latitude, state.pin?.longitude) }
+    // What the bar shows picked is what goes with the post (a made-up name no longer allowed here goes back to the person's own).
+    val madeUp = postAs?.isMadeUp == true
+    LaunchedEffect(madeUp) { onMadeUp(madeUp) }
+    // Why the made-up name can't be picked, after a tap on it (the server's words).
+    var refused by remember { mutableStateOf<String?>(null) }
     // A tap on the drawer's small map opens it full screen; its back button (or Back) returns to the drawer.
     var fullMap by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = drawer && !fullMap) { drawer = false }
@@ -210,7 +229,21 @@ internal fun MomentsStudioStep(
                 state = state,
                 homeNoteDue = gate.homeNoteDue,
                 onHomeNoteShown = gate::homeNoteShown,
-                onAudience = onAudience,
+                postAs = postAs,
+                refused = refused,
+                onAudience = { key ->
+                    refused = null
+                    penNames.choose(PenNameVoice.Own)
+                    onAudience(key)
+                },
+                onMadeUp = {
+                    refused =
+                        when {
+                            state.noLocationLocked -> MADE_UP_NEEDS_PLACE
+                            else -> postAs?.refusal?.ifBlank { MADE_UP_NOT_HERE }
+                        }
+                    if (refused == null) penNames.choose(PenNameVoice.MadeUp)
+                },
                 onOpenDrawer = { drawer = true },
                 onPost = onPost,
             )
@@ -266,6 +299,8 @@ internal fun MomentsStudioStep(
                 )
             }
         }
+        // The first time, today's name screen (the one Pulse's "Post as" opens): a name kept here is picked at once.
+        if (setupOpen) PenNameSetupSheet(replace = false, onDone = penNames::onTaken, onDismiss = penNames::dismissSetup)
     }
 }
 
@@ -355,7 +390,7 @@ private fun RailTool(
                 .alpha(if (enabled) 1f else 0.5f)
                 .clip(RoundedCornerShape(24.dp))
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                .testTag("moments.studio.tool.$tag")
+                .testTag("moments.studio.rail.$tag")
                 .clearAndSetSemantics {
                     contentDescription = spoken
                     role = Role.Button
@@ -410,7 +445,10 @@ private fun StudioBar(
     state: MomentsComposeUiState,
     homeNoteDue: Boolean,
     onHomeNoteShown: () -> Unit,
+    postAs: PenNamePostAsUi?,
+    refused: String?,
     onAudience: (String) -> Unit,
+    onMadeUp: () -> Unit,
     onOpenDrawer: () -> Unit,
     onPost: () -> Unit,
 ) {
@@ -432,45 +470,116 @@ private fun StudioBar(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             AUDIENCES.forEach { (key, text) ->
-                val on = key == if (unplaced) "connections" else state.audience
+                val on = !state.madeUp && key == if (unplaced) "connections" else state.audience
                 val usable = !state.posting && (!unplaced || key == "connections")
-                Box(
-                    modifier =
-                        Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(19.dp))
-                            .background(if (on) Color.White else Color.Transparent)
-                            .then(if (on) Modifier else Modifier.border(1.dp, PantopusColors.studioChipOutline, RoundedCornerShape(19.dp)))
-                            .clickable(enabled = usable, role = Role.RadioButton) { onAudience(key) }
-                            .padding(horizontal = Spacing.s4)
-                            .testTag("moments.studio.audience.$key")
-                            .clearAndSetSemantics {
-                                contentDescription = text
-                                role = Role.RadioButton
-                                selected = on
-                            },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = text,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color =
-                            when {
-                                on -> PantopusColors.appText
-                                usable -> Color.White
-                                else -> Color.White.copy(alpha = 0.4f)
-                            },
-                    )
-                }
+                StudioChip(
+                    text = text,
+                    on = on,
+                    usable = usable,
+                    // iPhone's ids: moments.studio.audience.nearby / .friends / .madeUp.
+                    tag = if (key == "connections") "friends" else key,
+                    onClick = { onAudience(key) },
+                )
+            }
+            // The third choice once `/me` has answered: one choice of three, under a made-up name people nearby only.
+            if (postAs != null) {
+                StudioChip(text = MADE_UP_NAME, on = state.madeUp, usable = !state.posting, tag = "madeUp", onClick = onMadeUp)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        StudioBarRest(state = state, homeNoteDue = homeNoteDue, onHomeNoteShown = onHomeNoteShown, postAs = postAs, refused = refused) {
             StudioWhenPill(state = state, onClick = onOpenDrawer, modifier = Modifier.weight(1f))
             StudioPost(state = state, onPost = onPost)
         }
+    }
+}
+
+/** One "who sees it" chip: white while picked, an outline otherwise. */
+@Composable
+private fun StudioChip(
+    text: String,
+    on: Boolean,
+    usable: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .height(38.dp)
+                .clip(RoundedCornerShape(19.dp))
+                .background(if (on) Color.White else Color.Transparent)
+                .then(if (on) Modifier else Modifier.border(1.dp, PantopusColors.studioChipOutline, RoundedCornerShape(19.dp)))
+                .clickable(enabled = usable, role = Role.RadioButton, onClick = onClick)
+                .padding(horizontal = Spacing.s4)
+                .testTag("moments.studio.audience.$tag")
+                .clearAndSetSemantics {
+                    contentDescription = text
+                    role = Role.RadioButton
+                    selected = on
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color =
+                when {
+                    on -> PantopusColors.appText
+                    usable -> Color.White
+                    else -> Color.White.copy(alpha = 0.4f)
+                },
+        )
+    }
+}
+
+/**
+ * The bar under the chips: the pill and Post, then the lines that may follow them: why the made-up name can't be picked,
+ * "Posting as Noble Pinecone. Others can't see it's you." (LEAD's shared words) with the server's few-homes warning, and
+ * the at-home line.
+ */
+@Composable
+private fun StudioBarRest(
+    state: MomentsComposeUiState,
+    homeNoteDue: Boolean,
+    onHomeNoteShown: () -> Unit,
+    postAs: PenNamePostAsUi?,
+    refused: String?,
+    pillAndPost: @Composable RowScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), content = pillAndPost)
+        refused?.takeIf { !state.madeUp }?.let { StudioBarLine(text = it, tag = "madeUpRefused") }
+        if (state.madeUp) {
+            postAs?.penName?.name?.let { name -> StudioBarLine(text = "Posting as $name. Others can't see it's you.", tag = "postingAs") }
+            postAs?.warning?.let { StudioBarLine(text = it, tag = "madeUpWarning") }
+        }
         StudioHomeLine(state = state, homeNoteDue = homeNoteDue, onShown = onHomeNoteShown)
     }
+}
+
+@Composable
+private fun StudioBarLine(
+    text: String,
+    tag: String,
+) {
+    Text(
+        text = text,
+        color = PantopusColors.studioPillSecondary,
+        fontSize = 13.sp,
+        modifier = Modifier.testTag("moments.studio.$tag"),
+    )
+}
+
+/** In the drawer while the made-up name is picked (the web's words, #4933). */
+@Composable
+internal fun StudioMadeUpNote() {
+    Text(
+        text = "Under a made-up name it shows over its area, or at a public place, to people nearby.",
+        fontSize = 13.sp,
+        color = PantopusColors.appTextSecondary,
+        modifier = Modifier.padding(horizontal = Spacing.s5).padding(top = 2.dp).testTag("moments.studio.madeUpNote"),
+    )
 }
 
 /**
@@ -501,6 +610,15 @@ private fun StudioHomeLine(
     }
 }
 
+/** The third "who sees it" chip (LEAD's shared words). */
+private const val MADE_UP_NAME = "Made-up name"
+
+/** The server's words (`PEN_NAME_NEEDS_PLACE`), for a Moment with no place at all. */
+private const val MADE_UP_NEEDS_PLACE = "A Moment under a made-up name needs a place, so it reaches people nearby."
+
+/** A refusal that came without a sentence (the web's words, #4933). */
+private const val MADE_UP_NOT_HERE = "A made-up name can't post from here."
+
 /** Today's at-home warning (the Post sheet's own words): the Moment will pin on the home. */
 private const val HOME_PIN_WARNING = "This is your home. People will see the pin on it."
 
@@ -511,6 +629,8 @@ private const val HOME_PIN_WARNING = "This is your home. People will see the pin
 private val MomentsComposeUiState.studioPlaceLine: String
     get() =
         when {
+            // Under a made-up name: "At Heritage Trail" when the author pins it at a place, else the area it floats over.
+            madeUp && !noLocationOn -> skyPlaceName?.let(SkyWords::at) ?: "Area · ${place?.area?.label ?: place?.areaLabel ?: "your area"}"
             skyAtHome -> "Area · ${place?.area?.label ?: place?.areaLabel ?: "your area"}"
             postAtHome && showArea -> "Area · ${place?.areaLabel ?: place?.placeLabel ?: "your area"}"
             else -> postPlaceLabel
@@ -524,7 +644,8 @@ private fun StudioWhenPill(
     modifier: Modifier = Modifier,
 ) {
     val first = state.sharesAt?.let(SkyWords::sharesAt) ?: fadesIn(state.hours)
-    val second = state.studioPlaceLine
+    // With Share later picked, how long it shows moves to the second line (LEAD 00:40): "24 hours · Lacamas Lake".
+    val second = if (state.sharesAt != null) "${hoursWord(state.hours)} · ${state.studioPlaceLine}" else state.studioPlaceLine
     Row(
         modifier =
             modifier
@@ -534,7 +655,7 @@ private fun StudioWhenPill(
                 .border(1.dp, PantopusColors.studioPillOutline, RoundedCornerShape(18.dp))
                 .clickable(enabled = !state.posting, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 14.dp)
-                .testTag("moments.studio.when")
+                .testTag("moments.studio.pill")
                 .clearAndSetSemantics {
                     contentDescription = "$first, $second. Where, how long and when"
                     role = Role.Button
@@ -617,4 +738,6 @@ private fun StudioPost(
 }
 
 /** "Fades in 24 hours" (founder's word for a Moment's time: it fades when its hours are up). */
-private fun fadesIn(hours: Int): String = if (hours == 1) "Fades in 1 hour" else "Fades in $hours hours"
+private fun fadesIn(hours: Int): String = "Fades in ${hoursWord(hours)}"
+
+private fun hoursWord(hours: Int): String = if (hours == 1) "1 hour" else "$hours hours"

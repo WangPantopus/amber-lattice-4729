@@ -248,6 +248,7 @@ fun MomentsComposeScreen(
                         onShowHeight = viewModel::setShowHeight,
                         onShowWeather = viewModel::setShowWeather,
                         sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
+                        onMadeUp = viewModel::setMadeUp,
                     )
                 } else {
                     ReviewStep(

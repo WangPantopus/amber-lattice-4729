@@ -370,6 +370,11 @@ data class CreateMomentBody(
     @Json(name = "taken_here") val takenHere: Boolean? = null,
     /** API v4.1: "Show the weather" was on; the server reads the weather itself (a phone's reading is never sent). */
     @Json(name = "show_weather") val showWeather: Boolean? = null,
+    /**
+     * "Pulse, reinvented"'s Studio: `pen_name` posts the Moment under the person's made-up name (made-up-names contract,
+     * "Moments"); left out otherwise.
+     */
+    @Json(name = "post_as") val postAs: String? = null,
 )
 
 /**
