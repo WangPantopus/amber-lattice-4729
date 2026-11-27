@@ -15,6 +15,12 @@ import { EXPLORE_RULES_PATH } from './ReachDial';
 import type { ExploreItem, Point } from './listApi';
 
 interface Props {
+  /** From the places the reader follows (CONTRACT 9c), shown first. */
+  followed?: ExploreItem[];
+  /** Places you follow, the reader's own list, drawn at the top. */
+  places?: ReactNode;
+  /** "Follow <place>" in an item's "Why am I seeing this?": answers the error words, or '' once followed. */
+  followOf?(item: ExploreItem): { label: string; run(): Promise<string> } | null;
   picked: ExploreItem[];
   items: ExploreItem[];
   pause: string | null;
@@ -27,19 +33,38 @@ interface Props {
   renderPost(post: Post): ReactNode;
 }
 
-function Why({ why }: { why: string }) {
+function Why({ why, follow }: { why: string; follow: { label: string; run(): Promise<string> } | null }) {
   const [open, setOpen] = useState(false);
+  const [said, setSaid] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <p className="rp-why">
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         Why am I seeing this?
       </button>
       {open && <span role="status">{why}</span>}
+      {open && follow && !said && (
+        <button
+          type="button"
+          className="rp-why-follow"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void follow.run().then((err) => {
+              setBusy(false);
+              setSaid(err || `Following ${follow.label}. Only you see that.`);
+            });
+          }}
+        >
+          Follow {follow.label}
+        </button>
+      )}
+      {open && said && <span role="status">{said}</span>}
     </p>
   );
 }
 
-export default function ExploreView({ picked, items, pause, loading, more, now, onMore, onOpen, onPlace, renderPost }: Props) {
+export default function ExploreView({ followed = [], places, followOf, picked, items, pause, loading, more, now, onMore, onOpen, onPlace, renderPost }: Props) {
   const card = (item: ExploreItem) => (
     <li key={`${item.type}:${item.id}`}>
       {item.type === 'moment' ? (
@@ -47,11 +72,23 @@ export default function ExploreView({ picked, items, pause, loading, more, now, 
       ) : (
         renderPost(item.post)
       )}
-      <Why why={item.why} />
+      <Why why={item.why} follow={followOf?.(item) ?? null} />
     </li>
   );
   return (
     <div className="rp-explore">
+      {places}
+      {followed.length > 0 && (
+        <section aria-labelledby="rp-explore-followed">
+          <header className="rp-explore-head">
+            <div>
+              <h2 id="rp-explore-followed">From places you follow</h2>
+              <p>What people there chose to show in Explore.</p>
+            </div>
+          </header>
+          <ol className="rp-items">{followed.map(card)}</ol>
+        </section>
+      )}
       {picked.length > 0 && (
         <section aria-labelledby="rp-explore-picked">
           <header className="rp-explore-head">

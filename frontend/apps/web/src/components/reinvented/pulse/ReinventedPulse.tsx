@@ -31,6 +31,8 @@ import AliveStrip from './AliveStrip';
 import { useLinkedMoment, useLinkedSky } from './momentLinks';
 import { readBeams } from './mapLight';
 import AskTheMap, { type Lit } from './AskTheMap';
+import FollowedPlaces, { useFollow } from './FollowedPlaces';
+import Constellations from './Constellations';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -151,9 +153,14 @@ export default function ReinventedPulse() {
   }, [explore.error, reread]);
   const explored = useMemo(() => {
     const pages = explore.data?.pages || [];
-    return { picked: pages[0]?.picked || [], items: pages.flatMap((p) => p.items), pause: pages[pages.length - 1]?.pause ?? null };
+    return {
+      followed: pages[0]?.followed || [],
+      picked: pages[0]?.picked || [],
+      items: pages.flatMap((p) => p.items),
+      pause: pages[pages.length - 1]?.pause ?? null,
+    };
   }, [explore.data]);
-  const exploreAll = useMemo(() => [...explored.picked, ...explored.items], [explored]);
+  const exploreAll = useMemo(() => [...explored.followed, ...explored.picked, ...explored.items], [explored]);
   const exploreMoments = useMemo(() => exploreAll.flatMap((i) => (i.type === 'moment' ? [i.moment] : [])), [exploreAll]);
   // What the map fits itself to in Explore: the Moments and posts listed, wherever in the world they are.
   const exploreListItems = useMemo<ListItem[]>(
@@ -460,6 +467,19 @@ export default function ReinventedPulse() {
     },
     [exploreMoments],
   );
+  // "Follow <place>" on an Explore item (CONTRACT 9c): its place as everyone sees it, named as the item names it.
+  const follow = useFollow(account ?? '');
+  const followOf = useCallback(
+    (item: ExploreItem) => {
+      const point = item.type === 'moment' ? (item.moment.no_location ? null : itemPoint({ type: 'moment', id: item.id, band: null, moment: item.moment })) : itemPoint({ type: 'post', id: item.id, band: null, post: item.post });
+      // The town the server names ("New from Kyoto"), else the place the item shows.
+      const town = /^New from (.+)$/.exec(item.why || '')?.[1];
+      const label = (town || (item.type === 'moment' ? item.moment.place_label : (item.post as { location_name?: string | null }).location_name))?.trim();
+      if (!account || !point || !label || label === 'Nearby') return null;
+      return { label, run: () => follow({ label, latitude: point.latitude, longitude: point.longitude }) };
+    },
+    [account, follow],
+  );
   const flyTo = useCallback((p: Point) => {
     setFly({ ...p, serial: Date.now() });
     setHeight((h) => (h === 'list' ? 'middle' : h));
@@ -680,6 +700,17 @@ export default function ReinventedPulse() {
           {view === 'atlas' && account ? (
             <AtlasView
               account={account}
+              constellations={
+                <Constellations
+                  account={account}
+                  place={fallback}
+                  onRetake={setRetakeOpen}
+                  onSky={setSkyOpen}
+                  onMoment={(id) => setViewing({ id, ids: [id] })}
+                  onPost={openPost}
+                  onPlace={flyTo}
+                />
+              }
               onOpen={setAtlasItem}
               onFound={(m) => (m.author?.id === account ? setAtlasItem(m) : setViewing({ id: m.id, ids: [m.id] }))}
               onPlace={flyTo}
@@ -694,6 +725,9 @@ export default function ReinventedPulse() {
               </div>
             ) : (
               <ExploreView
+                followed={explored.followed}
+                places={account ? <FollowedPlaces account={account} near={home ? { lat: home.lat, lng: home.lng } : null} /> : null}
+                followOf={followOf}
                 picked={explored.picked}
                 items={explored.items}
                 pause={explored.pause}

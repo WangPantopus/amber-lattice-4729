@@ -97,11 +97,14 @@ export function AtlasItem({ moment: m, account, onClose, onDeleted }: { moment: 
 /** My Atlas by date, in the list's place. */
 export default function AtlasView({
   account,
+  constellations,
   onOpen,
   onFound,
   onPlace,
 }: {
   account: string;
+  /** Curiosity constellations near the reader (CONTRACT 9c), drawn under the search while it isn't showing results. */
+  constellations?: React.ReactNode;
   onOpen(m: ListMoment): void;
   /** A Moment Atlas search found (CONTRACT 9b): the reader's own opens as in My Atlas, another person's in the viewer. */
   onFound(m: ListMoment): void;
@@ -163,6 +166,7 @@ export default function AtlasView({
       {!searching && (
         <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
       )}
+      {!searching && constellations}
       {!searching && <WentBecauseOfYou />}
       {!searching && !days.length && <p className="rp-empty">Nothing here yet. The Moments you post from now on are kept here.</p>}
       {!searching && days.map((d) => (
