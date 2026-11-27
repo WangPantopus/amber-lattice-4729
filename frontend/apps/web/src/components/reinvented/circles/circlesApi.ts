@@ -16,6 +16,8 @@ export interface Circle {
   magazine_ready: boolean;
   my_state?: 'invited' | 'in';
   my_keep_faded?: boolean;
+  /** The reader's own window for their home in this circle (CONTRACT 9f), or null. */
+  my_window?: { label: string } | null;
 }
 
 export interface CirclesPage {
@@ -61,5 +63,7 @@ export const leaveCircle = (id: string) => post<{ circle?: Circle }>(`${one(id)}
 export const changeCircle = (id: string, body: { name?: string; add?: string[]; remove?: string[] }) => patch<{ circle: Circle }>(one(id), body);
 export const endCircle = (id: string) => del(one(id));
 export const setKeepFaded = (id: string, keep: boolean) => post<{ circle: Circle }>(`${one(id)}/me`, { keep_faded: keep });
+/** Show a window for one's home to this circle (CONTRACT 9f), or stop (null). */
+export const setWindow = (id: string, label: string | null) => post<{ circle: Circle }>(`${one(id)}/me`, { window: label ? { label } : null });
 export const readMagazine = (id: string, week: string | null, signal?: AbortSignal) =>
   get<Magazine>(`${one(id)}/magazine`, { ...(week ? { week } : {}), ...(zone() ? { tz: zone()! } : {}) }, { signal });

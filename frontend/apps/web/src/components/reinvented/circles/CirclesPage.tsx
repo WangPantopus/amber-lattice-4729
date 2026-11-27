@@ -22,9 +22,12 @@ import {
   makeCircle,
   readCircles,
   setKeepFaded,
+  setWindow,
   WEEK_DAYS,
   type Circle,
 } from './circlesApi';
+import Windows from './Windows';
+import { useMe } from '@/lib/me';
 import './circles.css';
 
 const MAX_OTHERS = 7;
@@ -180,7 +183,15 @@ function Invite({ circle, onChanged }: { circle: Circle; onChanged(): void }) {
   );
 }
 
+const WINDOW_WORDS = 'Show a window for my home to this circle. It lights when I share something, and never says what or where.';
+
 function CircleDetail({ circle, onChanged, onClose }: { circle: Circle; onChanged(): void; onClose(): void }) {
+  const client = useQueryClient();
+  const account = useMe().data?.id ?? null;
+  // The reader's window for their home in this circle (CONTRACT 9f): their own choice, off by default.
+  const [windowName, setWindowName] = useState(circle.my_window?.label || '');
+  const showing = !!circle.my_window;
+  const windowsAgain = () => void client.invalidateQueries({ queryKey: ['reinvented', 'windows'] });
   const [name, setName] = useState(circle.name),
     [adding, setAdding] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
@@ -233,6 +244,34 @@ function CircleDetail({ circle, onChanged, onClose }: { circle: Circle; onChange
         <input type="checkbox" checked={!!circle.my_keep_faded} disabled={busy} onChange={(e) => void go(() => setKeepFaded(circle.id, e.target.checked))} />
         {KEEP_WORDS}
       </label>
+      <div className="hw-choice">
+        <label className="cc-check">
+          <input
+            type="checkbox"
+            checked={showing}
+            disabled={busy || (!showing && !windowName.trim())}
+            onChange={(e) => void go(() => setWindow(circle.id, e.target.checked ? windowName.trim() : null), windowsAgain)}
+          />
+          {WINDOW_WORDS}
+        </label>
+        <label className="cc-field">
+          <span>{showing ? 'Its name' : 'Name it first, like Mom and Dad’s'}</span>
+          <span className="cc-inline">
+            <input value={windowName} maxLength={30} placeholder="Mom and Dad’s" onChange={(e) => setWindowName(e.target.value)} />
+            {showing && (
+              <button
+                type="button"
+                className="cc-button"
+                disabled={busy || !windowName.trim() || windowName.trim() === circle.my_window?.label}
+                onClick={() => void go(() => setWindow(circle.id, windowName.trim()), windowsAgain)}
+              >
+                Rename
+              </button>
+            )}
+          </span>
+        </label>
+      </div>
+      <Windows account={account} circle={circle.id} title="Windows in this circle" />
       {circle.mine && (
         <>
           <label className="cc-field">
