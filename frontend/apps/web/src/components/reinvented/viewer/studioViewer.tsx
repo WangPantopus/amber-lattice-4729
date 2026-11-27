@@ -15,6 +15,7 @@ import type { ShownStamp, StampKind } from '../stamps/stampTypes';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isSignal, SIGNALS, SIGNAL_WORDS, SignalIcon, type Signal } from './signals';
 import { EditEntry, SavedNote } from '../edit/EditEntry';
+import { GuessOverPicture, holdsForGuess } from '../guess/GuessSpot';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null };
@@ -166,9 +167,11 @@ export const studioViewer = {
     <>
       <ViewerStamps moment={m as StudioMoment} />
       <SavedNote id={m.id} />
+      <GuessOverPicture moment={m} />
     </>
   ),
   menu: (m: Moment, close: () => void) => <EditEntry moment={m} close={close} />,
+  holds: (m: Moment, account: string) => holdsForGuess(m, account),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,

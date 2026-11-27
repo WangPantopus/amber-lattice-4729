@@ -138,7 +138,8 @@ export default function MomentViewer(props: Props) {
     },
     [ids, index, onClose, onSelect],
   );
-  const halt = paused || holding || typing || hidden || !!sheet || busy || mediaFailed || !!note;
+  const halt =
+    paused || holding || typing || hidden || !!sheet || busy || mediaFailed || !!note || !!(moment && props.studio?.holds(moment, account));
   const present = !!moment && (moment.kind === 'text' || ready) && !mediaFailed;
 
   useEffect(() => {
