@@ -31,10 +31,10 @@ final class DeepLinkRouter {
     enum Destination: Equatable {
         case feed
         case home
-        /// `/pulse`, and the retired `/nearby` (Pulse S3: the Nearby tab is
-        /// gone; its links and the server pushes that use it open Pulse).
-        /// While the Pulse redesign is off (launch cut #11) only `/nearby`
-        /// resolves here, and it opens the Nearby tab, as on October 13.
+        /// `/nearby`: Verified homes nearby in the Place stack while the Pulse
+        /// redesign is off (launch cut #11), or the Pulse tab when on.
+        /// `/pulse` (and `/app/pulse`) always resolves to `.feed` so it opens
+        /// the Pulse feed tab regardless of `LaunchFeatures.pulseRedesign`.
         case pulse
         /// `/plans`: the Plans tab, while the `plans` switch is on.
         case plans
@@ -630,9 +630,11 @@ final class DeepLinkRouter {
             return queryValue("surface", in: comps) == "personas" ? .beacons : .feed
         case "home":
             return .home
-        case "nearby", "pulse":
-            // The October 13 app (launch cut #11 off) had no `/pulse` link.
-            guard segments.count == 1, firstSegment == "nearby" || LaunchFeatures.pulseRedesign else { return .unknown(url) }
+        case "pulse":
+            guard segments.count == 1 else { return .unknown(url) }
+            return .feed
+        case "nearby":
+            guard segments.count == 1 else { return .unknown(url) }
             return .pulse
         case "moments", "moment":
             // `/moments` (the tab) and `/moments/:id` (that Moment in the viewer).

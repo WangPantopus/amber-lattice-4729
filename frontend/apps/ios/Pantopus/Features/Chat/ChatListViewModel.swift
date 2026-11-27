@@ -455,8 +455,9 @@ public final class ChatListViewModel {
     private func subscribeToSockets() {
         if preferencesTask == nil {
             preferencesTask = Task { [weak self] in
-                guard let self else { return }
-                for await _ in socket.events(named: "chat:preferences_changed", as: JSONValue.self) {
+                guard let stream = self?.socket.events(named: "chat:preferences_changed", as: JSONValue.self) else { return }
+                for await _ in stream {
+                    guard let self, !Task.isCancelled else { return }
                     store.markStale(topics: [ScreenTopic.chats])
                     refreshAfterChange()
                 }
@@ -464,9 +465,9 @@ public final class ChatListViewModel {
         }
         if badgeTask == nil {
             badgeTask = Task { [weak self] in
-                guard let self else { return }
-                let stream = socket.events(named: "badge:update", as: ChatBadgeUpdate.self)
+                guard let stream = self?.socket.events(named: "badge:update", as: ChatBadgeUpdate.self) else { return }
                 for await update in stream {
+                    guard let self, !Task.isCancelled else { return }
                     serverTotalUnread = update.totalUnread
                     serverTotalUnmutedUnread = update.totalUnmutedUnread
                     updateUnreadByFilter()
@@ -476,9 +477,9 @@ public final class ChatListViewModel {
         }
         if messageTask == nil {
             messageTask = Task { [weak self] in
-                guard let self else { return }
-                let stream = socket.events(named: "message:new", as: ChatMessageEvent.self)
+                guard let stream = self?.socket.events(named: "message:new", as: ChatMessageEvent.self) else { return }
                 for await event in stream {
+                    guard let self, !Task.isCancelled else { return }
                     handleMessage(event)
                 }
             }

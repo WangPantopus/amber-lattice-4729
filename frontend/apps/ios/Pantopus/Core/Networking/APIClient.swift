@@ -48,8 +48,13 @@ final class APIClient: @unchecked Sendable {
 
     /// Header names pinned by docs/persistent-login/CONTRACT.md ("Headers").
     static let deviceIdHeader = "X-Device-Id"
+    static let clientPlatformHeader = "X-Client-Platform"
     static let dpopHeader = "DPoP"
     static let stepUpHeader = "X-Step-Up"
+
+    static var clientPlatformValue: String {
+        "ios-\(Bundle.main.appVersion)"
+    }
 
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -548,8 +553,8 @@ final class APIClient: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(
-            "ios-\(Bundle.main.appVersion)",
-            forHTTPHeaderField: "X-Client-Platform"
+            Self.clientPlatformValue,
+            forHTTPHeaderField: Self.clientPlatformHeader
         )
         for (key, value) in endpoint.headers.merging(ProfilePageParts.headers(for: endpoint.path), uniquingKeysWith: { own, _ in own }) {
             request.setValue(value, forHTTPHeaderField: key)

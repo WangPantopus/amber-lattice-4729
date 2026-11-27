@@ -79,8 +79,16 @@ enum AssistantPushActions {
         ]
     }
 
-    static let failureTitle = "Couldn\u{2019}t mark it done."
     static let failureBody = "Tap to open it in Pantopus."
+
+    static func failureTitle(for action: String) -> String {
+        switch action {
+        case markDone: "Couldn\u{2019}t mark it done."
+        case markSolved: "Couldn\u{2019}t mark it solved."
+        case fewer: "Couldn\u{2019}t show fewer like this."
+        default: "Couldn\u{2019}t complete that action."
+        }
+    }
 
     /// Runs one button. Anything that doesn't go through leaves the note that opens the nudge.
     static func handle(action: String, payload: AssistantPushPayload) async {
@@ -89,25 +97,30 @@ enum AssistantPushActions {
         if auth.state == .unknown { await auth.restoreSession() }
         guard case let .signedIn(user) = auth.state, let recipient = payload.recipient,
               recipient.lowercased() == user.id.lowercased() else {
-            await notifyFailure(payload, notificationId: notificationId, message: nil)
+            await notifyFailure(payload, action: action, notificationId: notificationId, message: nil)
             return
         }
         AppLockManager.shared.configure(userID: user.id)
         guard !AppLockManager.shared.isLocked, let send = send(for: action, payload: payload, notificationId: notificationId) else {
-            await notifyFailure(payload, notificationId: notificationId, message: nil)
+            await notifyFailure(payload, action: action, notificationId: notificationId, message: nil)
             return
         }
         do {
             let response = try await APIClient.shared.requestDataResponse(send.endpoint, includingForbidden: true, includingNotFound: true)
             guard (200..<300).contains(response.response.statusCode) else {
-                await notifyFailure(payload, notificationId: notificationId, message: serverMessage(response.data))
+                await notifyFailure(payload, action: action, notificationId: notificationId, message: serverMessage(response.data))
                 return
             }
         } catch let APIError.clientError(_, body) {
-            await notifyFailure(payload, notificationId: notificationId, message: body.flatMap { serverMessage(Data($0.utf8)) })
+            await notifyFailure(
+                payload,
+                action: action,
+                notificationId: notificationId,
+                message: body.flatMap { serverMessage(Data($0.utf8)) }
+            )
             return
         } catch {
-            await notifyFailure(payload, notificationId: notificationId, message: nil)
+            await notifyFailure(payload, action: action, notificationId: notificationId, message: nil)
             return
         }
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [payload.requestIdentifier])
@@ -168,13 +181,18 @@ enum AssistantPushActions {
         return text?.isEmpty == false ? text : nil
     }
 
-    /// "Couldn't mark it done. Tap to open it in Pantopus." as a local notification that opens
-    /// the nudge in the assistant, or the server's own sentence when it sent one. It takes the
-    /// original's place, as on Android.
-    private static func notifyFailure(_ payload: AssistantPushPayload, notificationId: String, message: String?) async {
+    /// Action-specific failure note (matching Android `AssistantActionReceiver`)
+    /// that opens the nudge in the assistant, or the server's own sentence when
+    /// it sent one. It takes the original's place, as on Android.
+    private static func notifyFailure(
+        _ payload: AssistantPushPayload,
+        action: String,
+        notificationId: String,
+        message: String?
+    ) async {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [payload.requestIdentifier])
         let content = UNMutableNotificationContent()
-        content.title = message == nil ? failureTitle : "Pantopus"
+        content.title = message == nil ? failureTitle(for: action) : "Pantopus"
         content.body = message.map { "\($0) \(failureBody)" } ?? failureBody
         content.sound = nil
         var userInfo: [String: Any] = [

@@ -62,7 +62,7 @@ public final class MultipartUploader: @unchecked Sendable {
         if let session {
             self.session = session
         } else {
-            let config = URLSessionConfiguration.default
+            let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = 60
             config.timeoutIntervalForResource = 120
             self.session = URLSession(configuration: config)
