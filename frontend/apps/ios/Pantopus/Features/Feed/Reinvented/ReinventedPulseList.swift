@@ -13,8 +13,12 @@ import SwiftUI
 
 struct ReinventedPulseList: View {
     let model: ReinventedPulseModel
+    /// Alive right now, over the list; nil or empty draws nothing.
+    let strip: ReinventedStripResponse?
     let onOpenPost: (String) -> Void
     let onOpenMoment: (MomentDTO) -> Void
+    let onOpenRing: (MomentRingDTO) -> Void
+    let onRefreshStrip: () async -> Void
 
     var body: some View {
         switch model.load {
@@ -50,6 +54,9 @@ struct ReinventedPulseList: View {
     private var list: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.s3) {
+                if let strip, !strip.isEmpty {
+                    ReinventedAliveStrip(strip: strip, onOpenMoment: onOpenMoment, onOpenRing: onOpenRing)
+                }
                 if model.isEmpty {
                     emptyNote
                 }
@@ -77,7 +84,10 @@ struct ReinventedPulseList: View {
             }
             .padding(.bottom, 120)
         }
-        .refreshable { await model.refresh() }
+        .refreshable {
+            await model.refresh()
+            await onRefreshStrip()
+        }
         .accessibilityIdentifier("reinventedPulse.list")
     }
 

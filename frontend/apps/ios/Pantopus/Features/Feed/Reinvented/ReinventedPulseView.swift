@@ -23,6 +23,7 @@ struct ReinventedPulseView: View {
 
     @State private var model = ReinventedPulseModel()
     @State private var map = ReinventedMapModel()
+    @State private var strip = ReinventedStripModel()
     @State private var height: Height = .middle
     @State private var dragged: CGFloat = 0
     @State private var watching: MomentsWatchSession?
@@ -49,6 +50,7 @@ struct ReinventedPulseView: View {
             }
         }
         .task { await model.refresh() }
+        .task { await strip.read() }
         .fullScreenCover(item: $watching) { session in
             MomentsViewer(
                 session: session,
@@ -207,8 +209,11 @@ struct ReinventedPulseView: View {
                 .accessibilityIdentifier("reinventedPulse.handle")
             ReinventedPulseList(
                 model: model,
+                strip: strip.strip,
                 onOpenPost: onOpenPost,
-                onOpenMoment: open
+                onOpenMoment: open,
+                onOpenRing: { ring in open(.ring(ring)) },
+                onRefreshStrip: { await strip.read() }
             )
         }
         .frame(maxWidth: .infinity, alignment: .top)

@@ -44,4 +44,14 @@ public enum ReinventedEndpoints {
             cachePolicy: .reloadIgnoringLocalCacheData
         )
     }
+
+    /// `GET /api/reinvented/strip` (CONTRACT 6c): Alive right now. Route `backend/routes/reinvented.js:91` (strip).
+    static func strip(at point: (latitude: Double, longitude: Double)?) -> Endpoint {
+        var query: [String: String] = [:]
+        if let point {
+            query["latitude"] = String(format: "%.5f", point.latitude)
+            query["longitude"] = String(format: "%.5f", point.longitude)
+        }
+        return Endpoint(method: .get, path: "/api/reinvented/strip", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
+    }
 }
