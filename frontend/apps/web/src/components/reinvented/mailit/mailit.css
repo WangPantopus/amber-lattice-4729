@@ -1,0 +1,76 @@
+/* "Mail it" in the viewer's options sheet (phase 3, CONTRACT 8j): its form drawn in place. */
+.mi-form {
+  display: grid;
+  gap: 10px;
+  padding: 10px 8px 6px;
+}
+.mi-title,
+.mi-sent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mi-sent {
+  padding: 12px 8px;
+  font-weight: 600;
+}
+.mi-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mi-field select,
+.mi-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 10px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  font: inherit;
+  font-weight: 400;
+}
+.mi-field textarea {
+  resize: vertical;
+}
+.mi-note,
+.mi-error {
+  font-size: 12px;
+}
+.mi-note {
+  color: rgb(var(--app-text-muted));
+}
+.mi-error {
+  color: #b42318;
+}
+.mi-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mi-cancel,
+.mi-send {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mi-cancel {
+  background: transparent;
+  color: rgb(var(--app-text));
+}
+.mi-send {
+  background: #0b6b9a;
+  color: #fff;
+}
+.mi-cancel:disabled,
+.mi-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

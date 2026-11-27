@@ -18,6 +18,7 @@ import { EditEntry, SavedNote } from '../edit/EditEntry';
 import { GuessOverPicture, holdsForGuess } from '../guess/GuessSpot';
 import { holdsForKeep, KeepOverPicture } from '../keep/KeepThis';
 import { PlanOverPicture, StartPlanEntry } from '../plan/WantToCome';
+import { MailItEntry } from '../mailit/MailIt';
 import PlayLayer, { holdsForPlay } from '../play/PlayLayer';
 import DotLayer, { holdsForDots } from '../dots/DotLayer';
 import SoundLayer, { hasSound, holdsForSound } from '../sound/SoundLayer';
@@ -206,6 +207,7 @@ export const studioViewer = {
     <>
       <EditEntry moment={m} close={close} />
       <StartPlanEntry moment={m} close={close} />
+      <MailItEntry moment={m} close={close} />
       <RepliesShownEntry moment={m} close={close} />
     </>
   ),
