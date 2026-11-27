@@ -1,0 +1,47 @@
+// Where things placed in the Studio land on the picture that is posted (Pulse, reinvented; coord/CONTRACT.md §2b: a
+// stamp's x, y and scale are on the PICTURE itself). The Studio draws the picture inside its 9:16 stage and places
+// stamps, playable items and dots on the stage. A picture with words, drawing or a crop is posted as that 9:16 stage
+// (momentMedia's photo()), so stage and picture are the same. One without is posted at its own shape, so a stage
+// position is turned into a position on the picture as the stage drew it (fitted whole, centred).
+
+const STAGE_W = 9,
+  STAGE_H = 16;
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+const round = (n: number) => Math.round(n * 10000) / 10000;
+
+export interface Frame {
+  point(x: number, y: number): { x: number; y: number };
+  /** A size given as a share of the stage's width, as a share of the picture's. */
+  scale(s: number): number;
+  box(b: { x: number; y: number; w: number; h: number }): { x: number; y: number; w: number; h: number };
+}
+
+const SAME: Frame = { point: (x, y) => ({ x, y }), scale: (s) => s, box: (b) => b };
+
+/** `size`: the picture's own width and height; `stageIsPicture`: it is posted as the 9:16 stage (edited). */
+export function stageFrame(size: { w: number; h: number } | null, stageIsPicture: boolean): Frame {
+  if (stageIsPicture || !size || !size.w || !size.h) return SAME;
+  const s = Math.min(STAGE_W / size.w, STAGE_H / size.h);
+  const pw = size.w * s,
+    ph = size.h * s;
+  const left = (STAGE_W - pw) / 2,
+    top = (STAGE_H - ph) / 2;
+  if (Math.abs(pw - STAGE_W) < 1e-6 && Math.abs(ph - STAGE_H) < 1e-6) return SAME;
+  const point = (x: number, y: number) => ({
+    x: round(clamp((x * STAGE_W - left) / pw, 0, 1)),
+    y: round(clamp((y * STAGE_H - top) / ph, 0, 1)),
+  });
+  return {
+    point,
+    scale: (v) => round(clamp((v * STAGE_W) / pw, 0.25, 4)),
+    box: (b) => {
+      const at = point(b.x, b.y);
+      return {
+        x: at.x,
+        y: at.y,
+        w: round(clamp((b.w * STAGE_W) / pw, 0.01, 1 - at.x)),
+        h: round(clamp((b.h * STAGE_H) / ph, 0.01, 1 - at.y)),
+      };
+    },
+  };
+}
