@@ -69,6 +69,15 @@ function isOpenForReview(claim, now = Date.now()) {
     && (!claim.expires_at || Date.parse(claim.expires_at) > now);
 }
 
+// Who a claim open for review waits on. Approval needs a document, so until one is in the claim waits on the
+// claimant: adding a Home as its owner files the claim with nothing attached. After Request info it waits on them
+// again until they send something. Null once the claim is decided.
+function waitingOn(claim, { documents = 0, documentsSinceRequest = 0 } = {}) {
+  if (!isOpenForReview(claim)) return null;
+  if (claim.state === 'needs_more_info') return documentsSinceRequest > 0 ? 'reviewer' : 'claimant';
+  return documents > 0 ? 'reviewer' : 'claimant';
+}
+
 function hasQualifyingActiveChallenge(claim) {
   if (!claim || claim.merged_into_claim_id) {
     return false;
@@ -404,6 +413,7 @@ module.exports = {
   isClaimPhaseActive,
   isClaimActiveRecord,
   isOpenForReview,
+  waitingOn,
   hasQualifyingActiveChallenge,
   deriveHomeResolutionState,
   deriveInitialRoutingClassification,

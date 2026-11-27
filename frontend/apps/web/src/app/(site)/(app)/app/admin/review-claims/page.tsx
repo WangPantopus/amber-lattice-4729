@@ -65,6 +65,28 @@ function formatDate(iso: string) {
 // What Request info said before it had a note box; the reviewer can change it.
 const DEFAULT_INFO_NOTE = 'Please upload additional documents.';
 
+// Request info on a claim with no document at all asks for the one approval needs.
+function infoNoteFor(detail: api.admin.ClaimDetail | null) {
+  if (!detail || (detail.evidence?.length ?? 0) > 0) return DEFAULT_INFO_NOTE;
+  return detail.claim?.claim_type === 'resident'
+    ? 'Please upload a document that shows you live at this address, like a utility bill or lease.'
+    : 'Please upload a document that shows you own this home, like a deed, closing statement or property tax bill.';
+}
+
+const OWNERSHIP_DOCUMENTS = ['deed', 'closing_disclosure', 'tax_bill', 'escrow_attestation', 'title_match'];
+
+// The document status for approving as `role`. As claimed it is the server's own test (approval.proof); as another
+// role it follows the approval rule: owner and admin need an ownership document, any other role also accepts a
+// utility bill or lease. Undefined when the server didn't send the checklist (approval itself still decides).
+function proofFor(detail: api.admin.ClaimDetail, role: api.admin.ClaimApprovalRole): 'verified' | 'pending' | 'missing' | undefined {
+  if (!detail.approval) return undefined;
+  if (role === claimedRole(detail.claim?.claim_type)) return detail.approval.proof;
+  const accepted = role === 'owner' || role === 'admin' ? OWNERSHIP_DOCUMENTS : [...OWNERSHIP_DOCUMENTS, 'utility_bill', 'lease'];
+  const documents = (detail.evidence || []).filter(ev => accepted.includes(ev.evidence_type));
+  if (documents.some(ev => ev.eligible_for_review === true)) return 'verified';
+  return documents.some(ev => ev.status === 'pending' && !ev.availability_code) ? 'pending' : 'missing';
+}
+
 export default function AdminReviewClaimsPage() {
   const router = useRouter();
   const [claims, setClaims] = useState<ClaimForReview[]>([]);
@@ -304,6 +326,14 @@ export default function AdminReviewClaimsPage() {
     || !!claimDetail?.evidence?.some(ev => ev.evidence_type === 'idv' && ev.eligible_for_review === true);
   const identityFailed = claimDetail?.claim?.identity_status === 'failed';
 
+  // Approval needs a checked document for the role being granted; say so instead of letting Approve fail.
+  const proof = claimDetail ? proofFor(claimDetail, approveAs) : undefined;
+  const proofBlocked = proof === 'pending' ? 'Check the claimant’s document first: open it above and verify it.'
+    : proof === 'missing' ? ((claimDetail?.evidence?.length ?? 0) > 0
+      ? `None of the documents here can support approving as ${roleLabel(approveAs)}. Use Request Info to ask for one.`
+      : 'No document yet. Use Request Info to ask for one.')
+      : null;
+
   const handleApprove = async (claimId: string) => {
     const request = detailGeneration.current;
     const role = approveAs;
@@ -323,8 +353,14 @@ export default function AdminReviewClaimsPage() {
   };
 
   // ── CLAIM LIST ──
+  const waitingOnClaimant = claims.filter(claim => claim.waiting_on === 'claimant').length;
   const renderClaimList = () => (
     <div className="space-y-3">
+      {waitingOnClaimant > 0 ? (
+        <p data-testid="claims-queue-summary" className="text-xs text-app-text-secondary">
+          {claims.length - waitingOnClaimant} to review · {waitingOnClaimant} waiting on the claimant
+        </p>
+      ) : null}
       {claims.map(claim => (
         <button key={claim.id} onClick={() => openClaimDetail(claim)}
           className={`w-full text-left bg-app-surface border rounded-xl p-4 hover:shadow-md transition ${
@@ -345,6 +381,11 @@ export default function AdminReviewClaimsPage() {
                   (claim.documents_since_request ?? 0) > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-app-surface-sunken text-app-text-secondary'
                 }`}>
                   {(claim.documents_since_request ?? 0) > 0 ? 'Docs sent' : 'Awaiting docs'}
+                </span>
+              ) : claim.waiting_on === 'claimant' ? (
+                // Filed with nothing attached (adding a home as its owner does that): nothing to review yet.
+                <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-app-surface-sunken text-app-text-secondary">
+                  No document yet
                 </span>
               ) : null}
             </div>
@@ -450,7 +491,10 @@ export default function AdminReviewClaimsPage() {
 
             {renderComparisonSection()}
 
-            {claimDetail.approval ? <ClaimReviewApprovalPanel approval={claimDetail.approval} /> : null}
+            {claimDetail.approval ? (
+              <ClaimReviewApprovalPanel approval={claimDetail.approval} proof={proof}
+                identityAttested={!identityVerified && !identityFailed && identityConfirmed} />
+            ) : null}
 
             {/* Evidence */}
             {!claimDetail.evidence_archived && <section>
@@ -531,8 +575,9 @@ export default function AdminReviewClaimsPage() {
                   </div>
                 )}
               </div>
+              {proofBlocked ? <p data-testid="claim-approve-blocked" className="text-xs text-app-text-secondary">{proofBlocked}</p> : null}
               <button onClick={() => handleApprove(claimDetail.claim.id)}
-                disabled={!!reviewingAction || identityFailed || (!identityVerified && !identityConfirmed)}
+                disabled={!!reviewingAction || identityFailed || (!identityVerified && !identityConfirmed) || !!proofBlocked}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition">
                 {reviewingAction === 'approve' ? 'Approving...' : <><CheckCircle className="w-5 h-5" /> Approve</>}
               </button>
@@ -542,7 +587,7 @@ export default function AdminReviewClaimsPage() {
                   className="flex items-center justify-center gap-1.5 py-2.5 border-2 border-red-300 bg-red-50 text-red-700 font-semibold rounded-xl hover:bg-red-100 disabled:opacity-50 transition">
                   <XCircle className="w-4.5 h-4.5" /> Reject
                 </button>
-                <button onClick={() => setShowInfoModal(true)} disabled={!!reviewingAction}
+                <button onClick={() => { setInfoNote(infoNoteFor(claimDetail)); setShowInfoModal(true); }} disabled={!!reviewingAction}
                   className="flex items-center justify-center gap-1.5 py-2.5 border-2 border-amber-300 bg-amber-50 text-amber-700 font-semibold rounded-xl hover:bg-amber-100 disabled:opacity-50 transition">
                   {reviewingAction === 'request_more_info' ? 'Sending...' : <><HelpCircle className="w-4.5 h-4.5" /> Request Info</>}
                 </button>

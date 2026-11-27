@@ -31,17 +31,25 @@ function identityLine(approval: ClaimReviewApproval): { done: boolean; waiting: 
   }
 }
 
-function proofLine(approval: ClaimReviewApproval): { done: boolean; waiting: boolean; title: string; detail: string } {
-  if (approval.proof === 'verified') return { done: true, waiting: false, title: 'Document checked', detail: 'A reviewer verified an ownership document.' };
-  if (approval.proof === 'pending') return { done: false, waiting: true, title: 'Document waiting for your check', detail: 'Open the document below and verify it.' };
-  return { done: false, waiting: false, title: 'No document yet', detail: 'The claimant is asked to upload one.' };
+function proofLine(proof: ClaimReviewApproval['proof']): { done: boolean; waiting: boolean; title: string; detail: string } {
+  if (proof === 'verified') return { done: true, waiting: false, title: 'Document checked', detail: 'A reviewer verified a document.' };
+  if (proof === 'pending') return { done: false, waiting: true, title: 'Document waiting for your check', detail: 'Open the document below and verify it.' };
+  return { done: false, waiting: false, title: 'No document yet', detail: 'The claimant hasn’t uploaded one yet.' };
 }
 
-/** What approval needs (a confirmed identity and a checked document), as the reviewer sees it. */
-export default function ClaimReviewApprovalPanel({ approval }: { approval: ClaimReviewApproval }) {
+/**
+ * What approval needs (a confirmed identity and a checked document), as the reviewer sees it. `proof` is the
+ * document status for the role being granted when it isn't the claimed one; `identityAttested` is the reviewer's
+ * own confirmation, ticked but not saved until they approve.
+ */
+export default function ClaimReviewApprovalPanel({ approval, proof, identityAttested = false }: {
+  approval: ClaimReviewApproval; proof?: ClaimReviewApproval['proof']; identityAttested?: boolean;
+}) {
+  const identity = identityLine(approval);
   const rows = [
-    { key: 'identity', icon: IdCard, line: identityLine(approval) },
-    { key: 'proof', icon: FileText, line: proofLine(approval) },
+    { key: 'identity', icon: IdCard, line: !approval.identity_confirmed && identityAttested
+      ? { ...identity, done: true, waiting: false, title: 'You confirmed their identity', detail: 'Saved with the claim when you approve.' } : identity },
+    { key: 'proof', icon: FileText, line: proofLine(proof ?? approval.proof) },
   ];
   return (
     <section data-testid="claim-review-approval">

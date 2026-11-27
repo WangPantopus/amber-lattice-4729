@@ -36,6 +36,11 @@ export interface AdminClaim {
   reviewed_at?: string | null;
   /** On a claim waiting on the claimant (Request info): documents they sent after the request. */
   documents_since_request?: number;
+  /**
+   * Who an open claim waits on: the claimant until a document is in (and after Request info until they answer),
+   * a reviewer otherwise. Null once decided.
+   */
+  waiting_on?: 'claimant' | 'reviewer' | null;
 }
 
 export interface ClaimEvidence {
