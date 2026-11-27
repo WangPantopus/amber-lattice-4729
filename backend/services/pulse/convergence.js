@@ -4,7 +4,8 @@
 // earns it, a 15-minute window opens over a 0.1° cell; every Live photo taken there in it joins one kept piece, and each
 // sunset becomes one band of colour in the strip. Never invented: a job (jobs/pulseConvergence.js) decides by stated
 // rules from real weather stamps and real captures by several people. No new table: a joined Moment keeps
-// `convergence` in its own kept value, and stays. Only Moments of authors with the switch on count and join.
+// `convergence` in its own kept value, and stays. Only Moments of authors with the switch on count, and only a Moment
+// its author posted with `join_convergence` ("Join tonight's sky: your photo stays in the piece") joins.
 
 const { DateTime } = require('luxon');
 const sharp = require('sharp');
@@ -37,10 +38,13 @@ const zoneOf = (row) => momentStore().meta(row).stamp_values?.zone || ZONE;
 const skyOf = (row) => momentStore().meta(row).stamp_values?.weather?.kind || null;
 const dayIn = (ms, zone) => DateTime.fromMillis(ms, { zone }).toISODate();
 
-/** A Live photo Moment that may count and join: switch-on author checked by the caller. */
+/**
+ * A Live photo Moment that may count toward a rule: shared with people nearby (never a Friends-only one, so a window
+ * never says someone posted privately there; LEAD-3 07:19). The switch-on author is checked by the caller.
+ */
 function liveCapture(row) {
   const m = momentStore().meta(row);
-  return m.kind === 'photo' && LIVE_SOURCES.includes(m.location_source) && !m.share_at && !m.at_home && !m.show_area
+  return row.audience === 'nearby' && m.kind === 'photo' && LIVE_SOURCES.includes(m.location_source) && !m.share_at && !m.at_home && !m.show_area
     && !row.post_metadata?.area && !penName.isPenNameRow(row) && row.latitude != null && !row.archived_at
     && row.moderation_state === 'live' && m.state === 'live' && !m.seal;
 }
@@ -142,7 +146,8 @@ async function run(now = Date.now()) {
       const from = Date.parse(window.opened_at) - LOOK_MS;
       for (const row of inCell) {
         const at = Date.parse(row.created_at);
-        if (at < from || at > Date.parse(window.closes_at) || store.meta(row).convergence) continue;
+        // Joining is the author's own choice (LEAD-3 07:19): only a Moment posted with `join_convergence`.
+        if (at < from || at > Date.parse(window.closes_at) || store.meta(row).convergence || !store.meta(row).convergence_join) continue;
         const band = window.kind === 'sunset' ? await bandOf(row) : null;
         const updated = await store.updateMoment(row, {
           moment: { convergence: { ...window, band }, kept_post_at: store.meta(row).kept_post_at || new Date(now).toISOString() },
