@@ -34,6 +34,7 @@ import AskTheMap, { type Lit } from './AskTheMap';
 import FollowedPlaces, { useFollow } from './FollowedPlaces';
 import Constellations from './Constellations';
 import Echoes from '../echoes/Echoes';
+import Windows from '../circles/Windows';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -190,7 +191,8 @@ export default function ReinventedPulse() {
   const beams = useQuery({
     queryKey: ['reinvented', 'beams', account, box],
     queryFn: ({ signal }) => readBeams(box!, signal),
-    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && time === 'live',
+    // Only after the list's first page has come, so nothing competes with what opens the tab (LEAD-3 11:05).
+    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && time === 'live' && !!list.data,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
     refetchInterval: 2 * 60_000,
@@ -772,8 +774,10 @@ export default function ReinventedPulse() {
             </div>
           ) : (
             <>
+              {/* Homes talk to homes (CONTRACT 9f): the circles' windows, at the top of Close circle. */}
+              {reach === 'close' && account && <Windows account={account} />}
               {/* Echoes (CONTRACT 9e): nothing is pushed; in the evening, by the reader's own clock, they show here too. */}
-              {reach === 'around' && account && chip === 'all' && new Date(now).getHours() >= 18 && (
+              {reach === 'around' && account && !!first && chip === 'all' && new Date(now).getHours() >= 18 && (
                 <Echoes account={account} onOpen={(id) => setViewing({ id, ids: [id] })} />
               )}
               {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
