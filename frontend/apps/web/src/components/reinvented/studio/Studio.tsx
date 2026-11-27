@@ -40,6 +40,8 @@ import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCam
 import { blankArt, edited, inks } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
+import { cutToShape, sideBySide } from './beforeAfter';
+import { beforeAfterOf } from '../play/BeforeAfter';
 import {
   colors,
   deviceFix,
@@ -195,6 +197,10 @@ export default function Studio({
     [soundOpen, setSoundOpen] = useState(false),
     // Blur before posting (phase 2): boxes over faces, plates, numbers and labels, drawn into the photo when posting.
     [blurs, setBlurs] = useState<BlurBox[]>([]),
+    // Before and after (§7g): the after photo, cut to the before's shape; its own blurs; which one the stage shows.
+    [afterFile, setAfterFile] = useState<File | null>(null),
+    [afterBlurs, setAfterBlurs] = useState<BlurBox[]>([]),
+    [side, setSide] = useState<'before' | 'after'>('before'),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
     [guessSpot, setGuessSpot] = useState(false),
@@ -457,6 +463,50 @@ export default function Studio({
   const canBlur = mode === 'media' && !!file && !isVideo;
   // Boxes belong to one photo: a new picture starts with none.
   useEffect(() => setBlurs([]), [file]);
+  // Before and after goes on one photo (the before), with the after beside it in the same picture.
+  const canPair = canBlur && files.length === 1;
+  const pairItem = beforeAfterOf(play);
+  const hasPair = !!pairItem;
+  const pair = hasPair && !!afterFile && canPair;
+  const showAfter = pair && side === 'after';
+  // A new before, or the item taken off: the after goes with it.
+  useEffect(() => {
+    setAfterFile(null);
+    setAfterBlurs([]);
+    setSide('before');
+    setPlay((old) => (old.some((p) => p.kind === 'before_after') ? old.filter((p) => p.kind !== 'before_after') : old));
+  }, [file]);
+  useEffect(() => {
+    if (hasPair) return;
+    setAfterFile(null);
+    setAfterBlurs([]);
+    setSide('before');
+  }, [hasPair]);
+  async function addAfter(item: PlayItem, after: File) {
+    if (!shape) {
+      setError('Wait for the photo to load, then add the after.');
+      return;
+    }
+    try {
+      const cut = await cutToShape(after, shape);
+      if (!mounted.current) return;
+      setAfterFile(cut);
+      setAfterBlurs([]);
+      setPlay((old) => [...old.filter((p) => p.kind !== 'before_after'), item]);
+      setSide('after');
+    } catch (e) {
+      if (mounted.current) setError(messageOf(e, 'This photo couldn’t be opened.'));
+    }
+  }
+  /** The picture that goes out: the before as prepared, with the after beside it when there is a before and after. */
+  async function withAfter(prepared: { file: Blob }) {
+    if (!pair || !afterFile) return prepared;
+    setBusy('Putting before and after side by side…');
+    const after = afterBlurs.length ? await blurInto(afterFile, afterBlurs) : afterFile;
+    return { file: await sideBySide(prepared.file, after, art) };
+  }
+  /** The items that go out: a before and after only with its after photo. */
+  const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
@@ -651,11 +701,12 @@ export default function Studio({
             : 'photo';
       // The look's font is in before the words are drawn into the picture that is posted.
       if (file && art.text.trim()) await fontReady(art.font, art.text);
-      const prepared = file
+      let prepared = file
         ? await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, (f) =>
             setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
           )
         : [];
+      if (pair && prepared.length === 1) prepared = [await withAfter(prepared[0])];
       controller.signal.throwIfAborted();
       if (underPenName && prepared.length > 1)
         throw new Error("A video posted in parts can't go out under a made-up name. Post one of up to a minute.");
@@ -738,8 +789,8 @@ export default function Studio({
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
-            ...(play.length && i === 0 && !postKind
-              ? { play: playWire(play).map((it) => placedPlay(it, frame)) }
+            ...(playOut.length && i === 0 && !postKind
+              ? { play: playWire(playOut).map((it) => placedPlay(it, frame)) }
               : {}),
             ...(canIlluminate && i === 0 && dotsWire(dots, { things: !isVideo && aiOn, links: !underPenName, whispers: canSound }).length
               ? {
@@ -809,7 +860,8 @@ export default function Studio({
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
-        const [prepared] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const [first] = await prepareMedia(canBlur && blurs.length ? await blurInto(file, blurs) : file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const prepared = await withAfter(first);
         photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
       }
       controller.signal.throwIfAborted();
@@ -868,7 +920,7 @@ export default function Studio({
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, ...frame.point(x, y), scale: frame.scale(scale), rotation })),
           // Playable items and dots on the post's photo (CONTRACT 7b, 7c: `studio.play`, `studio.dots`), placed as a Moment's.
-          ...(photo && play.length ? { play: playWire(play).map((it) => placedPlay(it, frame)) } : {}),
+          ...(photo && playOut.length ? { play: playWire(playOut).map((it) => placedPlay(it, frame)) } : {}),
           ...(photo && canIlluminate && dotsWire(dots, { things: aiOn, links: !underPenName }).length
             ? {
                 dots: dotsWire(dots, { things: aiOn, links: !underPenName }).map((d) => ({
@@ -1350,16 +1402,20 @@ export default function Studio({
               />
             ) : gate ? null : mode === 'media' && file ? (
               <StudioPicture
-                file={file}
+                file={showAfter ? afterFile! : file}
                 art={art}
                 onChange={setArt}
                 tool={tool}
                 ink={ink}
                 pen={pen}
-                onPicture={(el, w, h) => {
-                  setPhotoInks(sampleColors(el, w, h, inks));
-                  setShape({ w, h });
-                }}
+                onPicture={
+                  showAfter
+                    ? undefined
+                    : (el, w, h) => {
+                        setPhotoInks(sampleColors(el, w, h, inks));
+                        setShape({ w, h });
+                      }
+                }
               />
             ) : mode === 'text' ? (
               <div className="st-words">
@@ -1385,7 +1441,9 @@ export default function Studio({
               />
             )}
             {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
-            {composing && canBlur && <BlurLayer boxes={blurs} active={blurOn && !busy} onChange={setBlurs} />}
+            {composing && canBlur && (
+              <BlurLayer boxes={showAfter ? afterBlurs : blurs} active={blurOn && !busy} onChange={showAfter ? setAfterBlurs : setBlurs} />
+            )}
             {composing && canIlluminate && (
               <DotEditLayer
                 dots={dots}
@@ -1422,6 +1480,16 @@ export default function Studio({
                 <span className="st-count">
                   {index + 1} of {files.length}
                 </span>
+              )}
+              {composing && pair && (
+                <div className="st-ba-switch" role="group" aria-label="Which photo the Studio shows">
+                  <button type="button" aria-pressed={side === 'before'} onClick={() => setSide('before')}>
+                    {pairItem?.before || 'Before'}
+                  </button>
+                  <button type="button" aria-pressed={side === 'after'} onClick={() => setSide('after')}>
+                    {pairItem?.after || 'After'}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1773,11 +1841,15 @@ export default function Studio({
                   <PlayMaker
                     kind={making}
                     taken={play}
-                    onAdd={(item) => {
+                    onAdd={(item, after) => {
                       setMaking(null);
                       if (!item) return;
-                      setPlay([...play, item]);
                       setTrayOpen(false);
+                      if (item.kind === 'before_after') {
+                        if (after) void addAfter(item, after);
+                        return;
+                      }
+                      setPlay([...play, item]);
                     }}
                   />
                 ) : (
@@ -1796,7 +1868,7 @@ export default function Studio({
                       </button>
                     )}
                     {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
-                    {playOn && PLAY_MAKERS.map((m) => (
+                    {playOn && PLAY_MAKERS.filter((m) => m.kind !== 'before_after' || canPair).map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
