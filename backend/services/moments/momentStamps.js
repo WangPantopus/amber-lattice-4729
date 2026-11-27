@@ -165,12 +165,14 @@ async function homeDistance(userId, latitude, longitude) {
  *   takenAt     an album item's own time, when it says one
  *   elevation   { altitude_ft, flying } as store.shownAltitude kept it, or null
  *   weather     a weather stamp the post already read (the Live mark's), or undefined to read one here
+ *   sky         false: no weather and no sunset though the time is now (a Pulse post that didn't pass the Live mark's
+ *               checks, CONTRACT 6d); true everywhere else
  */
 async function valuesFor({ userId, point, placeLabel, town, atHome = false, penName = false, sharedLater = false,
-  fresh = true, takenAt = null, elevation = null, weather, now = Date.now() }) {
+  fresh = true, takenAt = null, elevation = null, weather, sky = true, now = Date.now() }) {
   const placed = point?.latitude != null && point?.longitude != null;
   const atMs = fresh ? now : takenMs(takenAt, now);
-  const nowStamps = placed && fresh && !sharedLater;
+  const nowStamps = placed && fresh && !sharedLater && sky;
   const [zone, weatherStamp, distance] = await Promise.all([
     momentSchedule.zoneFor(userId, placed ? point.latitude : null, placed ? point.longitude : null),
     nowStamps && !atHome && !penName

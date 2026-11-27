@@ -363,6 +363,11 @@ const createPostSchema = Joi.object({
     stamps: Joi.array().max(20),
     elevation: Joi.object().allow(null),
     explore: Joi.boolean(),
+    // A picture from the library: the photo's own time (CONTRACT 6d), checked by postStudio.parse.
+    taken_at: Joi.string().max(40).allow(null),
+    // The Live mark's checks for weather and sunset (CONTRACT 6d): the app's own camera, now, and the phone's fix.
+    taken_here: Joi.boolean(),
+    fix: Joi.object().allow(null),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {

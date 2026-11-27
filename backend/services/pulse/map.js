@@ -102,6 +102,27 @@ async function ticketsFor(user, box, time) {
   });
 }
 
+/**
+ * The Moments their authors kept as posts that stay ("Keep this?", CONTRACT 6b and 6d) in the box, where the reader's
+ * own canSee allows them (store.shownKept), each drawn once: a live one is a ring where the rings show it (live, and
+ * the reader's own in the back views), so `kept` holds the ended ones and, in the back views, others' live ones.
+ * `since` limits them to the back views' window. Newest first, as the list carries them.
+ */
+async function keptIn(userId, box, time, since) {
+  const back = BACK.includes(time);
+  const found = await store.shownKept(userId, { box });
+  await store.markOwn(found.map(({ row }) => row), userId);
+  const entries = found
+    .filter(({ row }) => store.momentState(row) === 'ended' || (back && !store.isOwn(row, userId)))
+    .filter(({ row }) => since == null || Date.parse(store.shownAt(row)) >= since)
+    .slice(0, MAX_MARKS);
+  if (!entries.length) return [];
+  const moments = await store.serializeMoments(entries.map(({ row }) => row), userId, { keptPosts: true });
+  return moments.map((moment, index) => ({
+    id: moment.id, latitude: entries[index].point.latitude, longitude: entries[index].point.longitude, moment,
+  }));
+}
+
 /** A post on the map: its shown point, whether it is a Heads-up, and the post as the list carries it. */
 function markOf(post) {
   const { distance_meters: _distance, ...shown } = post;
@@ -115,7 +136,7 @@ async function mapFor(user, box, { time = 'live' } = {}) {
   const userId = user.id;
   const forward = FORWARD.includes(time);
   const since = backSince(time, box);
-  const [rings, posts, tickets, spots, heights, float, stamps] = await Promise.all([
+  const [rings, posts, tickets, spots, heights, float, stamps, kept] = await Promise.all([
     forward ? [] : store.mapRings(userId, box),
     forward ? [] : feedService.getMapFeed({ userId, surface: 'place', ...box, limit: MAX_MARKS }),
     orEmpty(ticketsFor(user, box, time), 'map_tickets'),
@@ -124,6 +145,7 @@ async function mapFor(user, box, { time = 'live' } = {}) {
     store.floatOn(user),
     // A post made in the Studio shows its stamps (CONTRACT 6d), read alongside; a failed read only leaves them off.
     forward ? new Map() : orEmpty(postStudio.stampsInBox(box), 'map_stamps', new Map()),
+    forward ? [] : orEmpty(keptIn(userId, box, time, since), 'map_kept'),
   ]);
   // Back: the reader's own Moments posted in the window (an ended Moment of someone else stays ended).
   const shownRings = BACK.includes(time)
@@ -140,6 +162,7 @@ async function mapFor(user, box, { time = 'live' } = {}) {
     rings: shownRings,
     marks,
     tickets,
+    kept,
     guess_spots: spots,
     heights_on: heights,
     float_on: float,

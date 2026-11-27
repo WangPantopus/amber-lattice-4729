@@ -129,7 +129,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MomentsComposeScreen(
     onClose: () -> Unit,
-    // "Pulse, reinvented" (its switch on for the person): a photo or video opens the Studio instead of the Post sheet.
+    // "Pulse, reinvented" (its switch on for the person): a photo, a video or a text card opens the Studio instead of the
+    // Post sheet.
     studio: Boolean = false,
     viewModel: MomentsComposeViewModel = hiltViewModel(),
 ) {
@@ -231,7 +232,7 @@ fun MomentsComposeScreen(
                     onLibrary = openLibrary,
                 )
             ComposeStep.Review ->
-                if (studio && state.media != null) {
+                if (studio) {
                     MomentsStudioStep(
                         state = state,
                         avatarUrl = viewModel.avatarUrl,
