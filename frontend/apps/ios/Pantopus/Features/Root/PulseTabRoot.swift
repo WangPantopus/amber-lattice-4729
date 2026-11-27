@@ -184,9 +184,10 @@ public struct PulseTabRoot: View {
         }
     }
 
-    /// The October 13 feed side by side with the post (the Pulse redesign keeps its own stack).
+    /// The October 13 feed side by side with the post (the Pulse redesign keeps its own stack; "Pulse, reinvented",
+    /// only while its switch is on, puts its own list and map side by side).
     private var isSideBySide: Bool {
-        sideBySide && !LaunchFeatures.pulseRedesign
+        sideBySide && !LaunchFeatures.pulseRedesign && !(PulseReinventedFlags.shared.isOn && !ReinventedServer.shared.behind)
     }
 
     /// Folded or turned upright, the stack starts at the feed: what was open beside it goes back on top once the

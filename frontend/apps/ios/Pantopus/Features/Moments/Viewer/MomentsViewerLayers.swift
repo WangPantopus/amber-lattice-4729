@@ -60,7 +60,8 @@ extension MomentsViewerModel {
     /// goes on with a tap.
     var playHolds: Bool {
         guard PulseReinventedFlags.shared.isOn, let moment else { return false }
-        if MomentDotPrompt.shared.open?.momentId == moment.id { return true }
+        if MomentDotPrompt.shared.open?.momentId == moment.id || soundHolds { return true }
+        if playItemsHold { return true }
         return moment.kind == .photo && moment.layers.beforeAfter != nil
     }
 }
@@ -97,6 +98,9 @@ struct MomentLayersOverlay: View {
             ZStack {
                 Color.clear
                 MomentStampsOverlay(moment: moment, picture: picture)
+                if !moment.layers.play.isEmpty {
+                    MomentPlayOverlay(moment: moment, picture: picture)
+                }
                 if moment.kind != .text, !moment.layers.dots.isEmpty {
                     MomentDotsOverlay(moment: moment, picture: picture)
                 }
