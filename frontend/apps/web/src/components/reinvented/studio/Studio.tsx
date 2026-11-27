@@ -709,8 +709,12 @@ export default function Studio({
       ? 'Choose your location'
       : homeWarning
         ? 'Your home'
-        : (area || (underPenName && placement !== 'place') ? 'Area · ' : '') +
-          (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
+        : (area || (underPenName && placement !== 'place')
+            ? 'Area · '
+            : // Under a made-up name, pinned at the place the author picked (founder 2026-11-27, via the lead).
+              underPenName
+              ? 'At '
+              : '') + (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
   const laterChoice = later ? p?.share_later?.find((v) => v.key === later) : undefined;
   // With Share later the pill reads "Shares at 6:40 pm" over "24 hours · <place>".
   const pillPlace = laterChoice ? `${hours} ${hours === 1 ? 'hour' : 'hours'} · ${placeLine}` : placeLine;
