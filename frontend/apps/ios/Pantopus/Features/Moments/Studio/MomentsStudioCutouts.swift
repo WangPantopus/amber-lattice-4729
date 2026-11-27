@@ -267,19 +267,22 @@ struct MomentsStudioCutoutLayer: View {
                         MomentsStudioPlacedCutout(model: model, cutout: cutout, frame: frame)
                     }
                     if let note {
-                        Text(note)
-                            .scaledFont(14, weight: .semibold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, Spacing.s3)
-                            .padding(.vertical, Spacing.s2)
-                            .background(Capsule().fill(Color.black.opacity(0.7)))
-                            .position(x: geo.size.width / 2, y: geo.size.height * 0.42)
-                            .allowsHitTesting(false)
-                            .accessibilityIdentifier("moments.studio.cutout.note")
+                        noteView(note).position(x: geo.size.width / 2, y: geo.size.height * 0.42)
                     }
                 }
             }
         }
+    }
+
+    private func noteView(_ words: String) -> some View {
+        Text(words)
+            .scaledFont(14, weight: .semibold)
+            .foregroundStyle(.white)
+            .padding(.horizontal, Spacing.s3)
+            .padding(.vertical, Spacing.s2)
+            .background(Capsule().fill(Color.black.opacity(0.7)))
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("moments.studio.cutout.note")
     }
 
     /// Held still for half a second: the thing under the finger is lifted (a photo only; a video's thing moves).
@@ -347,37 +350,12 @@ private struct MomentsStudioPlacedCutout: View {
     var body: some View {
         let picked = model.marking.studio?.pickedCutout == cutout.id
         let rect = cutout.rect(in: frame.size)
-        Image(uiImage: cutout.image)
-            .resizable()
-            .frame(width: rect.width * pinch, height: rect.height * pinch)
-            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
-            .overlay {
-                if picked {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .padding(-6)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                if picked {
-                    Button {
-                        model.marking.studio?.cutouts.removeAll { $0.id == cutout.id }
-                        model.marking.studio?.pickedCutout = nil
-                    } label: {
-                        Icon(.x, size: 12, strokeWidth: 3, color: .white)
-                            .frame(width: 24, height: 24)
-                            .background(Circle().fill(Color.black.opacity(0.75)))
-                            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                            .contentShape(Circle().inset(by: -8))
-                    }
-                    .buttonStyle(.plain)
-                    .offset(x: 14, y: -14)
-                    .accessibilityLabel("Take it off")
-                    .accessibilityIdentifier("moments.studio.cutout.remove")
-                }
-            }
-            .rotationEffect(.degrees(cutout.turn) + turn)
-            .position(x: frame.minX + rect.midX + drag.width, y: frame.minY + rect.midY + drag.height)
+        let size = CGSize(width: rect.width * pinch, height: rect.height * pinch)
+        let center = CGPoint(x: frame.minX + rect.midX + drag.width, y: frame.minY + rect.midY + drag.height)
+        let angle: Angle = .degrees(Double(cutout.turn)) + turn
+        return framed(picked: picked, size: size)
+            .rotationEffect(angle)
+            .position(center)
             .gesture(moving.simultaneously(with: pinching).simultaneously(with: turning))
             .onTapGesture { model.marking.studio?.pickedCutout = picked ? nil : cutout.id }
             .accessibilityElement(children: .contain)
@@ -385,8 +363,43 @@ private struct MomentsStudioPlacedCutout: View {
             .accessibilityHint("Drag to move it, pinch to size it")
             .accessibilityAction(named: "Make larger") { update { $0.width = min($0.width * 1.2, 1.5) } }
             .accessibilityAction(named: "Make smaller") { update { $0.width = max($0.width / 1.2, 0.05) } }
-            .accessibilityAction(named: "Take it off") { model.marking.studio?.cutouts.removeAll { $0.id == cutout.id } }
+            .accessibilityAction(named: "Take it off") { takeOff() }
             .accessibilityIdentifier("moments.studio.cutout")
+    }
+
+    /// The cutout at `size`, with the dashed frame and the take-off button while it's the picked one.
+    private func framed(picked: Bool, size: CGSize) -> some View {
+        Image(uiImage: cutout.image)
+            .resizable()
+            .frame(width: size.width, height: size.height)
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
+            .overlay { if picked { pickedFrame } }
+            .overlay(alignment: .topTrailing) { if picked { removeButton } }
+    }
+
+    private var pickedFrame: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            .padding(-6)
+    }
+
+    private var removeButton: some View {
+        Button { takeOff() } label: {
+            Icon(.x, size: 12, strokeWidth: 3, color: .white)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.black.opacity(0.75)))
+                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                .contentShape(Circle().inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .offset(x: 14, y: -14)
+        .accessibilityLabel("Take it off")
+        .accessibilityIdentifier("moments.studio.cutout.remove")
+    }
+
+    private func takeOff() {
+        model.marking.studio?.cutouts.removeAll { $0.id == cutout.id }
+        model.marking.studio?.pickedCutout = nil
     }
 
     private var moving: some Gesture {
@@ -418,71 +431,5 @@ private struct MomentsStudioPlacedCutout: View {
         guard var tools = model.marking.studio, let index = tools.cutouts.firstIndex(where: { $0.id == cutout.id }) else { return }
         change(&tools.cutouts[index])
         model.marking.studio = tools
-    }
-}
-
-/// "Your cutouts" in the Stamps and Play tray (board B5): the ones lifted on this phone, newest first. A tap puts one in
-/// the middle of the picture; holding one offers to remove it from this phone.
-struct MomentsStudioYourCutouts: View {
-    let model: MomentsComposerModel
-    let onPlaced: () -> Void
-    @State private var shelf = MomentsCutoutShelf.shared
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
-                Text("Your cutouts")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.Color.appText)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Long-press anything in a photo to lift it")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Spacing.s2) {
-                    if shelf.kept.isEmpty {
-                        ForEach(0..<3, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Theme.Color.appTextSecondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                .frame(width: 56, height: 56)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    ForEach(Array(shelf.kept.enumerated()), id: \.element.id) { index, kept in
-                        Button { place(kept) } label: {
-                            Image(uiImage: kept.image)
-                                .resizable()
-                                .scaledToFit()
-                                .padding(4)
-                                .frame(width: 56, height: 56)
-                                .background(RoundedRectangle(cornerRadius: 12).fill(Theme.Color.appSurfaceSunken))
-                                .contentShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Remove from your cutouts", role: .destructive) { shelf.remove(kept.id) }
-                        }
-                        .accessibilityLabel("Cutout \(index + 1)")
-                        .accessibilityHint("Puts it on the picture.")
-                        .accessibilityAction(named: "Remove from your cutouts") { shelf.remove(kept.id) }
-                        .accessibilityIdentifier("moments.studio.cutouts.\(index)")
-                    }
-                }
-            }
-        }
-        .padding(.top, Spacing.s2)
-        .onAppear { shelf.load() }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("moments.studio.cutouts")
-    }
-
-    /// One kept cutout in the middle of the picture, a third of its width (as wide as it is tall at most half).
-    private func place(_ kept: MomentsCutoutShelf.Kept) {
-        guard let surface = model.studioCutoutSurface, surface.width > 0 else { return }
-        let aspect = kept.image.size.height / max(kept.image.size.width, 1)
-        let width = min(1.0 / 3, 0.5 * surface.height / max(surface.width * aspect, 1))
-        model.placeStudioCutout(MomentMarks.Cutout(id: UUID(), image: kept.image, center: CGPoint(x: 0.5, y: 0.5), width: width))
-        onPlaced()
     }
 }
