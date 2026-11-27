@@ -13,7 +13,9 @@ const logger = require('../../utils/logger');
 const { loadChatPeople } = require('../chatPeople');
 const blockService = require('../blockService');
 
-const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown'];
+const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown', 'quote', 'fog', 'swatch'];
+// The kinds a reader answers (PostAnswer); the others are only drawn (CONTRACT 7g).
+const ANSWERED = ['poll', 'slider', 'board', 'question', 'guess'];
 const MAX_ITEMS = 4;
 // Faces drawn on a board or a dial; `count` still counts everyone.
 const MAX_FACES = 60;
@@ -66,6 +68,18 @@ const SCHEMAS = {
     answer: Joi.number().required(),
   }).xor('options', 'range'),
   countdown: Joi.object({ ...placement, kind: Joi.string(), title: line(60).required(), ends_at: Joi.string().isoDate().required() }),
+  // CONTRACT 7g: drawn only, never answered.
+  quote: Joi.object({ ...placement, kind: Joi.string(), text: line(280).required(), source: Joi.string().trim().max(80).allow('', null) }),
+  fog: Joi.object({ ...placement, kind: Joi.string() }),
+  swatch: Joi.object({
+    ...placement,
+    kind: Joi.string(),
+    colors: Joi.array().items(Joi.string().pattern(/^#[0-9a-fA-F]{6}$/)).min(1).max(6).required(),
+    box: Joi.object({
+      x: Joi.number().min(0).max(1).required(), y: Joi.number().min(0).max(1).required(),
+      w: Joi.number().greater(0).max(1).required(), h: Joi.number().greater(0).max(1).required(),
+    }).required(),
+  }),
 };
 
 const round = (value, places) => Math.round(value * 10 ** places) / 10 ** places || 0;
@@ -86,6 +100,7 @@ function parseItems(value, now = Date.now()) {
     if (error) throw new Error(`play[${index}]: ${error.details[0].message.replace(/"/g, '')}`);
     if (seen.has(item.id)) throw new Error(`play[${index}]: each item needs its own id.`);
     if (/^[ck]-/.test(item.id)) throw new Error(`play[${index}]: an id can't start with c- or k-.`);
+    if (raw.kind === 'fog' && value.filter((other) => other?.kind === 'fog').length > 1) throw new Error('play holds one fog at most.');
     seen.add(item.id);
     const stored = {
       ...item,
@@ -104,6 +119,12 @@ function parseItems(value, now = Date.now()) {
         throw new Error(`play[${index}]: answer must be inside the range.`);
       }
     }
+    if (raw.kind === 'quote') stored.source = item.source || null;
+    if (raw.kind === 'swatch') {
+      const box = { x: round(item.box.x, 4), y: round(item.box.y, 4), w: round(item.box.w, 4), h: round(item.box.h, 4) };
+      stored.box = box;
+      stored.colors = item.colors.map((color) => color.toUpperCase());
+    }
     if (raw.kind === 'countdown') {
       const ends = Date.parse(item.ends_at);
       if (!(ends > now) || ends - now > COUNTDOWN_MAX_MS) throw new Error(`play[${index}]: ends_at must be within 30 days from now.`);
@@ -116,7 +137,7 @@ function parseItems(value, now = Date.now()) {
 /** Every word an author typed in these items, for the made-up-name words check (with the caption, as one check). */
 function wordsOf(items) {
   return (items || []).flatMap((item) => [
-    item.question, item.prompt, item.title, item.left, item.right,
+    item.question, item.prompt, item.title, item.left, item.right, item.text, item.source,
     ...(item.options || []),
     item.x_axis?.left, item.x_axis?.right, item.y_axis?.bottom, item.y_axis?.top, item.range?.unit,
   ]).filter((word) => typeof word === 'string' && word.trim());
@@ -314,7 +335,7 @@ function itemFor(item, rows, { viewerId, own, open, connected, blocked, people }
   const mineRow = own ? null : rows.find((row) => String(row.user_id) === String(viewerId)) || null;
   const answered = Boolean(mineRow);
   const sees = own || answered;
-  const answerable = item.kind !== 'countdown';
+  const answerable = ANSWERED.includes(item.kind);
   const base = baseOf(item, sees);
   const faces = () => facesOf(item, rows, { viewerId, connected, blocked, people });
   let results = null;
@@ -542,7 +563,7 @@ async function answer(id, itemId, viewerId, body) {
   const target = await reach(id, viewerId);
   const item = itemOf(target, itemId);
   if (target.own) throw fail(400, 'PLAY_OWN', 'You can\'t answer your own.');
-  if (item.kind === 'countdown') throw fail(400, 'PLAY_INVALID', 'Nothing to answer here.');
+  if (!ANSWERED.includes(item.kind)) throw fail(400, 'PLAY_INVALID', 'Nothing to answer here.');
   if (!target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   const value = parseAnswer(item, body);
   if (item.kind === 'guess') {
@@ -564,7 +585,7 @@ async function takeBack(id, itemId, viewerId) {
   const target = await reach(id, viewerId);
   const item = itemOf(target, itemId);
   if (item.kind === 'guess') throw fail(400, 'PLAY_INVALID', 'A guess can\'t be taken back.');
-  if (item.kind === 'countdown') throw fail(400, 'PLAY_INVALID', 'Nothing to answer here.');
+  if (!ANSWERED.includes(item.kind)) throw fail(400, 'PLAY_INVALID', 'Nothing to answer here.');
   if (!target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   const { error } = await supabaseAdmin.from('PostAnswer').delete().eq('post_id', id).eq('item', item.id).eq('user_id', viewerId);
   if (error) throw new Error(`Failed to take the answer back: ${error.message}`);

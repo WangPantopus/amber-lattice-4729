@@ -27,6 +27,34 @@ export function holdsForDots(m: Moment): boolean {
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
+/** Drawn as a link only for a web address (http or https); anything else shows as plain words. */
+function webUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function Outlink({ url, title }: { url: string; title: string }) {
+  const href = webUrl(url);
+  const words = (
+    <span>
+      <strong>{title}</strong>
+      <small>{host(url)}</small>
+    </span>
+  );
+  return href ? (
+    <a className="dt-link" href={href} target="_blank" rel="noopener noreferrer nofollow">
+      {words}
+      <ExternalLink aria-hidden="true" />
+    </a>
+  ) : (
+    <div className="dt-link">{words}</div>
+  );
+}
+
 function host(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -117,13 +145,7 @@ function DotBody({ moment, dot }: { moment: Moment; dot: Dot }) {
       );
     case 'link':
       return (
-        <a className="dt-link" href={dot.url} target="_blank" rel="noopener noreferrer nofollow">
-          <span>
-            <strong>{dot.title || host(dot.url)}</strong>
-            <small>{host(dot.url)}</small>
-          </span>
-          <ExternalLink aria-hidden="true" />
-        </a>
+        <Outlink url={dot.url} title={dot.title || host(dot.url)} />
       );
     case 'thing':
       return <Thing moment={moment} dot={dot} />;
@@ -193,13 +215,7 @@ function Thing({ moment, dot }: { moment: Moment; dot: Extract<Dot, { kind: 'thi
       <p className="dt-text">{card.why}</p>
       {card.caution && <p className="dt-caution">{card.caution}</p>}
       {card.source && (
-        <a className="dt-link" href={card.source.url} target="_blank" rel="noopener noreferrer nofollow">
-          <span>
-            <strong>{card.source.title}</strong>
-            <small>{host(card.source.url)}</small>
-          </span>
-          <ExternalLink aria-hidden="true" />
-        </a>
+        <Outlink url={card.source.url} title={card.source.title} />
       )}
       <p className="dt-small">
         Named by {card.named_by}. It can be wrong.

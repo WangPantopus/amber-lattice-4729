@@ -395,9 +395,17 @@ async function fieldGuide(viewerId, cursor) {
   const { data, error } = await supabaseAdmin.from('PostAnswer').select('post_id, value, created_at')
     .eq('user_id', viewerId).eq('kind', 'collect').order('created_at', { ascending: false }).range(offset, offset + GUIDE_PAGE);
   if (error) throw new Error(`Failed to load the field guide: ${error.message}`);
-  const rows = (data || []).slice(0, GUIDE_PAGE);
-  const open = await Promise.all(rows.map((row) => play.reach(row.post_id, viewerId).then(() => true, () => false)));
+  const page = (data || []).slice(0, GUIDE_PAGE);
+  // Saved step decks (CONTRACT 7g) are listed apart, as `decks`; the rest are field cards.
+  // eslint-disable-next-line global-require
+  const stepDeck = require('./deck');
+  const rows = page.filter((row) => !row.value?.deck);
+  const [open, decks] = await Promise.all([
+    Promise.all(rows.map((row) => play.reach(row.post_id, viewerId).then(() => true, () => false))),
+    stepDeck.savedDecks(page.filter((row) => row.value?.deck), viewerId),
+  ]);
   return {
+    decks,
     cards: rows.map((row, index) => ({
       post_id: row.post_id,
       dot_id: row.value?.dot || null,
