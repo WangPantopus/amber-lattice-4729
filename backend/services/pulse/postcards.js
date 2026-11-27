@@ -132,14 +132,16 @@ async function sendMorning(now = Date.now(), { force = false } = {}) {
       if (rowError) throw new Error(rowError.message);
       const candidates = (rows || []).filter((row) => !notMailable(row) && !store.meta(row).at_home && !store.meta(row).purged_at);
       if (!candidates.length) continue;
-      const [ctx, views, authors] = await Promise.all([
+      const [ctx, views, authors, reported] = await Promise.all([
         store.viewerContext(reader, candidates.map((r) => r.user_id), null, candidates),
         supabaseAdmin.from('PostView').select('post_id').eq('user_id', reader).in('post_id', candidates.map((r) => r.id)),
         store.loadAuthors(candidates.map((r) => r.user_id)),
+        // A Moment the reader reported is hidden from them everywhere (the store's reads); never mailed to them either.
+        store.reportedIds(reader),
       ]);
       const opened = new Set((views.data || []).map((v) => v.post_id));
       // Could see it while it was live: the audience and mutes as then, not its having ended.
-      const missed = candidates.filter((row) => !opened.has(row.id) && store.canSee(row, ctx)).slice(0, PER_MORNING);
+      const missed = candidates.filter((row) => !opened.has(row.id) && !reported.has(row.id) && store.canSee(row, ctx)).slice(0, PER_MORNING);
       // One delivery: all of this morning's postcards arrive in the same round, under today's mail notice.
       // eslint-disable-next-line global-require
       const round = (await require('../mailDelivery').deliveryFor({ recipient_user_id: reader }, { now: new Date(now) })).delivered_at;
