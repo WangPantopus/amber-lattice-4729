@@ -1,0 +1,160 @@
+/* Places you follow (in Explore) and curiosity constellations (in My Atlas): Pulse, reinvented, phase 4, CONTRACT 9c. */
+.fp-places,
+.cs-near {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--rp-line, rgb(var(--app-border)));
+  border-radius: 18px;
+  background: var(--rp-wash, rgb(var(--app-surface-muted)));
+}
+.fp-places h2,
+.cs-near h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.fp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fp-chip,
+.fp-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--rp-line, rgb(var(--app-border)));
+  border-radius: 999px;
+  background: var(--rp-paper, rgb(var(--app-surface)));
+  color: var(--rp-ink, rgb(var(--app-text)));
+  font-size: 13px;
+  font-weight: 600;
+}
+.fp-chip button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  cursor: pointer;
+}
+.fp-add {
+  padding: 0 12px;
+  border-style: dashed;
+  color: var(--rp-brand, #0b6b9a);
+  cursor: pointer;
+}
+.fp-pick {
+  display: grid;
+  gap: 6px;
+}
+.fp-cancel {
+  justify-self: end;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rp-ink, rgb(var(--app-text)));
+  font-size: 13px;
+  cursor: pointer;
+}
+.fp-note,
+.fp-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+}
+.fp-error {
+  color: #b42318;
+}
+.cs-group {
+  display: grid;
+  gap: 4px;
+}
+.cs-group h3 {
+  margin: 4px 0 0;
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.cs-group ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cs-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cs-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cs-open:hover {
+  background: var(--rp-paper, rgb(var(--app-surface)));
+}
+.cs-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+.cs-words {
+  display: grid;
+  min-width: 0;
+}
+.cs-words strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-words small {
+  color: var(--rp-muted, rgb(var(--app-text-muted)));
+  font-size: 12px;
+}
+.cs-pin {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rp-brand, #0b6b9a);
+  cursor: pointer;
+}
+/* "Follow <place>" in an Explore item's "Why am I seeing this?". */
+.rp-why .rp-why-follow {
+  padding: 2px 10px;
+  border: 1px solid var(--rp-brand, #0b6b9a);
+  border-radius: 999px;
+}
