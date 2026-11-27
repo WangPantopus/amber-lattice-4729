@@ -20,9 +20,10 @@ const PAGE = 20;
 const ZONE = 'America/Los_Angeles';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const POST_SELECT = 'id, user_id, content, latitude, longitude, effective_latitude, effective_longitude, location_precision, '
-  + 'post_metadata, is_story, story_expires_at, archived_at, moderation_state, identity_context_type, identity_context_id, '
-  + 'audience, visibility, read_scope, home_id, archive_reason, created_at, post_type, target_tier_rank';
+// The read rule's own columns (readAccess.POST_READ_SELECT: canReadPost needs every one), and what strands use.
+// eslint-disable-next-line global-require
+const POST_SELECT = () => `${require('./readAccess').POST_READ_SELECT}, content, effective_latitude, effective_longitude, `
+  + 'location_precision, story_expires_at, created_at, post_type';
 
 // eslint-disable-next-line global-require
 const momentStore = () => require('../moments/momentStore');
@@ -120,7 +121,7 @@ async function findNew(now = Date.now()) {
   // With the switch off for everyone, nothing at all: no read but the cached flag's (LEAD-3 06:31).
   if (!(await onForAnyone())) return 0;
   const since = new Date(now - LOOK_BACK_MS).toISOString();
-  const { data: posts, error } = await supabaseAdmin.from('Post').select(POST_SELECT)
+  const { data: posts, error } = await supabaseAdmin.from('Post').select(POST_SELECT())
     .gte('created_at', since).not('latitude', 'is', null).is('archived_at', null).eq('moderation_state', 'live')
     .order('created_at', { ascending: true }).limit(BATCH);
   if (error) throw new Error(`Failed to load new posts: ${error.message}`);
@@ -138,7 +139,7 @@ async function findNew(now = Date.now()) {
     .in('user_id', [...new Set(candidates.map((row) => String(row.user_id)))]).eq('reaction', 'want_to_go').gte('created_at', earliest).limit(5000);
   if (markError) throw new Error(`Failed to load Want to go marks: ${markError.message}`);
   if (!(marks || []).length) return 0;
-  const { data: sources, error: sourceError } = await supabaseAdmin.from('Post').select(POST_SELECT)
+  const { data: sources, error: sourceError } = await supabaseAdmin.from('Post').select(POST_SELECT())
     .in('id', [...new Set(marks.map((mark) => mark.post_id))]);
   if (sourceError) throw new Error(`Failed to load marked posts: ${sourceError.message}`);
   const byId = new Map((sources || []).map((row) => [row.id, row]));
@@ -191,7 +192,7 @@ async function list(userId, { side, cursor } = {}) {
   const rows = data || [];
   const postIds = [...new Set(rows.flatMap((row) => [row.source_post_id, row.follower_post_id]))];
   const [{ data: posts, error: postError }, blocked] = await Promise.all([
-    postIds.length ? supabaseAdmin.from('Post').select(POST_SELECT).in('id', postIds) : { data: [] },
+    postIds.length ? supabaseAdmin.from('Post').select(POST_SELECT()).in('id', postIds) : { data: [] },
     blockService.blockedUserIds(userId),
   ]);
   if (postError) throw new Error(`Failed to load strands' posts: ${postError.message}`);
