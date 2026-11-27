@@ -149,4 +149,4 @@ async function partsFor(studios) {
   return out;
 }
 
-module.exports = { checkAsk, keptFor, near, checkAnswer, partsFor, NEAR_M };
+module.exports = { checkAsk, keptFor, near, checkAnswer, partsFor, openAsks, answerCounts, NEAR_M };

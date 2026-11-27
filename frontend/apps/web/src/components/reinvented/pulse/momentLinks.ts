@@ -39,3 +39,15 @@ export function useLinkedMoment(open: (id: string) => void) {
     router.replace('/app/feed', { scroll: false });
   }, [id, open, router]);
 }
+
+/** A convergence's link (`/app/feed?sky=<id>`, CONTRACT 8h): opens the piece over Pulse. */
+export function useLinkedSky(open: (id: string) => void) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const id = params?.get('sky') || '';
+  useEffect(() => {
+    if (!id) return;
+    open(id);
+    router.replace('/app/feed', { scroll: false });
+  }, [id, open, router]);
+}

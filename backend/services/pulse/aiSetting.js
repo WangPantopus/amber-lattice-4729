@@ -57,10 +57,11 @@ async function strandsOnFor(userIds) {
 /** The settings as the new Settings rows read them. */
 async function settingsOf(userId) {
   // eslint-disable-next-line global-require
-  const echoes = require('./echoes');
-  const [ai, strands, echoLevel] = await Promise.all([aiOnOrThrow(userId), strandsOnFor([userId]), echoes.levelOf(userId)]);
-  // `echoes` (CONTRACT 9e): 'off' (the default), 'on' or 'names'.
-  return { pantopus_ai: ai, strands: strands.get(String(userId)), echoes: echoLevel };
+  const [cabinet, echoes] = [require('./cabinet'), require('./echoes')];
+  const [ai, strands, cabinetShown, echoLevel] = await Promise.all([
+    aiOnOrThrow(userId), strandsOnFor([userId]), cabinet.shownOn(userId), echoes.levelOf(userId)]);
+  // `cabinet_shown` (CONTRACT 9d): "Show my cabinet to people I know". `echoes` (9e): 'off' (the default), 'on' or 'names'.
+  return { pantopus_ai: ai, strands: strands.get(String(userId)), cabinet_shown: cabinetShown, echoes: echoLevel };
 }
 
 /** Turns strands on or off for this person. On removes the row, so the default is what's left. */

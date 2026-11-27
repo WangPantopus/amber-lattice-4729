@@ -1665,4 +1665,6 @@ module.exports = {
   shownInBox, shownOfPeople, MAX_MAP_SPAN_DEGREES,
   // "Keep this?" (services/pulse/keep.js, list.js).
   shownKept, keepOfferable, repliedMoments,
+  // The cabinet's highest point (services/pulse/cabinet.js): only a height the Moment shows.
+  shownHeight,
 };

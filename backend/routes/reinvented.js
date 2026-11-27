@@ -323,12 +323,13 @@ router.get('/field-guide', async (req, res) => {
 // ─── The person's own Pantopus AI switch (CONTRACT 7d) ──────────────────────
 
 const aiSetting = require('../services/pulse/aiSetting');
-// `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". `echoes` (9e): 'off', 'on' or 'names'.
-// Send any of them.
-const settingsSchema = Joi.object({ pantopus_ai: Joi.boolean(), strands: Joi.boolean(), echoes: Joi.string().valid('off', 'on', 'names') })
-  .or('pantopus_ai', 'strands', 'echoes');
+// `strands` (CONTRACT 8c): "Tell people when their post led me somewhere". `cabinet_shown` (9d): "Show my cabinet to
+// people I know". `echoes` (9e): 'off', 'on' or 'names'. Send any of them.
+const settingsSchema = Joi.object({
+  pantopus_ai: Joi.boolean(), strands: Joi.boolean(), cabinet_shown: Joi.boolean(), echoes: Joi.string().valid('off', 'on', 'names'),
+}).or('pantopus_ai', 'strands', 'cabinet_shown', 'echoes');
 
-/** GET /settings — { pantopus_ai, strands }: the person's own switches, each on unless they turned it off. */
+/** GET /settings — { pantopus_ai, strands, cabinet_shown, echoes }: the person's own choices. */
 router.get('/settings', async (req, res) => {
   try {
     res.json(await aiSetting.settingsOf(req.user.id));
@@ -337,7 +338,7 @@ router.get('/settings', async (req, res) => {
   }
 });
 
-/** PATCH /settings — { pantopus_ai?: true | false, strands?: true | false }: answers the settings as GET does. */
+/** PATCH /settings — { pantopus_ai?, strands?, cabinet_shown? (true | false), echoes? ('off' | 'on' | 'names') }. */
 router.patch('/settings', async (req, res) => {
   try {
     const { error, value } = settingsSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
@@ -349,6 +350,11 @@ router.patch('/settings', async (req, res) => {
     if (value.strands !== undefined) {
       logger.info('reinvented.strands_set', { on: value.strands });
       await aiSetting.setStrands(req.user.id, value.strands);
+    }
+    if (value.cabinet_shown !== undefined) {
+      logger.info('reinvented.cabinet_shown_set', { on: value.cabinet_shown });
+      // eslint-disable-next-line global-require
+      await require('../services/pulse/cabinet').setShown(req.user.id, value.cabinet_shown);
     }
     if (value.echoes !== undefined) {
       logger.info('reinvented.echoes_set', { level: value.echoes });
@@ -768,6 +774,74 @@ router.post('/atlas/search', searchLimiter, async (req, res) => {
     res.json(await search.atlasSearch(req.user.id, { q: value.q, cursor: value.cursor || null }));
   } catch (error) {
     sendError(res, error, 'atlas_search');
+  }
+});
+
+// ─── Places you follow (CONTRACT 9c) ─────────────────────────────────────────
+
+const followedPlaces = require('../services/pulse/places');
+
+/** GET /places — the places the reader follows (private to them). */
+router.get('/places', async (req, res) => {
+  try {
+    res.json(await followedPlaces.list(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'places');
+  }
+});
+
+/** POST /places — { label, latitude, longitude } from today's place picker: follow it. */
+router.post('/places', contentCreationLimiter, async (req, res) => {
+  try {
+    const { place, added } = await followedPlaces.add(req.user.id, req.body || {});
+    res.status(added ? 201 : 200).json({ place });
+  } catch (error) {
+    sendError(res, error, 'places_add');
+  }
+});
+
+/** DELETE /places/:id — stop following it. */
+router.delete('/places/:id', async (req, res) => {
+  try {
+    await followedPlaces.remove(req.user.id, String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'places_remove');
+  }
+});
+
+// ─── Curiosity constellations (CONTRACT 9c) ──────────────────────────────────
+
+const constellations = require('../services/pulse/constellations');
+
+/** POST /constellations — { latitude, longitude } in the body (never kept): Retakes, skies, specimens and answers near. */
+router.post('/constellations', async (req, res) => {
+  try {
+    res.json(await constellations.constellationsFor(req.user, req.body || {}));
+  } catch (error) {
+    sendError(res, error, 'constellations');
+  }
+});
+
+// ─── The cabinet profile and the yearly poster (CONTRACT 9d) ─────────────────
+
+const cabinet = require('../services/pulse/cabinet');
+
+/** GET /cabinet/:userId — a person's numbers (no follower count), for themself and, while shown, people they know. */
+router.get('/cabinet/:userId', async (req, res) => {
+  try {
+    res.json(await cabinet.cabinetOf(String(req.params.userId), req.user.id));
+  } catch (error) {
+    sendError(res, error, 'cabinet');
+  }
+});
+
+/** GET /poster/:year — the reader's own year: its numbers and one kept Moment a month. */
+router.get('/poster/:year', async (req, res) => {
+  try {
+    res.json(await cabinet.posterOf(req.user.id, req.params.year));
+  } catch (error) {
+    sendError(res, error, 'poster');
   }
 });
 
