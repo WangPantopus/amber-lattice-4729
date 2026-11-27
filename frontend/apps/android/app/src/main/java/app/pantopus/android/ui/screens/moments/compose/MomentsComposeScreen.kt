@@ -135,6 +135,8 @@ fun MomentsComposeScreen(
     viewModel: MomentsComposeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Back from the Studio to today's Post screen (the switch went off): the Studio's own choices go.
+    LaunchedEffect(studio) { if (!studio) viewModel.leaveStudio() }
     val close by rememberUpdatedState(onClose)
     LaunchedEffect(state.done) { if (state.done) close() }
     StageSystemBars()

@@ -49,6 +49,14 @@ class PulseReinventedFeature
         /** The new direction is on for the signed-in person (off while signed out). */
         val on: StateFlow<Boolean> = _on.asStateFlow()
 
+        private val _refused = MutableStateFlow(0)
+
+        /**
+         * How many times the server has answered one of the new screens' requests with "the switch is off for you"
+         * (`403 PULSE_REINVENTED_OFF`, CONTRACT 1) in this run. The new screens that are open go back to today's on it.
+         */
+        val refused: StateFlow<Int> = _refused.asStateFlow()
+
         /** Starts following sign-in and sign-out. Safe to call more than once. */
         @Synchronized
         fun start() {
@@ -68,6 +76,18 @@ class PulseReinventedFeature
                     }
                 }
             }
+        }
+
+        /**
+         * The server refused one of the new screens' requests because the switch is off for this person: it is off at
+         * once (and kept so for the account), the open screens go back to today's, and the switch is read again.
+         */
+        fun refusedOff() {
+            val id = userId ?: return
+            _on.value = false
+            prefs.edit().putBoolean(id, false).apply()
+            _refused.value += 1
+            refresh()
         }
 
         /** The app came to the foreground: read the switch again. */

@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -72,10 +73,11 @@ fun NavGraphBuilder.momentsRoutes(
     composable(MomentsRoutes.WATCH) {
         // "Pulse, reinvented": with its switch on for the person, the viewer also draws the Moment's stamps.
         val gate: MomentsStudioGateViewModel = hiltViewModel()
+        val studio by gate.studio.collectAsStateWithLifecycle()
         MomentsViewerScreen(
             onClose = { if (!nav.popBackStack()) external.openMap() },
             onOpenProfile = external.openProfile,
-            studio = gate.studio,
+            studio = studio,
         )
     }
     composable(
@@ -90,6 +92,7 @@ fun NavGraphBuilder.momentsRoutes(
     ) {
         // "Pulse, reinvented": with its switch on for the person, a shot opens the Studio instead of today's Post screen.
         val gate: MomentsStudioGateViewModel = hiltViewModel()
-        MomentsComposeScreen(onClose = { if (!nav.popBackStack()) external.openMap() }, studio = gate.studio)
+        val studio by gate.studio.collectAsStateWithLifecycle()
+        MomentsComposeScreen(onClose = { if (!nav.popBackStack()) external.openMap() }, studio = studio)
     }
 }
