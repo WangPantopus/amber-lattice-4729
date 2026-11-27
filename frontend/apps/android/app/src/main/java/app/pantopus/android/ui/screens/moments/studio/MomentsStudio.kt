@@ -156,18 +156,7 @@ internal fun MomentsStudioStep(
                 .testTag("moments.studio")
                 .then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
-        when (val media = state.media) {
-            is MomentMediaFile.Photo ->
-                AsyncImage(
-                    model = media.file,
-                    contentDescription = "Your photo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
-            // A text card (as on iPhone): the card itself, its words in the middle of what the bar leaves.
-            null -> StudioTextCard(text = state.text, background = state.background)
-        }
+        StudioPicture(state)
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
             modifier =
@@ -424,6 +413,23 @@ private fun RailTool(
             modifier = Modifier.size(44.dp).clip(CircleShape).background(PantopusColors.momentCameraChip),
             contentAlignment = Alignment.Center,
         ) { glyph() }
+    }
+}
+
+/** What the Studio shows behind everything: the photo, the video's first frame, or the text card. */
+@Composable
+private fun StudioPicture(state: MomentsComposeUiState) {
+    when (val media = state.media) {
+        is MomentMediaFile.Photo ->
+            AsyncImage(
+                model = media.file,
+                contentDescription = "Your photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
+        // A text card (as on iPhone): the card itself, its words in the middle of what the bar leaves.
+        null -> StudioTextCard(text = state.text, background = state.background)
     }
 }
 
