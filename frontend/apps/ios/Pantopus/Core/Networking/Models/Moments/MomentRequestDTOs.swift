@@ -92,6 +92,8 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var elevation: MomentAltitudeBody?
     /// The Studio's "Guess the spot" (CONTRACT 5a); left out otherwise.
     public var guess: Bool?
+    /// The Studio's "Also show in Explore" (CONTRACT 6f); left out otherwise.
+    public var explore: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
@@ -99,7 +101,7 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
         case takenHere = "taken_here"
         case showWeather = "show_weather"
         case postAs = "post_as"
-        case stamps, elevation, guess
+        case stamps, elevation, guess, explore
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

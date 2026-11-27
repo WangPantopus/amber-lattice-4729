@@ -132,6 +132,9 @@ struct MomentsStudioDrawer: View {
             if model.sky != nil, !model.shareLaterChoices.isEmpty {
                 rows.shareLaterRow
             }
+            if model.offersExplore {
+                MomentsStudioExploreRow(model: model)
+            }
             Text("How long")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.Color.appTextSecondary)

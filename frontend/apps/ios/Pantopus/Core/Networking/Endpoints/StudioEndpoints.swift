@@ -30,6 +30,13 @@ public enum StudioEndpoints {
         return Endpoint(method: .post, path: "/api/moments/\(id)/guess", body: MomentGuessBody(latitude: latitude, longitude: longitude))
     }
 
+    /// `POST /api/reinvented/moments/:id/keep` (CONTRACT 6d): the author's one answer to "Keep this?".
+    /// Route `backend/routes/reinvented.js:125` (keep).
+    static func keep(momentId: String, keep: Bool) -> Endpoint {
+        let id = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        return Endpoint(method: .post, path: "/api/reinvented/moments/\(id)/keep", body: MomentKeepBody(keep: keep))
+    }
+
     /// `GET /api/moments/daily-spot` (CONTRACT 5d): the town's guess-the-spot Moment for today, the same for everyone.
     /// Route `backend/routes/moments.js:764` (daily-spot).
     static func dailySpot(latitude: Double, longitude: Double) -> Endpoint {
