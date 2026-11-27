@@ -28,10 +28,11 @@ import { explorePins, keptPins, pinsOf, roundBox, type Pin } from './pins';
 import ExploreView from './ExploreView';
 import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
-import { useLinkedMoment } from './momentLinks';
+import { useLinkedMoment, useLinkedSky } from './momentLinks';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
+import { convergenceOf, convergenceTitle } from '../sky/Convergence';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -41,6 +42,7 @@ const MomentViewer = dynamic(() => import('@/components/moments/MomentViewer'), 
 const Composer = dynamic(() => import('../MomentComposerEntry'), { ssr: false });
 const Studio = dynamic(() => import('../studio/Studio'), { ssr: false });
 const RetakeView = dynamic(() => import('../retake/RetakeView'), { ssr: false });
+const ConvergenceView = dynamic(() => import('../sky/Convergence'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -80,6 +82,8 @@ export default function ReinventedPulse() {
   const [creating, setCreating] = useState(false);
   // A Retake opened from its row, and one being added to (CONTRACT 8e).
   const [retakeOpen, setRetakeOpen] = useState<string | null>(null);
+  // A convergence (CONTRACT 8h) opened from its row.
+  const [skyOpen, setSkyOpen] = useState<string | null>(null);
   const [addingFrame, setAddingFrame] = useState<{ id: string; title: string; ghost: string | null } | null>(null);
   // Answering an Eyes-on Ask with a Live photo (CONTRACT 8f).
   const [answering, setAnswering] = useState<{ id: string; question: string } | null>(null);
@@ -356,7 +360,8 @@ export default function ReinventedPulse() {
       if (it.type !== 'moment') return true;
       const deck = deckOf(it.moment);
       const retake = retakeOf(it.moment);
-      const key = deck ? `${it.moment.author?.id}:${deck.id}` : retake ? `retake:${retake.start_id}` : null;
+      const sky = convergenceOf(it.moment);
+      const key = deck ? `${it.moment.author?.id}:${deck.id}` : retake ? `retake:${retake.start_id}` : sky ? `sky:${sky.id}` : null;
       if (!key) return true;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -395,6 +400,11 @@ export default function ReinventedPulse() {
         setRetakeOpen(retake.start_id);
         return;
       }
+      const sky = item?.type === 'moment' ? convergenceOf(item.moment) : null;
+      if (sky) {
+        setSkyOpen(sky.id);
+        return;
+      }
       const steps = item?.type === 'moment' ? deckOf(item.moment)?.steps : undefined;
       const start = steps?.length ? steps[0] : id;
       setViewing({ id: start, ids: momentIds.includes(start) ? momentIds : [start] });
@@ -404,6 +414,7 @@ export default function ReinventedPulse() {
   // A Moment's link (`/app/moments/<id>`, a notice, a share) arrives here as `?moment=<id>` and opens in the viewer.
   const openLinked = useCallback((id: string) => setViewing({ id, ids: [id] }), []);
   useLinkedMoment(openLinked);
+  useLinkedSky(setSkyOpen);
   const openExplored = useCallback(
     (id: string) => {
       const ids = exploreMoments.map((m) => m.id);
@@ -730,7 +741,13 @@ export default function ReinventedPulse() {
                             onPlace={flyTo}
                             kept
                             steps={deckOf(item.moment)?.count}
-                            tag={retakeOf(item.moment) ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}` : undefined}
+                            tag={
+                            retakeOf(item.moment)
+                              ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}`
+                              : convergenceOf(item.moment)
+                                ? convergenceTitle(convergenceOf(item.moment)!)
+                                : undefined
+                          }
                           />
                         </div>
                       ) : item.type === 'moment' ? (
@@ -741,7 +758,13 @@ export default function ReinventedPulse() {
                           onOpen={openMoment}
                           onPlace={flyTo}
                           steps={deckOf(item.moment)?.count}
-                          tag={retakeOf(item.moment) ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}` : undefined}
+                          tag={
+                            retakeOf(item.moment)
+                              ? `Retake · ${retakeOf(item.moment)!.frames} ${retakeOf(item.moment)!.frames === 1 ? 'frame' : 'frames'}`
+                              : convergenceOf(item.moment)
+                                ? convergenceTitle(convergenceOf(item.moment)!)
+                                : undefined
+                          }
                         />
                       ) : (
                         <PostRow
@@ -769,6 +792,7 @@ export default function ReinventedPulse() {
           <Plus size={24} strokeWidth={2.6} aria-hidden />
         </button>
       )}
+      {skyOpen && <ConvergenceView id={skyOpen} onClose={() => setSkyOpen(null)} />}
       {retakeOpen && (
         <RetakeView
           id={retakeOpen}

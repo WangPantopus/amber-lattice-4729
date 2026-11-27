@@ -224,6 +224,8 @@ export default function Studio({
     // "Seal it" (§8g): the Moment opens later, on a date, where it was left, or the next time it rains there.
     [sealWhen, setSealWhen] = useState<'none' | 'date' | 'place' | 'rain'>('none'),
     [sealAt, setSealAt] = useState(''),
+    // A convergence (§8h): a Live photo shared nearby may join tonight's sky; on by default, one tap to leave out.
+    [joinSky, setJoinSky] = useState(true),
     [caretAt, setCaretAt] = useState<{ field: 'caption' | 'words'; at: number } | null>(null),
     [blurOn, setBlurOn] = useState(false),
     // Guess the spot (step 8, CONTRACT §5a): others see the picture, not the place, until they guess.
@@ -591,6 +593,7 @@ export default function Studio({
         : sealPlaceOk
           ? { seal: { opens: sealWhen } }
           : {};
+  const skyOffered = !retakeOf && !eyesOnFor && !postKind && !underPenName && mode === 'media' && !!file && !isVideo && audience !== 'connections' && !noPlace && !area;
   const retakeOut = retakeOf ? { retake_of: retakeOf.id } : retakeOffered && startRetake && retakeTitle.trim() ? { retake: { title: retakeTitle.trim().slice(0, 60) } } : {};
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
@@ -860,6 +863,7 @@ export default function Studio({
             ...(!underPenName && repliesShown != null ? { replies_shown: repliesShown } : {}),
             ...(i === 0 ? retakeOut : {}),
             ...(i === 0 ? sealOut : {}),
+            ...(i === 0 && skyOffered && joinSky ? { join_convergence: true } : {}),
             ...(i === 0 && eyesOnFor ? { eyes_on_for: eyesOnFor.id } : {}),
             ...(canMention && i === 0 && mentionIds(kind === 'text' ? text : caption, mentioned).length
               ? { mentions: mentionIds(kind === 'text' ? text : caption, mentioned) }
@@ -1464,6 +1468,15 @@ export default function Studio({
                 ? 'Pick the place you’re asking about: choose “Pin it at a place” above.'
                 : 'For six hours, people at this place can answer with a Live photo. Nobody is told who is near it.'}
             </p>
+          </div>
+        )}
+        {skyOffered && (
+          <div className="st-group" role="group" aria-label="Tonight's sky">
+            <label className="st-check">
+              <input type="checkbox" checked={joinSky} onChange={(e) => setJoinSky(e.target.checked)} />
+              Join tonight’s sky: your photo stays in the piece
+            </label>
+            <p className="st-note">Only if several people photograph a real sunset or a first snow here in the same minutes.</p>
           </div>
         )}
         {sealOffered && (
