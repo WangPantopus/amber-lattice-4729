@@ -868,6 +868,20 @@ object PantopusColors {
     val studioPillSecondary = Color(0xB8FFFFFF)
 
     /**
+     * "Pulse, reinvented" step 3: the stamps Pantopus checked (boards B1, B2, B3, B5). The postmark's wet red while the
+     * Moment reads "Live from here" — `#C81E1E`; its dried ink once it reads "Taken here" — `#334155`; its paper —
+     * `#FFFBF0` at 94%; a stamp chip over the picture — `#0B1220` at 55%, with a white 18% edge; the shadow under a
+     * stamp — black 40%; a picked stamp's take-off button — black 75%.
+     */
+    val studioWetInk = Color(0xFFC81E1E)
+    val studioDriedInk = Color(0xFF334155)
+    val studioPaper = Color(0xF0FFFBF0)
+    val studioStampChip = Color(0x8C0B1220)
+    val studioStampChipEdge = Color(0x2EFFFFFF)
+    val studioStampShadow = Color(0x66000000)
+    val studioStampRemove = Color(0xBF000000)
+
+    /**
      * The profile with sources (SPEC 2026-11-23, boards 1, 12, 13): the ring's "now" dot and the record tab's
      * underline — `#0284C7`; a year's band behind the full chart — `#EEF0F3`; the chart's month ticks — `#9CA3AF`;
      * the shelf's plank and its lit edge — `#B98A5A` / `#CAA06B`.

@@ -150,6 +150,7 @@ import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
 import app.pantopus.android.ui.screens.moments.components.MomentMetaPills
+import app.pantopus.android.ui.screens.moments.components.MomentStampsOverlay
 import app.pantopus.android.ui.screens.moments.components.MomentVerifiedCheck
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
@@ -192,6 +193,8 @@ fun MomentsViewerScreen(
     onClose: () -> Unit,
     /** Opens a person's profile, or a business's page (`business`), over the viewer: Back returns to the Moment. */
     onOpenProfile: (userId: String, business: Boolean) -> Unit = { _, _ -> },
+    // "Pulse, reinvented" (its switch on for the person): the Moment's stamps over its picture.
+    studio: Boolean = false,
     viewModel: MomentsViewerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -626,6 +629,7 @@ fun MomentsViewerScreen(
                                 },
                                 onFailed = viewModel::next,
                             )
+                            if (studio) MomentStampsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit
                     ViewerLoad.Ended ->

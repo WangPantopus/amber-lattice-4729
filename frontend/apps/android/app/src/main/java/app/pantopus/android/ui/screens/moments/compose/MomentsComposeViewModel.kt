@@ -16,6 +16,7 @@ import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
 import app.pantopus.android.data.api.models.moments.MomentSeriesDto
+import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
@@ -45,6 +46,8 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
+import app.pantopus.android.ui.screens.moments.studio.sentStamps
+import app.pantopus.android.ui.screens.moments.studio.stampElevation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -211,6 +214,8 @@ data class MomentsComposeUiState(
      * Live mark, no weather (made-up-names contract, "Moments"). Only the Studio sets it.
      */
     val madeUp: Boolean = false,
+    /** "Pulse, reinvented"'s Studio: the stamps placed on the picture (CONTRACT 2b). Only the Studio sets them. */
+    val stamps: List<MomentStampPlacement> = emptyList(),
 ) {
     val kind: String
         get() =
@@ -702,7 +707,7 @@ class MomentsComposeViewModel
                     val next = waiting.first()
                     waiting = waiting.drop(1)
                     if (open(next)) {
-                        _state.update { it.copy(posting = false, pickedAt = it.pickedTogether - waiting.size) }
+                        _state.update { it.copy(posting = false, pickedAt = it.pickedTogether - waiting.size, stamps = emptyList()) }
                         return@launch
                     }
                 }
@@ -859,6 +864,7 @@ class MomentsComposeViewModel
                     notice = null,
                     pickedTogether = 0,
                     pickedAt = 0,
+                    stamps = emptyList(),
                 )
             }
         }
@@ -941,6 +947,9 @@ class MomentsComposeViewModel
             }
 
         fun setShowArea(on: Boolean) = _state.update { it.copy(showArea = on) }
+
+        /** The Studio's stamps, moved, sized, turned, put on or taken off. */
+        fun setStamps(stamps: List<MomentStampPlacement>) = _state.update { it.copy(stamps = stamps) }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
         fun setPinAtPlace(on: Boolean) = _state.update { it.withPinAtPlace(on) }
@@ -1044,6 +1053,9 @@ class MomentsComposeViewModel
                         takenHere = true.takeIf { current.liveFor(usable, now) },
                         showWeather = true.takeIf { current.weatherFor(usable, now) },
                         postAs = "pen_name".takeIf { current.madeUp },
+                        // The Studio's stamps that may show on this Moment, and the height for an elevation stamp.
+                        stamps = current.sentStamps,
+                        elevation = current.stampElevation(usable),
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
