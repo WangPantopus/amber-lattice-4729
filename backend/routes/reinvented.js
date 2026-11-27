@@ -10,6 +10,7 @@ const store = require('../services/moments/momentStore');
 const list = require('../services/pulse/list');
 const pulseMap = require('../services/pulse/map');
 const atlas = require('../services/pulse/atlas');
+const explore = require('../services/pulse/explore');
 
 const router = express.Router();
 
@@ -87,6 +88,25 @@ router.get('/strip', async (req, res) => {
     res.json(await pulseMap.stripFor(req.user, value));
   } catch (error) {
     sendError(res, error, 'strip');
+  }
+});
+
+// ─── Explore (CONTRACT 6f) ──────────────────────────────────────────────────
+
+const exploreSchema = Joi.object({
+  latitude: Joi.number().min(-90).max(90),
+  longitude: Joi.number().min(-180).max(180),
+  cursor: Joi.string().max(500).allow(''),
+}).and('latitude', 'longitude');
+
+/** GET /explore — "Today, elsewhere", then newest with variety, each with why it is there. */
+router.get('/explore', async (req, res) => {
+  try {
+    const { error, value } = exploreSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'EXPLORE_INVALID' });
+    res.json(await explore.exploreFor(req.user.id, value));
+  } catch (error) {
+    sendError(res, error, 'explore');
   }
 });
 
