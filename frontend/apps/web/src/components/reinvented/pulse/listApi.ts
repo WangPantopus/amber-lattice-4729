@@ -137,6 +137,9 @@ export interface MapData {
   rings: Ring[];
   marks: MapMark[];
   tickets: MapTicket[];
+  /** As on today's Moments map: heights are shown, and Moments float at them (phase 4's living map). */
+  heights_on?: boolean;
+  float_on?: boolean;
 }
 
 export interface Box {

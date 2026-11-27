@@ -4,6 +4,10 @@
 // row's choice (GET /api/reinvented/map, coord/CONTRACT.md §6b), each at the point everyone sees: a ring is a Moment,
 // a mark on the ground is a post that stays, a ticket is a plan, and a Heads-up is red, pulsing and always on top.
 // Before its first read it fits the list's first page, so one request still draws the first screen.
+// The living map (phase 4, board B4; `float_on` and `heights_on` from the read, as on today's Moments map): a Moment with
+// a height floats at it, with a sun-true shadow by day and as a lantern on a thread after sunset; a Moment shown as an
+// area is a soft cloud; plans glow as beacons; night falls on the map when it falls there; live beams (CONTRACT 9h)
+// cross where several people were looking.
 // Leaflet touches `window` at import: this file is loaded with next/dynamic and `ssr: false` only.
 
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +18,8 @@ import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import { colors } from '@/components/moments/momentState';
 import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
 import type { Pin } from './pins';
+import { liftOf, nightOf, shadowOf, sunPosition, type Beam, type Sun } from './mapLight';
+import './sky.css';
 
 export interface FlyTarget extends Point {
   serial: number;
@@ -35,6 +41,41 @@ interface Props {
   selected: string | null;
   onBox(box: Box): void;
   onPick(key: string): void;
+  /** Heights and floating are on for this reader (the read's `heights_on` and `float_on`). */
+  float?: boolean;
+  /** Live beams in the box (CONTRACT 9h). */
+  beams?: Beam[];
+}
+
+/** What the sky does to a ring: its height and the sun over the map. */
+interface Sky {
+  float: boolean;
+  sun: Sun | null;
+}
+
+/** A ring with a height floats at it; one shown as an area is a cloud over it. Shadows by day, lanterns by night. */
+function floatRing(el: HTMLElement, ring: { altitude_ft?: number | null; flying?: boolean; floating?: boolean }, sky: Sky) {
+  if (!sky.float) return;
+  if (ring.floating) el.classList.add('rp-ring-cloud');
+  const height = ring.altitude_ft;
+  if (height == null || !Number.isFinite(height)) return;
+  const lift = liftOf(height, !!ring.flying);
+  const day = (sky.sun?.elevation_deg ?? 30) > 0;
+  el.classList.add(day ? 'rp-ring-float' : 'rp-ring-lantern');
+  el.style.setProperty('--rp-lift', `${Math.round(6 + 26 * lift)}px`);
+  if (day && sky.sun) {
+    const shadow = shadowOf(sky.sun, lift);
+    el.style.setProperty('--rp-sun-x', `${shadow.x.toFixed(1)}px`);
+    el.style.setProperty('--rp-sun-y', `${shadow.y.toFixed(1)}px`);
+  }
+  const ground = document.createElement('span');
+  ground.className = 'rp-ring-ground';
+  ground.setAttribute('aria-hidden', 'true');
+  el.prepend(ground);
+  const meter = document.createElement('span');
+  meter.className = 'rp-ring-height';
+  meter.textContent = `${ring.floating ? '≈ ' : ''}${ring.flying ? '✈ ' : ''}${Math.round(height).toLocaleString('en-US')} ft`;
+  el.appendChild(meter);
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
@@ -54,7 +95,7 @@ export function itemPoint(item: ListItem): Point | null {
 
 const TICKET_PATH = 'M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z';
 
-function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, number] | null } {
+function pinElement(pin: Pin, now: number, sky: Sky): { el: HTMLElement; size: [number, number] | null } {
   if (pin.type === 'ring') {
     const r = pin.ring;
     const el = document.createElement('span');
@@ -79,6 +120,7 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
       tag.textContent = 'Live';
       el.appendChild(tag);
     }
+    floatRing(el, r, sky);
     return { el, size: [44, 44] };
   }
   if (pin.type === 'kept' || pin.type === 'explore') {
@@ -107,7 +149,7 @@ function pinElement(pin: Pin, now: number): { el: HTMLElement; size: [number, nu
   }
   const t = pin.ticket;
   const el = document.createElement('span');
-  el.className = 'rp-ticket';
+  el.className = 'rp-ticket' + (sky.float ? ' rp-ticket-beacon' : '');
   el.innerHTML = `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${TICKET_PATH}"/></svg>`;
   const words = document.createElement('span');
   const going = t.going_count ? ` · ${t.going_count} going` : '';
@@ -144,10 +186,13 @@ function coveredInsets(mapEl: HTMLElement | null): { top: number; bottom: number
   return { top, bottom };
 }
 
-export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick }: Props) {
+export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey, flyTo, selected, onBox, onPick, float = false, beams }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const beamRef = useRef<L.LayerGroup | null>(null);
+  // The sun over the map's centre, read again as the map moves and every minute.
+  const [sun, setSun] = useState<Sun | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
   const fitted = useRef<string | null>(null);
   const latest = useRef({ onPick, onBox, selected });
@@ -164,8 +209,23 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
         .on('tileload', () => setTilesMissing(false))
         .addTo(map);
     L.control.zoom({ position: 'topright' }).addTo(map);
+    beamRef.current = L.layerGroup().addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    const light = () => {
+      const c = map.getCenter();
+      const next = sunPosition(c.lat, c.lng);
+      ref.current?.style.setProperty('--rp-night', nightOf(next).toFixed(2));
+      // A new sun only when it moved enough to change a shadow, so the pins aren't drawn again each minute.
+      setSun((prev) =>
+        prev && Math.abs(prev.azimuth_deg - next.azimuth_deg) < 3 && Math.abs(prev.elevation_deg - next.elevation_deg) < 1.5 && prev.elevation_deg > 0 === next.elevation_deg > 0
+          ? prev
+          : next,
+      );
+    };
+    map.on('moveend', light);
+    const clock = window.setInterval(light, 60_000);
+    light();
     // The box in view, once the map has its first view; the map reads it again after each move.
     let timer = 0;
     map.on('moveend', () => {
@@ -180,10 +240,12 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
     resize.observe(ref.current);
     return () => {
       window.clearTimeout(timer);
+      window.clearInterval(clock);
       resize.disconnect();
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      beamRef.current = null;
     };
   }, []);
 
@@ -216,8 +278,9 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
     layer.clearLayers();
     elements.current.clear();
     const now = Date.now();
+    const sky: Sky = { float, sun };
     for (const pin of pins) {
-      const { el, size } = pinElement(pin, now);
+      const { el, size } = pinElement(pin, now, sky);
       el.dataset.pin = pin.key;
       if (pin.key === latest.current.selected) el.classList.add('rp-pin-selected');
       elements.current.set(pin.key, el);
@@ -236,7 +299,22 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
       marker.on('click', () => latest.current.onPick(pin.key));
       marker.addTo(layer);
     }
-  }, [pins]);
+  }, [pins, float, sun]);
+
+  // Live beams: a faint line from each capture to where they all looked, and a glow there. Not tappable.
+  useEffect(() => {
+    const layer = beamRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    const night = (sun?.elevation_deg ?? 30) <= 0;
+    const color = night ? '#fde68a' : '#38bdf8';
+    for (const beam of beams || []) {
+      const to: L.LatLngTuple = [beam.target.latitude, beam.target.longitude];
+      for (const f of beam.from)
+        L.polyline([[f.latitude, f.longitude], to], { color, weight: 3, opacity: 0.45, interactive: false, className: 'rp-beam' }).addTo(layer);
+      L.circleMarker(to, { radius: 9, color, weight: 0, fillColor: color, fillOpacity: 0.35, interactive: false, className: 'rp-beam-target' }).addTo(layer);
+    }
+  }, [beams, sun]);
 
   useEffect(() => {
     elements.current.forEach((el, key) => el.classList.toggle('rp-pin-selected', key === selected));
