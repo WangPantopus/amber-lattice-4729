@@ -19,6 +19,9 @@ import SwiftUI
 struct MomentsMarksEditor: View {
     let model: MomentsComposerModel
     let media: MomentsMarkedMedia
+    /// Opened by the Studio ("Pulse, reinvented"): Text and Draw add the Studio's letterings, pens and photo colors
+    /// (`+Studio`). Off (today's composer), the editor is exactly today's.
+    var studio = false
     @Environment(\.momentsDuoScreen) var duo
     /// Where the keyboard's top is on the screen (the screen's bottom while it's down), and where the looks and inks
     /// begin: a label being typed in stays above both.
@@ -95,6 +98,12 @@ struct MomentsMarksEditor: View {
                         MomentsMarksTextLayer(marking: marking, picture: surface, size: frame.size, free: free)
                     }
                 }
+                // The Studio's eyedropper, over the picture while it's out.
+                .overlay {
+                    if studio, marking.studio?.dropping == true {
+                        MomentsStudioDropper(marking: marking, surface: surface, size: frame.size)
+                    }
+                }
                 .overlay(alignment: .top) { viewerStrip(frame) }
                 .overlay(alignment: .bottom) {
                     LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
@@ -108,8 +117,18 @@ struct MomentsMarksEditor: View {
                 Spacer(minLength: Spacing.s2)
                 Group {
                     switch marking.tool {
-                    case .text: textFooter(width: room.width, typing: typing)
-                    case .draw: drawFooter(width: room.width)
+                    case .text:
+                        if studio {
+                            studioTextFooter(width: room.width, typing: typing)
+                        } else {
+                            textFooter(width: room.width, typing: typing)
+                        }
+                    case .draw:
+                        if studio {
+                            studioDrawFooter(width: room.width)
+                        } else {
+                            drawFooter(width: room.width)
+                        }
                     case .resize: resizeFooter(width: room.width, aboveEdge: max(room.maxY - frame.maxY, 0) + Spacing.s3)
                     }
                 }

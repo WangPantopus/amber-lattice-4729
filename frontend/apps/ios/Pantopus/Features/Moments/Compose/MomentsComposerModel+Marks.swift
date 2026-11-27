@@ -74,6 +74,8 @@ final class MomentsMarking {
     /// A finger is drawing a line.
     @ObservationIgnored private var drawing = false
     @ObservationIgnored private var making: Task<Void, Never>?
+    /// The Studio's Text and Draw tools (`MomentMarks+Studio`), set by the Studio only: nil in today's composer.
+    var studio: MomentsStudioTools?
 
     /// The marks the canvas draws while editing: all but the label being typed in, which is a text field.
     var shown: MomentMarks {
@@ -181,6 +183,7 @@ final class MomentsMarking {
             guard editing.strokes.count < MomentMarks.maxStrokes else { return }
             drawing = true
             editing.strokes.append(MomentMarks.Stroke(points: [point], ink: ink, width: width.points / pictureWidth))
+            if let studio { studio.dress(&editing.strokes[editing.strokes.count - 1]) }
             return
         }
         guard let last = editing.strokes.indices.last, let previous = editing.strokes[last].points.last else { return }
@@ -230,6 +233,7 @@ extension MomentsMarking {
         )), within: rows))
         editing.labels.append(label)
         (typing, picked) = (label.id, label.id)
+        if let studio { update(label.id) { studio.dress(&$0) } }
         return true
     }
 

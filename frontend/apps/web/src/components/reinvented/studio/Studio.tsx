@@ -67,6 +67,8 @@ import {
   kindPill,
   purposeOf,
   EXPLORE_KINDS,
+  MADE_UP_NAME_KINDS,
+  OWN_NAME_KINDS,
   STUDIO_KINDS,
   type StudioKind,
 } from './postKinds';
@@ -405,10 +407,11 @@ export default function Studio({
   const kept = stamps.filter((st) => stampValue(st.kind) != null);
   // Guess the spot takes a photo or video with a place, never at home (the answer would point at it).
   const isVideo = !!file && (file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.name));
-  // A post is one photo or the words; under a made-up name it stays a Moment (a post under one is words only, of its
-  // own few kinds: today's composer makes those).
-  const kindsOffered = !underPenName && ((mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text');
-  const postKind = kindsOffered ? kind : null;
+  // A post is one photo or the words. Under a made-up name a post is words only, of its own four kinds, to people
+  // nearby (made-up-names contract; LEAD-2 03:03), so there the Studio offers those for the words.
+  const kindsOffered = underPenName ? mode === 'text' : (mode === 'media' && !!file && !isVideo && files.length === 1) || mode === 'text';
+  const kindChoices = underPenName ? MADE_UP_NAME_KINDS : OWN_NAME_KINDS;
+  const postKind = kindsOffered && kind && kindChoices.includes(kind) ? kind : null;
   const words = mode === 'text' ? text : caption;
   // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
@@ -726,14 +729,21 @@ export default function Studio({
       const digits = phone.replace(/\D/g, '');
       postRequest.current ??= crypto.randomUUID();
       const body: Parameters<typeof postsApi.createPost>[0] & {
-        studio: { stamps: PlacedStamp[]; elevation?: { meters: number; accuracy_m?: number | null }; explore?: boolean };
+        studio: {
+          stamps: PlacedStamp[];
+          elevation?: { meters: number; accuracy_m?: number | null };
+          explore?: boolean;
+          taken_at?: string;
+          taken_here?: boolean;
+          fix?: { latitude: number; longitude: number; fix_at: string };
+        };
       } = {
         clientRequestId: postRequest.current,
         content: words.trim(),
         postType,
         visibility: postPlaced ? 'neighborhood' : 'connections',
         audience: postPlaced ? 'nearby' : 'connections',
-        postAs: 'personal',
+        postAs: underPenName ? 'pen_name' : 'personal',
         ...(postPlaced && at
           ? {
               latitude: at.latitude,
@@ -763,13 +773,20 @@ export default function Studio({
           ? { lostFoundType: lostType, contactPref: contact, ...(contact === 'phone' ? { contactPhone: digits } : {}) }
           : {}),
         purpose: purposeOf(postType),
-        profileVisibilityScope: 'local_context',
-        showOnProfile: true,
+        // Under a made-up name: no profile (today's composer leaves these out there).
+        ...(underPenName ? {} : { profileVisibilityScope: 'local_context' as const, showOnProfile: true }),
         studio: {
           stamps: kept.map(({ kind: k, x, y, scale, rotation }) => ({ kind: k, x, y, scale, rotation })),
           ...(toExplore ? { explore: true } : {}),
           ...(kept.some((st) => st.kind === 'elevation') && altitude != null
             ? { elevation: { meters: altitude, accuracy_m: fromAlbum ? null : fix?.coords.altitudeAccuracy } }
+            : {}),
+          // When the picture was taken (CONTRACT 6d): a library photo's own time keeps "now" stamps off it; a shot the
+          // camera took just now, with a fresh fix near the post's point, may keep weather and sunset. The server checks.
+          ...(albumItem && meta?.capturedAt ? { taken_at: meta.capturedAt } : {}),
+          ...(file && capture?.file === file && Date.now() - capture.at <= 600000 ? { taken_here: true } : {}),
+          ...(fix && !albumItem
+            ? { fix: { latitude: fix.coords.latitude, longitude: fix.coords.longitude, fix_at: new Date(fix.timestamp).toISOString() } }
             : {}),
         },
       };
@@ -1728,7 +1745,7 @@ export default function Studio({
                       )}
                       {kindMenu && !postKind && (
                         <div className="st-kind-menu" role="menu" aria-label="Make it a post that stays">
-                          {STUDIO_KINDS.map((k) => (
+                          {STUDIO_KINDS.filter((k) => kindChoices.includes(k.kind)).map((k) => (
                             <button
                               key={k.kind}
                               type="button"

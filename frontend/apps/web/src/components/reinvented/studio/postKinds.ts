@@ -4,7 +4,7 @@
 
 import type { PostType } from '@pantopus/types';
 
-export type StudioKind = 'ask_local' | 'alert' | 'lost_found' | 'recommendation' | 'local_update' | 'event';
+export type StudioKind = 'ask_local' | 'alert' | 'lost_found' | 'recommendation' | 'local_update' | 'event' | 'neighborhood_win';
 
 export const STUDIO_KINDS: { kind: StudioKind; name: string; hint: string }[] = [
   { kind: 'ask_local', name: 'Question', hint: 'Answers will show under it' },
@@ -13,7 +13,13 @@ export const STUDIO_KINDS: { kind: StudioKind; name: string; hint: string }[] = 
   { kind: 'recommendation', name: 'Spot', hint: 'Stays on the map and in your Atlas' },
   { kind: 'local_update', name: 'Learning', hint: 'Stays on the map and in your Atlas' },
   { kind: 'event', name: 'Event', hint: 'Shows on the map until it happens' },
+  // Offered only under a made-up name, which takes these four (made-up-names contract; LEAD-2 03:03).
+  { kind: 'neighborhood_win', name: 'Local win', hint: 'Stays on the map and in your Atlas' },
 ];
+
+// The kinds a post under one's own name may be, and under a made-up name (words only, people nearby).
+export const OWN_NAME_KINDS: StudioKind[] = ['ask_local', 'alert', 'lost_found', 'recommendation', 'local_update', 'event'];
+export const MADE_UP_NAME_KINDS: StudioKind[] = ['ask_local', 'recommendation', 'local_update', 'neighborhood_win'];
 
 export const kindName = (kind: StudioKind) => STUDIO_KINDS.find((k) => k.kind === kind)!.name;
 export const kindHint = (kind: StudioKind) => STUDIO_KINDS.find((k) => k.kind === kind)!.hint;
@@ -45,6 +51,7 @@ const PURPOSE: Record<StudioKind, string> = {
   recommendation: 'recommend',
   local_update: 'local_update',
   event: 'event',
+  neighborhood_win: 'neighborhood_win',
 };
 export const purposeOf = (kind: StudioKind) => PURPOSE[kind];
 
@@ -66,7 +73,7 @@ export function untilLabel(at: Date, now = new Date()): string {
 /** The pill's first line for a kind (CONTRACT 6d). `eventAt`: the event's end, or its start; a local date-time input. */
 export function kindPill(kind: StudioKind, eventAt: string, now = new Date()): string {
   if (kind === 'ask_local') return 'Stays until answered';
-  if (kind === 'recommendation' || kind === 'local_update') return 'Stays in Atlas';
+  if (kind === 'recommendation' || kind === 'local_update' || kind === 'neighborhood_win') return 'Stays in Atlas';
   if (kind === 'lost_found') return 'Until claimed';
   if (kind === 'alert') return `Until ${untilLabel(new Date(now.getTime() + ALERT_MS), now)}`;
   const at = eventAt ? new Date(eventAt) : null;

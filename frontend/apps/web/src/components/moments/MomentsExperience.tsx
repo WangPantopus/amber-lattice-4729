@@ -48,6 +48,7 @@ import {
   visibleRings,
   world,
 } from './momentState';
+import { useMomentLinksToPulse } from '@/components/reinvented/pulse/momentLinks';
 
 const MomentsMap = dynamic(() => import('./MomentsMap'), { ssr: false });
 const Viewer = dynamic(() => import('./MomentViewer'), { ssr: false });
@@ -911,6 +912,8 @@ function Board({ account }: { account: string }) {
 export default function MomentsExperience() {
   const flag = useMomentsAccess(),
     me = useMe();
+  // Pulse, reinvented: while its switch is on, a Moment's link opens in the one Pulse tab (off: today's page, as is).
+  if (useMomentLinksToPulse()) return <div className="mo-gate" role="status">Opening Pulse…</div>;
   if (flag.isPending || me.isPending)
     return (
       <div className="mo-gate" role="status">
