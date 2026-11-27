@@ -6,6 +6,9 @@ import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.StudioApi
 import app.pantopus.android.data.moments.serverCode
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,7 +36,24 @@ class StudioRepository
                 }
             }
 
+        /** One of the five signals on a Moment, or none (CONTRACT 4); the answer is the signal the server kept. */
+        suspend fun signal(
+            momentId: String,
+            signal: String?,
+        ): NetworkResult<String?> {
+            val body = JSONObject().put("signal", signal ?: JSONObject.NULL).toString().toRequestBody(JSON)
+            return when (val answer = safeApiCall { api.signal(momentId, body) }) {
+                is NetworkResult.Success -> NetworkResult.Success(answer.data.mySignal)
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refresh()
+                    answer
+                }
+            }
+        }
+
         companion object {
+            private val JSON = "application/json; charset=utf-8".toMediaType()
+
             /** The server's answer to a Studio-only request from a person whose switch is off (CONTRACT 1). */
             const val SWITCH_OFF = "PULSE_REINVENTED_OFF"
         }
