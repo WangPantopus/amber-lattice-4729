@@ -129,3 +129,8 @@ export function readAnswers(postId: string, item: string, cursor: string | null,
 export function removeAnswer(postId: string, item: string, answerId: string) {
   return del(`${path(postId, item)}/answers/${encodeURIComponent(answerId)}`);
 }
+
+/** One post's or Moment's items as this reader may see them now (with its dots, §7c). */
+export function readPlay(postId: string) {
+  return get<{ play: PlayItem[]; dots?: unknown[] }>(`/api/reinvented/play/${encodeURIComponent(postId)}`);
+}

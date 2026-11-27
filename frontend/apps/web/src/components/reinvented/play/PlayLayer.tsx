@@ -13,7 +13,7 @@ import { useMe } from '@/lib/me';
 import { messageOf } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isRouteGone, markServerBehind } from '../serverBehind';
-import { answerPlay, readAnswers, removeAnswer, takeBackPlay, waitingItems, type PlayAnswer, type PlayFace, type PlayItem } from './playTypes';
+import { answerPlay, readAnswers, readPlay, removeAnswer, takeBackPlay, waitingItems, type PlayAnswer, type PlayFace, type PlayItem } from './playTypes';
 import './play.css';
 
 type PlayMoment = Moment & { play?: PlayItem[] };
@@ -26,7 +26,13 @@ export function holdsForPlay(m: Moment): boolean {
 const pct = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
-function useAnswer(moment: Moment) {
+/** A post's items (a Pulse post made in the Studio) have no viewer cache: they are kept here and read again after a change. */
+interface Local {
+  set(items: PlayItem[]): void;
+  items: PlayItem[];
+}
+
+function useAnswer(moment: Moment, local?: Local) {
   const client = useQueryClient();
   const reread = useRereadSwitch();
   const account = useMe().data?.id;
@@ -40,12 +46,14 @@ function useAnswer(moment: Moment) {
     try {
       if (body) {
         const answer = await answerPlay(moment.id, item, body);
-        client.setQueryData<{ moment: PlayMoment }>(key, (old) =>
+        if (local) local.set(local.items.map((p) => (p.id === item ? answer.item : p)));
+        else client.setQueryData<{ moment: PlayMoment }>(key, (old) =>
           old ? { ...old, moment: { ...old.moment, play: (old.moment.play || []).map((p) => (p.id === item ? answer.item : p)) } } : old,
         );
       } else {
         await takeBackPlay(moment.id, item);
-        await client.invalidateQueries({ queryKey: key });
+        if (local) local.set((await readPlay(moment.id)).play);
+        else await client.invalidateQueries({ queryKey: key });
       }
       return true;
     } catch (e) {
@@ -64,9 +72,11 @@ function useAnswer(moment: Moment) {
 }
 
 /** The items over the picture: the layer fills the picture's box, as the stamps' layer does. */
-export default function PlayLayer({ moment }: { moment: Moment }) {
-  const play = (moment as PlayMoment).play || [];
-  const answer = useAnswer(moment);
+export default function PlayLayer({ moment, post = false }: { moment: Moment; post?: boolean }) {
+  // On a post (not a Moment in the viewer) the items live here once anyone answers.
+  const [mine, setMine] = useState<PlayItem[] | null>(null);
+  const play = mine ?? ((moment as PlayMoment).play || []);
+  const answer = useAnswer(moment, post ? { set: setMine, items: play } : undefined);
   const account = useMe().data?.id;
   // The author reads the question box's answers and the board's notes, and may remove one (§7b, the author's side).
   const owner = account && moment.author?.id === account ? moment.id : undefined;
