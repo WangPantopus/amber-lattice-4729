@@ -531,13 +531,14 @@ function briefOf(row, seen) {
  * counts (`reactionCounts` from reactionCountsFor).
  */
 function serializeMoment(row, { author, viewerId, seen = false, myReaction = null, links = new Map(), reactionCounts = null,
-  heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null }) {
+  heights = false, reinvented = false, mySignal = null, signalCounts = null, guess = null, keptEnded = false }) {
   const m = meta(row);
   const high = heights ? shownHeight(row) : null;
   const own = isOwn(row, viewerId);
   const state = momentState(row);
   const point = displayedPoint(row);
-  const showMedia = state === 'live' || (own && state !== 'ended');
+  // `keptEnded` (My Atlas only): the author's own kept Moment shows its picture to them after it ended too.
+  const showMedia = state === 'live' || (own && state !== 'ended') || (keptEnded && own && keptFilesOf(row));
   const stored = m.media || null;
   const answer = {
     id: row.id,
@@ -643,16 +644,26 @@ function linkKeys(rows) {
   });
 }
 
-/** Full Moments for `viewerId` (each row already checked visible), in the given order. */
-async function serializeMoments(rows, viewerId) {
+/** Whether a kept Moment (posted with the switch on, CONTRACT 6e) still has its files: not purged or deleted for good. */
+function keptFilesOf(row) {
+  const m = meta(row);
+  return m.kept === true && !m.purged_at && Boolean(m.media);
+}
+
+/**
+ * Full Moments for `viewerId` (each row already checked visible), in the given order. `keptEnded` (My Atlas only, the
+ * author's own list): their kept Moments that ended keep their pictures for them.
+ */
+async function serializeMoments(rows, viewerId, { keptEnded = false } = {}) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   await markOwn(rows, viewerId);
   const ownIds = rows.filter((r) => isOwn(r, viewerId)).map((r) => r.id);
+  const linked = rows.filter((r) => momentState(r) !== 'ended' || (keptEnded && isOwn(r, viewerId) && keptFilesOf(r)));
   const [authors, marks, links, counts, heights, reinvented] = await Promise.all([
     authorsFor(rows),
     viewerMarks(viewerId, ids),
-    media.signedLinks(undefined, linkKeys(rows.filter((r) => momentState(r) !== 'ended'))),
+    media.signedLinks(undefined, linkKeys(linked)),
     reactionCountsFor(ownIds),
     heightsOn(viewerId),
     reinventedOn(viewerId),
@@ -672,6 +683,7 @@ async function serializeMoments(rows, viewerId) {
     mySignal: marks.signals.get(row.id) || null,
     signalCounts: signals.get(row.id) || null,
     guess: guesses.get(row.id) || null,
+    keptEnded,
   }));
 }
 

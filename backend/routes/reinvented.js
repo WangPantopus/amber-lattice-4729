@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const store = require('../services/moments/momentStore');
 const list = require('../services/pulse/list');
 const pulseMap = require('../services/pulse/map');
+const atlas = require('../services/pulse/atlas');
 
 const router = express.Router();
 
@@ -86,6 +87,43 @@ router.get('/strip', async (req, res) => {
     res.json(await pulseMap.stripFor(req.user, value));
   } catch (error) {
     sendError(res, error, 'strip');
+  }
+});
+
+// ─── My Atlas (CONTRACT 6e) ─────────────────────────────────────────────────
+
+const atlasSchema = Joi.object({
+  cursor: Joi.string().max(500).allow(''),
+  limit: Joi.number().integer().min(1).max(50).default(30),
+  south: Joi.number().min(-90).max(90),
+  west: Joi.number().min(-180).max(180),
+  north: Joi.number().min(-90).max(90),
+  east: Joi.number().min(-180).max(180),
+}).and('south', 'west', 'north', 'east');
+
+/** GET /atlas — the caller's own kept Moments, by date (cursor) or in a box, private to them. */
+router.get('/atlas', async (req, res) => {
+  try {
+    const { error, value } = atlasSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'ATLAS_INVALID' });
+    const { south, west, north, east, ...page } = value;
+    const box = south == null ? null : { south, west, north, east };
+    if (box && (box.south >= box.north || box.west >= box.east)) {
+      return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'ATLAS_INVALID' });
+    }
+    res.json(await atlas.atlasFor(req.user.id, { ...page, box }));
+  } catch (error) {
+    sendError(res, error, 'atlas');
+  }
+});
+
+/** DELETE /atlas/:id — Delete for good: the Moment ends, its files and picture keys go at once. */
+router.delete('/atlas/:id', async (req, res) => {
+  try {
+    await atlas.deleteForGood(req.user.id, req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'atlas_delete');
   }
 });
 

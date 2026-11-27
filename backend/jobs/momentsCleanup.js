@@ -80,12 +80,15 @@ function recheck(nowIso) {
 
 // Photo and video Moments that ended KEEP_FILES_MS ago and still have files: recorded ones, or bytes an upload stored
 // before it stopped (store.purgeFiles clears the whole folder). Held ones wait for review (a removed one doesn't).
+// A kept Moment (posted while its author's `pulse_reinvented` switch was on: My Atlas, coord CONTRACT 6e) keeps its
+// files for its author, unless moderation removed it.
 function purgeEnded() {
   const endedBefore = new Date(Date.now() - KEEP_FILES_MS).toISOString();
   return each((q) => q.lt('story_expires_at', endedBefore)
     .neq('post_metadata->moment->>kind', 'text')
     .is('post_metadata->moment->>purged_at', null)
-    .or('moderation_state.neq.held,archive_reason.eq.moderation'),
+    .or('moderation_state.neq.held,archive_reason.eq.moderation')
+    .or('post_metadata->moment->>kept.is.null,archive_reason.eq.moderation'),
   (row) => store.purgeFiles(row), 'purge');
 }
 
