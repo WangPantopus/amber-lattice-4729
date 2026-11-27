@@ -47,6 +47,10 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planField
 import app.pantopus.android.data.plans.planMessage
+import app.pantopus.android.data.pulse.ReinventedRepository
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanHandoff
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanSeed
+import app.pantopus.android.ui.screens.feed.reinvented.after.filledFrom
 import app.pantopus.android.ui.screens.plans.PlansRoutes
 import app.pantopus.android.ui.screens.plans.bring.BringDraft
 import app.pantopus.android.ui.screens.plans.bring.BringDraftItem
@@ -416,9 +420,13 @@ class HostFlowViewModel
         private val events: PlansEvents,
         private val geo: GeoApi,
         private val feature: PlansFeature,
+        private val reinvented: ReinventedRepository,
     ) : ViewModel() {
         /** The plan "Host again" copies (A5), sent as `hosted_again_from`. */
         private var againFrom: String? = null
+
+        /** "Pulse, reinvented" ("Want to come?", CONTRACT 6g): the Moment this plan starts from; null otherwise. */
+        private val fromMoment: MomentPlanSeed? = MomentPlanHandoff.take()
 
         private var placesSearch: Job? = null
         private var placesRead: Job? = null
@@ -538,7 +546,7 @@ class HostFlowViewModel
             val games = reply?.games.orEmpty()
             val verified = (repository.mineCopy() ?: repository.mine().data)?.viewer?.verifiedAddress ?: false
             // "Host as" (B1): the businesses this person may post for; none for nearly everyone.
-            val businesses = repository.hostAs().filter { it.locations.isNotEmpty() }
+            val businesses = if (fromMoment != null) emptyList() else repository.hostAs().filter { it.locations.isNotEmpty() }
             _ui.update {
                 it.copy(
                     home = home,
@@ -615,6 +623,7 @@ class HostFlowViewModel
             _ui.update { it.copy(step = HostStep.Details, draft = timed, error = null) }
             // A watch party starts on the soonest game, its chip checked and its title and time filled in (board H2, as on iOS).
             if (kind == PlanKind.WATCH_PARTY) automaticGame()?.let(::pickGame)
+            fromMoment?.let { seed -> _ui.update { it.copy(draft = it.draft.filledFrom(seed)) } }
         }
 
         /**
@@ -1199,7 +1208,7 @@ class HostFlowViewModel
                         val fix = if (ui.isPrivate) null else locations.gpsFix()
                         buildBody(kind, draft, ui, fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) })
                     }
-                when (val result = repository.create(body)) {
+                when (val result = fromMoment?.let { reinvented.startPlan(it.momentId, body) } ?: repository.create(body)) {
                     is NetworkResult.Success -> {
                         // The holidays' board 29: the new plan's page opens, with its invite sheet on the past plan's people.
                         val same = samePeopleFrom?.takeIf { ui.isPrivate }

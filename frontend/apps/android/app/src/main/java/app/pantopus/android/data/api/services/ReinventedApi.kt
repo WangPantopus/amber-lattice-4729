@@ -1,11 +1,13 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedMomentPlanResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -100,6 +102,21 @@ interface ReinventedApi {
         @Path("id") id: String,
         @Body body: ReinventedKeepBody,
     ): MomentEnvelope
+
+    /**
+     * `POST /api/reinvented/moments/:id/plan` (CONTRACT 6g), "Want to come?": the author starts a plan in Plans from
+     * their own live Moment, with exactly the body `POST /api/plans` takes and Plans' own rules, answers and errors. The
+     * query says what this app can draw, as `PlansBizInterceptor` adds it under `/api/plans`. Never a business's plan.
+     * Route `backend/routes/reinvented.js` (moments/:id/plan).
+     */
+    @POST("api/reinvented/moments/{id}/plan")
+    suspend fun startPlan(
+        @Path("id") id: String,
+        @Body body: CreatePlanBody,
+        @Query("more") more: String = "1",
+        @Query("guests") guests: String = "1",
+        @Query("extras") extras: String = "1",
+    ): ReinventedMomentPlanResponse
 
     companion object {
         /** Moments on a page of My Atlas. */

@@ -1,6 +1,8 @@
 package app.pantopus.android.data.pulse
 
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.plans.CreatePlanBody
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
@@ -87,6 +89,12 @@ class ReinventedRepository
             momentId: String,
             keep: Boolean,
         ): NetworkResult<MomentEnvelope> = guarded(behindOn404 = false) { api.keep(momentId, ReinventedKeepBody(keep)) }
+
+        /** "Want to come?" (CONTRACT 6g): the plan from the author's own Moment, answered as `POST /api/plans` answers. */
+        suspend fun startPlan(
+            momentId: String,
+            body: CreatePlanBody,
+        ): NetworkResult<PlanDto> = guarded(behindOn404 = false) { api.startPlan(momentId, body).plan }
 
         private suspend fun <T> guarded(
             behindOn404: Boolean = true,
