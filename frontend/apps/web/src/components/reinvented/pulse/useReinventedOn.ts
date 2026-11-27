@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { featureFlags } from '@pantopus/api';
 import { useMe } from '@/lib/me';
 import { useHydrated } from '@/hooks/useHydrated';
 import { usePulseReinvented } from '../usePulseReinvented';
@@ -74,7 +75,13 @@ export function useKnownOff(): boolean {
  * visitor (no viewer) is always off.
  */
 export function useKnownOn(viewerId: string | null): boolean {
-  const flag = useQuery<{ enabled?: boolean }>({ queryKey: ['featureFlag', 'pulse_reinvented'], enabled: false });
+  // Never fetched from here (`enabled: false`), but the shared query keeps the read it was made with: without a `queryFn`
+  // a later refetch of the switch (window focus, a reread) through this observer's options had none to call.
+  const flag = useQuery<{ enabled?: boolean }>({
+    queryKey: ['featureFlag', 'pulse_reinvented'],
+    queryFn: () => featureFlags.getFeatureFlag('pulse_reinvented'),
+    enabled: false,
+  });
   if (!viewerId) return false;
   if (flag.data) return flag.data.enabled === true;
   try {
