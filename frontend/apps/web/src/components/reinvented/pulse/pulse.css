@@ -462,41 +462,114 @@
   border-radius: 50%;
   background: var(--rp-brand);
 }
-.rp-scope-menu {
+.rp-dial {
   position: absolute;
   z-index: 20;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
-  width: min(340px, calc(100vw - 32px));
-  padding: 6px;
+  display: grid;
+  gap: 12px;
+  width: min(380px, calc(100vw - 24px));
+  padding: 16px;
   border: 1px solid var(--rp-line);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--rp-paper);
-  box-shadow: 0 8px 30px #0003;
+  box-shadow: 0 10px 34px #0003;
 }
-.rp-scope-menu button {
+/* On a phone the dial is a panel near the top of the window, over everything, with a scrim. */
+@media (max-width: 1023px) {
+  .rp-dial {
+    position: fixed;
+    z-index: 70;
+    top: 68px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100dvh - 150px);
+    overflow-y: auto;
+    box-shadow: 0 0 0 100vmax #0006, 0 10px 34px #0003;
+  }
+}
+.rp-dial-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.rp-dial-choices {
+  display: grid;
+  gap: 8px;
+}
+.rp-dial-choice {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 10px;
   width: 100%;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 10px;
-  background: none;
+  padding: 12px 14px;
+  border: 1px solid var(--rp-line);
+  border-radius: 14px;
+  background: var(--rp-paper);
   color: var(--rp-ink);
   text-align: left;
 }
-.rp-scope-menu button[aria-checked='true'] {
-  background: var(--rp-wash);
+.rp-dial-choice[aria-checked='true'] {
+  border: 2px solid var(--rp-brand);
+  background: color-mix(in srgb, var(--rp-brand) 8%, var(--rp-paper));
 }
-.rp-scope-menu button span {
+.rp-dial-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--rp-brand);
+}
+.rp-dial-choice[data-reach='close'] .rp-dial-dot {
+  background: #0f8a5f;
+}
+.rp-dial-words {
+  display: grid;
+  gap: 2px;
+}
+.rp-dial-words strong {
+  font-size: 16px;
+}
+.rp-dial-words span {
   color: var(--rp-muted);
   font-size: 13px;
 }
-.rp-scope-note {
-  margin: 4px 12px 6px;
+.rp-dial-miles {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rp-ink) 5%, var(--rp-paper));
+}
+.rp-dial-miles label {
+  font-size: 14px;
+  font-weight: 700;
+}
+.rp-dial-miles input {
+  width: 100%;
+  accent-color: var(--rp-brand);
+}
+.rp-dial-ends {
+  display: flex;
+  justify-content: space-between;
   color: var(--rp-muted);
   font-size: 12px;
+}
+.rp-dial-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--rp-muted);
+  font-size: 13px;
+}
+.rp-dial-foot a {
+  color: var(--rp-brand);
+  font-weight: 700;
 }
 .rp-switch {
   display: grid;

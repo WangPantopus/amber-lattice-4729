@@ -54,10 +54,11 @@ export interface Point {
 }
 
 export function readList(
-  { reach, chip, cursor, point }: { reach: Reach; chip: Chip; cursor: string | null; point: Point | null },
+  { reach, miles, chip, cursor, point }: { reach: Reach; miles: number; chip: Chip; cursor: string | null; point: Point | null },
   signal?: AbortSignal,
 ): Promise<ListPage> {
   const params: Record<string, string | number> = { reach, chip, limit: 20 };
+  if (reach === 'around') params.miles = miles;
   if (cursor) params.cursor = cursor;
   if (point && reach === 'around') {
     params.latitude = Math.round(point.latitude * 1e5) / 1e5;
