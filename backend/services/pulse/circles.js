@@ -135,6 +135,8 @@ function shapeOf(circle, viewerId, { authors, hidden, seen, tz }) {
     my_state: me?.state || null,
     // "Keep my Moments in this circle's magazine after they fade": the reader's own choice for this circle, off by default.
     my_keep_faded: Boolean(me?.keep_faded),
+    // Homes talk to homes (CONTRACT 9f): the window the reader shows this circle, or null.
+    my_window: me?.window?.label ? { label: me.window.label } : null,
     week_day: circle.week_day,
     magazine_ready: me?.state === 'in' && seen[circle.id] !== week.day,
   };
@@ -195,10 +197,23 @@ async function join(userId, id, body = {}) {
 
 /** POST /circles/:id/me — { keep_faded }: the member's own choice for this circle (off by default). */
 async function setMine(userId, id, body = {}) {
-  if (typeof body?.keep_faded !== 'boolean') throw fail(400, 'CIRCLE_INVALID', 'Send keep_faded as true or false.');
+  const hasKeep = typeof body?.keep_faded === 'boolean';
+  const hasWindow = Object.prototype.hasOwnProperty.call(body || {}, 'window');
+  if (!hasKeep && !hasWindow) throw fail(400, 'CIRCLE_INVALID', 'Send keep_faded as true or false, or a window.');
+  if (body?.keep_faded !== undefined && !hasKeep) throw fail(400, 'CIRCLE_INVALID', 'Send keep_faded as true or false.');
+  // Homes talk to homes (CONTRACT 9f): a window for the member's home, shown to this circle, with no place at all.
+  // eslint-disable-next-line global-require
+  const window = hasWindow ? await require('./windows').windowOf(userId, body.window) : undefined;
   const circle = await load(id);
   if (!memberOf(circle, userId)) throw notFound();
-  const members = circle.members.map((m) => (String(m.user_id) === String(userId) ? { ...m, keep_faded: body.keep_faded } : m));
+  const members = circle.members.map((m) => {
+    if (String(m.user_id) !== String(userId)) return m;
+    const next = { ...m, ...(hasKeep ? { keep_faded: body.keep_faded } : {}) };
+    if (hasWindow) {
+      if (window) next.window = window; else delete next.window;
+    }
+    return next;
+  });
   return one(await save(circle, { members }), userId);
 }
 
