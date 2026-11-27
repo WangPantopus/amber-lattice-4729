@@ -4,7 +4,7 @@
 // what it is and how it stands; the list's band lines already say how far it is ("Question · 3 answers", "Solved", "Spot · 8 want to go", "Plan · 4 going").
 
 import type { ComponentProps } from 'react';
-import { MapPin } from 'lucide-react';
+import { Camera, MapPin } from 'lucide-react';
 import type { Post } from '@pantopus/api';
 import PostCard from '@/components/feed/PostCard';
 import { studioPostPicture } from './StudioPostPicture';
@@ -46,11 +46,14 @@ export default function PostRow({
   point,
   onPlace,
   card,
+  onAnswer,
 }: {
   post: Post;
   point: Point | null;
   onPlace(point: Point): void;
   card: CardProps;
+  /** An open Eyes-on Ask: answer it with a Live photo from the place (CONTRACT 8f). */
+  onAnswer?(ask: { id: string; question: string }): void;
 }) {
   const status = statusLine(post);
   // Who carried it, who it came from, or an Eyes-on Ask's window (CONTRACT 8f).
@@ -75,6 +78,16 @@ export default function PostRow({
       )}
       <PostCard post={post} {...card} overMedia={studioPostPicture} />
       <PassItOn post={post} />
+      {onAnswer && (post as Post & { eyes_on?: { open: boolean } | null }).eyes_on?.open && (
+        <button
+          type="button"
+          className="rp-place-button"
+          onClick={() => onAnswer({ id: post.id, question: (post.title || post.content || '').slice(0, 80) })}
+        >
+          <Camera size={15} aria-hidden />
+          Answer with a Live photo
+        </button>
+      )}
     </div>
   );
 }

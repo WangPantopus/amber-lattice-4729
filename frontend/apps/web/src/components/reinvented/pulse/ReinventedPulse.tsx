@@ -81,6 +81,8 @@ export default function ReinventedPulse() {
   // A Retake opened from its row, and one being added to (CONTRACT 8e).
   const [retakeOpen, setRetakeOpen] = useState<string | null>(null);
   const [addingFrame, setAddingFrame] = useState<{ id: string; title: string; ghost: string | null } | null>(null);
+  // Answering an Eyes-on Ask with a Live photo (CONTRACT 8f).
+  const [answering, setAnswering] = useState<{ id: string; question: string } | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -747,6 +749,7 @@ export default function ReinventedPulse() {
                           point={itemPoint(item)}
                           onPlace={flyTo}
                           card={{ ...card, isLiking: busyIds.has(item.post.id) }}
+                          onAnswer={setAnswering}
                         />
                       )}
                     </li>
@@ -773,6 +776,18 @@ export default function ReinventedPulse() {
           onAdd={(start) => {
             setRetakeOpen(null);
             setAddingFrame(start);
+          }}
+        />
+      )}
+      {answering && account && (
+        <Studio
+          account={account}
+          eyesOnFor={answering}
+          onClose={() => setAnswering(null)}
+          onDone={(msg) => {
+            setAnswering(null);
+            setToast(msg);
+            void client.invalidateQueries({ queryKey: ['reinvented'] });
           }}
         />
       )}
