@@ -6,14 +6,14 @@
 // Taps and keys inside an item stay in it: they never step or pause the viewer.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
 import type { Moment } from '@pantopus/api/endpoints/moments';
 import { useMe } from '@/lib/me';
 import { messageOf } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isRouteGone, markServerBehind } from '../serverBehind';
-import { answerPlay, takeBackPlay, waitingItems, type PlayAnswer, type PlayFace, type PlayItem } from './playTypes';
+import { answerPlay, readAnswers, removeAnswer, takeBackPlay, waitingItems, type PlayAnswer, type PlayFace, type PlayItem } from './playTypes';
 import './play.css';
 
 type PlayMoment = Moment & { play?: PlayItem[] };
@@ -67,6 +67,9 @@ function useAnswer(moment: Moment) {
 export default function PlayLayer({ moment }: { moment: Moment }) {
   const play = (moment as PlayMoment).play || [];
   const answer = useAnswer(moment);
+  const account = useMe().data?.id;
+  // The author reads the question box's answers and the board's notes, and may remove one (§7b, the author's side).
+  const owner = account && moment.author?.id === account ? moment.id : undefined;
   if (!play.length) return null;
   return (
     <div className="pl-layer">
@@ -88,7 +91,7 @@ export default function PlayLayer({ moment }: { moment: Moment }) {
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <Card item={item} busy={answer.busy === item.id} send={(body) => answer.send(item.id, body)} />
+          <Card item={item} busy={answer.busy === item.id} send={(body) => answer.send(item.id, body)} owner={owner} />
           {answer.error?.item === item.id && (
             <p className="pl-error" role="alert">
               {answer.error.text}
@@ -107,16 +110,37 @@ interface CardProps<K extends PlayItem['kind']> {
 }
 
 /** One item's card. The Studio draws it with `open: false` and no results, as a preview of what readers get. */
-export function Card({ item, busy, send }: { item: PlayItem; busy: boolean; send(body: PlayAnswer | null): Promise<boolean> }) {
+export function Card({
+  item,
+  busy,
+  send,
+  owner,
+}: {
+  item: PlayItem;
+  busy: boolean;
+  send(body: PlayAnswer | null): Promise<boolean>;
+  /** The Moment's id when the reader is its author: their answers list. */
+  owner?: string;
+}) {
   switch (item.kind) {
     case 'poll':
       return <Poll item={item} busy={busy} send={send} />;
     case 'slider':
       return <Slider item={item} busy={busy} send={send} />;
     case 'board':
-      return <Board item={item} busy={busy} send={send} />;
+      return (
+        <>
+          <Board item={item} busy={busy} send={send} />
+          {owner && (item.results?.count ?? 0) > 0 && <Answers postId={owner} item={item.id} what="notes" />}
+        </>
+      );
     case 'question':
-      return <QuestionBox item={item} busy={busy} send={send} />;
+      return (
+        <>
+          <QuestionBox item={item} busy={busy} send={send} />
+          {owner && (item.results?.count ?? 0) > 0 && <Answers postId={owner} item={item.id} what="answers" />}
+        </>
+      );
     case 'guess':
       return <Guess item={item} busy={busy} send={send} />;
     case 'countdown':
@@ -494,6 +518,68 @@ function Countdown({ item }: { item: Extract<PlayItem, { kind: 'countdown' }> })
       <p className="pl-time" aria-live="off">
         {Number.isFinite(end) ? left(end - now) : ''}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The author's side (§7b): the question box's answers, or the board's notes, newest first, each with who gave it (a
+ * person the author isn't connected with still shows by name here: they answered under their own name) and Remove.
+ */
+function Answers({ postId, item, what }: { postId: string; item: string; what: 'answers' | 'notes' }) {
+  const client = useQueryClient();
+  const account = useMe().data?.id;
+  const [open, setOpen] = useState(false),
+    [removing, setRemoving] = useState<string | null>(null);
+  const list = useInfiniteQuery({
+    queryKey: ['reinvented', 'play-answers', postId, item],
+    queryFn: ({ pageParam, signal }) => readAnswers(postId, item, pageParam, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled: open,
+  });
+  const rows = (list.data?.pages || []).flatMap((p) => p.answers).filter((a) => (what === 'notes' ? !!a.note : true));
+  async function remove(id: string) {
+    setRemoving(id);
+    try {
+      await removeAnswer(postId, item, id);
+      await list.refetch();
+      void client.invalidateQueries({ queryKey: ['moments', 'watch', account, postId] });
+    } catch {
+      // Left as it is; the list shows it still there.
+    } finally {
+      setRemoving(null);
+    }
+  }
+  return (
+    <div className="pl-card pl-answers">
+      <button type="button" className="pl-link" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide' : what === 'notes' ? 'Read the notes' : 'Read the answers'}
+      </button>
+      {open && (
+        <>
+          {list.isPending && <p className="pl-foot">Loading…</p>}
+          {list.isError && <p className="pl-foot">Couldn’t load them. Try again.</p>}
+          {!list.isPending && !rows.length && !list.isError && <p className="pl-foot">{what === 'notes' ? 'No notes yet.' : 'No answers yet.'}</p>}
+          <ul>
+            {rows.map((a) => (
+              <li key={a.id}>
+                <span>
+                  <strong>{a.person?.first_name || a.person?.name || 'Someone'}</strong> {a.text ?? a.note}
+                </span>
+                <button type="button" className="pl-link" disabled={removing === a.id} onClick={() => void remove(a.id)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+          {list.hasNextPage && (
+            <button type="button" className="pl-link" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+              More
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

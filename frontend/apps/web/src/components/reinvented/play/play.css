@@ -445,3 +445,27 @@
   height: 18px;
   accent-color: #0369a1;
 }
+/* The author's answers list, under its item. */
+.pl-answers {
+  margin-top: 0.4em;
+  gap: 0.4em;
+  max-height: 14em;
+  overflow-y: auto;
+}
+.pl-answers ul {
+  display: grid;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-answers li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6em;
+  font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+.pl-answers li .pl-link {
+  flex: none;
+}
