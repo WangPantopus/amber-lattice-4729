@@ -28,6 +28,7 @@ const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
 const retake = require('../services/pulse/retake');
 const pinboard = require('../services/pulse/pinboard');
+const yourDay = require('../services/pulse/yourDay');
 const eyesOn = require('../services/pulse/eyesOn');
 const seal = require('../services/pulse/seal');
 const mentions = require('../services/pulse/mentions');
@@ -382,7 +383,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of', 'your_day'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
@@ -606,6 +607,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
         // Convergences (CONTRACT 8h): "Join tonight's sky: your photo stays in the piece", the author's own choice.
         ...(req.body?.join_convergence === true ? { convergence_join: true } : {}),
+        // "Your day" (CONTRACT 8k): the approved day (no trail: its line runs through the Moments' own points); it stays.
+        ...(studio ? yourDay.keptPart(req.body?.your_day) : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.
