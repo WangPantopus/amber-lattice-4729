@@ -63,7 +63,7 @@ object MomentMarksPainter {
         for (stroke in marks.strokes) {
             val pixels = ArrayList<Float>(stroke.points.size)
             stroke.points.forEachIndexed { at, value -> pixels += value * if (at % 2 == 0) width else height }
-            ink.color = stroke.ink.color.toArgb()
+            ink.color = stroke.tint ?: stroke.ink.color.toArgb()
             // Never thinner than a pixel, even on a small picture.
             ink.strokeWidth = (stroke.width * width).coerceAtLeast(1f)
             canvas.drawPath(CardSignatureInk.path(listOf(pixels)), ink)
@@ -229,6 +229,8 @@ object MomentMarksPainter {
     fun edgeColor(label: MomentLabel): Color? =
         when {
             label.style != MomentLabelStyle.Plain -> null
+            // The Studio's colour from the photo: a light edge only under dark letters.
+            label.tint != null -> onTint(label.tint, PantopusColors.momentMarksEdgeDark, PantopusColors.momentMarksEdgeLight)
             label.ink == MomentInk.Black -> PantopusColors.momentMarksEdgeLight
             else -> PantopusColors.momentMarksEdgeDark
         }
@@ -236,10 +238,20 @@ object MomentMarksPainter {
     /** The label's letters: the ink, or on a sign dark letters (white ones on a black or red sign, which read better). */
     fun letterColor(label: MomentLabel): Color =
         when {
+            // The Studio's colour from the photo: the letters in it, or on a sign of it dark or light letters.
+            label.tint != null && label.style != MomentLabelStyle.Sign -> Color(label.tint)
+            label.tint != null -> onTint(label.tint, PantopusColors.momentInkBlack, PantopusColors.momentInkWhite)
             label.style != MomentLabelStyle.Sign -> label.ink.color
             label.ink == MomentInk.Black || label.ink == MomentInk.Red -> PantopusColors.momentInkWhite
             else -> PantopusColors.momentInkBlack
         }
+
+    /** On a colour from the photo: [onLight] over a light one, [onDark] over a dark one. */
+    private fun onTint(
+        tint: Int,
+        onLight: Color,
+        onDark: Color,
+    ): Color = if (MomentPhotoColors.isLight(tint)) onLight else onDark
 
     /** The plate behind the letters: none for plain words; dark for a label (light under black ink); the ink for a sign. */
     fun boxColor(label: MomentLabel): Color? =
@@ -247,7 +259,7 @@ object MomentMarksPainter {
             MomentLabelStyle.Plain -> null
             MomentLabelStyle.Label ->
                 if (label.ink == MomentInk.Black) PantopusColors.momentMarksLabelPlate else PantopusColors.momentMarksLabelBox
-            MomentLabelStyle.Sign -> label.ink.color
+            MomentLabelStyle.Sign -> label.tint?.let { Color(it) } ?: label.ink.color
         }
 
     /**

@@ -83,24 +83,14 @@ extension PlanComposerModel {
     }
 }
 
-/// The Moment "Want to come?" is starting a plan from, set from Moment options; the viewer's pills present the composer.
+/// "Want to come?" in Moment options.
 @MainActor
-@Observable
-final class MomentPlanStart {
-    static let shared = MomentPlanStart()
-    var seed: PlanMomentSeed?
-
+enum MomentPlanStart {
     /// Offered on one's own live Moment with no plan yet, while the switch and Plans are on.
     static func offers(_ moment: MomentDTO?, mine: Bool) -> Bool {
         guard PulseReinventedFlags.shared.isOn, PlansFlags.shared.plans, mine, let moment, moment.plan == nil,
               moment.author.kind == .person, (moment.expiresAtDate ?? .distantPast) > Date() else { return false }
         return true
-    }
-}
-
-extension PlanMomentSeed: Identifiable {
-    var id: String {
-        momentId
     }
 }
 
@@ -159,37 +149,30 @@ extension MomentsViewerModel {
     }
 }
 
-/// Under the header while the switch is on: the Moment's plan, and today's plan composer when "Want to come?" was
-/// picked in Moment options.
+/// Under the header while the switch is on: the Moment's plan, opening it in Plans.
 struct MomentsViewerPlan: View {
     let model: MomentsViewerModel
-    private let start = MomentPlanStart.shared
 
     var body: some View {
-        // Always drawn (a zero-height anchor), so the composer's cover has a view to hang on with no plan yet.
-        VStack(spacing: 0) {
-            Color.clear.frame(height: 0)
-            if PulseReinventedFlags.shared.isOn, let moment = model.moment, let plan = moment.plan {
-                MomentPlanPill(plan: plan, mine: model.isMine) { model.openPlan(plan) }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 58)
-                    .padding(.top, Spacing.s1)
-            }
-        }
-        .fullScreenCover(item: Binding(get: { start.seed }, set: { start.seed = $0 })) { seed in
-            PlanComposerRoot(start: PlansHostStart(kind: .watchParty, fromMoment: seed)) { _ in
-                start.seed = nil
-                // The Moment now carries its plan: read it again.
-                model.planStarted(momentId: seed.momentId)
-            }
+        if PulseReinventedFlags.shared.isOn, let moment = model.moment, let plan = moment.plan {
+            MomentPlanPill(plan: plan, mine: model.isMine) { model.openPlan(plan) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 58)
+                .padding(.top, Spacing.s1)
         }
     }
 }
 
 extension MomentsViewerModel {
-    /// The plan was posted from this Moment: it is read again, now with its plan.
-    func planStarted(momentId: String) {
-        cache.forget(momentId)
-        retry()
+    /// "Want to come?": the viewer closes and today's Plans tab opens its composer filled from the Moment, as Today's
+    /// "Host again" hands it over (`PlansNavigator.pendingHost`). Presented there, outside the Pulse tab's stack, the
+    /// composer keeps its own sheets (the place picker's map closed a composer presented over the viewer).
+    func startPlan(from moment: MomentDTO) {
+        close()
+        PlansNavigator.shared.pendingHost = PlansHostRequest(start: PlansHostStart(
+            kind: .watchParty,
+            fromMoment: PlanMomentSeed(moment: moment)
+        ))
+        DeepLinkRouter.shared.handle(path: "/plans")
     }
 }

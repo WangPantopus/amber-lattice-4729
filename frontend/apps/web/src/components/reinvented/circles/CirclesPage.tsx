@@ -11,7 +11,8 @@ import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MomentFace } from '@/components/moments/MomentFace';
 import { useConnectionsForMentions } from '../mentions/Mentions';
-import { useReinventedOn } from '../pulse/useReinventedOn';
+import { notFound } from 'next/navigation';
+import { useKnownOff, useReinventedOn } from '../pulse/useReinventedOn';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import {
   changeCircle,
@@ -339,6 +340,7 @@ function CircleDetail({ circle, onChanged, onClose }: { circle: Circle; onChange
 
 export default function CirclesPage({ circleId, onCircle }: { circleId: string | null; onCircle(id: string | null): void }) {
   const on = useReinventedOn();
+  const off = useKnownOff();
   const client = useQueryClient();
   const reread = useRereadSwitch();
   const circles = useQuery({
@@ -353,12 +355,9 @@ export default function CirclesPage({ circleId, onCircle }: { circleId: string |
   const [making, setMaking] = useState(false);
   const refresh = () => void client.invalidateQueries({ queryKey: CIRCLES_KEY });
   const open = useMemo(() => circles.data?.circles.find((c) => c.id === circleId) || null, [circles.data, circleId]);
-  if (!on)
-    return (
-      <div className="cc-page">
-        <p className="cc-note">Circles aren’t on for you right now.</p>
-      </div>
-    );
+  // With the switch off this page is today's 404, as before it existed; nothing shows while that isn't known yet.
+  if (off) notFound();
+  if (!on) return null;
   return (
     <div className="cc-page">
       <header className="cc-head">

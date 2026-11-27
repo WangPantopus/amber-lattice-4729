@@ -2,9 +2,10 @@
 
 // The Studio's Sound tool (Pulse, reinvented, phase 2; CONTRACT §7e): Voice Spark (your own voice with your words) and
 // place sound (three seconds of where you are), on a photo or video Moment under your own name. A whisper is recorded on
-// its dot (Illuminate). Nothing is cleaned or changed: the sound goes as it was recorded.
+// its dot (Illuminate). The sound goes as it was recorded, unless the person asks to clean wind from it; a cleaned sound
+// says so to everyone (§7e: "Anything it touched is marked").
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Mic, Square, Trash2 } from 'lucide-react';
 import { canRecord, SOUND_MAX_MS, useRecorder, type Recording, type SoundKind } from './record';
 import './sound.css';
@@ -17,10 +18,13 @@ export function RecordButton({
   value,
   onChange,
   onWords,
+  cleanWind = false,
 }: {
   kind: SoundKind;
   value: Recording | null;
   onChange(r: Recording | null): void;
+  /** Clean wind from what is recorded next (a filter on this device). */
+  cleanWind?: boolean;
   /** Voice: words the browser heard while recording, where it can. */
   onWords?(text: string): void;
 }) {
@@ -30,7 +34,7 @@ export function RecordButton({
     if (rec.result && rec.result !== value) onChange(rec.result);
   }, [rec.result]); // eslint-disable-line react-hooks/exhaustive-deps
   function begin() {
-    void rec.start();
+    void rec.start({ cleanWind });
     // Where the browser can turn speech into words, it fills them in; the person can change them.
     const Speech = (window as unknown as { SpeechRecognition?: new () => SpeechLike; webkitSpeechRecognition?: new () => SpeechLike })
       .SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: new () => SpeechLike }).webkitSpeechRecognition;
@@ -71,6 +75,7 @@ export function RecordButton({
       {value && rec.state !== 'recording' && (
         <>
           <audio src={value.url} controls preload="auto" aria-label="Hear it back" />
+          {value.cleaned && <small className="sd-cleaned">Wind cleaned</small>}
           <button type="button" className="st-chip" aria-label="Take the sound off" onClick={() => onChange(null)}>
             <Trash2 aria-hidden="true" />
           </button>
@@ -106,9 +111,14 @@ export function SoundPanel({
   setPlace(r: Recording | null): void;
   onDone(): void;
 }) {
+  const [cleanWind, setCleanWind] = useState(false);
   return (
     <div className="st-toolpanel sd-panel" role="group" aria-label="Sound">
       <p className="st-hint">A Moment carries your voice or its place sound, one of the two.</p>
+      <label className="st-check">
+        <input type="checkbox" checked={cleanWind} onChange={(e) => setCleanWind(e.target.checked)} />
+        Clean wind from what I record
+      </label>
       <p className="st-tray-head">
         <strong>Your voice</strong>
         <span>Up to a minute, with your words lit as you say them</span>
@@ -121,6 +131,7 @@ export function SoundPanel({
           if (r) setPlace(null);
         }}
         onWords={setWords}
+        cleanWind={cleanWind}
       />
       {voice && (
         <input
@@ -143,6 +154,7 @@ export function SoundPanel({
           setPlace(r);
           if (r) setVoice(null);
         }}
+        cleanWind={cleanWind}
       />
       <div className="dt-row">
         <button type="button" className="st-done" onClick={onDone}>

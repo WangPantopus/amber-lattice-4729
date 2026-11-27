@@ -34,6 +34,7 @@ import {
   Pipette,
   Plus,
   RotateCw,
+  Sparkles,
   Type,
   Undo2,
   X,
@@ -63,7 +64,8 @@ import { discardJob, keepJob, pendingJobs, postJob, type Job } from '@/component
 import PenNameSetup from '@/components/penName/PenNameSetup';
 import { usePenNameMe } from '@/components/penName/penName';
 import StampLayer, { STAMP_TINT, StampIcon } from '../stamps/StampLayer';
-import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire, swatchBox } from '../play/PlayEdit';
+import { MAX_PLAY, PLAY_MAKERS, PlayEditLayer, PlayMaker, playWire, swatchBox, type PlayStart } from '../play/PlayEdit';
+import { suggestPlay } from './suggest';
 import type { PlayItem, PlayKind } from '../play/playTypes';
 import { SoundPanel } from '../sound/SoundPanel';
 import { timedWords, uploadSound, type Recording } from '../sound/record';
@@ -217,6 +219,9 @@ export default function Studio({
     // Playable items (phase 2, CONTRACT 7b) and the kind whose form is open in the tray.
     [play, setPlay] = useState<PlayItem[]>([]),
     [making, setMaking] = useState<PlayKind | 'dial' | null>(null),
+    // Illuminate's suggestion (CONTRACT 7i): where the form it opens starts, and whether the person dropped it.
+    [playStart, setPlayStart] = useState<PlayStart | null>(null),
+    [suggestDropped, setSuggestDropped] = useState(false),
     // Illuminate (phase 2, CONTRACT 7c): dots on things in the photo, and the one being changed.
     [dots, setDots] = useState<DotDraft[]>([]),
     // The picture's own width and height, for where placed things land on it (frame.ts).
@@ -530,6 +535,8 @@ export default function Studio({
   const playOn = !postKind || (mode === 'media' && !!file && !isVideo);
   const canIlluminate = mode === 'media' && !!file && (!postKind || !isVideo);
   const aiOn = usePantopusAiOn(canIlluminate);
+  // The same choice for Illuminate's suggestion, which also reads a text card's words (one shared read).
+  const suggestAiOn = usePantopusAiOn(mode !== 'none');
   // Sound goes on a photo or video Moment under the person's own name (a voice tells who someone is), not yet on a post.
   const canSound = canIlluminate && !postKind && !underPenName;
   const canBlur = mode === 'media' && !!file && !isVideo;
@@ -712,6 +719,47 @@ export default function Studio({
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
   const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
   const words = mode === 'text' ? text : caption;
+  // Illuminate's suggestion (CONTRACT 7i, the table all three apps use): one chip at most, worked out here from what the
+  // Studio holds; nothing is sent. Only while Pantopus AI is on for the person, never once the post carries a playable
+  // item or is a step deck, and not again for this post once dropped.
+  const suggestion =
+    suggestAiOn && !suggestDropped && !play.length && !deckOn && !busy && mode !== 'none'
+      ? suggestPlay({
+          caption: words,
+          picked: mode === 'media' ? files.length : 0,
+          photosOnly: mode === 'media' && files.every((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)),
+          photo: mode === 'media' && !!file && !isVideo,
+          deckMayGo: deckOffered && index === 0,
+          pairMayGo: playOn && canBlur && look === 'original' && files.length === 2 && index === 0,
+          playMayGo: playOn,
+        })
+      : null;
+  const deckBox = useRef<HTMLInputElement>(null);
+  function takeSuggestion() {
+    if (!suggestion) return;
+    if (suggestion.kind === 'deck') {
+      // The step deck's own form is its choice in the drawer: open it there.
+      setDrawerOpen(true);
+      requestAnimationFrame(() => {
+        deckBox.current?.scrollIntoView({ block: 'center' });
+        deckBox.current?.focus();
+      });
+      return;
+    }
+    const start: PlayStart =
+      suggestion.kind === 'poll'
+        ? { text: words.trim().slice(0, 100), options: suggestion.choices }
+        : suggestion.kind === 'guess'
+          ? { text: words.trim().slice(0, 100), number: true }
+          : suggestion.kind === 'question'
+            ? { text: words.trim().slice(0, 100) }
+            : suggestion.kind === 'swatch'
+              ? { colors: photoInks }
+              : { text: 'Before', second: 'After', afterPhoto: files[1] };
+    setPlayStart(start);
+    setMaking(suggestion.kind);
+    setTrayOpen(true);
+  }
   // Words that ask something offer to keep the post until it's answered (CONTRACT 6d: the app's own chip).
   const offerAsk = kindsOffered && !kind && !askDeclined && asksSomething(words);
   // A post shows at its place to people nearby, or goes to the author's connections with no place (today's composer).
@@ -1246,6 +1294,7 @@ export default function Studio({
     setExploreOn(false);
     setDrawerOpen(false);
     setFiles([]);
+    setSuggestDropped(false);
     setIndex(0);
     setCapture(null);
     setArt(blankArt());
@@ -1670,7 +1719,13 @@ export default function Studio({
         {deckOffered && (
           <div className="st-group" role="group" aria-label="Steps">
             <label className="st-check">
-              <input type="checkbox" checked={asDeck} disabled={index > 0 || !!busy} onChange={(e) => chooseDeck(e.target.checked)} />
+              <input
+                ref={deckBox}
+                type="checkbox"
+                checked={asDeck}
+                disabled={index > 0 || !!busy}
+                onChange={(e) => chooseDeck(e.target.checked)}
+              />
               Post these {files.length} as steps
             </label>
             <p className="st-note">
@@ -2293,13 +2348,18 @@ export default function Studio({
                 </p>
                 {making ? (
                   <PlayMaker
+                    key={`${making}-${playStart ? 'suggested' : 'own'}`}
                     kind={making}
                     taken={play}
+                    start={playStart ?? undefined}
                     onAdd={(item, after) => {
                       setMaking(null);
+                      setPlayStart(null);
                       if (!item) return;
                       setTrayOpen(false);
                       if (item.kind === 'before_after') {
+                        // Suggested for two photos picked together: the second is the after, and leaves the queue.
+                        if (after && files.length === 2 && after === files[1] && index === 0) setFiles([files[0]]);
                         if (after) void addAfter(item, after);
                         return;
                       }
@@ -2481,6 +2541,19 @@ export default function Studio({
                       onBlur={() => setTimeout(() => setCaretAt((c) => (c?.field === 'caption' ? null : c)), 150)}
                       placeholder={postKind === 'ask_local' ? 'Ask something' : postKind ? 'Say what it’s about' : 'Add a caption'}
                     />
+                  )}
+                  {suggestion && !tool && (
+                    <div className="st-kind-row" role="group" aria-label="Illuminate suggests">
+                      <span className="st-kind-offer">
+                        <button type="button" onClick={takeSuggestion}>
+                          <Sparkles size={15} aria-hidden="true" />
+                          {suggestion.words}
+                        </button>
+                        <button type="button" aria-label="No suggestion for this post" onClick={() => setSuggestDropped(true)}>
+                          <X size={14} strokeWidth={2.6} aria-hidden="true" />
+                        </button>
+                      </span>
+                    </div>
                   )}
                   {kindsOffered && !tool && (
                     <div className="st-kind-row">
