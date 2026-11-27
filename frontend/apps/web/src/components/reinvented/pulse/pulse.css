@@ -1348,3 +1348,17 @@
   top: 0;
   bottom: 0;
 }
+
+/* A row in the list that is the first of a deck's steps. */
+.rp-moment-steps {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(12, 18, 24, 0.66);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  pointer-events: none;
+}
