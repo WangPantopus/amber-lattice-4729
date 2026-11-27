@@ -600,8 +600,8 @@ router.post('/', createLimiter, async (req, res) => {
         ...(retakeAsk ? retake.keptPart(retakeAsk, retakeStartId) : {}),
         // Convergences (CONTRACT 8h): "Join tonight's sky: your photo stays in the piece", the author's own choice.
         ...(req.body?.join_convergence === true ? { convergence_join: true } : {}),
-        // "Your day" (CONTRACT 8k): the approved day, its path trimmed again here; it stays.
-        ...(studio ? await yourDay.keptPart(req.user.id, req.body?.your_day, { underPenName }) : {}),
+        // "Your day" (CONTRACT 8k): the approved day (no trail: its line runs through the Moments' own points); it stays.
+        ...(studio ? yourDay.keptPart(req.body?.your_day) : {}),
         // Replies people can see (CONTRACT 8a): the author's choice for this Moment, never under a made-up name.
         ...require('../services/pulse/replies').choiceAtPosting(req.body?.replies_shown, { penName: underPenName }),
         // Mentions (CONTRACT 7h): the author's connections who may see it, not blocked either way; none under a made-up name.

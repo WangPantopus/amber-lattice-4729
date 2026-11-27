@@ -1,20 +1,14 @@
 'use strict';
 
 // Pulse, reinvented, phase 3: "Your day" at 8 pm and "Tonight in <town>" (coord CONTRACT 8k; board B12). No new table.
-// Your day: the photos and the path are on the phone; the server trims the path (no point near a home, ~10 m rounding,
-// never kept) and keeps the approved day on the Moments the person posts (`your_day`). Tonight in <town>: a read of
+// Your day: no GPS trail ever leaves the phone; the approved day is the Moments the person posts with `your_day`, and its
+// line runs through their own shown points. Tonight in <town>: a read of
 // the town's Moments of that day shared with people nearby, only where a town has enough. Nothing is pushed.
 
 const { DateTime } = require('luxon');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const penName = require('../penName');
-const parsePostGISPoint = require('../../utils/parsePostGISPoint');
-const { haversineMeters } = require('../../utils/trustState');
 
-const MAX_POINTS = 500;
-const KEPT_POINTS = 200;
-// The path leaves out anything near a home: more than the home rule's 60 m, so it never leads to a door.
-const HOME_CLEAR_M = 200;
 const FILM_MIN = 8;
 const FILM_PEOPLE = 4;
 const ZONE = 'America/Los_Angeles';
@@ -29,40 +23,15 @@ function fail(status, code, message) {
   return Object.assign(new Error(message), { status, code });
 }
 
-async function homePoints(userId) {
-  // eslint-disable-next-line global-require
-  const ids = await require('../../utils/homeMailAccess').householdHomeIdsOrThrow(userId);
-  if (!ids.length) return [];
-  const { data, error } = await supabaseAdmin.from('Home').select('location').in('id', ids);
-  if (error) throw new Error(`Failed to read homes: ${error.message}`);
-  return (data || []).map((h) => parsePostGISPoint(h.location)).filter(Boolean);
-}
-
-/** The path the app may draw and post: no point within HOME_CLEAR_M of a home, rounded to ~10 m, in time order. */
-async function trimPath(userId, points) {
-  if (!Array.isArray(points) || points.length > MAX_POINTS) throw fail(400, 'YOUR_DAY_INVALID', `Send up to ${MAX_POINTS} points.`);
-  const clean = points.map((p) => ({ latitude: Number(p?.latitude), longitude: Number(p?.longitude), at: Date.parse(p?.at || '') }))
-    .filter((p) => Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180 && Number.isFinite(p.at));
-  // A home that can't be read leaves no path at all (never a path that might lead home).
-  const homes = await homePoints(userId).catch(() => null);
-  if (homes === null) throw fail(503, 'YOUR_DAY_UNAVAILABLE', "Your day couldn't be checked right now. Try again in a little while.");
-  return clean
-    .filter((p) => !homes.some((h) => haversineMeters(p.latitude, p.longitude, h.latitude, h.longitude) <= HOME_CLEAR_M))
-    .sort((a, b) => a.at - b.at)
-    .map((p) => ({ latitude: Math.round(p.latitude * 10000) / 10000, longitude: Math.round(p.longitude * 10000) / 10000, at: new Date(p.at).toISOString() }));
-}
-
-/** POST /your-day/path — { points }: the trimmed path, never kept. */
-async function path(userId, body) {
-  return { path: await trimPath(userId, body?.points) };
-}
-
-/** What a posted Moment keeps (`your_day` sent): { your_day, kept_post_at }, the path trimmed again here. */
-async function keptPart(userId, value, { underPenName }) {
+/**
+ * What a posted Moment keeps (`your_day` sent): { your_day: { v, id?, date }, kept_post_at }. No GPS trail ever leaves the
+ * phone (LEAD-3 07:43): the day's line is drawn later through the approved Moments' own shown points.
+ */
+function keptPart(value) {
   if (value == null) return {};
   if (typeof value !== 'object' || !DATE.test(String(value.date || ''))) throw fail(400, 'YOUR_DAY_INVALID', 'Send your_day with its date (YYYY-MM-DD).');
-  const trimmed = !underPenName && Array.isArray(value.path) ? (await trimPath(userId, value.path)).slice(0, KEPT_POINTS) : null;
-  return { your_day: { v: 1, date: value.date, ...(trimmed?.length ? { path: trimmed } : {}) }, kept_post_at: new Date().toISOString() };
+  const id = UUID.test(String(value.id || '')) ? String(value.id).toLowerCase() : null;
+  return { your_day: { v: 1, date: value.date, ...(id ? { id } : {}) }, kept_post_at: new Date().toISOString() };
 }
 
 async function visible(rows, viewerId) {
@@ -73,18 +42,22 @@ async function visible(rows, viewerId) {
   return standing.filter((row) => store.isOwn(row, viewerId) || (store.canSee(row, ctx) && !reported.has(row.id)));
 }
 
-/** GET /your-day/:user/:date — that person's approved day, as the reader may see it (only if they may see its first). */
+/**
+ * GET /your-day/:user/:date — that person's approved day as the reader may see it: its Moments in time order, and the
+ * line through their own shown points (a Moment at home is in the day but not on the line). Nothing finer than each
+ * Moment already shows.
+ */
 async function view(userId, date, viewerId) {
   const store = momentStore();
   if (!UUID.test(String(userId || '')) || !DATE.test(String(date || ''))) throw fail(404, 'YOUR_DAY_NOT_FOUND', 'This day could not be found.');
   const { data, error } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT).eq('is_story', true).eq('user_id', userId)
     .eq('post_metadata->moment->your_day->>date', date).order('created_at', { ascending: true }).limit(100);
   if (error) throw new Error(`Failed to load the day: ${error.message}`);
-  const rows = (data || []).filter((r) => !penName.isPenNameRow(r));
-  const first = rows.find((r) => store.meta(r).your_day?.path) || rows[0];
-  if (!first || !(await visible([first], viewerId)).length) throw fail(404, 'YOUR_DAY_NOT_FOUND', 'This day could not be found.');
-  const shown = await visible(rows, viewerId);
-  return { day: { date, path: store.meta(first).your_day.path || [], moments: await store.serializeMoments(shown, viewerId, { keptPosts: true }) } };
+  const shown = await visible((data || []).filter((r) => !penName.isPenNameRow(r)), viewerId);
+  if (!shown.length) throw fail(404, 'YOUR_DAY_NOT_FOUND', 'This day could not be found.');
+  const line = shown.filter((r) => !store.meta(r).at_home).map((r) => ({ ...store.displayedPoint(r), at: r.created_at }))
+    .filter((p) => p.latitude != null);
+  return { day: { date, line, moments: await store.serializeMoments(shown, viewerId, { keptPosts: true }) } };
 }
 
 /** POST /town-film — { latitude, longitude } in the body, never kept: tonight's film of the town, or null. */
@@ -111,8 +84,10 @@ async function townFilm(viewerId, body, now = Date.now()) {
     // eslint-disable-next-line global-require
     return (m.seal && require('./seal').isSealed(row)) || (require('../moments/momentGuess').isGuess(row) && !store.hasEnded(row));
   };
+  // Only Moments still live, or kept as posts by their authors: an ended Moment stays ended (LEAD-3 07:43).
   const candidates = (data || []).filter((row) => !penName.isPenNameRow(row) && !store.meta(row).at_home && !sealedOrGuess(row)
-    && ['photo', 'video'].includes(store.meta(row).kind));
+    && ['photo', 'video'].includes(store.meta(row).kind)
+    && (store.momentState(row, now) === 'live' || Boolean(store.meta(row).kept_post_at)));
   const authors = [...new Set(candidates.map((r) => String(r.user_id)))];
   const on = new Set((await Promise.all(authors.map(async (id) => ((await store.reinventedOn(id)) ? id : null)))).filter(Boolean));
   const rows = await visible(candidates.filter((r) => on.has(String(r.user_id))), viewerId);
@@ -128,4 +103,4 @@ async function townFilm(viewerId, body, now = Date.now()) {
   };
 }
 
-module.exports = { path, keptPart, view, townFilm, trimPath, HOME_CLEAR_M };
+module.exports = { keptPart, view, townFilm };

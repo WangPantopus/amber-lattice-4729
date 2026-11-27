@@ -653,15 +653,6 @@ router.get('/strip/sky', async (req, res) => {
 
 const yourDay = require('../services/pulse/yourDay');
 
-/** POST /your-day/path — { points }: the path the app may draw and post (no point near a home, rounded), never kept. */
-router.post('/your-day/path', async (req, res) => {
-  try {
-    res.json(await yourDay.path(req.user.id, req.body || {}));
-  } catch (error) {
-    sendError(res, error, 'your_day_path');
-  }
-});
-
 /** GET /your-day/:user/:date — that person's approved day, as the reader may see it. */
 router.get('/your-day/:user/:date', async (req, res) => {
   try {
