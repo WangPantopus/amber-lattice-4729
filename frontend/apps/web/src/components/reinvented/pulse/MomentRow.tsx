@@ -18,6 +18,8 @@ interface Props {
   now: number;
   onOpen(id: string): void;
   onPlace(point: Point): void;
+  /** Kept by its author ("Keep this?"): it stays, so no time left is drawn. */
+  kept?: boolean;
 }
 
 /** Width over height of the picture as the server sized it; the web's own frame (9:16) when unknown. */
@@ -26,7 +28,7 @@ function aspectOf(m: ListMoment): number {
   return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height : 9 / 16;
 }
 
-export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace }: Props) {
+export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false }: Props) {
   const aspect = aspectOf(m);
   // A tall picture shows a square of itself; a wide one shows whole.
   const shown = Math.min(1, aspect);
@@ -38,7 +40,7 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace }
   }
   const values = new Map<StampKind, unknown>(stamps.map((s) => [s.kind, s.value]));
   const live = isLiveHere(m, now);
-  const left = timeLeft(m.expires_at, now);
+  const left = kept ? null : timeLeft(m.expires_at, now);
   const point = !m.no_location && m.latitude != null && m.longitude != null ? { latitude: m.latitude, longitude: m.longitude } : null;
   const where = [m.place_label, bandLabel].filter(Boolean).join(' · ');
   const picture = m.kind === 'video' ? m.poster_url : m.media_url;

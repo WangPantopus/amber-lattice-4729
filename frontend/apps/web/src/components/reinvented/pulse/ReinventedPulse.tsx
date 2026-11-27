@@ -604,7 +604,17 @@ export default function ReinventedPulse() {
                           <span>{line}</span>
                         </p>
                       )}
-                      {item.type === 'moment' ? (
+                      {item.type === 'moment' && item.kept ? (
+                        // A Moment its author kept ("Keep this?", CONTRACT 6d): a post that stays, so the bordered look.
+                        <div className="rp-post rp-kept">
+                          <div className="rp-post-status">
+                            <span className="rp-status" data-tone="kept">
+                              Kept · stays
+                            </span>
+                          </div>
+                          <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={openMoment} onPlace={flyTo} kept />
+                        </div>
+                      ) : item.type === 'moment' ? (
                         <MomentRow moment={item.moment} bandLabel={label} now={now} onOpen={openMoment} onPlace={flyTo} />
                       ) : (
                         <PostRow
