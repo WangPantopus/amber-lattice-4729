@@ -529,4 +529,17 @@ router.patch('/circles/:id', contentCreationLimiter, circleRoute((req) => circle
 router.delete('/circles/:id', circleRoute(async (req) => { await circles.remove(req.user.id, req.params.id); return null; }, 'circle_remove'));
 router.get('/circles/:id/magazine', circleRoute((req) => circles.magazine(req.user.id, req.params.id, req.query.week || null, req.query.tz || null), 'circle_magazine'));
 
+// ─── Retake (CONTRACT 8e) ───────────────────────────────────────────────────
+
+const retake = require('../services/pulse/retake');
+
+/** GET /retakes/:id — a Retake (from its start or any frame): its frames by date and season, as the reader may see them. */
+router.get('/retakes/:id', async (req, res) => {
+  try {
+    res.json(await retake.view(req.params.id, req.user.id));
+  } catch (error) {
+    sendError(res, error, 'retake');
+  }
+});
+
 module.exports = router;
