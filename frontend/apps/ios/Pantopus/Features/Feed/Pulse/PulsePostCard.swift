@@ -523,7 +523,9 @@ public struct PulsePostCard: View {
     private var reactionStrip: some View {
         HStack(alignment: .center, spacing: 14) {
             // An Event's Going button sits in its attendee strip.
-            if content.reaction.kind == .emoji {
+            if let signals = content.reaction.signals {
+                PulseSignalPill(base: signals, isPicking: $showsReactionPicker)
+            } else if content.reaction.kind == .emoji {
                 reactionPill
             }
             // October 13's badge while the Pulse redesign, whose status words
@@ -744,6 +746,10 @@ private extension PulsePostCard {
     /// 2 Love, 1 Haha" and "Your reaction: Love"; none before anyone reacted,
     /// and none on an Event (its Going action names them).
     var reactionsSpoken: [String] {
+        if let signals = content.reaction.signals {
+            let shown = PostSignalStore.shared.shown(signals)
+            return shown.total == 0 ? [] : [shown.accessibilityLabel, shown.accessibilityValue].filter { !$0.isEmpty }
+        }
         let reactions = content.reaction.emoji
         guard content.reaction.kind == .emoji, !reactions.isEmpty else { return [] }
         return [reactions.accessibilityLabel, reactions.accessibilityValue].filter { !$0.isEmpty }

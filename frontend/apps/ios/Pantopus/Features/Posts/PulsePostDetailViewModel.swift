@@ -875,9 +875,10 @@ public final class PulsePostDetailViewModel {
                 + " · " + timeAndLocality
         }
         let intent = PostIntent.from(purpose: post.purpose, postType: post.postType)
-        let reactions = PostReactionKind(postType: post.postType) == .going
+        var reactions = PostReactionKind(postType: post.postType) == .going
             ? PostReactionCounts(goingCount: post.likeCount, isGoing: post.userHasLiked)
             : PostReactionCounts(emoji: post.emojiReactions)
+        if reactions.kind == .emoji { reactions.signals = PulseReinventedFlags.postSignals(post) }
         let (rows, hidden) = buildCommentRows(post.comments)
         return PulsePostDetailContent(
             post: post,

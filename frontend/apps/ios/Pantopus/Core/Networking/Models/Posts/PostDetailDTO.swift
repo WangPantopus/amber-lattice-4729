@@ -263,6 +263,10 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
     public let reactions: [PostReactionCount]
     /// The viewer's own emoji; nil before they react and from older servers.
     public let userReaction: PostReactionEmoji?
+    /// Pulse, reinvented (CONTRACT 4): the five signals' counts, sent only to a reader whose switch is on; nil otherwise.
+    public let signals: [PostSignalCountDTO]?
+    /// The reader's own signal, beside `signals`.
+    public let userSignal: String?
     public let userHasSaved: Bool
     public let userHasReposted: Bool
     public let comments: [PostCommentDTO]
@@ -360,6 +364,7 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
         case creator, home
         case userHasLiked, userHasSaved, userHasReposted
         case reactions, userReaction
+        case signals, userSignal
         case comments
         case visibility
         case audience
@@ -420,6 +425,8 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
         userHasLiked = c.lenient(Bool.self, forKey: .userHasLiked) ?? false
         reactions = c.lossyList(PostReactionCount.self, forKey: .reactions)
         userReaction = c.lenient(PostReactionEmoji.self, forKey: .userReaction)
+        signals = c.lenient(LossyList<PostSignalCountDTO>.self, forKey: .signals)?.items
+        userSignal = c.lenient(String.self, forKey: .userSignal)
         userHasSaved = c.lenient(Bool.self, forKey: .userHasSaved) ?? false
         userHasReposted = c.lenient(Bool.self, forKey: .userHasReposted) ?? false
         comments = c.lossyList(PostCommentDTO.self, forKey: .comments)
@@ -487,6 +494,8 @@ extension PostDetailDTO {
         userHasLiked = post.userHasLiked
         reactions = post.reactions
         userReaction = post.userReaction
+        signals = post.signals
+        userSignal = post.userSignal
         userHasSaved = post.userHasSaved
         userHasReposted = post.userHasReposted
         comments = []

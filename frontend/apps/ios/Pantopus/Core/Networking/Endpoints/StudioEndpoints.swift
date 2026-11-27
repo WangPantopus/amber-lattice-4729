@@ -16,6 +16,13 @@ public enum StudioEndpoints {
         return Endpoint(method: .put, path: "/api/moments/\(id)/reaction", body: MomentSignalBody(signal: signal))
     }
 
+    /// `POST /api/posts/:id/like` with `{ "signal": … }` (CONTRACT 4): one of the five signals on a Pulse post, or null
+    /// to take it back; it replaces the caller's emoji. Route `backend/routes/posts.js:3848` (like).
+    static func postSignal(postId: String, signal: String?) -> Endpoint {
+        let id = postId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? postId
+        return Endpoint(method: .post, path: "/api/posts/\(id)/like", body: PostSignalRequest(signal: signal))
+    }
+
     /// `POST /api/moments/place-preview` with `stamps: true` (CONTRACT 2a): what the tray's stamps would read for a
     /// Moment posted here now. Route `backend/routes/moments.js` (place-preview).
     public static func stampsPreview(latitude: Double, longitude: Double) -> Endpoint {
