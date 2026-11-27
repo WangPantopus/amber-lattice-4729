@@ -32,6 +32,7 @@ import type { MomentChatDraft } from '@pantopus/types';
 import { takeMomentDraft } from '@/lib/aiDraftHandoff';
 import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { useMomentsAccess } from './useMomentsAccess';
+import { usePulseReinvented } from '@/components/reinvented/usePulseReinvented';
 import type { MapTarget } from './MomentsMap';
 import { MomentFace } from './MomentFace';
 import MomentDialog from './MomentDialog';
@@ -204,6 +205,8 @@ function Board({ account }: { account: string }) {
     [areaOpen, setAreaOpen] = useState(false);
   const [editor, setEditor] = useState(false),
     [note, setNote] = useState('');
+  // "Pulse, reinvented" (one server switch): read as Moments opens, so the composer knows it the moment + is tapped.
+  usePulseReinvented();
   // A Moment Pantopus AI wrote, on its way from the assistant's chat ("Open in Moments"): the composer opens with
   // it, once, as Moments opens. Where it is pinned, the 18+ confirmation and Post stay the composer's.
   const [aiDraft, setAiDraft] = useState<MomentChatDraft | null>(null);
