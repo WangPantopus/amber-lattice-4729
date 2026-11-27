@@ -809,9 +809,14 @@ const editSchema = Joi.object({
  * with no location stays with connections and one under a made-up name with people nearby. Nobody is notified; others
  * read the change on their next read.
  */
-router.patch('/:id', actionLimiter, async (req, res, next) => {
+// Before anything else (the rate limit included, whose headers today's 404 doesn't carry): with the switch off this
+// route is skipped.
+async function reinventedOnly(req, res, next) {
+  return (await store.reinventedOn(req.user)) ? next() : next('route');
+}
+
+router.patch('/:id', reinventedOnly, actionLimiter, async (req, res) => {
   try {
-    if (!(await store.reinventedOn(req.user))) return next();
     const id = momentId(req);
     const changes = parseBody(editSchema, req.body);
     const stamps = changes.stamps === undefined ? undefined : momentStamps.parsePlacements(changes.stamps);
