@@ -133,6 +133,7 @@ import app.pantopus.android.data.api.services.SavedPlacesApi
 import app.pantopus.android.data.api.services.SchedulingApi
 import app.pantopus.android.data.api.services.SchedulingPublicApi
 import app.pantopus.android.data.api.services.SportsApi
+import app.pantopus.android.data.api.services.StudioApi
 import app.pantopus.android.data.api.services.SupportTrainActionsApi
 import app.pantopus.android.data.api.services.SupportTrainsApi
 import app.pantopus.android.data.api.services.TenantApi
@@ -854,6 +855,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideMomentsApi(retrofit: Retrofit): MomentsApi = retrofit.create(MomentsApi::class.java)
+
+    /** "Pulse, reinvented"'s own requests (the Studio's tray, and later its signals and edit). */
+    @Provides
+    @Singleton
+    fun provideStudioApi(retrofit: Retrofit): StudioApi = retrofit.create(StudioApi::class.java)
 
     /** The profile with sources: `/api/profile-page` (the page, the share parts, the avatar marks). */
     @Provides

@@ -159,6 +159,8 @@ data class MomentDto(
     @Json(name = "live_until") val liveUntil: String? = null,
     /** The weather when it was posted ("31°F · Snow"); only on a Moment taken here whose author showed it. */
     val weather: MomentWeatherDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 2c): the stamps placed on it, with their values; only to a person whose switch is on. */
+    val stamps: List<MomentStampDto>? = null,
 )
 
 /**
@@ -375,6 +377,10 @@ data class CreateMomentBody(
      * "Moments"); left out otherwise.
      */
     @Json(name = "post_as") val postAs: String? = null,
+    /** "Pulse, reinvented"'s Studio: the stamps placed on it (CONTRACT 2b); left out otherwise. */
+    val stamps: List<MomentStampPlacement>? = null,
+    /** The Studio: the height reading for an elevation stamp (CONTRACT 2b); left out otherwise. */
+    val elevation: MomentAltitudeBody? = null,
 )
 
 /**

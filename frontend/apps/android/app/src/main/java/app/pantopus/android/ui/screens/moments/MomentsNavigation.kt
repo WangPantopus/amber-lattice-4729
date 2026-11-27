@@ -70,7 +70,13 @@ fun NavGraphBuilder.momentsRoutes(
     external: MomentsExternalRoutes,
 ) {
     composable(MomentsRoutes.WATCH) {
-        MomentsViewerScreen(onClose = { if (!nav.popBackStack()) external.openMap() }, onOpenProfile = external.openProfile)
+        // "Pulse, reinvented": with its switch on for the person, the viewer also draws the Moment's stamps.
+        val gate: MomentsStudioGateViewModel = hiltViewModel()
+        MomentsViewerScreen(
+            onClose = { if (!nav.popBackStack()) external.openMap() },
+            onOpenProfile = external.openProfile,
+            studio = gate.studio,
+        )
     }
     composable(
         route = MomentsRoutes.COMPOSE,
