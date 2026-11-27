@@ -38,6 +38,7 @@ import { removeUserFromFeedCaches } from '@/hooks/useFeedData';
 import SourcesProfile from '@/components/profile/sources/SourcesProfile';
 import { isProfilePage } from '@/components/profile/sources/contract';
 import ShareSheet from '@/components/profile/sources/ShareSheet';
+import Cabinet from '@/components/reinvented/cabinet/Cabinet';
 
 type RelationshipState = 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
 type ProfileTab = 'posts' | 'about' | 'work' | 'missions';
@@ -1601,12 +1602,18 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
           </span>
         </button>
       ) : null}
-      afterPage={showOwnerOnly ? (
-        <div className="mt-7 flex flex-col gap-7 pb-4">
-          <MonthLine />
-          <AccountSection />
-        </div>
-      ) : null}
+      afterPage={(
+        <>
+          {/* Pulse, reinvented: the cabinet (CONTRACT 9d), only while the switch is on and the server lets this reader see it */}
+          <Cabinet personId={String(profile.id)} viewerId={currentUser?.id ? String(currentUser.id) : null} own={Boolean(isOwnProfile)} enabled={Boolean(viewerReady && signedIn && profile.id && !blocked && !previewing)} />
+          {showOwnerOnly ? (
+            <div className="mt-7 flex flex-col gap-7 pb-4">
+              <MonthLine />
+              <AccountSection />
+            </div>
+          ) : null}
+        </>
+      )}
       postsReadable={Boolean(mounted && viewerReady && signedIn && !anyoneView && !blocked)}
       previewAs={previewing ? PREVIEW_VIEW[previewAudience!] : null}
       signedOut={anyoneView}
@@ -1685,6 +1692,8 @@ function ProfileContent({ username, initialProfile, initialPage = null, ownerHom
                 prompts={viewProfile.prompts}
                 editHref={showOwnerOnly ? '/app/profile/edit#prompts' : null}
               />
+              {/* Pulse, reinvented: the cabinet (CONTRACT 9d), only while the switch is on and the server lets this reader see it */}
+              <Cabinet personId={String(profile.id)} viewerId={currentUser?.id ? String(currentUser.id) : null} own={Boolean(isOwnProfile)} enabled={Boolean(viewerReady && signedIn && profile.id && !blocked && !previewing)} />
             </div>
             <div className="min-w-0 mt-7 lg:mt-0">
               <PinnedPostsRow

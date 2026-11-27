@@ -32,8 +32,6 @@ struct ReinventedPulseView: View {
     @State private var atlas = ReinventedAtlasModel()
     @State private var inAtlas = false
     @State private var atlasItem: MomentDTO?
-    /// + : the Studio, as the Moments tab's + opens it (`MomentsComposerChoice`).
-    @State private var composing: MomentsComposeRequest?
     /// "This Moment has ended." after a link to one that can't be played.
     @State private var linkNote: String?
     @Environment(\.colorScheme) private var colorScheme
@@ -81,11 +79,9 @@ struct ReinventedPulseView: View {
         .alert(linkNote ?? "", isPresented: Binding(get: { linkNote != nil }, set: { if !$0 { linkNote = nil } })) {
             Button("OK", role: .cancel) {}
         }
-        .fullScreenCover(item: $composing) { request in
-            MomentsComposerChoice(request: request) {
-                composing = nil
-                Task { await model.refresh() }
-            }
+        // The Studio closed (`ReinventedStudioCover`, on the Pulse tab's root): what it posted may be in the list.
+        .onChange(of: ReinventedStudioPresenter.shared.closings) { _, _ in
+            Task { await model.refresh() }
         }
         .fullScreenCover(item: $watching) { session in
             MomentsViewer(
@@ -105,7 +101,7 @@ struct ReinventedPulseView: View {
     /// One camera (PHASE-1 §2.11): + opens the Studio. Its "+ Ask / Kind" comes with that piece.
     private var addButton: some View {
         Button {
-            composing = MomentsComposeRequest(model: MomentsComposerModel(), studio: true)
+            ReinventedStudioPresenter.shared.composing = MomentsComposeRequest(model: MomentsComposerModel(), studio: true)
         } label: {
             Icon(.plus, size: 26, strokeWidth: 2.6, color: .white)
                 .frame(width: 58, height: 58)

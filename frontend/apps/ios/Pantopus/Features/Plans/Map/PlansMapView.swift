@@ -244,6 +244,8 @@ struct PlansHostStart: Hashable {
     var again: PlanDetailDTO?
     /// Board 29's "Plan the next one with the same people": once posted, the invite sheet opens on this plan's people.
     var samePeopleFrom: String?
+    /// "Pulse, reinvented" "Want to come?": the person's own Moment the plan starts from (`MomentPlan.swift`).
+    var fromMoment: PlanMomentSeed?
 }
 
 /// The region that shows some points inside a window of the map (a rect in

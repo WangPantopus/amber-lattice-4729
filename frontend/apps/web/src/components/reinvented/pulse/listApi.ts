@@ -227,6 +227,8 @@ export type ExploreItem =
 export interface ExplorePage {
   /** "Today, elsewhere": up to ten, on the first page only (null after). */
   picked: ExploreItem[] | null;
+  /** Near the places the reader follows (CONTRACT 9c): up to ten, on the first page only (null after; absent before 9c). */
+  followed?: ExploreItem[] | null;
   items: ExploreItem[];
   next_cursor: string | null;
   /** "Keep exploring?" while there is more; null at the end. */

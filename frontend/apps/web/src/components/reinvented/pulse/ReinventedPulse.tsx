@@ -30,6 +30,11 @@ import AtlasView, { AtlasItem, dropFromAtlas } from './AtlasView';
 import AliveStrip from './AliveStrip';
 import { useLinkedMoment, useLinkedSky } from './momentLinks';
 import { readBeams } from './mapLight';
+import AskTheMap, { type Lit } from './AskTheMap';
+import FollowedPlaces, { useFollow } from './FollowedPlaces';
+import Constellations from './Constellations';
+import Echoes from '../echoes/Echoes';
+import Windows from '../circles/Windows';
 import ReachDial from './ReachDial';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
@@ -98,6 +103,9 @@ export default function ReinventedPulse() {
   // Answering an Eyes-on Ask with a Live photo (CONTRACT 8f).
   const [answering, setAnswering] = useState<{ id: string; question: string } | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
+  // Ask the map (CONTRACT 9b): the pins lit for the words asked; the rest dim. Cleared with a new reach, view or time.
+  const [lit, setLit] = useState<Lit | null>(null);
+  useEffect(() => setLit(null), [reach, view, time]);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
@@ -147,9 +155,14 @@ export default function ReinventedPulse() {
   }, [explore.error, reread]);
   const explored = useMemo(() => {
     const pages = explore.data?.pages || [];
-    return { picked: pages[0]?.picked || [], items: pages.flatMap((p) => p.items), pause: pages[pages.length - 1]?.pause ?? null };
+    return {
+      followed: pages[0]?.followed || [],
+      picked: pages[0]?.picked || [],
+      items: pages.flatMap((p) => p.items),
+      pause: pages[pages.length - 1]?.pause ?? null,
+    };
   }, [explore.data]);
-  const exploreAll = useMemo(() => [...explored.picked, ...explored.items], [explored]);
+  const exploreAll = useMemo(() => [...explored.followed, ...explored.picked, ...explored.items], [explored]);
   const exploreMoments = useMemo(() => exploreAll.flatMap((i) => (i.type === 'moment' ? [i.moment] : [])), [exploreAll]);
   // What the map fits itself to in Explore: the Moments and posts listed, wherever in the world they are.
   const exploreListItems = useMemo<ListItem[]>(
@@ -178,7 +191,8 @@ export default function ReinventedPulse() {
   const beams = useQuery({
     queryKey: ['reinvented', 'beams', account, box],
     queryFn: ({ signal }) => readBeams(box!, signal),
-    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && time === 'live',
+    // Only after the list's first page has come, so nothing competes with what opens the tab (LEAD-3 11:05).
+    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && time === 'live' && !!list.data,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
     refetchInterval: 2 * 60_000,
@@ -456,6 +470,19 @@ export default function ReinventedPulse() {
     },
     [exploreMoments],
   );
+  // "Follow <place>" on an Explore item (CONTRACT 9c): its place as everyone sees it, named as the item names it.
+  const follow = useFollow(account ?? '');
+  const followOf = useCallback(
+    (item: ExploreItem) => {
+      const point = item.type === 'moment' ? (item.moment.no_location ? null : itemPoint({ type: 'moment', id: item.id, band: null, moment: item.moment })) : itemPoint({ type: 'post', id: item.id, band: null, post: item.post });
+      // The town the server names ("New from Kyoto"), else the place the item shows.
+      const town = /^New from (.+)$/.exec(item.why || '')?.[1];
+      const label = (town || (item.type === 'moment' ? item.moment.place_label : (item.post as { location_name?: string | null }).location_name))?.trim();
+      if (!account || !point || !label || label === 'Nearby') return null;
+      return { label, run: () => follow({ label, latitude: point.latitude, longitude: point.longitude }) };
+    },
+    [account, follow],
+  );
   const flyTo = useCallback((p: Point) => {
     setFly({ ...p, serial: Date.now() });
     setHeight((h) => (h === 'list' ? 'middle' : h));
@@ -601,6 +628,9 @@ export default function ReinventedPulse() {
           ))}
         </div>
       )}
+      {view === 'pulse' && reach !== 'explore' && (height === 'map' || sideBySide) && (
+        <AskTheMap box={box} time={time} data={map.data} lit={lit} shown={lit ? pins.filter((p) => lit.pins.has(p.key)).length : 0} onLit={setLit} />
+      )}
     </header>
   );
 
@@ -618,6 +648,7 @@ export default function ReinventedPulse() {
           onBox={onBox}
           onPick={onPick}
           float={view === 'pulse' && reach !== 'explore' && !!map.data?.heights_on && !!map.data?.float_on}
+          lit={view === 'pulse' && reach !== 'explore' ? lit : null}
           beams={view === 'pulse' && reach !== 'explore' && time === 'live' ? beams.data?.beams : undefined}
         />
       </div>
@@ -670,7 +701,23 @@ export default function ReinventedPulse() {
         )}
         <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
           {view === 'atlas' && account ? (
-            <AtlasView account={account} onOpen={setAtlasItem} />
+            <AtlasView
+              account={account}
+              constellations={
+                <Constellations
+                  account={account}
+                  place={fallback}
+                  onRetake={setRetakeOpen}
+                  onSky={setSkyOpen}
+                  onMoment={(id) => setViewing({ id, ids: [id] })}
+                  onPost={openPost}
+                  onPlace={flyTo}
+                />
+              }
+              onOpen={setAtlasItem}
+              onFound={(m) => (m.author?.id === account ? setAtlasItem(m) : setViewing({ id: m.id, ids: [m.id] }))}
+              onPlace={flyTo}
+            />
           ) : reach === 'explore' ? (
             explore.isError && !isSwitchedOff(explore.error) ? (
               <div className="rp-empty">
@@ -681,6 +728,9 @@ export default function ReinventedPulse() {
               </div>
             ) : (
               <ExploreView
+                followed={explored.followed}
+                places={account ? <FollowedPlaces account={account} near={home ? { lat: home.lat, lng: home.lng } : null} /> : null}
+                followOf={followOf}
                 picked={explored.picked}
                 items={explored.items}
                 pause={explored.pause}
@@ -724,6 +774,12 @@ export default function ReinventedPulse() {
             </div>
           ) : (
             <>
+              {/* Homes talk to homes (CONTRACT 9f): the circles' windows, at the top of Close circle. */}
+              {reach === 'close' && account && <Windows account={account} />}
+              {/* Echoes (CONTRACT 9e): nothing is pushed; in the evening, by the reader's own clock, they show here too. */}
+              {reach === 'around' && account && !!first && chip === 'all' && new Date(now).getHours() >= 18 && (
+                <Echoes account={account} onOpen={(id) => setViewing({ id, ids: [id] })} />
+              )}
               {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
                 <TownFilm account={account} place={fallback} ready={!!first} now={now} onPlay={(ids, start) => setViewing({ id: start, ids })} />
               )}

@@ -48,6 +48,8 @@ struct MomentsComposerChoice: View {
                 // Nor the Studio's pens and letterings: today's Text and Draw make lines and labels as before. What was
                 // already drawn or written stays on the picture, and cutouts are drawn into it.
                 request.model.drawInStudioCutouts()
+                // Nor today's post kinds: a picked kind's words go back to the caption.
+                request.model.clearStudioKind()
                 request.model.marking.studio = nil
             }
         }
@@ -100,7 +102,11 @@ struct MomentsStudioComposer: View {
         .onAppear { Task { await model.start() } }
         // Back to the camera, or on to the next of several picked together: the stamps were that picture's.
         .onChange(of: model.draft == nil) { _, gone in
-            if gone { model.studioStamps = [] }
+            if gone {
+                model.studioStamps = []
+                // And the kind picked for it ("+ Ask / Kind"): the next picture starts as a Moment.
+                model.marking.studio?.post = MomentsStudioPostDraft()
+            }
         }
         .onChange(of: model.waiting.count) { _, _ in model.studioStamps = [] }
         .onChange(of: model.wantsCamera, initial: true) { _, wants in

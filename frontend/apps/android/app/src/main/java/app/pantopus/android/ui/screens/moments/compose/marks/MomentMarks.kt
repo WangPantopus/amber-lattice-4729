@@ -90,6 +90,8 @@ data class MomentLabel(
     val ink: MomentInk,
     /** Degrees clockwise about its middle, in (−180, 180] (step R3); 0 when made. */
     val turn: Float = 0f,
+    /** "Pulse, reinvented"'s Studio: its lettering; [MomentFont.Classic], today's bold system font, everywhere else. */
+    val font: MomentFont = MomentFont.Classic,
 )
 
 /** Everything written and drawn on one picture. */
@@ -133,6 +135,8 @@ data class MomentMarksEditing(
     val placementAtOpen: MomentPlacement? = null,
     /** Resize: a finger has moved the picture in this visit (its hint goes). */
     val gestured: Boolean = false,
+    /** "Pulse, reinvented"'s Studio: the lettering for new labels; today's (Classic) everywhere else. */
+    val font: MomentFont = MomentFont.Classic,
 ) {
     /** The marks as Done keeps them. */
     val result: MomentMarks get() = marks.kept
@@ -173,7 +177,7 @@ data class MomentMarksEditing(
         val settled = unpicked().copy(addsLabel = false)
         if (!settled.roomForLabel) return settled
         val id = (settled.marks.labels.maxOfOrNull { it.id } ?: 0) + 1
-        val label = kept(MomentLabel(id, "", x, y, size, style, textInk))
+        val label = kept(MomentLabel(id, "", x, y, size, style, textInk, font = font))
         return settled.copy(marks = settled.marks.copy(labels = settled.marks.labels + label), selected = id, typing = true)
     }
 
@@ -221,6 +225,9 @@ data class MomentMarksEditing(
 
     /** Text's ink: the picked label takes it, and so do new ones. */
     fun inked(ink: MomentInk): MomentMarksEditing = (picked?.let { changed(it.copy(ink = ink)) } ?: this).copy(textInk = ink)
+
+    /** The Studio's lettering: on the picked label, and for the next ones. */
+    fun fonted(font: MomentFont): MomentMarksEditing = (picked?.let { changed(it.copy(font = font)) } ?: this).copy(font = font)
 }
 
 /** The limits both phones keep, and the part of a picture every phone shows (the same numbers as iPhone's). */

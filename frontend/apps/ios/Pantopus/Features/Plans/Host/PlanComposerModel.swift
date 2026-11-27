@@ -8,6 +8,8 @@
 //  people they accept (never for playdates, decision D6).
 //
 
+// swiftlint:disable file_length type_body_length
+
 import Foundation
 import Observation
 
@@ -74,6 +76,8 @@ final class PlanComposerModel {
     private(set) var previewArea: String?
     private(set) var hostName = "You"
     var hostedAgainFrom: String?
+    /// "Pulse, reinvented" "Want to come?": the person's own Moment the plan starts from; it posts on the Moment's route.
+    var fromMoment: String?
     private(set) var verifiedAddress: Bool
     @ObservationIgnored var autoTitle: String?
     @ObservationIgnored private var kindChosen: Bool
@@ -83,7 +87,7 @@ final class PlanComposerModel {
 
     init(start: PlansHostStart?, api: APIClient = .shared, location: any LocationProviding = DeviceLocationProvider.shared) {
         kind = start?.kind ?? .watchParty
-        kindChosen = start != nil
+        kindChosen = start != nil && start?.fromMoment == nil
         // H7's "Verified" badge only: unknown means no (anyone may host a playdate since November 7).
         verifiedAddress = PlansStoreReads.peekMine()?.viewer?.verifiedAddress ?? false
         game = start?.game
@@ -93,6 +97,7 @@ final class PlanComposerModel {
         startTitle()
         if let game = start?.game { pick(game) }
         if let again = start?.again { repeatPlan(again) }
+        if let seed = start?.fromMoment { startFromMoment(seed) }
     }
 
     func load() async {
@@ -220,7 +225,11 @@ final class PlanComposerModel {
         postError = nil
         defer { isPosting = false }
         do {
-            let reply: PlanCreatedResponse = try await api.request(PlansEndpoints.create(body))
+            let reply: PlanCreatedResponse = if let fromMoment {
+                try await api.request(MomentPlanEndpoints.start(momentId: fromMoment, body), as: MomentPlanStartedResponse.self).plan
+            } else {
+                try await api.request(PlansEndpoints.create(body))
+            }
             privacy.noteInvites(reply)
             posted = reply.plan
             PlansStoreReads.changed(planId: reply.plan.id)

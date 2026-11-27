@@ -14,7 +14,9 @@ const KEY = ['reinvented', 'settings'];
 
 // The person's own choices (CONTRACT 7d, 8c): Pantopus AI, and whether their Want to go and their posts may tell someone
 // "you went because of them" (on unless they turned it off).
-type Choices = { pantopus_ai: boolean; strands?: boolean };
+// The cabinet (CONTRACT 9d): whether people they know may see it (on unless they turned it off).
+// Echoes (CONTRACT 9e): off (the default), on (counted only), or names (first name shown to others who show theirs).
+type Choices = { pantopus_ai: boolean; strands?: boolean; cabinet_shown?: boolean; echoes?: 'off' | 'on' | 'names' };
 
 export default function PantopusAiSetting() {
   const on = useReinventedOn();
@@ -31,9 +33,16 @@ export default function PantopusAiSetting() {
   if (!on || !settings.data) return null;
   const checked = settings.data.pantopus_ai === true;
   const strands = settings.data.strands !== false;
-  async function change(field: keyof Choices, next: boolean) {
+  const cabinet = settings.data.cabinet_shown !== false;
+  const echoes = settings.data.echoes ?? 'off';
+  // The Echoes rows set one choice: the first turns it on (keeping names if chosen) or off; the second picks names.
+  type Row = keyof Choices | 'echoes_names';
+  async function change(row: Row, flipped: boolean) {
     if (busy || !settings.data) return;
     const before = settings.data;
+    const field: keyof Choices = row === 'echoes_names' ? 'echoes' : row;
+    const next =
+      row === 'echoes' ? (flipped ? (echoes === 'names' ? 'names' : 'on') : 'off') : row === 'echoes_names' ? (flipped ? 'names' : 'on') : flipped;
     setBusy(true);
     setError('');
     client.setQueryData(KEY, { ...before, [field]: next });
@@ -46,7 +55,7 @@ export default function PantopusAiSetting() {
       setBusy(false);
     }
   }
-  const toggle = (label: string, on: boolean, field: keyof Choices) => (
+  const toggle = (label: string, on: boolean, field: Row) => (
     <button
       type="button"
       role="switch"
@@ -95,6 +104,39 @@ export default function PantopusAiSetting() {
           {toggle('Tell people when their post led me somewhere', strands, 'strands')}
         </div>
         <StrandsImIn />
+      </div>
+      <div className="bg-surface rounded-xl border border-app p-6">
+        <h2 className="text-lg font-semibold text-app mb-4">Your cabinet</h2>
+        <div className="flex items-center justify-between gap-4 py-3">
+          <div className="flex-1">
+            <p className="font-medium text-app">Show my cabinet to people I know</p>
+            <p className="text-sm text-app-secondary">
+              Places stood, heights, specimens, questions helped, strands and canvases. Never who follows you. Off: only you see
+              it.
+            </p>
+          </div>
+          {toggle('Show my cabinet to people I know', cabinet, 'cabinet_shown')}
+        </div>
+      </div>
+      <div className="bg-surface rounded-xl border border-app p-6">
+        <h2 className="text-lg font-semibold text-app mb-4">Echoes</h2>
+        <div className="flex items-center justify-between gap-4 py-3">
+          <div className="flex-1">
+            <p className="font-medium text-app">Echoes: tell me when others caught the same moment</p>
+            <p className="text-sm text-app-secondary">
+              Public places only, never at home. Others who chose Echoes are counted; nobody is named unless both of you say yes.
+            </p>
+          </div>
+          {toggle('Echoes: tell me when others caught the same moment', echoes !== 'off', 'echoes')}
+        </div>
+        {echoes !== 'off' && (
+          <div className="flex items-center justify-between gap-4 py-3 border-t border-app">
+            <div className="flex-1">
+              <p className="font-medium text-app">Show my first name to others who show theirs</p>
+            </div>
+            {toggle('Show my first name to others who show theirs', echoes === 'names', 'echoes_names')}
+          </div>
+        )}
       </div>
     </>
   );
