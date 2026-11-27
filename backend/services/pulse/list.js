@@ -531,4 +531,6 @@ function chipsFromItems(found) {
   return CHIP_NAMES.filter((name) => name === 'all' || have.has(name));
 }
 
-module.exports = { listFor, bandsUpTo, CHIP_NAMES, REACHES, MAX_MILES, END_LINES };
+module.exports = {
+  listFor, bandsUpTo, bandIndexOf, boxAround, readerPlace, CHIP_NAMES, REACHES, MAX_MILES, END_LINES,
+};

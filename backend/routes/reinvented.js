@@ -8,6 +8,7 @@ const verifyToken = require('../middleware/verifyToken');
 const logger = require('../utils/logger');
 const store = require('../services/moments/momentStore');
 const list = require('../services/pulse/list');
+const pulseMap = require('../services/pulse/map');
 
 const router = express.Router();
 
@@ -44,6 +45,47 @@ router.get('/list', async (req, res) => {
     res.json(await list.listFor(req.user.id, value));
   } catch (error) {
     sendError(res, error, 'list');
+  }
+});
+
+// The map's box, as GET /api/moments/map takes it.
+const mapSchema = Joi.object({
+  south: Joi.number().min(-90).max(90).required(),
+  west: Joi.number().min(-180).max(180).required(),
+  north: Joi.number().min(-90).max(90).required(),
+  east: Joi.number().min(-180).max(180).required(),
+  zoom: Joi.number().min(0).max(25),
+  time: Joi.string().valid(...pulseMap.TIMES).default('live'),
+});
+
+/** GET /map — the one map for a box and a time: rings, marks, tickets, guess spots (CONTRACT 6b). */
+router.get('/map', async (req, res) => {
+  try {
+    const { error, value } = mapSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'MAP_INVALID' });
+    const { time, zoom: _zoom, ...box } = value;
+    if (box.south >= box.north || box.west >= box.east) {
+      return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'MAP_INVALID' });
+    }
+    res.json(await pulseMap.mapFor(req.user, box, { time }));
+  } catch (error) {
+    sendError(res, error, 'map');
+  }
+});
+
+const stripSchema = Joi.object({
+  latitude: Joi.number().min(-90).max(90),
+  longitude: Joi.number().min(-180).max(180),
+}).and('latitude', 'longitude');
+
+/** GET /strip — "Alive right now": Live from here, plans starting soon, rings of people you know (CONTRACT 6c). */
+router.get('/strip', async (req, res) => {
+  try {
+    const { error, value } = stripSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'STRIP_INVALID' });
+    res.json(await pulseMap.stripFor(req.user, value));
+  } catch (error) {
+    sendError(res, error, 'strip');
   }
 });
 
