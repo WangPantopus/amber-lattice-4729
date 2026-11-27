@@ -179,6 +179,7 @@ public final class GigDetailViewModel {
     private var realtimeTasks: [Task<Void, Never>] = []
     private let roomEvents: @MainActor (String) -> AsyncStream<GigRoomEvent>
     private let emitRoom: @MainActor (_ event: String, _ gigId: String) -> Void
+    private let roomConnection: @MainActor () -> AsyncStream<SocketClient.ConnectionState>
 
     /// Transient tip-flow status, surfaced by the view as a toast.
     public enum TipStatus: Sendable, Equatable {
@@ -350,6 +351,9 @@ public final class GigDetailViewModel {
         },
         emitRoom: @escaping @MainActor (String, String) -> Void = { event, gigId in
             SocketClient.shared.emit(event, payload: ["gigId": gigId])
+        },
+        roomConnection: @escaping @MainActor () -> AsyncStream<SocketClient.ConnectionState> = {
+            SocketClient.shared.connectionStates()
         }
     ) {
         self.gigId = gigId
@@ -367,6 +371,7 @@ public final class GigDetailViewModel {
         self.liveActivity = liveActivity
         self.roomEvents = roomEvents
         self.emitRoom = emitRoom
+        self.roomConnection = roomConnection
     }
 
     /// The signed-in user id, or `nil` when signed out. Mirrors
@@ -2266,6 +2271,10 @@ public extension GigDetailViewModel {
 
     /// Join the `gig:<id>` room and refetch on any room event for this
     /// gig. Call from the view's `.task`; paired with `stopRealtime()`.
+    /// The server drops room membership with each connection (the socket
+    /// closes when the app goes to the background, and on a network drop or
+    /// a token rotation), so each reconnect joins again, as Android does, and
+    /// refetches what the room said meanwhile.
     func startRealtime() {
         guard realtimeTasks.isEmpty else { return }
         emitRoom("gig:join", gigId)
@@ -2279,6 +2288,21 @@ public extension GigDetailViewModel {
                 }
             })
         }
+        let connection = roomConnection()
+        realtimeTasks.append(Task { [weak self] in
+            // The first state is the socket's as the screen starts listening:
+            // connected means the join above reached the server.
+            var wasConnected: Bool?
+            for await state in connection {
+                guard let self, !Task.isCancelled else { return }
+                let connected = state == .connected
+                if connected, wasConnected == false {
+                    emitRoom("gig:join", gigId)
+                    await refreshSilently()
+                }
+                wasConnected = connected
+            }
+        })
     }
 
     /// Leave the room and tear down the listeners.

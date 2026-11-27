@@ -92,28 +92,23 @@ public enum PantopusTextStyle: Sendable {
     public func cased(_ string: String) -> String {
         isUppercased ? string.uppercased() : string
     }
-
-    /// System Dynamic Type text style this role scales with.
-    public var textStyle: Font.TextStyle {
-        Font.TextStyle.nearest(to: size)
-    }
 }
 
 public extension Theme.Font {
-    /// `h1` — 30/36 target, bold, -0.020em; scales with Dynamic Type (`.title`).
-    static let h1 = Font.system(PantopusTextStyle.h1.textStyle, design: .default, weight: .bold)
-    /// `h2` — 24/32 target, semibold, -0.015em; scales with Dynamic Type (`.title2`).
-    static let h2 = Font.system(PantopusTextStyle.h2.textStyle, design: .default, weight: .semibold)
-    /// `h3` — 20/28 target, semibold; scales with Dynamic Type (`.title3`).
-    static let h3 = Font.system(PantopusTextStyle.h3.textStyle, design: .default, weight: .semibold)
-    /// `body` — 16/24 target, regular; scales with Dynamic Type (`.callout`).
-    static let body = Font.system(PantopusTextStyle.body.textStyle, design: .default, weight: .regular)
-    /// `small` — 14/20 target, regular; scales with Dynamic Type (`.subheadline`).
-    static let small = Font.system(PantopusTextStyle.small.textStyle, design: .default, weight: .regular)
-    /// `caption` — 12/16 target, regular; scales with Dynamic Type (`.caption`).
-    static let caption = Font.system(PantopusTextStyle.caption.textStyle, design: .default, weight: .regular)
-    /// `overline` — 11/16 target, semibold, +0.06em, UPPERCASE; scales with Dynamic Type (`.caption2`).
-    static let overline = Font.system(PantopusTextStyle.overline.textStyle, design: .default, weight: .semibold)
+    /// `h1` — 30/36, bold, -0.020em.
+    static let h1 = Font.system(size: PantopusTextStyle.h1.size, weight: .bold, design: .default)
+    /// `h2` — 24/32, semibold, -0.015em.
+    static let h2 = Font.system(size: PantopusTextStyle.h2.size, weight: .semibold, design: .default)
+    /// `h3` — 20/28, semibold.
+    static let h3 = Font.system(size: PantopusTextStyle.h3.size, weight: .semibold, design: .default)
+    /// `body` — 16/24, regular.
+    static let body = Font.system(size: PantopusTextStyle.body.size, weight: .regular, design: .default)
+    /// `small` — 14/20, regular.
+    static let small = Font.system(size: PantopusTextStyle.small.size, weight: .regular, design: .default)
+    /// `caption` — 12/16, regular.
+    static let caption = Font.system(size: PantopusTextStyle.caption.size, weight: .regular, design: .default)
+    /// `overline` — 11/16, semibold, +0.06em, UPPERCASE.
+    static let overline = Font.system(size: PantopusTextStyle.overline.size, weight: .semibold, design: .default)
 
     /// Resolve the system `Font` for a given role.
     static func role(_ role: PantopusTextStyle) -> Font {
