@@ -187,6 +187,7 @@ struct ReinventedPulseList: View {
         let cards = model.cards
         let postId = card.id
         let reply: @MainActor () -> Void = { onOpenPost(postId) }
+        let going: @MainActor () -> Void = { Task { await cards.tapReaction(postId: postId) } }
         return VStack(alignment: .leading, spacing: 0) {
             if let status = Self.status(of: card) {
                 Text(status)
@@ -200,7 +201,7 @@ struct ReinventedPulseList: View {
                 content: card,
                 onTap: { onOpenPost(postId) },
                 onPickReaction: { emoji in Task { await cards.pickReaction(postId: postId, emoji: emoji) } },
-                onRSVP: card.attendees == nil ? nil : { Task { await cards.tapReaction(postId: postId) } },
+                onRSVP: card.attendees == nil ? nil : going,
                 onToggleSave: { Task { await cards.toggleSave(postId: postId) } },
                 onToggleRepost: { cards.openRepostChooser(postId: postId) },
                 repostChooser: PulseCardRepostChooser(

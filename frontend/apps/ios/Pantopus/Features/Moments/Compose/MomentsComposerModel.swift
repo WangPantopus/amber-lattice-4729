@@ -93,8 +93,6 @@ final class MomentsComposerModel {
     var studioStamps: [MomentStampPlacement] = []
     /// The Studio's "Guess the spot" ("Pulse, reinvented" step 8, `MomentsStudioGuess`); only the Studio sets it.
     var studioGuess = false
-    /// The Studio's "Also show in Explore" ("Pulse, reinvented" phase 1, CONTRACT 6f); only the Studio sets it.
-    var studioExplore = false
     /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
     /// it was taken.
     var pinsAtPlace = false

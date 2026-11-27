@@ -14,6 +14,15 @@ extension MomentsComposerModel {
     var offersExplore: Bool {
         !postsUnderMadeUpName && !noLocationOn && pin != nil && audience == .nearby && place?.atHome != true
     }
+
+    /// The Studio's "Also show in Explore", held with its other tools; only the Studio sets it.
+    var studioExplore: Bool {
+        get { marking.studio?.explore ?? false }
+        set {
+            if marking.studio == nil { marking.studio = MomentsStudioTools() }
+            marking.studio?.explore = newValue
+        }
+    }
 }
 
 struct MomentsStudioExploreRow: View {

@@ -185,6 +185,8 @@ struct MomentsStudioTools {
     /// Cutouts on the Studio's picture (`MomentsStudioCutouts`), drawn into it at Post, and the one picked.
     var cutouts: [MomentMarks.Cutout] = []
     var pickedCutout: UUID?
+    /// "Also show in Explore" ("Pulse, reinvented" phase 1, CONTRACT 6f, `MomentsStudioExplore`).
+    var explore = false
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {
