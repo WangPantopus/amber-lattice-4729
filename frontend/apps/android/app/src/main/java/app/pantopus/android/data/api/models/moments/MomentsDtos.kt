@@ -389,6 +389,8 @@ data class CreateMomentBody(
     val stamps: List<MomentStampPlacement>? = null,
     /** The Studio: the height reading for an elevation stamp (CONTRACT 2b); left out otherwise. */
     val elevation: MomentAltitudeBody? = null,
+    /** The Studio's "Guess the spot" (CONTRACT 5a): `true` only when picked; left out otherwise. */
+    val guess: Boolean? = null,
 )
 
 /**
