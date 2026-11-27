@@ -645,6 +645,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       seal: m.seal ? require('../pulse/seal').sealAnswer(row) : null,
       // A Convergence it joined (CONTRACT 8h): which one and whether it is open; null for any other.
       convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
+      // A loop (CONTRACT 7j): the span the new viewers repeat, fitted to the stored video; null for any other.
+      loop: m.loop ? require('../pulse/loop').answerOf(m) : null,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
