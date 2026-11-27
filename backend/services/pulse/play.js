@@ -348,10 +348,10 @@ async function playFor(posts, viewerId, { answers: given = null } = {}) {
   const [answers, connections, blocked] = await Promise.all([
     given || answersOn(ids),
     needsPeople ? connectionIds(viewerId) : [],
-    needsPeople ? blockService.blockedUserIds(viewerId).catch(() => new Set()) : new Set(),
+    needsPeople ? hiddenPeople(viewerId) : new Set(),
   ]);
   const connected = new Set(connections.map(String));
-  const blockedSet = new Set([...(blocked || [])].map(String));
+  const blockedSet = blocked;
   // The people a face names: the reader and their connections among the answerers of a board or a dial.
   const named = new Set();
   for (const post of withItems) {
@@ -384,6 +384,21 @@ async function answersOn(postIds) {
     byItem.get(key).push(row);
   }
   return byItem;
+}
+
+/**
+ * The people whose answers this reader never sees (LEAD-2, 7b): blocked either way, and muted by the reader. A read
+ * that fails hides nobody's answers but still names only connections.
+ */
+async function hiddenPeople(viewerId) {
+  try {
+    // eslint-disable-next-line global-require
+    const filters = await require('../feedService').getMuteAndHideFilters(viewerId);
+    return new Set([...(filters.blockedUserIds || []), ...(filters.mutedUserIds || []), ...(filters.momentMutedIds || [])].map(String));
+  } catch (error) {
+    logger.warn('play.hidden_people_unavailable', { error: error.message });
+    return new Set([...(await blockService.blockedUserIds(viewerId).catch(() => new Set()))].map(String));
+  }
 }
 
 // Required when used, not at the top: momentStore requires this file for its answers.
@@ -547,7 +562,8 @@ async function authorAnswers(id, itemId, viewerId, cursor) {
   if (item.kind === 'correction') query = query.eq('kind', 'correction');
   const { data, error } = await query;
   if (error) throw new Error(`Failed to load the answers: ${error.message}`);
-  const rows = (data || []).slice(0, AUTHOR_PAGE);
+  const hidden = await hiddenPeople(viewerId);
+  const rows = (data || []).slice(0, AUTHOR_PAGE).filter((row) => !hidden.has(String(row.user_id)));
   const people = await loadChatPeople(rows.map((row) => row.user_id));
   return {
     answers: rows.map((row) => ({
