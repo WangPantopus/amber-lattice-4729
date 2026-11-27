@@ -334,6 +334,8 @@ public struct RootTabView: View {
                 // Every invite shares the person's own link; read it before anyone taps one.
                 await PersonalInviteLink.shared.load(account: signedInUserID)
             }
+            // "Pulse, reinvented" (founder, 2026-11-26): its one server switch, read beside the others, never ahead of them.
+            .task(id: signedInUserID) { await PulseReinventedFlags.shared.refresh(account: signedInUserID) }
             // The guidance cards for new accounts (founder, 2026-11-16): this account's, read on each sign-in.
             .task(id: signedInUserID) { await GuidanceCenter.shared.start(account: signedInUserID) }
             .onChange(of: model.showsNavigationMenu) { _, open in GuidanceCenter.shared.sideMenuOpen = open }
@@ -348,6 +350,7 @@ public struct RootTabView: View {
                 if plansFlags.plans { PlansStoreReads.changed() }
                 Task { await plansFlags.refresh(account: signedInUserID) }
                 Task { await momentsFlags.refresh(account: signedInUserID) }
+                Task { await PulseReinventedFlags.shared.refresh(account: signedInUserID) }
                 Task { await cardDoors.refresh(account: signedInUserID) }
                 // Mail may have come while the app was away.
                 mailBadgeStore.refresh()
