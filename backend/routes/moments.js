@@ -112,7 +112,8 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * here would keep ({ temp_f, kind, label }, momentWeather.weatherAt), or null: always null at home and with no point,
  * where nothing is looked up. A request without it looks nothing up, so apps from before add no weather reads.
  * With `stamps: true` from the Studio's tray (Pulse, reinvented; only while `pulse_reinvented` is on for the caller) it
- * adds `stamps`, each stamp's value as a Moment posted here now would keep it (momentStamps.js), null where none.
+ * adds `stamps`, each stamp's value as a Moment posted here now would keep it (momentStamps.js), null where none. Sent
+ * while the switch is off for the caller: 403 PULSE_REINVENTED_OFF (store.reinventedOff).
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
@@ -122,7 +123,9 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
     }).and('latitude', 'longitude'), req.body);
     const placed = at.latitude != null;
     const sky = await store.skyOn(req.user);
-    const studio = req.body?.stamps === true && await store.reinventedOn(req.user);
+    const studioAsked = req.body?.stamps !== undefined;
+    const studio = studioAsked && await store.reinventedOn(req.user);
+    if (studioAsked && !studio) throw store.reinventedOff();
     // A failed home read answers at home, as POST / will treat it: the sheet then offers what the post will do (only the
     // area with the Sky on, no height, no pin at a place).
     const homeCheck = placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude, { onFailure: true }) : false;
@@ -352,8 +355,13 @@ router.post('/', createLimiter, async (req, res) => {
       throw store.fail(400, 'MOMENT_INVALID', 'Only a video is posted in parts.');
     }
     // Pulse, reinvented: the Studio's stamps (`stamps`) and its height reading for the elevation stamp (`elevation`),
-    // read only while the switch is on for the author. Today's server, and this one with it off, ignore both.
-    const studio = await store.reinventedOn(req.user) ? momentStamps.parseStudio(req.body) : null;
+    // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
+    // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
+    const reinvented = await store.reinventedOn(req.user);
+    if (!reinvented && ['stamps', 'elevation'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+      throw store.reinventedOff();
+    }
+    const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
     const id = retryId(req.user.id, body.client_request_id);
     if (id) {
       const prior = await store.ownMoment(id, req.user.id);

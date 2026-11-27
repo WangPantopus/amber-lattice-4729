@@ -458,6 +458,16 @@ async function skyOn(viewer) {
   return flagOnFor(SKY_FLAG, viewer);
 }
 
+/**
+ * The answer to a request only the new screens make (Studio stamps, the edit, a signal) from a person whose switch is
+ * off (CONTRACT "the switch is off for you"): its own code, so an app still drawing the Studio re-reads the switch at
+ * once and goes back to today's screens with what the person made. Today's apps never make such a request.
+ */
+const REINVENTED_OFF = { status: 403, code: 'PULSE_REINVENTED_OFF', message: "This isn't on for you right now." };
+function reinventedOff() {
+  return fail(REINVENTED_OFF.status, REINVENTED_OFF.code, REINVENTED_OFF.message);
+}
+
 /** Whether the new direction (`pulse_reinvented`) is on for `viewer`. Off for everyone until the founder turns it on. */
 async function reinventedOn(viewer) {
   return flagOnFor(REINVENTED_FLAG, viewer);
@@ -1287,7 +1297,7 @@ module.exports = {
   KINDS, HOURS, MAX_HOURS, LONG_MAX_HOURS, validHours, storedHours, answeredEnd, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, reportedIds, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
-  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, reinventedOn, REINVENTED_OFF, reinventedOff, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, REINVENTED_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
   authorKey, isOwn, markOwn, authorsFor, ownMoment,
 };

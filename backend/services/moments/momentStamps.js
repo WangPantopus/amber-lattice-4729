@@ -22,8 +22,11 @@ const { FALLBACK_LABEL } = require('./momentPlace');
 
 const KINDS = ['postmark', 'weather', 'elevation', 'place', 'time', 'sunset', 'home_distance'];
 const METERS_PER_MILE = 1609.344;
-// Closer than this to a home, "miles from home" would point at the home: it isn't kept.
-const MIN_HOME_MILES = 1;
+// "Miles from home" is for trips (the lead, 2026-11-27): nearer than MIN_HOME_MILES it would help find the home, so
+// there is no stamp, and from there it says only a band ("100+ mi from home"), never the distance itself. The private
+// choice: only the founder loosens it.
+const HOME_MILE_BANDS = [25, 50, 100, 250, 500, 1000, 2500, 5000];
+const MIN_HOME_MILES = HOME_MILE_BANDS[0];
 // The sun's centre this far below the horizon is sunset (refraction and the sun's own size).
 const SUNSET_ELEVATION_DEG = -0.833;
 const MINUTE_MS = 60 * 1000;
@@ -117,12 +120,15 @@ function sunsetStamp(latitude, longitude, atMs, zone) {
   return { at: new Date(sets).toISOString(), minutes, label };
 }
 
-/** Miles rounded as a stamp says them: whole under 10, to 5 from 10, to 10 from 100; null under MIN_HOME_MILES. */
-function roundedMiles(miles) {
+/** The band a distance falls in (the highest of HOME_MILE_BANDS it reaches), or null under MIN_HOME_MILES. */
+function homeMileBand(miles) {
   if (!(miles >= MIN_HOME_MILES)) return null;
-  if (miles < 10) return Math.round(miles);
-  if (miles < 100) return Math.round(miles / 5) * 5;
-  return Math.round(miles / 10) * 10;
+  return HOME_MILE_BANDS.filter((band) => miles >= band).pop();
+}
+
+/** The home-distance stamp for a band: { miles (the band's floor), label: "100+ mi from home" }. */
+function homeDistanceOf(band) {
+  return band == null ? null : { miles: band, label: `${band.toLocaleString('en-US')}+ mi from home` };
 }
 
 /**
@@ -142,8 +148,7 @@ async function milesFromHome(userId, latitude, longitude) {
 
 async function homeDistance(userId, latitude, longitude) {
   try {
-    const miles = roundedMiles(await milesFromHome(userId, latitude, longitude));
-    return miles == null ? null : { miles, label: `${miles.toLocaleString('en-US')} mi from home` };
+    return homeDistanceOf(homeMileBand(await milesFromHome(userId, latitude, longitude)));
   } catch (error) {
     logger.warn('moments.stamps.home_read_failed', { error: error.message });
     return null;
@@ -219,8 +224,9 @@ function valueOf(kind, values, guard = {}) {
       return placed && v.sunset?.at && typeof v.sunset.label === 'string'
         ? { at: v.sunset.at, minutes: Number(v.sunset.minutes), label: v.sunset.label } : null;
     case 'home_distance':
-      return placed && !private_ && Number.isFinite(v.home_distance?.miles) && v.home_distance.miles >= MIN_HOME_MILES
-        ? { miles: v.home_distance.miles, label: v.home_distance.label } : null;
+      // Banded again on reading, so a value kept under an earlier rule never says more than the bands.
+      return placed && !private_ && Number.isFinite(v.home_distance?.miles)
+        ? homeDistanceOf(homeMileBand(v.home_distance.miles)) : null;
     case 'postmark':
       return placed && (v.town || v.place_label) ? {
         place: v.town || v.place_label,
@@ -254,5 +260,5 @@ function previewOf(values, guard) {
 
 module.exports = {
   KINDS, MIN_HOME_MILES, parsePlacements, parseReading, parseStudio, valuesFor, valueOf, shownStamps, previewOf,
-  sunsetStamp, sunsetMs, roundedMiles, takenMs,
+  sunsetStamp, sunsetMs, homeMileBand, HOME_MILE_BANDS, takenMs,
 };
