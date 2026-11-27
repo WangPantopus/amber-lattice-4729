@@ -155,3 +155,28 @@ export function ticketWhen(t: MapTicket, now: number): string {
   if (day(start) === day(now)) return `${hour24 >= 17 ? 'Tonight' : 'Today'} ${clock}`;
   return `${part('weekday')} ${clock}`;
 }
+
+// ── Alive right now (coord/CONTRACT.md §6c): Live from here Moments, plans starting soon, people you know ──
+
+export interface StripData {
+  live_here: { band: string | null; moment: ListMoment }[];
+  plans_soon: MapTicket[];
+  people: Ring[];
+}
+
+export function readStrip(point: Point | null, signal?: AbortSignal): Promise<StripData> {
+  const params: Record<string, number> = {};
+  if (point) {
+    params.latitude = Math.round(point.latitude * 1e5) / 1e5;
+    params.longitude = Math.round(point.longitude * 1e5) / 1e5;
+  }
+  return get<StripData>('/api/reinvented/strip', params, { signal });
+}
+
+/** When a plan in the strip starts: "Now", "in 40 min", "in 2 h". */
+export function startsIn(t: MapTicket, now: number): string {
+  const start = Date.parse(t.starts_at);
+  if (!Number.isFinite(start) || start <= now) return 'Now';
+  const minutes = Math.ceil((start - now) / 60_000);
+  return minutes < 60 ? `in ${minutes} min` : `in ${Math.round(minutes / 60)} h`;
+}

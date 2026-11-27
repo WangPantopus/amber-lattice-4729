@@ -18,12 +18,13 @@ import { useMyHomeCenter } from '@/lib/myHomes';
 import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostReactions';
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
-import { CHIP_WORDS, isChip, readList, readMap, type Box, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
+import { CHIP_WORDS, isChip, readList, readMap, readStrip, type Box, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
 import { PeekDeck, TimeRow } from './MapDeck';
 import { pinsOf, roundBox, type Pin } from './pins';
+import AliveStrip from './AliveStrip';
 import '@/components/moments/moments.css';
 import './pulse.css';
 
@@ -109,6 +110,18 @@ export default function ReinventedPulse() {
     if (map.error && isSwitchedOff(map.error)) void reread();
   }, [map.error, reread]);
   const pins = useMemo(() => pinsOf(map.data), [map.data]);
+  // Alive right now (CONTRACT §6c), over the list; it follows the list's first page like the map.
+  const strip = useQuery({
+    queryKey: ['reinvented', 'strip', account, point?.latitude ?? null, point?.longitude ?? null],
+    queryFn: ({ signal }) => readStrip(point, signal),
+    enabled: !!account,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: (count, error) => !isSwitchedOff(error) && count < 1,
+  });
+  useEffect(() => {
+    if (strip.error && isSwitchedOff(strip.error)) void reread();
+  }, [strip.error, reread]);
   const onBox = useCallback((b: Box) => setBox(roundBox(b)), []);
 
   const pages = list.data?.pages;
@@ -462,6 +475,15 @@ export default function ReinventedPulse() {
             </div>
           ) : (
             <>
+              {strip.data && (chip === 'all' || chip === 'live') && (
+                <AliveStrip
+                  strip={strip.data}
+                  bandLabel={(b) => (b ? bandLabels.get(b) || null : null)}
+                  now={now}
+                  onMoments={(ids, start) => setViewing({ id: start, ids })}
+                  onPlan={(t) => router.push(`/app/plans/${encodeURIComponent(t.id)}`)}
+                />
+              )}
               {items.length === 0 && (
                 <div className="rp-empty">
                   <p>
