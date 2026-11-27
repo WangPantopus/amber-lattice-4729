@@ -32,10 +32,10 @@ extension MomentsViewerModel {
         return guess.mine == nil
     }
 
-    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), while its author
-    /// hasn't answered "Keep this?", and while "Want to come?" has the plan composer open.
+    /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), and while its author
+    /// hasn't answered "Keep this?".
     var guessCovers: Bool {
-        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits || MomentPlanStart.shared.seed != nil
+        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits
     }
 
     /// "Keep this?" waits for its author's answer (CONTRACT 6d).

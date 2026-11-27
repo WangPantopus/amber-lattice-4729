@@ -199,7 +199,7 @@ extension MomentsViewer {
         }
         // "Want to come?" (CONTRACT 6g): a plan in Plans from one's own live Moment, only while the switch is on.
         if MomentPlanStart.offers(model.moment, mine: model.isMine), let moment = model.moment {
-            Button("Want to come? Start a plan") { MomentPlanStart.shared.seed = PlanMomentSeed(moment: moment) }
+            Button("Want to come? Start a plan") { model.startPlan(from: moment) }
                 .accessibilityIdentifier("moments.menu.startPlan")
         }
         Button("Save to Photos") {
