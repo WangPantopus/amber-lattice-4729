@@ -8,6 +8,8 @@ import { MapPin } from 'lucide-react';
 import { MomentFace } from '@/components/moments/MomentFace';
 import { colors } from '@/components/moments/momentState';
 import StampLayer from '../stamps/StampLayer';
+import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
+import type { PlayItem } from '../play/playTypes';
 import type { StampKind } from '../stamps/stampTypes';
 import { isSignal, SIGNAL_WORDS, SignalIcon } from '../viewer/signals';
 import { isLiveHere, timeLeft, type ListMoment, type Point } from './listApi';
@@ -22,14 +24,16 @@ interface Props {
   kept?: boolean;
 }
 
-/** Width over height of the picture as the server sized it; the web's own frame (9:16) when unknown. */
-function aspectOf(m: ListMoment): number {
+/** Width over height of the picture as the server sized it (one half of a before and after); 9:16 when unknown. */
+function aspectOf(m: ListMoment, paired: boolean): number {
   if (m.kind === 'text') return 9 / 16;
-  return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height : 9 / 16;
+  return m.width && m.height && m.width > 0 && m.height > 0 ? m.width / m.height / (paired ? 2 : 1) : 9 / 16;
 }
 
 export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, kept = false }: Props) {
-  const aspect = aspectOf(m);
+  // A before and after shows both halves, split in the middle; the viewer lets the reader move the curtain.
+  const pair = m.kind === 'photo' && m.media_url ? beforeAfterOf((m as ListMoment & { play?: PlayItem[] }).play) : null;
+  const aspect = aspectOf(m, !!pair);
   // A tall picture shows a square of itself; a wide one shows whole.
   const shown = Math.min(1, aspect);
   const stamps = m.stamps || [];
@@ -67,6 +71,8 @@ export default function MomentRow({ moment: m, bandLabel, now, onOpen, onPlace, 
         >
           {m.kind === 'text' ? (
             <p className="rp-moment-text">{m.text}</p>
+          ) : pair && picture ? (
+            <BeforeAfter src={picture} item={pair} still />
           ) : picture ? (
             <img src={picture} alt={m.caption || `${m.author.name}’s ${m.kind === 'video' ? 'video' : 'photo'}`} loading="lazy" />
           ) : null}
