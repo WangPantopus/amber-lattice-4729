@@ -27,6 +27,7 @@ const momentSchedule = require('../services/moments/momentSchedule');
 const momentWeather = require('../services/moments/momentWeather');
 const momentStamps = require('../services/moments/momentStamps');
 const playItems = require('../services/pulse/play');
+const stepDeck = require('../services/pulse/deck');
 const { normalizePostReaction, normalizePostSignal, shownReaction, shownSignal } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
@@ -366,14 +367,16 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
     // Playable items (CONTRACT 7b): a poll, a slider, a board, a question box, a guess and reveal, a countdown.
-    // Dots on the picture (CONTRACT 7c): a note, a rating, a link, a thing to name.
+    // Dots on the picture (CONTRACT 7c): a note, a rating, a link, a thing to name. A step deck (7g).
     let play = [];
     let dots = [];
+    const deck = studio ? stepDeck.parseDeck(req.body?.deck, { kind: body.kind, penName: body.post_as === 'pen_name' }) : null;
+    if (deck) await stepDeck.checkFirstStep(req.user.id, deck);
     if (studio) {
       try {
         play = playItems.parseItems(req.body?.play);
@@ -550,6 +553,7 @@ router.post('/', createLimiter, async (req, res) => {
         // Playable items (CONTRACT 7b); the answers are rows of PostAnswer.
         ...(play.length ? { play } : {}),
         ...(dots.length ? { dots } : {}),
+        ...(deck ? { deck } : {}),
         // Explore (CONTRACT 6f): "Also show in Explore", kept only for a Moment with a place, to people nearby, not at
         // home and not under a made-up name (dropped anywhere else, never an error), with the town it is in.
         ...(req.body?.explore === true && !unplaced && body.audience === 'nearby' && !studioAtHome && !underPenName
