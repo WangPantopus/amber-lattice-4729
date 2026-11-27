@@ -50,14 +50,14 @@ final class ReinventedPulseModel {
     enum Row: Identifiable {
         case band(ReinventedBandDTO)
         case heading(String)
-        case moment(MomentDTO, why: String?)
+        case moment(MomentDTO, why: String?, kept: Bool)
         case post(PulsePostCardContent, why: String?)
 
         var id: String {
             switch self {
             case let .band(band): "band-\(band.band)"
             case let .heading(words): "heading-\(words)"
-            case let .moment(moment, _): "moment-\(moment.id)"
+            case let .moment(moment, _, _): "moment-\(moment.id)"
             case let .post(card, _): "post-\(card.id)"
             }
         }
@@ -107,7 +107,7 @@ final class ReinventedPulseModel {
                 lastBand = band
             }
             switch item.content {
-            case let .moment(moment): rows.append(.moment(moment, why: why[item.id]))
+            case let .moment(moment): rows.append(.moment(moment, why: why[item.id], kept: item.kept))
             case let .post(post): if let card = cardsById[post.id] { rows.append(.post(card, why: why[item.id])) }
             }
         }

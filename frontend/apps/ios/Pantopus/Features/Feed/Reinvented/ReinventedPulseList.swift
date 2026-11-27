@@ -66,8 +66,12 @@ struct ReinventedPulseList: View {
                         bandLine(band)
                     case let .heading(words):
                         heading(words)
-                    case let .moment(moment, why):
-                        ReinventedMomentRow(moment: moment) { onOpenMoment(moment) }
+                    case let .moment(moment, why, kept):
+                        if kept {
+                            keptCard(moment)
+                        } else {
+                            ReinventedMomentRow(moment: moment) { onOpenMoment(moment) }
+                        }
                         if let why { whyLine(why) }
                     case let .post(card, why):
                         postCard(card)
@@ -103,6 +107,24 @@ struct ReinventedPulseList: View {
             await onRefreshStrip()
         }
         .accessibilityIdentifier("reinventedPulse.list")
+    }
+
+    /// A Moment its author kept: a post that stays, in the bordered look, under "Kept · stays".
+    private func keptCard(_ moment: MomentDTO) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            Text("Kept · stays")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(Theme.Color.primaryTint)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.top, Spacing.s3)
+            ReinventedMomentRow(moment: moment, kept: true) { onOpenMoment(moment) }
+                .padding(.bottom, Spacing.s3)
+        }
+        .background(Theme.Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
+        .padding(.horizontal, Spacing.s3)
+        .accessibilityIdentifier("reinventedPulse.kept.\(moment.id)")
     }
 
     private func heading(_ words: String) -> some View {
@@ -224,6 +246,8 @@ struct ReinventedPulseList: View {
 /// A Moment that fades: borderless, full width, its picture (or its card), who and where, and its time left.
 struct ReinventedMomentRow: View {
     let moment: MomentDTO
+    /// A kept Moment says no time left: it stays.
+    var kept = false
     let onOpen: () -> Void
 
     var body: some View {
@@ -268,9 +292,11 @@ struct ReinventedMomentRow: View {
         HStack(spacing: 6) {
             Text(moment.author.shortName)
                 .font(.system(size: 13, weight: .bold))
-            Text("·")
-            Text(timeLeft)
-                .font(.system(size: 13, weight: .semibold))
+            if !kept {
+                Text("·")
+                Text(timeLeft)
+                    .font(.system(size: 13, weight: .semibold))
+            }
             if !moment.placeLabel.isEmpty {
                 Text("·")
                 Text(moment.placeLabel)

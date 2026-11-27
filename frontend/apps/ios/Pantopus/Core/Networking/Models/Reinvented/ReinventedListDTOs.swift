@@ -64,15 +64,18 @@ public struct ReinventedListItemDTO: Decodable, Sendable, Identifiable {
     public let id: String
     public let band: String?
     public let content: Content
+    /// A Moment its author kept ("Keep this?", CONTRACT 6d): drawn as a post that stays.
+    public let kept: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case type, id, band, moment, post
+        case type, id, band, moment, post, kept
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         band = try? c.decodeIfPresent(String.self, forKey: .band)
+        kept = (try? c.decodeIfPresent(Bool.self, forKey: .kept)) ?? false
         switch try c.decode(String.self, forKey: .type) {
         case "moment": content = try .moment(c.decode(MomentDTO.self, forKey: .moment))
         case "post": content = try .post(c.decode(FeedPostDTO.self, forKey: .post))

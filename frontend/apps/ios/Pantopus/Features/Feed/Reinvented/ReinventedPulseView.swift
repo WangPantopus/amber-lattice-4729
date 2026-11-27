@@ -28,6 +28,8 @@ struct ReinventedPulseView: View {
     @State private var dragged: CGFloat = 0
     @State private var watching: MomentsWatchSession?
     @State private var showsDial = false
+    /// "This Moment has ended." after a link to one that can't be played.
+    @State private var linkNote: String?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -56,6 +58,11 @@ struct ReinventedPulseView: View {
         }
         .task { await model.refresh() }
         .task { await strip.read() }
+        // A Moment's link or notice (PHASE-1 §3): with every Moment in Pulse, it plays here.
+        .onChange(of: MomentsNavigator.shared.pending, initial: true) { _, _ in playLinked() }
+        .alert(linkNote ?? "", isPresented: Binding(get: { linkNote != nil }, set: { if !$0 { linkNote = nil } })) {
+            Button("OK", role: .cancel) {}
+        }
         .fullScreenCover(item: $watching) { session in
             MomentsViewer(
                 session: session,
@@ -265,6 +272,22 @@ struct ReinventedPulseView: View {
     private func open(_ moment: MomentDTO) {
         let ring = MomentRingDTO(moment: moment, mine: model.isMine(moment))
         watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
+    }
+
+    /// The Moment a link named: it plays at once; ended, or not one this person may see, a line says so.
+    private func playLinked() {
+        guard let id = MomentsNavigator.shared.pending else { return }
+        MomentsNavigator.shared.pending = nil
+        Task {
+            do {
+                let moment = try await MomentsAPI.send(MomentsEndpoints.moment(id: id), as: MomentEnvelope.self).moment
+                open(moment)
+            } catch {
+                let failure = error as? MomentsFailure
+                linkNote = failure == .ended || failure == .notFound ? "This Moment has ended." : failure?.message
+                    ?? "Couldn't open that Moment."
+            }
+        }
     }
 
     /// A pin or a card on the map: a ring plays its Moments, a mark opens its post, a ticket its plan in Plans.
