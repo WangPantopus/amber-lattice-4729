@@ -630,6 +630,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       retake: retakes?.get(row.id) || null,
       // Mentions in its caption (CONTRACT 7h), as authors, without people hidden from this reader; [] when none.
       mentions: mentioned?.get(row.id) || [],
+      // A Convergence it joined (CONTRACT 8h): which one and whether it is open; null for any other.
+      convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
     } : {}),
   };
   // Until this reader has guessed, a live guess-the-spot Moment answers without its spot (never its author's own).
