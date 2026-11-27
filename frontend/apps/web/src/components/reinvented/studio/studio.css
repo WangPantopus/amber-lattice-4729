@@ -228,6 +228,41 @@
   border-color: #fff;
   box-shadow: 0 0 0 3px #7dd3fc;
 }
+/* Text looks: each chip says its name in its own font; one row that scrolls sideways. */
+.st-looks {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -2px;
+  padding: 2px;
+}
+.st-looks button {
+  flex: none;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--st-line);
+  border-radius: 17px;
+  background: var(--st-soft);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.st-looks button:not([style]) {
+  font-weight: 700;
+}
+.st-looks button[aria-pressed='true'] {
+  border-color: #fff;
+  background: #fff;
+  color: var(--st-night);
+}
+.st-inks-from {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
 .st-pens button {
   height: 32px;
   min-width: 32px;
