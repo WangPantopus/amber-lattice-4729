@@ -371,6 +371,8 @@ const createPostSchema = Joi.object({
     // Playable items and dots (CONTRACT 7b, 7c), checked by services/pulse/play.
     play: Joi.array().max(4).allow(null),
     dots: Joi.array().max(8).allow(null),
+    // Mentions in the caption (CONTRACT 7h), checked by services/pulse/mentions.
+    mentions: Joi.array().allow(null),
   }).optional(),
 }).custom((value, helpers) => {
   if (PULSE_ONLY_TYPES.includes(value.postType) && value.readScope === undefined) {
