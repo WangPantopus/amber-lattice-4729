@@ -16,6 +16,13 @@ public enum StudioEndpoints {
         return Endpoint(method: .put, path: "/api/moments/\(id)/reaction", body: MomentSignalBody(signal: signal))
     }
 
+    /// `POST /api/posts/:id/like` with `{ "signal": … }` (CONTRACT 4): one of the five signals on a Pulse post, or null
+    /// to take it back; it replaces the caller's emoji. Route `backend/routes/posts.js:3848` (like).
+    static func postSignal(postId: String, signal: String?) -> Endpoint {
+        let id = postId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? postId
+        return Endpoint(method: .post, path: "/api/posts/\(id)/like", body: PostSignalRequest(signal: signal))
+    }
+
     /// `POST /api/moments/:id/guess` (CONTRACT 5c): the reader's one guess at a guess-the-spot Moment's spot. Answers how
     /// far off it was and the Moment in full. Route `backend/routes/moments.js` (guess).
     static func guess(momentId: String, latitude: Double, longitude: Double) -> Endpoint {

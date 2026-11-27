@@ -44,6 +44,8 @@ const listSchema = Joi.object({
   longitude: Joi.number().min(-180).max(180),
   cursor: Joi.string().max(2000).allow(''),
   limit: Joi.number().integer().min(1).max(50).default(20),
+  // One of the reader's circles, with Close circle (CONTRACT 8d).
+  circle: Joi.string().guid(),
 }).and('latitude', 'longitude');
 
 /** GET /list — Close circle or Around me: the Moments and posts the caller may see, mixed (CONTRACT 6a). */
@@ -544,5 +546,28 @@ router.delete('/strands/:id', async (req, res) => {
     sendError(res, error, 'strand_remove');
   }
 });
+
+// ─── Circles and the weekly magazine (CONTRACT 8d) ───────────────────────────
+
+const circles = require('../services/pulse/circles');
+
+const circleRoute = (fn, label, { status = 200 } = {}) => async (req, res) => {
+  try {
+    const out = await fn(req);
+    if (out == null) return res.status(204).end();
+    return res.status(status).json(out);
+  } catch (error) {
+    return sendError(res, error, label);
+  }
+};
+
+router.get('/circles', circleRoute((req) => circles.list(req.user.id, { tz: req.query.tz }), 'circles'));
+router.post('/circles', contentCreationLimiter, circleRoute((req) => circles.create(req.user.id, req.body || {}), 'circle_create', { status: 201 }));
+router.post('/circles/:id/join', circleRoute((req) => circles.join(req.user.id, req.params.id, req.body || {}), 'circle_join'));
+router.post('/circles/:id/me', circleRoute((req) => circles.setMine(req.user.id, req.params.id, req.body || {}), 'circle_me'));
+router.post('/circles/:id/leave', circleRoute((req) => circles.leave(req.user.id, req.params.id), 'circle_leave'));
+router.patch('/circles/:id', contentCreationLimiter, circleRoute((req) => circles.change(req.user.id, req.params.id, req.body || {}), 'circle_change'));
+router.delete('/circles/:id', circleRoute(async (req) => { await circles.remove(req.user.id, req.params.id); return null; }, 'circle_remove'));
+router.get('/circles/:id/magazine', circleRoute((req) => circles.magazine(req.user.id, req.params.id, req.query.week || null, req.query.tz || null), 'circle_magazine'));
 
 module.exports = router;

@@ -151,6 +151,9 @@ public struct PulseReaction: Sendable, Hashable {
     public let likeCount: Int
     /// Emoji: each emoji's count and the viewer's own; empty for Going.
     public let emoji: PostReactions
+    /// Pulse, reinvented: the five signals, in the emoji's place, on a post that carries them (the reader's switch is
+    /// on); nil everywhere else, and then the card is today's.
+    var signals: PostSignals?
 
     public init(kind: PostReactionKind, likeCount: Int) {
         self.kind = kind
