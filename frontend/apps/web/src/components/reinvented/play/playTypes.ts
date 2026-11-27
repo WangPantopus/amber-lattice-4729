@@ -3,7 +3,7 @@
 // the picture as a stamp does (x, y, scale, rotation). Only for a reader whose switch is on: everyone else, and the apps
 // in the stores, see the plain picture and its words.
 
-import { del, put } from '@pantopus/api/client';
+import { del, get, put } from '@pantopus/api/client';
 
 export type PlayKind = 'poll' | 'slider' | 'board' | 'question' | 'guess' | 'countdown';
 
@@ -110,4 +110,22 @@ export function waitingItems(play: readonly PlayItem[] | undefined | null): Play
 
 export function isPlayList(value: unknown): value is PlayItem[] {
   return Array.isArray(value) && value.every((p) => p && typeof p === 'object' && typeof (p as PlayItem).id === 'string');
+}
+
+export interface PlayAnswerRow {
+  id: string;
+  text?: string;
+  note?: string | null;
+  at: string;
+  person: PlayPerson | null;
+}
+
+/** The author's list of a question box's answers or a board's notes, newest first, 50 a page. */
+export function readAnswers(postId: string, item: string, cursor: string | null, signal?: AbortSignal) {
+  return get<{ answers: PlayAnswerRow[]; next_cursor: string | null }>(`${path(postId, item)}/answers`, cursor ? { cursor } : {}, { signal });
+}
+
+/** The author removes one answer; the person who gave it isn't told. */
+export function removeAnswer(postId: string, item: string, answerId: string) {
+  return del(`${path(postId, item)}/answers/${encodeURIComponent(answerId)}`);
 }
