@@ -11,6 +11,7 @@ const list = require('../services/pulse/list');
 const pulseMap = require('../services/pulse/map');
 const atlas = require('../services/pulse/atlas');
 const explore = require('../services/pulse/explore');
+const keep = require('../services/pulse/keep');
 
 const router = express.Router();
 
@@ -107,6 +108,24 @@ router.get('/explore', async (req, res) => {
     res.json(await explore.exploreFor(req.user.id, value));
   } catch (error) {
     sendError(res, error, 'explore');
+  }
+});
+
+// ─── "Keep this?" (CONTRACT 6d) ─────────────────────────────────────────────
+
+const keepSchema = Joi.object({ keep: Joi.boolean().required() });
+
+/** POST /moments/:id/keep — { keep }: the author answers "Keep this?" once, in their Moment's last two hours. */
+router.post('/moments/:id/keep', async (req, res) => {
+  try {
+    const { error, value } = keepSchema.validate(req.body || {}, { abortEarly: true, stripUnknown: true });
+    if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'KEEP_INVALID' });
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    }
+    res.json(await keep.answerKeep(req.user.id, req.params.id, value.keep));
+  } catch (error) {
+    sendError(res, error, 'keep');
   }
 });
 
