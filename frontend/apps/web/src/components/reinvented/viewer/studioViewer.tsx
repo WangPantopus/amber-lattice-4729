@@ -26,6 +26,7 @@ import BeforeAfter, { beforeAfterOf } from '../play/BeforeAfter';
 import { DeckBar } from '../deck/StepDeck';
 import { withMentions, type MentionPerson } from '../mentions/Mentions';
 import { holdsForReplies, RepliesOverPicture, RepliesShownEntry } from '../replies/Replies';
+import PinLayer, { hasPins, holdsForPins, PinControls } from '../pins/PinLayer';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -39,7 +40,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [now, setNow] = useState(Date.now);
   const stamps = moment.stamps || [];
-  const playing = (moment.play || []).length + (moment.dots || []).length + (hasSound(moment) ? 1 : 0);
+  const playing = (moment.play || []).length + (moment.dots || []).length + (hasSound(moment) ? 1 : 0) + (hasPins(moment) ? 1 : 0);
   // A before and after: the picture is the two photos side by side, and the reader sees one half's frame.
   const pair = moment.kind === 'photo' && moment.media_url ? beforeAfterOf(moment.play) : null;
   const paired = !!pair;
@@ -103,6 +104,7 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
           <PlayLayer moment={moment} />
           <DotLayer moment={moment} />
           <SoundLayer moment={moment} />
+          <PinLayer moment={moment} />
         </div>
       )}
     </div>
@@ -189,6 +191,7 @@ export const studioViewer = {
       <ViewerStamps moment={m as StudioMoment} />
       <DeckBar moment={m} />
       <RepliesOverPicture moment={m} />
+      <PinControls moment={m} />
       <SavedNote id={m.id} />
       <GuessOverPicture moment={m} />
       <KeepOverPicture moment={m} />
@@ -202,7 +205,7 @@ export const studioViewer = {
       <RepliesShownEntry moment={m} close={close} />
     </>
   ),
-  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m) || holdsForDots(m) || holdsForSound(m) || holdsForReplies(m),
+  holds: (m: Moment, account: string) => holdsForGuess(m, account) || holdsForKeep(m, account) || holdsForPlay(m) || holdsForDots(m) || holdsForSound(m) || holdsForReplies(m) || holdsForPins(m),
   reactButton: (m: Moment) => <SignalMark moment={m as StudioMoment} />,
   reactions: (m: Moment, close: () => void) => <SignalChoices moment={m as StudioMoment} close={close} />,
   seenMark: (v: Viewer) => <SeenMark viewer={v} />,
