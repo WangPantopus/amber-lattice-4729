@@ -764,4 +764,37 @@ router.post('/atlas/search', searchLimiter, async (req, res) => {
   }
 });
 
+// ─── Places you follow (CONTRACT 9c) ─────────────────────────────────────────
+
+const followedPlaces = require('../services/pulse/places');
+
+/** GET /places — the places the reader follows (private to them). */
+router.get('/places', async (req, res) => {
+  try {
+    res.json(await followedPlaces.list(req.user.id));
+  } catch (error) {
+    sendError(res, error, 'places');
+  }
+});
+
+/** POST /places — { label, latitude, longitude } from today's place picker: follow it. */
+router.post('/places', contentCreationLimiter, async (req, res) => {
+  try {
+    const { place, added } = await followedPlaces.add(req.user.id, req.body || {});
+    res.status(added ? 201 : 200).json({ place });
+  } catch (error) {
+    sendError(res, error, 'places_add');
+  }
+});
+
+/** DELETE /places/:id — stop following it. */
+router.delete('/places/:id', async (req, res) => {
+  try {
+    await followedPlaces.remove(req.user.id, String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    sendError(res, error, 'places_remove');
+  }
+});
+
 module.exports = router;
