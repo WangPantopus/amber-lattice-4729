@@ -54,4 +54,16 @@ public enum ReinventedEndpoints {
         }
         return Endpoint(method: .get, path: "/api/reinvented/strip", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
     }
+
+    /// `GET /api/reinvented/explore` (CONTRACT 6f): "Today, elsewhere", then newest with variety. The point is the
+    /// reader's own, to leave their town out. Route `backend/routes/reinvented.js:110` (explore).
+    static func explore(at point: (latitude: Double, longitude: Double)?, cursor: String?) -> Endpoint {
+        var query: [String: String] = [:]
+        if let point {
+            query["latitude"] = String(format: "%.5f", point.latitude)
+            query["longitude"] = String(format: "%.5f", point.longitude)
+        }
+        if let cursor { query["cursor"] = cursor }
+        return Endpoint(method: .get, path: "/api/reinvented/explore", query: query, cachePolicy: .reloadIgnoringLocalCacheData)
+    }
 }

@@ -62,12 +62,26 @@ struct ReinventedPulseList: View {
                 }
                 ForEach(model.rows) { row in
                     switch row {
-                    case let .band(band): bandLine(band)
-                    case let .moment(moment): ReinventedMomentRow(moment: moment) { onOpenMoment(moment) }
-                    case let .post(card): postCard(card)
+                    case let .band(band):
+                        bandLine(band)
+                    case let .heading(words):
+                        heading(words)
+                    case let .moment(moment, why):
+                        ReinventedMomentRow(moment: moment) { onOpenMoment(moment) }
+                        if let why { whyLine(why) }
+                    case let .post(card, why):
+                        postCard(card)
+                        if let why { whyLine(why) }
                     }
                 }
-                if model.hasMore {
+                if model.hasMore, let pause = model.pause {
+                    // Explore pauses: more only when asked.
+                    Button(pause) { Task { await model.loadMore() } }
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Spacing.s4)
+                        .accessibilityIdentifier("reinventedPulse.keepExploring")
+                } else if model.hasMore {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Spacing.s4)
@@ -91,10 +105,32 @@ struct ReinventedPulseList: View {
         .accessibilityIdentifier("reinventedPulse.list")
     }
 
+    private func heading(_ words: String) -> some View {
+        Text(words)
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(Theme.Color.appText)
+            .padding(.horizontal, Spacing.s4)
+            .padding(.top, Spacing.s2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// "Why am I seeing this?", answered in one line.
+    private func whyLine(_ why: String) -> some View {
+        HStack(spacing: 6) {
+            Icon(.info, size: 13, strokeWidth: 2.2, color: Theme.Color.appTextSecondary)
+            Text(why)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+        }
+        .padding(.horizontal, Spacing.s4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Why you're seeing this: \(why)")
+    }
+
     /// Nothing here: what there is to do.
     private var emptyNote: some View {
         VStack(spacing: Spacing.s2) {
-            Text(model.reach == "close" ? "Nothing from your circle right now" : "Quiet around here right now")
+            Text(Self.emptyTitle(model.reach))
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
             Text("Post a Moment with + and it shows here first. Or widen what Pulse shows from the pill at the top.")
@@ -157,6 +193,14 @@ struct ReinventedPulseList: View {
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
         .padding(.horizontal, Spacing.s3)
+    }
+
+    static func emptyTitle(_ reach: String) -> String {
+        switch reach {
+        case "close": "Nothing from your circle right now"
+        case "explore": "Nothing from elsewhere yet today"
+        default: "Quiet around here right now"
+        }
     }
 
     /// The status line for a post that stays, from the kinds today's Pulse has.

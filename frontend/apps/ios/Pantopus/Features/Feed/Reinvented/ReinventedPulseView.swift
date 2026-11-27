@@ -27,6 +27,7 @@ struct ReinventedPulseView: View {
     @State private var height: Height = .middle
     @State private var dragged: CGFloat = 0
     @State private var watching: MomentsWatchSession?
+    @State private var showsDial = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -43,7 +44,11 @@ struct ReinventedPulseView: View {
                 VStack(spacing: Spacing.s2) {
                     topRow
                     viewSwitch
-                    if height == .map { ReinventedTimeRow(model: map) } else { chipsRow }
+                    if height == .map {
+                        ReinventedTimeRow(model: map)
+                    } else if model.reach != "explore" {
+                        chipsRow
+                    }
                 }
                 .padding(.bottom, Spacing.s2)
                 .background(height == .list ? Theme.Color.appBg : Color.clear)
@@ -78,14 +83,11 @@ struct ReinventedPulseView: View {
         .padding(.horizontal, Spacing.s4)
     }
 
-    /// The town's name; it opens the reach: Close circle or Around me.
+    /// The town's name (or Close circle, or Explore); it opens the reach dial.
     private var scopePill: some View {
-        Menu {
-            Button("Close circle: your connections, newest first") { Task { await model.pick(reach: "close", miles: model.miles) } }
-            Button("Around me: nearest first") { Task { await model.pick(reach: "around", miles: model.miles) } }
-        } label: {
+        Button { showsDial = true } label: {
             HStack(spacing: Spacing.s2) {
-                Icon(model.reach == "close" ? .users : .mapPin, size: 16, strokeWidth: 2.2, color: Theme.Color.primaryTint)
+                Icon(scopeIcon, size: 16, strokeWidth: 2.2, color: Theme.Color.primaryTint)
                 Text(scopeTitle)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.Color.appText)
@@ -99,12 +101,32 @@ struct ReinventedPulseView: View {
             .overlay(Capsule().stroke(Theme.Color.appBorder, lineWidth: 1))
             .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Showing \(scopeTitle). Change what Pulse shows")
         .accessibilityIdentifier("reinventedPulse.scope")
+        .sheet(isPresented: $showsDial) {
+            ReinventedReachDial(reach: model.reach, miles: model.miles) { reach, miles in
+                showsDial = false
+                Task { await model.pick(reach: reach, miles: miles) }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var scopeIcon: PantopusIcon {
+        switch model.reach {
+        case "close": .users
+        case "explore": .globe
+        default: .mapPin
+        }
     }
 
     private var scopeTitle: String {
-        model.reach == "close" ? "Close circle" : model.placeLabel ?? "Around me"
+        switch model.reach {
+        case "close": "Close circle"
+        case "explore": "Explore"
+        default: model.placeLabel.map { "\($0) · \(model.miles) mi" } ?? "Around me"
+        }
     }
 
     /// The big List | Map switch (the middle height reads as List).

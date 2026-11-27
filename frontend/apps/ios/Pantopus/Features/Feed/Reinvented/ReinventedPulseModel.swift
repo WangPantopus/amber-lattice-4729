@@ -45,17 +45,20 @@ final class ReinventedPulseModel {
         case failed(String)
     }
 
-    /// One row of the list: a band's line, a Moment, a post, or the end line.
+    /// One row of the list: a band's line, a heading (Explore's "Today, elsewhere"), a Moment, or a post; in Explore
+    /// each item carries why it is there.
     enum Row: Identifiable {
         case band(ReinventedBandDTO)
-        case moment(MomentDTO)
-        case post(PulsePostCardContent)
+        case heading(String)
+        case moment(MomentDTO, why: String?)
+        case post(PulsePostCardContent, why: String?)
 
         var id: String {
             switch self {
             case let .band(band): "band-\(band.band)"
-            case let .moment(moment): "moment-\(moment.id)"
-            case let .post(card): "post-\(card.id)"
+            case let .heading(words): "heading-\(words)"
+            case let .moment(moment, _): "moment-\(moment.id)"
+            case let .post(card, _): "post-\(card.id)"
             }
         }
     }
@@ -64,14 +67,19 @@ final class ReinventedPulseModel {
     private(set) var placeLabel: String?
     private(set) var chips: [String] = ["all"]
     private(set) var end: String?
+    /// Explore pauses here ("Keep exploring?") until the person asks for more.
+    private(set) var pause: String?
     private(set) var loadingMore = false
-    /// Close circle (`close`) or Around me (`around`).
+    /// Close circle (`close`), Around me (`around`) or Explore (`explore`).
     private(set) var reach = "around"
     private(set) var miles = 25
     private(set) var chip = "all"
     let cards: ProfilePostCardsModel
 
     @ObservationIgnored private var items: [ReinventedListItemDTO] = []
+    /// Explore: why each item is there, and how many of the first are "Today, elsewhere".
+    @ObservationIgnored private var why: [String: String] = [:]
+    @ObservationIgnored private var pickedCount = 0
     @ObservationIgnored private var bands: [ReinventedBandDTO] = []
     @ObservationIgnored private var cursor: String?
     @ObservationIgnored private var reading: Task<Void, Never>?
@@ -91,14 +99,16 @@ final class ReinventedPulseModel {
         let cardsById = Dictionary(cards.cards.map { ($0.id, $0) }) { first, _ in first }
         var rows: [Row] = []
         var lastBand: String?
-        for item in items {
+        for (index, item) in items.enumerated() {
+            if reach == "explore", index == 0, pickedCount > 0 { rows.append(.heading("Today, elsewhere")) }
+            if reach == "explore", index == pickedCount, pickedCount > 0 { rows.append(.heading("New elsewhere")) }
             if let band = item.band, band != lastBand, let line = bands.first(where: { $0.band == band }) {
                 rows.append(.band(line))
                 lastBand = band
             }
             switch item.content {
-            case let .moment(moment): rows.append(.moment(moment))
-            case let .post(post): if let card = cardsById[post.id] { rows.append(.post(card)) }
+            case let .moment(moment): rows.append(.moment(moment, why: why[item.id]))
+            case let .post(post): if let card = cardsById[post.id] { rows.append(.post(card, why: why[item.id])) }
             }
         }
         return rows
@@ -152,6 +162,7 @@ final class ReinventedPulseModel {
         // A tap made while this read is out keeps its value over what the read brings.
         let revision = cards.actionRevision
         let here = CLLocationManager().location?.coordinate
+        if reach == "explore" { return await readExplore(cursor: cursor, at: here, revision: revision) }
         let endpoint = ReinventedEndpoints.list(
             reach: reach,
             miles: reach == "around" ? miles : nil,
@@ -159,35 +170,61 @@ final class ReinventedPulseModel {
             at: here.map { ($0.latitude, $0.longitude) },
             cursor: cursor
         )
+        guard let data = await fetch(endpoint) else { return }
+        guard let page = try? JSONDecoder().decode(ReinventedListResponse.self, from: data) else {
+            if items.isEmpty { load = .failed("Couldn't load Pulse. Try again.") }
+            return
+        }
+        show(page, appending: cursor != nil, revision: revision)
+    }
+
+    /// One read of a phase 1 route: its body on success. An older server (404) puts today's Pulse back and is asked
+    /// again later; a refusal (403) re-reads the switch; anything else says so when there's nothing on screen.
+    private func fetch(_ endpoint: Endpoint) async -> Data? {
         let response: APIClient.DataResponse
         do {
             response = try await api.requestDataResponse(endpoint, includingForbidden: true, includingNotFound: true)
         } catch {
-            guard !Task.isCancelled else { return }
-            if items.isEmpty { load = .failed("Couldn't load Pulse. Check your connection and try again.") }
-            return
+            if !Task.isCancelled, items.isEmpty { load = .failed("Couldn't load Pulse. Check your connection and try again.") }
+            return nil
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return nil }
         switch response.response.statusCode {
         case 200..<300:
-            break
+            ReinventedServer.shared.clear()
+            return response.data
         case 404:
-            // An older server: today's Pulse comes back, and the new one is asked again later.
             ReinventedServer.shared.markBehind()
-            return
         case 403:
             await PulseReinventedFlags.shared.recheck()
-            return
         default:
             if items.isEmpty { load = .failed("Couldn't load Pulse. Try again.") }
-            return
         }
-        guard let page = try? JSONDecoder().decode(ReinventedListResponse.self, from: response.data) else {
-            if items.isEmpty { load = .failed("Couldn't load Pulse. Try again.") }
-            return
+        return nil
+    }
+
+    /// Explore (CONTRACT 6f): the picked ten on the first page, then newest with variety, pausing at "Keep exploring?".
+    private func readExplore(cursor: String?, at here: CLLocationCoordinate2D?, revision: Int) async {
+        let endpoint = ReinventedEndpoints.explore(at: here.map { ($0.latitude, $0.longitude) }, cursor: cursor)
+        guard let data = await fetch(endpoint),
+              let page = try? JSONDecoder().decode(ReinventedExploreResponse.self, from: data) else { return }
+        let appending = cursor != nil
+        let fresh = page.picked + page.items
+        if !appending {
+            why = [:]
+            pickedCount = page.picked.count
+            bands = []
+            chips = ["all"]
         }
-        ReinventedServer.shared.clear()
-        show(page, appending: cursor != nil, revision: revision)
+        for entry in fresh {
+            why[entry.id] = entry.why
+        }
+        items = (appending ? items : []) + fresh.map(\.item)
+        self.cursor = page.nextCursor
+        end = page.nextCursor == nil ? "That's everything for now." : nil
+        pause = page.pause
+        showPosts(revision: revision)
+        load = .loaded
     }
 
     private func show(_ page: ReinventedListResponse, appending: Bool, revision: Int) {
@@ -199,11 +236,16 @@ final class ReinventedPulseModel {
         }
         cursor = page.nextCursor
         end = page.end
+        pause = nil
+        showPosts(revision: revision)
+        load = page.needsPlace && items.isEmpty ? .needsPlace : .loaded
+    }
+
+    private func showPosts(revision: Int) {
         let posts: [FeedPostDTO] = items.compactMap {
             if case let .post(post) = $0.content { return post }
             return nil
         }
         cards.show(posts, readRevision: revision)
-        load = page.needsPlace && items.isEmpty ? .needsPlace : .loaded
     }
 }
