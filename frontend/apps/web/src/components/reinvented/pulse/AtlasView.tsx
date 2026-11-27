@@ -10,6 +10,7 @@ import { colors } from '@/components/moments/momentState';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { useBackWhenMissing } from '../serverBehind';
 import { deleteForGood, readAtlas, type AtlasPage, type ListMoment } from './listApi';
+import { WentBecauseOfYou } from '../strands/Strands';
 
 const dayWords = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
@@ -144,6 +145,7 @@ export default function AtlasView({ account, onOpen }: { account: string; onOpen
   return (
     <div className="rp-atlas">
       <p className="rp-atlas-note">My Atlas: every Moment you take is kept here for you alone, after it fades for everyone else.</p>
+      <WentBecauseOfYou />
       {!days.length && <p className="rp-empty">Nothing here yet. The Moments you post from now on are kept here.</p>}
       {days.map((d) => (
         <section key={d.day} aria-label={d.day}>

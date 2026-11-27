@@ -671,6 +671,22 @@ router.get('/crowd/:id', async (req, res) => {
   }
 });
 
+// ─── Tomorrow's mail and "Mail it" (CONTRACT 8j) ─────────────────────────────
+
+const postcards = require('../services/pulse/postcards');
+
+/**
+ * POST /moments/:id/enclosure — the sender's own Moment's picture as one of their mail enclosures, for a letter the app
+ * then sends through today's POST /api/mailbox/send ("Mail it"; today's letter rules apply).
+ */
+router.post('/moments/:id/enclosure', contentCreationLimiter, async (req, res) => {
+  try {
+    res.status(201).json(await postcards.enclosureFor(req.user.id, req.params.id));
+  } catch (error) {
+    sendError(res, error, 'moment_enclosure');
+  }
+});
+
 // ─── "Your day" and "Tonight in <town>" (CONTRACT 8k) ────────────────────────
 
 const yourDay = require('../services/pulse/yourDay');
