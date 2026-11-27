@@ -157,6 +157,9 @@ final class ReinventedPulseModel {
         self.miles = miles
         self.circle = reach == "close" ? circle : nil
         chip = "all"
+        // What the pill now names, never the last reach's rows under it: loading until it comes, or why it didn't.
+        items = []
+        cursor = nil
         await refresh()
     }
 
