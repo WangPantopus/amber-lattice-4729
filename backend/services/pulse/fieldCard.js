@@ -109,10 +109,16 @@ async function cardBudget(userId) {
  */
 async function openingSource(source, { name, scientific, kind }) {
   if (source) {
+    // A redirect is followed only to an address that is itself on the short list, hop by hop (LEAD-3, 04:17).
+    let url = source.url;
+    const deadline = AbortSignal.timeout(SOURCE_CHECK_MS);
     try {
-      const answer = await fetch(source.url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(SOURCE_CHECK_MS),
-        headers: { 'user-agent': 'Pantopus field card check' } });
-      if (answer.ok) return source;
+      for (let hop = 0; hop < 4 && url; hop += 1) {
+        const answer = await fetch(url, { method: 'GET', redirect: 'manual', signal: deadline, headers: { 'user-agent': 'Pantopus field card check' } });
+        if (answer.ok) return { ...source, url };
+        const next = answer.status >= 300 && answer.status < 400 ? answer.headers.get('location') : null;
+        url = next ? safeSource(source.title, new URL(next, url).toString())?.url || null : null;
+      }
     } catch {
       // Falls through to a search on a known guide.
     }
@@ -123,14 +129,17 @@ async function openingSource(source, { name, scientific, kind }) {
     : { title: `Wikipedia: ${name}`, url: `https://en.wikipedia.org/w/index.php?search=${query}` };
 }
 
+// A name that itself claims safety or eating (never a name that warns: "Poison hemlock" stays as it is).
+const SAFE_NAME = /\b(edible|eatable|safe|harmless|tasty|delicious)\b/i;
+
 /**
- * "Never safe to eat", made certain in code on the model's own words: for something one might eat, a `why` that speaks
- * of eating, taste, safety or touching is dropped, and such words are taken out of the name. The caution stays.
+ * "Never safe to eat", made certain in code on the model's own words (LEAD-3, 04:17): for something one might eat, a
+ * `why` that speaks of eating, taste, safety or touching is dropped. The name is never edited: one that claims safety or
+ * eating gives way to the scientific name, or to no name. The caution stays either way.
  */
-function withoutEating(card, kind) {
+function withoutEating(card, kind, scientific) {
   if (!EATABLE_KINDS.includes(kind)) return card;
-  const kept = card.name ? card.name.replace(new RegExp(EATING_WORDS.source, 'gi'), '').replace(/\s{2,}/g, ' ').trim() : '';
-  const name = kept ? kept[0].toUpperCase() + kept.slice(1) : null;
+  const name = card.name && SAFE_NAME.test(card.name) ? (scientific && !SAFE_NAME.test(scientific) ? scientific : null) : card.name;
   return { ...card, name, why: card.why && EATING_WORDS.test(card.why) ? null : card.why };
 }
 
@@ -240,11 +249,10 @@ async function makeCard(target, dot, viewerId) {
     await logCall(viewerId, { status: 'success', latency_ms: Date.now() - started, input_tokens: reply.inputTokens, output_tokens: reply.outputTokens });
   }
   const kind = typeof parsed.kind === 'string' ? parsed.kind : 'other';
-  const words = withoutEating({
-    name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 80) : null,
-    why: String(parsed.why || '').trim().slice(0, 200) || null,
-  }, kind);
-  const scientific = words.name && typeof parsed.scientific === 'string' && parsed.scientific.trim() ? parsed.scientific.trim().slice(0, 80) : null;
+  const named = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 80) : null;
+  const scientificSaid = named && typeof parsed.scientific === 'string' && parsed.scientific.trim() ? parsed.scientific.trim().slice(0, 80) : null;
+  const words = withoutEating({ name: named, why: String(parsed.why || '').trim().slice(0, 200) || null }, kind, scientificSaid);
+  const scientific = words.name ? scientificSaid : null;
   return {
     v: 1,
     name: words.name,
@@ -267,7 +275,7 @@ async function makeCard(target, dot, viewerId) {
 async function authorAiOn(target) {
   const row = target.moment || target.row;
   if (!row || row.identity_context_type === 'pen_name' || !row.user_id) return true;
-  return aiSetting.aiOn(row.user_id);
+  return aiSetting.aiOnOrThrow(row.user_id);
 }
 
 function thingOf(target, dotId) {
@@ -307,7 +315,8 @@ async function cardFor(id, dotId, viewerId) {
   if (target.moment && !target.open) throw fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
   // A person's own Pantopus AI switch (CONTRACT 7d): the reader's (nothing is written for them), then the author's (no
   // photo of theirs goes to the model). A kept card is shown either way, above.
-  const [readerOn, authorOn] = await Promise.all([aiSetting.aiOn(viewerId), authorAiOn(target)]);
+  // A choice that can't be read makes no call: 503 PANTOPUS_AI_UNAVAILABLE, try again.
+  const [readerOn, authorOn] = await Promise.all([aiSetting.aiOnOrThrow(viewerId), authorAiOn(target)]);
   if (!readerOn) throw aiSetting.offError();
   if (!authorOn) throw fail(403, 'FIELD_CARD_OFF', 'The author keeps Pantopus AI off for their photos.');
   const key = `${id}:${dotId}`;
