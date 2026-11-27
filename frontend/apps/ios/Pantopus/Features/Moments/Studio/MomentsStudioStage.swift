@@ -35,6 +35,9 @@ struct MomentsStudioStage: View {
     @State private var showsTray = false
     /// Illuminate's sheet (phase 2: dots on things in the picture).
     @State private var showsIlluminate = false
+    /// Blur before posting (phase 2): its sheet, and drawing boxes by hand on the picture.
+    @State private var showsBlur = false
+    @State private var blurByHand = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -54,7 +57,10 @@ struct MomentsStudioStage: View {
             HStack(alignment: .top) {
                 closeButton
                 Spacer(minLength: Spacing.s2)
-                MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate)
+                MomentsStudioRail(model: model, openTray: openTray, openIlluminate: openIlluminate, openBlur: openBlur)
+                    // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
+                    .opacity(blurByHand ? 0 : 1)
+                    .allowsHitTesting(!blurByHand)
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s2)
@@ -75,6 +81,10 @@ struct MomentsStudioStage: View {
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s3)
             notes
+            // Something to blur was found on the photo (phase 2): one tap opens the Blur sheet.
+            MomentsStudioBlurOffer(model: model, open: openBlur)
+                .padding(.horizontal, Spacing.s4)
+                .padding(.bottom, Spacing.s3)
             if model.studioGuess, model.offersGuess {
                 MomentsStudioGuessNote()
                     .padding(.horizontal, Spacing.s4)
@@ -107,6 +117,13 @@ struct MomentsStudioStage: View {
                 MomentsStudioStampLayer(model: model, stamps: stamps, picture: stampPicture)
                 // Illuminate's dots (phase 2), over the stamps.
                 MomentsStudioDotLayer(model: model, picture: stampPicture, open: openIlluminate)
+                // Blur before posting (phase 2): the spots found, and boxes drawn by hand.
+                if showsBlur || blurByHand {
+                    MomentsStudioBlurLayer(model: model, picture: stampPicture, byHand: blurByHand) {
+                        blurByHand = false
+                        showsBlur = true
+                    }
+                }
             }
             .ignoresSafeArea()
         }
@@ -124,6 +141,20 @@ struct MomentsStudioStage: View {
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
         }
+        .sheet(isPresented: $showsBlur) {
+            MomentsStudioBlurSheet(model: model) {
+                showsBlur = false
+                blurByHand = true
+            } onDone: {
+                showsBlur = false
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
+            .environment(\.colorScheme, .dark)
+        }
+        // The photo is looked at for what to blur as soon as it's in the Studio, on the phone itself.
+        .task(id: model.blurKey) { await model.findBlurSpots() }
         .sheet(isPresented: $showsTray) {
             MomentsStudioTray(model: model, stamps: stamps) { showsTray = false }
                 .presentationDetents([.medium])
@@ -149,6 +180,12 @@ struct MomentsStudioStage: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.studio")
+    }
+
+    private func openBlur() {
+        writing = false
+        Keyboard.close()
+        showsBlur = true
     }
 
     private func openIlluminate() {

@@ -202,6 +202,8 @@ struct MomentsStudioTools {
     /// Illuminate's dots on things in the picture (`MomentsStudioDots`), and the one being edited.
     var dots: [MomentDotDTO] = []
     var pickedDot: String?
+    /// Blur before posting (`MomentsStudioBlur`): what was found on this photo, and the blurred photo.
+    var blur: MomentsStudioBlurState?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {
