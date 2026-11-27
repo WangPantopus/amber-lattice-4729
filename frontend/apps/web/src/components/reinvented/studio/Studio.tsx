@@ -11,7 +11,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { geo, moments } from '@pantopus/api';
+import { geo, moments, penNames } from '@pantopus/api';
 import type { Audience, Background, Hours, Location, NewMoment } from '@pantopus/api/endpoints/moments';
 import type { MomentChatDraft } from '@pantopus/types';
 import {
@@ -44,6 +44,8 @@ import {
 } from '@/components/moments/momentState';
 import { prepareMedia } from '@/components/moments/momentMedia';
 import { discardJob, keepJob, pendingJobs, postJob, type Job } from '@/components/moments/momentOutbox';
+import PenNameSetup from '@/components/penName/PenNameSetup';
+import { usePenNameMe } from '@/components/penName/penName';
 import StudioPicture, { type StudioTool } from './StudioPicture';
 import './studio.css';
 
@@ -54,6 +56,7 @@ const pens = [0.006, 0.012, 0.024];
 // At home the place line reads "Area · <town>"; the first time only, one line under it says why (design §4).
 const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
 type Placement = 'exact' | 'area' | 'place' | 'none';
+type PostAs = 'personal' | 'pen_name';
 
 function useWide() {
   const [wide, setWide] = useState(false);
@@ -100,6 +103,7 @@ export default function Studio({
   const draftCaption = useRef(draft?.kind === 'photo' ? draft.caption || '' : '');
   const [hours, setHours] = useState<Hours>(draft?.hours ?? 24),
     [audience, setAudience] = useState<Audience>(draft?.audience ?? 'nearby'),
+    [postAs, setPostAs] = useState<PostAs>('personal'),
     [placement, setPlacement] = useState<Placement>('exact');
   const [fix, setFix] = useState<DeviceFix | null>(null),
     [meta, setMeta] = useState<CaptureMetadata | null>(null),
@@ -125,6 +129,7 @@ export default function Studio({
   const [drawerOpen, setDrawerOpen] = useState(false),
     [discarding, setDiscarding] = useState(false),
     [askedPost, setAskedPost] = useState(false),
+    [setupOpen, setSetupOpen] = useState(false),
     [homeNote, setHomeNote] = useState(false);
   const drawer = drawerOpen || wide;
   const handle = useRef<AbortController | null>(null),
@@ -262,13 +267,24 @@ export default function Studio({
     staleTime: 60000,
     retry: false,
   });
+  // The made-up name (docs/product/made-up-names/README.md, "Moments"): the person's own name for it, whether they may
+  // use one, and, once picked, whether this spot has enough homes around it.
+  const underPenName = postAs === 'pen_name';
+  const penMe = usePenNameMe(true).data;
+  const penCheck = useQuery({
+    queryKey: ['pen-names', 'check', point?.latitude, point?.longitude],
+    enabled: underPenName && !!point,
+    queryFn: () => penNames.check(point!.latitude, point!.longitude),
+    retry: false,
+    staleTime: 60000,
+  });
   const area = placement === 'area' || !!(p?.sky && p.at_home),
     noPlace = placement === 'none';
   const attested = !!p?.adult_confirmed || adult;
-  const live = marked && !p?.at_home && !area && !noPlace;
+  const live = !underPenName && marked && !p?.at_home && !area && !noPlace;
   const altitude = fromAlbum ? fromAlbum.altitude : fix?.coords.altitude;
-  const canHeight = point && p?.can_show_height && altitude != null && (!area || p.sky);
-  const homeWarning = point && p?.at_home && !p.sky && !area;
+  const canHeight = !underPenName && point && p?.can_show_height && altitude != null && (!area || p.sky);
+  const homeWarning = !underPenName && point && p?.at_home && !p.sky && !area;
   useEffect(() => {
     const t = setTimeout(() => setSearch(venueTerm.trim()), 300);
     return () => clearTimeout(t);
@@ -320,6 +336,25 @@ export default function Studio({
     setIndex(0);
     setMode('media');
   }
+  // Under the made-up name: people nearby only, never without a place, and no height, Live mark or weather.
+  function choosePenName() {
+    setPostAs('pen_name');
+    setAudience('nearby');
+    if (placement === 'none') setPlacement('exact');
+    setHeight(false);
+    setWeather(false);
+    setError('');
+  }
+  function pickWho(who: 'nearby' | 'friends' | 'pen') {
+    setError('');
+    if (who !== 'pen') {
+      setPostAs('personal');
+      setAudience(who === 'friends' ? 'connections' : 'nearby');
+    } else if (!penMe) return;
+    else if (!penMe.allowed) setError(penMe.refusal?.message || 'This account can’t post under a made-up name.');
+    else if (penMe.pen_name) choosePenName();
+    else setSetupOpen(true);
+  }
   async function deliver(job: Job, signal: AbortSignal) {
     const result = await postJob(job, signal, (s) => {
       if (mounted.current) setBusy(s);
@@ -359,6 +394,8 @@ export default function Studio({
       if (!noPlace && !point) throw new Error('Choose Use my location, or select No location.');
       if (noPlace && p.has_connections === false) throw new Error('A Moment without a location needs a connection.');
       if (homeWarning && !homeAck) throw new Error('Confirm the pin at your home, or choose Show area.');
+      if (underPenName && penCheck.data && !penCheck.data.allowed)
+        throw new Error(penCheck.data.refusal?.message || 'A made-up name can’t post from here.');
       const kind =
         mode === 'text'
           ? 'text'
@@ -371,6 +408,8 @@ export default function Studio({
           )
         : [];
       controller.signal.throwIfAborted();
+      if (underPenName && prepared.length > 1)
+        throw new Error("A video posted in parts can't go out under a made-up name. Post one of up to a minute.");
       let gps = fix;
       if (!noPlace && !fromAlbum && gps && !recentFix(gps.timestamp)) {
         setBusy('Updating your location…');
@@ -398,12 +437,14 @@ export default function Studio({
         account,
         created: Date.now(),
         parts: Array.from({ length: count }, (_, i) => {
-          const body: NewMoment = {
+          // `post_as`: the server's field for the made-up name (routes/moments.js), sent only when it is picked.
+          const body: NewMoment & { post_as?: 'pen_name' } = {
             client_request_id: crypto.randomUUID(),
             kind,
             hours,
-            audience: noPlace ? 'connections' : audience,
+            audience: noPlace ? 'connections' : underPenName ? 'nearby' : audience,
             location: loc,
+            ...(underPenName ? { post_as: 'pen_name' as const } : {}),
             ...(kind === 'text'
               ? { text: text.trim(), background: bg }
               : caption.trim() && i === 0
@@ -502,6 +543,7 @@ export default function Studio({
     else backToStart();
   }
   const trap = useDialogFocusTrap<HTMLDivElement>(() => {
+    if (setupOpen) return;
     if (discarding) setDiscarding(false);
     else if (tool) setTool(null);
     else if (drawerOpen && !wide) setDrawerOpen(false);
@@ -513,7 +555,7 @@ export default function Studio({
     placement === 'place'
       ? (venue && (p?.places.find((v) => v.key === venue)?.label || nearby.find((v) => v.place_id === venue)?.name)) ||
         p?.place?.label
-      : area
+      : area || underPenName
         ? p?.area?.label || p?.area_label
         : p?.place_label;
   // The pill's place line (lead, 2026-11-27 00:40): an exact pin on the home reads "Your home", with today's warning
@@ -524,7 +566,8 @@ export default function Studio({
       ? 'Choose your location'
       : homeWarning
         ? 'Your home'
-        : (area ? 'Area · ' : '') + (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
+        : (area || (underPenName && placement !== 'place') ? 'Area · ' : '') +
+          (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
   const laterChoice = later ? p?.share_later?.find((v) => v.key === later) : undefined;
   // With Share later the pill reads "Shares at 6:40 pm" over "24 hours · <place>".
   const pillPlace = laterChoice ? `${hours} ${hours === 1 ? 'hour' : 'hours'} · ${placeLine}` : placeLine;
@@ -535,7 +578,7 @@ export default function Studio({
         .replace(/\s?AM$/, ' am')
         .replace(/\s?PM$/, ' pm')
     : `Fades in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-  const who = noPlace || audience === 'connections' ? 'friends' : 'nearby';
+  const who = underPenName ? 'pen' : noPlace || audience === 'connections' ? 'friends' : 'nearby';
   const content = mode === 'text' ? !!text.trim() : !!file;
   const ready = recovered && !busy && !reading && attested && !!p && content;
   const gate = jobs.length > 0 || !attested;
@@ -596,27 +639,31 @@ export default function Studio({
                 Pin it at a place
               </Chip>
             )}
-            <Chip
-              on={placement === 'none'}
-              onClick={() => {
-                setPlacement('none');
-                setVenue('');
-                setHomeAck(false);
-              }}
-            >
-              No location
-            </Chip>
+            {!underPenName && (
+              <Chip
+                on={placement === 'none'}
+                onClick={() => {
+                  setPlacement('none');
+                  setVenue('');
+                  setHomeAck(false);
+                }}
+              >
+                No location
+              </Chip>
+            )}
           </div>
           {!noPlace && (
             <div className="st-where">
               <div>
                 <strong>{placeLine}</strong>
                 <small>
-                  {area
-                    ? 'Only the area is shown.'
-                    : point
-                      ? 'A pin appears at this location.'
-                      : 'Allow a location fix to place your Moment on the map.'}
+                  {underPenName
+                    ? 'Under a made-up name it shows over its area, or at a public place, to people nearby.'
+                    : area
+                      ? 'Only the area is shown.'
+                      : point
+                        ? 'A pin appears at this location.'
+                        : 'Allow a location fix to place your Moment on the map.'}
                 </small>
               </div>
               {!fromAlbum && (
@@ -1026,6 +1073,12 @@ export default function Studio({
                   {busy || error || blocker}
                 </p>
               )}
+              {composing && underPenName && penMe?.pen_name && (
+                <p className="st-status">
+                  As {penMe.pen_name.name}. Others can’t see it’s you.
+                  {penCheck.data?.warning ? ' ' + penCheck.data.warning : ''}
+                </p>
+              )}
               {mode === 'none' ? (
                 <div className="st-dock" role="group" aria-label="Start with">
                   <button type="button" onClick={() => setCamera(true)}>
@@ -1070,12 +1123,17 @@ export default function Studio({
                   )}
                   <div className="st-bar">
                     <div className="st-who" role="group" aria-label="Who sees it">
-                      <Chip on={who === 'nearby'} disabled={noPlace || !!busy} onClick={() => setAudience('nearby')}>
+                      <Chip on={who === 'nearby'} disabled={noPlace || !!busy} onClick={() => pickWho('nearby')}>
                         Nearby
                       </Chip>
-                      <Chip on={who === 'friends'} disabled={!!busy} onClick={() => setAudience('connections')}>
+                      <Chip on={who === 'friends'} disabled={!!busy} onClick={() => pickWho('friends')}>
                         Friends
                       </Chip>
+                      {penMe && (
+                        <Chip on={who === 'pen'} disabled={!!busy} onClick={() => pickWho('pen')}>
+                          Made-up name
+                        </Chip>
+                      )}
                     </div>
                     <div className="st-row">
                       <button
@@ -1137,6 +1195,7 @@ export default function Studio({
           </>
         )}
       </div>
+      <PenNameSetup open={setupOpen} onClose={() => setSetupOpen(false)} me={penMe} onTaken={() => choosePenName()} />
     </div>
   );
   return createPortal(stage, document.body);
