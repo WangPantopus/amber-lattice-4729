@@ -98,6 +98,8 @@ data class MomentLabel(
     val font: MomentFont = MomentFont.Classic,
     /** "Pulse, reinvented"'s Studio: a colour from the photo (ARGB) in place of [ink]; null everywhere else. */
     val tint: Int? = null,
+    /** "Pulse, reinvented"'s Studio: drawn behind the photo's subject ([MomentMarks.subject]); in front everywhere else. */
+    val behind: Boolean = false,
 )
 
 /** Everything written and drawn on one picture. */
@@ -107,6 +109,8 @@ data class MomentMarks(
     val labels: List<MomentLabel> = emptyList(),
     /** "Pulse, reinvented"'s Studio: a film look over the whole photo ([MomentLooks]); the photo as it came everywhere else. */
     val look: MomentLook = MomentLook.Original,
+    /** "Pulse, reinvented"'s Studio: the photo's subject, for labels set behind it; none everywhere else. */
+    val subject: MomentSubject? = null,
 ) {
     /** Nothing that would show: no line, no label with words, and no look. */
     val isEmpty: Boolean get() = strokes.isEmpty() && labels.none { it.text.isNotBlank() } && look == MomentLook.Original

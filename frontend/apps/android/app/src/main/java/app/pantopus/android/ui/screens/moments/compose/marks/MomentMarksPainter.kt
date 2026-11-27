@@ -60,6 +60,11 @@ object MomentMarksPainter {
         shape: Float = width / height,
     ) {
         val ink = CardSignatureInk.paint(multiply = false)
+        // "Pulse, reinvented"'s Studio: words behind the photo's subject first, with the subject's shape taken out of them.
+        val subject = marks.subject?.takeIf { marks.labels.any { it.behind } }
+        subject?.behind(canvas, width, height) {
+            draw(canvas, MomentMarks(labels = marks.labels.filter { it.behind }), width, height, skip, shape)
+        }
         if (marks.strokes.any { it.pen != MomentPen.Marker }) {
             // "Pulse, reinvented"'s Studio: lines with a highlighter, an arrow or the eraser among them.
             MomentPensPainter.draw(canvas, marks.strokes, width, height)
@@ -75,7 +80,7 @@ object MomentMarksPainter {
         }
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
         for (label in marks.labels) {
-            if (label.id == skip || label.text.isBlank()) continue
+            if (label.id == skip || label.text.isBlank() || (subject != null && label.behind)) continue
             val laid = layout(label, width, height, shape)
             val restore = canvas.save()
             // Laid out upright, then turned about its middle.

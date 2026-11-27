@@ -8,6 +8,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksPainter
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacementPainter
+import app.pantopus.android.ui.screens.moments.compose.marks.inStep
 import java.io.File
 import java.io.FileOutputStream
 
@@ -53,7 +54,8 @@ object MomentMarksFlatten {
             if (placement != null) {
                 MomentPlacementPainter.draw(canvas, looked, placement, MomentPlacementPainter.backdrop(looked), width, height)
             }
-            MomentMarksPainter.draw(canvas, marks, width, height)
+            // "Pulse, reinvented"'s Studio: a subject lifted where the picture sits now (marks as they are otherwise).
+            MomentMarksPainter.draw(canvas, marks.inStep(placement), width, height)
             written = FileOutputStream(out).use { drawn.compress(Bitmap.CompressFormat.JPEG, QUALITY, it) }
         } finally {
             drawn.recycle()
