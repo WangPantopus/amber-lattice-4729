@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useMe } from '@/lib/me';
 import { useHydrated } from '@/hooks/useHydrated';
 import { usePulseReinvented } from '../usePulseReinvented';
-import { KEPT_COOKIE } from './keptCookie';
+import { CSRF_COOKIE, KEPT_COOKIE, keptValue } from './keptCookie';
 
 const KEPT = 'pantopus.pulseReinvented.';
 
@@ -31,8 +31,10 @@ export function useReinventedOn(enabled = true, keptOnServer = false): boolean {
     } catch {
       // Storage refused (private window): the server's answer still decides each time.
     }
-    document.cookie = known
-      ? `${KEPT_COOKIE}=1; path=/; max-age=31536000; samesite=lax`
+    const csrf = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]+)`))?.[1];
+    const value = known ? keptValue(csrf ? decodeURIComponent(csrf) : null) : null;
+    document.cookie = value
+      ? `${KEPT_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`
       : `${KEPT_COOKIE}=; path=/; max-age=0; samesite=lax`;
   }, [account, known]);
   if (known !== undefined) return known;
