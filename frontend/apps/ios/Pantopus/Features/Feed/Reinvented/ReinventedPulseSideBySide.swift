@@ -50,14 +50,11 @@ struct ReinventedPulseSideBySide<Header: View, Content: View, Add: View>: View {
     let onOpen: (ReinventedMapModel.Item) -> Void
 
     var body: some View {
-        Group {
-            switch height {
-            case .middle: both
-            case .list: listAlone
-            case .map: mapAlone
-            }
+        switch height {
+        case .middle: both
+        case .list: listAlone
+        case .map: mapAlone
         }
-        .accessibilityIdentifier("reinventedPulse.sideBySide")
     }
 
     /// The list in its column, a line, and the map (drawn behind) with the time row over it.
@@ -79,6 +76,8 @@ struct ReinventedPulseSideBySide<Header: View, Content: View, Add: View>: View {
             VStack(spacing: Spacing.s0) {
                 if showsTimeRow {
                     ReinventedTimeRow(model: map)
+                        // Room to scroll the last time clear of the open Duo's clock corner, top right.
+                        .safeAreaPadding(.trailing, Spacing.s16)
                         .padding(.top, Spacing.s2)
                 }
                 Spacer(minLength: 0)
