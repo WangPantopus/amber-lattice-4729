@@ -215,7 +215,9 @@ extension MomentsComposerModel {
         pickedTogether = waiting.isEmpty ? 0 : pickedTogether - partners.count
         let strip = MomentsPhotostrip.draw(photos)
         if marking.studio == nil { marking.studio = MomentsStudioTools() }
-        (marking.studio?.look, marking.studio?.lookOriginal, marking.studio?.lookResult) = (.original, nil, nil)
+        marking.studio?.look = .original
+        marking.studio?.lookOriginal = nil
+        marking.studio?.lookResult = nil
         use(marked: strip, marking.marks, placement: marking.placement)
     }
 }
