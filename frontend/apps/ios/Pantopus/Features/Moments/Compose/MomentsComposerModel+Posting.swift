@@ -176,6 +176,8 @@ extension MomentsComposerModel {
         body.guess = offersGuess && studioGuess ? true : nil
         // The Studio's "Also show in Explore" (CONTRACT 6f), only where it may be; left out otherwise.
         body.explore = offersExplore && studioExplore ? true : nil
+        // The Studio's playable items (CONTRACT 7b, 7g); nil, so left out, when there are none.
+        body.play = studioPlay
         // The Studio's stamps, and the phone's height for an elevation stamp; left out otherwise.
         if !studioStamps.isEmpty {
             body.stamps = studioStamps

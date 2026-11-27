@@ -331,13 +331,8 @@ extension MomentsViewer {
             switch moment.kind {
             case .photo:
                 if let image = model.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .accessibilityLabel("\(moment.author.shortName)'s photo")
-                        .accessibilityIdentifier("moments.viewer.photo")
-                        // "Pulse, reinvented": its stamps, only while the switch is on for you.
-                        .overlay { MomentStampsOverlay(moment: moment, picture: image.size) }
+                    // The photo with its stamps; "Pulse, reinvented"'s layers only while the switch is on for you.
+                    MomentPhotoSurface(moment: moment, image: image)
                 }
             case .video:
                 ZStack {

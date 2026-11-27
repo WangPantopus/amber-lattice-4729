@@ -193,6 +193,8 @@ struct MomentsStudioTools {
     var lookOriginal: UIImage?
     /// The photo the look made: while the picture is still that one, the look and its original hold.
     var lookResult: UIImage?
+    /// Before and after (`MomentsStudioBeforeAfter`): the side-by-side picture it made, and what to put back.
+    var pair: MomentsStudioPair?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

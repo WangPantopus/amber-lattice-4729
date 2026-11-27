@@ -141,7 +141,7 @@ struct MomentsStudioStage: View {
     private var stampPicture: CGSize? {
         guard model.marking.placement == nil else { return nil }
         switch model.draft {
-        case let .photo(image): return image.size
+        case let .photo(image): return model.studioPair == nil ? image.size : MomentBeforeAfterHalves.size(of: image.size)
         case .video: return model.marking.video?.size
         case .text, nil: return nil
         }
@@ -292,6 +292,14 @@ struct MomentsStudioPicture: View {
 
     var body: some View {
         switch model.draft {
+        case let .photo(image) where model.studioPair != nil:
+            // Before and after: one half over the other with the curtain, as the new viewer shows it.
+            MomentBeforeAfterView(
+                picture: image,
+                before: model.studioPair?.beforeLabel ?? "",
+                after: model.studioPair?.afterLabel ?? ""
+            )
+            .accessibilityIdentifier("moments.studio.beforeAfter.picture")
         case let .photo(image):
             MomentsMarkedPhoto(
                 image: image,

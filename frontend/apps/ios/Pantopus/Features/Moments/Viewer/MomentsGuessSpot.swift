@@ -35,7 +35,7 @@ extension MomentsViewerModel {
     /// The viewer holds still while a guess waits or its sheet is open (as the web's viewer does), and while its author
     /// hasn't answered "Keep this?".
     var guessCovers: Bool {
-        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits
+        MomentGuessPrompt.shared.open != nil || guessWaits || keepWaits || playHolds
     }
 
     /// "Keep this?" waits for its author's answer (CONTRACT 6d).
