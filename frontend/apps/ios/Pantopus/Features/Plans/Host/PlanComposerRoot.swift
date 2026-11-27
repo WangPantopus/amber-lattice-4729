@@ -178,7 +178,7 @@ struct PlanTypePicker: View {
             PlanNavBar(title: "Host a plan", leading: .close, trailing: "1 of \(model?.stepCount ?? 3)", onLeading: onClose)
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
-                    if let model, !model.hostAsOptions.isEmpty { PlanHostAsSection(model: model) }
+                    if let model, !model.hostAsOptions.isEmpty, model.fromMoment == nil { PlanHostAsSection(model: model) }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("What are you planning?")
                             .planFont(.h1)
