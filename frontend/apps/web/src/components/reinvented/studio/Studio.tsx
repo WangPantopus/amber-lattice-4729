@@ -516,13 +516,18 @@ export default function Studio({
       : area
         ? p?.area?.label || p?.area_label
         : p?.place_label;
+  // The pill's place line (lead, 2026-11-27 00:40): an exact pin on the home reads "Your home", with today's warning
+  // under it every time; the area reads "Area · <town>".
   const placeLine = noPlace
     ? 'No location · friends only'
     : !point
       ? 'Choose your location'
-      : (area ? 'Area · ' : '') +
-        (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
+      : homeWarning
+        ? 'Your home'
+        : (area ? 'Area · ' : '') + (placeName || (preview.isPending ? 'Finding place…' : 'Selected location'));
   const laterChoice = later ? p?.share_later?.find((v) => v.key === later) : undefined;
+  // With Share later the pill reads "Shares at 6:40 pm" over "24 hours · <place>".
+  const pillPlace = laterChoice ? `${hours} ${hours === 1 ? 'hour' : 'hours'} · ${placeLine}` : placeLine;
   const timeLine = laterChoice
     ? 'Shares at ' +
       new Date(laterChoice.at)
@@ -1076,7 +1081,7 @@ export default function Studio({
                       <button
                         type="button"
                         className="st-when"
-                        aria-label={`${timeLine}, ${placeLine}. Change`}
+                        aria-label={`${timeLine}, ${pillPlace}. Change`}
                         aria-expanded={drawer}
                         disabled={!!busy}
                         onClick={() => {
@@ -1087,7 +1092,7 @@ export default function Studio({
                         <Clock3 size={20} aria-hidden="true" />
                         <span>
                           <strong>{timeLine}</strong>
-                          <small>{placeLine}</small>
+                          <small>{pillPlace}</small>
                         </span>
                         <ChevronDown size={14} strokeWidth={2.6} aria-hidden="true" />
                       </button>
