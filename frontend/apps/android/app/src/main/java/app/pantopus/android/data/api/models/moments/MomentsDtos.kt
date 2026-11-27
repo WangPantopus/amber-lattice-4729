@@ -169,6 +169,8 @@ data class MomentDto(
     @Json(name = "editable_until") val editableUntil: String? = null,
     /** "Pulse, reinvented" (CONTRACT 3): every stamp's kept value an edit may place, by kind (null where none). */
     @Json(name = "stamp_choices") val stampChoices: Map<String, MomentStampValueDto?>? = null,
+    /** "Pulse, reinvented" (CONTRACT 5b): a guess-the-spot Moment's guesses, for a reader whose switch is on; else null. */
+    val guess: MomentGuessStateDto? = null,
 )
 
 /**
