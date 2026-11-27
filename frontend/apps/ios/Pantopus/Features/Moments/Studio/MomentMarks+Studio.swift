@@ -179,6 +179,12 @@ struct MomentsStudioTools {
     var dropping = false
     /// The picture the marks are on, small, to read its colors from: made when Text or Draw opens in the Studio.
     var picture: MomentsStudioSample?
+    /// Behind the subject: Vision is lifting it now, or found none in this picture.
+    var lifting = false
+    var noSubject = false
+    /// Cutouts on the Studio's picture (`MomentsStudioCutouts`), drawn into it at Post, and the one picked.
+    var cutouts: [MomentMarks.Cutout] = []
+    var pickedCutout: UUID?
 
     /// A line just begun: made with the pen and ink picked here.
     func dress(_ stroke: inout MomentMarks.Stroke) {

@@ -20,14 +20,16 @@ extension MomentsMarksEditor {
     func studioTextFooter(width: CGFloat, typing: Bool) -> some View {
         let tools = marking.studio ?? MomentsStudioTools()
         return VStack(spacing: typing ? Spacing.s2 : Spacing.s3) {
-            if !typing || tools.dropping {
-                studioHint(tools.dropping ? "Touch the photo to take its color." : marking.editing.labels.isEmpty
-                    ? "Tap the picture to add words." : "Drag to move. Pinch to resize. Twist to turn.")
+            if !typing || tools.dropping || tools.lifting || tools.noSubject {
+                studioHint(textHint(tools))
             }
             letterings(selected: currentFont(tools))
             HStack(spacing: Spacing.s2) {
                 ForEach(MomentMarks.Style.allCases, id: \.self) { style in
                     studioLook(style)
+                }
+                if case let .photo(image) = media, let id = marking.typing ?? marking.picked, let label = marking.label(id) {
+                    behindButton(label, photo: marking.base ?? image)
                 }
             }
             .accessibilityElement(children: .contain)
@@ -43,6 +45,40 @@ extension MomentsMarksEditor {
         .frame(width: width)
         // Picking a lettering, a look or an ink while typing keeps the keyboard.
         .keepsKeyboardOnTap()
+    }
+
+    private func textHint(_ tools: MomentsStudioTools) -> String {
+        if tools.dropping { return "Touch the photo to take its color." }
+        if tools.lifting { return "Finding the subject…" }
+        if tools.noSubject { return "There's no clear subject in this photo to go behind." }
+        return marking.editing.labels.isEmpty ? "Tap the picture to add words." : "Drag to move. Pinch to resize. Twist to turn."
+    }
+
+    /// Behind the subject, for the label being changed: the photo's subject (a person, a pet, a thing in front) is
+    /// lifted and drawn over the words.
+    private func behindButton(_ label: MomentMarks.Label, photo: UIImage) -> some View {
+        let on = label.behind
+        return Button { marking.setBehind(label.id, !on, photo: photo) } label: {
+            VStack(spacing: 2) {
+                Icon(.layers, size: 16, strokeWidth: 2.2, color: .white)
+                Text("Behind")
+                    .scaledFont(11, weight: on ? .bold : .semibold)
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 64)
+            .frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.42)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(on ? 1 : 0.4), lineWidth: on ? 2 : 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Behind the subject")
+        .accessibilityHint("Puts these words behind the person or thing in front.")
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("moments.marks.behind")
     }
 
     /// The letters of the label being changed, or of the next one.
@@ -266,6 +302,12 @@ extension MomentsMarksEditor {
             .multilineTextAlignment(.center)
             .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
             .accessibilityHidden(true)
+    }
+
+    /// The photo the Studio lifts a subject from (the 2048 px copy once made); nil for a video and in today's editor.
+    var studioPhoto: UIImage? {
+        guard studio, case let .photo(image) = media else { return nil }
+        return marking.base ?? image
     }
 
     // MARK: - The picture's colors

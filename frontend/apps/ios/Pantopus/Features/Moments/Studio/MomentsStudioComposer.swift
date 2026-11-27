@@ -46,7 +46,8 @@ struct MomentsComposerChoice: View {
                 // Nor stamps: today's server refuses them while the switch is off.
                 request.model.studioStamps = []
                 // Nor the Studio's pens and letterings: today's Text and Draw make lines and labels as before. What was
-                // already drawn or written stays on the picture.
+                // already drawn or written stays on the picture, and cutouts are drawn into it.
+                request.model.drawInStudioCutouts()
                 request.model.marking.studio = nil
             }
         }

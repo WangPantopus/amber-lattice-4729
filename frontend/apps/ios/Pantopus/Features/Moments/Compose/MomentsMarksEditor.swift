@@ -42,6 +42,12 @@ struct MomentsMarksEditor: View {
             screenLayer
             keyboardReader
         })
+        // The Studio's words behind the subject keep their subject in step with the picture (`MomentsSubject`).
+        .background {
+            if let photo = studioPhoto {
+                MomentsStudioSubjectKeeper(marking: marking, photo: photo)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAction(.escape) { model.cancelMarks() }
         .accessibilityIdentifier("moments.marks")

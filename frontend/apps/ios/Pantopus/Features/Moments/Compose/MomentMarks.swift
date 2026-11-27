@@ -42,6 +42,8 @@ struct MomentMarks: Equatable {
         /// place. Today's editor never sets them: bold system letters in one of the six inks, drawn as before.
         var font = Typeface.standard
         var tint: Tint?
+        /// The Studio's "Behind the subject": drawn under the photo's subject (`subject`), in front when there is none.
+        var behind = false
     }
 
     /// The six inks (boards T2, T3); the colors are `MomentsPalette.ink(_:)`.
@@ -78,9 +80,13 @@ struct MomentMarks: Equatable {
 
     var strokes: [Stroke] = []
     var labels: [Label] = []
+    /// The photo's subject, lifted by the Studio for words behind it (`MomentsSubject`); nil in today's editor.
+    var subject: MomentsSubject?
+    /// Cutouts the Studio put on the picture (`MomentsStudioCutouts`); none in today's editor.
+    var cutouts: [Cutout] = []
 
     var isEmpty: Bool {
-        strokes.isEmpty && labels.isEmpty
+        strokes.isEmpty && labels.isEmpty && cutouts.isEmpty
     }
 
     // MARK: - Limits
