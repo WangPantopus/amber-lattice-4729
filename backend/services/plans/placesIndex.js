@@ -32,7 +32,7 @@ const logger = require('../../utils/logger');
 const { encodeGeohash } = require('../../utils/geohash');
 const { FORMAT, PRECISION, SELECTORS, decodeElement } = require('./placesIndexFormat');
 
-const RELEASE_URL = 'https://github.com/WangPantopus/skinny-pantopus/releases/download/places-index';
+const RELEASE_URL = 'https://github.com/WangPantopus/amber-lattice-4729/releases/download/places-index';
 const MANIFEST_FRESH_MS = 60 * 60 * 1000;
 // After a failed manifest read, the last good one (or none) is used this long before asking again.
 const MANIFEST_RETRY_MS = 5 * 60 * 1000;
