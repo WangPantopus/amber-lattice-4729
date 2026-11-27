@@ -49,7 +49,8 @@ import {
 
 const MomentsMap = dynamic(() => import('./MomentsMap'), { ssr: false });
 const Viewer = dynamic(() => import('./MomentViewer'), { ssr: false });
-const Composer = dynamic(() => import('./MomentComposer'), { ssr: false });
+// Today's composer, or the Studio while `pulse_reinvented` is on for this person (components/reinvented).
+const Composer = dynamic(() => import('@/components/reinvented/MomentComposerEntry'), { ssr: false });
 const base = '/app/moments';
 const initial = { latitude: 18, longitude: 0, zoom: 2, serial: 0 };
 const noRings: Ring[] = [];
