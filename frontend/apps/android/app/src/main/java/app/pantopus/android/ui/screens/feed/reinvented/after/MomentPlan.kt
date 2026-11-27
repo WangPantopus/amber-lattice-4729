@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.feed.reinvented.after
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -80,14 +81,25 @@ data class MomentPlanSeed(
  * composer keeps its own pickers (LEAD-3, 90th pass: never present it over the viewer).
  */
 object MomentPlanHandoff {
-    @Volatile private var pending: MomentPlanSeed? = null
+    /** The seed and when it was handed (the phone's uptime clock, which never jumps). */
+    @Volatile private var pending: Pair<MomentPlanSeed, Long>? = null
 
     fun hand(seed: MomentPlanSeed) {
-        pending = seed
+        pending = seed to SystemClock.elapsedRealtime()
     }
 
-    /** The seed, once; null for every composer opened any other way. */
-    fun take(): MomentPlanSeed? = pending.also { pending = null }
+    /**
+     * The seed, once, and only for the composer that opens right after it was handed (within [FRESH_MS]); null for
+     * every composer opened any other way. A hand-over nobody took (the composer was already open, the person backed
+     * out) is dropped, so a later "Host a plan" never starts from that Moment (LEAD-3, 15:27).
+     */
+    fun take(): MomentPlanSeed? {
+        val (seed, at) = pending ?: return null
+        pending = null
+        return seed.takeIf { SystemClock.elapsedRealtime() - at <= FRESH_MS }
+    }
+
+    private const val FRESH_MS = 15_000L
 }
 
 /**
