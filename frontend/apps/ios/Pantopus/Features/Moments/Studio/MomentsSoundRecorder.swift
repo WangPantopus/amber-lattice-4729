@@ -73,8 +73,18 @@ final class MomentsSoundRecorder {
             AVEncoderBitRateKey: kind == .voice ? 64000 : 96000
         ]
         guard let made = try? AVAudioRecorder(url: file, settings: settings), made.record(forDuration: kind.seconds) else {
-            state = .failed("Couldn't start recording. Try again.")
             restoreSession()
+            #if targetEnvironment(simulator)
+            // A Mac with no sound input gives the simulator no microphone (its input reads no channels): a stand-in
+            // tone, so the upload, playback and refusals can be tried there. Never on a phone.
+            if let tone = Self.simulatorTone(at: file, seconds: min(kind.seconds, 2.5)) {
+                state = .hearing
+                let words = kind == .voice ? await Self.words(of: tone) : nil
+                state = .idle
+                return finished(MomentsStudioRecording(file: tone, durationMs: 2500, words: words))
+            }
+            #endif
+            state = .failed("Couldn't start recording. Try again.")
             return
         }
         recorder = made
@@ -165,6 +175,28 @@ final class MomentsSoundRecorder {
             }
         }
     }
+
+    #if targetEnvironment(simulator)
+    /// A quiet tone of `seconds`, written as the recorder would have (the simulator stand-in above).
+    private static func simulatorTone(at file: URL, seconds: Double) -> URL? {
+        let rate = 44100.0
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(rate * seconds)),
+              let samples = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = buffer.frameCapacity
+        for index in 0..<Int(buffer.frameLength) {
+            samples[index] = Float(sin(2 * Double.pi * 440 * Double(index) / rate) * 0.2)
+        }
+        let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1]
+        do {
+            let output = try AVAudioFile(forWriting: file, settings: settings)
+            try output.write(from: buffer)
+        } catch {
+            return nil
+        }
+        return file
+    }
+    #endif
 
     /// Typed words spread evenly over the voice (when the phone couldn't hear them).
     static func spread(_ typed: String, over durationMs: Int) -> [MomentSoundWord]? {
