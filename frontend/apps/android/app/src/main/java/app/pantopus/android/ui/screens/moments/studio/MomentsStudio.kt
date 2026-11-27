@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.moments.studio
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -78,6 +79,7 @@ import app.pantopus.android.ui.screens.moments.compose.MomentsPostFullMap
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostSheet
 import app.pantopus.android.ui.screens.moments.compose.MomentsSkyActions
 import app.pantopus.android.ui.screens.moments.compose.VideoStill
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentLook
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.postAtHome
 import app.pantopus.android.ui.screens.moments.compose.postMapSpot
@@ -96,6 +98,8 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** The two "who sees it" choices on the Studio's bar, as the server names them (today's Post sheet's two). */
 private val AUDIENCES = listOf("nearby" to "Nearby", "connections" to "Friends")
@@ -133,6 +137,11 @@ internal fun MomentsStudioStep(
     onMadeUp: (Boolean) -> Unit = {},
     onStamps: (List<MomentStampPlacement>) -> Unit = {},
     onGuess: (Boolean) -> Unit = {},
+    // Film looks (step 5): put one on the photo; the tray opened (the photo as it came is read for the looks' copies).
+    onLook: (MomentLook) -> Unit = {},
+    onPhotostrip: () -> Unit = {},
+    onTrayOpen: () -> Unit = {},
+    lookPicture: StateFlow<Bitmap?> = NO_LOOK_PICTURE,
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
@@ -194,7 +203,11 @@ internal fun MomentsStudioStep(
             enabled = !state.posting,
             media = state.media,
             onOpen = onMarks,
-            onStamps = { tray = true }.takeIf { !state.noLocationOn },
+            onStamps =
+                {
+                    tray = true
+                    onTrayOpen()
+                }.takeIf { !state.noLocationOn },
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
         )
         Column(
@@ -296,7 +309,19 @@ internal fun MomentsStudioStep(
                 studio = true,
             )
         }
-        StudioStampTray(visible = tray, state = state, onStamps = onStamps, onDone = { tray = false }, onGuess = onGuess)
+        StudioStampTray(
+            visible = tray,
+            state = state,
+            onStamps = onStamps,
+            onDone = { tray = false },
+            onGuess = onGuess,
+            onLook = onLook,
+            lookPicture = lookPicture,
+            onPhotostrip = {
+                tray = false
+                onPhotostrip()
+            },
+        )
         if (fullMap) {
             state.postMapSpot?.let { spot ->
                 MomentsPostFullMap(
@@ -812,6 +837,9 @@ private fun StudioPost(
         }
     }
 }
+
+/** No photo to read for the film looks (a caller without one). */
+private val NO_LOOK_PICTURE: StateFlow<Bitmap?> = MutableStateFlow(null)
 
 /** "Fades in 24 hours" (founder's word for a Moment's time: it fades when its hours are up). */
 private fun fadesIn(hours: Int): String = "Fades in ${hoursWord(hours)}"

@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.moments.studio
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.activity.compose.BackHandler
@@ -83,6 +84,7 @@ import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.models.moments.MomentStampValueDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.data.moments.MomentPhotostrip
 import app.pantopus.android.data.pulse.StudioRepository
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.moments.components.MomentStampView
@@ -93,6 +95,7 @@ import app.pantopus.android.ui.screens.moments.components.stampHalf
 import app.pantopus.android.ui.screens.moments.components.stampPlaced
 import app.pantopus.android.ui.screens.moments.compose.ComposePin
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentLook
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarkRules
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.shareLaterChoice
@@ -530,11 +533,19 @@ internal fun StudioStampTray(
     onStamps: (List<MomentStampPlacement>) -> Unit,
     onDone: () -> Unit,
     onGuess: (Boolean) -> Unit = {},
+    onLook: (MomentLook) -> Unit = {},
+    lookPicture: StateFlow<Bitmap?>? = null,
+    onPhotostrip: () -> Unit = {},
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
     val screen = rememberScreenSize()
     val picture = rememberStudioPicture(state)
+    // Film looks (step 5): for a photo, with the photo as it came once it's read.
+    val looks = state.media is MomentMediaFile.Photo && lookPicture != null
+    val asItCame = lookPicture?.collectAsStateWithLifecycle()?.value
+    // The photostrip (step 5): this photo and up to three picked with it that still wait.
+    val strip = if (looks) (state.pickedTogether - state.pickedAt).coerceAtMost(MomentPhotostrip.MOST - 1) else 0
     StampTray(
         visible = visible,
         reading = ui.reading,
@@ -542,8 +553,17 @@ internal fun StudioStampTray(
         placed = state.stamps,
         onRetry = { state.pin?.let { stamps.read(it.latitude, it.longitude, again = true) } },
         onDone = onDone,
-        // Play: "Guess the spot", for a photo or video with a place away from home.
-        play = if (state.offersGuess) ({ StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) }) }) else null,
+        // Play: "Guess the spot", for a photo or video with a place away from home; film looks, for a photo.
+        play =
+            if (state.offersGuess || looks) {
+                {
+                    if (state.offersGuess) StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) })
+                    if (looks) StudioLooksRow(picture = asItCame, picked = state.marks.look, onPick = onLook)
+                    if (strip > 0) StudioPhotostripRow(more = strip, onMake = onPhotostrip)
+                }
+            } else {
+                null
+            },
     ) { kind, placed ->
         if (placed) {
             onStamps(state.stamps.filterNot { it.kind == kind })

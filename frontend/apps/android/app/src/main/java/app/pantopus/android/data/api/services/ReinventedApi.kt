@@ -1,10 +1,13 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
@@ -62,7 +65,32 @@ interface ReinventedApi {
         @Query("cursor") cursor: String?,
     ): ReinventedExploreResponse
 
+    /** `GET /api/reinvented/atlas` (CONTRACT 6e): My Atlas by date, newest first. Route `backend/routes/reinvented.js` (atlas). */
+    @GET("api/reinvented/atlas")
+    suspend fun atlas(
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int = ATLAS_PAGE,
+    ): ReinventedAtlasResponse
+
+    /** `GET /api/reinvented/atlas` for a box (CONTRACT 6e): every kept Moment in it, for the map. */
+    @GET("api/reinvented/atlas")
+    suspend fun atlasInBox(
+        @Query("south") south: String,
+        @Query("west") west: String,
+        @Query("north") north: String,
+        @Query("east") east: String,
+    ): ReinventedAtlasResponse
+
+    /** `DELETE /api/reinvented/atlas/:id` (CONTRACT 6e): Delete for good; 204. Route `backend/routes/reinvented.js` (atlas). */
+    @DELETE("api/reinvented/atlas/{id}")
+    suspend fun deleteForGood(
+        @Path("id") id: String,
+    )
+
     companion object {
+        /** Moments on a page of My Atlas. */
+        const val ATLAS_PAGE = 30
+
         /** Items on a page of the list. */
         const val PAGE = 20
     }

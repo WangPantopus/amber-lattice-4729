@@ -25,6 +25,7 @@ import app.pantopus.android.data.moments.MomentHeight
 import app.pantopus.android.data.moments.MomentLimits
 import app.pantopus.android.data.moments.MomentMedia
 import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.data.moments.MomentPhotostrip
 import app.pantopus.android.data.moments.MomentsPosting
 import app.pantopus.android.data.moments.MomentsRepository
 import app.pantopus.android.data.moments.PreparedVideo
@@ -41,6 +42,7 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.line
 import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentLook
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksEditing
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
@@ -922,6 +924,58 @@ class MomentsComposeViewModel
                         onFailed = { drawn, placed -> _state.update { it.copy(marks = drawn, placement = placed, notice = MARKS_FAILED) } },
                     )
             }
+        }
+
+        /**
+         * "Pulse, reinvented"'s Studio tray: a film look over the whole photo, drawn in with its marks from the photo as it
+         * came (Original takes it off), as the editor's Done draws them. Never under a Post in flight or an open editor.
+         */
+        fun setLook(look: MomentLook) {
+            val current = _state.value
+            val media = current.media as? MomentMediaFile.Photo ?: return
+            if (current.posting || current.marking != null || current.marks.look == look) return
+            val marks = current.marks.copy(look = look)
+            _state.update { it.copy(marks = marks) }
+            marksKeeper.draw(
+                marks,
+                current.placement,
+                media.file,
+                onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
+                onFailed = { drawn, placed -> _state.update { it.copy(marks = drawn, placement = placed, notice = MARKS_FAILED) } },
+            )
+        }
+
+        /**
+         * "Pulse, reinvented"'s Studio tray: the photostrip. The photo in the Studio (as Text, Draw and Resize left it) and
+         * up to three photos picked with it that still wait, each cropped 4:3, one under the other on white, become one
+         * picture and one Moment; the photos in the strip leave the queue (videos waiting stay). Its marks are drawn in.
+         */
+        fun photostrip() {
+            val current = _state.value
+            if (current.media !is MomentMediaFile.Photo || waiting.isEmpty()) return
+            if (current.posting || current.marking != null) return
+            viewModelScope.launch {
+                if (marksKeeper.busy && !marksKeeper.awaitDrawn()) return@launch
+                val shown = (_state.value.media as? MomentMediaFile.Photo)?.file ?: return@launch
+                val used = waiting.filterNot { MomentMedia.isVideo(context, it) }.take(MomentPhotostrip.MOST - 1)
+                val copies = used.mapNotNull { MomentMedia.copyIn(context, it, "jpg") }
+                val strip = withContext(Dispatchers.Default) { MomentPhotostrip.make(context, listOf(shown) + copies) }
+                copies.forEach { runCatching { it.delete() } }
+                if (strip == null) {
+                    _state.update { it.copy(notice = "Couldn't make the strip.") }
+                    return@launch
+                }
+                waiting = waiting - used.toSet()
+                forgetMarks()
+                runCatching { shown.delete() }
+                _state.update { it.copy(media = MomentMediaFile.Photo(strip), pickedTogether = it.pickedTogether - used.size) }
+            }
+        }
+
+        /** "Pulse, reinvented"'s Studio tray: the photo as it came, read for the film looks' small copies ([marksPicture]). */
+        fun readLookPicture() {
+            val media = _state.value.media as? MomentMediaFile.Photo ?: return
+            marksKeeper.read(media) {}
         }
 
         /** Another picture takes the sheet: it starts with no marks, as taken, and nothing kept for the last one stays. */

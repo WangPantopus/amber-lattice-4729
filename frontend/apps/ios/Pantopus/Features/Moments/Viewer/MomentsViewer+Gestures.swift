@@ -202,6 +202,10 @@ extension MomentsViewer {
             Button("Want to come? Start a plan") { model.startPlan(from: moment) }
                 .accessibilityIdentifier("moments.menu.startPlan")
         }
+        // Replies people can see (CONTRACT 8a, `MomentReplies.swift`): the author shows or hides them, switch on only.
+        if let choice = model.repliesShownChoice {
+            Button(choice) { model.flipRepliesShown() }.accessibilityIdentifier("moments.menu.replies")
+        }
         Button("Save to Photos") {
             let moment = model.moment
             let card = moment?.kind == .text ? MomentsCardPicture.render(text: moment?.text ?? "", background: moment?.background) : nil

@@ -33,6 +33,8 @@ module.exports = function registerHomeClaimEvidenceRoutes(router, { verifyToken,
         res.json({ message: 'Private evidence saved for review.', evidence: record, ...(fastCheck ? { fast_check: fastCheck } : {}) });
         // A document answering Pantopus's request for more tells the review team (best effort, after the reply).
         require('../services/homeClaimReviewService').tellReviewersAboutReply(req.params.claimId).catch(() => {});
+        // An ownership claim's first document is when it can be reviewed, so the review team hears then.
+        require('../services/homeClaimReviewService').tellReviewersAboutFirstDocument(req.params.claimId).catch(() => {});
       } catch (error) { evidence.sendError(res, error); }
     });
   router.get('/home-claim-evidence/:homeId/:claimId', verifyToken, async (req, res) => {

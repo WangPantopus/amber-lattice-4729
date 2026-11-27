@@ -1,5 +1,6 @@
 package app.pantopus.android.data.pulse
 
+import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
@@ -68,6 +69,16 @@ class ReinventedRepository
             cursor: String?,
         ): NetworkResult<ReinventedExploreResponse> =
             guarded { api.explore(at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor) }
+
+        /** My Atlas by date (CONTRACT 6e). */
+        suspend fun atlas(cursor: String?): NetworkResult<ReinventedAtlasResponse> = guarded { api.atlas(cursor) }
+
+        /** My Atlas's kept Moments in a box, for the map (CONTRACT 6e). */
+        suspend fun atlasInBox(box: ReinventedBox): NetworkResult<ReinventedAtlasResponse> =
+            guarded { api.atlasInBox(degrees(box.south), degrees(box.west), degrees(box.north), degrees(box.east)) }
+
+        /** Delete for good (CONTRACT 6e): a Moment held for review answers 409 with the server's words. */
+        suspend fun deleteForGood(momentId: String): NetworkResult<Unit> = guarded(behindOn404 = false) { api.deleteForGood(momentId) }
 
         private suspend fun <T> guarded(
             behindOn404: Boolean = true,

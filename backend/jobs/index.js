@@ -76,6 +76,7 @@ const processClaimWindows = require('./processClaimWindows');
 const validateHomeCoordinates = require('./validateHomeCoordinates');
 const notifyClaimWindowExpiry = require('./notifyClaimWindowExpiry');
 const expireInitiatedHomeClaims = require('./expireInitiatedHomeClaims');
+const claimDocumentReminders = require('./claimDocumentReminders');
 const processQuorumActions = require('./processQuorumActions');
 const evidenceRetentionSweep = require('./evidenceRetentionSweep');
 const homeDocumentRecovery = require('./homeDocumentRecovery');
@@ -542,6 +543,19 @@ function startJobs(options = {}) {
     'expireInitiatedHomeClaims',
     () => expireInitiatedHomeClaims({ dryRun: householdClaimJobsDryRun }),
   ), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+
+  // ─── Claim document reminders ───
+  // Hourly at :27: a claim still without a document a day after it was filed reminds the claimant (once, and once
+  // more after a week). Daily at 16:05 UTC (8:05 am Pacific in winter): one email to the review team when a
+  // document has waited more than a day. Neither changes a claim.
+  scheduleCron('27 * * * *', wrapJob('remindClaimantsAboutDocuments', () => claimDocumentReminders.remindClaimants()), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+  scheduleCron('5 16 * * *', wrapJob('remindReviewersAboutClaims', () => claimDocumentReminders.remindReviewers()), {
     scheduled: true,
     timezone: 'UTC',
   });

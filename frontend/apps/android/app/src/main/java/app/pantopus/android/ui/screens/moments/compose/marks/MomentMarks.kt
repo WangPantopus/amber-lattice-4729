@@ -105,9 +105,11 @@ data class MomentLabel(
 data class MomentMarks(
     val strokes: List<MomentStroke> = emptyList(),
     val labels: List<MomentLabel> = emptyList(),
+    /** "Pulse, reinvented"'s Studio: a film look over the whole photo ([MomentLooks]); the photo as it came everywhere else. */
+    val look: MomentLook = MomentLook.Original,
 ) {
-    /** Nothing that would show: no line, and no label with words. */
-    val isEmpty: Boolean get() = strokes.isEmpty() && labels.none { it.text.isNotBlank() }
+    /** Nothing that would show: no line, no label with words, and no look. */
+    val isEmpty: Boolean get() = strokes.isEmpty() && labels.none { it.text.isNotBlank() } && look == MomentLook.Original
 
     /** As they are kept: a label left empty is removed. */
     val kept: MomentMarks

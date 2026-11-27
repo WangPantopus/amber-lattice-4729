@@ -88,7 +88,20 @@ async function enrichClaims(claims) {
     claimant: usersMap[c.claimant_user_id] || null,
     evidence_count: evidenceCountMap[c.id] || 0,
     documents_since_request: sinceRequestMap[c.id] || 0,
+    // 'claimant' until a document is in (and after Request info until they answer), 'reviewer' otherwise.
+    waiting_on: homeClaimRoutingService.waitingOn(c, {
+      documents: evidenceCountMap[c.id] || 0, documentsSinceRequest: sinceRequestMap[c.id] || 0,
+    }),
   }));
+}
+
+// The Pending queue lists what a reviewer can act on first, oldest first; claims waiting on the claimant follow.
+function readyFirst(claims) {
+  return [...claims.filter(c => c.waiting_on !== 'claimant'), ...claims.filter(c => c.waiting_on === 'claimant')];
+}
+
+function ageSeconds(claim) {
+  return Math.max(0, Math.floor((Date.now() - new Date(claim.created_at).getTime()) / 1000));
 }
 
 /**
@@ -185,7 +198,7 @@ router.get('/pending-claims', async (req, res) => {
 
     if (error) throw error;
 
-    const enrichedClaims = await enrichClaims(claims);
+    const enrichedClaims = readyFirst(await enrichClaims(claims));
     res.set('Cache-Control', 'private, no-store');
     res.json({ claims: enrichedClaims, total: enrichedClaims.length, review_session: getRequestSessionScope(req) });
   } catch (err) {
@@ -254,21 +267,29 @@ router.get('/claims', async (req, res) => {
     const { data: claims, error, count } = await query;
     if (error) throw error;
 
-    const enrichedClaims = await enrichClaims(claims);
+    const enriched = await enrichClaims(claims);
 
-    // For the Pending queue banner: surface the age of the oldest claim
-    // in the bucket. Claims are ordered ascending for pending so [0] is
-    // the oldest; for other buckets it's not surfaced.
+    // For the Pending queue banner: the age of the oldest claim in the bucket (claims come back oldest first for
+    // pending, so [0] is the oldest), and the same for the claims a reviewer can act on now. Counted over the
+    // claims on this page. Not surfaced for other buckets.
     let oldestAgeSeconds = null;
-    if (bucket === 'pending' && enrichedClaims.length > 0) {
-      const oldestCreatedAt = new Date(enrichedClaims[0].created_at);
-      oldestAgeSeconds = Math.max(0, Math.floor((Date.now() - oldestCreatedAt.getTime()) / 1000));
+    let pendingSummary = {};
+    if (bucket === 'pending' && enriched.length > 0) {
+      oldestAgeSeconds = ageSeconds(enriched[0]);
+      const ready = enriched.filter(c => c.waiting_on !== 'claimant');
+      pendingSummary = {
+        ready_count: ready.length,
+        waiting_on_claimant_count: enriched.length - ready.length,
+        oldest_ready_age_seconds: ready.length ? ageSeconds(ready[0]) : null,
+      };
     }
+    const enrichedClaims = bucket === 'pending' ? readyFirst(enriched) : enriched;
 
     res.json({
       claims: enrichedClaims,
       total: count || enrichedClaims.length,
       oldest_age_seconds: oldestAgeSeconds,
+      ...pendingSummary,
     });
   } catch (err) {
     logger.error('Admin: Failed to fetch claims', { error: err.message });
