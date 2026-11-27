@@ -622,12 +622,15 @@ router.post('/seals/:id/open', async (req, res) => {
 
 const postcards = require('../services/pulse/postcards');
 
-/** POST /moments/:id/mail — { to }: the sender's own Moment, as a postcard in a connection's Mail tab. */
-router.post('/moments/:id/mail', contentCreationLimiter, async (req, res) => {
+/**
+ * POST /moments/:id/enclosure — the sender's own Moment's picture as one of their mail enclosures, for a letter the app
+ * then sends through today's POST /api/mailbox/send ("Mail it"; today's letter rules apply).
+ */
+router.post('/moments/:id/enclosure', contentCreationLimiter, async (req, res) => {
   try {
-    res.status(201).json(await postcards.mailIt(req.user.id, req.params.id, req.body || {}));
+    res.status(201).json(await postcards.enclosureFor(req.user.id, req.params.id));
   } catch (error) {
-    sendError(res, error, 'moment_mail');
+    sendError(res, error, 'moment_enclosure');
   }
 });
 

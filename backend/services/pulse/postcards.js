@@ -1,14 +1,15 @@
 'use strict';
 
-// Pulse, reinvented, phase 3: tomorrow's mail and "Mail it" (coord CONTRACT 8j; board B11). Both ride today's Mail tab:
-// a postcard is an ordinary letter from a person (pantopusLetters.sendSafe with `from_user`, made once per key, by today's
-// delivery rule and today's new-mail notice), with the picture enclosed through today's private mail enclosures.
+// Pulse, reinvented, phase 3: tomorrow's mail and "Mail it" (coord CONTRACT 8j; board B11). Both ride today's Mail tab.
+// Mail it: the app sends an ordinary letter through today's POST /api/mailbox/send with the Moment's picture as the
+// sender's own enclosure (enclosureFor), so today's letter rules all apply. Tomorrow's mail: a postcard is an ordinary
+// letter from a person (pantopusLetters.sendSafe with `from_user`, made once per key, in one delivery round, under
+// today's new-mail notice), with the picture enclosed through today's private mail enclosures.
 // No new table and no new push kind; older apps and the switch off see ordinary mail.
 
 const { DateTime } = require('luxon');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
-const blockService = require('../blockService');
 const penName = require('../penName');
 
 const ZONE = 'America/Los_Angeles';
@@ -68,32 +69,34 @@ async function postcardOf(row, senderName) {
   };
 }
 
-/** POST /moments/:id/mail — { to }: the sender's own Moment, mailed to one of their connections. */
-async function mailIt(userId, id, body) {
+/**
+ * POST /moments/:id/enclosure — the sender's own Moment's picture (a video's poster) kept as one of their own mail
+ * enclosures (LEAD-3 07:34): the app then sends the letter through today's POST /api/mailbox/send with this `ref`, so
+ * every rule of today's letters applies (the stamp, blocks, the recipient's mail settings). Answers today's upload shape.
+ */
+async function enclosureFor(userId, id) {
   const store = momentStore();
-  const to = String(body?.to || '').toLowerCase();
-  if (!UUID.test(String(id || '')) || !UUID.test(to)) throw fail(400, 'MAIL_INVALID', 'Send who it goes to as "to".');
+  if (!UUID.test(String(id || ''))) throw fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
   const row = await store.ownMoment(id, userId);
   if (!row) throw fail(404, 'MOMENT_NOT_FOUND', 'This Moment could not be found.');
   const why = notMailable(row);
   if (why) throw fail(400, 'MAIL_INVALID', why);
-  const [connections, blocked] = await Promise.all([store.connectionIds(userId), blockService.blockedUserIds(userId)]);
-  if (!connections.map(String).includes(to) || blocked.has(to)) throw fail(404, 'PERSON_NOT_FOUND', 'You can mail a Moment to your connections.');
-  const authors = await store.loadAuthors([userId]);
-  const name = authors.get(String(userId))?.name || 'Someone';
-  const card = await postcardOf(row, name);
-  const result = await letters().sendSafe(`moment-mail:${row.id}:${to}`, {
-    recipient_user_id: to, from_user: { id: userId, name }, immediate: true, ...card,
-  });
-  if (!result) throw new Error('The postcard could not be written.');
-  if (!result.created) throw fail(409, 'MAILED_ALREADY', 'You already mailed this Moment to them.');
-  logger.info('postcards.mailed', { momentId: row.id });
-  return { mail_id: result.id };
+  const m = store.meta(row);
+  const key = m.purged_at ? null : (m.kind === 'video' ? m.media?.poster_key : m.media?.key);
+  if (!key) throw fail(400, 'MAIL_INVALID', 'This Moment has no picture to enclose.');
+  // eslint-disable-next-line global-require
+  const buffer = await require('../moments/momentMedia').download(m.media.bucket, key);
+  const day = DateTime.fromISO(row.created_at).setZone(m.stamp_values?.zone || ZONE).toFormat('LLL-d');
+  // eslint-disable-next-line global-require
+  const kept = await require('../mailEnclosures').store({ buffer, name: `moment-${day}.jpg`, mimeType: 'image/jpeg', uploaderId: userId });
+  return { enclosure: kept, words: String(row.content || '').trim() || null, place: row.location_name || null };
 }
 
-/** Whether it is the morning hour now (Pacific until a person's own zone is known). */
-function isMorning(now = Date.now()) {
-  return DateTime.fromMillis(now, { zone: ZONE }).hour === MORNING_HOUR;
+/** Whether it is 7 in the morning now in this person's own mailbox time zone (today's mail delivery reads it). */
+async function isMorningFor(userId, now = Date.now()) {
+  // eslint-disable-next-line global-require
+  const zone = await require('../mailDelivery').mailboxTimeZone({ recipient_user_id: userId }).catch(() => ZONE);
+  return DateTime.fromMillis(now, { zone: zone || ZONE }).hour === MORNING_HOUR;
 }
 
 /**
@@ -102,24 +105,26 @@ function isMorning(now = Date.now()) {
  * and never opened, as postcards from their authors. Made once per person and Moment. Answers how many it sent.
  */
 async function sendMorning(now = Date.now(), { force = false } = {}) {
-  if (!force && !isMorning(now)) return 0;
+  // eslint-disable-next-line global-require
+  if (!require('../../utils/featureFlags').isLaunchFeatureEnabled('mailbox')) return 0;
   const store = momentStore();
   const { data: circles, error } = await supabaseAdmin.from('Circle').select('members').limit(5000);
   if (error) throw new Error(`Failed to read circles: ${error.message}`);
-  // Each person in a circle, and the people in their circles.
+  // Each person in a circle, and the people in their circles who chose, for that circle, "Keep my Moments for this
+  // circle after they fade: its weekly magazine and morning postcards" (LEAD-3 07:34; off by default).
   const close = new Map();
   for (const circle of circles || []) {
-    const inside = (circle.members || []).filter((m) => m.state === 'in').map((m) => String(m.user_id));
+    const inside = (circle.members || []).filter((m) => m.state === 'in');
     for (const person of inside) {
-      const set = close.get(person) || new Set();
-      for (const other of inside) if (other !== person) set.add(other);
-      close.set(person, set);
+      const set = close.get(String(person.user_id)) || new Set();
+      for (const other of inside) if (other.user_id !== person.user_id && other.keep_faded) set.add(String(other.user_id));
+      close.set(String(person.user_id), set);
     }
   }
   let sent = 0;
   for (const [reader, people] of close) {
     try {
-      if (!people.size || !(await store.reinventedOn(reader))) continue;
+      if (!people.size || !(await store.reinventedOn(reader)) || (!force && !(await isMorningFor(reader, now)))) continue;
       const { data: rows, error: rowError } = await supabaseAdmin.from('Post').select(store.MOMENT_SELECT).eq('is_story', true)
         .in('user_id', [...people]).gte('story_expires_at', new Date(now - DAY_MS).toISOString())
         .lte('story_expires_at', new Date(now).toISOString()).is('archived_at', null).eq('moderation_state', 'live')
@@ -135,10 +140,13 @@ async function sendMorning(now = Date.now(), { force = false } = {}) {
       const opened = new Set((views.data || []).map((v) => v.post_id));
       // Could see it while it was live: the audience and mutes as then, not its having ended.
       const missed = candidates.filter((row) => !opened.has(row.id) && store.canSee(row, ctx)).slice(0, PER_MORNING);
+      // One delivery: all of this morning's postcards arrive in the same round, under today's mail notice.
+      // eslint-disable-next-line global-require
+      const round = (await require('../mailDelivery').deliveryFor({ recipient_user_id: reader }, { now: new Date(now) })).delivered_at;
       for (const row of missed) {
         const name = authors.get(String(row.user_id))?.name || 'Someone';
         const result = await letters().sendSafe(`morning:${reader}:${row.id}`, {
-          recipient_user_id: reader, from_user: { id: row.user_id, name }, ...(await postcardOf(row, name)),
+          recipient_user_id: reader, from_user: { id: row.user_id, name }, delivered_at: round, ...(await postcardOf(row, name)),
         });
         if (result?.created) sent += 1;
       }
@@ -149,4 +157,4 @@ async function sendMorning(now = Date.now(), { force = false } = {}) {
   return sent;
 }
 
-module.exports = { mailIt, sendMorning, isMorning };
+module.exports = { enclosureFor, sendMorning, isMorningFor };
