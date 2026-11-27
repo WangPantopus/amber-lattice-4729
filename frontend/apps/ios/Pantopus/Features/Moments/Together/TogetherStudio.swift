@@ -29,6 +29,8 @@ final class TogetherStudio {
     var context: Context?
     /// The Retake's first picture over the Studio's own while adding a frame (on by default; one tap hides it).
     var ghostOn = true
+    /// "Eyes on: ask people who are there now" on an Ask about a picked place (8f).
+    var asksEyesOnChosen = false
     /// "Start a Retake" and its name (1 to 60 characters).
     var startsRetake = false
     var retakeTitle = ""
@@ -51,7 +53,14 @@ final class TogetherStudio {
         ghostOn = true
         startsRetake = false
         retakeTitle = ""
+        asksEyesOnChosen = false
         owner = nil
+    }
+
+    /// `studio.eyes_on` on the Studio's Ask (the "+ Ask / Kind" post), or nil (left out) unless chosen there.
+    func asksEyesOn(model: MomentsComposerModel) -> Bool? {
+        guard PulseReinventedFlags.shared.isOn, owner === model, asksEyesOnChosen, model.offersEyesOnAsk else { return nil }
+        return true
     }
 
     /// The keys this Studio adds to the Moment it makes (the first part only), or nil for today's request.
@@ -78,6 +87,11 @@ extension MomentsComposerModel {
     /// keys where this Studio chose some (`TogetherCreate`).
     func createEndpoint(_ body: MomentCreateBody, part: Int) -> Endpoint {
         TogetherCreate.endpoint(body, part: part, from: self)
+    }
+
+    /// Eyes on may be asked (8f): an Ask under the person's own name; it needs a picked public place to post.
+    var offersEyesOnAsk: Bool {
+        studioPostKind == .askLocal && !postsUnderMadeUpName
     }
 
     /// The Studio holds a photo (a Retake's frame, an Eyes-on answer and a Retake's start are photos).

@@ -21,6 +21,8 @@ struct TogetherStudioRows: View {
                     addingRow(title: title, hasGhost: ghost != nil, photo: model.isPhoto)
                 } else if case let .eyesOnAnswer(_, question) = together.context {
                     answeringRow(question)
+                } else if model.offersEyesOnAsk {
+                    eyesOnAskRow
                 } else if model.offersRetake {
                     retakeRow
                 }
@@ -72,6 +74,27 @@ struct TogetherStudioRows: View {
         .padding(.vertical, Spacing.s2)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("together.studio.answering")
+    }
+
+    /// "Eyes on: ask people who are there now", on an Ask.
+    private var eyesOnAskRow: some View {
+        Toggle(isOn: $together.asksEyesOnChosen) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Eyes on: ask people who are there now")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                Text(together.asksEyesOnChosen && model.pickedVenue == nil
+                    ? "Pick the place you're asking about: choose a place above."
+                    : "For six hours, people at this place can answer with a Live photo. Nobody is told who is near it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Theme.Color.primarySolid)
+        .frame(minHeight: 52)
+        .padding(.horizontal, Spacing.s1)
+        .accessibilityIdentifier("together.studio.eyesOn")
     }
 
     /// "Start a Retake", and its name.
