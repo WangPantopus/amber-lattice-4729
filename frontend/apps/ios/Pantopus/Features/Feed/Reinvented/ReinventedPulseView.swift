@@ -76,7 +76,6 @@ struct ReinventedPulseView: View {
                 }
             )
         }
-        .accessibilityIdentifier("reinventedPulse")
     }
 
     // MARK: - Top
@@ -251,6 +250,7 @@ struct ReinventedPulseView: View {
             UnevenRoundedRectangle(topLeadingRadius: height == .list ? 0 : 22, topTrailingRadius: height == .list ? 0 : 22)
                 .fill(Theme.Color.appBg)
                 .shadow(color: .black.opacity(height == .list ? 0 : 0.12), radius: 8, y: -2)
+                .ignoresSafeArea(edges: .bottom)
         )
         .frame(maxHeight: .infinity, alignment: .bottom)
     }

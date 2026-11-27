@@ -66,17 +66,27 @@ final class ReinventedMapModel {
         items.filter { !Self.isHeadsUp($0) } + items.filter(Self.isHeadsUp)
     }
 
-    /// The deck's cards: Heads-ups first, then what is nearest the middle of the map.
-    var deck: [Item] {
-        guard let center = region?.center else { return items }
-        let here = CLLocation(latitude: center.latitude, longitude: center.longitude)
-        return items.sorted { first, second in
-            let firstUp = Self.isHeadsUp(first), secondUp = Self.isHeadsUp(second)
-            if firstUp != secondUp { return firstUp }
-            let firstMeters = here.distance(from: CLLocation(latitude: first.coordinate.latitude, longitude: first.coordinate.longitude))
-            let secondMeters = here.distance(from: CLLocation(latitude: second.coordinate.latitude, longitude: second.coordinate.longitude))
-            return firstMeters < secondMeters
+    /// The deck's cards: Heads-ups first, then what is nearest the middle of the map when each first came. Cards
+    /// already in the deck keep their places, so swiping (which moves the map, which reads again) never reshuffles it.
+    private(set) var deck: [Item] = []
+
+    private func arrangeDeck() {
+        let ids = Set(items.map(\.id))
+        let kept = deck.filter { ids.contains($0.id) }.compactMap { old in items.first { $0.id == old.id } }
+        let keptIds = Set(kept.map(\.id))
+        var fresh = items.filter { !keptIds.contains($0.id) }
+        if let center = region?.center {
+            let here = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            let meters = { (item: Item) in
+                here.distance(from: CLLocation(latitude: item.coordinate.latitude, longitude: item.coordinate.longitude))
+            }
+            fresh.sort { first, second in
+                let firstUp = Self.isHeadsUp(first), secondUp = Self.isHeadsUp(second)
+                if firstUp != secondUp { return firstUp }
+                return meters(first) < meters(second)
+            }
         }
+        deck = kept.isEmpty ? fresh : kept + fresh
     }
 
     static func isHeadsUp(_ item: Item) -> Bool {
@@ -126,6 +136,7 @@ final class ReinventedMapModel {
             guard let map = try? JSONDecoder().decode(ReinventedMapResponse.self, from: response.data) else { return }
             items = map.rings.filter { !$0.noLocation }.map(Item.ring) + map.marks.map(Item.mark)
                 + map.kept.map(Item.kept) + map.tickets.map(Item.ticket)
+            arrangeDeck()
             MomentsGuessSpots.shared.spots = map.guessSpots
         case 404:
             ReinventedServer.shared.markBehind()

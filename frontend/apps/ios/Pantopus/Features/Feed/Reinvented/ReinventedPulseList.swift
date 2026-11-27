@@ -54,7 +54,7 @@ struct ReinventedPulseList: View {
     private var list: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.s3) {
-                if let strip, !strip.isEmpty {
+                if let strip, !strip.isEmpty, model.reach != "explore" {
                     ReinventedAliveStrip(strip: strip, onOpenMoment: onOpenMoment, onOpenRing: onOpenRing)
                 }
                 if model.isEmpty {
@@ -90,7 +90,7 @@ struct ReinventedPulseList: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Spacing.s4)
                         .task { await model.loadMore() }
-                } else if let end = model.end {
+                } else if let end = model.end, !(model.reach == "explore" && model.isEmpty) {
                     Text(end)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.appTextSecondary)
@@ -155,7 +155,7 @@ struct ReinventedPulseList: View {
             Text(Self.emptyTitle(model.reach))
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
-            Text("Post a Moment with + and it shows here first. Or widen what Pulse shows from the pill at the top.")
+            Text(Self.emptyLine(model.reach))
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)
@@ -216,6 +216,12 @@ struct ReinventedPulseList: View {
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
         .padding(.horizontal, Spacing.s3)
+    }
+
+    static func emptyLine(_ reach: String) -> String {
+        reach == "explore"
+            ? "Explore shows only what people chose to share with everyone. Check back later today."
+            : "Post a Moment with + and it shows here first. Or widen what Pulse shows from the pill at the top."
     }
 
     static func emptyTitle(_ reach: String) -> String {
