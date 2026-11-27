@@ -96,7 +96,7 @@ function encodeCursor(state) {
   return Buffer.from(JSON.stringify({ v: 1, ...state })).toString('base64url');
 }
 
-function decodeCursor(text, { reach, miles, chip }) {
+function decodeCursor(text, { reach, miles, chip, circle = null }) {
   if (text == null || text === '') return null;
   let state;
   try {
@@ -104,7 +104,8 @@ function decodeCursor(text, { reach, miles, chip }) {
   } catch {
     state = null;
   }
-  const sameAsk = state && state.v === 1 && state.r === reach && state.mi === miles && state.c === chip;
+  const sameAsk = state && state.v === 1 && state.r === reach && state.mi === miles && state.c === chip
+    && (state.ci || null) === (circle || null);
   const band = state?.b;
   if (!sameAsk || !Number.isInteger(band) || band < 0 || band >= BANDS.length) {
     throw fail(400, 'INVALID_CURSOR', 'This list has changed. Pull to refresh.');
@@ -240,10 +241,13 @@ async function readerPlace(userId, latitude, longitude) {
  * GET /api/reinvented/list for `userId` (CONTRACT 6a). `query`: { reach, miles, chip, latitude, longitude, cursor,
  * limit }, already checked by the route.
  */
-async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'all', latitude = null, longitude = null, cursor = null, limit = 20 }) {
+async function listFor(userId, {
+  reach = 'around', miles = MAX_MILES, chip = 'all', latitude = null, longitude = null, cursor = null, limit = 20, circle = null,
+}) {
   if (!REACHES.includes(reach)) throw fail(400, 'LIST_INVALID', 'Choose Close circle or Around me.');
   if (!CHIP_NAMES.includes(chip)) throw fail(400, 'LIST_INVALID', 'Choose one of the chips.');
-  const from = decodeCursor(cursor, { reach, miles, chip });
+  if (circle && reach !== 'close') throw fail(400, 'LIST_INVALID', 'A circle goes with Close circle.');
+  const from = decodeCursor(cursor, { reach, miles, chip, circle });
   const firstPage = !from;
   const shape = CHIPS[chip];
   // Which Pulse read scopes the reader has is read once for every post read below.
@@ -264,7 +268,12 @@ async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'al
   };
 
   if (reach === 'close') {
-    const connectionsRead = store.connectionIds(userId);
+    // One circle of the reader's (CONTRACT 8d): only its members who are in; otherwise the people they are connected with.
+    // eslint-disable-next-line global-require
+    const circlePeople = circle ? await require('./circles').peopleFor(userId, circle) : null;
+    const members = circlePeople ? new Set(circlePeople) : null;
+    const connectionsRead = members ? Promise.resolve(circlePeople.filter((id) => id !== String(userId)))
+      : store.connectionIds(userId);
     // The Moments are read when the chip shows them, or on the first page to say whether `live` has any.
     const shownRead = shape.moments || firstPage
       ? connectionsRead.then((ids) => withKept(store.shownOfPeople(userId, [String(userId), ...ids]),
@@ -273,9 +282,11 @@ async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'al
     const momentsRead = shape.moments ? shownRead : Promise.resolve([]);
     const chipContext = { userId, reach, scopeAccessRead, momentsRead: shownRead };
     let chipsRead = firstPage && !chipsFromReads ? chipsFor(chipContext) : null;
+    const chipKeep = shape.posts?.keep || null;
     const readPosts = shape.posts && ((at, size) => noted(feedService.getListFeed({
       userId, surface: 'connections', cursorCreatedAt: at?.createdAt || null, cursorId: at?.id || null, limit: size,
       scopeAccessRead, withReachedAt: true, ...shape.posts,
+      ...(members ? { keep: (post) => members.has(String(post.user_id)) && (!chipKeep || chipKeep(post)) } : {}),
     })));
     const sortedRead = momentsRead.then((entries) => entries.map((entry) => momentItem(entry)).sort(newerFirst));
     // The Moments this page can hold are made ready while the posts are read (at most `limit`, the next in order).
@@ -286,7 +297,7 @@ async function listFor(userId, { reach = 'around', miles = MAX_MILES, chip = 'al
     if (chipsFromReads) chipsRead = chipsFromPage(chipContext, seen, complete);
     return answer({
       userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items,
-      next: part.done ? null : { b: 0, p: part.posts, m: part.mark },
+      next: part.done ? null : { b: 0, p: part.posts, m: part.mark, ...(circle ? { ci: circle } : {}) },
     });
   }
 
