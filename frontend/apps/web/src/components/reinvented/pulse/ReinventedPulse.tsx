@@ -45,6 +45,8 @@ const Studio = dynamic(() => import('../studio/Studio'), { ssr: false });
 const RetakeView = dynamic(() => import('../retake/RetakeView'), { ssr: false });
 const ConvergenceView = dynamic(() => import('../sky/Convergence'), { ssr: false });
 const PinboardView = dynamic(() => import('../pinboard/Pinboard'), { ssr: false });
+// Open Eyes-on Asks near where the reader is now (CONTRACT 8f), on Around me.
+const EyesOnNear = dynamic(() => import('../eyeson/EyesOnNear'), { ssr: false });
 
 type Height = 'middle' | 'list' | 'map';
 const UP: Record<Height, Height> = { map: 'middle', middle: 'list', list: 'list' };
@@ -715,6 +717,9 @@ export default function ReinventedPulse() {
                   onMoments={(ids, start) => setViewing({ id: start, ids })}
                   onPlan={(t) => router.push(`/app/plans/${encodeURIComponent(t.id)}`)}
                 />
+              )}
+              {reach === 'around' && account && (chip === 'all' || chip === 'ask') && (
+                <EyesOnNear account={account} point={point} offer={chip === 'ask'} now={now} onAnswer={setAnswering} />
               )}
               {items.length === 0 && (
                 <div className="rp-empty">
