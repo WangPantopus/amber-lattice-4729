@@ -82,7 +82,6 @@ internal fun ReinventedReachDial(
     var page by remember { mutableStateOf<DialPage>(DialPage.Main) }
     val ui by circles.ui.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { circles.read() }
-    val links = LocalUriHandler.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -100,10 +99,7 @@ internal fun ReinventedReachDial(
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
             if (page != DialPage.Main) {
-                CirclesPages(page, ui, circles, onPage = { page = it }) { item ->
-                    onDismiss()
-                    runCatching { links.openUri("pantopus://${if (item.type == "post") "posts" else "moments"}/${item.id}") }
-                }
+                CirclesPages(page, ui, circles, onPage = { page = it }, onLeave = onDismiss)
                 return@Column
             }
             Text(
@@ -250,8 +246,15 @@ private fun CirclesPages(
     ui: ReinventedCirclesUi,
     model: ReinventedCirclesViewModel,
     onPage: (DialPage) -> Unit,
-    onOpen: (ReinventedMagazineItemDto) -> Unit,
+    onLeave: () -> Unit,
 ) {
+    val links = LocalUriHandler.current
+    // A magazine item: the dial closes, and the Moment or post opens by its link, as its reader may open it.
+    val onOpen = { item: ReinventedMagazineItemDto ->
+        onLeave()
+        runCatching { links.openUri("pantopus://${if (item.type == "post") "posts" else "moments"}/${item.id}") }
+        Unit
+    }
     val id = (page as? DialPage.Circle)?.id ?: (page as? DialPage.Invite)?.id
     val circle = (ui.circles + ui.invites).firstOrNull { it.id == id }
     when {

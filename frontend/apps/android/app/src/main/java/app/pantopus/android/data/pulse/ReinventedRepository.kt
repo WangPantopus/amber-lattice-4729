@@ -47,6 +47,7 @@ data class ReinventedBox(
  * ([ReinventedServer], PHASE-1 §3). Nobody ever sees "couldn't load" because the server is older.
  */
 @Singleton
+@Suppress("TooManyFunctions") // The new Pulse's routes, one router on the server, as `ReinventedApi`.
 class ReinventedRepository
     @Inject
     constructor(

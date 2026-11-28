@@ -51,21 +51,6 @@ import app.pantopus.android.ui.theme.Spacing
  * circle, and a circle's page. The magazine is in `ReinventedMagazine.kt`.
  */
 
-/** Where the dial is: its first page, or one of the circles' pages. */
-internal sealed interface DialPage {
-    data object Main : DialPage
-
-    data object Circles : DialPage
-
-    data object NewCircle : DialPage
-
-    data class Circle(val id: String) : DialPage
-
-    data class Invite(val id: String) : DialPage
-
-    data class Magazine(val id: String) : DialPage
-}
-
 /** "Your circles": invites first, then the circles the person is in, and "New circle". */
 @Composable
 internal fun CirclesListPage(

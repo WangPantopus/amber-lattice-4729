@@ -26,6 +26,21 @@ import javax.inject.Inject
  * after each change), never beside what opens the tab.
  */
 
+/** Where the dial is: its first page, or one of the circles' pages. */
+internal sealed interface DialPage {
+    data object Main : DialPage
+
+    data object Circles : DialPage
+
+    data object NewCircle : DialPage
+
+    data class Circle(val id: String) : DialPage
+
+    data class Invite(val id: String) : DialPage
+
+    data class Magazine(val id: String) : DialPage
+}
+
 /** A connection the person may put in a circle. */
 data class ReinventedCirclePerson(
     val id: String,
