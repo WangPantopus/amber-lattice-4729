@@ -45,3 +45,21 @@ export function stageFrame(size: { w: number; h: number } | null, stageIsPicture
     },
   };
 }
+
+/**
+ * Whether any of `points` (on the 9:16 stage) lies off the picture's own box, as the stage draws a picture `size` whole
+ * and upright (PHASE-6 F2: things placed anywhere on the canvas, the backdrop included). A picture posted at its own
+ * shape would pull such a thing back onto its edge, so then the Moment goes up in its canvas form instead.
+ */
+export function offPicture(size: { w: number; h: number } | null, points: { x: number; y: number }[]): boolean {
+  if (!size || !size.w || !size.h || !points.length) return false;
+  const s = Math.min(STAGE_W / size.w, STAGE_H / size.h);
+  const pw = size.w * s,
+    ph = size.h * s;
+  const left = (STAGE_W - pw) / 2 / STAGE_W,
+    top = (STAGE_H - ph) / 2 / STAGE_H,
+    right = 1 - left,
+    bottom = 1 - top;
+  const slack = 0.002;
+  return points.some((p) => p.x < left - slack || p.x > right + slack || p.y < top - slack || p.y > bottom + slack);
+}
