@@ -357,6 +357,8 @@ fun MomentStampsOverlay(
         remember(moment.id, moment.stamps) {
             moment.stamps.orEmpty().mapNotNull { stamp -> stamp.placement?.let { it to stamp.value } }.distinctBy { it.first.kind }
         }
+    // Moving words (CONTRACT 7k) sit on the photo under its stamps.
+    MomentMovingWordsLayer(moment, modifier)
     if (stamps.isEmpty()) return
     val liveUntil = remember(moment.liveUntil) { moment.liveUntil?.let { runCatching { Instant.parse(it) }.getOrNull() } }
     val wet by produceState(moment.takenHere && liveUntil?.isAfter(Instant.now()) == true, moment.id, liveUntil) {

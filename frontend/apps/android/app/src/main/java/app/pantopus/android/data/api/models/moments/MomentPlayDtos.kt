@@ -23,6 +23,45 @@ object MomentPlayKinds {
     const val FOG = "fog"
     const val SWATCH = "swatch"
     const val BEFORE_AFTER = "before_after"
+    const val MOVING_WORDS = "moving_words"
+}
+
+/**
+ * Moving words (CONTRACT 7k): the author's own line over a photo, in one of the Studio's ten letterings (by the shared
+ * id), moving in one of four ways, in one of four colours. Drawn only, never answered.
+ */
+object MomentMovingWords {
+    /** At most two on a post, inside the four items in all. */
+    const val MOST = 2
+
+    /** At most sixty UTF-16 units, as the server and the web count them. */
+    const val LONGEST = 60
+
+    /** The four motions, by the ids the server takes, with their names. */
+    val MOTIONS = listOf("drift" to "Drift", "pulse" to "Pulse", "wave" to "Wave", "type" to "Type")
+
+    /** White, warm yellow, black and sky (as on iPhone and the web). */
+    val COLORS = listOf("#FFFFFF", "#FDE68A", "#111827", "#38BDF8")
+
+    const val WHITE = "#FFFFFF"
+
+    /**
+     * The words as they may go out: one line (a line break becomes a space), at most [LONGEST] UTF-16 units, never
+     * cutting a letter (an emoji, a flag) in two.
+     */
+    fun cut(typed: String): String {
+        val line = typed.replace('\n', ' ').replace('\r', ' ')
+        if (line.length <= LONGEST) return line
+        val letters = java.text.BreakIterator.getCharacterInstance()
+        letters.setText(line)
+        var end = 0
+        var next = letters.next()
+        while (next != java.text.BreakIterator.DONE && next <= LONGEST) {
+            end = next
+            next = letters.next()
+        }
+        return line.substring(0, end)
+    }
 }
 
 /** A board's two axes' words (CONTRACT 7b): `x_axis` has `left` and `right`, `y_axis` `bottom` and `top`. */
@@ -118,6 +157,10 @@ data class MomentPlayItemDto(
     /** Before and after's two words over the halves ("Before" and "After" when left out). */
     val before: String? = null,
     val after: String? = null,
+    /** Moving words' lettering (one of the ten shared ids), motion (`drift`, `pulse`, `wave`, `type`) and `#RRGGBB` colour. */
+    val lettering: String? = null,
+    val motion: String? = null,
+    val color: String? = null,
     /** Read only: whether answers are taken now (never for the author), the reader's answer, and the results. */
     val open: Boolean? = null,
     val mine: MomentPlayMineDto? = null,
