@@ -174,6 +174,7 @@ struct ReinventedAtlasSearch: View {
             } else {
                 // Curiosity constellations near you (CONTRACT 9c) and the cabinet (9d) while nothing is searched.
                 ReinventedConstellations()
+                ReinventedEchoes()
                 ReinventedCabinet()
             }
         }

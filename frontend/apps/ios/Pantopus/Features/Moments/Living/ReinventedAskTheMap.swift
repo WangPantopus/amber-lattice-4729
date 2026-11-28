@@ -190,6 +190,11 @@ struct ReinventedAskBar: View {
             .frame(height: 40)
             .background(Capsule().fill(Theme.Color.appSurface))
             .overlay(Capsule().stroke(Theme.Color.appBorder, lineWidth: 1))
+            .overlay(alignment: .trailing) {
+                // Listen to the town (CONTRACT 9g), beside the bar.
+                ReinventedListenButton().offset(x: 48)
+            }
+            .padding(.trailing, 48)
             if let said {
                 Text(said)
                     .font(.system(size: 13, weight: .semibold))
@@ -206,7 +211,7 @@ struct ReinventedAskBar: View {
     /// "3 lit for "cafe"", or that nothing here matched, or why it couldn't ask.
     private var said: String? {
         if let error = ask.error { return error }
-        guard let lit = ask.lit else { return nil }
+        guard let lit = ask.lit else { return ReinventedListenButton.said }
         let shown = map.items.filter { lit.pins[$0.id] != nil }.count
         guard shown > 0 else { return "Nothing here for \u{201C}\(lit.q)\u{201D}. Move the map or try other words." }
         return "\(shown) lit for \u{201C}\(lit.q)\u{201D}" + (lit.more ? ", and more beyond these" : "")

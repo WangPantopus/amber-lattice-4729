@@ -69,6 +69,7 @@ struct ReinventedPulseList: View {
                 if model.chip == "spots" { RelicsNearSection() }
                 // Places you follow (CONTRACT 9c, phase 4): at the top of Explore.
                 if model.reach == "explore" { ReinventedFollowedPlacesSection(pulse: model, moment: onOpenMoment, post: onOpenPost) }
+                if model.reach == "close" { ReinventedWindowsRow() } // phase 4: homes talk to homes (CONTRACT 9f)
                 if model.isEmpty {
                     emptyNote
                 }

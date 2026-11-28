@@ -161,6 +161,7 @@ final class ReinventedLivingMap {
             sun = next
         }
         readBeams(region: region, live: time == "live")
+        ReinventedTownSound.shared.moved(region: region, time: time)
     }
 
     private func readBeams(region: MKCoordinateRegion, live: Bool) {
