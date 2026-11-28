@@ -34,6 +34,7 @@ struct MomentBoardCard: View {
     @State private var dragged: CGPoint?
     @State private var note = ""
     @State private var problem: String?
+    @State private var writing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
@@ -44,17 +45,37 @@ struct MomentBoardCard: View {
                 MomentPlayNote(words: "Drag your face to where you stand.")
             }
             if item.open, item.mine != nil || dragged != nil {
-                TextField("", text: $note, prompt: Text("A note (optional)").foregroundColor(Color.white.opacity(0.55)))
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white)
-                    .tint(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .typesInFieldOnTap()
-                    .background(Capsule().fill(Color.white.opacity(0.14)))
-                    .onChange(of: note) { _, typed in if typed.count > 60 { note = String(typed.prefix(60)) } }
-                    .onSubmit { Task { await send() } }
-                    .accessibilityIdentifier("moments.play.board.note")
+                // The note is written in a sheet of its own, above the keyboard.
+                MomentPlayWriteField(
+                    words: note.isEmpty ? item.mine?.note ?? "" : note,
+                    placeholder: "A note (optional)",
+                    id: "moments.play.board.note"
+                ) {
+                    if note.isEmpty { note = item.mine?.note ?? "" }
+                    writing = true
+                }
+                .sheet(isPresented: $writing) {
+                    MomentPlayWriteSheet(
+                        title: item.question ?? "",
+                        placeholder: "A note (optional)",
+                        limit: 60,
+                        text: $note,
+                        sendWords: "Save",
+                        send: { await send() },
+                        onDone: { writing = false }
+                    )
+                }
+            }
+            if item.open == false, item.mine == nil, MomentPlayAuthor.isMine(moment) {
+                // The author: the notes people left, each can be removed.
+                Button { MomentPlayStore.shared.answersOf = (moment.id, item) } label: {
+                    Text("See the notes")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("moments.play.board.notes")
             }
             if let count = item.results?.count { MomentPlayNote(words: "\(count) \(count == 1 ? "person stands" : "people stand") here") }
             if let problem { MomentPlayNote(words: problem) }
@@ -113,7 +134,8 @@ struct MomentBoardCard: View {
             .accessibilityIdentifier("moments.play.board.mine")
     }
 
-    private func send(in size: CGSize? = nil) async {
+    @discardableResult
+    private func send(in size: CGSize? = nil) async -> String? {
         var body = MomentPlayAnswerBody()
         if let dragged, let size {
             body.x = (Double(dragged.x / max(size.width, 1)) * 100).rounded() / 100
@@ -121,12 +143,13 @@ struct MomentBoardCard: View {
         } else if let mine = item.mine, let x = mine.x, let y = mine.y {
             (body.x, body.y) = (x, y)
         } else {
-            return
+            return nil
         }
         let words = note.trimmingCharacters(in: .whitespacesAndNewlines)
         body.note = words.isEmpty ? nil : words
         problem = await MomentPlayStore.shared.answer(body, item: item, on: moment.id)
         if problem == nil { dragged = nil }
+        return problem
     }
 }
 
@@ -252,5 +275,13 @@ struct MomentSwatchLayer: View {
 private extension Array {
     subscript(safeIndex index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+/// Whether the person watching made the Moment (the author sees results and answers, never the controls).
+enum MomentPlayAuthor {
+    @MainActor
+    static func isMine(_ moment: MomentDTO) -> Bool {
+        MomentsComposerModel.account == moment.author.id
     }
 }

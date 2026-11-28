@@ -73,6 +73,11 @@ public enum StudioPlayEndpoints {
         Endpoint(method: .delete, path: "/api/reinvented/play/\(part(postId))/\(part(item))")
     }
 
+    /// `GET /api/reinvented/play/:id` (CONTRACT 7b): one post's items as this reader may see them now.
+    static func items(postId: String) -> Endpoint {
+        Endpoint(method: .get, path: "/api/reinvented/play/\(part(postId))")
+    }
+
     /// `GET /api/reinvented/play/:id/:item/answers?cursor=` (CONTRACT 7b): a question box's answers or a board's notes,
     /// to the author only. Route `backend/routes/reinvented.js:237`.
     static func answers(postId: String, item: String, cursor: String?) -> Endpoint {
@@ -115,6 +120,20 @@ struct MomentPlayAnswerBody: Encodable {
 /// `{ "item": … }`, an answered item as the reader may now see it.
 struct MomentPlayItemEnvelope: Decodable {
     let item: MomentPlayItem
+}
+
+/// `GET /api/reinvented/play/:id`: the post's items (an item this app can't read is passed over).
+struct MomentPlayItemsEnvelope: Decodable {
+    let play: [MomentPlayItem]
+
+    private enum CodingKeys: String, CodingKey {
+        case play
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        play = try (c.decodeIfPresent(MomentLenientList<MomentPlayItem>.self, forKey: .play))?.items ?? []
+    }
 }
 
 /// The author's list of a question box's answers or a board's notes, newest first.

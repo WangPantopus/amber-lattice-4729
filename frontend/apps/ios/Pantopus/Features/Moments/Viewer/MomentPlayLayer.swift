@@ -18,8 +18,20 @@ import SwiftUI
 final class MomentPlayStore {
     static let shared = MomentPlayStore()
 
-    private var answered: [String: [String: MomentPlayItem]] = [:]
-    var wiped: Set<String> = []
+    /// Per account (another account signed in on this phone starts with none of the last one's answers).
+    private var answeredBy: [String: [String: [String: MomentPlayItem]]] = [:]
+    private var wipedBy: [String: Set<String>] = [:]
+
+    private var answered: [String: [String: MomentPlayItem]] {
+        get { answeredBy[MomentsComposerModel.account ?? ""] ?? [:] }
+        set { answeredBy[MomentsComposerModel.account ?? ""] = newValue }
+    }
+
+    var wiped: Set<String> {
+        get { wipedBy[MomentsComposerModel.account ?? ""] ?? [] }
+        set { wipedBy[MomentsComposerModel.account ?? ""] = newValue }
+    }
+
     /// The item whose author's answers list is open (a question box's answers, a board's notes).
     var answersOf: (moment: String, item: MomentPlayItem)?
 
@@ -45,6 +57,26 @@ final class MomentPlayStore {
             return failure.message("Couldn't send that. Try again.")
         } catch {
             return "Couldn't send that. Try again."
+        }
+    }
+
+    /// Takes the reader's answer back (CONTRACT 7b: a poll, a slider, a board or a question box; never a guess), then
+    /// reads the item again for what this reader may see now. Nil when it went through, else the words.
+    func takeBack(_ item: MomentPlayItem, on momentId: String) async -> String? {
+        do {
+            try await StudioPlayAPI.send(StudioPlayEndpoints.takeBack(postId: momentId, item: item.id))
+            var fresh = item
+            fresh.mine = nil
+            if let read = try? await StudioPlayAPI.send(StudioPlayEndpoints.items(postId: momentId), as: MomentPlayItemsEnvelope.self),
+               let again = read.play.first(where: { $0.id == item.id }) {
+                fresh = again
+            }
+            keep(fresh, on: momentId)
+            return nil
+        } catch let failure as StudioPlayFailure {
+            return failure.message("Couldn't take that back. Try again.")
+        } catch {
+            return "Couldn't take that back. Try again."
         }
     }
 
@@ -117,6 +149,22 @@ struct MomentPlayCard: View {
     var preview = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            content
+            if let moment, !preview, MomentPlayTakeBack.offers(item) {
+                MomentPlayTakeBack(moment: moment, item: item)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.72)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.16), lineWidth: 1))
+        .allowsHitTesting(!preview)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.play.\(item.kind.rawValue)")
+    }
+
+    private var content: some View {
         Group {
             if let moment, !preview {
                 switch item.kind {
@@ -133,13 +181,50 @@ struct MomentPlayCard: View {
                 MomentPlayPreview(item: item)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.72)))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.16), lineWidth: 1))
-        .allowsHitTesting(!preview)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("moments.play.\(item.kind.rawValue)")
+    }
+}
+
+/// "Take it back": the reader's answer on a poll, a slider, a board or a question box comes off while answers are
+/// taken (CONTRACT 7b). A guess is one try and stays.
+struct MomentPlayTakeBack: View {
+    let moment: MomentDTO
+    let item: MomentPlayItem
+    @State private var sending = false
+    @State private var problem: String?
+
+    static func offers(_ item: MomentPlayItem) -> Bool {
+        item.open && item.mine != nil && [.poll, .slider, .board, .question].contains(item.kind)
+    }
+
+    private var words: String {
+        switch item.kind {
+        case .poll: "Take my vote back"
+        case .board: "Take my face off"
+        default: "Take my answer back"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                Task {
+                    sending = true
+                    problem = await MomentPlayStore.shared.takeBack(item, on: moment.id)
+                    sending = false
+                }
+            } label: {
+                Text(words)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .underline()
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(sending)
+            .accessibilityIdentifier("moments.play.takeBack")
+            if let problem { MomentPlayNote(words: problem) }
+        }
     }
 }
 
@@ -177,19 +262,42 @@ struct MomentPlayAnswersList: View {
     @State private var loading = true
 
     var body: some View {
-        NavigationStack {
+        // No NavigationStack: shown as a sheet from inside the viewer, one was shown again about once a second (as
+        // the field guide was); a plain header with Done holds still.
+        VStack(spacing: 0) {
+            HStack(spacing: Spacing.s2) {
+                Text(item.prompt ?? item.question ?? "Answers")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appText)
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Button("Done", action: onClose)
+                    .font(.system(size: 17, weight: .semibold))
+                    .accessibilityIdentifier("moments.play.answers.done")
+            }
+            .padding(.horizontal, Spacing.s4)
+            .frame(minHeight: 52)
             List {
                 if !loading, rows.isEmpty {
                     Text("No answers yet.").foregroundStyle(Theme.Color.appTextSecondary)
                 }
                 ForEach(rows) { row in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(row.text ?? row.note ?? "")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Theme.Color.appText)
-                        Text(row.person?.name ?? "Someone")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Theme.Color.appTextSecondary)
+                    HStack(alignment: .top, spacing: Spacing.s2) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(row.text ?? row.note ?? "")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Theme.Color.appText)
+                            Text(row.person?.name ?? "Someone")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.Color.appTextSecondary)
+                        }
+                        Spacer(minLength: 0)
+                        // Also as a swipe; here so it can be found.
+                        Button("Remove", role: .destructive) { Task { await remove(row) } }
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("moments.play.answers.remove")
                     }
                     .swipeActions {
                         Button("Remove", role: .destructive) { Task { await remove(row) } }
@@ -199,10 +307,8 @@ struct MomentPlayAnswersList: View {
                     Button("Show more") { Task { await load(reset: false) } }
                 }
             }
-            .navigationTitle(item.prompt ?? item.question ?? "Answers")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done", action: onClose) } }
         }
+        .background(Theme.Color.appBg.ignoresSafeArea())
         .task { await load(reset: true) }
         .accessibilityIdentifier("moments.play.answers")
     }
@@ -253,5 +359,89 @@ struct MomentPlayPreview: View {
                 if item.kind == .question { MomentPlayNote(words: "Answers come to you alone.") }
             }
         }
+    }
+}
+
+/// A field on a card that looks like one and opens `MomentPlayWriteSheet`: the viewer ignores the keyboard, so a field on
+/// a card in the lower half of the picture would be typed into under it.
+struct MomentPlayWriteField: View {
+    let words: String
+    let placeholder: String
+    let id: String
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            Text(words.isEmpty ? placeholder : words)
+                .font(.system(size: 14.5))
+                .foregroundStyle(words.isEmpty ? Color.white.opacity(0.55) : .white)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                .background(Capsule().fill(Color.white.opacity(0.14)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(placeholder)
+        .accessibilityValue(words)
+        .accessibilityIdentifier(id)
+    }
+}
+
+/// Writing on an item (a question box's answer, a board's note) in a sheet of its own over the viewer, above the keyboard.
+struct MomentPlayWriteSheet: View {
+    let title: String
+    let placeholder: String
+    let limit: Int
+    @Binding var text: String
+    let sendWords: String
+    let send: () async -> String?
+    let onDone: () -> Void
+    @State private var sending = false
+    @State private var problem: String?
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s3) {
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Color.white.opacity(0.55)), axis: .vertical)
+                .font(.system(size: 15))
+                .foregroundStyle(.white)
+                .tint(.white)
+                .lineLimit(1...4)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                .focused($typing)
+                .onChange(of: text) { _, typed in if typed.count > limit { text = String(typed.prefix(limit)) } }
+                .accessibilityIdentifier("moments.play.write.field")
+            HStack {
+                if let problem { MomentPlayNote(words: problem) }
+                Spacer(minLength: 0)
+                Button(sendWords) {
+                    Task {
+                        sending = true
+                        problem = await send()
+                        sending = false
+                        if problem == nil { onDone() }
+                    }
+                }
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("moments.play.write.send")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Spacing.s4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(white: 0.11).ignoresSafeArea())
+        .environment(\.colorScheme, .dark)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .onAppear { typing = true }
     }
 }

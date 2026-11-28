@@ -18,7 +18,13 @@ import SwiftUI
 final class MomentDeckSaves {
     static let shared = MomentDeckSaves()
 
-    var saved: Set<String> = []
+    /// The decks saved, per account (another account signed in on this phone starts with none of them).
+    private var savedBy: [String: Set<String>] = [:]
+    var saved: Set<String> {
+        get { savedBy[MomentsComposerModel.account ?? ""] ?? [] }
+        set { savedBy[MomentsComposerModel.account ?? ""] = newValue }
+    }
+
     var sending: String?
     /// The Moment whose "Open" opened the reader's field guide over the viewer.
     var guideFrom: String?
