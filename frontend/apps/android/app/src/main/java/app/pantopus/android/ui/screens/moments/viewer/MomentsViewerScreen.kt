@@ -696,22 +696,29 @@ fun MomentsViewerScreen(
                 )
                 // The caption gives way to the quick reactions while they are up.
                 moment?.caption?.takeIf { it.isNotBlank() && moment.kind != "text" && !typing && !reacting }?.let { caption ->
-                    Text(
-                        text = caption,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        lineHeight = 21.sp,
-                        textAlign = TextAlign.Center,
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(start = Spacing.s10, end = Spacing.s10, bottom = 63.dp)
-                                .clip(RoundedCornerShape(Radii.lg))
-                                .background(PantopusColors.momentCaptionPill)
-                                .padding(horizontal = 14.dp, vertical = Spacing.s2)
-                                .testTag("moments.viewer.caption"),
-                    )
+                    val pill =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = Spacing.s10, end = Spacing.s10, bottom = 63.dp)
+                            .clip(RoundedCornerShape(Radii.lg))
+                            .background(PantopusColors.momentCaptionPill)
+                            .padding(horizontal = 14.dp, vertical = Spacing.s2)
+                            .testTag("moments.viewer.caption")
+                    // "Pulse, reinvented" (CONTRACT 7h): the mentioned names open their profiles; today's caption otherwise.
+                    val mentioned = if (studio) moment.mentions.orEmpty() else emptyList()
+                    if (mentioned.isNotEmpty()) {
+                        MomentMentionCaption(caption, mentioned, { person -> person.profileOpener(onOpenProfile)?.invoke() }, pill)
+                    } else {
+                        Text(
+                            text = caption,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 21.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = pill,
+                        )
+                    }
                 }
             }
 

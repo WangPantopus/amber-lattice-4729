@@ -109,6 +109,8 @@ data class MomentEditBody(
     val caption: String? = null,
     val stamps: List<MomentStampPlacement>? = null,
     val audience: String? = null,
+    /** The whole new list of people the caption mentions (CONTRACT 7h); left out when it didn't change. */
+    val mentions: List<String>? = null,
 )
 
 /** The tray's request: today's place-preview body, plus `stamps: true` (sent only by the Studio). */
