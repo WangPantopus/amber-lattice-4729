@@ -1067,7 +1067,8 @@ class MomentsComposeViewModel
         ) {
             val current = _state.value
             val media = current.media as? MomentMediaFile.Photo ?: return
-            if (!current.whole || current.posting || current.marking != null || current.placement == next) return
+            if (!current.whole || current.posting || current.marking != null) return
+            if (current.placement == next) return
             // Between whole as taken and the canvas, what lies on the photo moves with it, so it stays where it was.
             val moved = if ((current.placement == null) == (next == null)) current else current.wholeMoved(picture.shape, next == null)
             _state.update {

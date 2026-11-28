@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -82,17 +81,6 @@ import kotlin.math.min
  * canvas, and Reset puts it back whole; any of those places it on the canvas with Resize's own model and drawing, so it
  * then uploads as that canvas. Marks, stamps, dots and playable items stay where the author put them on the screen.
  */
-
-/** The photo as it came (upright, as the marks editor reads it), with its film look, and the backdrop drawn from it. */
-@Immutable
-internal data class StudioWholeView(
-    val asCame: Bitmap,
-    val looked: Bitmap,
-    val backdrop: MomentPlacementPainter.Backdrop,
-) {
-    val size: IntSize get() = IntSize(asCame.width, asCame.height)
-    val shape: Float get() = size.shape
-}
 
 /** The Studio shows and posts this photo whole: a photo, not before and after (whose halves are drawn as they are). */
 internal val MomentsComposeUiState.showsWhole: Boolean
@@ -170,6 +158,7 @@ internal fun MomentsComposeUiState.wholeMoved(
     back: Boolean,
 ): MomentsComposeUiState {
     val box = FitBox(shape)
+
     fun x(v: Double) = box.across(v.toFloat(), back).toDouble()
 
     fun y(v: Double) = box.down(v.toFloat(), back).toDouble()
