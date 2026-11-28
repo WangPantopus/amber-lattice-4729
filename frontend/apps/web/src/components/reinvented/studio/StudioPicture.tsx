@@ -9,6 +9,17 @@ export type StudioTool = 'text' | 'draw' | 'resize' | null;
 export type StudioBrush = 'pen' | 'highlighter' | 'arrow' | 'eraser';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** A moved picture within 2% of the middle sits exactly in it. */
+const toMiddle = (v: number) => (Math.abs(v) < 0.02 ? 0 : v);
+
+/** How far a picture is zoomed when it fills the 9:16 frame, at a quarter turn or not (1 when it already fits exactly). */
+export function fillZoom(w: number, h: number, rotation: number) {
+  if (!w || !h) return 1;
+  const side = rotation % 180 !== 0,
+    pw = side ? h : w,
+    ph = side ? w : h;
+  return Math.max(9 / pw, 16 / ph) / Math.min(9 / pw, 16 / ph);
+}
 // The posted frame in pixels (9:16, as the canvas below): lengths and angles are worked out here, not in fractions.
 const W = 720,
   H = 1280;
@@ -72,7 +83,6 @@ export default function StudioPicture({
   picking = false,
   onPick,
   onBeforeStrokes,
-  fill = true,
   onPicture,
   loop = null,
 }: {
@@ -89,8 +99,6 @@ export default function StudioPicture({
   onPick?(color: string): void;
   /** The lines as they were before a line is drawn or rubbed out, so Undo can put them back. */
   onBeforeStrokes?(strokes: Stroke[]): void;
-  /** A tall picture opens filling the frame (a phone's own shot); false opens it whole (a photostrip). */
-  fill?: boolean;
   /** The picture as it loaded (a video once its first frame is in), for reading its colours. */
   onPicture?(el: HTMLImageElement | HTMLVideoElement, width: number, height: number): void;
   /** A loop (CONTRACT 7j): the video plays only this part, over and over, as the new viewers will. */
@@ -105,8 +113,7 @@ export default function StudioPicture({
     media = useRef<HTMLImageElement | HTMLVideoElement | null>(null),
     rubbed = useRef<XY | null>(null),
     fingers = useRef(new Map<number, XY>()),
-    pinch = useRef<{ span: number; zoom: number } | null>(null),
-    fitted = useRef('');
+    pinch = useRef<{ span: number; zoom: number } | null>(null);
   useEffect(() => {
     const u = URL.createObjectURL(file);
     setUrl(u);
@@ -161,16 +168,9 @@ export default function StudioPicture({
     const [a, b] = [...fingers.current.values()];
     return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
   };
-  // "After a shot the picture fills the screen" (B2): a tall picture (a phone's own shot) opens filling the frame, the
-  // little that falls outside cropped as it is posted; a wide or square one opens whole, as today. Resize changes it.
-  const measured = (w: number, h: number) => {
-    setDimensions({ w, h });
-    if (!w || !h || fitted.current === url || !fill) return;
-    fitted.current = url;
-    const cover = Math.max(9 / w, 16 / h) / Math.min(9 / w, 16 / h);
-    if (cover > 1 && cover <= 1.35 && art.zoom === 1 && !art.rotation && !art.offset.x && !art.offset.y)
-      onChange({ ...art, zoom: cover });
-  };
+  // See the picture first (PHASE-5 A1): every picture opens whole, never cut, as it will look to readers; Fit / Fill,
+  // Turn and Reset on the same screen (Studio.tsx), and dragging or zooming here, change it.
+  const measured = (w: number, h: number) => setDimensions({ w, h });
   const side = art.rotation % 180 !== 0;
   const scale =
     Math.min(9 / (side ? dimensions.h : dimensions.w), 16 / (side ? dimensions.w : dimensions.h)) * art.zoom;
@@ -304,7 +304,12 @@ export default function StudioPicture({
                 y: clamp(original.textAt.y + p.y - from.y, 0, 1),
               },
             });
-          else onChange({ ...art, offset: { x: original.offset.x + p.x - from.x, y: original.offset.y + p.y - from.y } });
+          // The picture sticks at the middle (as Resize does on the phones), so it goes back there without a hunt.
+          else
+            onChange({
+              ...art,
+              offset: { x: toMiddle(original.offset.x + p.x - from.x), y: toMiddle(original.offset.y + p.y - from.y) },
+            });
         }}
         onLostPointerCapture={(e) => {
           fingers.current.delete(e.pointerId);
