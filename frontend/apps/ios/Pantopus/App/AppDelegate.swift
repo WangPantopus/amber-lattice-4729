@@ -144,6 +144,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             var account: String?
             if case let .signedIn(user) = AuthManager.shared.state { account = user.id }
             MomentsUploadReminder.appWillTerminate(account: account)
+            // The posting card on the Lock Screen says the same as that reminder.
+            PostingLiveActivityController.shared.appWillTerminate()
         }
     }
 
