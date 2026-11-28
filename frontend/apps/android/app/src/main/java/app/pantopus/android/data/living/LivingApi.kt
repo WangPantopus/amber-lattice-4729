@@ -9,6 +9,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import okhttp3.RequestBody
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -98,7 +99,78 @@ interface LivingApi {
     /** CONTRACT 9e: the reader's own echoes and twins for today (Pacific). */
     @GET("api/reinvented/echoes")
     suspend fun echoes(): LivingEchoesDto
+
+    /** CONTRACT 9f: the windows other members of the reader's circles show to that circle, the reader's own too. */
+    @GET("api/reinvented/windows")
+    suspend fun windows(): LivingWindowsResponse
+
+    /** CONTRACT 8d/9f: the circles list, read here only for the reader's own window on each (`my_window`). */
+    @GET("api/reinvented/circles")
+    suspend fun circlesWindows(): LivingMyWindowsResponse
+
+    /** CONTRACT 9f: show a window for my home to this circle (`{ window: { label } }`), or stop (`{ window: null }`). */
+    @POST("api/reinvented/circles/{id}/me")
+    suspend fun setWindow(
+        @Path("id") circleId: String,
+        @Body body: RequestBody,
+    )
+
+    /** CONTRACT 9g: the place sounds kept with Moments in the map's box, for its time. */
+    @GET("api/reinvented/sounds")
+    suspend fun sounds(
+        @Query("south") south: String,
+        @Query("west") west: String,
+        @Query("north") north: String,
+        @Query("east") east: String,
+        @Query("time") time: String,
+    ): LivingSoundsResponse
 }
+
+/** A window a circle member shows for their home: lit when they shared today; never what, where or when. */
+@JsonClass(generateAdapter = true)
+data class LivingWindowDto(
+    @Json(name = "circle_id") val circleId: String,
+    val circle: String = "",
+    val label: String,
+    val lit: Boolean = false,
+) {
+    val key: String get() = "$circleId/$label"
+}
+
+@JsonClass(generateAdapter = true)
+data class LivingWindowsResponse(
+    @Lossy val windows: List<LivingWindowDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingWindowLabelDto(
+    val label: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingMyWindowCircleDto(
+    val id: String,
+    @Json(name = "my_window") val myWindow: LivingWindowLabelDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingMyWindowsResponse(
+    @Lossy val circles: List<LivingMyWindowCircleDto> = emptyList(),
+)
+
+/** A place sound an author kept with a Moment for people nearby (never a voice or a whisper). */
+@JsonClass(generateAdapter = true)
+data class LivingSoundDto(
+    @Json(name = "moment_id") val momentId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val url: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingSoundsResponse(
+    @Lossy val sounds: List<LivingSoundDto> = emptyList(),
+)
 
 @JsonClass(generateAdapter = true)
 data class LivingSettingsDto(

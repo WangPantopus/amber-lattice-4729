@@ -44,6 +44,7 @@ import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.screens.feed.living.LivingFollowedPlaces
+import app.pantopus.android.ui.screens.feed.living.LivingWindowsRow
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
@@ -144,6 +145,8 @@ private fun LoadedRows(
         if (state.reach == ReinventedPulseViewModel.EXPLORE) {
             item(key = "followed") { LivingFollowedPlaces(state.followed, actions.onRefresh, actions.onOpenMoment) }
         }
+        // Windows (phase 4, `feed/living/LivingWindows.kt`), at the top of Close circle only.
+        if (state.reach == ReinventedPulseViewModel.CLOSE) item(key = "windows") { LivingWindowsRow() }
         if (state.items.isEmpty()) item(key = "empty") { EmptyNote(state.reach) }
         items(rows, key = { it.key }) { row ->
             when (row) {

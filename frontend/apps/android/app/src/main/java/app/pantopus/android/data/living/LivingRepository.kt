@@ -7,6 +7,10 @@ import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.pulse.PulseReinventedFeature
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.StudioRepository
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -71,6 +75,26 @@ class LivingRepository
         /** CONTRACT 9e: today's echoes and twins (only read while the person takes part). */
         suspend fun echoes(): NetworkResult<LivingEchoesDto> = guarded { api.echoes() }
 
+        /** CONTRACT 9f: the windows of the reader's circles. */
+        suspend fun windows(): NetworkResult<List<LivingWindowDto>> = guarded { api.windows().windows }
+
+        /** CONTRACT 9f: the reader's own window on [circleId], or null when they show none. */
+        suspend fun myWindow(circleId: String): NetworkResult<String?> =
+            guarded { api.circlesWindows().circles.firstOrNull { it.id == circleId }?.myWindow?.label }
+
+        /** CONTRACT 9f: show a window named [label] to the circle, or stop with null. */
+        suspend fun setWindow(
+            circleId: String,
+            label: String?,
+        ): NetworkResult<Unit> = guarded { api.setWindow(circleId, windowBody(label)) }
+
+        /** CONTRACT 9g: the place sounds in the map's box, for its time. */
+        suspend fun sounds(
+            box: ReinventedBox,
+            time: String,
+        ): NetworkResult<List<LivingSoundDto>> =
+            guarded { api.sounds(box.south.fixed(), box.west.fixed(), box.north.fixed(), box.east.fixed(), time).sounds }
+
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }
             if (answer is NetworkResult.Failure && answer.error.serverCode == StudioRepository.SWITCH_OFF) feature.refusedOff()
@@ -91,7 +115,14 @@ internal const val ECHOES_ON = "on"
 internal const val ECHOES_NAMES = "names"
 private const val HTTP_BAD_REQUEST = 400
 private const val MAX_LABEL = 60
+private const val MAX_WINDOW = 30
 private const val HTTP_TOO_MANY = 429
+
+/** `{ "window": { "label" } }`, or `{ "window": null }` to stop: the key is always sent (the app's JSON leaves nulls out). */
+private fun windowBody(label: String?): RequestBody {
+    val window = label?.let { JSONObject().put("label", it.take(MAX_WINDOW)) } ?: JSONObject.NULL
+    return JSONObject().put("window", window).toString().toRequestBody("application/json".toMediaType())
+}
 
 /** A box's side as the map sends it: five decimals, a dot whatever the phone's language. */
 internal fun Double.fixed(): String = String.format(Locale.US, "%.5f", this)

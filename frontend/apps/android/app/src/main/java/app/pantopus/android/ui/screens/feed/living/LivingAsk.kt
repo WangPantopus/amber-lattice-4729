@@ -2,6 +2,9 @@
 
 package app.pantopus.android.ui.screens.feed.living
 
+import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -46,6 +50,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.living.LivingAskMatchDto
 import app.pantopus.android.data.living.LivingRepository
@@ -57,6 +64,7 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +72,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.cos
 
 /*
  * "Pulse, reinvented" phase 4, Ask the map (PHASE-4 piece 3; CONTRACT 9b), as the iPhone's (`ReinventedAskTheMap.swift`)
@@ -83,17 +92,31 @@ data class LivingAskState(
     val error: String? = null,
     /** How many of the pins in view are lit. */
     val shown: Int = 0,
+    /** Listen to the town (CONTRACT 9g) is on. */
+    val listening: Boolean = false,
+    /** The Moment whose place sound plays now. */
+    val playing: String? = null,
+    /** None of the Moments in view kept a place sound. */
+    val quiet: Boolean = false,
+    /** Headphones (wired, USB or Bluetooth) are on: no "Best with headphones." */
+    val headphones: Boolean = false,
 )
 
 /**
- * Ask the map. One per Pulse screen (the bar and the map share it through `hiltViewModel()`): the map tells it the box,
- * time and pins it shows once it settles ([mapAt]); the bar asks.
+ * Ask the map, and Listen to the town. One per Pulse screen (the bar and the map share it through `hiltViewModel()`):
+ * the map tells it the box, time and pins it shows once it settles ([mapAt]); the bar asks, and turns Listen on or off.
+ *
+ * Listen to the town (PHASE-4 piece 7; CONTRACT 9g), as the iPhone's (`ReinventedTownSound.swift`): with Listen on, the
+ * map plays the place sound kept with the Moment nearest its middle, and as the map is dragged across the town the sound
+ * changes. Only what an author kept as place sound for people nearby (never a voice or a whisper); the server decides
+ * which. Best with headphones, and it says so. It stops when Listen goes off or the bar leaves the screen.
  */
 @HiltViewModel
 class LivingAskViewModel
     @Inject
     constructor(
         private val repository: LivingRepository,
+        @ApplicationContext private val context: Context,
     ) : ViewModel() {
         private val _state = MutableStateFlow(LivingAskState())
         val state: StateFlow<LivingAskState> = _state.asStateFlow()
@@ -103,6 +126,8 @@ class LivingAskViewModel
         private var items: List<ReinventedMapItem> = emptyList()
         private var matches: List<LivingAskMatchDto> = emptyList()
         private var asking: Job? = null
+        private var hearing: Job? = null
+        private var player: ExoPlayer? = null
 
         /** The map settled on [next] for [at], showing [shown]. A new time clears what was asked. */
         fun mapAt(
@@ -115,6 +140,76 @@ class LivingAskViewModel
             time = at
             items = shown
             if (_state.value.lit != null) light()
+            if (_state.value.listening) hear()
+        }
+
+        fun toggleListen() {
+            if (_state.value.listening) {
+                stopListening()
+            } else {
+                _state.update { it.copy(listening = true, headphones = headphonesOn()) }
+                hear()
+            }
+        }
+
+        /** Listen off: the sound stops at once. */
+        fun stopListening() {
+            hearing?.cancel()
+            player?.release()
+            player = null
+            if (_state.value.listening) _state.update { it.copy(listening = false, playing = null, quiet = false) }
+        }
+
+        /** Plays the place sound nearest the map's middle, if it isn't the one playing. */
+        private fun hear() {
+            val area = box ?: return
+            val at = time ?: return
+            hearing?.cancel()
+            hearing =
+                viewModelScope.launch {
+                    val sounds = (repository.sounds(area, at) as? NetworkResult.Success)?.data ?: return@launch
+                    if (!_state.value.listening) return@launch
+                    val middleLat = (area.south + area.north) / 2
+                    val middleLng = (area.west + area.east) / 2
+                    val nearest =
+                        sounds.minByOrNull { sound ->
+                            val dLat = sound.latitude - middleLat
+                            val dLng = (sound.longitude - middleLng) * cos(Math.toRadians(middleLat))
+                            dLat * dLat + dLng * dLng
+                        }
+                    if (nearest == null) {
+                        player?.release()
+                        player = null
+                        _state.update { it.copy(playing = null, quiet = true, headphones = headphonesOn()) }
+                        return@launch
+                    }
+                    _state.update { it.copy(quiet = false, headphones = headphonesOn()) }
+                    if (nearest.momentId == _state.value.playing) return@launch
+                    _state.update { it.copy(playing = nearest.momentId) }
+                    play(nearest.url)
+                }
+        }
+
+        private fun play(url: String) {
+            player?.release()
+            player =
+                ExoPlayer.Builder(context).build().apply {
+                    // Mixes with what else plays, as the iPhone's: no audio focus taken.
+                    setAudioAttributes(AudioAttributes.DEFAULT, false)
+                    setMediaItem(MediaItem.fromUri(url))
+                    prepare()
+                    playWhenReady = true
+                }
+        }
+
+        private fun headphonesOn(): Boolean {
+            val audio = context.getSystemService(AudioManager::class.java) ?: return false
+            return audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in HEADPHONES }
+        }
+
+        override fun onCleared() {
+            player?.release()
+            player = null
         }
 
         fun ask(text: String) {
@@ -167,6 +262,14 @@ class LivingAskViewModel
 
         private companion object {
             const val MAX_WORDS = 100
+            val HEADPHONES =
+                setOf(
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                )
         }
     }
 
@@ -179,63 +282,71 @@ internal fun LivingAskBar(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var text by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
-    DisposableEffect(viewModel) { onDispose { viewModel.clear() } }
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.clear()
+            viewModel.stopListening()
+        }
+    }
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = Spacing.s4).padding(top = Spacing.s2),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val shape = RoundedCornerShape(percent = 50)
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it },
-            singleLine = true,
-            enabled = !state.asking,
-            textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
-            cursorBrush = SolidColor(PantopusColors.appText),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions =
-                KeyboardActions(onSearch = {
-                    viewModel.ask(text)
-                    focus.clearFocus()
-                }),
-            modifier = Modifier.fillMaxWidth().testTag("reinventedPulse.ask.field"),
-            decorationBox = { inner ->
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .background(PantopusColors.appSurface, shape)
-                            .border(1.dp, PantopusColors.appBorder, shape)
-                            .padding(start = Spacing.s3, end = Spacing.s1),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-                ) {
-                    PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
-                    Box(Modifier.weight(1f)) {
-                        if (text.isEmpty()) Text("Ask the map: cozy study cafe", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
-                        inner()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                enabled = !state.asking,
+                textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
+                cursorBrush = SolidColor(PantopusColors.appText),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions =
+                    KeyboardActions(onSearch = {
+                        viewModel.ask(text)
+                        focus.clearFocus()
+                    }),
+                modifier = Modifier.weight(1f).testTag("reinventedPulse.ask.field"),
+                decorationBox = { inner ->
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .background(PantopusColors.appSurface, shape)
+                                .border(1.dp, PantopusColors.appBorder, shape)
+                                .padding(start = Spacing.s3, end = Spacing.s1),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                    ) {
+                        PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                        Box(Modifier.weight(1f)) {
+                            if (text.isEmpty()) Text("Ask the map: cozy study cafe", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                            inner()
+                        }
+                        when {
+                            state.asking -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            state.lit != null || text.isNotEmpty() ->
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier =
+                                        Modifier
+                                            .size(32.dp)
+                                            .clickable(role = Role.Button) {
+                                                text = ""
+                                                viewModel.clear()
+                                            }.semantics { contentDescription = "Clear and show every pin" }
+                                            .testTag("reinventedPulse.ask.clear"),
+                                ) {
+                                    PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                                }
+                        }
                     }
-                    when {
-                        state.asking -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        state.lit != null || text.isNotEmpty() ->
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier =
-                                    Modifier
-                                        .size(32.dp)
-                                        .clickable(role = Role.Button) {
-                                            text = ""
-                                            viewModel.clear()
-                                        }.semantics { contentDescription = "Clear and show every pin" }
-                                        .testTag("reinventedPulse.ask.clear"),
-                            ) {
-                                PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
-                            }
-                    }
-                }
-            },
-        )
+                },
+            )
+            ListenButton(state.listening, viewModel::toggleListen)
+        }
         said(state)?.let {
             Text(
                 it,
@@ -252,11 +363,45 @@ internal fun LivingAskBar(
     }
 }
 
-/** "3 lit for "cafe"", or that nothing here matched, or why it couldn't ask. */
+/** Listen to the town (CONTRACT 9g), beside the bar. */
+@Composable
+private fun ListenButton(
+    listening: Boolean,
+    onToggle: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .size(40.dp)
+                .background(if (listening) PantopusColors.primary600 else PantopusColors.appSurface, CircleShape)
+                .border(if (listening) 0.dp else 1.dp, PantopusColors.appBorder, CircleShape)
+                .clickable(role = Role.Button, onClick = onToggle)
+                .semantics { contentDescription = if (listening) "Stop listening to the town" else "Listen to the town" }
+                .testTag("reinventedPulse.listen"),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.Volume2,
+            contentDescription = null,
+            size = 16.dp,
+            tint = if (listening) Color.White else PantopusColors.appText,
+        )
+    }
+}
+
+/** While listening: what it hears. */
+private fun heard(state: LivingAskState): String? {
+    if (!state.listening) return null
+    if (state.quiet) return "No place sounds here. Move the map to listen elsewhere."
+    val hint = if (state.headphones) "" else " Best with headphones."
+    return (if (state.playing == null) "Listening to the town." else "Hearing the place nearest the middle.") + hint
+}
+
+/** "3 lit for "cafe"", or that nothing here matched, or why it couldn't ask, or what Listen hears. */
 private fun said(state: LivingAskState): String? {
     state.error?.let { return it }
+    if (state.lit == null) return heard(state)
     val q = state.q ?: return null
-    if (state.lit == null) return null
     if (state.shown == 0) return "Nothing here for “$q”. Move the map or try other words."
     return "${state.shown} lit for “$q”" + if (state.more) ", and more beyond these" else ""
 }
