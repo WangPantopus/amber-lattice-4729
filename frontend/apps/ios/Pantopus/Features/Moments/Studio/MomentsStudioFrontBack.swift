@@ -28,9 +28,10 @@ enum MomentsFrontBack {
         #endif
     }
 
-    /// The small picture on the screen: 118 by 157 points, 16 from the left and 60 under the top of the safe area.
+    /// The small picture on the screen: 118 by 157 points, 16 from the left and 140 under the top of the safe area, so
+    /// the viewer's name row and chips, over the top of every Moment, never cover it.
     static func smallFrame(safeTop: CGFloat) -> CGRect {
-        CGRect(x: 16, y: safeTop + 60, width: 118, height: 157)
+        CGRect(x: 16, y: safeTop + 140, width: 118, height: 157)
     }
 
     /// The picture exactly as the screen showed it: `big` cut to the screen's shape (centred, as the preview fills
