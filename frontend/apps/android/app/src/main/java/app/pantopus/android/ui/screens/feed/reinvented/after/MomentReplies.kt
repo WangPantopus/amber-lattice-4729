@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.feed.reinvented.after
 
 import androidx.compose.foundation.background
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -197,13 +198,13 @@ fun MomentRepliesChip(
 ) {
     val state = moment.replies
     if (state == null) {
-        if (moment.retake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
+        if (moment.shownRetake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
         return
     }
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val shown = ui.shown.takeIf { ui.momentId == moment.id } ?: state.shown
     if (!shown && !mine) {
-        if (moment.retake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
+        if (moment.shownRetake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
         return
     }
     var open by MomentRepliesState.sheet

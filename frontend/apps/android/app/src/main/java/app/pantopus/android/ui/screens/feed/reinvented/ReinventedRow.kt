@@ -1,6 +1,7 @@
 package app.pantopus.android.ui.screens.feed.reinvented
 
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.pulse.ReinventedBox
@@ -59,7 +60,7 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
     // A Retake is one row (CONTRACT 8e): its first frame in the list opens the whole Retake.
     val retakes = mutableSetOf<String>()
     for ((index, item) in items.withIndex()) {
-        val retake = item.moment?.retake
+        val retake = item.moment?.shownRetake
         if (retake != null && !retakes.add(retake.startId)) continue
         if (explore && pickedCount > 0 && index == 0) rows += ReinventedRow.Heading("Today, elsewhere")
         if (explore && pickedCount > 0 && index == pickedCount) rows += ReinventedRow.Heading("New elsewhere")

@@ -1,6 +1,7 @@
 package app.pantopus.android.ui.screens.feed.reinvented.after
 
 import androidx.compose.foundation.background
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -80,7 +81,7 @@ internal object MomentRetakeState {
 
     /** A Moment of a Retake opens the Retake; anything else opens as before (false). */
     fun opens(moment: MomentDto): Boolean {
-        val retake = moment.retake ?: return false
+        val retake = moment.shownRetake ?: return false
         fromList.value = retake.startId
         return true
     }
@@ -141,7 +142,7 @@ internal fun MomentRetakeChip(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val retake = moment.retake ?: return
+    val retake = moment.shownRetake ?: return
     DisposableEffect(moment.id) { onDispose { MomentRetakeState.inViewer.value = null } }
     val spoken = "${retake.tag}. Opens the Retake's frames"
     Row(

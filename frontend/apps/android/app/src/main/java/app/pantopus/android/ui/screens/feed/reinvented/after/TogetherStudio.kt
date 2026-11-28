@@ -84,7 +84,8 @@ internal object TogetherStudio {
             is Context.RetakeFrame -> if (photo) mapOf("retake_of" to opened.startId) else emptyMap()
             null -> {
                 val title = retakeTitle.value.trim().take(TITLE_MAX)
-                if (startsRetake.value && title.isNotEmpty() && state.offersRetake) mapOf("retake" to mapOf("title" to title)) else emptyMap()
+                val starts = startsRetake.value && title.isNotEmpty() && state.offersRetake
+                if (starts) mapOf("retake" to mapOf("title" to title)) else emptyMap()
             }
         }
     }
@@ -101,8 +102,9 @@ internal object TogetherStudio {
  */
 internal val MomentsComposeUiState.offersRetake: Boolean
     get() =
-        media is MomentMediaFile.Photo && studioPair == null && pickedTogether <= 1 && !noLocationOn && pin != null && !floats && shareLaterKey == null &&
-            !madeUp && !guess && studioPostKind(StudioPostState.draft.value) == null && place?.atHome != true
+        media is MomentMediaFile.Photo && studioPair == null && pickedTogether <= 1 && !noLocationOn && pin != null &&
+            !floats && shareLaterKey == null && !madeUp && !guess && studioPostKind(StudioPostState.draft.value) == null &&
+            place?.atHome != true
 
 /**
  * Holds the Studio's phase 3 choices for the screen it belongs to ([TogetherStudio.owner]), with what sends them. When the

@@ -12,7 +12,8 @@ import com.squareup.moshi.JsonClass
 /** `retake` on a Moment answer: the Retake it belongs to, with the frames and people this reader may see. */
 @JsonClass(generateAdapter = true)
 data class MomentRetakeStateDto(
-    @Json(name = "start_id") val startId: String,
+    /** Blank: no Retake (a `retake` without `start_id` never stops a Moment from opening). */
+    @Json(name = "start_id") val startId: String = "",
     val title: String = "",
     @Json(name = "started_by") val startedBy: MomentAuthorDto? = null,
     @Json(name = "started_at") val startedAt: String? = null,
@@ -23,6 +24,10 @@ data class MomentRetakeStateDto(
     /** "Retake · 4 frames". */
     val tag: String get() = "Retake · $frames ${if (frames == 1) "frame" else "frames"}"
 }
+
+/** The Retake a Moment belongs to, for a reader whose switch is on; null where there is none (or no start id). */
+val app.pantopus.android.data.api.models.moments.MomentDto.shownRetake: MomentRetakeStateDto?
+    get() = retake?.takeIf { it.startId.isNotBlank() }
 
 /** One frame of a Retake: who stood there, when, in which season and weather. */
 @JsonClass(generateAdapter = true)

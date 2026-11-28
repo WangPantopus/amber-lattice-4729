@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.feed.reinvented
 
 import androidx.compose.foundation.background
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -349,7 +350,7 @@ private fun KeptCard(
     ) {
         Text(
             // A Retake's row (CONTRACT 8e) says so; it opens the whole Retake.
-            text = moment.retake?.tag ?: "Kept · stays",
+            text = moment.shownRetake?.tag ?: "Kept · stays",
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,
             color = PantopusColors.primary600,
