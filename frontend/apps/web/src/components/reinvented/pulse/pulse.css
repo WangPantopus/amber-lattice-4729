@@ -37,6 +37,11 @@
   z-index: 0;
   background: #e6e9ec;
 }
+/* The globe (pulseMapEngine.ts): mapbox-gl.css makes its element `position: relative`, so it fills the board's by size. */
+.rp-globe {
+  width: 100%;
+  height: 100%;
+}
 .rp-map-note {
   position: absolute;
   z-index: 400;
