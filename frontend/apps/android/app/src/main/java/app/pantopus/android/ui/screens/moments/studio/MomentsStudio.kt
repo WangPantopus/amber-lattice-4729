@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
@@ -154,12 +155,17 @@ internal fun MomentsStudioStep(
     onMention: (StudioMention) -> Unit = {},
     // Before and after (step 5, CONTRACT 7g): make one from the next photo picked, its two words, take it apart.
     beforeAfter: StudioBeforeAfterActions = StudioBeforeAfterActions(),
+    // Illuminate (phase 2, CONTRACT 7c): the dots as they are now.
+    onDots: (List<MomentDotDto>) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
     var drawer by rememberSaveable { mutableStateOf(false) }
     // "Stamps and Play" (step 3): the tray of stamps Pantopus checked.
     var tray by rememberSaveable { mutableStateOf(false) }
+    // Illuminate (phase 2): its panel, and the dot it shows.
+    var illuminate by rememberSaveable { mutableStateOf(false) }
+    var pickedDot by rememberSaveable { mutableStateOf<String?>(null) }
     // "Made-up name" (made-up-names contract, "Moments"): offered once `/api/pen-names/me` has answered, checked at the pin.
     val postAs by penNames.postAs.collectAsStateWithLifecycle()
     val setupOpen by penNames.setupOpen.collectAsStateWithLifecycle()
@@ -187,6 +193,10 @@ internal fun MomentsStudioStep(
         if (pair == null) StudioCutoutPress(state, onLift = onLiftCutout)
         // The stamps sit on the picture, under the X, the tools, the caption and the bar.
         StudioStampLayer(state = state, onStamps = onStamps)
+        StudioDotLayer(state.dots, rememberStudioPicture(state), enabled = !state.posting, onDots = onDots) { id ->
+            pickedDot = id
+            illuminate = true
+        }
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
             modifier =
@@ -223,6 +233,7 @@ internal fun MomentsStudioStep(
                     tray = true
                     onTrayOpen()
                 }.takeIf { !state.noLocationOn },
+            onIlluminate = { illuminate = true }.takeIf { state.media != null },
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s4, top = 11.dp),
         )
         Column(
@@ -361,6 +372,15 @@ internal fun MomentsStudioStep(
                     },
                 ),
         )
+        StudioIlluminate(
+            visible = illuminate,
+            dots = state.dots,
+            picked = pickedDot,
+            madeUp = state.madeUp,
+            onPick = { pickedDot = it },
+            onDots = onDots,
+            onDone = { illuminate = false },
+        )
         if (fullMap) {
             state.postMapSpot?.let { spot ->
                 MomentsPostFullMap(
@@ -416,9 +436,10 @@ private fun StudioRail(
     media: MomentMediaFile?,
     onOpen: (MomentMarksTool) -> Unit,
     onStamps: (() -> Unit)?,
+    onIlluminate: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    if (media == null && onStamps == null) return
+    if (media == null && onStamps == null && onIlluminate == null) return
     Column(
         modifier = modifier.semantics { contentDescription = "Tools" },
         horizontalAlignment = Alignment.End,
@@ -429,6 +450,23 @@ private fun StudioRail(
             RailTool(label = "Stamps and Play", spoken = "Stamps and Play", enabled = enabled, tag = "stamps", onClick = onStamps) {
                 PantopusIconImage(
                     icon = PantopusIcon.Stamp,
+                    contentDescription = null,
+                    size = 20.dp,
+                    strokeWidth = 2.2f,
+                    tint = Color.White,
+                )
+            }
+        }
+        if (onIlluminate != null) {
+            RailTool(
+                label = "Illuminate",
+                spoken = "Illuminate: dots people tap",
+                enabled = enabled,
+                tag = "illuminate",
+                onClick = onIlluminate,
+            ) {
+                PantopusIconImage(
+                    icon = PantopusIcon.Sparkles,
                     contentDescription = null,
                     size = 20.dp,
                     strokeWidth = 2.2f,

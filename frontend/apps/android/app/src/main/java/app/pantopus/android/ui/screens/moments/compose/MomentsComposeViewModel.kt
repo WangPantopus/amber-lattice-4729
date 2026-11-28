@@ -17,6 +17,7 @@ import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
 import app.pantopus.android.data.api.models.moments.MomentSeriesDto
+import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -61,6 +62,7 @@ import app.pantopus.android.ui.screens.moments.studio.StudioPair
 import app.pantopus.android.ui.screens.moments.studio.holdsStudioChoices
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
 import app.pantopus.android.ui.screens.moments.studio.sentMentions
+import app.pantopus.android.ui.screens.moments.studio.sentDots
 import app.pantopus.android.ui.screens.moments.studio.sentPlay
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
@@ -243,6 +245,8 @@ data class MomentsComposeUiState(
     val mentions: List<StudioMention> = emptyList(),
     /** "Pulse, reinvented"'s Studio: before and after (CONTRACT 7g). Only the Studio sets it. */
     val pair: StudioPair? = null,
+    /** "Pulse, reinvented"'s Studio: Illuminate's dots (CONTRACT 7c). Only the Studio sets them. */
+    val dots: List<MomentDotDto> = emptyList(),
 ) {
     val kind: String
         get() =
@@ -1029,6 +1033,9 @@ class MomentsComposeViewModel
             _state.update { it.copy(media = MomentMediaFile.Photo(pair.before), pickedTogether = it.pickedTogether + 1, pair = null) }
         }
 
+        /** "Pulse, reinvented"'s Studio: Illuminate's dots as they are now (added, written, moved, removed). */
+        fun setDots(dots: List<MomentDotDto>) = _state.update { it.copy(dots = dots.take(MomentDotDto.MOST)) }
+
         /** "Pulse, reinvented"'s Studio tray: the two words over before and after's halves. */
         fun setPairWords(
             before: String,
@@ -1164,7 +1171,7 @@ class MomentsComposeViewModel
                 if (!it.holdsStudioChoices) {
                     it
                 } else {
-                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList(), pair = null)
+                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList(), pair = null, dots = emptyList())
                 }
             }
 
@@ -1280,6 +1287,7 @@ class MomentsComposeViewModel
                         explore = current.sentExplore,
                         mentions = current.sentMentions,
                         play = current.sentPlay,
+                        dots = current.sentDots,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -1467,6 +1475,7 @@ class MomentsComposeViewModel
                         shareLater = current.shareLaterChoice?.key,
                         mentions = current.sentMentions,
                         play = current.sentPlay,
+                        dots = current.sentDots,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()

@@ -155,6 +155,7 @@ import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
 import app.pantopus.android.ui.screens.moments.components.MomentBeforeAfterLayer
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentCurtainGrab
+import app.pantopus.android.ui.screens.moments.components.MomentDotsLayer
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
@@ -669,6 +670,7 @@ fun MomentsViewerScreen(
                             )
                             if (studio) MomentBeforeAfterLayer(load.moment)
                             if (studio) MomentStampsOverlay(load.moment)
+                            if (studio) MomentDotsLayer(load.moment, mine)
                             if (studio) MomentPinsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit

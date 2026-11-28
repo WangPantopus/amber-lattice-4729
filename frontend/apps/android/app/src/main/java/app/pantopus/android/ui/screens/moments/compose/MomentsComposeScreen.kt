@@ -270,6 +270,7 @@ fun MomentsComposeScreen(
                                 words = viewModel::setPairWords,
                                 takeApart = viewModel::takeApartBeforeAfter,
                             ),
+                        onDots = viewModel::setDots,
                     )
                 } else {
                     ReviewStep(
