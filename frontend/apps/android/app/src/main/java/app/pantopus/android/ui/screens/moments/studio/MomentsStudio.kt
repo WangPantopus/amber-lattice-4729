@@ -74,6 +74,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
+import app.pantopus.android.ui.screens.feed.reinvented.after.studioPostPill
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
@@ -244,6 +246,8 @@ internal fun MomentsStudioStep(
                 )
                 Spacer(Modifier.height(Spacing.s3))
             }
+            // "Pulse, reinvented" one camera: "+ Ask / Kind" makes the picture or the words one of today's Pulse posts.
+            StudioPostKindRow(state, Modifier.padding(horizontal = Spacing.s4).padding(bottom = Spacing.s3))
             // "Guess the spot" picked: what others will see.
             StudioGuessLine(state)
             // A caption goes with a photo or a video; a text card is its own words.
@@ -778,7 +782,7 @@ private fun StudioWhenPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val first = state.sharesAt?.let(SkyWords::sharesAt) ?: fadesIn(state.hours)
+    val first = state.studioPostPill() ?: state.sharesAt?.let(SkyWords::sharesAt) ?: fadesIn(state.hours)
     // With Share later picked, how long it shows moves to the second line (LEAD 00:40): "24 hours · Lacamas Lake".
     val second = if (state.sharesAt != null) "${hoursWord(state.hours)} · ${state.studioPlaceLine}" else state.studioPlaceLine
     Row(
