@@ -29,6 +29,7 @@ import retrofit2.http.Query
  * caller, each answers `403 PULSE_REINVENTED_OFF`; a server from before them answers 404. A point, where one is sent, is
  * the phone's own place, rounded to five places, as the web and iPhone send it.
  */
+@Suppress("TooManyFunctions") // The new Pulse's routes, one router on the server (`backend/routes/reinvented.js`).
 interface ReinventedApi {
     /**
      * `GET /api/reinvented/list` (CONTRACT 6a): the Moments that fade and the posts that stay a reader may see, by reach
