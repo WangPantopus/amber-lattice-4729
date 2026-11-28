@@ -2253,6 +2253,21 @@ export default function Studio({
                       onChange={(e) => setArt({ ...art, size: Number(e.target.value) })}
                     />
                   </label>
+                  {/* Moving words (CONTRACT 7k): the author's words over a photo, moving; never drawn into it. */}
+                  {playOn && canBlur && (
+                    <button
+                      type="button"
+                      className="st-chip"
+                      disabled={play.length >= MAX_PLAY || play.filter((p) => p.kind === 'moving_words').length >= 2}
+                      onClick={() => {
+                        setTool(null);
+                        setMaking('moving_words');
+                        setTrayOpen(true);
+                      }}
+                    >
+                      Moving words
+                    </button>
+                  )}
                 </>
               )}
               {tool !== 'resize' && (

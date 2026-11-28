@@ -6,7 +6,7 @@
 // remove on its own small bar. Up to four on a post; they can't change after posting.
 
 import { useRef, useState, type ReactNode } from 'react';
-import { Minus, Plus, X } from 'lucide-react';
+import { Minus, Plus, RotateCcw, RotateCw, X } from 'lucide-react';
 import { Card } from './PlayLayer';
 import { LETTERINGS, MOTIONS, letteringStyle } from './MovingWords';
 import type { PlayItem, PlayKind } from './playTypes';
@@ -39,6 +39,8 @@ export function swatchBox(x: number, y: number) {
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+/** A turn kept within -180 to 180 degrees, as a stamp's. */
+const turn = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
 
 /** What the server takes for an item (§7b): its placement and words, never answers or results. */
 export function playWire(items: readonly PlayItem[]) {
@@ -95,6 +97,16 @@ export function PlayEditLayer({ items, onChange, disabled }: { items: PlayItem[]
               <button type="button" aria-label="Larger" onClick={() => put(item.id, { scale: clamp(+(item.scale + 0.15).toFixed(2), 0.5, 1.6) })}>
                 <Plus aria-hidden="true" />
               </button>
+              {item.kind === 'moving_words' && (
+                <>
+                  <button type="button" aria-label="Turn left" onClick={() => put(item.id, { rotation: turn(item.rotation - 10) })}>
+                    <RotateCcw aria-hidden="true" />
+                  </button>
+                  <button type="button" aria-label="Turn right" onClick={() => put(item.id, { rotation: turn(item.rotation + 10) })}>
+                    <RotateCw aria-hidden="true" />
+                  </button>
+                </>
+              )}
               <button type="button" aria-label="Remove" onClick={() => onChange(items.filter((p) => p.id !== item.id))}>
                 <X aria-hidden="true" />
               </button>
