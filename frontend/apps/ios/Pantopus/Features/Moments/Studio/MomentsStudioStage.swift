@@ -93,6 +93,8 @@ struct MomentsStudioStage: View {
             MomentsStudioBlurOffer(model: model, open: openBlur)
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s3)
+            // Illuminate's suggestion (phase 2, CONTRACT 7i): one chip, worked out on the phone.
+            MomentsStudioSuggestChip(model: model, openDrawer: openDrawer, openTray: openTray)
             if model.studioGuess, model.offersGuess {
                 MomentsStudioGuessNote()
                     .padding(.horizontal, Spacing.s4)
