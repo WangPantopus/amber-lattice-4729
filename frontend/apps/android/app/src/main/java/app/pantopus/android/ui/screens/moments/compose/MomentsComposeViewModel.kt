@@ -21,6 +21,7 @@ import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
+import app.pantopus.android.data.living.LivingCompass
 import app.pantopus.android.data.location.HeightReading
 import app.pantopus.android.data.moments.MomentBeforeAfterPicture
 import app.pantopus.android.data.moments.MomentHeight
@@ -1280,6 +1281,8 @@ class MomentsComposeViewModel
                         explore = current.sentExplore,
                         mentions = current.sentMentions,
                         play = current.sentPlay,
+                        // Live beams (CONTRACT 9h): the compass at the shutter, with the Live mark and the switch on only.
+                        heading = LivingCompass.atShot()?.takeIf { pulse.on.value && current.liveFor(usable, now) },
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)

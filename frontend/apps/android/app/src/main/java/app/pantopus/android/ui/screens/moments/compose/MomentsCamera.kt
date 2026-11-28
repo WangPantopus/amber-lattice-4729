@@ -72,8 +72,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.pantopus.android.data.living.LivingCompass
 import app.pantopus.android.data.moments.MomentMedia
 import app.pantopus.android.data.moments.MomentMediaFile
+import app.pantopus.android.ui.screens.feed.living.LivingCompassWatch
 import app.pantopus.android.ui.theme.PantopusColors
 import kotlinx.coroutines.delay
 import java.io.File
@@ -150,8 +152,11 @@ fun MomentsCameraPreview(
         }
     }
     LaunchedEffect(flash, camera) { imageCapture.flashMode = if (flash) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF }
+    // Live beams (CONTRACT 9h): the compass reads while the camera is up, with the switch on only.
+    LivingCompassWatch()
 
     controller.takePhoto = {
+        LivingCompass.markShot()
         val file = MomentMedia.newFile(context, "jpg")
         val options =
             ImageCapture.OutputFileOptions
@@ -173,6 +178,7 @@ fun MomentsCameraPreview(
     }
     controller.startVideo = start@{
         if (recording != null) return@start
+        LivingCompass.markShot()
         val file = MomentMedia.newFile(context, "mp4")
         if (flash) camera?.cameraControl?.enableTorch(true)
         recording =

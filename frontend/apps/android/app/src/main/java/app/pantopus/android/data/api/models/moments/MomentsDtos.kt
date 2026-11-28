@@ -2,6 +2,7 @@ package app.pantopus.android.data.api.models.moments
 
 import app.pantopus.android.data.api.models.reinvented.MomentPlanDto
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesStateDto
+import app.pantopus.android.data.living.MomentHeadingBody
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -413,6 +414,8 @@ data class CreateMomentBody(
     val mentions: List<String>? = null,
     /** The Studio's playable items (CONTRACT 7b, 7g: before and after so far); left out otherwise. */
     val play: List<MomentPlayItemDto>? = null,
+    /** CONTRACT 9h: the compass at the camera's own shot, switch on only (`data/living/LivingCompass.kt`); null left out. */
+    val heading: MomentHeadingBody? = null,
 )
 
 /**
