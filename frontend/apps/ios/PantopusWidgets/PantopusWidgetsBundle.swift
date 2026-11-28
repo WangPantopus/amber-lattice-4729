@@ -16,5 +16,6 @@ struct PantopusWidgetsBundle: WidgetBundle {
         TodayWidget()
         TasksNearMeWidget()
         GigActivityWidget()
+        PostcardWidget()
     }
 }

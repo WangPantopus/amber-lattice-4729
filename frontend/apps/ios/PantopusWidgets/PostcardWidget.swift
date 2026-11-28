@@ -20,6 +20,8 @@ struct PostcardWidgetEntryData: Decodable {
     let from: String
     let deliveredAt: Date
     let hasPicture: Bool
+    /// The app's own lock is on: only "A postcard is waiting".
+    let locked: Bool?
 }
 
 enum PostcardWidgetStorage {
@@ -67,11 +69,13 @@ struct PostcardEntry: TimelineEntry {
     let date: Date
     let postcard: PostcardWidgetEntryData?
     let picture: UIImage?
+    /// False once the app saw the switch off: a widget placed before shows only "Open Pantopus".
+    let isOn: Bool
 }
 
 struct PostcardProvider: TimelineProvider {
     func placeholder(in _: Context) -> PostcardEntry {
-        PostcardEntry(date: Date(), postcard: nil, picture: nil)
+        PostcardEntry(date: Date(), postcard: nil, picture: nil, isOn: true)
     }
 
     func getSnapshot(in _: Context, completion: @escaping (PostcardEntry) -> Void) {
@@ -85,8 +89,8 @@ struct PostcardProvider: TimelineProvider {
 
     private static func entry() -> PostcardEntry {
         let postcard = PostcardWidgetStorage.load()
-        let picture = postcard?.hasPicture == true ? PostcardWidgetStorage.picture() : nil
-        return PostcardEntry(date: Date(), postcard: postcard, picture: picture)
+        let picture = postcard?.hasPicture == true && postcard?.locked != true ? PostcardWidgetStorage.picture() : nil
+        return PostcardEntry(date: Date(), postcard: postcard, picture: picture, isOn: PostcardWidgetStorage.isOn)
     }
 }
 
@@ -96,13 +100,14 @@ struct PostcardWidgetView: View {
 
     var body: some View {
         content
-            .widgetURL(URL(string: entry.postcard.map { "pantopus://mailbox/\($0.mailId)" } ?? "pantopus://mailbox"))
+            .widgetURL(URL(string: entry.isOn ? entry.postcard
+                    .map { "pantopus://mailbox/\($0.mailId)" } ?? "pantopus://mailbox" : "pantopus://"))
             .containerBackground(for: .widget) { background }
     }
 
     @ViewBuilder private var background: some View {
         if let picture = entry.picture {
-            Image(uiImage: picture).resizable().scaledToFill()
+            Image(uiImage: picture).resizable().scaledToFill().privacySensitive()
         } else {
             LinearGradient(
                 colors: [Color(red: 0.93, green: 0.89, blue: 0.82), Color(red: 0.86, green: 0.80, blue: 0.70)],
@@ -113,12 +118,24 @@ struct PostcardWidgetView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if let postcard = entry.postcard {
+        if !entry.isOn {
+            Text("Open Pantopus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(red: 0.25, green: 0.2, blue: 0.15))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let postcard = entry.postcard, postcard.locked == true {
+            Text("A postcard is waiting")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color(red: 0.25, green: 0.2, blue: 0.15))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(12)
+        } else if let postcard = entry.postcard {
             VStack(alignment: .leading, spacing: 2) {
                 Spacer(minLength: 0)
                 Text("A postcard from \(postcard.from)")
                     .font(.system(size: family == .systemSmall ? 13 : 15, weight: .bold))
                     .lineLimit(2)
+                    .privacySensitive()
                 Text(Self.when(postcard.deliveredAt))
                     .font(.system(size: 11.5, weight: .semibold))
                     .opacity(0.9)

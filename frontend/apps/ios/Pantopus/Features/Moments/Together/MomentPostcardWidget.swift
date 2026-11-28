@@ -20,6 +20,10 @@ struct PostcardWidgetSnapshot: Codable, Equatable {
     let from: String
     let deliveredAt: Date
     let hasPicture: Bool
+    /// Whose postcard it is: another account signed in on this phone never sees it.
+    let account: String
+    /// The app's own lock is on for this person: the widget says only that a postcard is waiting (no name, no picture).
+    let locked: Bool
 }
 
 @MainActor
@@ -44,10 +48,12 @@ enum PostcardWidgetStore {
 
     /// The newest postcard read again (at most every five minutes unless `force`), written for the widget.
     static func refresh(force: Bool = false) async {
-        guard PulseReinventedFlags.shared.isOn, LaunchFeatures.mailbox, MomentsComposerModel.account != nil else {
+        guard PulseReinventedFlags.shared.isOn, LaunchFeatures.mailbox, let account = MomentsComposerModel.account else {
             clear()
             return
         }
+        // Another account's postcard never stays on the widget, not even until the next read.
+        if let current = stored(), current.account != account { clear() }
         if !force, let lastRead, Date().timeIntervalSince(lastRead) < every { return }
         lastRead = Date()
         let wasOn = defaults?.bool(forKey: onKey) ?? false
@@ -60,18 +66,23 @@ enum PostcardWidgetStore {
             write(nil)
             return
         }
-        if let current = stored(), current.mailId == newest.id, wasOn { return }
-        let picture = await picture(of: newest.id)
-        let from = String(newest.subject?.dropFirst(subjectStart.count) ?? "")
+        let locked = AppLockManager.shared.isEnabled(forUserID: account)
+        if let current = stored(), current.mailId == newest.id, current.locked == locked, wasOn { return }
+        // Behind the app's own lock, nothing of the letter leaves the Mail tab: no name and no picture.
+        let picture = locked ? false : await picture(of: newest.id)
+        let from = locked ? "" : String(newest.subject?.dropFirst(subjectStart.count) ?? "")
         write(PostcardWidgetSnapshot(
             mailId: newest.id,
-            from: from.isEmpty ? "someone close" : from,
+            from: from.isEmpty && !locked ? "someone close" : from,
             deliveredAt: MomentTime.parse(newest.deliveredAt) ?? Date(),
-            hasPicture: picture
+            hasPicture: picture,
+            account: account,
+            locked: locked
         ))
     }
 
-    /// The switch went off (or the person signed out): the widget leaves the gallery and draws nothing of theirs.
+    /// The switch went off, the person signed out or another account signed in: the widget leaves the gallery (or
+    /// draws a plain "Open Pantopus" where it was placed) and keeps nothing of theirs.
     static func clear() {
         guard let defaults, defaults.object(forKey: onKey) != nil || defaults.data(forKey: snapshotKey) != nil else { return }
         defaults.removeObject(forKey: onKey)
