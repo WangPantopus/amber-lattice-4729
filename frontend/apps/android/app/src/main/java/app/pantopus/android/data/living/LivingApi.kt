@@ -84,7 +84,45 @@ interface LivingApi {
     suspend fun showCabinet(
         @Body body: LivingCabinetChoice,
     )
+
+    /** The person's own choices (`PersonChoice`); this build reads `echoes` here. */
+    @GET("api/reinvented/settings")
+    suspend fun settings(): LivingSettingsDto
+
+    /** CONTRACT 9e: Echoes, `off` (the default), `on` or `names`. */
+    @PATCH("api/reinvented/settings")
+    suspend fun setEchoes(
+        @Body body: LivingEchoesChoice,
+    )
+
+    /** CONTRACT 9e: the reader's own echoes and twins for today (Pacific). */
+    @GET("api/reinvented/echoes")
+    suspend fun echoes(): LivingEchoesDto
 }
+
+@JsonClass(generateAdapter = true)
+data class LivingSettingsDto(
+    val echoes: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingEchoesChoice(
+    val echoes: String,
+)
+
+/** One echo or twin, as the server writes it ("You and 2 others caught tonight's sunset at Lacamas Lake."). */
+@JsonClass(generateAdapter = true)
+data class LivingEchoLineDto(
+    val line: String,
+    /** An echo: the reader's own Moment. A twin has none. */
+    @Json(name = "moment_id") val momentId: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingEchoesDto(
+    @Lossy val echoes: List<LivingEchoLineDto> = emptyList(),
+    @Lossy val twins: List<LivingEchoLineDto> = emptyList(),
+)
 
 /** CONTRACT 9d: numbers about what a person did, never who follows them (no follower or view count anywhere). */
 @JsonClass(generateAdapter = true)

@@ -63,6 +63,14 @@ class LivingRepository
         /** CONTRACT 9d: "Show my cabinet to people I know". */
         suspend fun showCabinet(on: Boolean): NetworkResult<Unit> = guarded { api.showCabinet(LivingCabinetChoice(on)) }
 
+        /** CONTRACT 9e: the person's Echoes choice (`off` when not set). */
+        suspend fun echoesChoice(): NetworkResult<String> = guarded { api.settings().echoes ?: ECHOES_OFF }
+
+        suspend fun setEchoes(choice: String): NetworkResult<Unit> = guarded { api.setEchoes(LivingEchoesChoice(choice)) }
+
+        /** CONTRACT 9e: today's echoes and twins (only read while the person takes part). */
+        suspend fun echoes(): NetworkResult<LivingEchoesDto> = guarded { api.echoes() }
+
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }
             if (answer is NetworkResult.Failure && answer.error.serverCode == StudioRepository.SWITCH_OFF) feature.refusedOff()
@@ -78,6 +86,9 @@ internal fun searchRefusal(error: NetworkError): String =
         else -> "Search couldn't finish. Try again."
     }
 
+internal const val ECHOES_OFF = "off"
+internal const val ECHOES_ON = "on"
+internal const val ECHOES_NAMES = "names"
 private const val HTTP_BAD_REQUEST = 400
 private const val MAX_LABEL = 60
 private const val HTTP_TOO_MANY = 429

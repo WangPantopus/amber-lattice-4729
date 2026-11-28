@@ -215,11 +215,12 @@ internal fun LivingAtlasSearch(
             error != null ->
                 Text(error, fontSize = 14.sp, color = PantopusColors.appText, modifier = Modifier.testTag("reinventedAtlas.search.error"))
             q != null -> Results(q, state, viewModel::more) { open(it, onOpenOwn, onOpenMoment, onOpenPost) }
-            // While nothing is searched: what is near (CONTRACT 9c), then the person's cabinet (CONTRACT 9d).
+            // While nothing is searched: what is near (CONTRACT 9c), then the person's cabinet (CONTRACT 9d) and Echoes (9e).
             else ->
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
                     LivingConstellations()
                     LivingCabinet()
+                    LivingEchoes()
                 }
         }
     }
