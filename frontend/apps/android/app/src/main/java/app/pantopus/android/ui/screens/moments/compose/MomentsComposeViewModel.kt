@@ -1052,11 +1052,15 @@ class MomentsComposeViewModel
 
         /**
          * Today's Post screen takes the Moment from the Studio (the switch went off): the picture and the words stay; the
-         * stamps and the made-up name, which today's screens don't offer, go. Nothing changes when there were none.
+         * stamps, the made-up name and the mentions, which today's screens don't offer, go. Nothing changes when there were none.
          */
         fun leaveStudio() =
             _state.update {
-                if (it.stamps.isEmpty() && !it.madeUp && !it.guess) it else it.copy(stamps = emptyList(), madeUp = false, guess = false)
+                if (it.stamps.isEmpty() && !it.madeUp && !it.guess && it.mentions.isEmpty()) {
+                    it
+                } else {
+                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList())
+                }
             }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
