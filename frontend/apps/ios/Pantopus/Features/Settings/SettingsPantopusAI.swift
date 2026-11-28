@@ -22,17 +22,19 @@ extension SettingsIndexViewModel {
                 control: .toggle(isOn: on),
                 accessibilityIdentifier: "settings.pantopusAI"
             )
-        ]
+        ] + strandsChoiceRows // 8c: "Tell people when their post led me somewhere" (ReinventedStrandsMine.swift)
     }
 
     /// The choice, read only while the switch is on (nil otherwise, or when it can't be read: no row).
     static func readPantopusAI() async -> Bool? {
         guard PulseReinventedFlags.shared.isOn else { return nil }
-        return await MomentsStudioAI.shared.read(force: true)
+        async let strands = ReinventedStrandsChoice.shared.read() // 8c: the strands row's choice, read beside it
+        return await (MomentsStudioAI.shared.read(force: true), strands).0
     }
 
     /// The row's switch flipped: saved, or put back when the server says no. True when the rows should be drawn again.
     func togglePantopusAI(_ rowId: String, isOn: Bool) async -> Bool {
+        if await toggleStrandsChoice(rowId, isOn: isOn) { return true } // 8c: the strands row
         guard rowId == Self.pantopusAIRow else { return false }
         pantopusAI = await MomentsStudioAI.shared.set(isOn) ?? pantopusAI
         return true
