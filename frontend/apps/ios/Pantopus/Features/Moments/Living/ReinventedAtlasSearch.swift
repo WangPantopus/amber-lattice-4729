@@ -272,6 +272,7 @@ struct ReinventedAtlasSearch: View {
             ReinventedAtlasPicture(moment: moment, large: false)
                 .frame(width: 52, height: 64)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
         case .post:
             tile(.image)
         case .card:
