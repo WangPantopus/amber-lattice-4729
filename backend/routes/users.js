@@ -3643,16 +3643,67 @@ router.delete('/skills/:skillId', verifyToken, async (req, res) => {
 });
 
 
+// People search (services/personSearch.js). Required here rather than at the top: scripts/ci/check-legacy-identity-aliases.js
+// allowlists line 312 by number.
+const { findPersonCandidates, checkedSearchPeople, recordSearch, recordFailure } = require('../services/personSearch');
+
+// One person typing fires a search every pause; this is far above that and stops a script from reading the directory.
+const peopleSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || clientIpKey(req),
+  message: { error: 'Too many searches. Please try again shortly.' },
+});
+
 const ACCOUNT_ONLY_SEARCH_FIELDS = [...USER_NAME_SEARCH_FIELDS, 'username'];
-const ACCOUNT_ONLY_SEARCH_SELECT = 'id, username, account_type, profile_visibility, name, first_name, middle_name, last_name, profile_picture_url, LocalProfile(id)';
+const SEARCH_ACCOUNT_SELECT = 'id, username, account_type, profile_visibility, name, first_name, middle_name, last_name, profile_picture_url';
+const ACCOUNT_ONLY_SEARCH_SELECT = `${SEARCH_ACCOUNT_SELECT}, LocalProfile(id)`;
+
+/**
+ * A Local Profile made from an account that has none, the way getLocalProfileByHandle makes one for the profile page:
+ * the account's name, username and photo, with no place on it.
+ */
+function localProfileFromAccount(user) {
+  const { displayNameFromUser } = require('../utils/identityProfiles');
+  return {
+    id: null,
+    user_id: user.id,
+    handle: user.username,
+    handle_normalized: String(user.username || '').toLowerCase(),
+    display_name: displayNameFromUser(user),
+    avatar_url: user.profile_picture_url || null,
+    show_neighborhood: false,
+  };
+}
+
+/**
+ * The search results for the index's candidates, in the index's order. checkedSearchPeople (services/personSearch.js)
+ * reads each one again and applies today's privacy rules; this leaves out the curator and applies the type filter.
+ */
+async function usersFromSearchCandidates({ candidates, viewerId, type, limit }) {
+  const people = await checkedSearchPeople({ candidates, viewerId });
+  const users = [];
+  for (const { account, profile } of people) {
+    if (users.length >= limit) break;
+    const accountType = account.account_type || 'individual';
+    if (accountType === 'curator') continue;
+    if (type === 'people' && accountType === 'business') continue;
+    if (type === 'business' && accountType !== 'business') continue;
+    users.push(serializeCompatibilitySearchUser(profile || localProfileFromAccount(account), account));
+  }
+  return users;
+}
 
 /**
  * People and businesses who have no Local Profile row. One is only made when a person first posts, uploads a profile
  * photo or edits their profile; until then every screen shows them by their account (services/chatPeople.js), so
  * search finds them by that same name, and by their username when they chose it (a made-up one can hold the first
- * part of an email address and is never matched). Each comes back as a Local Profile made from the account, the way
- * getLocalProfileByHandle makes one for the profile page, with no place on it. The caller applies every privacy
- * check it applies to a real Local Profile.
+ * part of an email address and is never matched). Each comes back as a Local Profile made from the account
+ * (localProfileFromAccount). The caller applies every privacy check it applies to a real Local Profile.
+ *
+ * Only for a database without the search index (the route's fallback); the index holds these accounts too.
  */
 async function getAccountOnlySearchCandidates({ tokens, viewerId, candidateLimit }) {
   const { data: users, error } = await supabaseAdmin
@@ -3679,15 +3730,7 @@ async function getAccountOnlySearchCandidates({ tokens, viewerId, candidateLimit
     const shown = [shownName === noName ? null : shownName, username].filter(Boolean).join(' ').toLowerCase();
     if (!shown || !tokens.every((token) => shown.includes(token))) continue;
     candidates.push({
-      profile: {
-        id: null,
-        user_id: user.id,
-        handle: user.username,
-        handle_normalized: String(user.username || '').toLowerCase(),
-        display_name: displayNameFromUser(user),
-        avatar_url: user.profile_picture_url || null,
-        show_neighborhood: false,
-      },
+      profile: localProfileFromAccount(user),
       account: { id: user.id, account_type: user.account_type, profile_visibility: user.profile_visibility },
       nameSearchText: shown,
     });
@@ -3699,8 +3742,12 @@ async function getAccountOnlySearchCandidates({ tokens, viewerId, candidateLimit
  * GET /api/users/search?q=<query>&limit=5&type=all|people|business
  * Search users by public account fields for discovery and invite flows.
  * Returns basic public info only.
+ *
+ * Answers from the search index in one call (services/personSearch.js), then checks each result again. A database
+ * that has no index yet is searched the way it was before: the reads below the index block.
  */
-router.get('/search', verifyToken, async (req, res) => {
+router.get('/search', verifyToken, peopleSearchLimiter, async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { q, limit: rawLimit, type = 'all' } = req.query;
     const userId = req.user.id;
@@ -3720,6 +3767,13 @@ router.get('/search', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'type must be one of: all, people, business' });
     }
 
+    const indexed = await findPersonCandidates({ viewerId: userId, query: queryText, kind: normalizedType, limit });
+    if (indexed) {
+      const found = await usersFromSearchCandidates({ candidates: indexed, viewerId: userId, type: normalizedType, limit });
+      recordSearch({ results: found.length, ms: Date.now() - startedAt, fromIndex: true });
+      return res.json({ users: found });
+    }
+
     const candidateLimit = Math.min(Math.max(limit * 8, 40), 200);
     const searchFilters = userSearchFilter(LOCAL_SEARCH_FIELDS, tokens, { local: true });
     const baseQuery = () => supabaseAdmin.from('LocalProfile')
@@ -3737,6 +3791,7 @@ router.get('/search', verifyToken, async (req, res) => {
       .map((profile) => [profile.id, profile])).values()];
 
     if (error) {
+      recordFailure();
       logger.error('User search error', { error: error.message });
       return res.status(500).json({ error: 'Search failed' });
     }
@@ -3825,8 +3880,10 @@ router.get('/search', verifyToken, async (req, res) => {
     // Compatibility shape for legacy chat/invite callers, backed by LocalProfile.
     const users = scored.map(({ profile, account }) => serializeCompatibilitySearchUser(profile, account));
 
+    recordSearch({ results: users.length, ms: Date.now() - startedAt, fromIndex: false });
     res.json({ users });
   } catch (err) {
+    recordFailure();
     logger.error('User search error', { error: err.message, errorCode: err.code || null });
     // Every step here is a read. One that fails, a block or privacy check included, refuses the search rather than
     // skip the check.
