@@ -2478,7 +2478,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         send.reset();
         setLook(null);
         setStep('seal');
-        refreshCards();
+        void cards.refetch();
         if (to?.kind === 'person') void theirs.refetch();
       },
     });
@@ -2640,7 +2640,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           send.reset();
           setLook(null);
           setStep('seal');
-          refreshCards();
+          void cards.refetch();
           if (to?.kind === 'person') void theirs.refetch();
           return;
         }
