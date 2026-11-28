@@ -75,7 +75,7 @@ struct MomentRepliesChip: View {
 
     var body: some View {
         // Phase 3's chips under the header: the replies and pins where replies show (8a, 8b), a Retake's (8e).
-        if let moment = model.moment, model.shownReplies != nil || (PulseReinventedFlags.shared.isOn && moment.together.retake != nil) {
+        if let moment = model.moment, model.shownReplies != nil || Self.together(moment, mine: model.isMine) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Spacing.s2) {
                     if let replies = model.shownReplies {
@@ -83,6 +83,7 @@ struct MomentRepliesChip: View {
                         MomentPinControls(moment: moment, canDrop: replies.canReply)
                     }
                     MomentRetakeChip(model: model)
+                    MomentSealMark(model: model)
                 }
                 .padding(.trailing, Spacing.s4)
             }
@@ -95,6 +96,12 @@ struct MomentRepliesChip: View {
                     .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    /// Phase 3 has a chip for this Moment even where replies don't show: a Retake's (8e), the author's own seal (8g).
+    private static func together(_ moment: MomentDTO, mine: Bool) -> Bool {
+        guard PulseReinventedFlags.shared.isOn else { return false }
+        return moment.together.retake != nil || (mine && moment.together.seal?.open == false)
     }
 
     private func chip(_ replies: MomentRepliesDTO, moment: MomentDTO) -> some View {
