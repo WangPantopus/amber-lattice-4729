@@ -15,6 +15,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -32,12 +33,15 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.first
 
 /*
  * Phase 3's rows in the Studio's drawer (CONTRACT 8) and the Retake's ghost on the Studio's picture, hung on the Studio
@@ -180,23 +184,30 @@ fun TogetherStudioGhost(
 }
 
 /**
- * In Pulse: opens the Studio that [TogetherStudio.openFor] asked for, once Pulse is in front again (the viewer or a
- * sheet that asked has closed). Coming back to Pulse with no Studio open and nothing asked drops what was chosen.
+ * In Pulse: opens the Studio that [TogetherStudio.openFor] asked for, once Pulse is in front (at once, or when the viewer
+ * or sheet that asked has closed). Coming back to Pulse with no Studio open and nothing asked drops what was chosen.
  */
 @Composable
 fun TogetherStudioOpener(onCompose: () -> Unit) {
     val compose by rememberUpdatedState(onCompose)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val asked = TogetherStudio.opening.value
-    LifecycleResumeEffect(asked) {
-        val fresh = asked != null && System.currentTimeMillis() - asked <= TogetherStudio.OPENING_MS
-        when {
-            fresh -> {
-                TogetherStudio.opening.value = null
-                TogetherStudio.pending = true
-                compose()
-            }
-            TogetherStudio.owner == null -> TogetherStudio.reset()
+    // Keyed on the request only: clearing it below ends this effect, never starts a second one.
+    LaunchedEffect(asked, lifecycle) {
+        val at = asked ?: return@LaunchedEffect
+        lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+        if (TogetherStudio.opening.value != at) return@LaunchedEffect
+        if (System.currentTimeMillis() - at > TogetherStudio.OPENING_MS) {
+            TogetherStudio.reset()
+            return@LaunchedEffect
         }
+        TogetherStudio.pending = true
+        TogetherStudio.opening.value = null
+        compose()
+    }
+    // Only a real return to Pulse (a resume), never a change of the request, drops what an unopened Studio held.
+    LifecycleResumeEffect(Unit) {
+        if (TogetherStudio.opening.value == null && TogetherStudio.owner == null) TogetherStudio.reset()
         onPauseOrDispose { }
     }
 }
