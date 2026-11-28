@@ -76,7 +76,12 @@ enum MomentMailIt {
         viewer.close()
         Task {
             try? await Task.sleep(for: .milliseconds(600))
-            MomentMailItPrompt.shared.moment = moment
+            let prompt = MomentMailItPrompt.shared
+            prompt.shown = false
+            prompt.moment = moment
+            // Only the new Pulse presents the form: if it isn't on screen, the Moment must not surface later.
+            try? await Task.sleep(for: .seconds(3))
+            if !prompt.shown, prompt.moment?.id == moment.id { prompt.moment = nil }
         }
     }
 
@@ -98,6 +103,8 @@ enum MomentMailIt {
 final class MomentMailItPrompt {
     static let shared = MomentMailItPrompt()
     var moment: MomentDTO?
+    /// The form appeared for `moment` (set by the form itself).
+    @ObservationIgnored var shown = false
 }
 
 /// The new Pulse hosts the form (`ReinventedPulseView`).
@@ -149,6 +156,7 @@ struct MomentMailItForm: View {
         .padding(Spacing.s4)
         .background(Theme.Color.appBg)
         .task { if LaunchFeatures.mailExtras { await people.readIfNeeded() } }
+        .onAppear { MomentMailItPrompt.shared.shown = true }
         .accessibilityIdentifier("together.mailIt")
     }
 
