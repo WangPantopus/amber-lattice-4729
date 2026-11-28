@@ -80,6 +80,19 @@ class StudioRepository
                 if ((answer as? NetworkResult.Failure)?.error?.serverCode == SWITCH_OFF) feature.refusedOff()
             }
 
+        /** The author takes one dot off their Moment (CONTRACT 7c): true once the server has it gone. */
+        suspend fun removeDot(
+            momentId: String,
+            dotId: String,
+        ): Boolean =
+            when (val answer = safeApiCall { api.removeDot(momentId, dotId) }) {
+                is NetworkResult.Success -> true
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
+                    false
+                }
+            }
+
         /** Today's guess-the-spot Moment for the town at this point (CONTRACT 5d), or null. */
         suspend fun dailySpot(
             latitude: Double,

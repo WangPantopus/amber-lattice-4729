@@ -378,6 +378,7 @@ extension ReinventedPulseView {
             viewSwitch(sideBySide: sideBySide)
             if height == .map, !inAtlas {
                 ReinventedTimeRow(model: map)
+                ReinventedAskBar(map: map) // phase 4: Ask the map
             } else if model.reach != "explore", !inAtlas {
                 chipsRow
             }
