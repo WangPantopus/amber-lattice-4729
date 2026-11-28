@@ -24,8 +24,9 @@ object MomentDotKinds {
 /** One dot as the author places it (`x`, `y`: its place on the picture, 0 to 1 from the top left) and as a reader reads it. */
 @JsonClass(generateAdapter = true)
 data class MomentDotDto(
-    val id: String,
-    val kind: String,
+    // Defaults, so a dot this app can't read never stops a Moment from opening: it is simply not drawn.
+    val id: String = "",
+    val kind: String = "",
     val x: Double = 0.5,
     val y: Double = 0.5,
     /** A note's words (up to 140). */
@@ -51,12 +52,13 @@ data class MomentDotDto(
 /** A dot this app draws: a kind it knows with what that kind needs. */
 val MomentDotDto.drawable: Boolean
     get() =
-        when (kind) {
-            MomentDotKinds.NOTE -> !text.isNullOrBlank()
-            MomentDotKinds.RATING -> !label.isNullOrBlank() && stars in 1..5
-            MomentDotKinds.LINK -> linkHost != null
-            else -> false
-        }
+        id.isNotBlank() &&
+            when (kind) {
+                MomentDotKinds.NOTE -> !text.isNullOrBlank()
+                MomentDotKinds.RATING -> !label.isNullOrBlank() && stars in 1..5
+                MomentDotKinds.LINK -> linkHost != null
+                else -> false
+            }
 
 /** A link dot's site, for an http or https address only (it opens only on a tap); null otherwise. */
 val MomentDotDto.linkHost: String?
