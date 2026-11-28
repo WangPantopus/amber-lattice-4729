@@ -93,7 +93,7 @@ internal fun ReinventedPulseMap(
 ) {
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
-    val light = rememberLivingLight(state.floats, camera)
+    val light = rememberLivingLight(state, camera)
     val center = state.center
     // The map opens on the phone's place (or the home) once it is known, and never jumps there again.
     var centered by remember { mutableStateOf(false) }

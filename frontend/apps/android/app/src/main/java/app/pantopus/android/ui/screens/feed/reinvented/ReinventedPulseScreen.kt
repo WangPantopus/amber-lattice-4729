@@ -58,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.pulse.ReinventedBox
+import app.pantopus.android.ui.screens.feed.living.LivingAskBar
+import app.pantopus.android.ui.screens.feed.living.LivingAtlasSearch
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -129,7 +131,9 @@ fun ReinventedPulseScreen(
     val atlasHook = rememberAtlasHook(atlas, atlasState, atlasModel) { atlas = it }
     val list: @Composable (Modifier) -> Unit = ReinventedPulseScreenList@{ modifier ->
         if (atlas) {
-            ReinventedAtlasList(atlasState, atlasModel::openMoment, atlasModel::loadMore, atlasModel::retry, modifier)
+            ReinventedAtlasList(atlasState, atlasModel::openMoment, atlasModel::loadMore, atlasModel::retry, modifier) {
+                LivingAtlasSearch(onOpenOwn = atlasModel::openMoment, onOpenMoment = watch::moment, onOpenPost = actions.onOpenPost)
+            }
             return@ReinventedPulseScreenList
         }
         ReinventedListPane(
@@ -376,7 +380,17 @@ private fun ReinventedPulseLayout(
                         onOpen = open,
                     )
                 },
-                timeRow = if (atlas.on) null else { modifier -> ReinventedTimeRow(mapState.time, mapModel::pickTime, modifier) },
+                timeRow =
+                    if (atlas.on) {
+                        null
+                    } else {
+                        { modifier ->
+                            Column(modifier) {
+                                ReinventedTimeRow(mapState.time, mapModel::pickTime)
+                                LivingAskBar()
+                            }
+                        }
+                    },
                 mapExtras = { guessTop, deck ->
                     if (!atlas.on) {
                         val at = Modifier.align(Alignment.TopStart).padding(top = guessTop + Spacing.s2, start = Spacing.s4)

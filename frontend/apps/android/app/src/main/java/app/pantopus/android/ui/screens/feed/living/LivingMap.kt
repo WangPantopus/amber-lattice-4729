@@ -138,21 +138,34 @@ internal data class LivingLight(
     val floats: Boolean = false,
     val sun: MomentSunDto? = null,
     val bearing: Float = 0f,
+    /** Ask the map: the pins lit, with their words; null while nothing was asked (`LivingAsk.kt`). */
+    val lit: Map<String, List<String>>? = null,
 ) {
     /** The sun is down over the middle of the map. */
     val night: Boolean get() = (sun?.elevationDeg ?: 30.0) <= 0.0
 }
 
 /**
- * The light of the Pulse map: [floats] from the map's answer, the sun over the camera's middle once the map is still
- * (and again each minute), moved only when it moves enough to change a shadow.
+ * The light of the Pulse map: whether rings float from the map's answer ([ReinventedMapState.floats]), the sun over the
+ * camera's middle once the map is still (and again each minute), moved only when it moves enough to change a shadow,
+ * and the pins Ask the map lit. Tells Ask the map the box, time and pins the map shows once it settles.
  */
 @Composable
 internal fun rememberLivingLight(
-    floats: Boolean,
+    state: ReinventedMapState,
     camera: CameraPositionState,
+    ask: LivingAskViewModel = hiltViewModel(),
 ): LivingLight {
     var light by remember { mutableStateOf(LivingLight()) }
+    val asked by ask.state.collectAsStateWithLifecycle()
+    LaunchedEffect(camera.isMoving, state.time, state.items) {
+        if (camera.isMoving) return@LaunchedEffect
+        val box =
+            camera.projection?.visibleRegion?.latLngBounds?.let {
+                ReinventedBox(it.southwest.latitude, it.southwest.longitude, it.northeast.latitude, it.northeast.longitude)
+            }
+        ask.mapAt(box, state.time, state.items)
+    }
     LaunchedEffect(camera) {
         snapshotFlow { if (camera.isMoving) null else camera.position }.filterNotNull().collectLatest { position ->
             while (true) {
@@ -170,7 +183,7 @@ internal fun rememberLivingLight(
             }
         }
     }
-    return remember(light, floats) { light.copy(floats = floats) }
+    return remember(light, state.floats, asked.lit) { light.copy(floats = state.floats, lit = asked.lit) }
 }
 
 private const val MINUTE_MS = 60_000L
@@ -199,10 +212,21 @@ internal object LivingPalette {
  * One pin of the Pulse map as the living map draws it: while rings float, a ring with a height floats at it (a
  * lantern after dark), a ring shown only as its area is a cloud, and a plan glows as a beacon; anything else, and
  * everything while rings don't float, is exactly today's pin ([today]). Its bottom stands on its point, as today's
- * pin's tip does.
+ * pin's tip does. While Ask the map shows what it was asked, the pin is lit with its words or dimmed.
  */
 @Composable
 internal fun LivingPin(
+    item: ReinventedMapItem,
+    light: LivingLight,
+    focused: Boolean,
+    modifier: Modifier,
+    today: @Composable (Modifier) -> Unit,
+) {
+    LivingLitPin(item.id, light.lit) { LivingPinBody(item, light, focused, modifier, today) }
+}
+
+@Composable
+private fun LivingPinBody(
     item: ReinventedMapItem,
     light: LivingLight,
     focused: Boolean,
