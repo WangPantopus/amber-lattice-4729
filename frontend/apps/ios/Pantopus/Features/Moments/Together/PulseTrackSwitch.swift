@@ -16,6 +16,8 @@ enum PulseTrackSwitch {
     static func applied(_ on: Bool) {
         if on {
             Task(priority: .utility) { await PostcardWidgetStore.refresh() }
+            // An account change lands here too: the reminder follows this account's own row, not the last one's.
+            Task { await YourDayReminder.arm() }
         } else {
             PostcardWidgetStore.clear()
             YourDayReminder.cancel()
