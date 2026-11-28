@@ -37,6 +37,7 @@ import {
   Maximize2,
   Minimize2,
   RotateCw,
+  Scissors,
   Sparkles,
   Type,
   Undo2,
@@ -91,6 +92,7 @@ import {
   type Placement as WholePlacement,
 } from './whole';
 import { composeVideo } from './wholeVideo';
+import { heldTrim, TrimPanel, type TrimSpan } from './TrimPanel';
 import { FILM_LOOKS, lookPreviews, photostrip, withLook, type FilmLook } from './looks';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
@@ -301,7 +303,10 @@ export default function Studio({
   // Loop (CONTRACT 7j): the part of the video that repeats, whether its panel is open, and the video's own length.
   const [loopSpan, setLoopSpan] = useState<LoopSpan | null>(null),
     [loopOpen, setLoopOpen] = useState(false),
-    [videoMs, setVideoMs] = useState<number | null>(null);
+    [videoMs, setVideoMs] = useState<number | null>(null),
+    // Trim (PHASE-5 A2): the part of a video that goes up, and whether its panel is open.
+    [trimSpan, setTrimSpan] = useState<TrimSpan | null>(null),
+    [trimOpen, setTrimOpen] = useState(false);
   const client = useQueryClient();
   // One id per post being made, so trying again after a failed photo upload never posts twice (today's composer).
   const postRequest = useRef<string | null>(null);
@@ -569,16 +574,24 @@ export default function Studio({
   // A loop goes on a picked MP4 or QuickTime video, never one the browser recorded, and only one short enough to post
   // whole (a longer one goes out in parts). Each video starts without one; another tool opening closes its panel.
   const loopMax = limits.data?.video.max_seconds || fallback.max_seconds;
-  const canLoop = mode === 'media' && !!file && isVideo && capture?.file !== file && loopsFile(file);
+  // A trimmed video has picked its part; a loop picks its own (one or the other).
+  const canLoop = mode === 'media' && !!file && isVideo && capture?.file !== file && loopsFile(file) && !trimSpan;
   const loopFits = videoMs != null && videoMs >= LOOP_MIN_MS && videoMs / 1000 - 0.025 <= loopMax;
   const loopOut = canLoop && loopFits && loopSpan && videoMs != null ? fitSpan(loopSpan, videoMs) : null;
   useEffect(() => {
     setLoopSpan(null);
     setLoopOpen(false);
     setVideoMs(null);
+    setTrimSpan(null);
+    setTrimOpen(false);
   }, [file]);
+  const canTrim = mode === 'media' && !!file && isVideo && !loopSpan;
+  const trimOut = canTrim ? heldTrim(trimSpan, videoMs) : null;
   useEffect(() => {
-    if (tool || illuminate || soundOpen || trayOpen) setLoopOpen(false);
+    if (tool || illuminate || soundOpen || trayOpen) {
+      setLoopOpen(false);
+      setTrimOpen(false);
+    }
   }, [tool, illuminate, soundOpen, trayOpen]);
   // Opened, the loop is on: the first three seconds (or the whole of a shorter video), as soon as the length is known.
   useEffect(() => {
@@ -987,12 +1000,14 @@ export default function Studio({
       return { prepared: [{ file: await bakePhoto(source, art, backdrop) }], placement: null };
     }
     const drawn = !!(art.strokes.length || art.text.trim());
-    const video = drawn
+    const trim = trimOut ? { from: trimOut.from_ms / 1000, to: trimOut.to_ms / 1000 } : null;
+    const video = drawn || trim
       ? await composeVideo(source, {
-          drawn: { art, backdrop },
+          drawn: drawn ? { art, backdrop } : null,
+          trim,
           limits: videoLimits,
           signal,
-          progress: (f) => setBusy('Drawing your video · ' + Math.round(f * 100) + '%'),
+          progress: (f) => setBusy((drawn ? 'Drawing your video · ' : 'Trimming your video · ') + Math.round(f * 100) + '%'),
         })
       : source;
     const prepared = await prepareMedia(video, blankArt(), videoLimits, signal, (f) =>
@@ -1971,7 +1986,7 @@ export default function Studio({
                         setVideoMs(el instanceof HTMLVideoElement && Number.isFinite(el.duration) ? Math.round(el.duration * 1000) : null);
                       }
                 }
-                loop={loopOut}
+                loop={loopOut ?? trimOut}
               />
             ) : mode === 'text' ? (
               <div className="st-words">
@@ -2146,6 +2161,7 @@ export default function Studio({
                       setIlluminate(false);
                       setSoundOpen(false);
                       setTrayOpen(false);
+                      setTrimOpen(false);
                       setLoopOpen(!loopOpen);
                     }}
                   >
@@ -2242,6 +2258,18 @@ export default function Studio({
               place={placeRec}
               setPlace={setPlaceRec}
               onDone={() => setSoundOpen(false)}
+            />
+          )}
+          {composing && canTrim && trimOpen && !tool && !illuminate && !soundOpen && (
+            <TrimPanel
+              durationMs={videoMs}
+              span={trimOut}
+              onSpan={(next) => setTrimSpan(heldTrim(next, videoMs) ?? null)}
+              onOff={() => {
+                setTrimSpan(null);
+                setTrimOpen(false);
+              }}
+              onDone={() => setTrimOpen(false)}
             />
           )}
           {composing && canLoop && loopOpen && !tool && !illuminate && !soundOpen && (
@@ -2734,6 +2762,21 @@ export default function Studio({
                         <RotateCw size={15} aria-hidden="true" />
                         Turn
                       </button>
+                      {canTrim && (
+                        <button
+                          type="button"
+                          className="st-chip"
+                          disabled={!!busy}
+                          aria-pressed={trimOpen}
+                          onClick={() => {
+                            setLoopOpen(false);
+                            setTrimOpen(!trimOpen);
+                          }}
+                        >
+                          <Scissors size={15} aria-hidden="true" />
+                          {trimOut ? `Trim · ${(trimOut.from_ms / 1000).toFixed(1)}–${(trimOut.to_ms / 1000).toFixed(1)} s` : 'Trim'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="st-chip"
