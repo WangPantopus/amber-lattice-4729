@@ -76,7 +76,21 @@ import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
-import StudioPicture, { fillZoom, type StudioBrush, type StudioTool } from './StudioPicture';
+import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPicture';
+import {
+  backdropOf,
+  bakePhoto,
+  fillZoom,
+  fitZoom,
+  placementOf,
+  stuckTurn,
+  turnOf,
+  unmoved,
+  zoomRange,
+  type Backdrop,
+  type Placement as WholePlacement,
+} from './whole';
+import { composeVideo } from './wholeVideo';
 import { FILM_LOOKS, lookPreviews, photostrip, withLook, type FilmLook } from './looks';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
@@ -230,6 +244,8 @@ export default function Studio({
     [dots, setDots] = useState<DotDraft[]>([]),
     // The picture's own width and height, for where placed things land on it (frame.ts).
     [shape, setShape] = useState<{ w: number; h: number } | null>(null),
+    // The picture's own two colours (PHASE-5 A, CONTRACT 10c): the backdrop where it doesn't reach, shown and posted.
+    [backdrop, setBackdrop] = useState<Backdrop | null>(null),
     [illuminate, setIlluminate] = useState(false),
     [pickedDot, setPickedDot] = useState<string | null>(null),
     // Sound (phase 2, CONTRACT 7e): Voice Spark with its words, and place sound; sent after the Moment is made.
@@ -957,6 +973,33 @@ export default function Studio({
       setError(msg + (step ? ` Review step ${step.index + 1}.` : ' Review the next item.'));
     } else onDone(msg);
   }
+  /**
+   * The picture as it goes up, as the author composed it on the first screen (PHASE-5 A, CONTRACT 10c). A photo left as
+   * it was picked, with nothing drawn on it, goes up as taken (today's path, at its own shape and full size); a moved,
+   * sized, turned or drawn-on one goes up as the 9:16 canvas on its backdrop. A video keeps its own file and its
+   * `placement` on the canvas; only words or drawing on it make it again as the drawn canvas (wholeVideo.ts). The same
+   * numbers draw the preview (StudioPicture), so what the author sees is what readers get.
+   */
+  async function composed(source: File, signal: AbortSignal): Promise<{ prepared: Awaited<ReturnType<typeof prepareMedia>>; placement: WholePlacement | null }> {
+    const videoLimits = limits.data?.video || fallback;
+    if (!(source.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(source.name))) {
+      if (!edited(art)) return { prepared: await prepareMedia(source, art, videoLimits, signal, () => {}), placement: null };
+      return { prepared: [{ file: await bakePhoto(source, art, backdrop) }], placement: null };
+    }
+    const drawn = !!(art.strokes.length || art.text.trim());
+    const video = drawn
+      ? await composeVideo(source, {
+          drawn: { art, backdrop },
+          limits: videoLimits,
+          signal,
+          progress: (f) => setBusy('Drawing your video · ' + Math.round(f * 100) + '%'),
+        })
+      : source;
+    const prepared = await prepareMedia(video, blankArt(), videoLimits, signal, (f) =>
+      setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
+    );
+    return { prepared, placement: !drawn && !unmoved(art) && shape ? placementOf(shape.w, shape.h, art) : null };
+  }
   async function submit(retry?: Job) {
     if (submitting.current) return;
     submitting.current = true;
@@ -986,12 +1029,15 @@ export default function Studio({
             : 'photo';
       // The look's font is in before the words are drawn into the picture that is posted.
       if (file && art.text.trim()) await fontReady(art.font, art.text);
-      let prepared = file
-        ? await prepareMedia(canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file, art, limits.data?.video || fallback, controller.signal, (f) =>
-            setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
-          )
-        : [];
+      // As the author composed it (PHASE-5 A, CONTRACT 10c): see `composed` below.
+      const shaped = file ? await composed(canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file, controller.signal) : null;
+      let prepared = shaped?.prepared ?? [];
       if (pair && prepared.length === 1) prepared = [await withAfter(prepared[0])];
+      // Shown whole, on its backdrop, on every screen (a before and after keeps its own two-halves look).
+      const wholeOut =
+        shaped && !pair
+          ? { whole: true as const, ...(backdrop ? { backdrop } : {}), ...(shaped.placement ? { placement: shaped.placement } : {}) }
+          : {};
       // A loop is one short video, and its still is the frame where it starts (CONTRACT 7j).
       if (loopOut && prepared.length > 1) throw new Error('A loop is one short video. Take the loop off to post this video in parts.');
       if (loopOut && prepared.length === 1) {
@@ -1039,6 +1085,9 @@ export default function Studio({
             stamps?: PlacedStamp[];
             elevation?: { meters: number; accuracy_m?: number | null; speed_mps?: number | null };
             loop?: LoopSpan;
+            whole?: true;
+            placement?: WholePlacement;
+            backdrop?: Backdrop;
           } = {
             client_request_id: crypto.randomUUID(),
             kind,
@@ -1091,6 +1140,7 @@ export default function Studio({
             ...(deckOn && deckId.current ? { deck: { id: deckId.current, index: index + 1, count: files.length } } : {}),
             ...(toExplore ? { explore: true as const } : {}),
             ...(i === 0 && count === 1 && loopOut ? { loop: loopOut } : {}),
+            ...wholeOut,
             ...(kept.length && i === 0
               ? { stamps: kept.map(({ kind, x, y, scale, rotation }) => ({ kind, ...frame.point(x, y), scale: frame.scale(scale), rotation })) }
               : {}),
@@ -1166,7 +1216,10 @@ export default function Studio({
       let photo: File | null = null;
       if (file) {
         if (art.text.trim()) await fontReady(art.font, art.text);
-        const [first] = await prepareMedia(canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file, art, limits.data?.video || fallback, controller.signal, () => {});
+        const source = canBlur && blurs.length ? await blurInto(lookFile ?? file, blurs) : lookFile ?? file;
+        const [first] = isVideo
+          ? await prepareMedia(source, art, limits.data?.video || fallback, controller.signal, () => {})
+          : (await composed(source, controller.signal)).prepared;
         const prepared = await withAfter(first);
         photo = new File([prepared.file], 'studio.jpg', { type: prepared.file.type || 'image/jpeg' });
       }
@@ -1413,9 +1466,19 @@ export default function Studio({
   const gate = jobs.length > 0 || !attested;
   const composing = !gate && !camera && mode !== 'none';
   // The picture fills the frame (Fill) or not, and whether it already does when whole (a 9:16 picture): PHASE-5 A2.
-  const fillsAlready = !!shape && Math.abs(fillZoom(shape.w, shape.h, art.rotation) - 1) < 0.005;
-  const filled =
-    !!shape && !fillsAlready && !art.offset.x && !art.offset.y && Math.abs(art.zoom - fillZoom(shape.w, shape.h, art.rotation)) < 0.005;
+  // Both at the angle it is turned to (any angle: whole.ts).
+  const fitAt = (turn: number) => (shape ? fitZoom(shape.w, shape.h, turn) : 1),
+    fillAt = (turn: number) => (shape ? fillZoom(shape.w, shape.h, turn) : 1);
+  const centred = !art.offset.x && !art.offset.y;
+  const fillsAlready = !!shape && Math.abs(fillAt(art.rotation) - fitAt(art.rotation)) < 0.005;
+  const filled = !!shape && !fillsAlready && centred && Math.abs(art.zoom - fillAt(art.rotation)) < 0.005;
+  const fitted = centred && Math.abs(art.zoom - fitAt(art.rotation)) < 0.005;
+  // A quarter turn keeps a picture that was whole whole, and one that filled the frame filling it.
+  function turnQuarter() {
+    const rotation = stuckTurn(art.rotation + 90);
+    setArt({ ...art, rotation, zoom: filled ? fillAt(rotation) : fitted ? fitAt(rotation) : art.zoom });
+  }
+  const sizes = shape ? zoomRange(shape.w, shape.h) : { min: 0.5, max: 3 };
 
   const settings = (
     <section
@@ -1884,6 +1947,7 @@ export default function Studio({
             ) : gate ? null : mode === 'media' && file ? (
               <StudioPicture
                 file={showAfter ? afterFile! : lookFile ?? file}
+                backdrop={backdrop}
                 art={art}
                 onChange={setArt}
                 tool={tool}
@@ -1903,6 +1967,7 @@ export default function Studio({
                     : (el, w, h) => {
                         setPhotoInks(sampleColors(el, w, h, inks));
                         setShape({ w, h });
+                        setBackdrop(backdropOf(el));
                         setVideoMs(el instanceof HTMLVideoElement && Number.isFinite(el.duration) ? Math.round(el.duration * 1000) : null);
                       }
                 }
@@ -2218,24 +2283,32 @@ export default function Studio({
             >
               {tool === 'resize' && (
                 <>
-                  <small className="st-hint">Drag the picture to move it.</small>
+                  <small className="st-hint">Drag the picture to move it. Two fingers, or Shift and the wheel, turn it.</small>
                   <div className="st-picture-row">
                     <label className="st-field">
                       Zoom
                       <input
                         type="range"
-                        min=".5"
-                        max="3"
-                        step=".05"
-                        value={art.zoom}
+                        min={sizes.min}
+                        max={sizes.max}
+                        step=".01"
+                        value={Math.min(sizes.max, Math.max(sizes.min, art.zoom))}
                         onChange={(e) => setArt({ ...art, zoom: Number(e.target.value) })}
                       />
                     </label>
-                    <button
-                      type="button"
-                      className="st-chip"
-                      onClick={() => setArt({ ...art, rotation: (art.rotation + 90) % 360 })}
-                    >
+                    {/* Any angle (PHASE-5 A2), sticking at quarter turns as the phones' Resize does. */}
+                    <label className="st-field">
+                      Angle {Math.round(turnOf(art.rotation))}°
+                      <input
+                        type="range"
+                        min="-180"
+                        max="180"
+                        step="1"
+                        value={turnOf(art.rotation)}
+                        onChange={(e) => setArt({ ...art, rotation: stuckTurn(Number(e.target.value)) })}
+                      />
+                    </label>
+                    <button type="button" className="st-chip" onClick={turnQuarter}>
                       <RotateCw size={15} aria-hidden="true" />
                       Turn
                     </button>
@@ -2646,7 +2719,7 @@ export default function Studio({
                         className="st-chip"
                         disabled={!!busy || (!filled && fillsAlready)}
                         onClick={() =>
-                          setArt({ ...art, zoom: filled || !shape ? 1 : fillZoom(shape.w, shape.h, art.rotation), offset: { x: 0, y: 0 } })
+                          setArt({ ...art, zoom: filled ? fitAt(art.rotation) : fillAt(art.rotation), offset: { x: 0, y: 0 } })
                         }
                       >
                         {filled ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
@@ -2656,10 +2729,7 @@ export default function Studio({
                         type="button"
                         className="st-chip"
                         disabled={!!busy}
-                        onClick={() => {
-                          const rotation = (art.rotation + 90) % 360;
-                          setArt({ ...art, rotation, zoom: filled && shape ? fillZoom(shape.w, shape.h, rotation) : art.zoom });
-                        }}
+                        onClick={turnQuarter}
                       >
                         <RotateCw size={15} aria-hidden="true" />
                         Turn
@@ -2667,7 +2737,7 @@ export default function Studio({
                       <button
                         type="button"
                         className="st-chip"
-                        disabled={!!busy || (art.zoom === 1 && !art.rotation && !art.offset.x && !art.offset.y)}
+                        disabled={!!busy || unmoved(art)}
                         onClick={() => setArt({ ...art, zoom: 1, rotation: 0, offset: { x: 0, y: 0 } })}
                       >
                         <Undo2 size={15} aria-hidden="true" />
