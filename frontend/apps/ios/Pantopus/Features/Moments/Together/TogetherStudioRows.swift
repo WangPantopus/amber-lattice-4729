@@ -26,6 +26,7 @@ struct TogetherStudioRows: View {
                 } else {
                     if model.offersRetake { retakeRow }
                     if model.offersSeal { sealRow }
+                    if model.offersSky { skyRow }
                 }
             }
             .onAppear { together.claim(model) }
@@ -217,5 +218,25 @@ struct TogetherStudioGhost: View {
             // The Studio closed, posted, or gave way to today's Post sheet: its choices go with it.
             .onDisappear { together.release(model) }
         }
+    }
+
+    /// "Join tonight's sky" (8h): on by default, plainly shown, one tap to leave out.
+    private var skyRow: some View {
+        Toggle(isOn: $together.joinsSky) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Join tonight’s sky: your photo stays in the piece")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Only if several people photograph a real sunset or a first snow here in the same minutes.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Theme.Color.primarySolid)
+        .frame(minHeight: 52)
+        .padding(.horizontal, Spacing.s1)
+        .accessibilityIdentifier("together.studio.sky")
     }
 }
