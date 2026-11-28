@@ -106,6 +106,10 @@ public enum AdminClaimChip {
                 ? AdminClaimChipDescriptor(text: "Docs sent", icon: .fileText, variant: .success)
                 : AdminClaimChipDescriptor(text: "Awaiting docs", icon: .hourglass, variant: .neutral)
         }
+        if claim.waitingOn == "claimant" {
+            // Filed with nothing attached (adding a home as its owner does that): nothing to review yet.
+            return AdminClaimChipDescriptor(text: "No document yet", icon: .hourglass, variant: .neutral)
+        }
 
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -172,8 +172,11 @@ public struct ReviewClaimDetailView: View {
                         OverlineSection(title: evidenceOverline(detail.evidence.count)) {
                             evidenceContent(detail.evidence)
                                 .accessibilityIdentifier("reviewClaimDetail_evidence")
-                            Button("Review private documents") { evidenceTarget = viewModel.makeEvidenceViewModel() }
-                                .disabled(viewModel.reviewingAction != nil || detail.claim.requiresDisputeReview)
+                            // Nothing to open until the claimant uploads something.
+                            if !detail.evidence.isEmpty {
+                                Button("Review private documents") { evidenceTarget = viewModel.makeEvidenceViewModel() }
+                                    .disabled(viewModel.reviewingAction != nil || detail.claim.requiresDisputeReview)
+                            }
                         }
                     }
                     if let statement = ReviewClaimMap.statement(for: detail.claim) {
@@ -216,7 +219,10 @@ public struct ReviewClaimDetailView: View {
             acceptBlockedReason: viewModel.acceptBlockedReason(detail),
             acceptLabel: viewModel.acceptLabel(detail),
             onAccept: { Task { _ = await viewModel.review(.approve) } },
-            onChallenge: { showChallengeSheet = true },
+            onChallenge: {
+                viewModel.prepareChallengeComposer()
+                showChallengeSheet = true
+            },
             onReject: { showRejectSheet = true }
         )
     }
@@ -295,18 +301,19 @@ enum ReviewClaimMap {
     static func pendingLabel(for claim: AdminClaimRecordDTO) -> String? {
         guard let date = parseDate(claim.createdAt) else { return "Pending" }
         let days = max(0, Int(Date().timeIntervalSince(date) / 86400))
-        return "Pending \(days)d"
+        return days == 0 ? "Filed today" : "Pending \(days)d"
     }
 
+    /// A claim records no ownership share, so none is shown.
     static func shareValue(for _: AdminClaimRecordDTO) -> String {
-        "—"
+        ""
     }
 
     static func shareDescriptor(for claim: AdminClaimRecordDTO) -> String {
         switch claim.claimType {
-        case "resident": "residency claim"
-        case "admin": "admin claim"
-        default: "ownership share"
+        case "resident": "Residency at this address"
+        case "admin": "An admin role at this home"
+        default: "Ownership of this home"
         }
     }
 
@@ -459,33 +466,6 @@ private struct HomeCard: View {
             RoundedRectangle(cornerRadius: Radii.xl)
                 .stroke(Theme.Color.appBorderSubtle, lineWidth: 1)
         )
-    }
-}
-
-// MARK: - Terminal-state banner
-
-private struct TerminalStateBanner: View {
-    let state: String
-
-    var body: some View {
-        HStack(spacing: Spacing.s2) {
-            Icon(.info, size: 20, color: Theme.Color.appTextSecondary)
-            Text(message)
-                .scaledFont(13)
-                .foregroundStyle(Theme.Color.appTextSecondary)
-            Spacer(minLength: Spacing.s0)
-        }
-        .padding(Spacing.s3)
-        .background(Theme.Color.appSurfaceSunken)
-        .clipShape(RoundedRectangle(cornerRadius: Radii.xl))
-    }
-
-    private var message: String {
-        switch state {
-        case "approved": "This claim has been accepted. No further action."
-        case "rejected": "This claim has been rejected. No further action."
-        default: "This claim is in state \"\(state)\" and isn't reviewable from here."
-        }
     }
 }
 

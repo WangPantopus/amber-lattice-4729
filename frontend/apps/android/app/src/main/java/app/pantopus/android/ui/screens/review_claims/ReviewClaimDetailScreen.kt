@@ -180,7 +180,10 @@ fun ReviewClaimDetailScreen(
                         scope.launch { viewModel.review(AdminClaimReviewAction.Approve) }
                     },
                     onReject = { showRejectSheet = true },
-                    onChallenge = { showChallengeSheet = true },
+                    onChallenge = {
+                        viewModel.prepareChallengeComposer()
+                        showChallengeSheet = true
+                    },
                     identityAttested = identityAttested,
                     onIdentityAttested = viewModel::setIdentityAttested,
                     approveAs = approveAs,
@@ -371,8 +374,11 @@ private fun LoadedShell(
                 }
                 if (isReviewable) {
                     OverlineSection(title = evidenceOverline(detail.evidence.size)) {
-                        TextButton(onClick = onOpenEvidence, modifier = Modifier.testTag("reviewClaimDetail_openPrivateEvidence")) {
-                            Text("Open private documents")
+                        // Nothing to open until the claimant uploads something.
+                        if (detail.evidence.isNotEmpty()) {
+                            TextButton(onClick = onOpenEvidence, modifier = Modifier.testTag("reviewClaimDetail_openPrivateEvidence")) {
+                                Text("Open private documents")
+                            }
                         }
                         EvidenceContent(
                             evidence = detail.evidence,
@@ -524,12 +530,13 @@ private fun claimantModel(
         email = claimant?.email,
         pendingLabel = if (reviewable) pendingLabel(detail.claim) else null,
         gradient = AdminClaimAvatarGradient.gradient(claimant?.id ?: name),
-        shareValue = "—",
+        // A claim records no ownership share, so none is shown.
+        shareValue = "",
         shareDescriptor =
             when (detail.claim.claimType) {
-                "resident" -> "residency claim"
-                "admin" -> "admin claim"
-                else -> "ownership share"
+                "resident" -> "Residency at this address"
+                "admin" -> "An admin role at this home"
+                else -> "Ownership of this home"
             },
         trustChips =
             if (detail.claim.identityStatus == "verified") {
@@ -543,7 +550,7 @@ private fun claimantModel(
 private fun pendingLabel(claim: AdminClaimRecordDto): String {
     val created = runCatching { Instant.parse(claim.createdAt) }.getOrNull() ?: return "Pending"
     val days = ((Instant.now().epochSecond - created.epochSecond).coerceAtLeast(0) / 86_400L)
-    return "Pending ${days}d"
+    return if (days == 0L) "Filed today" else "Pending ${days}d"
 }
 
 @Composable
@@ -684,13 +691,15 @@ private fun ClaimSummaryTile(
                 color = PantopusColors.appTextSecondary,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-                Text(
-                    text = value,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    color = PantopusColors.primary700,
-                )
+                if (value.isNotEmpty()) {
+                    Text(
+                        text = value,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
+                        color = PantopusColors.primary700,
+                    )
+                }
                 Text(
                     text = descriptor,
                     style = PantopusTextStyle.small,
