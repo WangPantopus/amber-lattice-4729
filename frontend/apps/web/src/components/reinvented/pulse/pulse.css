@@ -1226,10 +1226,10 @@
 /* ── Desktop width: the list and the map side by side ── */
 /* ── Alive right now: tall previews over the list ── */
 .rp-alive {
-  margin: 0 -16px 16px;
+  margin: 0 -12px 16px;
 }
 .rp-alive-title {
-  margin: 4px 16px 8px;
+  margin: 4px 12px 8px;
   color: var(--rp-muted);
   font-size: 13px;
   font-weight: 700;
@@ -1239,7 +1239,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 0 16px 2px;
+  padding: 0 12px 2px;
   overflow-x: auto;
   scrollbar-width: none;
 }
