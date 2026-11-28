@@ -742,26 +742,29 @@ struct HolidayCardWriteStep: View {
         if cards.noteHelp, let recipient = viewModel.recipient {
             noteHelpRow(recipient)
         }
-        // The card's own photo and greeting (memories plan steps 4 and 7): one person's card only, while the server
-        // takes them.
-        let onePerson = viewModel.recipient?.entries == nil
+        // The card's own photo and greeting (memories plan steps 4 and 7): one person's card only (a list too with
+        // `improved`, cards-next Wave 2), while the server takes them.
+        let takesMedia = viewModel.improved || viewModel.recipient?.entries == nil
+        let needsStamp = cards.mediaStamp == .buy || viewModel.mediaNeedsAnyStamp
         let attachments = viewModel.attachments
         if attachments.photo != nil || attachments.voice != nil || attachments.recorder.recording
-            || (onePerson && (cards.takesPhoto || cards.takesVoice)) {
+            || (takesMedia && (cards.takesPhoto || cards.takesVoice)) {
             HolidayCardMediaRow(
                 attachments: attachments,
-                takesPhoto: onePerson && cards.takesPhoto,
-                takesVoice: onePerson && cards.takesVoice,
-                takesLive: onePerson && cards.takesLivePhoto,
+                takesPhoto: takesMedia && cards.takesPhoto,
+                takesVoice: takesMedia && cards.takesVoice,
+                takesLive: takesMedia && cards.takesLivePhoto,
                 liveMaxBytes: cards.livePhotoMaxBytes,
                 forName: viewModel.greetingFor,
                 gift: CardTableMood(mood: design.mood, number: design.number) == .reverence,
-                needsStamp: cards.mediaStamp == .buy
+                needsStamp: needsStamp,
+                needsStampText: viewModel.mediaNeedsStampLine,
+                freeHint: viewModel.freeMediaHint
             ) { viewModel.openStampsForMedia() }
                 // A photo shared to Mail from another app's share sheet goes on the card here, as if picked
                 // (`ShareInCardPhoto`). Where this card can't take one it waits, and the row says why.
                 .onAppear {
-                    if onePerson, cards.takesPhoto, cards.mediaStamp != .buy, attachments.photo == nil,
+                    if takesMedia, cards.takesPhoto, !needsStamp, attachments.photo == nil,
                        let shared = ShareInCardPhoto.shared.take() {
                         attachments.add(shared)
                     }
