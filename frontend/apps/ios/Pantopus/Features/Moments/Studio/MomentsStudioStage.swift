@@ -124,8 +124,7 @@ struct MomentsStudioStage: View {
                 // The picture fills the screen centred, exactly as the viewer shows it to readers: held in a frame the
                 // screen's size, so a photo wider than the screen never widens the layers over it (they place stamps,
                 // items and dots by the same centred fill).
-                Color.clear
-                    .overlay { MomentsStudioPicture(model: model) }
+                Color.clear.overlay { MomentsStudioPicture(model: model) }
                     .overlay { legibility }
                     .clipped()
                 TogetherStudioGhost(model: model) // Phase 3 (CONTRACT 8): a Retake's first picture to line up with.
