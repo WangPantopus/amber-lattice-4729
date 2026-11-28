@@ -2,6 +2,10 @@
 
 package app.pantopus.android.ui.screens.feed.living
 
+import android.content.Context
+import android.location.Address
+import android.location.Geocoder
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,12 +16,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,12 +38,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,8 +63,7 @@ import app.pantopus.android.data.living.LivingConstellationsDto
 import app.pantopus.android.data.living.LivingFollowedPlaceDto
 import app.pantopus.android.data.living.LivingRepository
 import app.pantopus.android.data.location.LocationProvider
-import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerLimits
-import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerSheet
+import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.feed.reinvented.MomentPicture
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -58,12 +71,18 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import javax.inject.Inject
+import kotlin.coroutines.resume
 
 /*
  * "Pulse, reinvented" phase 4, places you follow and curiosity constellations (PHASE-4 piece 4; CONTRACT 9c), as the
@@ -71,7 +90,7 @@ import javax.inject.Inject
  *
  * - Places you follow, at the top of Explore: up to five far places (a hometown, Kyoto) whose Explore items come into
  *   Explore. They are the person's own choice and private: nobody is ever told or shown what someone follows. A place is
- *   found with today's place picker and sent as its name and point; the server rounds the point to about a kilometre.
+ *   found with the phone's own place search (the geocoder) and sent as its name and point; the server rounds the point.
  *   Explore's first page then brings "From <place>, a place you follow" items, shown here as a row of cards.
  * - Constellations, "Near you" in My Atlas while nothing is searched: within five miles of the phone, the Retakes people
  *   keep adding to, the skies several caught, the field specimens named, and the questions people answered. The phone's
@@ -192,18 +211,136 @@ internal fun LivingFollowedPlaces(
         }
     }
     if (finding) {
-        PlacePickerSheet(
-            currentTag = null,
-            onSelect = { tag ->
+        LivingPlaceFinder(
+            onPick = { place ->
                 finding = false
-                viewModel.follow(tag.name, tag.latitude, tag.longitude, onRefresh)
+                viewModel.follow(place.label, place.latitude, place.longitude, onRefresh)
             },
-            onRemove = {},
             onDismiss = { finding = false },
-            limits = PlacePickerLimits(anchorChips = false, showLocality = false),
         )
     }
 }
+
+/** A place the phone's own place search found: its name, where it is, and its point. */
+internal data class LivingFoundPlace(
+    val label: String,
+    val line: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+/**
+ * The phone's own place search (Android's geocoder: on the phone, no key, no new service), as the iPhone's MapKit search:
+ * type a town, pick it, follow it. Far places too ("Kyoto"), which today's venue picker doesn't search.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LivingPlaceFinder(
+    onPick: (LivingFoundPlace) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember { mutableStateOf("") }
+    var found by remember { mutableStateOf<List<LivingFoundPlace>>(emptyList()) }
+    LaunchedEffect(text) {
+        val words = text.trim()
+        if (words.length < 2) {
+            found = emptyList()
+            return@LaunchedEffect
+        }
+        delay(FIND_WAIT_MS)
+        found = findPlaces(context, words)
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = PantopusColors.appBg,
+        modifier = Modifier.sheetKeyboardRules().testTag("reinventedPlaces.finder"),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s4).padding(bottom = Spacing.s5).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+        ) {
+            Text("Follow a place", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText)
+            val shape = RoundedCornerShape(Radii.lg)
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it.take(MAX_FIND) },
+                singleLine = true,
+                textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
+                cursorBrush = SolidColor(PantopusColors.appText),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth().testTag("reinventedPlaces.finder.field"),
+                decorationBox = { inner ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .background(PantopusColors.appSurface, shape)
+                                .border(1.dp, PantopusColors.appBorder, shape)
+                                .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
+                    ) {
+                        if (text.isEmpty()) Text("A town or a place", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                        inner()
+                    }
+                },
+            )
+            found.forEach { place ->
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(role = Role.Button) { onPick(place) }
+                            .padding(vertical = Spacing.s2)
+                            .semantics(mergeDescendants = true) {},
+                ) {
+                    Text(place.label, fontSize = 15.sp, color = PantopusColors.appText)
+                    if (place.line.isNotEmpty()) Text(place.line, fontSize = 13.sp, color = PantopusColors.appTextSecondary)
+                }
+            }
+        }
+    }
+}
+
+private const val FIND_WAIT_MS = 400L
+private const val MAX_FIND = 60
+private const val MOST_FOUND = 6
+
+/** Up to six places for [words] from the phone's own geocoder; none where the phone has no geocoder. */
+private suspend fun findPlaces(
+    context: Context,
+    words: String,
+): List<LivingFoundPlace> =
+    withContext(Dispatchers.IO) {
+        if (!Geocoder.isPresent()) return@withContext emptyList()
+        val geocoder = Geocoder(context, Locale.getDefault())
+        val addresses: List<Address> =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                suspendCancellableCoroutine { done ->
+                    geocoder.getFromLocationName(
+                        words,
+                        MOST_FOUND,
+                        object : Geocoder.GeocodeListener {
+                            override fun onGeocode(found: MutableList<Address>) = done.resume(found)
+
+                            override fun onError(errorMessage: String?) = done.resume(emptyList())
+                        },
+                    )
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                runCatching { geocoder.getFromLocationName(words, MOST_FOUND) }.getOrNull().orEmpty()
+            }
+        addresses.filter { it.hasLatitude() && it.hasLongitude() }.map { address ->
+            val label = address.locality ?: address.featureName ?: words
+            LivingFoundPlace(
+                label = label.take(MAX_FIND),
+                line = listOfNotNull(address.adminArea, address.countryName).filter { it != label }.joinToString(", "),
+                latitude = address.latitude,
+                longitude = address.longitude,
+            )
+        }.distinctBy { it.label + it.line }
+    }
 
 @Composable
 private fun PlaceChip(
