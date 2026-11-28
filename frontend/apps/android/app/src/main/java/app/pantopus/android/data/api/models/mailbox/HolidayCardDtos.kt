@@ -148,8 +148,8 @@ data class CardBoughtStamp(
     val remaining: Int? = null,
     val state: String? = null,
 ) {
-    val toBuy: Boolean get() = state == "buy"
-    val unavailable: Boolean get() = state == "unavailable"
+    val toBuy: Boolean get() = required && state == "buy"
+    val unavailable: Boolean get() = required && state == "unavailable"
 }
 
 /** One kind of card media: [usable] is false while the key is off; the size and length limits the server keeps. */
@@ -470,6 +470,10 @@ data class SendHolidayCardListBody(
     @Json(name = "use_stamp") val useStamp: Boolean = true,
     /** One signature for the whole list, as one note (plan 8.2). */
     val signature: CardSignature? = null,
+    /** Optional photo, photo description, and voice greeting shared across the list's cards. */
+    val photo: String? = null,
+    @Json(name = "photo_alt") val photoAlt: String? = null,
+    val voice: String? = null,
     /**
      * Each address keeps the list's choice too (its email at the sender's 7 a.m. or on Christmas morning): true where the
      * server offers every email choice ([HolidayCardArrivals.emailAll]), else left out.

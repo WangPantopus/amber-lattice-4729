@@ -286,15 +286,24 @@ const KIND_WORDS = { photo: 'photo', voice: 'voice greeting', live: 'Live Photo'
 const mediaExpired = (kind) => refusal(410, 'CARD_MEDIA_EXPIRED',
   `Add the ${KIND_WORDS[kind] || 'photo'} again: this one can’t be sent any more.`);
 
+/** Every card id this file is tied to: a single card's `mail_id`, or all cards of a list send (`mail_ids`). */
+function boundMailIds(file) {
+  const meta = file?.metadata || {};
+  const list = Array.isArray(meta.mail_ids) ? meta.mail_ids : [];
+  const all = [meta.mail_id, ...list].filter((id) => typeof id === 'string' && id.trim()).map((id) => String(id));
+  return [...new Set(all)];
+}
+
 /**
- * The references a send gives ({ photo, photo_alt, voice }), checked for this sender and this card (`rowId`, the card's
- * id from its request): their own uploads, of the right kind, within their 72 hours, not on another card, and within the
- * limits again. Answers { media: { photo, voice } | null, files } or throws a refusal ({ status, code }).
+ * The references a send gives ({ photo, photo_alt, voice }), checked for this sender and this card (`rowId`, or
+ * `batchRowIds` for a multi-recipient list send): their own uploads, of the right kind, within their 72 hours, not on
+ * another card, and within the limits again. Answers { media: { photo, voice } | null, files } or throws a refusal
+ * ({ status, code }).
  */
 async function checkRefs(
   senderId,
   { photo = null, photo_alt: rawAlt = null, voice = null, photo_live: live = null } = {},
-  { rowId, now = new Date() },
+  { rowId = null, batchRowIds = null, now = new Date() } = {},
 ) {
   if (!photo && !voice && !live) return { media: null, files: [] };
   if (!memoriesOn()) {
@@ -315,6 +324,7 @@ async function checkRefs(
   const { data, error } = await supabaseAdmin.from('File').select(FILE_SELECT).in('id', wanted.map((item) => item.id));
   if (error) throw new Error(error.message);
   const byId = new Map((data || []).map((file) => [String(file.id).toLowerCase(), file]));
+  const targetBatchIds = Array.isArray(batchRowIds) ? batchRowIds.filter(Boolean).map(String) : null;
   const files = [];
   for (const item of wanted) {
     const file = byId.get(item.id.toLowerCase());
@@ -322,9 +332,16 @@ async function checkRefs(
     if (String(file.user_id) !== String(senderId)) {
       throw refusal(403, 'CARD_MEDIA_NOT_YOURS', `This ${KIND_WORDS[item.kind]} was added by someone else. Add your own.`);
     }
-    const boundTo = file.metadata?.mail_id || null;
-    if (boundTo && boundTo !== rowId) throw mediaExpired(item.kind);
-    if (!boundTo && Date.parse(file.created_at) + DRAFT_MS <= now.getTime()) throw mediaExpired(item.kind);
+    const bound = boundMailIds(file);
+    if (bound.length) {
+      // Bound files can only be retried for the exact card (single send) or cards already reserved in the same batch.
+      const allowed = targetBatchIds && targetBatchIds.length
+        ? targetBatchIds.every((id) => bound.includes(id))
+        : Boolean(rowId && bound.includes(String(rowId)));
+      if (!allowed) throw mediaExpired(item.kind);
+    } else if (Date.parse(file.created_at) + DRAFT_MS <= now.getTime()) {
+      throw mediaExpired(item.kind);
+    }
     // Checked again at send: what is stored is within the limits.
     const meta = file.metadata || {};
     const within = (limit) => Number(file.file_size) <= limit.max_bytes && Number(meta.duration_ms) <= limit.max_seconds * 1000;
@@ -347,14 +364,20 @@ async function checkRefs(
 }
 
 /**
- * Ties the checked files to the card `mailId` before the card is stored, so every media route can check the piece and
- * the file together. A file another card took meanwhile refuses the send (CARD_MEDIA_EXPIRED). Throws on a write failure.
+ * Ties the checked files to `mailIdOrIds` (one card id, or all card ids of a multi-recipient list send) before the
+ * cards are stored, so every media route can check the piece and the file together. A file another card took meanwhile
+ * refuses the send (CARD_MEDIA_EXPIRED). Throws on a write failure.
  */
-async function bind(mailId, files) {
+async function bind(mailIdOrIds, files) {
+  const ids = [...new Set((Array.isArray(mailIdOrIds) ? mailIdOrIds : [mailIdOrIds]).filter(Boolean).map(String))];
+  if (!ids.length) return;
   for (const file of files) {
-    if (file.metadata?.mail_id === mailId) continue;
+    const bound = boundMailIds(file);
+    if (bound.length && ids.every((id) => bound.includes(id))) continue;
+    const nextMeta = { ...file.metadata, mail_id: ids[0] };
+    if (ids.length > 1) nextMeta.mail_ids = ids;
     const { data, error } = await supabaseAdmin.from('File')
-      .update({ metadata: { ...file.metadata, mail_id: mailId }, updated_at: new Date().toISOString() })
+      .update({ metadata: nextMeta, updated_at: new Date().toISOString() })
       .eq('id', file.id).eq('is_deleted', false).is('metadata->>mail_id', null)
       .select('id');
     if (error) throw new Error(error.message);
@@ -362,15 +385,35 @@ async function bind(mailId, files) {
   }
 }
 
-/** Unties files from a card that was never stored (best effort): the draft can send them again. */
-async function unbind(mailId, files) {
+/** Unties files from card(s) that were never stored (best effort): the draft can send them again. */
+async function unbind(mailIdOrIds, files) {
+  const ids = [...new Set((Array.isArray(mailIdOrIds) ? mailIdOrIds : [mailIdOrIds]).filter(Boolean).map(String))];
+  if (!ids.length) return;
+  try {
+    const { data: existing } = await supabaseAdmin.from('Mail').select('id').in('id', ids);
+    if (existing?.length) return;
+  } catch (error) {
+    logger.warn('Card media unbind check failed', { error: error.message });
+    return;
+  }
+  const removeSet = new Set(ids);
   for (const file of files) {
     try {
-      const { data: card } = await supabaseAdmin.from('Mail').select('id').eq('id', mailId).maybeSingle();
-      if (card) return;
+      const { data: fresh } = await supabaseAdmin.from('File').select(FILE_SELECT).eq('id', file.id).maybeSingle();
+      if (!fresh) continue;
+      const remaining = boundMailIds(fresh).filter((id) => !removeSet.has(id));
+      const nextMeta = { ...(fresh.metadata || {}) };
+      if (remaining.length === 0) {
+        delete nextMeta.mail_id;
+        delete nextMeta.mail_ids;
+      } else {
+        nextMeta.mail_id = remaining[0];
+        if (remaining.length > 1) nextMeta.mail_ids = remaining;
+        else delete nextMeta.mail_ids;
+      }
       await supabaseAdmin.from('File')
-        .update({ metadata: { ...file.metadata, mail_id: undefined }, updated_at: new Date().toISOString() })
-        .eq('id', file.id).eq('metadata->>mail_id', mailId);
+        .update({ metadata: nextMeta, updated_at: new Date().toISOString() })
+        .eq('id', file.id);
     } catch (error) {
       logger.warn('Card media not untied', { fileId: file.id, error: error.message });
     }
@@ -384,7 +427,8 @@ async function boundFile(fileId, mailId) {
   if (!UUID.test(String(fileId || ''))) return null;
   const { data, error } = await supabaseAdmin.from('File').select(FILE_SELECT).eq('id', fileId).maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data || data.is_deleted || data.file_context !== CONTEXT || data.metadata?.mail_id !== String(mailId)) return null;
+  if (!data || data.is_deleted || data.file_context !== CONTEXT) return null;
+  if (!boundMailIds(data).includes(String(mailId))) return null;
   return data;
 }
 
@@ -488,16 +532,65 @@ async function removeFiles(files) {
   return removed;
 }
 
+/** Find every card media File tied to any of `mailIds` (single `mail_id` or list `mail_ids`). */
+async function filesForMailIds(mailIds) {
+  const clean = [...new Set(mailIds.filter((id) => UUID.test(String(id || ''))).map(String))];
+  if (!clean.length) return [];
+  const byId = new Map();
+  // Query in small chunks to keep the PostgREST OR filter compact.
+  for (let i = 0; i < clean.length; i += 20) {
+    const chunk = clean.slice(i, i + 20);
+    const clauses = chunk.flatMap((id) => [`metadata->>mail_id.eq.${id}`, `metadata->mail_ids.cs.["${id}"]`]);
+    const { data, error } = await supabaseAdmin.from('File').select(FILE_SELECT)
+      .eq('file_context', CONTEXT).or(clauses.join(','));
+    if (error) throw new Error(error.message);
+    for (const file of data || []) byId.set(file.id, file);
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Detach `withdrawnIds` from shared list files while any live sibling card still references them, and delete files
+ * whose last live card is gone. Answers how many files were deleted.
+ */
+async function detachOrRemove(files, withdrawnIds) {
+  if (!files.length) return 0;
+  const dropped = new Set(withdrawnIds.map(String));
+  const candidateSiblings = [...new Set(files.flatMap(boundMailIds).filter((id) => !dropped.has(id)))];
+  const liveSiblings = new Set();
+  for (let i = 0; i < candidateSiblings.length; i += 200) {
+    const chunk = candidateSiblings.slice(i, i + 200);
+    const { data: cards, error } = await supabaseAdmin.from('Mail').select('id, escrow_status').in('id', chunk);
+    if (error) throw new Error(error.message);
+    for (const card of cards || []) if (card.escrow_status !== 'withdrawn') liveSiblings.add(String(card.id));
+  }
+  const toDelete = [];
+  for (const file of files) {
+    const remaining = boundMailIds(file).filter((id) => !dropped.has(id) && liveSiblings.has(id));
+    if (remaining.length) {
+      const nextMeta = { ...(file.metadata || {}), mail_id: remaining[0] };
+      if (remaining.length > 1) nextMeta.mail_ids = remaining;
+      else delete nextMeta.mail_ids;
+      const { error } = await supabaseAdmin.from('File')
+        .update({ metadata: nextMeta, updated_at: new Date().toISOString() })
+        .eq('id', file.id);
+      if (error) logger.warn('Card media not detached from withdrawn card', { fileId: file.id, error: error.message });
+    } else {
+      toDelete.push(file);
+    }
+  }
+  return toDelete.length ? removeFiles(toDelete) : 0;
+}
+
 /**
  * Removes the photo and voice of a card that was taken back or withdrawn (contract section 11: before delivery, taking
- * back removes its media). Best effort: whatever stays is marked for cleanup.
+ * back removes its media). On a multi-recipient list card, detaches this card and keeps the shared file while other
+ * recipients' cards are still live. Best effort: whatever stays is marked for cleanup.
  */
 async function removeForMail(mailId) {
   try {
-    const { data, error } = await supabaseAdmin.from('File').select(FILE_SELECT)
-      .eq('file_context', CONTEXT).eq('metadata->>mail_id', String(mailId));
-    if (error) throw new Error(error.message);
-    if (data?.length) await removeFiles(data);
+    const files = await filesForMailIds([mailId]);
+    if (files.length) await detachOrRemove(files, [mailId]);
   } catch (error) {
     logger.warn('Card media not removed', { mailId, error: error.message });
   }
@@ -516,10 +609,8 @@ async function removeWithdrawnBetween(a, b) {
     if (error) throw new Error(error.message);
     const ids = (cards || []).map((card) => String(card.id));
     if (!ids.length) return 0;
-    const { data: files, error: fileError } = await supabaseAdmin.from('File').select(FILE_SELECT)
-      .eq('file_context', CONTEXT).in('metadata->>mail_id', ids);
-    if (fileError) throw new Error(fileError.message);
-    return files?.length ? removeFiles(files) : 0;
+    const files = await filesForMailIds(ids);
+    return files.length ? detachOrRemove(files, ids) : 0;
   } catch (error) {
     logger.warn('Card media of withdrawn cards not removed', { error: error.message });
     return 0;
@@ -547,14 +638,19 @@ async function cleanup(now = new Date()) {
     if (error) throw new Error(error.message);
     if (!files?.length) break;
     after = files[files.length - 1].id;
-    const cardIds = [...new Set(files.map((f) => f.metadata?.mail_id).filter(Boolean))];
+    const cardIds = [...new Set(files.flatMap(boundMailIds))];
     const live = new Set();
-    if (cardIds.length) {
-      const { data: cards, error: cardError } = await supabaseAdmin.from('Mail').select('id, escrow_status').in('id', cardIds);
+    for (let i = 0; i < cardIds.length; i += 200) {
+      const chunk = cardIds.slice(i, i + 200);
+      const { data: cards, error: cardError } = await supabaseAdmin.from('Mail').select('id, escrow_status').in('id', chunk);
       if (cardError) throw new Error(cardError.message);
       for (const card of cards || []) if (card.escrow_status !== 'withdrawn') live.add(String(card.id));
     }
-    const doomed = files.filter((f) => f.is_deleted || !f.metadata?.mail_id || !live.has(String(f.metadata.mail_id)));
+    const doomed = files.filter((f) => {
+      if (f.is_deleted) return true;
+      const ids = boundMailIds(f);
+      return !ids.length || !ids.some((id) => live.has(id));
+    });
     if (doomed.length) removed += await removeFiles(doomed);
     if (files.length < CLEANUP_BATCH) break;
   }
@@ -582,6 +678,6 @@ async function cleanup(now = new Date()) {
 module.exports = {
   CONTEXT, STORAGE_CONTRACT, PREFIX, PHOTO, VOICE, LIVE, ALT_LIMIT, DRAFT_MS,
   memoriesOn, voiceOn, controls, cardPhoto, cardLive, movieDurationMs, liveTooLarge, looksLikeVideo, storeUpload, mediaRef, expiresAt,
-  checkRefs, cleanAlt, digestMedia, bind, unbind, boundFile, ownFile, photoCovered, blockedBeforeDelivery, send,
+  checkRefs, cleanAlt, digestMedia, bind, unbind, boundFile, boundMailIds, ownFile, photoCovered, blockedBeforeDelivery, send,
   removeFiles, removeForMail, removeWithdrawnBetween, cleanup, notFound, photoTooLarge,
 };

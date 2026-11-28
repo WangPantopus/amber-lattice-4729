@@ -88,16 +88,18 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
             case unavailable
         }
 
+        public let required: Bool
         public let state: State
         /// Bought stamps left now; nil when the balance couldn't be read just now.
         public let remaining: Int?
 
         private enum CodingKeys: String, CodingKey {
-            case state, remaining
+            case required, state, remaining
         }
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            required = (try? c.decodeIfPresent(Bool.self, forKey: .required)) ?? true
             let raw = try c.decode(String.self, forKey: .state)
             guard let state = State(rawValue: raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .state, in: c, debugDescription: "Unknown state \(raw)")
@@ -107,12 +109,20 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
         }
     }
 
+    /// Per-person free photo/voice card allowance (e.g., first 2 cards free); nil when disabled or from older servers.
+    public struct FreeAllowance: Decodable, Sendable, Hashable {
+        public let limit: Int
+        public let remaining: Int
+    }
+
     public let photo: Photo?
     public let voice: Voice?
+    public let freeAllowance: FreeAllowance?
     public let boughtStamp: BoughtStamp?
 
     private enum CodingKeys: String, CodingKey {
         case photo, voice
+        case freeAllowance = "free_allowance"
         case boughtStamp = "bought_stamp"
     }
 
@@ -120,6 +130,7 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         photo = try? c.decodeIfPresent(Photo.self, forKey: .photo)
         voice = try? c.decodeIfPresent(Voice.self, forKey: .voice)
+        freeAllowance = try? c.decodeIfPresent(FreeAllowance.self, forKey: .freeAllowance)
         boughtStamp = try? c.decodeIfPresent(BoughtStamp.self, forKey: .boughtStamp)
     }
 }

@@ -26,6 +26,8 @@ struct HolidayCardMediaRow: View {
     let gift: Bool
     /// No bought stamp left, and books are on sale: the buttons open the stamp books (`onNeedsStamp`).
     var needsStamp = false
+    var needsStampText = HolidayCardMediaRow.needsStampLine
+    var freeHint: String?
     var onNeedsStamp: () -> Void = {}
 
     @State private var picked: PhotosPickerItem?
@@ -80,11 +82,17 @@ struct HolidayCardMediaRow: View {
                     .accessibilityIdentifier("sendCardMicRefused")
             }
             if needsStamp, showsPhoto || showsVoice {
-                Text(HolidayCardMediaRow.needsStampLine)
+                Text(verbatim: needsStampText)
                     .font(.system(size: 13))
                     .foregroundStyle(HolidayCardDesk.muted(scheme))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("sendCardMediaNeedsStamp")
+            } else if let freeHint, showsPhoto || showsVoice {
+                Text(verbatim: freeHint)
+                    .font(.system(size: 13))
+                    .foregroundStyle(HolidayCardDesk.muted(scheme))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sendCardMediaFreeHint")
             }
             if attachments.photo != nil { describe }
         }

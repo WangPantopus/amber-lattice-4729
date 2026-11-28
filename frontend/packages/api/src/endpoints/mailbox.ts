@@ -771,6 +771,8 @@ export interface HolidayCards {
   media?: {
     photo: { usable: boolean; max_bytes: number; long_side: number };
     voice: { usable: boolean; max_seconds: number; max_bytes: number };
+    /** Per-person free photo/voice card allowance (e.g. first 2 free cards with photo/voice); absent when disabled. */
+    free_allowance?: { limit: number; remaining: number };
     /**
      * They go only on a card sent with a bought stamp (founder 2026-11-11), while photos are usable: 'ready' (one is left;
      * the card spends it), 'buy' (none: say so, and the buttons open the stamp books) or 'unavailable' (none, and none can
@@ -971,6 +973,11 @@ export interface HolidayCardList {
   recipients: { to: { user_id: string } | { email: string }; request_id: string }[];
   /** One signature for the whole list, as one note. */
   signature?: CardSignature | null;
+  /** Optional photo, photo description, Live Photo clip, and voice greeting shared across the list's cards. */
+  photo?: string;
+  photo_alt?: string;
+  photo_live?: string;
+  voice?: string;
   /** Each address keeps the list's choice (send it when the server offers `arrivals.email_all`). */
   emails_keep_arrival?: boolean;
   /** "Let it travel" (server key card_travel): each card starts a journey of its own. */

@@ -597,9 +597,9 @@ final class HolidayCardFlowViewModel {
         return body
     }
 
-    /// The photo the card carries: one person's card only (a list goes without), and only while the server takes one.
+    /// The photo and voice greeting the card (or list) carries, while the server takes them.
     var mediaPick: HolidayCardMediaPick {
-        guard recipient?.entries == nil, cards?.takesMemories == true else { return .none }
+        guard cards?.takesMemories == true else { return .none }
         return attachments.pick
     }
 
@@ -882,6 +882,7 @@ extension HolidayCardFlowViewModel {
             arrival: arrival,
             recipients: recipients,
             signature: cards?.signature == nil ? nil : signature,
+            media: mediaPick,
             // Each address keeps the list's choice, worded with all four (else the older mapping).
             emailsKeepArrival: cards?.emailAllArrivals == nil ? nil : true
         )
@@ -911,6 +912,7 @@ extension HolidayCardFlowViewModel {
         } catch {
             if needsTown(error, retry: { [weak self] in Task { await self?.lookItOver(opens: opens) } }) { return false }
             previewError = Self.refusal(error, fallback: "Couldn’t show your cards just now. Try again in a moment.")
+            await needsBoughtStamp(error)
             return false
         }
     }
@@ -933,8 +935,10 @@ extension HolidayCardFlowViewModel {
             sentTravels = body.travel == true
             step = .sent
             HolidayCardDraftStore.clear()
+            await rereadCards()
         } catch {
             if needsTown(error, retry: { [weak self] in self?.sealOrSend() }) { return }
+            if await needsBoughtStamp(error) { return }
             guard Self.refusalCode(error) == "STAMPS_REQUIRED" else {
                 sendError = Self.refusal(error, fallback: "Couldn’t send your cards just now. Try again in a moment.")
                 return
@@ -964,6 +968,7 @@ extension HolidayCardFlowViewModel {
             let _: TakeBackHolidayCardResponse = try await answer(HolidayCardEndpoints.takeBack(cardId: card.id))
             listTakenBack.insert(card.id)
             await stamps.refresh()
+            await rereadCards()
         } catch {
             listTakeBackError = (card.id, Self.refusal(error, fallback: "Couldn’t take your card back just now. Try again in a moment."))
         }
