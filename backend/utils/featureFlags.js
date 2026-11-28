@@ -105,6 +105,26 @@ function cardGuestOpenEnabled(env = process.env) {
   return isOn(env, 'CARD_GUEST_OPEN');
 }
 
+// Photo & voice greetings on Christmas cards work on free stamps up to a per-person allowance (default 2 free cards
+// carrying a photo and/or voice greeting; after that, a bought stamp is needed). Set CARD_MEDIA_FREE=0 (or
+// CARD_MEDIA_FREE_LIMIT=0) to require a bought stamp for every media card without a database migration.
+const DEFAULT_CARD_MEDIA_FREE_LIMIT = 2;
+
+function cardMediaFreeLimit(env = process.env) {
+  if (env.CARD_MEDIA_FREE !== undefined && String(env.CARD_MEDIA_FREE).trim() !== '' && !isOn(env, 'CARD_MEDIA_FREE')) {
+    return 0;
+  }
+  const raw = env.CARD_MEDIA_FREE_LIMIT;
+  if (raw === undefined || String(raw).trim() === '') return DEFAULT_CARD_MEDIA_FREE_LIMIT;
+  const parsed = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_CARD_MEDIA_FREE_LIMIT;
+  return parsed;
+}
+
+function cardMediaFreeEnabled(env = process.env) {
+  return cardMediaFreeLimit(env) > 0;
+}
+
 // First-launch scope (founder direction, 2026-09-27). These features are
 // hidden for the first launch; their code stays. A feature is OFF unless its
 // key is listed in LAUNCH_FEATURES (comma-separated, or "all"). The same keys
@@ -303,6 +323,8 @@ module.exports = {
   todayHouseEnabled,
   cardEmailRemindersEnabled,
   cardGuestOpenEnabled,
+  cardMediaFreeEnabled,
+  cardMediaFreeLimit,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
   areLaunchFeaturesEnabled,

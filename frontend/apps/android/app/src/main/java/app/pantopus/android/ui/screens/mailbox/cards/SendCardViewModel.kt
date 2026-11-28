@@ -591,6 +591,9 @@ class SendCardViewModel
                     arrival,
                     recipients,
                     signature = form.signature,
+                    photo = form.photo?.fileId,
+                    photoAlt = form.photo?.sentAlt,
+                    voice = form.voice?.fileId,
                     emailsKeepArrival = keep,
                     travel = true.takeIf { town.travels(form) },
                 )

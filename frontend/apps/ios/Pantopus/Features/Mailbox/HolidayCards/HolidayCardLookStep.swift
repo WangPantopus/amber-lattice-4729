@@ -523,7 +523,7 @@ struct HolidayCardLookEnd: View {
                 text: viewModel.recipient?.isLink == true ? HolidayCardWords.sealNoteByLink : HolidayCardWords.sealNote(byEmail: byEmail)
             )
             if viewModel.cards?.postageEnabled == true, let design = viewModel.design {
-                StampPostageLine(store: viewModel.stamps, design: design.id, media: viewModel.carriesMedia)
+                StampPostageLine(store: viewModel.stamps, design: design.id, media: viewModel.mediaRequiresBoughtStamp)
             }
         }
         .padding(.top, Spacing.s3)
@@ -563,7 +563,7 @@ struct HolidayCardLookFooter: View {
     }
 
     private var needsBoughtStamp: Bool {
-        viewModel.carriesMedia && viewModel.boughtStampsLeft == 0
+        viewModel.mediaNeedsBoughtStamp
     }
 
     var body: some View {

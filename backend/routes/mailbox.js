@@ -32,7 +32,7 @@ const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
 const smsService = require('../services/smsService');
 const { isBlocked } = require('../services/blockService');
-const { skipForLaunchCut, areLaunchFeaturesEnabled, cardGuestOpenEnabled } = require('../utils/featureFlags');
+const { skipForLaunchCut, areLaunchFeaturesEnabled, cardGuestOpenEnabled, cardMediaFreeLimit } = require('../utils/featureFlags');
 // Other people are named the way neighbors see them: by their Local Profile (a business by the business).
 const { loadChatPeople } = require('../services/chatPeople');
 const { localDisplayNames } = require('../utils/identityProfiles');
@@ -1814,7 +1814,7 @@ const cardListSchema = Joi.object({
   })).min(1).max(CARD_LIST_MAX).unique(sameCardRecipient).unique('request_id').required(),
   // One signature for the whole list, as one note (sendCardSchema).
   signature: CARD_SIGNATURE_FIELD,
-  // Accepted only to be refused clearly (CARD_MEDIA_ONE_PERSON): a photo or voice goes on a card to one person.
+  // Photo, Live Photo and voice greeting can go on every card of the list (shared private File row bound to each card).
   ...CARD_MEDIA_FIELDS,
   // "Let it travel" (card_travel): each card of the list starts a journey of its own.
   travel: Joi.boolean(),
@@ -1996,10 +1996,54 @@ async function personRefusal(senderId, toUserId) {
 
 const refuseCard = (status, error, code) => ({ refusal: { status, body: { error, code } } });
 
-// A card's own photo or voice greeting goes only on a card sent with a bought stamp (founder, 2026-11-11; migration
-// 20261111090000_card_media_bought_stamp). Without one left, the apps open the stamp books, as for no stamps at all.
+// A card's own photo or voice greeting is free on the sender's first N media cards (default 2, founder 2026-11-28;
+// CARD_MEDIA_FREE_LIMIT / CARD_MEDIA_FREE=0 to revert). After that, each card with photo or voice spends a bought
+// stamp (migration 20261111090000_card_media_bought_stamp). Without one left, the apps open the stamp books.
 const MEDIA_NEEDS_STAMP_WORDS = 'Free stamps send your card and note. A photo or voice greeting needs a bought stamp.';
-const cardMediaNeedsStamp = () => refuseCard(402, MEDIA_NEEDS_STAMP_WORDS, 'CARD_MEDIA_NEEDS_STAMP');
+const cardMediaNeedsStamp = (message = MEDIA_NEEDS_STAMP_WORDS, extra = null) => ({
+  refusal: { status: 402, body: { error: message, code: 'CARD_MEDIA_NEEDS_STAMP', ...(extra || {}) } },
+});
+
+function mediaNeedsStampMessage({ limit = 0, total = 1, freeSlots = 0, paidNeeded = 1 } = {}) {
+  if (limit <= 0) return MEDIA_NEEDS_STAMP_WORDS;
+  if (total > 1) {
+    const stampsWord = paidNeeded === 1 ? 'bought stamp' : 'bought stamps';
+    if (freeSlots > 0) {
+      return `Your first ${limit} photo or voice cards are free. These ${total} cards need ${paidNeeded} ${stampsWord}.`;
+    }
+    return `You’ve used your ${limit} free photo or voice cards. These ${total} cards need ${paidNeeded} ${stampsWord}.`;
+  }
+  return `You’ve used your ${limit} free photo or voice cards. Adding more uses a bought stamp.`;
+}
+
+/**
+ * How many active cards this sender has sent using their free photo/voice allowance (taken-back or expired cards
+ * return their slot automatically). `excludeRowIds` prevents idempotent retries/previews from double-counting.
+ */
+async function freeMediaCardsUsed(senderId, { excludeRowIds = [] } = {}) {
+  let query = supabaseAdmin.from('Mail').select('id', { count: 'exact', head: true })
+    .eq('sender_user_id', senderId)
+    .eq('type', 'letter')
+    .is('sender_entity_id', null)
+    .is('deleted_at', null)
+    .contains('tags', [holidayCards.CARD_TAG])
+    .eq('mail_extracted->card->>media_free', 'true')
+    .or('escrow_status.is.null,escrow_status.not.in.(withdrawn,expired)');
+  if (excludeRowIds.length) {
+    query = query.not('id', 'in', `(${excludeRowIds.join(',')})`);
+  }
+  const { count, error } = await query;
+  if (error) throw new Error(error.message);
+  return Number(count) || 0;
+}
+
+/** Remaining free photo/voice cards for this sender (`{ limit, used, remaining }`). */
+async function freeMediaRemaining(senderId, { excludeRowIds = [] } = {}) {
+  const limit = cardMediaFreeLimit();
+  if (limit <= 0) return { limit: 0, used: 0, remaining: 0 };
+  const used = await freeMediaCardsUsed(senderId, { excludeRowIds });
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
 
 /** The bought stamps a person has left now: none while stamp books aren't on for them. Throws when unreadable. */
 async function boughtStampsLeft(senderId) {
@@ -2042,7 +2086,7 @@ async function checkCard(senderId, body, now) {
 
 // The checks of the card itself and of who sends it: the design, the note, a personal account, the season and one card
 // a day. Answers { refusal }, or { design, message, sender, senderZone, signature } for checkCardRecipient.
-async function checkCardSender(senderId, body, now) {
+async function checkCardSender(senderId, body, now, { batchRowIds = null } = {}) {
   const refuse = refuseCard;
   const design = holidayCards.designById(body.design);
   if (!design) return refuse(400, 'Pick one of the Christmas cards.', 'CARD_DESIGN_UNKNOWN');
@@ -2062,14 +2106,33 @@ async function checkCardSender(senderId, body, now) {
   let media = { media: null, files: [] };
   try {
     media = await cardMedia.checkRefs(senderId, body, {
-      rowId: body.request_id ? holidayCards.requestRowId(senderId, body.request_id) : null, now });
+      rowId: body.request_id ? holidayCards.requestRowId(senderId, body.request_id) : null,
+      batchRowIds,
+      now,
+    });
   } catch (mediaErr) {
     if (mediaErr.refusal) return refuse(mediaErr.status, mediaErr.message, mediaErr.code);
     throw mediaErr;
   }
-  // ...and they go only on a card sent with a bought stamp, so one must be left (Look it over and every send ask again).
-  // The database decides once more as it stores the card, so a send racing another can't spend a free one on it.
-  if (media.media && (await boughtStampsLeft(senderId)) < 1) return cardMediaNeedsStamp();
+  // First N photo/voice cards per person are free (default 2, founder 2026-11-28); beyond that, a bought stamp is required.
+  let useFreeMedia = false;
+  let freeMediaLeft = 0;
+  let freeMediaLimit = 0;
+  if (media.media) {
+    const excludeRowIds = batchRowIds
+      ? batchRowIds.filter(Boolean)
+      : (body.request_id ? [holidayCards.requestRowId(senderId, body.request_id)] : []);
+    const allowance = await freeMediaRemaining(senderId, { excludeRowIds });
+    freeMediaLeft = allowance.remaining;
+    freeMediaLimit = allowance.limit;
+    if (!batchRowIds) {
+      if (freeMediaLeft >= 1) {
+        useFreeMedia = true;
+      } else if ((await boughtStampsLeft(senderId)) < 1) {
+        return cardMediaNeedsStamp(mediaNeedsStampMessage({ limit: freeMediaLimit }));
+      }
+    }
+  }
 
   // A person sends Christmas cards; a business account doesn't.
   const { data: sender, error: senderError } = await supabaseAdmin.from('User')
@@ -2092,6 +2155,7 @@ async function checkCardSender(senderId, body, now) {
     travelFrom = cardTravel.stopOf(town, mailDelivery.localDate(now, senderZone));
   }
   return { design, message, sender, senderZone, signature: signed.signature, media: media.media, mediaFiles: media.files,
+    useFreeMedia, freeMediaLeft, freeMediaLimit,
     ...(travelFrom ? { travelFrom } : {}) };
 }
 
@@ -2147,7 +2211,7 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
     Object.assign(card, { sealed_until: timing.sealed_until, take_back_until: timing.take_back_until,
       arrives_on: mailDelivery.localDate(new Date(timing.delivered_at), recipientZone),
       to_name: people.get(String(toUserId))?.displayName || null });
-    return { design, message, signature, media, mediaFiles, arrival, senderZone, toUserId, toEmail: null, card, zone: recipientZone,
+    return { design, message, signature, media, mediaFiles, useFreeMedia: Boolean(from.useFreeMedia), arrival, senderZone, toUserId, toEmail: null, card, zone: recipientZone,
       senderDisplay: people.get(String(senderId))?.displayName || 'Someone',
       delivery: { delivered_at: timing.delivered_at, special_delivery: false }, escrowExpiresAt: null };
   }
@@ -2186,7 +2250,7 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
   Object.assign(card, byLink ? { by_link: true } : { to_name: maskContact(toEmail) }, { sealed_until: timing.sealed_until });
   const emailSendAt = byLink ? null : timing.send_at;
   const waitsFrom = emailSendAt ? Math.max(now.getTime(), Date.parse(emailSendAt)) : now.getTime();
-  return { design, message, signature, media, mediaFiles, arrival, senderZone, toUserId: null, toEmail, card, zone: senderZone,
+  return { design, message, signature, media, mediaFiles, useFreeMedia: Boolean(from.useFreeMedia), arrival, senderZone, toUserId: null, toEmail, card, zone: senderZone,
     senderDisplay: (await loadChatPeople([senderId])).get(String(senderId))?.displayName || 'Someone',
     delivery: { delivered_at: now.toISOString(), special_delivery: false },
     emailSendAt: emailSendAt && Date.parse(emailSendAt) > now.getTime() ? emailSendAt : null,
@@ -2216,9 +2280,19 @@ router.get('/cards', verifyToken, async (req, res) => {
     const timeZone = (await mailDelivery.personTimeZone(senderId)) || mailDelivery.FALLBACK_TIME_ZONE;
     const [today] = await cardsSentToday(senderId, timeZone, now);
     const arrivals = (byEmail, all = false) => holidayCards.arrivalsFor({ byEmail, all, timeZone, now, nextRound: mailDelivery.nextRound });
-    const stamps = await stampsRead;
     const controls = cardMedia.controls();
-    const saved = await savedRead;
+    const freeMediaRead = controls.photo.usable
+      ? freeMediaRemaining(senderId).catch(() => ({ limit: 0, used: 0, remaining: 0 }))
+      : Promise.resolve({ limit: 0, used: 0, remaining: 0 });
+    const [stamps, saved, freeMedia] = await Promise.all([stampsRead, savedRead, freeMediaRead]);
+    const freeAllowance = freeMedia.limit > 0 ? { limit: freeMedia.limit, remaining: freeMedia.remaining } : null;
+    const mediaControls = controls.photo.usable
+      ? {
+          ...controls,
+          ...(freeAllowance ? { free_allowance: freeAllowance } : {}),
+          ...(freeMedia.remaining > 0 ? {} : { bought_stamp: await boughtStampControls(senderId, postage, stamps) }),
+        }
+      : controls;
     return res.json({
       open: holidayCards.seasonOpen(timeZone, now),
       holiday: holidayCards.SEASON.holiday,
@@ -2230,10 +2304,9 @@ router.get('/cards', verifyToken, async (req, res) => {
       // next cards (PUT/DELETE /cards/signature); `saved` is the one it keeps, or null. Only ever the reader's own.
       ...(cardTableOn() ? { signature: { w: holidayCards.SIGNATURE_BOX.w, h: holidayCards.SIGNATURE_BOX.h,
         max_bytes: holidayCards.SIGNATURE_MAX_BYTES, saves: true, saved } } : {}),
-      // Which of a card's own photo and voice can be added now (launch key holiday_card_memories), their limits, and,
-      // while they can, the bought stamp they need (founder, 2026-11-11).
-      media: controls.photo.usable
-        ? { ...controls, bought_stamp: await boughtStampControls(senderId, postage, stamps) } : controls,
+      // Which of a card's own photo and voice can be added now (launch key holiday_card_memories) and their limits.
+      // First N photo/voice cards (default 2) omit bought_stamp so free stamps carry them; once used, bought_stamp applies.
+      media: mediaControls,
       // A long passage's verse isn't printed under its card on "Pick a card" (holidayCards.pickACardDesign).
       designs: holidayCards.DESIGNS.map(holidayCards.pickACardDesign),
       // Each with its short name, public name, opening card and (Christmas with Jesus Christ) parts: older apps ignore them.
@@ -2671,16 +2744,19 @@ function recordCardSent(mailId, { senderId, via, listSize, travels, postage }) {
  * first, or refuses it (mail_stamp_card_accounting), so a card that isn't stored costs nothing. `listSize`: it went
  * with others on one list (POST /cards/batch). Throws when it can't tell what became of the card.
  */
-async function storeCard({ senderId, checked, requestId, rowId, digest, now, listSize = null, free = false }) {
+async function storeCard({ senderId, checked, requestId, rowId, digest, now, listSize = null, free = false, alreadyBound = false, useFreeMedia = false }) {
   const { design, message, signature, media, mediaFiles = [], arrival, senderZone, toUserId, toEmail, card, delivery } = checked;
   // `free`: a card passed on (card_travel) is stored with no postage mark, so the database takes no stamp for it, and it
   // is never the day's card (settled as it's stored).
   const postage = !free && mailStamps.enabled(senderId);
   if (requestId) card.request = { id: requestId, digest, ...(postage || free ? { settled_at: now.toISOString() } : {}) };
   if (postage) card.postage_v1 = true;
-  // A card with its own photo or voice spends a bought stamp, or isn't stored (mail_stamp_card_accounting). The mark is
-  // the server's alone: GET routes never show it (services/mailPiece).
-  if (media || mediaFiles.length) card.media_stamp = 'paid';
+  // First N photo/voice cards use the free allowance (`media_free = true`, omitting `media_stamp` so free stamps spend
+  // first); beyond that, mark `media_stamp = 'paid'` so the Postgres trigger requires and spends a bought stamp.
+  if (media || mediaFiles.length) {
+    if (useFreeMedia || checked.useFreeMedia) card.media_free = true;
+    else card.media_stamp = 'paid';
+  }
   const byLink = Boolean(card.by_link);
   // A link's token, and an email's, come from the row's id (so a retry of the email carries the same link), so the id is
   // known before the insert. Without the server's secret an email's token is random, as it always was.
@@ -2693,7 +2769,8 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
 
   // A photo or voice is tied to the card's id (from its request ID) before the card is stored, so its routes can tell
   // whose it is; a send that loses one to another card meanwhile is refused (services/holidayCardMedia).
-  if (mediaFiles.length) {
+  // For multi-recipient list sends, the batch binds all ready rowIds up front (`alreadyBound: true`).
+  if (!alreadyBound && mediaFiles.length) {
     try {
       await cardMedia.bind(rowId, mediaFiles);
     } catch (bindErr) {
@@ -2702,7 +2779,7 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
       return cardUnavailable();
     }
   }
-  const untie = () => (mediaFiles.length ? cardMedia.unbind(rowId, mediaFiles) : null);
+  const untie = () => (!alreadyBound && mediaFiles.length ? cardMedia.unbind(rowId, mediaFiles) : null);
 
   // The note, the signature and the card's own photo and voice live only in the card's private stored copy, never in
   // the Mail row (services/holidayCards).
@@ -2963,10 +3040,6 @@ function listArrival(arrival, byEmail, keepForEmail = false) {
   return arrival === 'now' ? 'next_morning' : arrival;
 }
 
-// A card's own photo and voice go on a card to one person: each is tied to one card (services/holidayCardMedia).
-const cardMediaOnePerson = () => ({ status: 400, body: { code: 'CARD_MEDIA_ONE_PERSON',
-  error: 'A photo or voice greeting goes on a card to one person. Send this card on its own, or remove them.' } });
-
 // A single send's check of an address (sendCardSchema), run on a list card by card.
 const cardEmailSchema = Joi.string().email().max(320);
 
@@ -2980,19 +3053,25 @@ async function inGroups(items, size, fn) {
  * people four at a time and addresses one by one in list order, so the email limits count the addresses before them,
  * and last the 50 cards in 24 hours, as the database counts them, so cards past it neither go nor count for stamps.
  * A card an earlier try of its request ID stored answers from what became of it. Answers { refusal } for the whole
- * list, or { items } in list order, each { requestId, rowId, digest } with `checked` (ready to store) or `answer`
- * ({ status, body }: sent before, taken back, or refused).
+ * list, or { items, mediaFiles } in list order, each { requestId, rowId, digest } with `checked` (ready to store) or
+ * `answer` ({ status, body }: sent before, taken back, or refused).
  */
 async function checkCardList(senderId, body, now) {
-  const from = await checkCardSender(senderId, body, now);
-  if (from.refusal) return from;
+  const mediaFields = {
+    ...(body.photo ? { photo: body.photo } : {}),
+    ...(body.photo_alt ? { photo_alt: body.photo_alt } : {}),
+    ...(body.photo_live ? { photo_live: body.photo_live } : {}),
+    ...(body.voice ? { voice: body.voice } : {}),
+  };
   const items = body.recipients.map(({ to, request_id: id }) => {
     const single = { design: body.design, message: body.message,
       arrival: listArrival(body.arrival, Boolean(to.email), body.emails_keep_arrival === true), to,
-      signature: body.signature, ...(body.travel === true ? { travel: true } : {}) };
+      signature: body.signature, ...mediaFields, ...(body.travel === true ? { travel: true } : {}) };
     const requestId = String(id).toLowerCase();
     return { requestId, rowId: holidayCards.requestRowId(senderId, requestId), single, digest: cardRequestDigest(single) };
   });
+  const from = await checkCardSender(senderId, body, now, { batchRowIds: items.map((item) => item.rowId) });
+  if (from.refusal) return from;
   const checkOne = async (item, earlierAddresses) => {
     try {
       if (item.single.to.email && cardEmailSchema.validate(item.single.to.email).error) {
@@ -3028,7 +3107,7 @@ async function checkCardList(senderId, body, now) {
       delete item.checked;
     }
   }
-  return { items };
+  return { items, mediaFiles: from.mediaFiles || [], freeMediaLeft: from.freeMediaLeft || 0, freeMediaLimit: from.freeMediaLimit || 0 };
 }
 
 // One card's line in a list's answer: sent now, sent by an earlier try of the list, or not sent and why.
@@ -3052,12 +3131,22 @@ router.post('/cards/batch/preview', verifyToken, validate(cardListSchema), async
   const senderId = req.user.id;
   // Without digital stamps it's one card a day: there's no list.
   if (!mailStamps.enabled(senderId)) return sendCardsOff(res);
-  if (req.body.photo || req.body.voice) return reply(res, cardMediaOnePerson());
   try {
     const now = new Date();
     const list = await checkCardList(senderId, req.body, now);
     if (list.refusal) return reply(res, list.refusal);
     const stamps = await mailStamps.balance(senderId);
+    const ready = list.items.filter((item) => item.checked);
+    if (list.mediaFiles.length && ready.length) {
+      const freeSlots = Math.min(ready.length, list.freeMediaLeft || 0);
+      const paidNeeded = ready.length - freeSlots;
+      if (paidNeeded > (Number(stamps.paid_remaining) || 0)) {
+        return reply(res, cardMediaNeedsStamp(
+          mediaNeedsStampMessage({ limit: list.freeMediaLimit, total: ready.length, freeSlots, paidNeeded }),
+          { needed_paid: paidNeeded, free_media_remaining: list.freeMediaLeft || 0 },
+        ).refusal);
+      }
+    }
     const recipients = list.items.map((item) => {
       if (!item.checked) {
         const line = listLine(item);
@@ -3085,19 +3174,19 @@ router.post('/cards/batch/preview', verifyToken, validate(cardListSchema), async
 
 /**
  * POST /api/mailbox/cards/batch
- *   { design, message, arrival, use_stamp: true, recipients: [{ to: { user_id } | { email }, request_id }], emails_keep_arrival? }
+ *   { design, message, arrival, use_stamp: true, recipients: [{ to: { user_id } | { email }, request_id }], emails_keep_arrival?, photo?, photo_alt?, photo_live?, voice? }
  * Send one card to up to 20 people or addresses at once (digital stamps on): each gets a card of its own with the same
- * picture and note, and the list's choice of arrival in its own words (listArrival). When the cards that can go need
- * more stamps than are left, nothing is sent: 402 STAMPS_REQUIRED with `needed` and `available`. Otherwise 200
- * { results, stamps }: for each card, in list order, { request_id, status: 'sent' | 'already_sent', card } or
- * { request_id, status: 'not_sent', error, code }, and the balance after. A card that didn't go used no stamp; sending
- * the list again with the same request IDs sends only those (the others answer 'already_sent').
+ * picture, note, signature, and optional photo/voice greeting, and the list's choice of arrival in its own words
+ * (listArrival). When the cards that can go need more stamps than are left, nothing is sent: 402 STAMPS_REQUIRED with
+ * `needed` and `available`. Otherwise 200 { results, stamps }: for each card, in list order,
+ * { request_id, status: 'sent' | 'already_sent', card } or { request_id, status: 'not_sent', error, code }, and the
+ * balance after. A card that didn't go used no stamp; sending the list again with the same request IDs sends only
+ * those (the others answer 'already_sent').
  */
 router.post('/cards/batch', verifyToken, validate(cardListSchema), async (req, res) => {
   if (!cardsOn()) return sendCardsOff(res);
   const senderId = req.user.id;
   if (!mailStamps.enabled(senderId)) return sendCardsOff(res);
-  if (req.body.photo || req.body.voice) return reply(res, cardMediaOnePerson());
   try {
     const now = new Date();
     const list = await checkCardList(senderId, req.body, now);
@@ -3110,15 +3199,38 @@ router.post('/cards/batch', verifyToken, validate(cardListSchema), async (req, r
         code: 'STAMPS_REQUIRED', needed: ready.length, available: stamps.available,
       });
     }
-    await inGroups(ready, 4, async (item) => {
+    const mediaFiles = list.mediaFiles || [];
+    const freeSlots = mediaFiles.length ? Math.min(ready.length, list.freeMediaLeft || 0) : 0;
+    const paidNeeded = mediaFiles.length ? ready.length - freeSlots : 0;
+    if (paidNeeded > (Number(stamps.paid_remaining) || 0)) {
+      return reply(res, cardMediaNeedsStamp(
+        mediaNeedsStampMessage({ limit: list.freeMediaLimit, total: ready.length, freeSlots, paidNeeded }),
+        { needed_paid: paidNeeded, free_media_remaining: list.freeMediaLeft || 0 },
+      ).refusal);
+    }
+    const readyIds = ready.map((item) => item.rowId);
+    if (ready.length && mediaFiles.length) {
+      try {
+        await cardMedia.bind(readyIds, mediaFiles);
+      } catch (bindErr) {
+        if (bindErr.refusal) return res.status(bindErr.status).json({ error: bindErr.message, code: bindErr.code });
+        logger.warn('Card list media not tied', { senderId, error: bindErr.message });
+        return sendCardUnavailable(res);
+      }
+    }
+    const readyWithAllowance = ready.map((item, idx) => ({ item, useFreeMedia: mediaFiles.length > 0 && idx < freeSlots }));
+    await inGroups(readyWithAllowance, 4, async ({ item, useFreeMedia }) => {
       try {
         item.answer = await storeCard({ senderId, checked: item.checked, requestId: item.requestId, rowId: item.rowId,
-          digest: item.digest, now, listSize: list.items.length });
+          digest: item.digest, now, listSize: list.items.length, alreadyBound: Boolean(mediaFiles.length), useFreeMedia });
       } catch (err) {
         logger.warn('Card on a list not sent', { senderId, error: err.message });
         item.answer = cardUnavailable();
       }
     });
+    if (ready.length && mediaFiles.length && !ready.some((item) => item.answer?.status === 201 || item.answer?.status === 200)) {
+      await cardMedia.unbind(readyIds, mediaFiles);
+    }
     return res.json({ results: list.items.map(listLine), stamps: await mailStamps.balance(senderId).catch(() => null) });
   } catch (err) {
     logger.error('Card list send error', { error: err.message, userId: senderId });

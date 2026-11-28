@@ -94,18 +94,39 @@ const LOOK_UNAVAILABLE = 'Pantopus can’t show how your card will look yet. You
  * The server can't show the look: it has no Look it over yet (a 404 without the server's code, as a server from before
  * it answers). Sending still works there.
  */
-/** A card's own photo and voice go only with a bought stamp (founder 2026-11-11): 'ready', 'buy' or 'unavailable'. */
+/** A card's own photo and voice go with a bought stamp once the free allowance (default 2) is used. */
 type MediaStamp = 'ready' | 'buy' | 'unavailable';
 const MEDIA_NEEDS_STAMP = 'Free stamps send your card and note. A photo or voice greeting needs a bought stamp.';
+function mediaNeedsStampText(freeAllowance?: { limit: number; remaining: number } | null): string {
+  if (freeAllowance && freeAllowance.limit > 0 && freeAllowance.remaining === 0) {
+    return `You’ve used your ${freeAllowance.limit} free photo or voice cards. Adding more uses a bought stamp.`;
+  }
+  return MEDIA_NEEDS_STAMP;
+}
+function freeMediaHintText(
+  freeAllowance: { limit: number; remaining: number } | null | undefined,
+  paidRemaining: number,
+  listCount: number,
+): string | null {
+  if (!freeAllowance || freeAllowance.limit <= 0 || freeAllowance.remaining <= 0 || paidRemaining > 0) return null;
+  if (listCount > freeAllowance.remaining) {
+    const paid = listCount - freeAllowance.remaining;
+    return `You have ${freeAllowance.remaining} free photo or voice ${freeAllowance.remaining === 1 ? 'card' : 'cards'} left. This list of ${listCount} will need ${paid} bought ${paid === 1 ? 'stamp' : 'stamps'}.`;
+  }
+  if (freeAllowance.remaining === freeAllowance.limit) {
+    return `Your first ${freeAllowance.limit} cards with a photo or voice greeting are free.`;
+  }
+  return `${freeAllowance.remaining} free photo or voice ${freeAllowance.remaining === 1 ? 'card' : 'cards'} left — after that, they use a bought stamp.`;
+}
 
 /**
  * Where a card's own photo and voice stand: the server's word when the cards loaded, followed by the live stamp balance
  * (refreshed when the page comes back from checkout), so buying a book makes them work without leaving the step. Null:
  * an older server that doesn't ask for a bought stamp.
  */
-function mediaStampOf(server: { state: MediaStamp } | null | undefined,
+function mediaStampOf(server: { required?: boolean; state: MediaStamp } | null | undefined,
   live: { paid_remaining: number; sales_open?: boolean } | null | undefined): MediaStamp | null {
-  if (!server) return null;
+  if (!server || server.required === false) return null;
   if (!live) return server.state;
   if (live.paid_remaining >= 1) return 'ready';
   return live.sales_open === false ? 'unavailable' : 'buy';
@@ -934,6 +955,8 @@ function WriteStep({
   onRemoveVoice,
   onRetryVoice,
   mediaStamp = null,
+  mediaNeedsStampLine = MEDIA_NEEDS_STAMP,
+  freeMediaHint = null,
   onGetStamps,
   noteHelp = null,
   onCloth = false,
@@ -978,6 +1001,8 @@ function WriteStep({
   onRetryVoice?: () => void;
   /** 'buy': no bought stamp left, so the photo and voice buttons open the stamp books (founder 2026-11-11). */
   mediaStamp?: MediaStamp | null;
+  mediaNeedsStampLine?: string;
+  freeMediaHint?: string | null;
   onGetStamps?: () => void;
   /**
    * "Help me write it" (GET /cards `note_help`, launch key card_note_help): the first names the card is to and how
@@ -1196,7 +1221,8 @@ function WriteStep({
               </div>
             </div>
           )}
-          {needsStamp ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaNeedsStamp">{MEDIA_NEEDS_STAMP}</p> : null}
+          {needsStamp ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaNeedsStamp">{mediaNeedsStampLine}</p> : null}
+          {!needsStamp && freeMediaHint ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaFreeHint">{freeMediaHint}</p> : null}
           {recorder.refused ? <p role="alert" className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMicRefused">{recorder.refused}</p> : null}
           {photo ? (
             <label className={`mt-3 block text-[13px] ${quiet}`}>
@@ -1927,6 +1953,10 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   const max = data?.max_recipients ?? 1;
   const stamps = useStamps(Boolean(data?.postage_enabled), `${sent?.id ?? ''}:${listSent?.length ?? 0}:${listTakenBack.size}:${tookBack}:${step}`);
   const mediaStamp = mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null);
+  const freeMediaAllowance = data?.media?.free_allowance ?? null;
+  const mediaNeedsStampLine = mediaNeedsStampText(freeMediaAllowance);
+  const paidRemaining = stamps.balance?.paid_remaining ?? data?.stamps?.paid_remaining ?? 0;
+  const freeMediaHint = freeMediaHintText(freeMediaAllowance, paidRemaining, to?.kind === 'list' ? to.entries.length : 1);
   const design = useMemo(() => data?.designs.find((d) => d.id === designId) ?? null, [data, designId]);
   // "Pick a card" as shelves (server key card_shelves, card shelves SPEC Part C): null for today's screen. A collection's
   // page opens inside step 2 with its own entry in the browser's history (?collection=<slug>), so the browser's Back
@@ -2116,6 +2146,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         request_id: listId(entry),
       })),
       ...(signature ? { signature } : {}),
+      ...(photoReady ? { photo: photoReady.file_id, ...(photoAlt.trim() ? { photo_alt: photoAlt.trim() } : {}) } : {}),
+      ...(voiceReady ? { voice: voiceReady.file_id } : {}),
       // Each address keeps the list's choice where the server offers every email choice.
       ...(data?.arrivals.email_all ? { emails_keep_arrival: true } : {}),
       ...(travelling ? { travel: true } : {}),
@@ -2218,8 +2250,20 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       setSealError(null);
       previewList.mutate(list, {
         onSuccess: (res) => { setListLook(res); setListError(null); setStep('look'); },
-        // A refusal of the whole list (the season closed, say) shows under the choices.
-        onError: (error) => setSealError(sendMessage(error)),
+        // A refusal of the whole list (the season closed, or bought stamps needed for media) shows under the choices.
+        onError: (error) => {
+          if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = error.message || mediaNeedsStampLine;
+            setSealError(reason);
+            void stamps.refresh();
+            void cards.refetch();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            return;
+          }
+          setSealError(sendMessage(error));
+        },
       });
       return;
     }
@@ -2238,7 +2282,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         if (error.serverCode === 'CARD_TRAVEL_NEEDS_TOWN') { preview.reset(); setTownFor({ then: doLook }); return; }
         if (lookIsUnavailable(error)) setLookUnavailable(true);
         // Its photo or voice needs a bought stamp: the stamp books open; step 4 says why, and the card stays as it is.
-        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') { void stamps.refresh(); setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); setStampSheet(true); }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          void stamps.refresh();
+          void cards.refetch();
+          setStampShort(null);
+          setStampReason(error.message || mediaNeedsStampLine);
+          setStampSheet(true);
+        }
       },
     });
   };
@@ -2280,7 +2330,19 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           if (everyOneGoes && enoughStamps && launchFeatures.cardTable) openSealing(res.piece ?? null);
           else setStep('look');
         },
-        onError: (error) => setSealError(sendMessage(error)),
+        onError: (error) => {
+          if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = error.message || mediaNeedsStampLine;
+            setSealError(reason);
+            void stamps.refresh();
+            void cards.refetch();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            return;
+          }
+          setSealError(sendMessage(error));
+        },
       });
       return;
     }
@@ -2304,7 +2366,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           if (launchFeatures.cardTable) openSealing(null);
           return;
         }
-        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') { void stamps.refresh(); setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); setStampSheet(true); }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          void stamps.refresh();
+          void cards.refetch();
+          setStampShort(null);
+          setStampReason(error.message || mediaNeedsStampLine);
+          setStampSheet(true);
+        }
       },
     });
   };
@@ -2316,7 +2384,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     const fromSeal = step === 'seal';
     setSealError(null);
     send.mutate(card, {
-      onSuccess: (res) => { requestId.current = null; setSent(res.card); setSentLink(res.link ?? null); setLook(null); setStep('sent'); },
+      onSuccess: (res) => { requestId.current = null; setSent(res.card); setSentLink(res.link ?? null); setLook(null); setStep('sent'); void cards.refetch(); },
       onError: (error) => {
         if (wentEarlier(error)) return;
         // The stamps ran out meanwhile (another tab or phone sent a card): the stamp books open; the card stays as it is.
@@ -2328,11 +2396,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         }
         // Its photo or voice needs a bought stamp and none is left: the same, and step 4 says why.
         if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
-          setSealError(error.message || MEDIA_NEEDS_STAMP);
+          const reason = error.message || mediaNeedsStampLine;
+          setSealError(reason);
           send.reset();
           void stamps.refresh();
+          void cards.refetch();
           setStampShort(null);
-          setStampReason(MEDIA_NEEDS_STAMP);
+          setStampReason(reason);
           setStampSheet(true);
           return;
         }
@@ -2359,13 +2429,23 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     if (!list) return;
     setListError(null);
     sendList.mutate(list, {
-      onSuccess: (res) => { setListSent(res.results); setListLook(null); setStep('sent'); },
+      onSuccess: (res) => { setListSent(res.results); setListLook(null); setStep('sent'); void cards.refetch(); },
       onError: (error) => {
         if (error.serverCode === 'STAMPS_REQUIRED') {
           const needed = Number(error.data?.needed) || list.recipients.length;
           const have = Number(error.data?.available) || 0;
           setStampShort({ cards: needed, missing: Math.max(1, needed - have) });
           void stamps.refresh();
+          setStampSheet(true);
+          return;
+        }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          const reason = error.message || mediaNeedsStampLine;
+          setListError(reason);
+          void stamps.refresh();
+          void cards.refetch();
+          setStampShort(null);
+          setStampReason(reason);
           setStampSheet(true);
           return;
         }
@@ -2381,7 +2461,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     setListTakeBackError(null);
     setListTakingBack(card.id);
     takeBack.mutate(card.id, {
-      onSuccess: () => setListTakenBack((now) => new Set(now).add(card.id)),
+      onSuccess: () => { setListTakenBack((now) => new Set(now).add(card.id)); void cards.refetch(); },
       onError: (error) => setListTakeBackError({ id: card.id, message: sendMessage(error) }),
       onSettled: () => setListTakingBack(null),
     });
@@ -2420,6 +2500,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       sendList.mutate(list, {
         onSuccess: (res) => {
           setListSent(res.results);
+          void cards.refetch();
           resolve({ ok: true });
           if (!sealingOpen.current) { setListLook(null); setStep('sent'); }
         },
@@ -2431,6 +2512,16 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             void stamps.refresh();
             setStampSheet(true);
             refused();
+            return;
+          }
+          if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = error.message || mediaNeedsStampLine;
+            void stamps.refresh();
+            void cards.refetch();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            refused(reason);
             return;
           }
           refused(sendMessage(error));
@@ -2445,6 +2536,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         requestId.current = null;
         setSent(res.card);
         setSentLink(res.link ?? null);
+        void cards.refetch();
         resolve({ ok: true });
         if (!sealingOpen.current) { setLook(null); setStep('sent'); }
       },
@@ -2468,12 +2560,14 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         }
         // Its photo or voice needs a bought stamp: the stamp books open over the table, and the table says why.
         if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          const reason = error.message || mediaNeedsStampLine;
           send.reset();
           void stamps.refresh();
+          void cards.refetch();
           setStampShort(null);
-          setStampReason(MEDIA_NEEDS_STAMP);
+          setStampReason(reason);
           setStampSheet(true);
-          refused(error.message || MEDIA_NEEDS_STAMP);
+          refused(reason);
           return;
         }
         if (error.serverCode === 'CARD_ARRIVAL_CLOSED') {
@@ -2531,6 +2625,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       onSuccess: () => {
         setTookBack(true);
         setTakenBackNote(null);
+        void cards.refetch();
         startOver();
       },
       onError: (error) => setTakeBackError(sendMessage(error)),
@@ -2648,18 +2743,20 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             onKeep: async (signed) => { await saveSignature.mutateAsync(signed); },
             onForget: async () => { await forgetSignature.mutateAsync(); },
           } : null}
-          // A card's own photo (memories plan step 4): one card to one person; a list goes without.
-          canAddPhoto={launchFeatures.holidayCardMemories && Boolean(data.media?.photo.usable) && to?.kind !== 'list' && mediaStamp !== 'unavailable'}
+          // A card's own photo (memories plan step 4): works on single cards and multi-recipient lists alike.
+          canAddPhoto={launchFeatures.holidayCardMemories && Boolean(data.media?.photo.usable) && mediaStamp !== 'unavailable'}
           photo={photo}
           photoAlt={photoAlt}
           onPhotoAlt={setPhotoAlt}
           onAddPhoto={uploadPhoto}
           onRemovePhoto={removePhoto}
           onRetryPhoto={() => { if (photo?.file) uploadPhoto(photo.file); }}
-          // Its own voice greeting (memories plan step 7), the same way: one card to one person.
-          canAddVoice={launchFeatures.holidayCardMemories && Boolean(data.media?.voice.usable) && to?.kind !== 'list' && mediaStamp !== 'unavailable'}
+          // Its own voice greeting (memories plan step 7): works on single cards and lists alike.
+          canAddVoice={launchFeatures.holidayCardMemories && Boolean(data.media?.voice.usable) && mediaStamp !== 'unavailable'}
           mediaStamp={mediaStamp}
-          onGetStamps={() => { setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); void stamps.refresh(); setStampSheet(true); }}
+          mediaNeedsStampLine={mediaNeedsStampLine}
+          freeMediaHint={freeMediaHint}
+          onGetStamps={() => { setStampShort(null); setStampReason(mediaNeedsStampLine); void stamps.refresh(); setStampSheet(true); }}
           voice={voice}
           greetingFor={to?.kind === 'person' ? firstName(to.name) : 'you'}
           onRecorded={uploadVoice}

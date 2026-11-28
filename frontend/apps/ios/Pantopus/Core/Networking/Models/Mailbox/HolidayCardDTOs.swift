@@ -167,10 +167,11 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         LaunchFeatures.holidayCardMemories && (media?.photo?.usable == true || media?.voice?.usable == true)
     }
 
-    /// Whether a photo or greeting can go now: `ready` (or a server without the rule), `buy` (the buttons open the
-    /// stamp books) or `unavailable`.
+    /// Whether a photo or greeting can go now: `ready` (or a server without the rule / where bought stamps are not
+    /// required), `buy` (the buttons open the stamp books) or `unavailable`.
     var mediaStamp: HolidayCardMediaSpec.BoughtStamp.State {
-        media?.boughtStamp?.state ?? .ready
+        guard let boughtStamp = media?.boughtStamp, boughtStamp.required else { return .ready }
+        return boughtStamp.state
     }
 }
 
@@ -519,6 +520,11 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     public let recipients: [Recipient]
     /// One signature for the whole list, as one note (plan 8.2).
     public let signature: CardSignature?
+    /// Optional photo, description, voice greeting, and Live Photo clip shared across the list's cards.
+    public let photo: String?
+    public let photoAlt: String?
+    public let voice: String?
+    public let photoLive: String?
     /// True when the app words every choice by email (`arrivals.email_all`): each address keeps the list's choice,
     /// its email going at the sender's 7 a.m. or on Christmas morning. Nil (left out) keeps the older mapping.
     public let emailsKeepArrival: Bool?
@@ -536,8 +542,10 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case design, message, arrival, recipients, signature, travel
+        case design, message, arrival, recipients, signature, photo, voice, travel
         case useStamp = "use_stamp"
+        case photoAlt = "photo_alt"
+        case photoLive = "photo_live"
         case emailsKeepArrival = "emails_keep_arrival"
     }
 
@@ -547,6 +555,7 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
         arrival: HolidayCardArrival,
         recipients: [Recipient],
         signature: CardSignature? = nil,
+        media: HolidayCardMediaPick = .none,
         emailsKeepArrival: Bool? = nil
     ) {
         self.design = design
@@ -554,6 +563,10 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
         self.arrival = arrival.rawValue
         self.recipients = recipients
         self.signature = signature
+        photo = media.photo
+        photoAlt = media.photo == nil ? nil : media.photoAlt
+        voice = media.voice
+        photoLive = media.photo == nil ? nil : media.photoLive
         self.emailsKeepArrival = emailsKeepArrival
     }
 }

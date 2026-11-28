@@ -1051,7 +1051,7 @@ private fun photoCalls(
     form: SendCardForm,
     viewModel: SendCardViewModel,
 ): CardPhotoCalls? {
-    val canAdd = LaunchFeatures.holidayCardMemories && cards.media?.photo?.usable == true && cards.mediaCanGo(form)
+    val canAdd = LaunchFeatures.holidayCardMemories && cards.media?.photo?.usable == true && cards.mediaCanGo()
     if (!canAdd && form.photo == null) return null
     val drafts = viewModel.drafts
     return CardPhotoCalls(drafts::addPhoto, drafts::retryPhoto, drafts::removePhoto, drafts::onPhotoAlt)
@@ -1059,20 +1059,19 @@ private fun photoCalls(
 
 /**
  * What Write on the back can do with a voice greeting (memories plan step 7): only with the key on, when `GET /cards`
- * says greetings can be added now, for one card to one person, and not when no bought stamp can be had. One already
- * added stays so it can be removed.
+ * says greetings can be added now, for single cards and lists alike, and not when no bought stamp can be had. One
+ * already added stays so it can be removed.
  */
 private fun voiceCalls(
     cards: HolidayCardsResponse,
     form: SendCardForm,
     viewModel: SendCardViewModel,
 ): CardVoiceCalls? {
-    val canAdd = LaunchFeatures.holidayCardMemories && cards.media?.voice?.usable == true && cards.mediaCanGo(form)
+    val canAdd = LaunchFeatures.holidayCardMemories && cards.media?.voice?.usable == true && cards.mediaCanGo()
     if (!canAdd && form.voice == null) return null
     val drafts = viewModel.drafts
     return CardVoiceCalls(drafts::addVoice, drafts::retryVoice, drafts::removeVoice)
 }
 
-/** One card to one person, while a bought stamp is left or can be bought (not `media.bought_stamp` "unavailable"). */
-private fun HolidayCardsResponse.mediaCanGo(form: SendCardForm): Boolean =
-    form.to !is CardRecipient.Several && media?.boughtStamp?.unavailable != true
+/** Works on single cards and multi-recipient lists alike, unless `media.bought_stamp` says "unavailable". */
+private fun HolidayCardsResponse.mediaCanGo(): Boolean = media?.boughtStamp?.unavailable != true
