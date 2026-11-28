@@ -190,6 +190,10 @@ data class MomentDto(
     val retake: app.pantopus.android.data.api.models.reinvented.MomentRetakeStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8h): the convergence it joined, for a reader whose switch is on; else null. */
     val convergence: app.pantopus.android.data.api.models.reinvented.MomentConvergenceStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 10c): its author's whole picture, shown fit and never cut; false from today's server. */
+    val whole: Boolean = false,
+    /** "Pulse, reinvented" (CONTRACT 10c): the two colours a whole picture sits on; else null. */
+    val backdrop: MomentBackdropDto? = null,
 )
 
 /**
