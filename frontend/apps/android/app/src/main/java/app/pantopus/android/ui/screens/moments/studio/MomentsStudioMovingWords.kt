@@ -171,42 +171,39 @@ internal fun StudioPlayLayer(
         val frame = stampFrame(picture, box, constraints.maxHeight.toFloat())
         val unit = minOf(frame.width, box) / LocalDensity.current.density / 402f
         shown.forEach { item ->
-            val placed =
+            // Touches are read on the screen, before a card's own size and turn, so a drag follows the finger.
+            val touched =
                 Modifier
                     .centredAt(frame.left + item.x.toFloat() * frame.width, frame.top + item.y.toFloat() * frame.height)
-                    .then(
-                        if (item.movingWords) {
-                            Modifier
-                        } else {
-                            // A card at its author's size and turn, as readers will see it.
-                            Modifier.graphicsLayer {
-                                val size = (item.scale.toFloat() * unit).coerceIn(0.4f, 2.5f)
-                                scaleX = size
-                                scaleY = size
-                                rotationZ = item.rotation.toFloat()
-                            }
-                        },
-                    )
-            val touched =
-                placed
-                        .pointerInput(item.id, enabled) {
-                            if (!enabled) return@pointerInput
-                            detectTapGestures { onOpen(item.id) }
-                        }.pointerInput(item.id, enabled, frame) {
-                            if (!enabled) return@pointerInput
-                            detectTransformGestures { _, pan, zoom, turn ->
-                                onItems(
-                                    current.map {
-                                        if (it.id != item.id) it else it.moved(pan.x / frame.width, pan.y / frame.height, zoom, turn)
-                                    },
-                                )
-                            }
-                        }.semantics { role = Role.Button }
-                        .testTag("moments.studio.item")
+                    .pointerInput(item.id, enabled) {
+                        if (!enabled) return@pointerInput
+                        detectTapGestures { onOpen(item.id) }
+                    }.pointerInput(item.id, enabled, frame) {
+                        if (!enabled) return@pointerInput
+                        detectTransformGestures { _, pan, zoom, turn ->
+                            onItems(
+                                current.map {
+                                    if (it.id != item.id) it else it.moved(pan.x / frame.width, pan.y / frame.height, zoom, turn)
+                                },
+                            )
+                        }
+                    }.semantics { role = Role.Button }
+                    .testTag("moments.studio.item")
             if (item.movingWords) {
                 MomentMovingWordsText(item = item, shownWidth = minOf(frame.width, box), modifier = touched)
             } else {
-                MomentPlayCard(item = item, mine = true, modifier = touched)
+                // A card at its author's size and turn, as readers will see it.
+                MomentPlayCard(
+                    item = item,
+                    mine = true,
+                    modifier =
+                        touched.graphicsLayer {
+                            val size = (item.scale.toFloat() * unit).coerceIn(0.4f, 2.5f)
+                            scaleX = size
+                            scaleY = size
+                            rotationZ = item.rotation.toFloat()
+                        },
+                )
             }
         }
     }
