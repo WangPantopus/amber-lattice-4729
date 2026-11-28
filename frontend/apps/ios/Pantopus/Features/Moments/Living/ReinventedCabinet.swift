@@ -135,7 +135,8 @@ struct ReinventedCabinet: View {
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
-        Group {
+        // A stack, not a Group: with nothing in it yet a Group never appears, so its task would never read.
+        VStack(alignment: .leading, spacing: 0) {
             if let cabinet {
                 VStack(alignment: .leading, spacing: Spacing.s2) {
                     HStack(alignment: .firstTextBaseline) {
