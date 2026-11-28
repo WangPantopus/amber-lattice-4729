@@ -57,6 +57,7 @@ import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.ui.screens.feed.living.LivingBeamsLayer
 import app.pantopus.android.ui.screens.feed.living.LivingLight
 import app.pantopus.android.ui.screens.feed.living.LivingPin
+import app.pantopus.android.ui.screens.feed.living.livingBox
 import app.pantopus.android.ui.screens.feed.living.livingMapStyle
 import app.pantopus.android.ui.screens.feed.living.rememberLivingLight
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
@@ -106,13 +107,13 @@ internal fun ReinventedPulseMap(
     LaunchedEffect(camera.isMoving, ready, centered) {
         if (camera.isMoving || !ready || !centered) return@LaunchedEffect
         val bounds = camera.projection?.visibleRegion?.latLngBounds ?: return@LaunchedEffect
-        onMoved(ReinventedBox(bounds.southwest.latitude, bounds.southwest.longitude, bounds.northeast.latitude, bounds.northeast.longitude))
+        onMoved(bounds.livingBox())
     }
     val properties =
-        remember(context, light.night) {
+        remember(context, light.dark) {
             MapProperties(
                 isMyLocationEnabled = locationAllowed(context),
-                mapStyleOptions = livingMapStyle(context, light.night, R.raw.nearby_map_style),
+                mapStyleOptions = livingMapStyle(context, light.dark, R.raw.nearby_map_style),
             )
         }
     val uiSettings =
@@ -129,7 +130,7 @@ internal fun ReinventedPulseMap(
             onMapLoaded = { ready = true },
         )
         // Live beams (phase 4); never on My Atlas, the person's own private map.
-        if (ready && !state.atlas) LivingBeamsLayer(camera, state.time, light.night)
+        if (ready && !state.atlas) LivingBeamsLayer(camera, state.time, light.dark)
         if (ready) ReinventedMapPins(state.drawOrder, focused, camera, light, onOpen)
     }
 }

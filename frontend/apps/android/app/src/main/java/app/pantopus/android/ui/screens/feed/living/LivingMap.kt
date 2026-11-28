@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +66,7 @@ import app.pantopus.android.ui.screens.moments.map.MomentsFloat
 import app.pantopus.android.ui.screens.moments.map.drawFloatShadow
 import app.pantopus.android.ui.theme.PantopusColors
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.CameraPositionState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -99,6 +101,11 @@ import kotlin.math.tan
  *   on a thread; a Moment shown only as its area is a soft cloud over it; a plan glows as a beacon with a small arc of
  *   the time left before it starts.
  * - Night falls on the map when the sun is down over its middle (the map takes a dark style), whatever `float_on` says.
+ *   The map is also dark whenever the phone is set to dark, and follows that setting at once (PHASE-5 D: one rule, dark
+ *   when the device is dark or it is night where the map looks, bright otherwise). Lanterns and shadows still follow the
+ *   real sun.
+ * - The box asked of the server stays inside the world ([livingBox]): across the date line Google's southwest
+ *   longitude is greater than its northeast one, which the server refuses, so the whole width is asked then.
  * - Live beams (CONTRACT 9h): on the Live map, faint lines from several captures to where they all looked, read after
  *   the map settles. A server without the route draws none and is not asked again.
  *
@@ -140,9 +147,29 @@ internal data class LivingLight(
     val bearing: Float = 0f,
     /** Ask the map: the pins lit, with their words; null while nothing was asked (`LivingAsk.kt`). */
     val lit: Map<String, List<String>>? = null,
+    /** The phone is set to dark. */
+    val deviceDark: Boolean = false,
 ) {
     /** The sun is down over the middle of the map. */
     val night: Boolean get() = (sun?.elevationDeg ?: 30.0) <= 0.0
+
+    /** The map's look: dark when the phone is set to dark or it is night over the map; bright otherwise. */
+    val dark: Boolean get() = deviceDark || night
+}
+
+/**
+ * The map's box as the server takes it (`south < north`, `west < east`, inside ±90 and ±180): Google keeps each
+ * longitude inside ±180, but across the date line (or with the whole world in view) the southwest one is not less than
+ * the northeast one, so the whole width is asked then.
+ */
+internal fun LatLngBounds.livingBox(): ReinventedBox {
+    val whole = southwest.longitude >= northeast.longitude
+    return ReinventedBox(
+        south = southwest.latitude.coerceIn(-90.0, 90.0),
+        west = if (whole) -180.0 else southwest.longitude,
+        north = northeast.latitude.coerceIn(-90.0, 90.0),
+        east = if (whole) 180.0 else northeast.longitude,
+    )
 }
 
 /**
@@ -161,9 +188,7 @@ internal fun rememberLivingLight(
     LaunchedEffect(camera.isMoving, state.time, state.items) {
         if (camera.isMoving) return@LaunchedEffect
         val box =
-            camera.projection?.visibleRegion?.latLngBounds?.let {
-                ReinventedBox(it.southwest.latitude, it.southwest.longitude, it.northeast.latitude, it.northeast.longitude)
-            }
+            camera.projection?.visibleRegion?.latLngBounds?.livingBox()
         ask.mapAt(box, state.time, state.items)
     }
     LaunchedEffect(camera) {
@@ -183,17 +208,21 @@ internal fun rememberLivingLight(
             }
         }
     }
-    return remember(light, state.floats, asked.lit) { light.copy(floats = state.floats, lit = asked.lit) }
+    // Read on every composition, so a change of the phone's setting turns the map at once.
+    val deviceDark = isSystemInDarkTheme()
+    return remember(light, state.floats, asked.lit, deviceDark) {
+        light.copy(floats = state.floats, lit = asked.lit, deviceDark = deviceDark)
+    }
 }
 
 private const val MINUTE_MS = 60_000L
 
-/** The map's look: after dark, the night style; by day, the map's own ([day]). */
+/** The map's look: dark ([LivingLight.dark]), the night style; otherwise the map's own ([day]). */
 internal fun livingMapStyle(
     context: Context,
-    night: Boolean,
+    dark: Boolean,
     day: Int,
-): MapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, if (night) R.raw.living_night_map_style else day)
+): MapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, if (dark) R.raw.living_night_map_style else day)
 
 internal object LivingPalette {
     /** A lantern's warm light, and the beams after dark. */
@@ -458,19 +487,17 @@ private fun hoursLeft(startsAt: String?): Float? {
 internal fun LivingBeamsLayer(
     camera: CameraPositionState,
     time: String,
-    night: Boolean,
+    dark: Boolean,
     viewModel: LivingMapViewModel = hiltViewModel(),
 ) {
     val beams by viewModel.beams.collectAsStateWithLifecycle()
     LaunchedEffect(camera.isMoving, time) {
         if (camera.isMoving) return@LaunchedEffect
-        val bounds = camera.projection?.visibleRegion?.latLngBounds ?: return@LaunchedEffect
-        val box =
-            ReinventedBox(bounds.southwest.latitude, bounds.southwest.longitude, bounds.northeast.latitude, bounds.northeast.longitude)
+        val box = camera.projection?.visibleRegion?.latLngBounds?.livingBox() ?: return@LaunchedEffect
         viewModel.read(box, live = time == ReinventedMapState.LIVE)
     }
     if (beams.isEmpty()) return
-    val color = if (night) LivingPalette.lantern else LivingPalette.beamDay
+    val color = if (dark) LivingPalette.lantern else LivingPalette.beamDay
     Canvas(modifier = Modifier.fillMaxSize().testTag("reinventedPulse.beams").clearAndSetSemantics {}) {
         // Reading the camera here moves the beams with the map.
         camera.position
