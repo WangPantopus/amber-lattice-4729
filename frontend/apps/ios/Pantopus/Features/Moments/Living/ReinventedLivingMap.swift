@@ -231,13 +231,11 @@ struct ReinventedLivingRing: View {
             disc(scale: scale, height: height)
             Color.clear.frame(width: 1, height: lift(height))
         }
+        // Its shadow on the ground, where the sun puts it: a soft spot drawn with a gradient (a blur draws nothing
+        // inside a map pin).
         .background(alignment: .bottom) {
-            Ellipse()
-                .fill(MomentsPalette.floatShadow.opacity(shadow.opacity))
-                .frame(width: 44 * scale, height: 16 * scale)
-                .blur(radius: shadow.blur / 2)
+            ReinventedGroundShadow(width: 56 * scale, height: 22 * scale, opacity: min(shadow.opacity * 1.5, 0.5))
                 .offset(x: shadow.offset.width, y: shadow.offset.height / 2)
-                .allowsHitTesting(false)
         }
         .accessibilityLabel("\(ring.author.shortName)'s Moment, \(height.spoken)")
     }
@@ -272,35 +270,56 @@ struct ReinventedLivingRing: View {
         VStack(spacing: 0) {
             MomentRingPin(ring: ring, tail: false)
                 .background {
+                    // A soft cloud over its area, seen on the light map and the dark one.
                     Ellipse()
-                        .fill(Color.white.opacity(0.55))
-                        .frame(width: 112, height: 70)
-                        .blur(radius: 12)
+                        .fill(RadialGradient(
+                            colors: [Color.white.opacity(0.95), Color.white.opacity(0.75), Color.white.opacity(0)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 66
+                        ))
+                        .overlay(Ellipse().stroke(Color.black.opacity(0.08), lineWidth: 1).padding(14))
+                        .frame(width: 132, height: 88)
                         .allowsHitTesting(false)
                 }
             Color.clear.frame(width: 1, height: 10)
         }
         .background(alignment: .bottom) {
-            Ellipse()
-                .fill(MomentsPalette.floatShadow.opacity(MomentsFloat.areaShadow.opacity))
-                .frame(width: 44, height: 14)
-                .blur(radius: MomentsFloat.areaShadow.blur / 2)
-                .allowsHitTesting(false)
+            ReinventedGroundShadow(width: 52, height: 18, opacity: 0.35)
         }
         .accessibilityLabel("\(ring.author.shortName)'s Moment, over its area")
     }
 
-    /// The disc with no tail, a little bigger the higher it was made, its height beside it.
+    /// The disc with no tail, a little bigger the higher it was made, its height over it (so its shadow shows below).
     private func disc(scale: CGFloat, height: MomentShownHeight) -> some View {
         MomentRingPin(ring: ring, tail: false)
             .scaleEffect(scale)
             .frame(width: 64 * scale, height: 64 * scale)
-            .overlay(alignment: .bottom) {
+            .overlay(alignment: .top) {
                 MomentsHeightTag(height: height)
                     .fixedSize()
-                    .offset(y: MomentsHeightTag.barHeight * 0.75)
+                    .offset(y: -MomentsHeightTag.barHeight * 0.75)
                     .allowsHitTesting(false)
             }
+    }
+}
+
+/// A soft spot on the ground: a gradient, since a blur draws nothing inside a map pin.
+private struct ReinventedGroundShadow: View {
+    let width: CGFloat
+    let height: CGFloat
+    let opacity: Double
+
+    var body: some View {
+        Ellipse()
+            .fill(RadialGradient(
+                colors: [MomentsPalette.floatShadow.opacity(opacity), MomentsPalette.floatShadow.opacity(0)],
+                center: .center,
+                startRadius: 0,
+                endRadius: width / 2
+            ))
+            .frame(width: width, height: height)
+            .allowsHitTesting(false)
     }
 }
 
@@ -319,24 +338,33 @@ private struct ReinventedBeacon: ViewModifier {
     private let living = ReinventedLivingMap.shared
 
     func body(content: Content) -> some View {
+        let lit = !flat && living.floats
         content
+            // A halo around the ticket (gradients and strokes: a blur draws nothing inside a map pin).
+            .padding(lit ? 5 : 0)
             .background {
-                if !flat, living.floats {
+                if lit {
+                    Capsule()
+                        .fill(Theme.Color.primarySolid.opacity(0.22))
+                        .overlay(Capsule().stroke(Theme.Color.primarySolid.opacity(0.55), lineWidth: 2))
+                        .allowsHitTesting(false)
+                }
+            }
+            // The hours left before it starts, as an arc on a small white face at the ticket's corner.
+            .overlay(alignment: .topTrailing) {
+                if lit, let left = Self.left(ticket) {
                     ZStack {
-                        Capsule()
-                            .fill(Theme.Color.primarySolid.opacity(0.35))
-                            .blur(radius: 10)
-                            .padding(-8)
-                        if let left = Self.left(ticket) {
-                            Circle()
-                                .trim(from: 0, to: left)
-                                .stroke(Theme.Color.primarySolid, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 18, height: 18)
-                                .offset(y: -24)
-                        }
+                        Circle().fill(Color.white)
+                        Circle()
+                            .trim(from: 0, to: left)
+                            .stroke(Theme.Color.primarySolid, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .padding(3)
                     }
+                    .frame(width: 20, height: 20)
+                    .offset(x: 8, y: -8)
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
             }
     }
