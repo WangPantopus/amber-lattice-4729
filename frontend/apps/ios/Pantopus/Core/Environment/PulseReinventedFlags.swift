@@ -90,6 +90,7 @@ final class PulseReinventedFlags {
 
     private func apply(_ on: Bool) {
         if isOn != on { isOn = on }
+        if on { Task { await PostcardWidgetStore.refresh() } } else { PostcardWidgetStore.clear() } // 8j widget (STUDIO-IOS-12)
     }
 
     private static func key(_ account: String) -> String {
