@@ -159,6 +159,8 @@ class StudioPostViewModel
                 latitude = at?.first?.takeIf { placed },
                 longitude = at?.second?.takeIf { placed },
                 locationName = venue?.name?.takeIf { placed },
+                // The picked venue's key, so a Spot or an Event at a venue keeps its tag, as the web sends it (and Eyes on needs it).
+                geocodePlaceId = venue?.placeId?.takeIf { placed && it.startsWith("osm:") },
                 gpsTimestamp = fresh?.at?.toString(),
                 gpsLatitude = fresh?.latitude,
                 gpsLongitude = fresh?.longitude,
