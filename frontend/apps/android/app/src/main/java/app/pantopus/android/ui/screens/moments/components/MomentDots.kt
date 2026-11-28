@@ -101,12 +101,6 @@ fun MomentDotMarker(
 /** A dot's size on the picture, dp. */
 const val DOT = 30
 
-/** The Moment whose dot card is open now (one at a time): the viewer holds still while it is, as on iPhone. */
-object MomentDotsOpen {
-    val moment = mutableStateOf<String?>(null)
-
-    fun holds(momentId: String?): Boolean = momentId != null && moment.value == momentId
-}
 
 /** The viewer's dots over [moment]'s picture; [mine]: the reader is its author (Remove is offered). */
 @Composable
@@ -120,9 +114,10 @@ fun MomentDotsLayer(
     val shown = moment.dots.orEmpty().filter { it.drawable && it.id !in gone }
     if (shown.isEmpty()) return
     var open by remember(moment.id) { mutableStateOf<String?>(null) }
+    // The viewer holds still while a dot's card is open (as on iPhone).
     DisposableEffect(moment.id, open) {
-        MomentDotsOpen.moment.value = if (open != null) moment.id else null
-        onDispose { if (MomentDotsOpen.moment.value == moment.id) MomentDotsOpen.moment.value = null }
+        MomentLayerHold.hold("dot", if (open != null) moment.id else null)
+        onDispose { MomentLayerHold.release("dot", moment.id) }
     }
     val picture =
         moment.width
