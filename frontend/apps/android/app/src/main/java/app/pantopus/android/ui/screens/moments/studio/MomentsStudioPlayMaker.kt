@@ -78,6 +78,8 @@ import java.time.Instant
 internal val STUDIO_PLAY_KINDS =
     listOf(
         Triple(MomentPlayKinds.POLL, "Poll", "Ask a question with up to four answers. Others vote and see everyone's share."),
+        Triple(MomentPlayKinds.SLIDER, "Slider", "A line between two words; others slide to where they stand."),
+        Triple(MomentPlayKinds.QUESTION, "Question box", "Ask anything; only you read the answers."),
         Triple(MomentPlayKinds.COUNTDOWN, "Countdown", "Count down to a time, up to 30 days ahead."),
     )
 
@@ -93,6 +95,17 @@ internal fun MomentPlayItemDto.sentCard(now: Instant = Instant.now()): MomentPla
             val options = options.orEmpty().map { it.trim().take(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
             copy(question = question, options = options).takeIf { question.isNotEmpty() && options.size in 2..MomentPlayLimits.MOST_OPTIONS }
         }
+        MomentPlayKinds.SLIDER -> {
+            val question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS).orEmpty()
+            copy(
+                question = question,
+                left = left?.trim()?.take(MomentPlayLimits.END_LETTERS),
+                right = right?.trim()?.take(MomentPlayLimits.END_LETTERS),
+                look = if (look == "dial") "dial" else "slider",
+                emoji = emoji?.trim()?.takeIf { it.isNotEmpty() && look != "dial" },
+            )
+        }
+        MomentPlayKinds.QUESTION -> copy(prompt = prompt?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS))
         MomentPlayKinds.COUNTDOWN -> {
             val title = title?.trim()?.take(MomentPlayLimits.TITLE_LETTERS).orEmpty()
             val ends = endsAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
@@ -182,6 +195,8 @@ internal fun StudioPlayPanel(
                 when (item?.kind ?: kind) {
                     MomentPlayKinds.POLL -> PollForm(item, items, onItems, onDone)
                     MomentPlayKinds.COUNTDOWN -> CountdownForm(item, items, onItems, onDone)
+                    MomentPlayKinds.SLIDER -> SliderForm(item, items, onItems, onDone)
+                    MomentPlayKinds.QUESTION -> QuestionForm(item, items, onItems, onDone)
                 }
             }
         }
@@ -208,6 +223,56 @@ private fun PollForm(
         Pill("Add an answer", tag = "moments.studio.play.addOption") { options = options + "" }
     }
     val made = (item ?: newPlayItem(MomentPlayKinds.POLL, items)).copy(question = question, options = options)
+    SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
+}
+
+/** The emoji a slider's mark may be, besides none (a dot). */
+private val SLIDER_EMOJI = listOf("😍", "🔥", "😂", "☕", "🌧️", "🌲")
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SliderForm(
+    item: MomentPlayItemDto?,
+    items: List<MomentPlayItemDto>,
+    onItems: (List<MomentPlayItemDto>) -> Unit,
+    onDone: () -> Unit,
+) {
+    var question by rememberSaveable(item?.id) { mutableStateOf(item?.question.orEmpty()) }
+    var left by rememberSaveable(item?.id) { mutableStateOf(item?.left.orEmpty()) }
+    var right by rememberSaveable(item?.id) { mutableStateOf(item?.right.orEmpty()) }
+    var dial by rememberSaveable(item?.id) { mutableStateOf(item?.look == "dial") }
+    var emoji by rememberSaveable(item?.id) { mutableStateOf(item?.emoji) }
+    Heading("Slider", "Where do others stand?")
+    Field(question, "Your question", "moments.studio.play.question") { question = it.take(MomentPlayLimits.QUESTION_LETTERS) }
+    Field(left, "Left end", "moments.studio.play.left") { left = it.take(MomentPlayLimits.END_LETTERS) }
+    Field(right, "Right end", "moments.studio.play.right") { right = it.take(MomentPlayLimits.END_LETTERS) }
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        Pill("Slider", on = !dial, tag = "moments.studio.play.look.slider") { dial = false }
+        Pill("Dial with faces", on = dial, tag = "moments.studio.play.look.dial") { dial = true }
+    }
+    if (!dial) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Pill("●", on = emoji == null, tag = "moments.studio.play.emoji.none") { emoji = null }
+            SLIDER_EMOJI.forEachIndexed { at, it -> Pill(it, on = emoji == it, tag = "moments.studio.play.emoji$at") { emoji = it } }
+        }
+    }
+    val made =
+        (item ?: newPlayItem(MomentPlayKinds.SLIDER, items))
+            .copy(question = question, left = left, right = right, look = if (dial) "dial" else "slider", emoji = emoji)
+    SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
+}
+
+@Composable
+private fun QuestionForm(
+    item: MomentPlayItemDto?,
+    items: List<MomentPlayItemDto>,
+    onItems: (List<MomentPlayItemDto>) -> Unit,
+    onDone: () -> Unit,
+) {
+    var prompt by rememberSaveable(item?.id) { mutableStateOf(item?.prompt.orEmpty()) }
+    Heading("Question box", "Only you read the answers")
+    Field(prompt, "Ask anything", "moments.studio.play.prompt") { prompt = it.take(MomentPlayLimits.QUESTION_LETTERS) }
+    val made = (item ?: newPlayItem(MomentPlayKinds.QUESTION, items)).copy(prompt = prompt)
     SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
 }
 

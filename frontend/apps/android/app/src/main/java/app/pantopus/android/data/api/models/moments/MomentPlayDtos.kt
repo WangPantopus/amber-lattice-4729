@@ -211,6 +211,7 @@ object MomentPlayLimits {
     const val QUESTION_LETTERS = 100
     const val OPTION_LETTERS = 40
     const val TITLE_LETTERS = 60
+    const val END_LETTERS = 24
     const val MOST_OPTIONS = 4
 
     /** A countdown ends at most 30 days ahead. */
