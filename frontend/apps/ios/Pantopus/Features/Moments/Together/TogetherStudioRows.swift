@@ -136,7 +136,7 @@ struct TogetherStudioRows: View {
                 DatePicker(
                     "When it opens",
                     selection: $together.sealAt,
-                    in: Date().addingTimeInterval(3600)...Date().addingTimeInterval(5 * 365 * 86400)
+                    in: Date().addingTimeInterval(61 * 60)...Date().addingTimeInterval(5 * 365 * 86400)
                 )
                 .font(.system(size: 14))
                 .accessibilityIdentifier("together.studio.seal.at")

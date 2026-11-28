@@ -73,7 +73,8 @@ final class TogetherStudio {
         guard model.offersSeal else { return nil }
         switch sealOpens {
         case "date":
-            let soon = Date().addingTimeInterval(3600)
+            // 61 minutes, not 60: the server measures "an hour from now" when the request arrives.
+            let soon = Date().addingTimeInterval(61 * 60)
             return SealChoice(opens: "date", at: MomentTime.string(max(sealAt, soon)))
         case "place", "rain":
             return model.sealPlaceOK ? SealChoice(opens: sealOpens, at: nil) : nil
