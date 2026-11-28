@@ -9,7 +9,9 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.os.Build
 import androidx.compose.runtime.Immutable
+import app.pantopus.android.BuildConfig
 import com.google.android.gms.common.moduleinstall.InstallStatusListener
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
@@ -73,6 +75,44 @@ class MomentSubject(
 internal fun MomentMarks.inStep(placement: MomentPlacement?): MomentMarks =
     if (subject == null || subject.placement == placement) this else copy(subject = null)
 
+/**
+ * Debug builds on an emulator only (LEAD-3, 2026-11-27): an emulator image without the Play Store can't fetch the model,
+ * so to try the rest of the Studio there an oval in the middle of the picture stands in for what it would lift, as
+ * iPhone's simulator does. Never on a phone, never in a release build ([BuildConfig.DEBUG] is false there).
+ */
+internal object MomentStandIn {
+    /** This is a debug build running on an emulator. */
+    val active: Boolean get() = BuildConfig.DEBUG && onEmulator
+
+    private val onEmulator: Boolean
+        get() = Build.HARDWARE in EMULATOR_HARDWARE || Build.FINGERPRINT.startsWith("generic") || "sdk_gphone" in Build.MODEL
+
+    private val EMULATOR_HARDWARE = setOf("ranchu", "goldfish")
+
+    /** The stand-in's shape over [surface]: an oval in its middle; null outside a debug emulator build. */
+    fun subject(
+        surface: Bitmap,
+        placement: MomentPlacement?,
+    ): MomentSubject? = if (active) MomentSubject(oval(surface, 0.3f, 0.3f, 0.4f, 0.45f), placement) else null
+
+    /** [surface] with everything but the oval ([left], [top], [width], [height] as shares) clear. */
+    fun oval(
+        surface: Bitmap,
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float,
+    ): Bitmap {
+        val out = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val shape =
+            RectF(left * surface.width, top * surface.height, (left + width) * surface.width, (top + height) * surface.height)
+        canvas.drawOval(shape, Paint(Paint.ANTI_ALIAS_FLAG))
+        canvas.drawBitmap(surface, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN) })
+        return out
+    }
+}
+
 /** The words the Studio shows about a lift (iPhone's). */
 internal object MomentSubjectWords {
     const val FINDING = "Finding the subject…"
@@ -86,6 +126,7 @@ internal object MomentSubjects {
 
     /** Waiting for Play services to fetch the model the first time. */
     private const val FETCH_WAIT_MS = 90_000L
+    private const val STAND_IN_WAIT_MS = 5_000L
 
     /** Less than this share of the picture in front: nothing clear to go behind. */
     private const val LEAST_SUBJECT = 0.005f
@@ -103,8 +144,8 @@ internal object MomentSubjects {
             val segmenter =
                 SubjectSegmentation.getClient(SubjectSegmenterOptions.Builder().enableForegroundBitmap().build())
             try {
-                if (!ready(context.applicationContext, segmenter)) return@withContext null
                 val surface = surface(picture, placement)
+                if (!ready(context.applicationContext, segmenter)) return@withContext MomentStandIn.subject(surface, placement)
                 val front = segmenter.process(InputImage.fromBitmap(surface, 0)).await().foregroundBitmap
                 front?.takeIf { hasSubject(it) }?.let { MomentSubject(it, placement) }
             } catch (cancelled: CancellationException) {
@@ -140,7 +181,8 @@ internal object MomentSubjects {
             if (installer.installModules(request).await().areModulesAlreadyInstalled()) {
                 true
             } else {
-                withTimeoutOrNull(FETCH_WAIT_MS) { done.await() } ?: false
+                // A debug emulator build doesn't wait long: its stand-in takes over (MomentStandIn).
+                withTimeoutOrNull(if (MomentStandIn.active) STAND_IN_WAIT_MS else FETCH_WAIT_MS) { done.await() } ?: false
             }
         } finally {
             installer.unregisterListener(listener)
