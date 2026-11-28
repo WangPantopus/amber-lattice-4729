@@ -106,8 +106,14 @@ enum PostcardWidgetStore {
 
     /// A postcard widget is on one of the person's screens.
     private static func isPlaced() async -> Bool {
-        guard let placed = try? await WidgetCenter.shared.currentConfigurations() else { return false }
-        return placed.contains { $0.kind == kind }
+        // The completion form: the async one needs iOS 18, the app runs from iOS 17.
+        let wanted = kind
+        return await withCheckedContinuation { done in
+            WidgetCenter.shared.getCurrentConfigurations { result in
+                let placed = (try? result.get())?.contains { $0.kind == wanted } ?? false
+                done.resume(returning: placed)
+            }
+        }
     }
 
     private static func stored() -> PostcardWidgetSnapshot? {
