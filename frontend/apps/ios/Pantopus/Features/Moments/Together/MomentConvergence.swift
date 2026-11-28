@@ -108,11 +108,13 @@ private struct ConvergenceEnvelope: Decodable {
 }
 
 enum ConvergenceEndpoints {
-    /// `GET /api/reinvented/convergences/:id` (the cell, the local date and the kind). Route `backend/routes/reinvented.js`.
+    /// `GET /api/reinvented/convergences/:id` (the cell, the local date and the kind, e.g. `sunset:456:-1227:2026-11-27`).
+    /// The id goes in as it is: the client encodes the path itself, so encoding it here too sent `%253A` (a 404).
+    /// Route `backend/routes/reinvented.js`.
     static func piece(_ id: String) -> Endpoint {
         Endpoint(
             method: .get,
-            path: "/api/reinvented/convergences/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)",
+            path: "/api/reinvented/convergences/\(id)",
             cachePolicy: .reloadIgnoringLocalCacheData
         )
     }
