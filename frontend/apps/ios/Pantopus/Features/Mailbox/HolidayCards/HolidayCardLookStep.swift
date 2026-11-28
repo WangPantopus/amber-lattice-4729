@@ -173,9 +173,10 @@ struct HolidayCardLookStep: View {
                     + (page.sealed ? " once Christmas morning arrives" : " right away")
                     + " — no account needed. The first person to save it keeps it."
             }
-            return "They aren’t on Pantopus yet. The email never shows your note; " + (page.sealed
+            let after = page.sealed
                 ? "they get a reminder on Christmas morning when it opens."
-                : "they can open and read the card right away without an account, and join free to keep it or write back.")
+                : "they can open and read the card right away without an account, and join free to keep it or write back."
+            return "They aren’t on Pantopus yet. The email never shows your note; " + after
         }
         if recipient.isEmail {
             if recipient.isLink {
