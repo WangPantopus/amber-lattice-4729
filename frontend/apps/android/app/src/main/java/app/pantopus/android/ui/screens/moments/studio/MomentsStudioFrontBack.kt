@@ -289,5 +289,5 @@ private fun Shutter(
                     contentDescription = "Take front and back"
                     role = Role.Button
                 },
-    )
+    ) {}
 }

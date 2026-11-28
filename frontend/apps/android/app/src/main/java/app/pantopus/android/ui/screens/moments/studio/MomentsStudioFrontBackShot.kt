@@ -190,14 +190,23 @@ internal fun composeFrontBack(
     paint.color = android.graphics.Color.WHITE
     canvas.drawRoundRect(RectF(box).apply { inset(-edge / 2, -edge / 2) }, radius + edge / 2, radius + edge / 2, paint)
     canvas.save()
-    canvas.clipPath(Path().apply { addRoundRect(RectF(box).apply { inset(edge / 2, edge / 2) }, radius - edge / 2, radius - edge / 2, Path.Direction.CW) })
+    canvas.clipPath(
+        Path().apply {
+            addRoundRect(RectF(box).apply { inset(edge / 2, edge / 2) }, radius - edge / 2, radius - edge / 2, Path.Direction.CW)
+        },
+    )
     val fill = max(box.width() / small.width, box.height() / small.height)
     val shownWidth = small.width * fill
     val shownHeight = small.height * fill
     canvas.drawBitmap(
         small,
         null,
-        RectF(box.centerX() - shownWidth / 2, box.centerY() - shownHeight / 2, box.centerX() + shownWidth / 2, box.centerY() + shownHeight / 2),
+        RectF(
+            box.centerX() - shownWidth / 2,
+            box.centerY() - shownHeight / 2,
+            box.centerX() + shownWidth / 2,
+            box.centerY() + shownHeight / 2,
+        ),
         paint,
     )
     canvas.restore()

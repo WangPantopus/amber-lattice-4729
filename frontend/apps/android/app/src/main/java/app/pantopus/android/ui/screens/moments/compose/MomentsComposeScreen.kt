@@ -220,7 +220,8 @@ fun MomentsComposeScreen(
                 if (!(studio && bothCameras)) {
                     CameraStep(
                         state = state,
-                        hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+                        hasCamera =
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
                         askCamera = { cameraPermission.launch(Manifest.permission.CAMERA) },
                         onClose = closeOrAsk,
                         // The in-app camera: a Moment taken here, just now (the Live mark).
