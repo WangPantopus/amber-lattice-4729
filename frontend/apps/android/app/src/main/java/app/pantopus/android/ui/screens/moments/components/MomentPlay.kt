@@ -86,6 +86,7 @@ val MomentPlayItemDto.card: Boolean
             MomentPlayKinds.QUESTION -> !prompt.isNullOrBlank()
             MomentPlayKinds.GUESS ->
                 !prompt.isNullOrBlank() && ((options?.size ?: 0) in 2..MomentPlayLimits.MOST_OPTIONS || range != null)
+            MomentPlayKinds.QUOTE -> !text.isNullOrBlank()
             MomentPlayKinds.BOARD ->
                 !question.isNullOrBlank() && !xAxis?.left.isNullOrBlank() && !xAxis?.right.isNullOrBlank() &&
                     !yAxis?.bottom.isNullOrBlank() && !yAxis?.top.isNullOrBlank()
@@ -257,6 +258,11 @@ fun MomentPlayCard(
             MomentPlayKinds.QUESTION -> QuestionCard(item, authorName, onWrite, onAnswers)
             MomentPlayKinds.GUESS -> GuessCard(item, onAnswer)
             MomentPlayKinds.BOARD -> BoardCard(item, onAnswer, onWrite)
+            MomentPlayKinds.QUOTE -> {
+                // A quote lifted from a page or a sign (CONTRACT 7g): drawn only.
+                Text("“${item.text.orEmpty()}”", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                item.source?.takeIf { it.isNotBlank() }?.let { CardNote("— $it") }
+            }
         }
         if (item.kind == MomentPlayKinds.BOARD && item.mine != null && item.open == true && onTakeBack != null) {
             CardButton("Take my face off", "moments.play.takeBack", onTakeBack)
