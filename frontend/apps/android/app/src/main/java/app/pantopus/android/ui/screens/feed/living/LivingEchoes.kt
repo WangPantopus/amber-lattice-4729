@@ -168,6 +168,17 @@ private fun EchoLine(line: LivingEchoLineDto) {
             size = 15.dp,
             tint = PantopusColors.primary600,
         )
-        Text(line.line, fontSize = 14.sp, color = PantopusColors.appText)
+        val names = line.names.orEmpty().filter { it.isNotBlank() }
+        Column {
+            Text(line.line, fontSize = 14.sp, color = PantopusColors.appText)
+            // Only the first names the server sends: people who chose names, and only when the reader did too.
+            if (names.isNotEmpty()) {
+                Text("With ${spoken(names)}", fontSize = 12.5.sp, color = PantopusColors.appTextSecondary)
+            }
+        }
     }
 }
+
+/** "Avi", "Avi and Maya", "Avi, Maya and Lee". */
+private fun spoken(names: List<String>): String =
+    if (names.size == 1) names.first() else names.dropLast(1).joinToString(", ") + " and " + names.last()

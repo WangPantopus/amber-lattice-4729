@@ -194,6 +194,8 @@ data class LivingEchoLineDto(
     val line: String,
     /** An echo: the reader's own Moment. A twin has none. */
     @Json(name = "moment_id") val momentId: String? = null,
+    /** First names of the others who chose names, sent only when the reader chose names too; else empty. */
+    val names: List<String>? = null,
 )
 
 @JsonClass(generateAdapter = true)
