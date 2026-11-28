@@ -296,6 +296,7 @@ private fun ReinventedListPane(
             },
             onExplore = { viewModel.pickReach(ReinventedPulseViewModel.EXPLORE, state.miles) },
             onKeepExploring = viewModel::keepExploring,
+            viewer = viewModel.viewer,
         )
     val stripActions = ReinventedStripActions(onOpenMoment = watch::moment, onOpenPlan = actions.onOpenPlan, onOpenRing = watch::ring)
     Box(modifier.pullRefresh(pull)) {

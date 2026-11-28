@@ -8,6 +8,8 @@ import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
+import app.pantopus.android.data.api.models.reinvented.EyesOnAskDto
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
 import app.pantopus.android.data.api.models.reinvented.RetakeDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
@@ -66,6 +68,12 @@ class TogetherRepository
 
         /** CONTRACT 8e: a Retake, by its start's id or any frame's. */
         suspend fun retake(id: String): NetworkResult<RetakeDto> = guarded { api.retake(id).retake }
+
+        /** CONTRACT 8f: open Eyes-on Asks near where the phone is (in the body only). */
+        suspend fun eyesOnNear(
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<List<EyesOnAskDto>> = guarded { api.eyesOnNear(EyesOnNearBody(latitude, longitude)).asks }
 
         /** CONTRACT 8: a Moment made in the Studio with phase 3's keys ([TogetherCreate]). */
         suspend fun createMoment(body: Map<String, Any?>): NetworkResult<MomentDto> = guarded { api.createMoment(body).moment }

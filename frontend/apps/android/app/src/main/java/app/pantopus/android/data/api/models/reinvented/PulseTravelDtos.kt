@@ -72,7 +72,8 @@ data class PulseTravelDto(
             val shown = people.take(2).map(::first)
             val rest = count - shown.size
             if (shown.isEmpty()) return "$count ${if (count == 1) "person" else "people"}"
-            return if (rest > 0) "${shown.joinToString(", ")} and $rest ${if (rest == 1) "other" else "others"}" else shown.joinToString(" and ")
+            if (rest <= 0) return shown.joinToString(" and ")
+            return "${shown.joinToString(", ")} and $rest ${if (rest == 1) "other" else "others"}"
         }
 
         /** "4:30 PM" for an ISO time; empty when it can't be read. */

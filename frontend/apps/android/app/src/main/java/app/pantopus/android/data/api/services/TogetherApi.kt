@@ -9,6 +9,8 @@ import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyEnvelope
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearResponse
 import app.pantopus.android.data.api.models.reinvented.RetakeEnvelope
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -77,6 +79,12 @@ interface TogetherApi {
      * `POST /api/moments` (`backend/routes/moments.js`, create) with phase 3's keys beside today's body (CONTRACT 8):
      * only from the Studio, only while the switch is on and the Studio chose one ([TogetherCreate]).
      */
+    /** CONTRACT 8f: open Eyes-on Asks near the reader, whose place goes in the body only (never kept or logged). */
+    @POST("api/reinvented/eyes-on/near")
+    suspend fun eyesOnNear(
+        @Body body: EyesOnNearBody,
+    ): EyesOnNearResponse
+
     @POST("api/moments")
     suspend fun createMoment(
         @Body body: Map<String, @JvmSuppressWildcards Any?>,

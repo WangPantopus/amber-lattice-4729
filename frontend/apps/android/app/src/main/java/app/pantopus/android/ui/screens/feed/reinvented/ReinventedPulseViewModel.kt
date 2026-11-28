@@ -71,6 +71,9 @@ class ReinventedPulseViewModel
 
         private val viewerId: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
+        /** The signed-in person, for what is offered only under others' posts (CONTRACT 8f). */
+        val viewer: String? get() = viewerId
+
         /** The posts' cards and what the viewer's taps did to them. */
         val cards: ProfilePostCards =
             ProfilePostCards(
