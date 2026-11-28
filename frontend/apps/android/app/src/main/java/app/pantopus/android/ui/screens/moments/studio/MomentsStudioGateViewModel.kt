@@ -44,7 +44,8 @@ class MomentsStudioGateViewModel
         }
 
         private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        private val account = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
+        /** Who is signed in on this phone ("Your cutouts" are kept per account); null when nobody is. */
+        val account: String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
         /** The at-home line is still to be shown to this account: true for the whole of this composer once due. */
         val homeNoteDue: Boolean = account != null && !prefs.getBoolean(HOME_NOTE + account, false)

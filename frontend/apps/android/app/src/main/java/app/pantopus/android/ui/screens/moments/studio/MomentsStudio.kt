@@ -344,6 +344,7 @@ internal fun MomentsStudioStep(
                 tray = false
                 onPlaceCutout(file)
             },
+            cutoutsAccount = gate.account,
         )
         if (fullMap) {
             state.postMapSpot?.let { spot ->

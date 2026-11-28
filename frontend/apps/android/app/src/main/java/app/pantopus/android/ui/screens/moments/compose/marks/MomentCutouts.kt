@@ -137,24 +137,38 @@ private fun standIn(
     return MomentCutout(id, image, (box.exactCenterX()) / surface.width, box.exactCenterY() / surface.height, size)
 }
 
-/** "Your cutouts": the 24 newest cutouts lifted on this phone, as PNGs in the app's own folder (never uploaded). */
+/**
+ * "Your cutouts": the 24 newest cutouts [account] lifted on this phone, as PNGs in the app's own folder (never uploaded).
+ * Each account on the phone has its own folder, so a second person signed in here never sees the first one's cutouts;
+ * with no account nothing is kept or listed.
+ */
 internal object MomentCutoutStore {
     private const val KEPT = 24
 
-    private fun folder(context: Context): File = File(context.filesDir, "studio-cutouts").apply { mkdirs() }
+    private fun folder(
+        context: Context,
+        account: String,
+    ): File = File(File(context.filesDir, "studio-cutouts"), account).apply { mkdirs() }
 
     /** Newest first. */
-    fun list(context: Context): List<File> =
-        folder(context).listFiles { file -> file.extension == "png" }.orEmpty().sortedByDescending { it.lastModified() }
+    fun list(
+        context: Context,
+        account: String?,
+    ): List<File> {
+        if (account.isNullOrBlank()) return emptyList()
+        return folder(context, account).listFiles { file -> file.extension == "png" }.orEmpty().sortedByDescending { it.lastModified() }
+    }
 
     fun keep(
         context: Context,
+        account: String?,
         image: Bitmap,
     ) {
-        val file = File(folder(context), "${System.currentTimeMillis()}.png")
+        if (account.isNullOrBlank()) return
+        val file = File(folder(context, account), "${System.currentTimeMillis()}.png")
         runCatching { FileOutputStream(file).use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             .onFailure { file.delete() }
-        list(context).drop(KEPT).forEach { it.delete() }
+        list(context, account).drop(KEPT).forEach { it.delete() }
     }
 
     fun remove(file: File) {

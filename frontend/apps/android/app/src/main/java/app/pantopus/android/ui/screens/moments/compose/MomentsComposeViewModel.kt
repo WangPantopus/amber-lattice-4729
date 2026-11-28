@@ -1026,7 +1026,7 @@ class MomentsComposeViewModel
                     _state.update { it.copy(notice = "Nothing to lift there.") }
                     return@launch
                 }
-                withContext(Dispatchers.IO) { MomentCutoutStore.keep(context, cutout.image) }
+                withContext(Dispatchers.IO) { MomentCutoutStore.keep(context, accountId, cutout.image) }
                 redrawStudio(now.marks.copy(cutouts = now.marks.cutouts + cutout))
             }
         }

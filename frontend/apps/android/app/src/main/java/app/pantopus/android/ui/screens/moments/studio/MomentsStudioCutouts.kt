@@ -109,15 +109,20 @@ internal fun StudioCutoutPress(
     )
 }
 
-/** "Your cutouts" in the tray: the ones kept on this phone, newest first. A tap places one; a long press offers Remove. */
+/** "Your cutouts" in the tray: the ones [account] kept on this phone, newest first. A tap places one; a long press offers Remove. */
 @Composable
-internal fun StudioYourCutoutsRow(onPlace: (File) -> Unit) {
+internal fun StudioYourCutoutsRow(
+    account: String?,
+    onPlace: (File) -> Unit,
+) {
     val context = LocalContext.current
     var changed by remember { mutableIntStateOf(0) }
-    val kept by produceState<List<Pair<File, ImageBitmap>>>(emptyList(), changed) {
+    val kept by produceState<List<Pair<File, ImageBitmap>>>(emptyList(), changed, account) {
         value =
             withContext(Dispatchers.IO) {
-                MomentCutoutStore.list(context).mapNotNull { file -> MomentCutoutStore.read(file)?.let { file to it.asImageBitmap() } }
+                MomentCutoutStore.list(context, account).mapNotNull { file ->
+                    MomentCutoutStore.read(file)?.let { file to it.asImageBitmap() }
+                }
             }
     }
     if (kept.isEmpty()) return
