@@ -151,6 +151,7 @@ internal fun MomentMarks.changedState(
                 stroke.copy(points = points, width = stroke.width * widths)
             },
         labels = labels.map { it.copy(x = across(it.x), y = down(it.y), size = it.size * widths) },
+        cutouts = cutouts.map { MomentCutout(it.id, it.image, across(it.x), down(it.y), it.width * widths, it.turn) },
     )
 }
 
