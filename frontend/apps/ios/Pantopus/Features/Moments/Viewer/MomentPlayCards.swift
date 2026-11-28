@@ -174,6 +174,7 @@ struct MomentQuestionCard: View {
             } else if item.open {
                 // The answer is written in a sheet of its own, above the keyboard.
                 MomentPlayWriteField(words: text, placeholder: "Your answer", id: "moments.play.question.field") { writing = true }
+                    .onChange(of: writing) { _, open in MomentPlayStore.shared.writingOn = open ? moment.id : nil }
                     .sheet(isPresented: $writing) {
                         MomentPlayWriteSheet(
                             title: item.prompt ?? "",

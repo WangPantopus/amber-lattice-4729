@@ -34,6 +34,8 @@ final class MomentPlayStore {
 
     /// The item whose author's answers list is open (a question box's answers, a board's notes).
     var answersOf: (moment: String, item: MomentPlayItem)?
+    /// The Moment whose item has its write sheet open (a question box's answer, a board's note): the viewer holds.
+    var writingOn: String?
 
     /// The Moment's items, each as last answered here.
     func items(_ moment: MomentDTO) -> [MomentPlayItem] {
@@ -93,7 +95,7 @@ extension MomentsViewerModel {
     var playItemsHold: Bool {
         guard PulseReinventedFlags.shared.isOn, let moment else { return false }
         let store = MomentPlayStore.shared
-        if store.answersOf?.moment == moment.id { return true }
+        if store.answersOf?.moment == moment.id || store.writingOn == moment.id { return true }
         let fogged = moment.layers.play.contains { $0.kind == .fog } && !store.wiped.contains(moment.id) && !isMine
         return fogged || store.waiting(moment)
     }
