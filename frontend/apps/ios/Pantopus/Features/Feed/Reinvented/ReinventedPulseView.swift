@@ -73,6 +73,7 @@ struct ReinventedPulseView: View {
         .modifier(MomentRetakeListSheet())
         .modifier(MomentConvergenceListSheet())
         .modifier(MomentPinboardListSheet())
+        .modifier(MomentMailItHost())
     }
 
     /// One camera (PHASE-1 §2.11): + opens the Studio. Its "+ Ask / Kind" comes with that piece.

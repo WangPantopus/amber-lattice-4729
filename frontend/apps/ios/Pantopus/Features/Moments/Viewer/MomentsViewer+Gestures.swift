@@ -206,6 +206,10 @@ extension MomentsViewer {
         if let choice = model.repliesShownChoice {
             Button(choice) { model.flipRepliesShown() }.accessibilityIdentifier("moments.menu.replies")
         }
+        // "Mail it" (CONTRACT 8j, `MomentMailIt.swift`): one's own picture as a letter, switch and Mailbox on only.
+        if MomentMailIt.offers(model.moment, mine: model.isMine), let moment = model.moment {
+            Button("Mail it") { MomentMailIt.open(moment, from: model) }.accessibilityIdentifier("moments.menu.mailIt")
+        }
         Button("Save to Photos") {
             let moment = model.moment
             let card = moment?.kind == .text ? MomentsCardPicture.render(text: moment?.text ?? "", background: moment?.background) : nil
