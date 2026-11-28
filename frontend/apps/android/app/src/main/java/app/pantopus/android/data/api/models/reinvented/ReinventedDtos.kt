@@ -2,6 +2,7 @@ package app.pantopus.android.data.api.models.reinvented
 
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.moments.MomentGuessSpotDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 import com.squareup.moshi.Json
@@ -91,6 +92,8 @@ data class ReinventedMapResponse(
     @Lossy val marks: List<ReinventedMarkDto> = emptyList(),
     @Lossy val tickets: List<PlanPinDto> = emptyList(),
     @Lossy val kept: List<ReinventedKeptDto> = emptyList(),
+    /** CONTRACT 5d/6b: the live guess-the-spot Moments the reader may see in the area, with no point: a list, never marks. */
+    @Json(name = "guess_spots") @Lossy val guessSpots: List<MomentGuessSpotDto> = emptyList(),
 )
 
 /** A Moment live from here, with its band. */
