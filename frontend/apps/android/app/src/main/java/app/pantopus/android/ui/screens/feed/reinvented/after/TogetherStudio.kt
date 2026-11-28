@@ -100,9 +100,18 @@ internal object TogetherStudio {
     /** The keys this Studio adds to the Moment it makes, or empty for today's request. */
     fun fields(state: MomentsComposeUiState): Map<String, Any> {
         if (owner?.switchOn != true || !staged.value) return emptyMap()
+        val opened = context.value ?: return ownChoices(state)
+        return openedFor(opened, state)
+    }
+
+    /** What the Studio was opened for, from another screen of this build's own. */
+    private fun openedFor(
+        opened: Context,
+        state: MomentsComposeUiState,
+    ): Map<String, Any> {
         // One photo as taken: a before and after (7g) is two pictures side by side, never a frame or a start.
         val photo = state.media is MomentMediaFile.Photo && state.studioPair == null
-        return when (val opened = context.value) {
+        return when (opened) {
             // Only a photo joins a Retake; a text card or a video posts as an ordinary Moment.
             is Context.RetakeFrame -> if (photo) mapOf("retake_of" to opened.startId) else emptyMap()
             // An Eyes-on answer is a Live photo (8f); anything else posts as an ordinary Moment.
@@ -113,18 +122,20 @@ internal object TogetherStudio {
                     if (photo) put("pinboard_of", opened.startId)
                     if (joinsSky.value && state.offersSky) put("join_convergence", true)
                 }
-            null -> {
-                val title = retakeTitle.value.trim().take(TITLE_MAX)
-                val starts = startsRetake.value && title.isNotEmpty() && state.offersRetake
-                val prompt = pinboardPrompt.value.trim().take(PROMPT_MAX)
-                val board = startsPinboard.value && prompt.isNotEmpty() && state.offersPinboard
-                buildMap {
-                    if (starts) put("retake", mapOf("title" to title))
-                    // The server decides whether a window is open; only a photo the author let join may join one.
-                    if (joinsSky.value && state.offersSky) put("join_convergence", true)
-                    if (board) put("pinboard", mapOf("prompt" to prompt))
-                }
-            }
+        }
+    }
+
+    /** The person's own choices in the drawer of a Studio opened from Pulse's + or the camera. */
+    private fun ownChoices(state: MomentsComposeUiState): Map<String, Any> {
+        val title = retakeTitle.value.trim().take(TITLE_MAX)
+        val starts = startsRetake.value && title.isNotEmpty() && state.offersRetake
+        val prompt = pinboardPrompt.value.trim().take(PROMPT_MAX)
+        val board = startsPinboard.value && prompt.isNotEmpty() && state.offersPinboard
+        return buildMap {
+            if (starts) put("retake", mapOf("title" to title))
+            // The server decides whether a window is open; only a photo the author let join may join one.
+            if (joinsSky.value && state.offersSky) put("join_convergence", true)
+            if (board) put("pinboard", mapOf("prompt" to prompt))
         }
     }
 

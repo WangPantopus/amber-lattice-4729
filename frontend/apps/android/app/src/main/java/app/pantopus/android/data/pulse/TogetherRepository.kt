@@ -27,6 +27,7 @@ import javax.inject.Singleton
  * the switch off at once.
  */
 @Singleton
+@Suppress("TooManyFunctions") // One call per route of phase 3, piece by piece (CONTRACT 8), as TogetherApi.
 class TogetherRepository
     @Inject
     constructor(
