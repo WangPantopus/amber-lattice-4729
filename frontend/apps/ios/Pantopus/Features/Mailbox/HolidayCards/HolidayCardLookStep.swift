@@ -166,6 +166,17 @@ struct HolidayCardLookStep: View {
     }
 
     private var intro: String {
+        // With `improved` and guest opening on, they can read it before joining (the web's words).
+        if recipient.isEmail, viewModel.improved, let page = preview.linkPage, page.guestOpen {
+            if recipient.isLink {
+                return "Anyone with your link can open and read the card"
+                    + (page.sealed ? " once Christmas morning arrives" : " right away")
+                    + " — no account needed. The first person to save it keeps it."
+            }
+            return "They aren’t on Pantopus yet. The email never shows your note; " + (page.sealed
+                ? "they get a reminder on Christmas morning when it opens."
+                : "they can open and read the card right away without an account, and join free to keep it or write back.")
+        }
         if recipient.isEmail {
             if recipient.isLink {
                 return "The first person to open your link keeps the card. "

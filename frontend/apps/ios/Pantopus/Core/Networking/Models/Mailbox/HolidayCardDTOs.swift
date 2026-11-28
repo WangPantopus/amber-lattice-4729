@@ -754,9 +754,12 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
         public let sealed: Bool
         public let sentTo: String
         public let sentOn: String?
+        /// They can open and read it before joining (`guest_open`, sent only while the card round's switch is on).
+        public let guestOpen: Bool
 
         private enum CodingKeys: String, CodingKey {
             case sealed
+            case guestOpen = "guest_open"
             case senderName = "sender_name"
             case senderVerified = "sender_verified"
             case sentTo = "sent_to"
@@ -770,6 +773,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
             sealed = (try? c.decodeIfPresent(Bool.self, forKey: .sealed)) ?? false
             sentTo = try c.decode(String.self, forKey: .sentTo)
             sentOn = try? c.decodeIfPresent(String.self, forKey: .sentOn)
+            guestOpen = (try? c.decodeIfPresent(Bool.self, forKey: .guestOpen)) == true
         }
     }
 
