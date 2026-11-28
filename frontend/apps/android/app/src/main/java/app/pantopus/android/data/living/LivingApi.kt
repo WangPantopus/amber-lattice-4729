@@ -13,6 +13,7 @@ import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -65,7 +66,67 @@ interface LivingApi {
     suspend fun constellations(
         @Body body: LivingPointDto,
     ): LivingConstellationsDto
+
+    /** CONTRACT 9d: a person's cabinet; the reader's own always, another's only when connected and shown. */
+    @GET("api/reinvented/cabinet/{userId}")
+    suspend fun cabinet(
+        @Path("userId") userId: String,
+    ): LivingCabinetEnvelope
+
+    /** CONTRACT 9d: the reader's own yearly poster (Pacific year). */
+    @GET("api/reinvented/poster/{year}")
+    suspend fun poster(
+        @Path("year") year: Int,
+    ): LivingPosterEnvelope
+
+    /** CONTRACT 9d: "Show my cabinet to people I know" (the person's own choice, on by default). */
+    @PATCH("api/reinvented/settings")
+    suspend fun showCabinet(
+        @Body body: LivingCabinetChoice,
+    )
 }
+
+/** CONTRACT 9d: numbers about what a person did, never who follows them (no follower or view count anywhere). */
+@JsonClass(generateAdapter = true)
+data class LivingCabinetDto(
+    @Json(name = "places_stood") val placesStood: Int = 0,
+    @Json(name = "highest_ft") val highestFt: Int? = null,
+    val specimens: Int = 0,
+    @Json(name = "questions_helped") val questionsHelped: Int = 0,
+    @Json(name = "strands_sparked") val strandsSparked: Int = 0,
+    val canvases: Int = 0,
+    val since: String? = null,
+    @Json(name = "shown_to") val shownTo: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingCabinetEnvelope(
+    val cabinet: LivingCabinetDto,
+)
+
+/** One month of the poster: the person's own kept Moment most people marked that month. */
+@JsonClass(generateAdapter = true)
+data class LivingPosterMonthDto(
+    val month: Int,
+    val moment: MomentDto,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingPosterDto(
+    val year: Int,
+    val numbers: LivingCabinetDto,
+    @Lossy val months: List<LivingPosterMonthDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingPosterEnvelope(
+    val poster: LivingPosterDto,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingCabinetChoice(
+    @Json(name = "cabinet_shown") val cabinetShown: Boolean,
+)
 
 /** A place the person follows (a hometown, Kyoto): its point rounded by the server to about a kilometre. */
 @JsonClass(generateAdapter = true)

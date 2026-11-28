@@ -54,6 +54,15 @@ class LivingRepository
             longitude: Double,
         ): NetworkResult<LivingConstellationsDto> = guarded { api.constellations(LivingPointDto(latitude, longitude)) }
 
+        /** CONTRACT 9d: a person's cabinet. */
+        suspend fun cabinet(userId: String): NetworkResult<LivingCabinetDto> = guarded { api.cabinet(userId).cabinet }
+
+        /** CONTRACT 9d: the reader's own poster for [year]. */
+        suspend fun poster(year: Int): NetworkResult<LivingPosterDto> = guarded { api.poster(year).poster }
+
+        /** CONTRACT 9d: "Show my cabinet to people I know". */
+        suspend fun showCabinet(on: Boolean): NetworkResult<Unit> = guarded { api.showCabinet(LivingCabinetChoice(on)) }
+
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }
             if (answer is NetworkResult.Failure && answer.error.serverCode == StudioRepository.SWITCH_OFF) feature.refusedOff()
