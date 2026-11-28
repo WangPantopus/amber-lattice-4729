@@ -62,7 +62,10 @@ class ReinventedRepository
             // CONTRACT 8d: one circle of the reader's, with `close`.
             circle: String? = null,
         ): NetworkResult<ReinventedListResponse> =
-            guarded { api.list(reach, miles, chip, at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor, circle = circle) }
+            // A circle's 404 is the circle gone (CIRCLE_NOT_FOUND), not an older server: today's Pulse stays out of it.
+            guarded(behindOn404 = circle == null) {
+                api.list(reach, miles, chip, at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor, circle = circle)
+            }
 
         /** The map for a box and a time (CONTRACT 6b). */
         suspend fun map(

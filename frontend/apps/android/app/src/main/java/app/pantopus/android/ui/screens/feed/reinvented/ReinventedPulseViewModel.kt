@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.location.LocationProvider
@@ -200,7 +201,7 @@ class ReinventedPulseViewModel
                     cursor = cursor,
                     circle = start.circleId.takeIf { start.reach == CLOSE },
                 )
-            if (answer is NetworkResult.Failure && answer.error.serverCode == CIRCLE_NOT_FOUND && start.circleId != null) {
+            if (answer is NetworkResult.Failure && start.circleId != null && answer.error.circleGone) {
                 // No longer in that circle (it ended, or they left): all their connections again.
                 _state.update { it.copy(circleId = null, circleName = null, items = emptyList(), cursor = null) }
                 return read(cursor = null)
@@ -304,8 +305,6 @@ class ReinventedPulseViewModel
             const val CLOSE = "close"
             const val EXPLORE = "explore"
 
-            /** CONTRACT 8d: the reader is no longer in the circle asked for. */
-            private const val CIRCLE_NOT_FOUND = "CIRCLE_NOT_FOUND"
             private const val EXPLORE_END = "That's everything for now."
             const val ALL = "all"
             const val MOMENT = "moment"
@@ -377,3 +376,10 @@ internal fun MomentDto.asRing(viewerId: String?): MomentRingDto =
         newestAt = createdAt,
         mine = viewerId != null && author.id == viewerId,
     )
+
+/**
+ * CONTRACT 8d: the list for a circle answered `404 CIRCLE_NOT_FOUND` (the reader is no longer in it). A 404 reaches the
+ * app without its body, so any 404 for a circle's list means that.
+ */
+private val NetworkError.circleGone: Boolean
+    get() = this == NetworkError.NotFound || serverCode == "CIRCLE_NOT_FOUND"
