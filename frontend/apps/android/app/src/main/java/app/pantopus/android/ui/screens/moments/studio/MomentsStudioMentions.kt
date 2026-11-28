@@ -128,12 +128,13 @@ class MomentsStudioMentionsViewModel
 
         private var reading = false
 
+        /** Read fresh from the server the first time; a failed or empty read is tried again at the next "@". */
         fun read() {
-            if (reading || _people.value != null) return
+            if (reading || !_people.value.isNullOrEmpty()) return
             reading = true
             viewModelScope.launch {
-                val read = relationships.list(status = "accepted", limit = 100)
-                _people.value =
+                val read = relationships.list(status = "accepted", limit = 100, force = true)
+                val people =
                     (read as? NetworkResult.Success)
                         ?.data
                         ?.relationships
@@ -142,6 +143,7 @@ class MomentsStudioMentionsViewModel
                         .filter { it.name.isNotBlank() }
                         .distinctBy { it.id }
                         .sortedBy { it.name.lowercase() }
+                if (people.isNotEmpty()) _people.value = people
                 reading = false
             }
         }
