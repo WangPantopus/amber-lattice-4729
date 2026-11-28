@@ -22,6 +22,7 @@ struct MomentPhotoSurface: View {
     let moment: MomentDTO
     let image: UIImage
     @State private var flags = PulseReinventedFlags.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if flags.isOn, let pair = moment.layers.beforeAfter {
@@ -30,6 +31,9 @@ struct MomentPhotoSurface: View {
                 .accessibilityLabel("\(moment.author.shortName)'s before and after")
                 .accessibilityIdentifier("moments.viewer.photo")
                 .overlay { MomentLayersOverlay(moment: moment, picture: MomentBeforeAfterHalves.size(of: image.size)) }
+        } else if flags.isOn, MomentDepth.shows(reduceMotion: reduceMotion) {
+            // Depth windows (phase 4): tilt to look around; flat with Reduce Motion, in Low Power Mode, or when slow.
+            MomentDepthWindow(moment: moment, image: image)
         } else if flags.isOn, !moment.layers.dots.isEmpty || !moment.layers.play.isEmpty {
             // Dots and items open cards: they are laid over the frame that shows, not the photo's overflow, so a card
             // stays on the screen on a wide photo.
