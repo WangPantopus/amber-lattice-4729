@@ -18,7 +18,9 @@ const momentPlace = require('../moments/momentPlace');
 const { resolveLocation } = require('../context/locationResolver');
 const { postScopeAccess } = require('./readAccess');
 const postStudio = require('./postStudio');
+const filtersOf = require('./filters');
 const { haversineMeters } = require('../../utils/trustState');
+const { timezoneFromCoordinates } = require('../../utils/timezone');
 
 const MILE = 1609.344;
 const REACHES = ['close', 'around'];
@@ -96,7 +98,7 @@ function encodeCursor(state) {
   return Buffer.from(JSON.stringify({ v: 1, ...state })).toString('base64url');
 }
 
-function decodeCursor(text, { reach, miles, chip, circle = null }) {
+function decodeCursor(text, { reach, miles, chip, circle = null, filters = null }) {
   if (text == null || text === '') return null;
   let state;
   try {
@@ -105,7 +107,7 @@ function decodeCursor(text, { reach, miles, chip, circle = null }) {
     state = null;
   }
   const sameAsk = state && state.v === 1 && state.r === reach && state.mi === miles && state.c === chip
-    && (state.ci || null) === (circle || null);
+    && (state.ci || null) === (circle || null) && (state.f || null) === filtersOf.signature(filters);
   const band = state?.b;
   if (!sameAsk || !Number.isInteger(band) || band < 0 || band >= BANDS.length) {
     throw fail(400, 'INVALID_CURSOR', 'This list has changed. Pull to refresh.');
@@ -214,6 +216,45 @@ async function partPage({ readPosts, moments, posts: postCursor, mark, room }) {
   return { items: taken, posts: readPosts ? cursor : 'done', mark: momentMark, done: false };
 }
 
+// ─── Filters (CONTRACT 10a) ─────────────────────────────────────────────────
+
+/** The post types a filter can hold (with the Heads-ups), to read fewer posts; null for any type. */
+function postTypesFor(filters) {
+  let types = null;
+  if (filters.kinds) {
+    const shapes = filters.kinds.map((name) => CHIPS[name].posts).filter(Boolean);
+    types = shapes.some((posts) => !posts.postTypes) ? null : [...new Set(shapes.flatMap((posts) => posts.postTypes))];
+  }
+  const narrow = (allowed) => { types = types ? types.filter((type) => allowed.includes(type)) : allowed; };
+  if (filters.state) {
+    narrow([...(filters.state.includes('unanswered') ? ['ask_local'] : []), ...(filters.state.includes('room') ? ['event'] : [])]);
+  }
+  if (filters.when === 'tonight' || filters.when === 'weekend') narrow(['event']);
+  return types ? [...new Set([...types, 'alert'])] : null;
+}
+
+/**
+ * The list's shape for a request's filters: whether Moments are read, and the posts' types and test, plus the tests
+ * themselves for the Moments. Reads only what the filters need: the reader's connections for `from=connections`, the
+ * place's time zone for `when`.
+ */
+async function filteredShape(userId, filters, { placeRead }) {
+  const [ids, place] = await Promise.all([
+    filters.from === 'connections' ? store.connectionIds(userId) : null,
+    filters.when && filters.when !== 'now' && placeRead ? placeRead.catch(() => null) : null,
+  ]);
+  const people = ids ? new Set([String(userId), ...ids.map(String)]) : null;
+  const zone = place ? timezoneFromCoordinates(place.latitude, place.longitude, null) : null;
+  const tests = filtersOf.testsFor(filters, { chips: CHIPS, people, zone });
+  return { tests, shape: { moments: tests.moments, posts: { postTypes: postTypesFor(filters), keep: tests.post } } };
+}
+
+/** The Moments (entries or items, each with its `row`) a request's filters keep; all of them without filters. */
+function keptByFilters(list, filtered) {
+  if (!filtered) return list;
+  return list.filter((entry) => filtered.tests.moment(entry.row, store.shownAt(entry.row)));
+}
+
 // ─── The list ──────────────────────────────────────────────────────────────
 
 /**
@@ -243,13 +284,21 @@ async function readerPlace(userId, latitude, longitude) {
  */
 async function listFor(userId, {
   reach = 'around', miles = MAX_MILES, chip = 'all', latitude = null, longitude = null, cursor = null, limit = 20, circle = null,
+  filters = null,
 }) {
   if (!REACHES.includes(reach)) throw fail(400, 'LIST_INVALID', 'Choose Close circle or Around me.');
   if (!CHIP_NAMES.includes(chip)) throw fail(400, 'LIST_INVALID', 'Choose one of the chips.');
   if (circle && reach !== 'close') throw fail(400, 'LIST_INVALID', 'A circle goes with Close circle.');
-  const from = decodeCursor(cursor, { reach, miles, chip, circle });
+  const from = decodeCursor(cursor, { reach, miles, chip, circle, filters });
   const firstPage = !from;
-  const shape = CHIPS[chip];
+  // Filters (CONTRACT 10a): the chip's shape becomes the filters' own (several kinds, when, from, state, since, with the
+  // Heads-ups always); without any, the chip's shape as before.
+  // Around me's place is read beside what the filters need (the reader's connections), not after it.
+  const placeRead = reach === 'around' || (filters?.when && filters.when !== 'now')
+    ? readerPlace(userId, latitude, longitude) : null;
+  placeRead?.catch(() => {});
+  const filtered = filters ? await filteredShape(userId, filters, { placeRead }) : null;
+  const shape = filtered ? filtered.shape : CHIPS[chip];
   // Which Pulse read scopes the reader has is read once for every post read below.
   const scopeAccessRead = postScopeAccess(userId);
   scopeAccessRead.catch(() => {});
@@ -258,7 +307,7 @@ async function listFor(userId, {
   const recentPasses = require('./passOn').recentPasses();
   recentPasses.catch(() => {});
   // An All first page says its chips from the posts its own reads saw (chipsFromPage); every read is noted here.
-  const chipsFromReads = firstPage && chip === 'all';
+  const chipsFromReads = firstPage && chip === 'all' && !filtered;
   const seen = [];
   let complete = true;
   const noted = (read) => {
@@ -283,7 +332,7 @@ async function listFor(userId, {
       ? connectionsRead.then((ids) => withKept(store.shownOfPeople(userId, [String(userId), ...ids]),
         store.shownKept(userId, { people: [String(userId), ...ids] })))
       : Promise.resolve([]);
-    const momentsRead = shape.moments ? shownRead : Promise.resolve([]);
+    const momentsRead = shape.moments ? shownRead.then((entries) => keptByFilters(entries, filtered)) : Promise.resolve([]);
     const chipContext = { userId, reach, scopeAccessRead, momentsRead: shownRead };
     let chipsRead = firstPage && !chipsFromReads ? chipsFor(chipContext) : null;
     const chipKeep = shape.posts?.keep || null;
@@ -316,16 +365,16 @@ async function listFor(userId, {
     if (chipsFromReads) chipsRead = chipsFromPage(chipContext, seen, complete);
     return answer({
       userId, reach, miles, chip, chipsRead, readyRead, place: null, bands: [], items: part.items, recentPasses, studioInBox: studioByPeople,
-      next: part.done ? null : { b: 0, p: part.posts, m: part.mark, ...(circle ? { ci: circle } : {}) },
+      next: part.done ? null : { b: 0, p: part.posts, m: part.mark, ...(circle ? { ci: circle } : {}) }, filters,
     });
   }
 
   // Around me.
-  const place = await readerPlace(userId, latitude, longitude);
+  const place = await (placeRead || readerPlace(userId, latitude, longitude));
   if (!place) {
     return {
       reach, miles, place: null, needs_place: true, chips: firstPage ? ['all'] : null, bands: [], items: [],
-      next_cursor: null, end: null,
+      next_cursor: null, end: null, ...filtersOf.echo(filters),
     };
   }
   const townRead = momentPlace.townAt(place.latitude, place.longitude).catch(() => momentPlace.FALLBACK_LABEL);
@@ -345,7 +394,7 @@ async function listFor(userId, {
       })
       .filter((item) => item && item.bandIndex != null))
     : Promise.resolve([]);
-  const momentsRead = shape.moments ? shownRead : Promise.resolve([]);
+  const momentsRead = shape.moments ? shownRead.then((items) => keptByFilters(items, filtered)) : Promise.resolve([]);
   const chipContext = { userId, reach, place, reachM, scopeAccessRead, momentsRead: shownRead };
   let chipsRead = firstPage && !chipsFromReads ? chipsFor(chipContext) : null;
   // The Moments this page can hold are made ready while the posts are read: at most `limit`, the next ones in the
@@ -445,6 +494,7 @@ async function listFor(userId, {
   const town = await townRead;
   return answer({
     userId, reach, miles, chip, chipsRead, readyRead, place: { label: town }, bands: bandsUpTo(miles, town), items, next, studioInBox, recentPasses,
+    filters,
   });
 }
 
@@ -492,7 +542,9 @@ function prepare(userId, itemsRead) {
 }
 
 /** The page as the apps read it: Moments serialized as GET /api/moments/:id answers them, posts as the feed lists them. */
-async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null, recentPasses = null }) {
+async function answer({
+  userId, reach, miles, chip, chipsRead, readyRead, place, bands, items, next, studioInBox = null, recentPasses = null, filters = null,
+}) {
   const pagePosts = items.filter((item) => item.type === 'post').map((item) => item.post);
   // A post made in the Studio shows its stamps, its playable items and its dots here (CONTRACT 6d, 7b, 7c); a failed read
   // only leaves them off. Started as soon as the page's posts are known, beside the Moments still being made ready (the
@@ -531,8 +583,9 @@ async function answer({ userId, reach, miles, chip, chipsRead, readyRead, place,
     chips: chips ? chipsFromItems(chips) : null,
     bands: bands.map(({ band, label }) => ({ band, label })),
     items: out,
-    next_cursor: next ? encodeCursor({ r: reach, mi: miles, c: chip, ...next }) : null,
+    next_cursor: next ? encodeCursor({ r: reach, mi: miles, c: chip, ...next, ...(filters ? { f: filtersOf.signature(filters) } : {}) }) : null,
     end: next ? null : END_LINES[reach],
+    ...filtersOf.echo(filters),
   };
 }
 
@@ -598,5 +651,5 @@ function chipsFromItems(found) {
 }
 
 module.exports = {
-  listFor, bandsUpTo, bandIndexOf, boxAround, readerPlace, CHIP_NAMES, REACHES, MAX_MILES, END_LINES,
+  listFor, bandsUpTo, bandIndexOf, boxAround, readerPlace, CHIP_NAMES, CHIPS, REACHES, MAX_MILES, END_LINES,
 };
