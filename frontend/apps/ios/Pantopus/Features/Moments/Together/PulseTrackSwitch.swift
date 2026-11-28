@@ -14,7 +14,7 @@ import Foundation
 enum PulseTrackSwitch {
     static func applied(_ on: Bool) {
         if on {
-            Task { await PostcardWidgetStore.refresh() }
+            Task(priority: .utility) { await PostcardWidgetStore.refresh() }
         } else {
             PostcardWidgetStore.clear()
         }

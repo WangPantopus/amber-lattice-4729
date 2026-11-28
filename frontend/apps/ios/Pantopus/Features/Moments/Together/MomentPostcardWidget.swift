@@ -36,6 +36,9 @@ enum PostcardWidgetStore {
     /// Reads closer together than this reuse the last one.
     private static let every: TimeInterval = 300
     private static var lastRead: Date?
+    /// The first read of an app run waits until the app's first screen has long arrived (LEAD-4, the seventh condition).
+    private static var firstRead = true
+    static let firstReadAfter: Duration = .seconds(5)
 
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: GigWidgetSnapshotContract.appGroupId)
@@ -46,7 +49,9 @@ enum PostcardWidgetStore {
             .appendingPathComponent(pictureName)
     }
 
-    /// The newest postcard read again (at most every five minutes unless `force`), written for the widget.
+    /// The newest postcard read again (at most every five minutes unless `force`), written for the widget. The Mail is
+    /// read only for a person who has placed the widget on a screen (the system says which are placed), and never
+    /// beside the app's first screen: anyone else costs no request, and the app opens as fast as today.
     static func refresh(force: Bool = false) async {
         guard PulseReinventedFlags.shared.isOn, LaunchFeatures.mailbox, let account = MomentsComposerModel.account else {
             clear()
@@ -54,20 +59,27 @@ enum PostcardWidgetStore {
         }
         // Another account's postcard never stays on the widget, not even until the next read.
         if let current = stored(), current.account != account { clear() }
-        if !force, let lastRead, Date().timeIntervalSince(lastRead) < every { return }
-        lastRead = Date()
+        // In the gallery while the switch is on: a flag in the app group, no request.
         let wasOn = defaults?.bool(forKey: onKey) ?? false
-        defaults?.set(true, forKey: onKey)
-        guard let page: PostcardListPage = try? await APIClient.shared.request(MailboxEndpoints.list(limit: 30)) else {
-            if !wasOn { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
-            return
+        if !wasOn {
+            defaults?.set(true, forKey: onKey)
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
         }
+        if !force, let lastRead, Date().timeIntervalSince(lastRead) < every { return }
+        if firstRead {
+            firstRead = false
+            try? await Task.sleep(for: firstReadAfter)
+            guard PulseReinventedFlags.shared.isOn, MomentsComposerModel.account == account else { return }
+        }
+        guard await isPlaced() else { return }
+        lastRead = Date()
+        guard let page: PostcardListPage = try? await APIClient.shared.request(MailboxEndpoints.list(limit: 30)) else { return }
         guard let newest = page.mail.first(where: { $0.subject?.hasPrefix(subjectStart) == true }) else {
             write(nil)
             return
         }
         let locked = AppLockManager.shared.isEnabled(forUserID: account)
-        if let current = stored(), current.mailId == newest.id, current.locked == locked, wasOn { return }
+        if let current = stored(), current.mailId == newest.id, current.locked == locked { return }
         // Behind the app's own lock, nothing of the letter leaves the Mail tab: no name and no picture.
         let picture = locked ? false : await picture(of: newest.id)
         let from = locked ? "" : String(newest.subject?.dropFirst(subjectStart.count) ?? "")
@@ -90,6 +102,12 @@ enum PostcardWidgetStore {
         if let pictureURL { try? FileManager.default.removeItem(at: pictureURL) }
         lastRead = nil
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+
+    /// A postcard widget is on one of the person's screens.
+    private static func isPlaced() async -> Bool {
+        guard let placed = try? await WidgetCenter.shared.currentConfigurations() else { return false }
+        return placed.contains { $0.kind == kind }
     }
 
     private static func stored() -> PostcardWidgetSnapshot? {
