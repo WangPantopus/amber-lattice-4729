@@ -97,6 +97,10 @@ struct MomentLayersOverlay: View {
             // Clear underneath so the layers always have the picture's size (the stamps draw nothing without stamps).
             ZStack {
                 Color.clear
+                // A swatch's paint is tried on the photo, under the stamps.
+                if moment.layers.play.contains(where: { $0.kind == .swatch }) {
+                    MomentSwatchPaint(moment: moment, picture: picture)
+                }
                 MomentStampsOverlay(moment: moment, picture: picture)
                 if !moment.layers.play.isEmpty {
                     MomentPlayOverlay(moment: moment, picture: picture)

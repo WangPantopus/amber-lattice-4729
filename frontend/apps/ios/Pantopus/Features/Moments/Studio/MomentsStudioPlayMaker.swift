@@ -47,7 +47,7 @@ struct MomentsStudioPlayMaker: View {
         Making.allCases.filter { kind in
             switch kind {
             case .fog: model.offersLooks && !(model.marking.studio?.play.contains { $0.kind == .fog } ?? false)
-            case .swatch: model.offersLooks
+            case .swatch: model.offersLooks && !(model.marking.studio?.play.contains { $0.kind == .swatch } ?? false)
             default: true
             }
         }

@@ -82,10 +82,67 @@ struct MomentsStudioPlayLayer: View {
     var body: some View {
         GeometryReader { geo in
             let frame = picture.map { MomentMarks.fill($0, in: geo.size) } ?? CGRect(origin: .zero, size: geo.size)
+            // A swatch's area, as readers will see it outlined; it takes no touch.
+            ForEach(model.studioPlayItems.filter { $0.kind == .swatch }) { item in
+                let rect = MomentSwatchLayer.rect(item, in: frame)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .allowsHitTesting(false)
+            }
             ForEach(model.studioPlayItems.filter { $0.kind != .fog && $0.kind != .swatch }) { item in
                 MomentsStudioPlacedPlay(model: model, item: item, frame: frame, screen: geo.size)
             }
+            // Fog and a swatch cover the whole picture rather than sit on it: each says it is on, and comes off with ✕.
+            VStack(alignment: .leading, spacing: Spacing.s2) {
+                ForEach(model.studioPlayItems.filter { $0.kind == .fog || $0.kind == .swatch }) { item in
+                    MomentsStudioCoverChip(item: item) { model.removeStudioPlay(item.id) }
+                }
+            }
+            .padding(.leading, Spacing.s4)
+            .padding(.top, 128)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+}
+
+/// "Fog-wipe on" or a swatch's paints, at the top left of the Studio's picture (clear of the tool rail), with ✕.
+private struct MomentsStudioCoverChip: View {
+    let item: MomentPlayItem
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if item.kind == .swatch {
+                HStack(spacing: -4) {
+                    ForEach(Array((item.colors ?? []).compactMap(MomentSwatchLayer.color).enumerated()), id: \.offset) { _, color in
+                        Circle().fill(color).frame(width: 16, height: 16).overlay(Circle().stroke(Color.white, lineWidth: 1))
+                    }
+                }
+            } else {
+                Icon(.cloud, size: 15, strokeWidth: 2.2, color: .white)
+            }
+            Text(item.kind == .fog ? "Fog-wipe on" : "Swatch on")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Button(action: onRemove) {
+                Icon(.x, size: 14, strokeWidth: 2.6, color: .white)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.kind == .fog ? "Take the fog off" : "Take the swatch off")
+            .accessibilityIdentifier("moments.studio.play.\(item.id).remove")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: 34)
+        .background(Capsule().fill(Color.black.opacity(0.55)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(item.kind == .fog ? "Fog-wipe: the picture opens frosted" : "Swatch: people try these colours on")
+        .accessibilityIdentifier("moments.studio.play.\(item.id)")
     }
 }
 
