@@ -90,7 +90,7 @@ final class PulseReinventedFlags {
 
     private func apply(_ on: Bool) {
         if isOn != on { isOn = on }
-        if on { Task { await PostcardWidgetStore.refresh() } } else { PostcardWidgetStore.clear() } // 8j widget (STUDIO-IOS-12)
+        PulseTrackSwitch.applied(on) // the Pulse track's phone-side pieces (the widget) follow the switch
     }
 
     private static func key(_ account: String) -> String {
