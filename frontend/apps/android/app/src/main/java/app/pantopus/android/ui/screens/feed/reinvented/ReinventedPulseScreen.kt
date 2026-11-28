@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -304,7 +305,10 @@ private fun ReinventedListPane(
     }
 }
 
-/** The map behind, the list over it at its height, the header over both, and +. */
+/**
+ * The map and the list: on a phone the map behind and the list over it at its height, the header over both, and +; on a
+ * wide window (a tablet, an open foldable) the list beside the map ([ReinventedSideBySide]).
+ */
 @Composable
 @Suppress("LongParameterList") // What the layout shows, its height, and where each part's taps go.
 private fun ReinventedPulseLayout(
@@ -330,73 +334,98 @@ private fun ReinventedPulseLayout(
         val to = flight?.point ?: return@LaunchedEffect
         camera.animate(CameraUpdateFactory.newLatLng(LatLng(to.latitude, to.longitude)), FLY_MS)
     }
-    val density = LocalDensity.current
     BoxWithConstraints(
         modifier =
             Modifier.fillMaxSize().background(
                 PantopusColors.appBg,
             ).semantics { testTagsAsResourceId = true }.testTag("reinventedPulse"),
     ) {
-        var headerPx by remember { mutableIntStateOf(0) }
-        val header = with(density) { headerPx.toDp() }
-        val full = maxHeight
-        val rest = restOf(height, header, full)
-        var draggedPx by remember { mutableFloatStateOf(0f) }
-        val target = (rest + with(density) { draggedPx.toDp() }).coerceIn(header, full - PEEK)
-        val top by animateDpAsState(
-            target,
-            if (draggedPx != 0f) spring(stiffness = 10_000f) else spring(dampingRatio = 0.85f),
-            label = "panel",
-        )
-        ReinventedPulseMap(
-            state = mapState,
-            camera = camera,
-            focused = mapState.focused.takeIf { height == ReinventedHeight.Map },
-            bottomPadding = if (height == ReinventedHeight.Map) PEEK else full - rest,
-            onMoved = { box ->
-                atlas.onMoved(box)
-                if (!atlas.on) mapModel.moved(box)
-            },
-            onOpen = { item -> openPin(item, atlas, actions, onOpenMoment, onOpenRing) },
-        )
-        Panel(
-            top = top,
-            full = full,
-            height = height,
-            onDrag = { draggedPx += it },
-            onSettle = {
-                val now = rest + with(density) { draggedPx.toDp() }
-                draggedPx = 0f
-                onHeight(ReinventedHeight.entries.minBy { (restOf(it, header, full) - now).value.let { d -> if (d < 0) -d else d } })
-            },
-            onTapHandle = { onHeight(if (height == ReinventedHeight.Middle) ReinventedHeight.List else ReinventedHeight.Middle) },
-            list = list,
-        )
-        ReinventedPulseHeader(
-            height = height,
-            state = state,
-            onOpenMenu = actions.onOpenMenu,
-            onHeight = onHeight,
-            onPickChip = onPickChip,
-            onPickReach = onPickReach,
-            time = mapState.time,
-            onPickTime = mapModel::pickTime,
-            atlas = atlas.on,
-            onAtlas = atlas.onToggle,
-            modifier = Modifier.onSizeChanged { headerPx = it.height },
-        )
-        if (height == ReinventedHeight.Map) {
-            val guessAt = Modifier.align(Alignment.TopStart).padding(top = header + Spacing.s2, start = Spacing.s4)
-            if (!atlas.on) ReinventedGuessSpotsChip(mapState, guessAt)
-            ReinventedPeekDeck(
-                deck = mapState.deck,
-                onFocus = mapModel::focus,
-                onOpen = { item -> openPin(item, atlas, actions, onOpenMoment, onOpenRing) },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = PEEK + Spacing.s2),
+        val wide = reinventedSideBySide(maxWidth)
+        val open = { item: ReinventedMapItem -> openPin(item, atlas, actions, onOpenMoment, onOpenRing) }
+        val parts =
+            ReinventedLayoutParts(
+                header = { modifier ->
+                    ReinventedPulseHeader(
+                        height = height,
+                        state = state,
+                        onOpenMenu = actions.onOpenMenu,
+                        onHeight = onHeight,
+                        onPickChip = onPickChip,
+                        onPickReach = onPickReach,
+                        time = mapState.time,
+                        onPickTime = mapModel::pickTime,
+                        atlas = atlas.on,
+                        onAtlas = atlas.onToggle,
+                        sideBySide = wide,
+                        modifier = modifier,
+                    )
+                },
+                map = { bottomPadding ->
+                    ReinventedPulseMap(
+                        state = mapState,
+                        camera = camera,
+                        focused = mapState.focused.takeIf { height == ReinventedHeight.Map },
+                        bottomPadding = bottomPadding,
+                        onMoved = { box ->
+                            atlas.onMoved(box)
+                            if (!atlas.on) mapModel.moved(box)
+                        },
+                        onOpen = open,
+                    )
+                },
+                timeRow = if (atlas.on) null else { modifier -> ReinventedTimeRow(mapState.time, mapModel::pickTime, modifier) },
+                mapExtras = { guessTop, deck ->
+                    if (!atlas.on) {
+                        val at = Modifier.align(Alignment.TopStart).padding(top = guessTop + Spacing.s2, start = Spacing.s4)
+                        ReinventedGuessSpotsChip(mapState, at)
+                    }
+                    ReinventedPeekDeck(deck = mapState.deck, onFocus = mapModel::focus, onOpen = open, modifier = deck)
+                },
+                add = { modifier -> AddButton(actions.onCompose, modifier) },
+                list = list,
             )
-        } else {
-            AddButton(actions.onCompose, Modifier.align(Alignment.BottomEnd))
-        }
+        if (wide) ReinventedSideBySide(height, parts) else ReinventedOverMap(height, onHeight, maxHeight, parts)
+    }
+}
+
+/** On a phone: the map behind, the list over it at its height, the header over both, and +. */
+@Composable
+private fun BoxScope.ReinventedOverMap(
+    height: ReinventedHeight,
+    onHeight: (ReinventedHeight) -> Unit,
+    full: Dp,
+    parts: ReinventedLayoutParts,
+) {
+    val density = LocalDensity.current
+    var headerPx by remember { mutableIntStateOf(0) }
+    val header = with(density) { headerPx.toDp() }
+    val rest = restOf(height, header, full)
+    var draggedPx by remember { mutableFloatStateOf(0f) }
+    val target = (rest + with(density) { draggedPx.toDp() }).coerceIn(header, full - PEEK)
+    val top by animateDpAsState(
+        target,
+        if (draggedPx != 0f) spring(stiffness = 10_000f) else spring(dampingRatio = 0.85f),
+        label = "panel",
+    )
+    parts.map(if (height == ReinventedHeight.Map) PEEK else full - rest)
+    Panel(
+        top = top,
+        full = full,
+        height = height,
+        onDrag = { draggedPx += it },
+        onSettle = {
+            val now = rest + with(density) { draggedPx.toDp() }
+            draggedPx = 0f
+            onHeight(ReinventedHeight.entries.minBy { (restOf(it, header, full) - now).value.let { d -> if (d < 0) -d else d } })
+        },
+        onTapHandle = { onHeight(if (height == ReinventedHeight.Middle) ReinventedHeight.List else ReinventedHeight.Middle) },
+        list = parts.list,
+    )
+    parts.header(Modifier.onSizeChanged { headerPx = it.height })
+    if (height == ReinventedHeight.Map) {
+        parts.mapExtras(this, header, Modifier.align(Alignment.BottomCenter).padding(bottom = PEEK + Spacing.s2))
+    } else {
+        parts.add(Modifier.align(Alignment.BottomEnd))
     }
 }
 
