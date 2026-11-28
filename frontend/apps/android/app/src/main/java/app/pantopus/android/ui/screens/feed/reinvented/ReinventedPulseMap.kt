@@ -54,6 +54,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import app.pantopus.android.R
 import app.pantopus.android.data.pulse.ReinventedBox
+import app.pantopus.android.ui.screens.feed.living.LivingBeamsLayer
+import app.pantopus.android.ui.screens.feed.living.LivingLight
+import app.pantopus.android.ui.screens.feed.living.LivingPin
+import app.pantopus.android.ui.screens.feed.living.livingMapStyle
+import app.pantopus.android.ui.screens.feed.living.rememberLivingLight
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
 import app.pantopus.android.ui.screens.moments.components.MomentMapPin
 import app.pantopus.android.ui.theme.PantopusColors
@@ -62,7 +67,6 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
@@ -89,6 +93,7 @@ internal fun ReinventedPulseMap(
 ) {
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
+    val light = rememberLivingLight(state.floats, camera)
     val center = state.center
     // The map opens on the phone's place (or the home) once it is known, and never jumps there again.
     var centered by remember { mutableStateOf(false) }
@@ -104,10 +109,10 @@ internal fun ReinventedPulseMap(
         onMoved(ReinventedBox(bounds.southwest.latitude, bounds.southwest.longitude, bounds.northeast.latitude, bounds.northeast.longitude))
     }
     val properties =
-        remember(context) {
+        remember(context, light.night) {
             MapProperties(
                 isMyLocationEnabled = locationAllowed(context),
-                mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, R.raw.nearby_map_style),
+                mapStyleOptions = livingMapStyle(context, light.night, R.raw.nearby_map_style),
             )
         }
     val uiSettings =
@@ -123,7 +128,8 @@ internal fun ReinventedPulseMap(
             contentPadding = PaddingValues(bottom = bottomPadding),
             onMapLoaded = { ready = true },
         )
-        if (ready) ReinventedMapPins(state.drawOrder, focused, camera, onOpen)
+        if (ready) LivingBeamsLayer(camera, state.time, light.night)
+        if (ready) ReinventedMapPins(state.drawOrder, focused, camera, light, onOpen)
     }
 }
 
@@ -138,6 +144,7 @@ private fun ReinventedMapPins(
     items: List<ReinventedMapItem>,
     focused: String?,
     camera: CameraPositionState,
+    light: LivingLight,
     onOpen: (ReinventedMapItem) -> Unit,
 ) {
     Layout(
@@ -147,11 +154,9 @@ private fun ReinventedMapPins(
                 key(
                     item.id,
                 ) {
-                    ReinventedMapPin(
-                        item,
-                        focused = item.id == focused,
-                        modifier = Modifier.clickable(role = Role.Button) { onOpen(item) },
-                    )
+                    LivingPin(item, light, item.id == focused, Modifier.clickable(role = Role.Button) { onOpen(item) }) { tap ->
+                        ReinventedMapPin(item, focused = item.id == focused, modifier = tap)
+                    }
                 }
             }
         },
