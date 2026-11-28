@@ -60,10 +60,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -534,9 +536,19 @@ internal fun StudioCaption(
     modifier: Modifier = Modifier,
 ) {
     val style = TextStyle(color = Color.White, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, shadow = OnPicture)
+    // The words with the cursor; a change from outside (a mention picked) puts the cursor at the end, after the name.
+    var field by remember { mutableStateOf(TextFieldValue(caption, TextRange(caption.length))) }
+    var seen by remember { mutableStateOf(caption) }
+    if (caption != seen) {
+        seen = caption
+        if (caption != field.text) field = TextFieldValue(caption, TextRange(caption.length))
+    }
     BasicTextField(
-        value = caption,
-        onValueChange = onCaption,
+        value = field,
+        onValueChange = { next ->
+            field = next
+            if (next.text != caption) onCaption(next.text)
+        },
         enabled = enabled,
         textStyle = style,
         maxLines = 3,
