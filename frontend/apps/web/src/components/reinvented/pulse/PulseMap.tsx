@@ -16,7 +16,7 @@ import { MAP_PUBLIC_TOKEN } from '@/components/map/constants';
 import { colors } from '@/components/moments/momentState';
 import { ticketWhen, type Box, type ListItem, type Point } from './listApi';
 import type { Pin } from './pins';
-import { liftOf, nightOf, shadowOf, sunPosition, type Beam, type PlaceSound, type Sun } from './mapLight';
+import { liftOf, lightOf, nightOf, shadowOf, sunPosition, type Beam, type PlaceSound, type Sun } from './mapLight';
 import type { Lit } from './AskTheMap';
 import { globePossible, openFlat, openGlobe, type Mark, type MapEngine, type Spot } from './pulseMapEngine';
 import './sky.css';
@@ -215,14 +215,22 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
     let active = true,
       engine: MapEngine | null = null,
       clock = 0,
-      timer = 0;
+      timer = 0,
+      relight: (() => void) | null = null;
     const resize = new ResizeObserver(() => engine?.resize());
+    // PHASE-5 D: the map is dark while the browser is set to dark, or where it is night where the map is looking; bright
+    // otherwise. It turns at once when the browser's setting changes.
+    const dark = window.matchMedia('(prefers-color-scheme: dark)');
+    const onDark = () => relight?.();
+    dark.addEventListener('change', onDark);
     const start = (m: MapEngine) => {
       engine = m;
       const light = () => {
         const c = m.center();
         const next = sunPosition(c.latitude, c.longitude);
-        el.style.setProperty('--rp-night', nightOf(next).toFixed(2));
+        // The globe takes the basemap's own light; the flat map's tiles are dimmed (fully while the browser is dark).
+        el.style.setProperty('--rp-night', (dark.matches ? 1 : nightOf(next)).toFixed(2));
+        m.light(lightOf(next, dark.matches));
         // A new sun only when it moved enough to change a shadow, so the pins aren't drawn again each minute.
         setSun((prev) =>
           prev && Math.abs(prev.azimuth_deg - next.azimuth_deg) < 3 && Math.abs(prev.elevation_deg - next.elevation_deg) < 1.5 && prev.elevation_deg > 0 === next.elevation_deg > 0
@@ -232,6 +240,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
       };
       m.onSettled(light);
       clock = window.setInterval(light, 60_000);
+      relight = light;
       light();
       // The box in view, once the map has its first view; the map reads it again after each move.
       m.onSettled(() => {
@@ -246,7 +255,8 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
     };
     if (flat) start(openFlat(el, setTilesMissing));
     else
-      openGlobe(el, () => active && setFlat(true))
+      // Its first light from the sun where it opens (the first fit then moves it and the light follows).
+      openGlobe(el, () => active && setFlat(true), lightOf(sunPosition(39.5, -98.35), dark.matches))
         .then((m) => {
           if (!active) m?.remove();
           else if (m) start(m);
@@ -258,6 +268,7 @@ export default function PulseMap({ pins, listItems, fitKey, fallback, layoutKey,
       window.clearTimeout(timer);
       window.clearInterval(clock);
       resize.disconnect();
+      dark.removeEventListener('change', onDark);
       engine?.remove();
       setMap(null);
     };
