@@ -155,7 +155,8 @@ object TogetherCreate {
         if (fields.isEmpty()) return null
         @Suppress("UNCHECKED_CAST")
         val base = owner.moshi.adapter(CreateMomentBody::class.java).toJsonValue(body) as? Map<String, Any?> ?: return null
-        val result = owner.repository.createMoment(base + fields)
+        // Left out where today's request leaves a key out (a null is never written).
+        val result = owner.repository.createMoment(base.filterValues { it != null } + fields)
         if (result is NetworkResult.Success) TogetherStudio.reset()
         return result
     }
