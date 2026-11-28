@@ -69,16 +69,22 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
             rows += ReinventedRow.Band(line)
             lastBand = line.band
         }
-        val moment = item.moment
-        val post = item.post
-        when {
-            item.type == ReinventedPulseViewModel.MOMENT && moment != null -> rows += ReinventedRow.Moment(moment, item.kept)
-            post != null -> byId[post.id]?.let { rows += ReinventedRow.Post(it) }
-        }
+        item.row(byId)?.let { rows += it }
         val why = item.why
         if (explore && why != null && rows.size > before) rows += ReinventedRow.Why(item.type + item.id, why)
     }
     return rows
+}
+
+/** What an item draws as: a Moment (kept or fading), or a post once its card is made. */
+private fun ReinventedListItemDto.row(byId: Map<String, PulsePostCardContent>): ReinventedRow? {
+    val moment = moment
+    val post = post
+    return when {
+        type == ReinventedPulseViewModel.MOMENT && moment != null -> ReinventedRow.Moment(moment, kept)
+        post != null -> byId[post.id]?.let { ReinventedRow.Post(it) }
+        else -> null
+    }
 }
 
 /** A Retake is one row (CONTRACT 8e): the first of its frames in the list stands for it and opens the whole Retake. */
