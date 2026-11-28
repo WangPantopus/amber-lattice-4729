@@ -58,9 +58,24 @@ struct MomentsComposerChoice: View {
                 // Nor today's post kinds: a picked kind's words go back to the caption.
                 request.model.clearStudioKind()
                 request.model.marking.studio = nil
+                // Nor Guess the spot or a step deck: they live beside the Studio's tools, and today's server refuses
+                // both keys while the switch is off. The refusal's words go too: today's sheet starts clean.
+                request.model.studioGuess = false
+                request.model.studioDeck = nil
+                if request.model.error == Self.switchedOffWords { request.model.error = nil }
             }
         }
+        // A Studio post refused because the switch is off (403 `PULSE_REINVENTED_OFF`, CONTRACT 1, whose words the
+        // Studio shows): the switch is read again at once, so today's Post sheet takes the draft now, not at the next
+        // time the app comes to the front.
+        .onChange(of: request.model.error) { _, words in
+            guard words == Self.switchedOffWords, request.studio, reinvented.isOn else { return }
+            Task { await PulseReinventedFlags.shared.recheck() }
+        }
     }
+
+    /// The server's words for `403 PULSE_REINVENTED_OFF` (CONTRACT 1).
+    static let switchedOffWords = "This isn't on for you right now."
 }
 
 struct MomentsStudioComposer: View {
