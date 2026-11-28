@@ -44,6 +44,7 @@ class MomentsStudioGateViewModel
         }
 
         private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
         /** Who is signed in on this phone ("Your cutouts" are kept per account); null when nobody is. */
         val account: String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 
