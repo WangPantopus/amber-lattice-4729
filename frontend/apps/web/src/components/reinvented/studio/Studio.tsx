@@ -463,12 +463,28 @@ export default function Studio({
   });
   const p = preview.data;
   // "The switch is off for you": back to today's composer with the words (the card's, or the caption).
-  const handBack = () =>
+  const handedBack = useRef(false);
+  const handBack = () => {
+    handedBack.current = true;
     onSwitchedOff?.(
       mode === 'text'
         ? { kind: 'text', text, background: bg, hours, audience }
         : { kind: 'photo', caption: caption.trim() || null, hours, audience },
     );
+  };
+  // The app read the switch off on its own while the Studio was open (before Post), and the screen holding the Studio
+  // gave way to today's: what was being made goes the same way as after a refused post, so nothing typed is lost.
+  const lastHandBack = useRef(handBack);
+  lastHandBack.current = handBack;
+  const composingNow = useRef(false);
+  composingNow.current = mode === 'media' ? !!file : mode === 'text' && !!text.trim();
+  useEffect(
+    () => () => {
+      const off = client.getQueryData<{ enabled?: boolean }>(['featureFlag', 'pulse_reinvented'])?.enabled === false;
+      if (off && composingNow.current && !handedBack.current) lastHandBack.current();
+    },
+    [client],
+  );
   // Before going back the person is told what comes with them (lead, 2026-11-27: the words, and the photo is picked
   // again in today's composer).
   const [wentOff, setWentOff] = useState(false);
@@ -2760,7 +2776,7 @@ export default function Studio({
               <p>
                 {mode === 'text'
                   ? 'Your words go with you to the Moment composer.'
-                  : 'Your caption goes with you to the Moment composer. Pick the photo again there.'}
+                  : `Your caption goes with you to the Moment composer. Pick the ${isVideo ? 'video' : 'photo'} again there.`}
               </p>
               <button type="button" className="st-post" autoFocus onClick={handBack}>
                 Continue
