@@ -130,6 +130,9 @@ struct ReinventedFollowedPlacesSection: View {
     private let model = ReinventedPlacesYouFollow.shared
     @State private var finding = false
 
+    private static let followNote = "Follow a hometown or a far place, and what people there share with everyone comes into "
+        + "Explore. Nobody sees what you follow."
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             Text("Places you follow")
@@ -179,10 +182,7 @@ struct ReinventedFollowedPlacesSection: View {
                 }
             }
             if model.places.isEmpty {
-                Text(
-                    Text("Follow a hometown or a far place, and what people there share with everyone comes into Explore. "
-                        + "Nobody sees what you follow.")
-                )
+                Text(Self.followNote)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
