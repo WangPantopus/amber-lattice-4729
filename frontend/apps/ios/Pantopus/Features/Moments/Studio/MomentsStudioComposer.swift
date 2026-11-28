@@ -157,6 +157,8 @@ struct MomentsStudioComposer: View {
     }
 
     private func posted() {
+        // The next picture starts without this one's dots, items and sound.
+        model.dropPictureTools()
         Task { if await !model.moveOn() { onClose() } }
     }
 
