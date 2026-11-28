@@ -62,7 +62,6 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacedStill
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacementPainter
 import app.pantopus.android.ui.screens.moments.compose.marks.detectPlacementGestures
-import app.pantopus.android.ui.screens.moments.compose.marks.shape
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
