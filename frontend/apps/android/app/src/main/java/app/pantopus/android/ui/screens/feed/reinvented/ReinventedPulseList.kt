@@ -54,6 +54,8 @@ import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.feed.reinvented.after.EyesOnNearSection
 import app.pantopus.android.ui.screens.feed.reinvented.after.PulsePassItOn
 import app.pantopus.android.ui.screens.feed.reinvented.after.PulseTravelLine
+import app.pantopus.android.ui.screens.feed.reinvented.after.ReinventedTownFilmCard
+import app.pantopus.android.ui.screens.feed.reinvented.after.RelicsNearSection
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentImages
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
@@ -150,6 +152,12 @@ private fun LoadedRows(
         item(key = "top") { top?.invoke() }
         // Eyes on near you (CONTRACT 8f): only once the Ask chip is picked, never beside what opens the tab.
         if (state.chip == ASK_CHIP) item(key = "eyesOn") { EyesOnNearSection(actions.viewer) }
+        // Relics near you (8g): only once the Spots chip is picked.
+        if (state.chip == SPOTS_CHIP) item(key = "relics") { RelicsNearSection() }
+        // Tonight in <town> (8k): in the evening, on Around me's whole list, read once the list has come.
+        if (state.reach == ReinventedPulseViewModel.AROUND && state.chip == ReinventedPulseViewModel.ALL) {
+            item(key = "townFilm") { ReinventedTownFilmCard(actions.onOpenRun) }
+        }
         // Places you follow (phase 4, `feed/living/LivingPlaces.kt`), at the top of Explore only.
         if (state.reach == ReinventedPulseViewModel.EXPLORE) {
             item(key = "followed") { LivingFollowedPlaces(state.followed, actions.onRefresh, actions.onOpenMoment) }
@@ -503,3 +511,4 @@ private const val ROWS_BEFORE_END = 4
 
 /** The chip whose list draws "Eyes on near you" over it. */
 private const val ASK_CHIP = "ask"
+private const val SPOTS_CHIP = "spots"
