@@ -171,6 +171,8 @@ struct MomentConvergenceView: View {
     @State private var piece: ConvergenceDTO?
     @State private var strip: [SkyStripDTO.Day] = []
     @State private var failed = false
+    /// A photo tapped: the scene from every phone that caught it (the crowd freeze, 8i).
+    @State private var scene: CrowdOpen?
 
     private var sunset: Bool {
         id.hasPrefix("sunset:")
@@ -194,6 +196,11 @@ struct MomentConvergenceView: View {
         }
         .background(Theme.Color.appBg)
         .task(id: id) { await read() }
+        .sheet(item: $scene) { open in
+            MomentCrowdView(id: open.id)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         .accessibilityIdentifier("together.convergence")
     }
 
@@ -251,8 +258,12 @@ struct MomentConvergenceView: View {
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .lineLimit(1)
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { scene = CrowdOpen(id: moment.id) }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(moment.caption ?? "\(moment.author.name)’s photo")
+                .accessibilityHint("See the scene from every phone")
+                .accessibilityAddTraits(.isButton)
             }
         }
     }

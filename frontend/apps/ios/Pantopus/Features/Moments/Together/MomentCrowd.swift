@@ -196,7 +196,7 @@ struct MomentCrowdView: View {
                     .foregroundStyle(Theme.Color.appText)
                 Slider(
                     value: Binding(get: { Double(index) }, set: { at = $0.rounded() }),
-                    in: 0 ... Double(last),
+                    in: 0...Double(last),
                     step: 1
                 )
                 .tint(Theme.Color.primarySolid)

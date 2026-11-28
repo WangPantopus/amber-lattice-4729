@@ -57,8 +57,8 @@ struct PinboardDTO: Decodable {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decode(String.self, forKey: .id)
             author = try? c.decodeIfPresent(MomentAuthorDTO.self, forKey: .author)
-            let media = (try? c.decodeIfPresent(String.self, forKey: .mediaURL)) ?? nil
-            let thumb = (try? c.decodeIfPresent(String.self, forKey: .thumbURL)) ?? nil
+            let media: String? = try? c.decodeIfPresent(String.self, forKey: .mediaURL)
+            let thumb: String? = try? c.decodeIfPresent(String.self, forKey: .thumbURL)
             picture = (media ?? thumb).flatMap(URL.init(string:))
         }
     }
@@ -214,7 +214,7 @@ struct MomentPinboardView: View {
         return [
             "Started by \(board.startedBy?.name ?? "someone")",
             "\(count) \(count == 1 ? "piece" : "pieces")",
-            board.open ? (until ?? "open") : "closed",
+            board.open ? (until ?? "open") : "closed"
         ].joined(separator: " · ")
     }
 
