@@ -176,6 +176,8 @@ struct MomentsStudioStage: View {
             .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
             .environment(\.colorScheme, .dark)
         }
+        // A video's size, read as soon as it's in the Studio: its dots, stamps and items sit on the frame readers see.
+        .studioReadsVideoSize(model)
         // The photo is looked at for what to blur as soon as it's in the Studio, on the phone itself.
         .task(id: model.blurKey) { await model.findBlurSpots() }
         .sheet(isPresented: $showsTray) {

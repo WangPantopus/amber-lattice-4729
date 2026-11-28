@@ -240,3 +240,17 @@ struct MomentDotMark: View {
         .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 1)
     }
 }
+
+extension View {
+    /// Reads the Studio's video's size and length as soon as it is the draft (Text and Draw read them only when they
+    /// open). Without them a video's dots, stamps and items were placed over the screen, while the viewer lays them over
+    /// the video's frame filling the screen (a 9:16 video runs about 45 points past each side of an iPhone): a dot put
+    /// near an edge landed off the reader's screen.
+    func studioReadsVideoSize(_ model: MomentsComposerModel) -> some View {
+        task(id: model.draft?.video) {
+            guard case let .video(url) = model.draft, model.marking.video == nil else { return }
+            guard let shown = await MomentsMediaExport.shown(url), model.draft == .video(url), model.marking.video == nil else { return }
+            model.marking.opened(video: shown.size, seconds: shown.seconds)
+        }
+    }
+}
