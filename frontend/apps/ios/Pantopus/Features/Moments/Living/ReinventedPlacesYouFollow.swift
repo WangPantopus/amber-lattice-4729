@@ -183,9 +183,9 @@ struct ReinventedFollowedPlacesSection: View {
             }
             if model.places.isEmpty {
                 Text(Self.followNote)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.Color.appTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let error = model.error {
                 Text(error)
