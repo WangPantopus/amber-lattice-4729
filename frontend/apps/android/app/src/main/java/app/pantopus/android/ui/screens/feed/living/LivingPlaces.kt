@@ -387,7 +387,14 @@ private fun Star(
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         PantopusIconImage(icon = icon, contentDescription = null, size = 16.dp, tint = PantopusColors.primary600)
-        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            title,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PantopusColors.appText,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         if (line.isNotEmpty()) Text(line, fontSize = 12.sp, color = PantopusColors.appTextSecondary)
     }
 }

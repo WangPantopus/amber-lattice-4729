@@ -98,7 +98,13 @@ internal fun LivingWindowsRow(viewModel: LivingWindowsViewModel = hiltViewModel(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s4).testTag("reinventedWindows"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        Text("Windows", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        Text(
+            "Windows",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = PantopusColors.appText,
+            modifier = Modifier.semantics { heading() },
+        )
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             windows.forEach { WindowTile(it) }
         }
@@ -127,7 +133,11 @@ private fun WindowTile(window: LivingWindowDto) {
                     .drawBehind {
                         if (window.lit) {
                             drawCircle(
-                                Brush.radialGradient(listOf(glow.copy(alpha = 0.8f), glow.copy(alpha = 0f)), center = center, radius = size.width),
+                                Brush.radialGradient(
+                                    listOf(glow.copy(alpha = 0.8f), glow.copy(alpha = 0f)),
+                                    center = center,
+                                    radius = size.width,
+                                ),
                                 radius = size.width,
                                 center = center,
                             )
@@ -212,7 +222,11 @@ internal fun LivingCircleWindowChoice(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Show a window for my home to this circle", fontSize = 13.5.sp, color = PantopusColors.appText)
-                Text("It lights when I share something, and never says what or where.", fontSize = 12.sp, color = PantopusColors.appTextSecondary)
+                Text(
+                    "It lights when I share something, and never says what or where.",
+                    fontSize = 12.sp,
+                    color = PantopusColors.appTextSecondary,
+                )
             }
             Switch(
                 checked = label != null || editing,
@@ -241,7 +255,13 @@ internal fun LivingCircleWindowChoice(
                                 .testTag("reinventedWindows.label"),
                         decorationBox = { inner ->
                             Box {
-                                if (writing.isEmpty()) Text("Its name, like Mom and Dad's", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                                if (writing.isEmpty()) {
+                                    Text(
+                                        "Its name, like Mom and Dad's",
+                                        fontSize = 15.sp,
+                                        color = PantopusColors.appTextSecondary,
+                                    )
+                                }
                                 inner()
                             }
                         },

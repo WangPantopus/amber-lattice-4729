@@ -352,7 +352,13 @@ private fun LivingCloud(
                     )
                 },
         ) {
-            MomentMapPin(author = ring.author, seen = ring.moments.map { it.seen }, preview = ring.preview, tail = false, live = ring.liveUntil != null)
+            MomentMapPin(
+                author = ring.author,
+                seen = ring.moments.map { it.seen },
+                preview = ring.preview,
+                tail = false,
+                live = ring.liveUntil != null,
+            )
         }
         Spacer(Modifier.height(10.dp))
     }
@@ -459,7 +465,8 @@ internal fun LivingBeamsLayer(
     LaunchedEffect(camera.isMoving, time) {
         if (camera.isMoving) return@LaunchedEffect
         val bounds = camera.projection?.visibleRegion?.latLngBounds ?: return@LaunchedEffect
-        val box = ReinventedBox(bounds.southwest.latitude, bounds.southwest.longitude, bounds.northeast.latitude, bounds.northeast.longitude)
+        val box =
+            ReinventedBox(bounds.southwest.latitude, bounds.southwest.longitude, bounds.northeast.latitude, bounds.northeast.longitude)
         viewModel.read(box, live = time == ReinventedMapState.LIVE)
     }
     if (beams.isEmpty()) return

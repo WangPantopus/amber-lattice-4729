@@ -48,7 +48,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -202,7 +201,11 @@ internal fun LivingCabinet(viewModel: LivingCabinetViewModel = hiltViewModel()) 
         }
         val shelves = cabinet.shelves
         if (shelves.isEmpty()) {
-            Text("Nothing on the shelves yet. Moments, answers and Retakes fill them.", fontSize = 13.sp, color = PantopusColors.appTextSecondary)
+            Text(
+                "Nothing on the shelves yet. Moments, answers and Retakes fill them.",
+                fontSize = 13.sp,
+                color = PantopusColors.appTextSecondary,
+            )
         } else {
             shelves.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -293,7 +296,11 @@ private fun LivingPosterSheet(
                         onClick = { scope.launch { sharePoster(context, poster) } },
                         modifier = Modifier.testTag("reinventedPoster.share"),
                     ) { Text("Save or share the picture", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                    Text("Made on this phone. Nothing is shared unless you share it.", fontSize = 13.sp, color = PantopusColors.appTextSecondary)
+                    Text(
+                        "Made on this phone. Nothing is shared unless you share it.",
+                        fontSize = 13.sp,
+                        color = PantopusColors.appTextSecondary,
+                    )
                 }
                 state.posterFailed -> Text("Your poster couldn't load. Try again later.", color = PantopusColors.appText)
                 else -> CircularProgressIndicator(Modifier.padding(Spacing.s6))

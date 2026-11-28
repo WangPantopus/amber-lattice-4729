@@ -104,8 +104,17 @@ internal fun LivingEchoes(viewModel: LivingEchoesViewModel = hiltViewModel()) {
     Column(modifier = Modifier.fillMaxWidth().testTag("reinventedEchoes"), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Echoes: tell me when others caught the same moment", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
-                Text("Only at public places, never at home. Others see you as a count.", fontSize = 12.sp, color = PantopusColors.appTextSecondary)
+                Text(
+                    "Echoes: tell me when others caught the same moment",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PantopusColors.appText,
+                )
+                Text(
+                    "Only at public places, never at home. Others see you as a count.",
+                    fontSize = 12.sp,
+                    color = PantopusColors.appTextSecondary,
+                )
             }
             Switch(
                 checked = choice != ECHOES_OFF,
@@ -116,7 +125,12 @@ internal fun LivingEchoes(viewModel: LivingEchoesViewModel = hiltViewModel()) {
         }
         if (choice == ECHOES_OFF) return@Column
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Show my first name to others who show theirs", fontSize = 14.sp, color = PantopusColors.appText, modifier = Modifier.weight(1f))
+            Text(
+                "Show my first name to others who show theirs",
+                fontSize = 14.sp,
+                color = PantopusColors.appText,
+                modifier = Modifier.weight(1f),
+            )
             Switch(
                 checked = choice == ECHOES_NAMES,
                 onCheckedChange = { viewModel.set(if (it) ECHOES_NAMES else ECHOES_ON) },

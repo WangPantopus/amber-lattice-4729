@@ -320,9 +320,20 @@ internal fun LivingAskBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
                     ) {
-                        PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                        PantopusIconImage(
+                            icon = PantopusIcon.Search,
+                            contentDescription = null,
+                            size = 15.dp,
+                            tint = PantopusColors.appTextSecondary,
+                        )
                         Box(Modifier.weight(1f)) {
-                            if (text.isEmpty()) Text("Ask the map: cozy study cafe", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                            if (text.isEmpty()) {
+                                Text(
+                                    "Ask the map: cozy study cafe",
+                                    fontSize = 15.sp,
+                                    color = PantopusColors.appTextSecondary,
+                                )
+                            }
                             inner()
                         }
                         when {
@@ -339,7 +350,12 @@ internal fun LivingAskBar(
                                             }.semantics { contentDescription = "Clear and show every pin" }
                                             .testTag("reinventedPulse.ask.clear"),
                                 ) {
-                                    PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                                    PantopusIconImage(
+                                        icon = PantopusIcon.X,
+                                        contentDescription = null,
+                                        size = 15.dp,
+                                        tint = PantopusColors.appTextSecondary,
+                                    )
                                 }
                         }
                     }
@@ -399,11 +415,14 @@ private fun heard(state: LivingAskState): String? {
 
 /** "3 lit for "cafe"", or that nothing here matched, or why it couldn't ask, or what Listen hears. */
 private fun said(state: LivingAskState): String? {
-    state.error?.let { return it }
-    if (state.lit == null) return heard(state)
-    val q = state.q ?: return null
-    if (state.shown == 0) return "Nothing here for “$q”. Move the map or try other words."
-    return "${state.shown} lit for “$q”" + if (state.more) ", and more beyond these" else ""
+    val q = state.q
+    return when {
+        state.error != null -> state.error
+        state.lit == null -> heard(state)
+        q == null -> null
+        state.shown == 0 -> "Nothing here for “$q”. Move the map or try other words."
+        else -> "${state.shown} lit for “$q”" + if (state.more) ", and more beyond these" else ""
+    }
 }
 
 /**

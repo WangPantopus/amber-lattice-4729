@@ -106,7 +106,8 @@ class LivingRepository
 internal fun searchRefusal(error: NetworkError): String =
     when {
         error.code == HTTP_TOO_MANY -> "That's a lot of searching. Wait a minute, then try again."
-        error.serverCode == "SEARCH_INVALID" || error.code == HTTP_BAD_REQUEST -> "Try a word or two, like \u201Cmushroom\u201D or \u201Csunset\u201D."
+        error.serverCode == "SEARCH_INVALID" || error.code == HTTP_BAD_REQUEST ->
+            "Try a word or two, like \u201Cmushroom\u201D or \u201Csunset\u201D."
         else -> "Search couldn't finish. Try again."
     }
 

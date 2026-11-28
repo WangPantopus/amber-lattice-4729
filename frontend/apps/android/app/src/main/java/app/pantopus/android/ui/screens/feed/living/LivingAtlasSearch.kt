@@ -186,9 +186,20 @@ internal fun LivingAtlasSearch(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
                 ) {
-                    PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextSecondary)
+                    PantopusIconImage(
+                        icon = PantopusIcon.Search,
+                        contentDescription = null,
+                        size = 16.dp,
+                        tint = PantopusColors.appTextSecondary,
+                    )
                     Box(Modifier.weight(1f)) {
-                        if (text.isEmpty()) Text("Search your Atlas: mushroom, sunset", fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                        if (text.isEmpty()) {
+                            Text(
+                                "Search your Atlas: mushroom, sunset",
+                                fontSize = 15.sp,
+                                color = PantopusColors.appTextSecondary,
+                            )
+                        }
                         inner()
                     }
                     if (state.q != null || text.isNotEmpty()) {
@@ -203,7 +214,12 @@ internal fun LivingAtlasSearch(
                                     }.semantics { contentDescription = "Clear the search" }
                                     .testTag("reinventedAtlas.search.clear"),
                         ) {
-                            PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                            PantopusIconImage(
+                                icon = PantopusIcon.X,
+                                contentDescription = null,
+                                size = 15.dp,
+                                tint = PantopusColors.appTextSecondary,
+                            )
                         }
                     }
                 }
@@ -278,7 +294,14 @@ private fun ResultRow(
     ) {
         Thumb(result)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(said, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                said,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.appText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (line.isNotEmpty()) Text(line, fontSize = 13.sp, color = PantopusColors.appTextSecondary, maxLines = 1)
         }
     }
