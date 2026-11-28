@@ -19,6 +19,8 @@ import {
   ArrowRight,
   Camera,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Crop,
   Eraser,
@@ -48,7 +50,7 @@ import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/com
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
-import { blankArt, edited, inks, type Stroke } from '@/components/moments/momentArtwork';
+import { blankArt, edited, inks, type Artwork, type Stroke } from '@/components/moments/momentArtwork';
 import { stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import { cutToShape, sideBySide } from './beforeAfter';
@@ -127,6 +129,19 @@ const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
 const DECK_NOTE_KEY = 'pantopus.studio.deckNoteSeen';
 type Placement = 'exact' | 'area' | 'place' | 'none';
 type PostAs = 'personal' | 'pen_name';
+/** What one of several pictures picked together keeps while another shows (PHASE-5 A5). */
+interface KeptPicture {
+  art: Artwork;
+  caption: string;
+  look: FilmLook;
+  lookFile: File | null;
+  blurs: BlurBox[];
+  trimSpan: TrimSpan | null;
+  mentioned: Mentioned[];
+  voiceRec: Recording | null;
+  voiceWords: string;
+  placeRec: Recording | null;
+}
 
 function useWide() {
   const [wide, setWide] = useState(false);
@@ -694,6 +709,29 @@ export default function Studio({
     setSide('before');
     setPlay((old) => (old.some((p) => p.kind === 'before_after') ? old.filter((p) => p.kind !== 'before_after') : old));
   }, [file]);
+  // Several picked at once (PHASE-5 A5): each picture keeps its own fit, words, drawing, caption, look, blurs, trim and
+  // recordings while the author moves between them; put back here, after the resets above, when one shows again.
+  const keptPictures = useRef(new Map<File, KeptPicture>()),
+    posted = useRef(new Set<File>());
+  useEffect(() => {
+    const k = file ? keptPictures.current.get(file) : undefined;
+    if (!k) return;
+    lookFor.current = file;
+    setArt(k.art);
+    setCaption(k.caption);
+    setLook(k.look);
+    setLookFile(k.lookFile);
+    setBlurs(k.blurs);
+    setTrimSpan(k.trimSpan);
+    setMentioned(k.mentioned);
+    setVoiceRec(k.voiceRec);
+    setVoiceWords(k.voiceWords);
+    setPlaceRec(k.placeRec);
+  }, [file]);
+  useEffect(() => {
+    keptPictures.current.clear();
+    posted.current.clear();
+  }, [files]);
   useEffect(() => {
     if (hasPair) return;
     setAfterFile(null);
@@ -932,6 +970,35 @@ export default function Studio({
     else if (penMe.pen_name) choosePenName();
     else setSetupOpen(true);
   }
+  /** The next picture not posted yet, `step` along (wrapping), or -1 when every other one is posted. */
+  function nextUnposted(step: number) {
+    for (let n = 1; n < files.length; n++) {
+      const to = (((index + step * n) % files.length) + files.length) % files.length;
+      if (!posted.current.has(files[to])) return to;
+    }
+    return -1;
+  }
+  // Moving between the pictures picked together keeps this one as it is (each its own fit). A step deck keeps its
+  // order, and a before and after is one picture with its after.
+  const canBrowse = mode === 'media' && !!file && files.length > 1 && !deckOn && !pair && !busy;
+  function browse(step: number) {
+    const to = canBrowse ? nextUnposted(step) : -1;
+    if (to < 0 || !file) return;
+    keptPictures.current.set(file, { art, caption, look, lookFile, blurs, trimSpan, mentioned, voiceRec, voiceWords, placeRec });
+    setIndex(to);
+  }
+  // The keyboard's left and right keys do the same, unless a field or slider has them.
+  useEffect(() => {
+    if (!canBrowse || tool) return;
+    const onKey = (e: KeyboardEvent) => {
+      const at = e.target instanceof Element ? e.target : null;
+      if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || at?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (e.key === 'ArrowLeft') browse(-1);
+      else if (e.key === 'ArrowRight') browse(1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   async function deliver(job: Job, signal: AbortSignal) {
     const result = await postJob(job, signal, (s) => {
       if (mounted.current) setBusy(s);
@@ -980,8 +1047,13 @@ export default function Studio({
                 ? `Step ${step.index} of ${step.count} shared.`
                 : 'Moment shared.';
     if (soundFailed) setError(msg + ' Its sound couldn’t be added.');
-    if (file && index + 1 < files.length) {
-      setIndex((i) => i + 1);
+    if (file) {
+      posted.current.add(file);
+      keptPictures.current.delete(file);
+    }
+    const next = file && !deckOn ? nextUnposted(1) : file && index + 1 < files.length ? index + 1 : -1;
+    if (next >= 0) {
+      setIndex(next);
       setBusy('');
       setError(msg + (step ? ` Review step ${step.index + 1}.` : ' Review the next item.'));
     } else onDone(msg);
@@ -2070,7 +2142,19 @@ export default function Studio({
                 <X size={20} strokeWidth={2.4} />
               </button>
               {composing && files.length > 1 && file && (
-                <span className="st-count">{deckOn ? `Step ${index + 1} of ${files.length}` : `${index + 1} of ${files.length}`}</span>
+                <span className="st-count">
+                  {canBrowse && nextUnposted(-1) >= 0 && (
+                    <button type="button" className="st-browse" aria-label="The picture before" onClick={() => browse(-1)}>
+                      <ChevronLeft size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                  {deckOn ? `Step ${index + 1} of ${files.length}` : `${index + 1} of ${files.length}`}
+                  {canBrowse && nextUnposted(1) >= 0 && (
+                    <button type="button" className="st-browse" aria-label="The next picture" onClick={() => browse(1)}>
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                </span>
               )}
               {composing && pair && (
                 <div className="st-ba-switch" role="group" aria-label="Which photo the Studio shows">
