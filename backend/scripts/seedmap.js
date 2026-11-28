@@ -7,8 +7,9 @@
  *
  * The folder holds one sub-folder per account, named by the account's email or username, with that person's photos
  * (JPEG, HEIC, PNG) and videos (MOV, MP4; HEVC is fine). `prepare` reads where, when and how high each was taken from
- * the file itself (the height shows on the Moment as "Show height" would, while `moment_heights` is on), makes the upload copies the apps would make (.seedmap-ready/), a small preview to write the caption from
- * (.seedmap-previews/), and writes seedmap-manifest.json. Fill in each line's `caption`, `post_as` (moment | pulse |
+ * the file itself (the height shows on the Moment as "Show height" would, while `moment_heights` is on), makes the
+ * upload copies the apps would make (.seedmap-ready/), a small preview to write the caption from (.seedmap-previews/),
+ * and writes seedmap-manifest.json. Fill in each line's `caption`, `post_as` (moment | pulse |
  * both), `pulse_kind` (local_update | recommendation | neighborhood_win | visitor_guide: the kinds that stay up),
  * `moment_days` (1 to 60) and, for waves, `not_before` (a date). `run` is a dry run until --post: it prints what each
  * line would post and why any line is left out. Running again never posts the same file for the same account twice.
@@ -533,8 +534,10 @@ async function describeMoment(line, plan, user) {
   const taken = store.takenAtShown(line.taken_at);
   const day = taken ? ` (reads "Taken ${new Date(taken).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })}")` : '';
   const height = await momentHeight(line, user);
+  // A manifest prepared before heights were read has no altitude_m at all: preparing again reads it, keeping captions.
   const shows = height ? `, ${height.altitude_ft.toLocaleString('en-US')} ft up`
-    : line.altitude_m == null ? ', no height in the file' : ', no height (heights are off for this account)';
+    : !('altitude_m' in line) ? ', no height (run prepare again to read it from the file)'
+      : line.altitude_m == null ? ', no height in the file' : ', no height (heights are off for this account)';
   return `Moment for ${plan.days} day${plan.days === 1 ? '' : 's'} at ${line.place_label}${day}${shows}`;
 }
 
