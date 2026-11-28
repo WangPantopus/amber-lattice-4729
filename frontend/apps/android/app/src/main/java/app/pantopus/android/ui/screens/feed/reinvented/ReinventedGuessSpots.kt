@@ -92,11 +92,12 @@ class ReinventedGuessSpotsViewModel
 /** At the Map height, under the time row: "Guess the spot · 3", opening the list; nothing when there is none. */
 @Composable
 internal fun ReinventedGuessSpotsChip(
-    spots: List<MomentGuessSpotDto>,
-    center: ReinventedPoint?,
+    map: ReinventedMapState,
     modifier: Modifier = Modifier,
     viewModel: ReinventedGuessSpotsViewModel = hiltViewModel(),
 ) {
+    val spots = map.guessSpots
+    val center = map.center
     val daily by viewModel.daily.collectAsStateWithLifecycle()
     LaunchedEffect(center) { center?.let(viewModel::readDaily) }
     val dailyId = daily?.momentId
