@@ -99,7 +99,8 @@ class ReinventedRepository
         ): NetworkResult<PlanDto> = guarded(behindOn404 = false) { api.startPlan(momentId, body).plan }
 
         /** "Went because of you" (CONTRACT 8c). An older server's 404 only leaves the section out. */
-        suspend fun strands(cursor: String?): NetworkResult<ReinventedStrandsResponse> = guarded(behindOn404 = false) { api.strands(cursor) }
+        suspend fun strands(cursor: String?): NetworkResult<ReinventedStrandsResponse> =
+            guarded(behindOn404 = false) { api.strands(cursor) }
 
         /** Marks the strands the reader has seen (CONTRACT 8c); they stay listed. */
         suspend fun strandsSeen(ids: List<String>): NetworkResult<Unit> =
