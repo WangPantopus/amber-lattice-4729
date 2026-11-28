@@ -148,6 +148,8 @@ import app.pantopus.android.ui.screens.feed.pulseReportReasons
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentKeepThis
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanMenuItem
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanOffer
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesChip
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesState
 import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentFace
@@ -268,7 +270,8 @@ fun MomentsViewerScreen(
     val paused =
         touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
             editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true) ||
-            (studio && moment?.keepWaits(mine) == true)
+            (studio && moment?.keepWaits(mine) == true) ||
+            (studio && MomentRepliesState.open.value)
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -774,6 +777,7 @@ fun MomentsViewerScreen(
                     if (studio) MomentGuessPill(shown, mine, onOpen = { guessing = true }, Modifier.padding(start = 58.dp, top = 6.dp))
                     if (studio) MomentKeepThis(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp, end = 12.dp))
                     if (studio) MomentPlanOffer(shown, mine, onClose = { close() }, Modifier.padding(start = 58.dp, top = 6.dp))
+                    if (studio) MomentRepliesChip(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp))
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way

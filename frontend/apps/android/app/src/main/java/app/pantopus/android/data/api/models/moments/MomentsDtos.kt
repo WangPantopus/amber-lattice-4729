@@ -1,6 +1,7 @@
 package app.pantopus.android.data.api.models.moments
 
 import app.pantopus.android.data.api.models.reinvented.MomentPlanDto
+import app.pantopus.android.data.api.models.reinvented.MomentRepliesStateDto
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -176,6 +177,8 @@ data class MomentDto(
     @Json(name = "keep_offer") val keepOffer: Boolean = false,
     /** "Pulse, reinvented" (CONTRACT 6g): the plan started from it that this reader may see in Plans; else null. */
     val plan: MomentPlanDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 8a): replies people can see on it, for a reader whose switch is on; else null. */
+    val replies: MomentRepliesStateDto? = null,
 )
 
 /**
