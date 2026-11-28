@@ -4,11 +4,11 @@
 //
 //  "Pulse, reinvented" phase 5, piece C on the iPhone (CONTRACT 10b): a Live Photo picked in the Studio keeps its
 //  motion. The Studio finds the picked photo in Photos by its own time and copies its clip (`studioFindMotion`, run by
-//  the Studio composer whenever its picture changes), the Studio's rail shows the moving-photo mark with "Motion on" (on by default; never
-//  the word "Live",
-//  which means "taken here just now"), and once the Moment's photo is up the clip goes up beside it
-//  (`uploadStudioMotion`, one line in today's posting). Nothing happens unless the Studio is open and the switch is on;
-//  today's composer and Post sheet never see any of it, and after a switch-off today's sheet posts the still as today.
+//  the Studio composer whenever its picture changes). The rail shows the moving-photo mark with "Motion on" (on by
+//  default; never the word "Live", which means "taken here just now"). Once the Moment's photo is up, the clip goes up
+//  beside it (`uploadStudioMotion`, one line in today's posting). Nothing happens unless the Studio is open and the
+//  switch is on; today's composer and Post sheet never see any of it, and after a switch-off today's sheet posts the
+//  still as today.
 //
 
 import AVFoundation
