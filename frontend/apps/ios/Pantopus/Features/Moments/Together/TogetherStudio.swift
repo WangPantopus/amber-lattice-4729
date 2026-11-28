@@ -21,12 +21,16 @@ final class TogetherStudio {
     enum Context: Equatable {
         /// Add a frame to a Retake (8e): its first picture is a ghost to line up with.
         case retakeFrame(startId: String, title: String, ghost: URL?)
+        /// Answer an Eyes-on Ask with a Live photo (8f).
+        case eyesOnAnswer(askId: String, question: String)
     }
 
     /// Set before the Studio opens; cleared when it closes (`ReinventedStudioPresenter.close`).
     var context: Context?
     /// The Retake's first picture over the Studio's own while adding a frame (on by default; one tap hides it).
     var ghostOn = true
+    /// "Eyes on: ask people who are there now" on an Ask about a picked place (8f).
+    var asksEyesOnChosen = false
     /// "Start a Retake" and its name (1 to 60 characters).
     var startsRetake = false
     var retakeTitle = ""
@@ -49,7 +53,14 @@ final class TogetherStudio {
         ghostOn = true
         startsRetake = false
         retakeTitle = ""
+        asksEyesOnChosen = false
         owner = nil
+    }
+
+    /// `studio.eyes_on` on the Studio's Ask (the "+ Ask / Kind" post), or nil (left out) unless chosen there.
+    func asksEyesOn(model: MomentsComposerModel) -> Bool? {
+        guard PulseReinventedFlags.shared.isOn, owner === model, asksEyesOnChosen, model.offersEyesOnAsk else { return nil }
+        return true
     }
 
     /// The keys this Studio adds to the Moment it makes (the first part only), or nil for today's request.
@@ -60,6 +71,9 @@ final class TogetherStudio {
         case let .retakeFrame(startId, _, _):
             // Only a photo joins a Retake; a text card or a video posts as an ordinary Moment.
             if case .photo = model.draft { fields.retakeOf = startId }
+        case let .eyesOnAnswer(askId, _):
+            // An Eyes-on answer is a Live photo (CONTRACT 8f); anything else posts as an ordinary Moment.
+            if case .photo = model.draft { fields.eyesOnFor = askId }
         case nil:
             let title = String(retakeTitle.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
             if startsRetake, !title.isEmpty, model.offersRetake { fields.retake = .init(title: title) }
@@ -73,6 +87,11 @@ extension MomentsComposerModel {
     /// keys where this Studio chose some (`TogetherCreate`).
     func createEndpoint(_ body: MomentCreateBody, part: Int) -> Endpoint {
         TogetherCreate.endpoint(body, part: part, from: self)
+    }
+
+    /// Eyes on may be asked (8f): an Ask under the person's own name; it needs a picked public place to post.
+    var offersEyesOnAsk: Bool {
+        studioPostKind == .askLocal && !postsUnderMadeUpName
     }
 
     /// The Studio holds a photo (a Retake's frame, an Eyes-on answer and a Retake's start are photos).
@@ -97,20 +116,23 @@ struct TogetherCreateFields: Encodable, Hashable {
 
     var retake: RetakeStart?
     var retakeOf: String?
+    var eyesOnFor: String?
 
     var isEmpty: Bool {
-        retake == nil && retakeOf == nil
+        retake == nil && retakeOf == nil && eyesOnFor == nil
     }
 
     private enum CodingKeys: String, CodingKey {
         case retake
         case retakeOf = "retake_of"
+        case eyesOnFor = "eyes_on_for"
     }
 
     func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(retake, forKey: .retake)
         try c.encodeIfPresent(retakeOf, forKey: .retakeOf)
+        try c.encodeIfPresent(eyesOnFor, forKey: .eyesOnFor)
     }
 }
 

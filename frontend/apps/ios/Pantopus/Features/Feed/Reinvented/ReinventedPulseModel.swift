@@ -128,6 +128,16 @@ final class ReinventedPulseModel {
         cursor != nil
     }
 
+    /// The person watching (for "Pass it on", never on their own post).
+    var viewer: String? {
+        viewerId
+    }
+
+    /// A post's travel (CONTRACT 8f): who passed it on or carried it here, an Eyes-on Ask's window.
+    func travel(of postId: String) -> ReinventedTravelDTO? {
+        items.first { $0.id == postId }?.travel
+    }
+
     /// The Moment's author is the person watching.
     func isMine(_ moment: MomentDTO) -> Bool {
         moment.author.id == viewerId
