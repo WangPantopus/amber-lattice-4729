@@ -58,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.pulse.ReinventedBox
+import app.pantopus.android.ui.screens.feed.living.LivingAskBar
+import app.pantopus.android.ui.screens.feed.living.LivingAtlasSearch
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentConvergenceListSheet
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentConvergenceState
@@ -135,7 +137,9 @@ fun ReinventedPulseScreen(
     val atlasHook = rememberAtlasHook(atlas, atlasState, atlasModel) { atlas = it }
     val list: @Composable (Modifier) -> Unit = ReinventedPulseScreenList@{ modifier ->
         if (atlas) {
-            ReinventedAtlasList(atlasState, atlasModel::openMoment, atlasModel::loadMore, atlasModel::retry, modifier)
+            ReinventedAtlasList(atlasState, atlasModel::openMoment, atlasModel::loadMore, atlasModel::retry, modifier) {
+                LivingAtlasSearch(onOpenOwn = atlasModel::openMoment, onOpenMoment = watch::moment, onOpenPost = actions.onOpenPost)
+            }
             return@ReinventedPulseScreenList
         }
         ReinventedListPane(
@@ -343,7 +347,7 @@ private fun ReinventedPulseLayout(
 ) {
     val pulseMap by mapModel.state.collectAsStateWithLifecycle()
     // In My Atlas the map's pins are the person's own kept Moments.
-    val mapState = if (atlas.on) pulseMap.copy(items = atlas.pins, deck = atlas.pins) else pulseMap
+    val mapState = if (atlas.on) pulseMap.copy(items = atlas.pins, deck = atlas.pins, atlas = true) else pulseMap
     val flight by mapModel.flight.collectAsStateWithLifecycle()
     val camera = rememberReinventedCamera()
     // A card swiped to, or a place tapped in the list: the map glides there.
@@ -391,7 +395,17 @@ private fun ReinventedPulseLayout(
                         onOpen = open,
                     )
                 },
-                timeRow = if (atlas.on) null else { modifier -> ReinventedTimeRow(mapState.time, mapModel::pickTime, modifier) },
+                timeRow =
+                    if (atlas.on) {
+                        null
+                    } else {
+                        { modifier ->
+                            Column(modifier) {
+                                ReinventedTimeRow(mapState.time, mapModel::pickTime)
+                                LivingAskBar()
+                            }
+                        }
+                    },
                 mapExtras = { guessTop, deck ->
                     if (!atlas.on) {
                         val at = Modifier.align(Alignment.TopStart).padding(top = guessTop + Spacing.s2, start = Spacing.s4)

@@ -34,10 +34,13 @@ import {
   Pipette,
   Plus,
   Repeat,
+  Maximize2,
+  Minimize2,
   RotateCw,
   Sparkles,
   Type,
   Undo2,
+  Users,
   X,
 } from 'lucide-react';
 import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/composer/mediaLocation';
@@ -73,7 +76,7 @@ import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
 import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
-import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPicture';
+import StudioPicture, { fillZoom, type StudioBrush, type StudioTool } from './StudioPicture';
 import { FILM_LOOKS, lookPreviews, photostrip, withLook, type FilmLook } from './looks';
 import { fontReady, TEXT_LOOKS, type TextLook } from './fonts';
 import { sampleColors } from './sampleColors';
@@ -210,8 +213,6 @@ export default function Studio({
     [photoInks, setPhotoInks] = useState<string[]>([]);
   // The photo a look being drawn belongs to: a look finished after the photo changed is dropped.
   const lookFor = useRef<File | undefined>(undefined);
-  // Photostrips made here: they open whole, never cropped to fill the frame.
-  const strips = useRef(new WeakSet<File>());
   const [drawerOpen, setDrawerOpen] = useState(false),
     [discarding, setDiscarding] = useState(false),
     [askedPost, setAskedPost] = useState(false),
@@ -625,7 +626,6 @@ export default function Studio({
     try {
       const strip = await photostrip([from, ...partners]);
       if (!mounted.current) return;
-      strips.current.add(strip);
       // The strip takes this photo's place; the photos in it leave the queue ("2 of 3" counts Moments).
       setFiles((old) =>
         old[index] !== from ? old : [...old.slice(0, index), strip, ...old.slice(index + 1).filter((f) => !partners.includes(f))],
@@ -1399,10 +1399,23 @@ export default function Studio({
         .replace(/\s?PM$/, ' pm')
     : `Fades in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
   const who = underPenName ? 'pen' : noPlace || audience === 'connections' ? 'friends' : 'nearby';
+  // The details in one line (PHASE-5 A4), e.g. "Fallen Leaf Lake Park · Fades in 24 hours · Everyone nearby".
+  // Without a place the place line already says "friends only", so who sees it isn't said twice.
+  const summary = [
+    pillPlace,
+    timeLine,
+    who === 'pen' ? (penMe?.pen_name?.name ? `As ${penMe.pen_name.name}` : 'Made-up name') : noPlace ? '' : who === 'friends' ? 'Friends' : 'Everyone nearby',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const content = mode === 'text' ? !!text.trim() : !!file;
   const ready = recovered && !busy && !reading && attested && !!p && content;
   const gate = jobs.length > 0 || !attested;
   const composing = !gate && !camera && mode !== 'none';
+  // The picture fills the frame (Fill) or not, and whether it already does when whole (a 9:16 picture): PHASE-5 A2.
+  const fillsAlready = !!shape && Math.abs(fillZoom(shape.w, shape.h, art.rotation) - 1) < 0.005;
+  const filled =
+    !!shape && !fillsAlready && !art.offset.x && !art.offset.y && Math.abs(art.zoom - fillZoom(shape.w, shape.h, art.rotation)) < 0.005;
 
   const settings = (
     <section
@@ -1421,6 +1434,26 @@ export default function Studio({
         )}
       </header>
       <fieldset disabled={!!busy}>
+        {/* Who sees it, first in the drawer: the bar holds only the one line that sums the details up (PHASE-5 A4). */}
+        <div className="st-group" role="group" aria-label="Who sees it">
+          <span className="st-label">
+            <Users size={15} aria-hidden="true" />
+            Who sees it
+          </span>
+          <div className="st-who">
+            <Chip on={who === 'nearby'} disabled={noPlace || !!busy} onClick={() => pickWho('nearby')}>
+              Nearby
+            </Chip>
+            <Chip on={who === 'friends'} disabled={!!busy} onClick={() => pickWho('friends')}>
+              Friends
+            </Chip>
+            {penMe && (
+              <Chip on={who === 'pen'} disabled={!!busy} onClick={() => pickWho('pen')}>
+                Made-up name
+              </Chip>
+            )}
+          </div>
+        </div>
         {postKind && (
           <div className="st-group st-kind-group" role="group" aria-label={kindName(postKind)}>
             <span className="st-label">
@@ -1851,7 +1884,6 @@ export default function Studio({
             ) : gate ? null : mode === 'media' && file ? (
               <StudioPicture
                 file={showAfter ? afterFile! : lookFile ?? file}
-                fill={!strips.current.has(file)}
                 art={art}
                 onChange={setArt}
                 tool={tool}
@@ -2605,6 +2637,44 @@ export default function Studio({
                 </div>
               ) : (
                 <>
+                  {/* See the picture first (PHASE-5 A2): it opens whole; one Fit / Fill button, Turn and Reset on this
+                      same screen (dragging moves it, the wheel or a pinch sizes it; Resize keeps its finer controls). */}
+                  {mode === 'media' && file && !tool && !showAfter && (
+                    <div className="st-adjust" role="group" aria-label="The picture">
+                      <button
+                        type="button"
+                        className="st-chip"
+                        disabled={!!busy || (!filled && fillsAlready)}
+                        onClick={() =>
+                          setArt({ ...art, zoom: filled || !shape ? 1 : fillZoom(shape.w, shape.h, art.rotation), offset: { x: 0, y: 0 } })
+                        }
+                      >
+                        {filled ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+                        {filled ? 'Fit' : 'Fill'}
+                      </button>
+                      <button
+                        type="button"
+                        className="st-chip"
+                        disabled={!!busy}
+                        onClick={() => {
+                          const rotation = (art.rotation + 90) % 360;
+                          setArt({ ...art, rotation, zoom: filled && shape ? fillZoom(shape.w, shape.h, rotation) : art.zoom });
+                        }}
+                      >
+                        <RotateCw size={15} aria-hidden="true" />
+                        Turn
+                      </button>
+                      <button
+                        type="button"
+                        className="st-chip"
+                        disabled={!!busy || (art.zoom === 1 && !art.rotation && !art.offset.x && !art.offset.y)}
+                        onClick={() => setArt({ ...art, zoom: 1, rotation: 0, offset: { x: 0, y: 0 } })}
+                      >
+                        <Undo2 size={15} aria-hidden="true" />
+                        Reset
+                      </button>
+                    </div>
+                  )}
                   {mode === 'media' && file && !tool && caretAt?.field === 'caption' && (
                     <MentionPicker text={caption} caret={caretAt.at} picked={mentioned} enabled={canMention} onPick={(n) => pickMention('caption', n)} />
                   )}
@@ -2716,25 +2786,14 @@ export default function Studio({
                     </div>
                   )}
                   <div className="st-bar">
-                    <div className="st-who" role="group" aria-label="Who sees it">
-                      <Chip on={who === 'nearby'} disabled={noPlace || !!busy} onClick={() => pickWho('nearby')}>
-                        Nearby
-                      </Chip>
-                      <Chip on={who === 'friends'} disabled={!!busy} onClick={() => pickWho('friends')}>
-                        Friends
-                      </Chip>
-                      {penMe && (
-                        <Chip on={who === 'pen'} disabled={!!busy} onClick={() => pickWho('pen')}>
-                          Made-up name
-                        </Chip>
-                      )}
-                    </div>
+                    {/* The details as one line (PHASE-5 A4): where, how long and who sees it; a tap opens the drawer
+                        (who sees it is chosen at its top). Nothing of them covers the picture until asked. */}
                     <div className="st-row">
                       <button
                         type="button"
-                        className="st-when"
+                        className="st-when st-summary"
                         data-kind={postKind || undefined}
-                        aria-label={`${timeLine}, ${pillPlace}. Change`}
+                        aria-label={`${summary}. Change`}
                         aria-expanded={drawer}
                         disabled={!!busy}
                         onClick={() => {
@@ -2744,8 +2803,7 @@ export default function Studio({
                       >
                         {postKind ? <MessageCircleQuestion size={20} aria-hidden="true" /> : <Clock3 size={20} aria-hidden="true" />}
                         <span>
-                          <strong>{timeLine}</strong>
-                          <small>{pillPlace}</small>
+                          <strong>{summary}</strong>
                         </span>
                         <ChevronDown size={14} strokeWidth={2.6} aria-hidden="true" />
                       </button>

@@ -32,6 +32,7 @@ import { holdsForReplies, RepliesOverPicture, RepliesShownEntry } from '../repli
 import PinLayer, { hasPins, holdsForPins, PinControls } from '../pins/PinLayer';
 import { loopOf } from '../loop/loop';
 import { LoopDriver } from '../loop/LoopDriver';
+import MotionPhoto, { motionOf } from '../motion/MotionPhoto';
 import './studioViewer.css';
 
 type StudioMoment = Moment & { stamps?: ShownStamp[]; my_signal?: string | null; play?: PlayItem[]; dots?: unknown[] };
@@ -45,7 +46,8 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [now, setNow] = useState(Date.now);
   const stamps = moment.stamps || [];
-  const playing = (moment.play || []).length + (moment.dots || []).length + (hasSound(moment) ? 1 : 0) + (hasPins(moment) ? 1 : 0);
+  const playing =
+    (moment.play || []).length + (moment.dots || []).length + (hasSound(moment) ? 1 : 0) + (hasPins(moment) ? 1 : 0) + (motionOf(moment) ? 1 : 0);
   // A before and after: the picture is the two photos side by side, and the reader sees one half's frame.
   const pair = moment.kind === 'photo' && moment.media_url ? beforeAfterOf(moment.play) : null;
   const paired = !!pair;
@@ -104,6 +106,8 @@ function ViewerStamps({ moment }: { moment: StudioMoment }) {
       {pair && box && <div className="sv-ba-backdrop" />}
       {box && (
         <div className="sv-picture" style={box}>
+          {/* A Live Photo's motion (PHASE-5 C), under everything drawn on the picture. */}
+          <MotionPhoto moment={moment} />
           {pair && <BeforeAfter src={moment.media_url!} item={pair} />}
           <StampLayer stamps={stamps} valueOf={(k) => values.get(k) ?? null} ink={wet ? 'wet' : 'dry'} />
           <PlayLayer moment={moment} />

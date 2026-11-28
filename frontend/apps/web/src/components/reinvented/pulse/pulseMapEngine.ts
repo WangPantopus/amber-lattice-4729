@@ -13,6 +13,7 @@ import '@/components/map/leaflet-setup';
 import { MAP_PUBLIC_TOKEN, MAPBOX_STANDARD, MAP_STYLE_TIMEOUT_MS, RETINA_TILE_URL, TILE_ATTRIBUTION } from '@/components/map/constants';
 import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import type { Box, Point } from './listApi';
+import type { MapLight } from './mapLight';
 
 export interface Spot {
   x: number;
@@ -60,6 +61,8 @@ export interface MapEngine {
   /** Replaces what's drawn in that group. */
   draw(group: 'pins' | 'sounds', marks: Mark[]): void;
   beams(lines: BeamLines[], color: string): void;
+  /** The basemap's own light on the globe; the flat map has none (its tiles are dimmed by `--rp-night` instead). */
+  light(l: MapLight): void;
   resize(): void;
   remove(): void;
 }
@@ -154,6 +157,7 @@ export function openFlat(el: HTMLElement, tiles: (missing: boolean) => void): Ma
         );
       }
     },
+    light: () => {},
     resize: () => map.invalidateSize(),
     remove: () => map.remove(),
   };
@@ -162,10 +166,11 @@ export function openFlat(el: HTMLElement, tiles: (missing: boolean) => void): Ma
 const BEAMS = 'rp-beams';
 
 /**
- * The globe, on today's basemap and light, as today's Moments map opens it. Null where Mapbox GL can't run here;
- * `failed` is called (once) when the basemap errors or hasn't loaded in 8 s, and the board then draws the flat map.
+ * The globe, on today's basemap, as today's Moments map opens it, in the light it is given (PHASE-5 D: Mapbox's own
+ * dawn, day, dusk and night). Null where Mapbox GL can't run here; `failed` is called (once) when the basemap errors or
+ * hasn't loaded in 8 s, and the board then draws the flat map.
  */
-export async function openGlobe(el: HTMLElement, failed: () => void): Promise<MapEngine | null> {
+export async function openGlobe(el: HTMLElement, failed: () => void, firstLight: MapLight): Promise<MapEngine | null> {
   const { default: gl } = await import('mapbox-gl');
   if (!gl.supported()) return null;
   // mapbox-gl.css makes the map's own element `position: relative`, so it gets an element of its own filling the board's.
@@ -178,6 +183,8 @@ export async function openGlobe(el: HTMLElement, failed: () => void): Promise<Ma
       container: host,
       accessToken: MAP_PUBLIC_TOKEN,
       ...MAPBOX_STANDARD,
+      // Opened in its light already, so a night map never shows a flash of day first.
+      config: { basemap: { ...MAPBOX_STANDARD.config.basemap, lightPreset: firstLight } },
       center: [-98.35, 39.5],
       zoom: 3,
       projection: 'globe',
@@ -201,7 +208,19 @@ export async function openGlobe(el: HTMLElement, failed: () => void): Promise<Ma
   map.addControl(new gl.NavigationControl({ showCompass: false }), 'top-right');
 
   let loaded = false,
-    gone = false;
+    gone = false,
+    lit: MapLight = firstLight,
+    shown: MapLight = firstLight;
+  // The basemap takes a new light only once its style has loaded; asked earlier, it is set at the load.
+  const applyLight = () => {
+    if (!loaded || gone || lit === shown) return;
+    try {
+      map.setConfigProperty('basemap', 'lightPreset', lit);
+      shown = lit;
+    } catch {
+      /* the basemap without this setting: it stays in its light */
+    }
+  };
   const markers: Record<'pins' | 'sounds', GlMarker[]> = { pins: [], sounds: [] };
   const settled: Array<() => void> = [];
   let beamData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -243,6 +262,7 @@ export async function openGlobe(el: HTMLElement, failed: () => void): Promise<Ma
   map.once('style.load', () => {
     loaded = true;
     window.clearTimeout(timer);
+    applyLight();
     drawBeams();
   });
   map.on('moveend', () => settled.forEach((fn) => fn()));
@@ -359,6 +379,10 @@ export async function openGlobe(el: HTMLElement, failed: () => void): Promise<Ma
       }
       beamData = { type: 'FeatureCollection', features };
       drawBeams();
+    },
+    light: (l) => {
+      lit = l;
+      applyLight();
     },
     resize: () => map.resize(),
     remove,
