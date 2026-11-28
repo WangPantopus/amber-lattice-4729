@@ -261,7 +261,7 @@ private val MomentsComposeUiState.stampsWet: Boolean get() = offersLive && share
  * (or the 9:16 canvas Resize placed it on); null for a text card, whose card is the screen.
  */
 @Composable
-private fun rememberStudioPicture(state: MomentsComposeUiState): IntSize? {
+internal fun rememberStudioPicture(state: MomentsComposeUiState): IntSize? {
     val media = state.media
     val placed = state.placement != null
     val half = state.studioPair != null

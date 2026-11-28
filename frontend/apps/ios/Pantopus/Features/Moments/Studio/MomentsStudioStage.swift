@@ -121,7 +121,10 @@ struct MomentsStudioStage: View {
         // Behind the screen, never part of its layout: a photo that fills the screen is larger than the screen.
         .background {
             ZStack {
-                MomentsStudioPicture(model: model)
+                // The picture fills the screen centred, exactly as the viewer shows it to readers: held in a frame the
+                // screen's size, so a photo wider than the screen never widens the layers over it (they place stamps,
+                // items and dots by the same centred fill).
+                Color.clear.overlay { MomentsStudioPicture(model: model) }
                     .overlay { legibility }
                     .clipped()
                 TogetherStudioGhost(model: model) // Phase 3 (CONTRACT 8): a Retake's first picture to line up with.

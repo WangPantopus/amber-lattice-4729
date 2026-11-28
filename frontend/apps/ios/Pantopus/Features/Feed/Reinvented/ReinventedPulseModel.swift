@@ -245,6 +245,7 @@ final class ReinventedPulseModel {
         let endpoint = ReinventedEndpoints.explore(at: here.map { ($0.latitude, $0.longitude) }, cursor: cursor)
         guard let data = await fetch(endpoint),
               let page = try? JSONDecoder().decode(ReinventedExploreResponse.self, from: data) else { return }
+        ReinventedPlacesYouFollow.shared.explored(data, first: cursor == nil) // phase 4: Explore's `followed`
         let appending = cursor != nil
         let fresh = page.picked + page.items
         if !appending {
