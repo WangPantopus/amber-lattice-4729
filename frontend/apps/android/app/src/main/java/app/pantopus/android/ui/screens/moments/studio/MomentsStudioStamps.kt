@@ -571,7 +571,7 @@ internal fun StudioStampTray(
         onDone = onDone,
         // Play: "Guess the spot", for a photo or video with a place away from home; film looks, for a photo.
         play =
-            if (state.offersGuess || looks || pair != null || onMovingWords != null) {
+            if (offersPlay(state.offersGuess || looks || pair != null, onMovingWords)) {
                 {
                     if (state.offersGuess) StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) })
                     if (looks) StudioLooksRow(picture = asItCame, picked = state.marks.look, onPick = onLook)
@@ -593,6 +593,12 @@ internal fun StudioStampTray(
         }
     }
 }
+
+/** The tray has a Play section: something of its own to offer, or moving words (CONTRACT 7k). */
+private fun offersPlay(
+    offers: Boolean,
+    onMovingWords: (() -> Unit)?,
+): Boolean = offers || onMovingWords != null
 
 /** The screen's size in pixels, where a picture is drawn to fill it. */
 @Composable

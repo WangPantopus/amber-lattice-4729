@@ -165,42 +165,7 @@ private fun LetterRows(
 ) {
     Layout(content = content, modifier = modifier) { measurables, _ ->
         val placeables = measurables.map { it.measure(Constraints()) }
-        val rows = mutableListOf<MutableList<Int>>(mutableListOf())
-        var width = 0
-        var at = 0
-        val limit = widest.roundToInt().coerceAtLeast(1)
-        while (at < placeables.size) {
-            if (spaces.getOrElse(at) { false }) {
-                // A space: kept inside a row, dropped where a row would start with it.
-                if (rows.last().isNotEmpty()) {
-                    rows.last().add(at)
-                    width += placeables[at].width
-                }
-                at++
-                continue
-            }
-            var end = at
-            var wordWidth = 0
-            while (end < placeables.size && !spaces.getOrElse(end) { false }) {
-                wordWidth += placeables[end].width
-                end++
-            }
-            if (width + wordWidth > limit && rows.last().any { !spaces[it] }) {
-                while (rows.last().isNotEmpty() && spaces[rows.last().last()]) rows.last().removeAt(rows.last().lastIndex)
-                rows.add(mutableListOf())
-                width = 0
-            }
-            for (letter in at until end) {
-                if (width + placeables[letter].width > limit && rows.last().isNotEmpty()) {
-                    rows.add(mutableListOf())
-                    width = 0
-                }
-                rows.last().add(letter)
-                width += placeables[letter].width
-            }
-            at = end
-        }
-        while (rows.last().isNotEmpty() && spaces[rows.last().last()]) rows.last().removeAt(rows.last().lastIndex)
+        val rows = letterRows(placeables.map { it.width }, spaces, widest.roundToInt().coerceAtLeast(1))
         val rowWidths = rows.map { row -> row.sumOf { placeables[it].width } }
         val rowHeights = rows.map { row -> row.maxOfOrNull { placeables[it].height } ?: 0 }
         val total = rowWidths.maxOrNull() ?: 0
@@ -216,6 +181,68 @@ private fun LetterRows(
             }
         }
     }
+}
+
+/**
+ * The letters' rows, as indexes, for letters [widths] px wide: a row breaks at a space (dropped at the row's ends), and
+ * inside a word only when that word alone is wider than [limit].
+ */
+private fun letterRows(
+    widths: List<Int>,
+    spaces: List<Boolean>,
+    limit: Int,
+): List<List<Int>> {
+    val rows = mutableListOf<MutableList<Int>>(mutableListOf())
+    var width = 0
+    var at = 0
+    fun breakRow() {
+        rows.add(mutableListOf())
+        width = 0
+    }
+    while (at < widths.size) {
+        if (spaces.getOrElse(at) { false }) {
+            // A space: kept inside a row, dropped where a row would start with it.
+            if (rows.last().isNotEmpty()) {
+                rows.last().add(at)
+                width += widths[at]
+            }
+            at++
+            continue
+        }
+        val end = wordEnd(at, spaces, widths.size)
+        val wordWidth = (at until end).sumOf { widths[it] }
+        if (width + wordWidth > limit && rows.last().any { !spaces[it] }) {
+            trimSpaces(rows.last(), spaces)
+            breakRow()
+        }
+        for (letter in at until end) {
+            if (width + widths[letter] > limit && rows.last().isNotEmpty()) breakRow()
+            rows.last().add(letter)
+            width += widths[letter]
+        }
+        at = end
+    }
+    trimSpaces(rows.last(), spaces)
+    return rows
+}
+
+/** Where the word starting at [from] ends (the next space, or the end). */
+private fun wordEnd(
+    from: Int,
+    spaces: List<Boolean>,
+    count: Int,
+): Int {
+    var end = from
+    while (end < count && !spaces.getOrElse(end) { false }) end++
+    return end
+}
+
+/** Drops spaces at a row's end. */
+private fun trimSpaces(
+    row: MutableList<Int>,
+    spaces: List<Boolean>,
+) {
+    while (row.isNotEmpty() && spaces[row.last()]) row.removeAt(row.lastIndex)
 }
 
 /** Places what follows with its centre at ([x], [y]) px in the parent; it takes only its own size for touches. */
