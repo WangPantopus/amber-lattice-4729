@@ -9,12 +9,14 @@ import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.location.LocationProvider
 import app.pantopus.android.data.location.PASSIVE_LOCATION_TIMEOUT_MILLIS
 import app.pantopus.android.data.moments.MomentsPlayback
 import app.pantopus.android.data.moments.MomentsRepository
+import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.data.pulse.ReinventedRepository
@@ -125,12 +127,36 @@ class ReinventedPulseViewModel
             miles: Int,
         ) {
             val now = _state.value
-            if (reach == now.reach && miles == now.miles) return
+            if (reach == now.reach && miles == now.miles && now.circleId == null) return
             // Another reach is another list: it starts empty, so nothing of the last one shows under the new pill.
             _state.update {
                 it.copy(
                     reach = reach,
                     miles = miles,
+                    circleId = null,
+                    circleName = null,
+                    chip = ALL,
+                    items = emptyList(),
+                    cursor = null,
+                    end = null,
+                    pause = null,
+                )
+            }
+            refresh()
+        }
+
+        /** Close circle, only one of the reader's circles (CONTRACT 8d): its people who are in. */
+        fun pickCircle(
+            id: String,
+            name: String,
+        ) {
+            val now = _state.value
+            if (now.reach == CLOSE && now.circleId == id) return
+            _state.update {
+                it.copy(
+                    reach = CLOSE,
+                    circleId = id,
+                    circleName = name,
                     chip = ALL,
                     items = emptyList(),
                     cursor = null,
@@ -173,7 +199,13 @@ class ReinventedPulseViewModel
                     chip = start.chip,
                     at = here.takeIf { start.reach == AROUND },
                     cursor = cursor,
+                    circle = start.circleId.takeIf { start.reach == CLOSE },
                 )
+            if (answer is NetworkResult.Failure && start.circleId != null && answer.error.circleGone) {
+                // No longer in that circle (it ended, or they left): all their connections again.
+                _state.update { it.copy(circleId = null, circleName = null, items = emptyList(), cursor = null) }
+                return read(cursor = null)
+            }
             when (answer) {
                 is NetworkResult.Success -> show(answer.data, appending = cursor != null, revision = revision)
                 is NetworkResult.Failure ->
@@ -272,6 +304,7 @@ class ReinventedPulseViewModel
             const val AROUND = "around"
             const val CLOSE = "close"
             const val EXPLORE = "explore"
+
             private const val EXPLORE_END = "That's everything for now."
             const val ALL = "all"
             const val MOMENT = "moment"
@@ -286,6 +319,9 @@ data class ReinventedPulseState(
     /** Close circle (`close`) or Around me (`around`). */
     val reach: String = ReinventedPulseViewModel.AROUND,
     val miles: Int = DEFAULT_MILES,
+    /** Close circle narrowed to one of the reader's circles (CONTRACT 8d); null is all their connections. */
+    val circleId: String? = null,
+    val circleName: String? = null,
     val chip: String = ReinventedPulseViewModel.ALL,
     val chips: List<String> = listOf(ReinventedPulseViewModel.ALL),
     /** The town's name, to the reader only. */
@@ -340,3 +376,10 @@ internal fun MomentDto.asRing(viewerId: String?): MomentRingDto =
         newestAt = createdAt,
         mine = viewerId != null && author.id == viewerId,
     )
+
+/**
+ * CONTRACT 8d: the list for a circle answered `404 CIRCLE_NOT_FOUND` (the reader is no longer in it). A 404 reaches the
+ * app without its body, so any 404 for a circle's list means that.
+ */
+private val NetworkError.circleGone: Boolean
+    get() = this == NetworkError.NotFound || serverCode == "CIRCLE_NOT_FOUND"

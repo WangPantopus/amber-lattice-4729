@@ -149,6 +149,7 @@ fun ReinventedPulseScreen(
         actions = actions,
         onPickChip = viewModel::pickChip,
         onPickReach = viewModel::pickReach,
+        onPickCircle = viewModel::pickCircle,
         mapModel = mapModel,
         onOpenMoment = watch::moment,
         onOpenRing = watch::ring,
@@ -318,6 +319,7 @@ private fun ReinventedPulseLayout(
     actions: ReinventedPulseActions,
     onPickChip: (String) -> Unit,
     onPickReach: (String, Int) -> Unit,
+    onPickCircle: (String, String) -> Unit,
     mapModel: ReinventedMapViewModel,
     onOpenMoment: (MomentDto) -> Unit,
     onOpenRing: (MomentRingDto) -> Unit,
@@ -357,6 +359,7 @@ private fun ReinventedPulseLayout(
                         atlas = atlas.on,
                         onAtlas = atlas.onToggle,
                         sideBySide = wide,
+                        onPickCircle = onPickCircle,
                         modifier = modifier,
                     )
                 },
