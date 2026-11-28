@@ -55,7 +55,8 @@ import kotlin.math.roundToInt
  */
 
 /** A number as people read it: whole when it is whole, else one decimal. */
-fun playNumber(value: Double): String = if (value == Math.rint(value)) value.toLong().toString() else String.format(Locale.US, "%.1f", value)
+fun playNumber(value: Double): String =
+    if (value == Math.rint(value)) value.toLong().toString() else String.format(Locale.US, "%.1f", value)
 
 /** Guess and reveal. */
 @Composable
@@ -63,7 +64,7 @@ internal fun GuessCard(
     item: MomentPlayItemDto,
     onAnswer: ((MomentPlayAnswerBody) -> Unit)?,
 ) {
-    CardWords(item.prompt.orEmpty(), bold = true)
+    PlayWords(item.prompt.orEmpty(), bold = true)
     val tries = onAnswer.takeIf { item.open == true && item.mine == null }
     val options = item.options
     val range = item.range
@@ -78,7 +79,15 @@ internal fun GuessCard(
                         .height(38.dp)
                         .clip(RoundedCornerShape(19.dp))
                         .background(if (item.mine?.choice == at) PantopusColors.studioPillOutline else PantopusColors.studioPillFill)
-                        .then(if (tries != null) Modifier.clickable(role = Role.Button) { tries(MomentPlayAnswerBody(choice = at)) } else Modifier)
+                        .then(
+                            if (tries != null) {
+                                Modifier.clickable(
+                                    role = Role.Button,
+                                ) { tries(MomentPlayAnswerBody(choice = at)) }
+                            } else {
+                                Modifier
+                            },
+                        )
                         .padding(horizontal = 12.dp)
                         .testTag("moments.play.guess.option$at"),
             ) {
@@ -89,7 +98,7 @@ internal fun GuessCard(
     } else if (range != null) {
         RangeGuess(item, range, tries)
     }
-    guessOutcome(item)?.let { CardNote(it) }
+    guessOutcome(item)?.let { PlayNote(it) }
 }
 
 @Composable
@@ -109,12 +118,12 @@ private fun RangeGuess(
             modifier = Modifier.testTag("moments.play.guess.range"),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CardWords("${playNumber(value.toDouble())}$unit", bold = true)
+            PlayWords("${playNumber(value.toDouble())}$unit", bold = true)
             Spacer(Modifier.weight(1f))
-            CardButton("Guess", "moments.play.guess.send") { tries(MomentPlayAnswerBody(value = Math.round(value * 100) / 100.0)) }
+            PlayButton("Guess", "moments.play.guess.send") { tries(MomentPlayAnswerBody(value = Math.round(value * 100) / 100.0)) }
         }
     } else {
-        item.answer?.let { CardWords("It's ${playNumber(it)}$unit", bold = true) }
+        item.answer?.let { PlayWords("It's ${playNumber(it)}$unit", bold = true) }
     }
 }
 
@@ -146,9 +155,9 @@ internal fun BoardCard(
     onAnswer: ((MomentPlayAnswerBody) -> Unit)?,
     onNote: (() -> Unit)?,
 ) {
-    CardWords(item.question.orEmpty(), bold = true)
+    PlayWords(item.question.orEmpty(), bold = true)
     val places = onAnswer.takeIf { item.open == true }
-    CardNote(item.yAxis?.top.orEmpty())
+    PlayNote(item.yAxis?.top.orEmpty())
     BoxWithConstraints(
         modifier =
             Modifier
@@ -167,7 +176,13 @@ internal fun BoardCard(
                             detectTapGestures { at ->
                                 val x = (at.x / size.width).coerceIn(0f, 1f)
                                 val y = (1f - at.y / size.height).coerceIn(0f, 1f)
-                                places(MomentPlayAnswerBody(x = Math.round(x * 100) / 100.0, y = Math.round(y * 100) / 100.0, note = item.mine?.note))
+                                places(
+                                    MomentPlayAnswerBody(
+                                        x = Math.round(x * 100) / 100.0,
+                                        y = Math.round(y * 100) / 100.0,
+                                        note = item.mine?.note,
+                                    ),
+                                )
                             }
                         }
                     },
@@ -182,15 +197,15 @@ internal fun BoardCard(
         item.results?.faces.orEmpty().forEach { face -> BoardFace(face, width, height, density) }
     }
     Row(modifier = Modifier.fillMaxWidth()) {
-        CardNote(item.xAxis?.left.orEmpty())
+        PlayNote(item.xAxis?.left.orEmpty())
         Spacer(Modifier.weight(1f))
-        CardNote(item.xAxis?.right.orEmpty())
+        PlayNote(item.xAxis?.right.orEmpty())
     }
-    CardNote(item.yAxis?.bottom.orEmpty())
-    item.results?.count?.let { count -> CardNote("$count ${if (count == 1) "person" else "people"} on the board") }
+    PlayNote(item.yAxis?.bottom.orEmpty())
+    item.results?.count?.let { count -> PlayNote("$count ${if (count == 1) "person" else "people"} on the board") }
     if (item.mine != null && item.open == true && onNote != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CardButton(if (item.mine.note.isNullOrBlank()) "Add a note" else "Change my note", "moments.play.board.note", onNote)
+            PlayButton(if (item.mine.note.isNullOrBlank()) "Add a note" else "Change my note", "moments.play.board.note", onNote)
         }
     }
 }

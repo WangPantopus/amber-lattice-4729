@@ -51,9 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -73,8 +73,8 @@ import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlayKinds
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.moments.components.MomentMovingWordsText
-import app.pantopus.android.ui.screens.moments.components.card
 import app.pantopus.android.ui.screens.moments.components.MomentPlayCard
+import app.pantopus.android.ui.screens.moments.components.card
 import app.pantopus.android.ui.screens.moments.components.centredAt
 import app.pantopus.android.ui.screens.moments.components.movingWords
 import app.pantopus.android.ui.screens.moments.components.movingWordsColor

@@ -207,7 +207,8 @@ data class MomentPlayAnswerResponse(
 
 /** The kinds a reader answers, and limits the Studio keeps to (CONTRACT 7b). */
 object MomentPlayLimits {
-    val ANSWERED = setOf(MomentPlayKinds.POLL, MomentPlayKinds.SLIDER, MomentPlayKinds.BOARD, MomentPlayKinds.QUESTION, MomentPlayKinds.GUESS)
+    val ANSWERED =
+        setOf(MomentPlayKinds.POLL, MomentPlayKinds.SLIDER, MomentPlayKinds.BOARD, MomentPlayKinds.QUESTION, MomentPlayKinds.GUESS)
     const val QUESTION_LETTERS = 100
     const val OPTION_LETTERS = 40
     const val TITLE_LETTERS = 60

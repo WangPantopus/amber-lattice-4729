@@ -115,7 +115,12 @@ fun MomentFogLayer(
                         drawCircle(Color.Black, radius = brushPx / 2, center = points.first(), blendMode = BlendMode.Clear)
                     } else {
                         val path = Path().apply { points.forEachIndexed { at, p -> if (at == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) } }
-                        drawPath(path, Color.Black, style = Stroke(brushPx, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = BlendMode.Clear)
+                        drawPath(
+                            path,
+                            Color.Black,
+                            style = Stroke(brushPx, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                            blendMode = BlendMode.Clear,
+                        )
                     }
                 }
             }
@@ -168,7 +173,10 @@ fun MomentSwatchLayer(
                     color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(4.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp)).padding(horizontal = 5.dp),
+                    modifier =
+                        Modifier.padding(
+                            4.dp,
+                        ).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp)).padding(horizontal = 5.dp),
                 )
             }
         }

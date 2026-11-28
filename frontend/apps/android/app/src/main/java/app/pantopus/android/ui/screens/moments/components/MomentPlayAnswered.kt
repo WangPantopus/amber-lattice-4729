@@ -76,7 +76,7 @@ internal fun SliderCard(
     item: MomentPlayItemDto,
     onAnswer: ((MomentPlayAnswerBody) -> Unit)?,
 ) {
-    CardWords(item.question.orEmpty(), bold = true)
+    PlayWords(item.question.orEmpty(), bold = true)
     val dial = item.look == "dial"
     val answers = onAnswer.takeIf { item.open == true }
     var moving by remember(item.id, item.mine) { mutableStateOf<Float?>(null) }
@@ -102,7 +102,10 @@ internal fun SliderCard(
                     } else {
                         Modifier
                             .pointerInput(item.id) {
-                                detectTapGestures { at -> answers(MomentPlayAnswerBody(value = (at.x / size.width).coerceIn(0f, 1f).toDouble())) }
+                                detectTapGestures {
+                                        at ->
+                                    answers(MomentPlayAnswerBody(value = (at.x / size.width).coerceIn(0f, 1f).toDouble()))
+                                }
                             }.pointerInput(item.id) {
                                 detectHorizontalDragGestures(
                                     onDragEnd = { moving?.let { answers(MomentPlayAnswerBody(value = it.toDouble())) } },
@@ -150,12 +153,14 @@ internal fun SliderCard(
         }
     }
     Row(modifier = Modifier.fillMaxWidth()) {
-        CardWords(item.left.orEmpty())
+        PlayWords(item.left.orEmpty())
         Spacer(Modifier.weight(1f))
-        CardWords(item.right.orEmpty())
+        PlayWords(item.right.orEmpty())
     }
     item.results?.count?.let { count ->
-        CardNote("$count ${if (count == 1) "answer" else "answers"}${if (item.results?.average != null) " · the line is the average" else ""}")
+        PlayNote(
+            "$count ${if (count == 1) "answer" else "answers"}${if (item.results?.average != null) " · the line is the average" else ""}",
+        )
     }
 }
 
@@ -192,7 +197,7 @@ internal fun QuestionCard(
     onWrite: (() -> Unit)?,
     onAnswers: (() -> Unit)?,
 ) {
-    CardWords(item.prompt.orEmpty(), bold = true)
+    PlayWords(item.prompt.orEmpty(), bold = true)
     val who = authorName ?: "the author"
     val count = item.results?.count
     val mine = item.mine?.text
@@ -209,7 +214,7 @@ internal fun QuestionCard(
                         .then(if (onAnswers != null) Modifier.clickable(role = Role.Button, onClick = onAnswers) else Modifier)
                         .testTag("moments.play.question.answers"),
             )
-        mine != null -> CardNote("You said: $mine. Only $who sees answers.")
+        mine != null -> PlayNote("You said: $mine. Only $who sees answers.")
         item.open == true -> {
             Text(
                 text = "Your answer",
@@ -224,9 +229,9 @@ internal fun QuestionCard(
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .testTag("moments.play.question.field"),
             )
-            CardNote("Only $who sees answers.")
+            PlayNote("Only $who sees answers.")
         }
-        else -> CardNote("Only $who sees answers.")
+        else -> PlayNote("Only $who sees answers.")
     }
 }
 
@@ -258,7 +263,7 @@ internal fun QuestionWriteDialog(
                     .padding(16.dp)
                     .testTag("moments.play.question.write"),
         ) {
-            CardWords(prompt, bold = true)
+            PlayWords(prompt, bold = true)
             BasicTextField(
                 value = words,
                 onValueChange = { words = it.take(limit) },
@@ -275,12 +280,12 @@ internal fun QuestionWriteDialog(
                         .semantics { contentDescription = hint }
                         .testTag("moments.play.question.text"),
             )
-            if (failed) CardNote("Couldn't send it. Try again.")
+            if (failed) PlayNote("Couldn't send it. Try again.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CardButton("Cancel", "moments.play.question.cancel", onDone)
-                CardButton(if (sending) "Sending…" else "Send", "moments.play.question.send") {
+                PlayButton("Cancel", "moments.play.question.cancel", onDone)
+                PlayButton(if (sending) "Sending…" else "Send", "moments.play.question.send") {
                     val typed = words.trim()
-                    if (typed.isEmpty() || sending) return@CardButton
+                    if (typed.isEmpty() || sending) return@PlayButton
                     sending = true
                     failed = false
                     scope.launch {
@@ -323,18 +328,18 @@ internal fun AnswersDialog(
                     .padding(16.dp)
                     .testTag("moments.play.answersList"),
         ) {
-            CardWords(prompt, bold = true)
+            PlayWords(prompt, bold = true)
             when {
-                failed -> CardNote("Couldn't load the answers.")
-                rows == null -> CardNote("Loading…")
-                rows.orEmpty().isEmpty() -> CardNote("No answers yet.")
+                failed -> PlayNote("Couldn't load the answers.")
+                rows == null -> PlayNote("Loading…")
+                rows.orEmpty().isEmpty() -> PlayNote("No answers yet.")
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f, fill = false)) {
                 items(rows.orEmpty(), key = { it.id }) { row ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("moments.play.answer")) {
-                        CardWords(row.person?.name ?: row.person?.firstName ?: "Someone", bold = true)
-                        CardWords(row.text ?: row.note.orEmpty())
-                        CardButton("Remove", "moments.play.answer.remove") {
+                        PlayWords(row.person?.name ?: row.person?.firstName ?: "Someone", bold = true)
+                        PlayWords(row.text ?: row.note.orEmpty())
+                        PlayButton("Remove", "moments.play.answer.remove") {
                             scope.launch { if (remove(row.id)) rows = rows.orEmpty().filterNot { it.id == row.id } }
                         }
                     }
@@ -342,7 +347,7 @@ internal fun AnswersDialog(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 next?.let { cursor ->
-                    CardButton("More", "moments.play.answers.more") {
+                    PlayButton("More", "moments.play.answers.more") {
                         scope.launch {
                             load(cursor)?.let { page ->
                                 rows = rows.orEmpty() + page.first
@@ -351,14 +356,14 @@ internal fun AnswersDialog(
                         }
                     }
                 }
-                CardButton("Done", "moments.play.answers.done", onDone)
+                PlayButton("Done", "moments.play.answers.done", onDone)
             }
         }
     }
 }
 
 @Composable
-internal fun CardWords(
+internal fun PlayWords(
     words: String,
     bold: Boolean = false,
 ) {
@@ -371,12 +376,12 @@ internal fun CardWords(
 }
 
 @Composable
-internal fun CardNote(words: String) {
+internal fun PlayNote(words: String) {
     Text(words, color = PantopusColors.studioPillSecondary, fontSize = 13.sp)
 }
 
 @Composable
-internal fun CardButton(
+internal fun PlayButton(
     words: String,
     tag: String,
     onClick: () -> Unit,

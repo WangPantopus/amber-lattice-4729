@@ -96,7 +96,10 @@ internal fun MomentPlayItemDto.sentCard(now: Instant = Instant.now()): MomentPla
         MomentPlayKinds.POLL -> {
             val question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS).orEmpty()
             val options = options.orEmpty().map { it.trim().take(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
-            copy(question = question, options = options).takeIf { question.isNotEmpty() && options.size in 2..MomentPlayLimits.MOST_OPTIONS }
+            copy(
+                question = question,
+                options = options,
+            ).takeIf { question.isNotEmpty() && options.size in 2..MomentPlayLimits.MOST_OPTIONS }
         }
         MomentPlayKinds.SLIDER -> {
             val question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS).orEmpty()
@@ -270,7 +273,12 @@ private fun SliderForm(
     if (!dial) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             Pill("●", on = emoji == null, tag = "moments.studio.play.emoji.none") { emoji = null }
-            SLIDER_EMOJI.forEachIndexed { at, face -> Pill(face, on = emoji == face, tag = "moments.studio.play.emoji$at") { emoji = face } }
+            SLIDER_EMOJI.forEachIndexed {
+                    at,
+                    face,
+                ->
+                Pill(face, on = emoji == face, tag = "moments.studio.play.emoji$at") { emoji = face }
+            }
         }
     }
     val made =
@@ -353,7 +361,13 @@ private fun BoardForm(
 
 /** How far ahead a countdown may be set, with its words. */
 private val COUNTDOWN_CHOICES =
-    listOf("1 hour" to Duration.ofHours(1), "3 hours" to Duration.ofHours(3), "1 day" to Duration.ofDays(1), "3 days" to Duration.ofDays(3), "1 week" to Duration.ofDays(7))
+    listOf(
+        "1 hour" to Duration.ofHours(1),
+        "3 hours" to Duration.ofHours(3),
+        "1 day" to Duration.ofDays(1),
+        "3 days" to Duration.ofDays(3),
+        "1 week" to Duration.ofDays(7),
+    )
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

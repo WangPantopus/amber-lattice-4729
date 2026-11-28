@@ -78,9 +78,9 @@ import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
 import app.pantopus.android.ui.screens.feed.reinvented.after.studioPostPill
-import app.pantopus.android.ui.screens.moments.components.movingWords
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
+import app.pantopus.android.ui.screens.moments.components.movingWords
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostFullMap
 import app.pantopus.android.ui.screens.moments.compose.MomentsPostSheet

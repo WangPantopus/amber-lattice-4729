@@ -261,15 +261,15 @@ fun MomentPlayCard(
             MomentPlayKinds.QUOTE -> {
                 // A quote lifted from a page or a sign (CONTRACT 7g): drawn only.
                 Text("“${item.text.orEmpty()}”", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                item.source?.takeIf { it.isNotBlank() }?.let { CardNote("— $it") }
+                item.source?.takeIf { it.isNotBlank() }?.let { PlayNote("— $it") }
             }
         }
         if (item.kind == MomentPlayKinds.BOARD && item.mine != null && item.open == true && onTakeBack != null) {
-            CardButton("Take my face off", "moments.play.takeBack", onTakeBack)
+            PlayButton("Take my face off", "moments.play.takeBack", onTakeBack)
         }
         // A reader may take a slider's answer back while it is open (as a vote).
         if (item.kind == MomentPlayKinds.SLIDER && item.mine != null && item.open == true && onTakeBack != null) {
-            CardButton("Take my answer back", "moments.play.takeBack", onTakeBack)
+            PlayButton("Take my answer back", "moments.play.takeBack", onTakeBack)
         }
     }
 }
@@ -315,7 +315,15 @@ private fun PollCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(PantopusColors.studioPillFill)
-                        .then(if (answers != null) Modifier.clickable(role = Role.Button) { answers(MomentPlayAnswerBody(choice = at)) } else Modifier)
+                        .then(
+                            if (answers != null) {
+                                Modifier.clickable(
+                                    role = Role.Button,
+                                ) { answers(MomentPlayAnswerBody(choice = at)) }
+                            } else {
+                                Modifier
+                            },
+                        )
                         .padding(horizontal = 12.dp, vertical = 9.dp)
                         .testTag("moments.play.poll.option$at"),
             )
