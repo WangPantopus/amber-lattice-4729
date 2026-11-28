@@ -158,6 +158,10 @@ class MomentRepliesViewModel
                 val answer = repository.setShown(id, shown)
                 if (answer is NetworkResult.Failure) {
                     _ui.update { it.copy(shown = !shown, note = answer.error.displayMessage("Couldn't change that. Try again.")) }
+                } else {
+                    // Hidden, the server lists none; shown again, the stored replies come back.
+                    _ui.update { it.copy(replies = emptyList(), cursor = null) }
+                    if (shown) read(cursor = null)
                 }
             }
         }
@@ -259,7 +263,9 @@ private fun RepliesSheet(
             ui.note?.let { Text(it, fontSize = 13.sp, color = PantopusColors.appTextSecondary) }
             LaunchedEffect(Unit) { if (ui.replies.isEmpty() && !ui.loading) viewModel.open(moment.id) }
             if (ui.replies.isEmpty() && !ui.loading) {
-                Text("No replies yet.", fontSize = 14.sp, color = PantopusColors.appTextSecondary)
+                // The author's own Moment with its replies hidden: they are stored, not gone.
+                val empty = if (shown) "No replies yet." else "Replies are hidden. Show them to see them here."
+                Text(empty, fontSize = 14.sp, color = PantopusColors.appTextSecondary)
             }
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
