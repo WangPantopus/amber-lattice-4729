@@ -182,6 +182,7 @@ struct MomentPinboardView: View {
                     note(failed ? "This pinboard couldn’t load." : "Loading…")
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Spacing.s4)
         }
         .background(Theme.Color.appBg)

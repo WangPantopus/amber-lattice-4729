@@ -154,6 +154,7 @@ struct MomentCrowdView: View {
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Spacing.s4)
         }
         .background(Theme.Color.appBg)
