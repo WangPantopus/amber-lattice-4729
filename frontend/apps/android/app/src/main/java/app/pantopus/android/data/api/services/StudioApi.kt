@@ -5,6 +5,8 @@ import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.moments.MomentGuessBody
 import app.pantopus.android.data.api.models.moments.MomentGuessResponse
+import app.pantopus.android.data.api.models.moments.MomentPlayAnswerBody
+import app.pantopus.android.data.api.models.moments.MomentPlayAnswerResponse
 import app.pantopus.android.data.api.models.moments.MomentSignalResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
@@ -82,5 +84,23 @@ interface StudioApi {
     suspend fun removeDot(
         @Path("id") id: String,
         @Path("dot") dot: String,
+    )
+
+    /**
+     * `PUT /api/reinvented/play/:id/:item` (CONTRACT 7b): a reader's answer to one playable item; the item comes back with
+     * what they may now see. Route `backend/routes/reinvented.js` (play).
+     */
+    @PUT("api/reinvented/play/{id}/{item}")
+    suspend fun answerPlay(
+        @Path("id") id: String,
+        @Path("item") item: String,
+        @Body body: MomentPlayAnswerBody,
+    ): MomentPlayAnswerResponse
+
+    /** `DELETE /api/reinvented/play/:id/:item` (CONTRACT 7b): the reader takes their answer back; 204. */
+    @DELETE("api/reinvented/play/{id}/{item}")
+    suspend fun takeBackPlay(
+        @Path("id") id: String,
+        @Path("item") item: String,
     )
 }

@@ -52,6 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -71,6 +73,8 @@ import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlayKinds
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.moments.components.MomentMovingWordsText
+import app.pantopus.android.ui.screens.moments.components.card
+import app.pantopus.android.ui.screens.moments.components.MomentPlayCard
 import app.pantopus.android.ui.screens.moments.components.centredAt
 import app.pantopus.android.ui.screens.moments.components.movingWords
 import app.pantopus.android.ui.screens.moments.components.movingWordsColor
@@ -104,12 +108,20 @@ internal val MomentsComposeUiState.sentItems: List<MomentPlayItemDto>
     get() {
         val onPhoto = media is MomentMediaFile.Photo && studioPair == null
         val room = MOST_ITEMS - (if (studioPair != null) 1 else 0)
+        var words = 0
         return items
-            .filter { it.movingWords && onPhoto }
-            .take(MomentMovingWords.MOST)
-            .map { it.copy(text = MomentMovingWords.cut(it.text.orEmpty()).trim()) }
-            .filter { it.text.orEmpty().isNotEmpty() }
-            .take(room)
+            .mapNotNull { item ->
+                if (item.kind == MomentPlayKinds.MOVING_WORDS) {
+                    item
+                        .takeIf { it.movingWords && onPhoto && words < MomentMovingWords.MOST }
+                        ?.copy(text = MomentMovingWords.cut(item.text.orEmpty()).trim())
+                        ?.takeIf { it.text.orEmpty().isNotEmpty() }
+                        ?.also { words++ }
+                } else {
+                    // A poll or a countdown (CONTRACT 7b): on a photo or a video.
+                    item.takeIf { media != null }?.sentCard()
+                }
+            }.take(room)
     }
 
 /** The tray's Play row: "Moving words", with what it does in one line. */
@@ -151,19 +163,32 @@ internal fun StudioPlayLayer(
     onItems: (List<MomentPlayItemDto>) -> Unit,
     onOpen: (String) -> Unit,
 ) {
-    val shown = items.filter { it.movingWords }
+    val shown = items.filter { it.movingWords || it.card }
     if (shown.isEmpty()) return
     val current by rememberUpdatedState(items)
     BoxWithConstraints(modifier = Modifier.fillMaxSize().testTag("moments.studio.items")) {
         val box = constraints.maxWidth.toFloat()
         val frame = stampFrame(picture, box, constraints.maxHeight.toFloat())
+        val unit = minOf(frame.width, box) / LocalDensity.current.density / 402f
         shown.forEach { item ->
-            MomentMovingWordsText(
-                item = item,
-                shownWidth = minOf(frame.width, box),
-                modifier =
-                    Modifier
-                        .centredAt(frame.left + item.x.toFloat() * frame.width, frame.top + item.y.toFloat() * frame.height)
+            val placed =
+                Modifier
+                    .centredAt(frame.left + item.x.toFloat() * frame.width, frame.top + item.y.toFloat() * frame.height)
+                    .then(
+                        if (item.movingWords) {
+                            Modifier
+                        } else {
+                            // A card at its author's size and turn, as readers will see it.
+                            Modifier.graphicsLayer {
+                                val size = (item.scale.toFloat() * unit).coerceIn(0.4f, 2.5f)
+                                scaleX = size
+                                scaleY = size
+                                rotationZ = item.rotation.toFloat()
+                            }
+                        },
+                    )
+            val touched =
+                placed
                         .pointerInput(item.id, enabled) {
                             if (!enabled) return@pointerInput
                             detectTapGestures { onOpen(item.id) }
@@ -177,8 +202,12 @@ internal fun StudioPlayLayer(
                                 )
                             }
                         }.semantics { role = Role.Button }
-                        .testTag("moments.studio.item"),
-            )
+                        .testTag("moments.studio.item")
+            if (item.movingWords) {
+                MomentMovingWordsText(item = item, shownWidth = minOf(frame.width, box), modifier = touched)
+            } else {
+                MomentPlayCard(item = item, mine = true, modifier = touched)
+            }
         }
     }
 }

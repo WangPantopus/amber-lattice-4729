@@ -78,6 +78,7 @@ import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
 import app.pantopus.android.ui.screens.feed.reinvented.after.studioPostPill
+import app.pantopus.android.ui.screens.moments.components.movingWords
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
@@ -172,6 +173,10 @@ internal fun MomentsStudioStep(
     // Moving words (CONTRACT 7k): their form, and the item it changes (null: a new one).
     var wordsForm by rememberSaveable { mutableStateOf(false) }
     var wordsItem by rememberSaveable { mutableStateOf<String?>(null) }
+    // A poll or a countdown (CONTRACT 7b): its form, the kind of a new one, and the item it changes.
+    var playForm by rememberSaveable { mutableStateOf(false) }
+    var playKind by rememberSaveable { mutableStateOf<String?>(null) }
+    var playItem by rememberSaveable { mutableStateOf<String?>(null) }
     // "Made-up name" (made-up-names contract, "Moments"): offered once `/api/pen-names/me` has answered, checked at the pin.
     val postAs by penNames.postAs.collectAsStateWithLifecycle()
     val setupOpen by penNames.setupOpen.collectAsStateWithLifecycle()
@@ -204,8 +209,12 @@ internal fun MomentsStudioStep(
             illuminate = true
         }
         StudioPlayLayer(state.items, rememberStudioPicture(state), enabled = !state.posting, onItems = onItems) { id ->
-            wordsItem = id
-            wordsForm = true
+            // Moving words open their own form; a poll or a countdown opens the play form.
+            val words = state.items.any { it.id == id && it.movingWords }
+            wordsItem = id.takeIf { words }
+            wordsForm = words
+            playItem = id.takeUnless { words }
+            playForm = !words
         }
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
@@ -380,6 +389,13 @@ internal fun MomentsStudioStep(
                     wordsItem = null
                     wordsForm = true
                 }.takeIf { state.offersMovingWords },
+            onPlayKind =
+                { kind: String ->
+                    tray = false
+                    playKind = kind
+                    playItem = null
+                    playForm = true
+                }.takeIf { state.offersPlayCards },
             beforeAfter =
                 beforeAfter.copy(
                     make = {
@@ -403,6 +419,14 @@ internal fun MomentsStudioStep(
             items = state.items,
             onItems = onItems,
             onDone = { wordsForm = false },
+        )
+        StudioPlayPanel(
+            visible = playForm,
+            kind = playKind,
+            editing = playItem,
+            items = state.items,
+            onItems = onItems,
+            onDone = { playForm = false },
         )
         if (fullMap) {
             state.postMapSpot?.let { spot ->
