@@ -3643,6 +3643,58 @@ router.delete('/skills/:skillId', verifyToken, async (req, res) => {
 });
 
 
+const ACCOUNT_ONLY_SEARCH_FIELDS = [...USER_NAME_SEARCH_FIELDS, 'username'];
+const ACCOUNT_ONLY_SEARCH_SELECT = 'id, username, account_type, profile_visibility, name, first_name, middle_name, last_name, profile_picture_url, LocalProfile(id)';
+
+/**
+ * People and businesses who have no Local Profile row. One is only made when a person first posts, uploads a profile
+ * photo or edits their profile; until then every screen shows them by their account (services/chatPeople.js), so
+ * search finds them by that same name, and by their username when they chose it (a made-up one can hold the first
+ * part of an email address and is never matched). Each comes back as a Local Profile made from the account, the way
+ * getLocalProfileByHandle makes one for the profile page, with no place on it. The caller applies every privacy
+ * check it applies to a real Local Profile.
+ */
+async function getAccountOnlySearchCandidates({ tokens, viewerId, candidateLimit }) {
+  const { data: users, error } = await supabaseAdmin
+    .from('User')
+    .select(ACCOUNT_ONLY_SEARCH_SELECT)
+    .is('LocalProfile', null)
+    .or(userSearchFilter(ACCOUNT_ONLY_SEARCH_FIELDS, tokens))
+    .neq('id', viewerId)
+    .order('username')
+    .limit(candidateLimit);
+  if (error) throw error;
+
+  const { displayNameFromUser } = require('../utils/identityProfiles');
+  const noName = displayNameFromUser(null);
+  const candidates = [];
+  for (const user of users || []) {
+    // The row itself must say there is no Local Profile: a person who has one is found by it alone, never by the
+    // account name it may stand in front of.
+    const hasNoProfile = user.LocalProfile === null
+      || (Array.isArray(user.LocalProfile) && user.LocalProfile.length === 0);
+    if (!hasNoProfile || user.account_type === 'system') continue;
+    const username = chosenUsernameOrNull(user.username);
+    const shownName = displayNameFromUser({ ...user, username: null });
+    const shown = [shownName === noName ? null : shownName, username].filter(Boolean).join(' ').toLowerCase();
+    if (!shown || !tokens.every((token) => shown.includes(token))) continue;
+    candidates.push({
+      profile: {
+        id: null,
+        user_id: user.id,
+        handle: user.username,
+        handle_normalized: String(user.username || '').toLowerCase(),
+        display_name: displayNameFromUser(user),
+        avatar_url: user.profile_picture_url || null,
+        show_neighborhood: false,
+      },
+      account: { id: user.id, account_type: user.account_type, profile_visibility: user.profile_visibility },
+      nameSearchText: shown,
+    });
+  }
+  return candidates;
+}
+
 /**
  * GET /api/users/search?q=<query>&limit=5&type=all|people|business
  * Search users by public account fields for discovery and invite flows.
@@ -3673,11 +3725,12 @@ router.get('/search', verifyToken, async (req, res) => {
     const baseQuery = () => supabaseAdmin.from('LocalProfile')
       .select(LOCAL_PROFILE_SEARCH_SELECT).neq('user_id', userId);
     const exact = JSON.stringify(queryText.toLowerCase());
-    const [broad, exactMatches, nameCandidates] = await Promise.all([
+    const [broad, exactMatches, nameCandidates, accountOnlyCandidates] = await Promise.all([
       baseQuery().or(searchFilters).order('handle_normalized').limit(candidateLimit),
       baseQuery().or(`handle_normalized.eq.${exact},display_name.ilike.${JSON.stringify(ilikePattern(queryText).slice(1, -1))}`)
         .limit(candidateLimit),
       getNameDiscoverableLocalCandidates({ tokens, viewerId: userId, candidateLimit }),
+      getAccountOnlySearchCandidates({ tokens, viewerId: userId, candidateLimit }),
     ]);
     const error = broad.error || exactMatches.error;
     const data = [...new Map([...(exactMatches.data || []), ...(broad.data || [])]
@@ -3717,6 +3770,9 @@ router.get('/search', verifyToken, async (req, res) => {
       } else {
         candidateByProfileId.set(candidate.profile.id, candidate);
       }
+    }
+    for (const candidate of accountOnlyCandidates) {
+      candidateByProfileId.set(`account:${candidate.profile.user_id}`, candidate);
     }
 
     const candidateIds = [...candidateByProfileId.values()].map(({ profile }) => profile.user_id);
