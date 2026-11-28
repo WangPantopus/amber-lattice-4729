@@ -13,7 +13,11 @@ const logger = require('../../utils/logger');
 const { loadChatPeople } = require('../chatPeople');
 const blockService = require('../blockService');
 
-const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown', 'quote', 'fog', 'swatch', 'before_after'];
+const KINDS = ['poll', 'slider', 'board', 'question', 'guess', 'countdown', 'quote', 'fog', 'swatch', 'before_after', 'moving_words'];
+// Moving words (CONTRACT 7k): the Studio's ten text looks by their shared ids, and the four motions.
+const LETTERINGS = ['classic', 'serif', 'typewriter', 'marker', 'handwritten', 'rounded', 'tall', 'script', 'mono', 'elegant'];
+const MOTIONS = ['drift', 'pulse', 'wave', 'type'];
+const MAX_MOVING_WORDS = 2;
 // The kinds a reader answers (PostAnswer); the others are only drawn (CONTRACT 7g).
 const ANSWERED = ['poll', 'slider', 'board', 'question', 'guess'];
 const MAX_ITEMS = 4;
@@ -74,6 +78,15 @@ const SCHEMAS = {
   // Before and after (LEAD-3 05:19): the Studio draws the two photos side by side into the one picture (left before,
   // right after); the new viewer shows one half over the other with a curtain. Only its two words are kept.
   before_after: Joi.object({ ...placement, kind: Joi.string(), before: line(24).allow(null), after: line(24).allow(null) }),
+  // Moving words (CONTRACT 7k): drawn by the new viewers over the photo, never into it; one line of the author's own.
+  moving_words: Joi.object({
+    ...placement,
+    kind: Joi.string(),
+    text: Joi.string().replace(/\s*[\r\n]+\s*/g, ' ').trim().min(1).max(60).required(),
+    lettering: Joi.string().valid(...LETTERINGS).default('classic'),
+    motion: Joi.string().valid(...MOTIONS).default('drift'),
+    color: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).default('#FFFFFF'),
+  }),
   swatch: Joi.object({
     ...placement,
     kind: Joi.string(),
@@ -108,6 +121,12 @@ function parseItems(value, now = Date.now(), { photo = true } = {}) {
       if (!photo) throw new Error('Before and after goes on a photo.');
       if (value.filter((other) => other?.kind === 'before_after').length > 1) throw new Error('play holds one before and after at most.');
     }
+    if (raw.kind === 'moving_words') {
+      if (!photo) throw new Error('Moving words go on a photo.');
+      if (value.filter((other) => other?.kind === 'moving_words').length > MAX_MOVING_WORDS) {
+        throw new Error(`play holds ${MAX_MOVING_WORDS} moving words at most.`);
+      }
+    }
     seen.add(item.id);
     const stored = {
       ...item,
@@ -127,6 +146,7 @@ function parseItems(value, now = Date.now(), { photo = true } = {}) {
       }
     }
     if (raw.kind === 'quote') stored.source = item.source || null;
+    if (raw.kind === 'moving_words') stored.color = item.color.toUpperCase();
     if (raw.kind === 'before_after') {
       stored.before = item.before || 'Before';
       stored.after = item.after || 'After';
