@@ -4,40 +4,12 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useResidencyProgress } from '@/components/homes/useResidencyProgress';
 import { residencyRequestLabel, residencyReviewLabel } from '@/components/homes/residencyProgressModel';
-
-const guidance = {
-  home: { title: 'You’re part of this household', body: 'Open the Home to see your household. What you can see and change depends on your role.' },
-  household_review: { title: 'Waiting for household review', body: 'Someone in the household will review your request. You don’t need to upload any documents. Check back here for their answer.' },
-  address_verification: { title: 'Your address isn’t verified yet', body: 'Your request is saved. To finish, verify your address by mail: request a postcard, then enter the code printed on it.' },
-  resubmit: { title: 'Send your request again', body: 'Check the street, apartment and how you live here, then send your request again.' },
-  access_review: { title: 'You don’t have household access', body: 'To come back, add this Home again or ask someone in the household to invite you.' },
-  ownership_verification: { title: 'Continue ownership verification', body: 'Ownership has its own review. Meanwhile, you can verify your address by mail to use this Home. That doesn’t make you an owner.' },
-  unavailable: { title: 'This Home can’t be verified right now', body: 'This Home isn’t accepting changes right now. Your request is still saved.' },
-};
-// Probation (a request nobody answered in 7 days) has its own guidance; next_step stays what older apps know.
-const probationGuidance = {
-  active: { title: 'You’re on probation', body: 'Nobody in the household answered your request in 7 days, so you’re on probation. Household records stay private until someone there says yes or you verify your address by mail.' },
-  ended: { title: 'The household said no', body: 'Someone in the household said you don’t live here, so your probation ended. If you do live here, verify your address by mail. Pantopus will review your proof, and your access stays off until then.' },
-  review: { title: 'Pantopus is reviewing your proof', body: 'You verified this address by mail after the household said no. Pantopus is reviewing it, and your access stays off until then.' },
-  declined: { title: 'Pantopus kept the household’s answer', body: 'Pantopus reviewed your proof of this address and kept the household’s no. If you have new proof, you can verify by mail again and Pantopus will take another look.' },
-};
+import { residencyNextStep } from '@/components/homes/residencyGuidance';
 
 export default function ResidencyStatusPage() {
   const { id: homeId } = useParams<{ id: string }>();
   const { progress, loading, error, refresh } = useResidencyProgress(homeId);
-  const needsRequest = progress?.next_step === 'address_verification' && progress.request === null;
-  const mailAvailable = progress?.mail_available === true;
-  const next = progress ? progress.probation ? probationGuidance[progress.probation] : needsRequest ? {
-    title: 'Confirm your address',
-    body: 'Check this Home’s address, apartment and how you live here, then send your request. We don’t mail anything until you ask for a postcard.',
-  } : guidance[progress.next_step] : null;
-  const mailBack = progress?.probation === 'active' || progress?.probation === 'ended' || progress?.probation === 'declined';
-  let body = next?.body;
-  if (!mailAvailable) {
-    if (mailBack) body = 'Household access is limited. Mail verification is currently unavailable. Contact support if you need help.';
-    else if (progress?.next_step === 'address_verification' && !needsRequest) body = 'Your request is saved. Mail verification is currently unavailable.';
-    else if (progress?.next_step === 'ownership_verification') body = 'Continue your ownership claim to see which steps are left.';
-  }
+  const next = progress ? residencyNextStep(progress, homeId) : null;
   return <main className="mx-auto max-w-lg px-4 py-6 pb-28">
     <Link href="/app/homes" className="inline-block rounded-lg py-2 text-sm font-semibold text-app-text-secondary">← My Homes</Link>
     <h1 className="mt-3 text-2xl font-semibold text-app-text">Residency status</h1>
@@ -54,15 +26,10 @@ export default function ResidencyStatusPage() {
         </section>}
         <section className="rounded-xl border border-app-border bg-app-surface p-5" aria-label="Current next step">
           <h2 className="text-lg font-semibold text-app-text">{next.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-app-text-secondary">{body}</p>
+          <p className="mt-2 text-sm leading-6 text-app-text-secondary">{next.body}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            {progress.next_step === 'home' && <Link href={`/app/homes/${homeId}/dashboard`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Open Home</Link>}
-            {progress.next_step === 'resubmit' && <Link href={`/app/homes/new?joinHome=${homeId}`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Check address and send again</Link>}
-            {needsRequest && <Link href={`/app/homes/new?joinHome=${homeId}`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Check address</Link>}
-            {mailAvailable && ((progress.next_step === 'address_verification' && !needsRequest) || mailBack) && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Verify by mail</Link>}
-            {progress.next_step === 'ownership_verification' && <Link href={`/app/homes/${homeId}/claim-owner/evidence`} className="rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface">Continue ownership verification</Link>}
-            {/* While ownership waits, a pending owner can still prove the address by mail (founder decision, 2026-10-06). */}
-            {mailAvailable && progress.next_step === 'ownership_verification' && <Link href={`/app/homes/${homeId}/verify-postcard`} className="rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text">Verify by mail</Link>}
+            {next.actions.map(action => <Link key={action.label} href={action.href}
+              className={action.primary ? 'rounded-lg bg-app-text px-4 py-2 font-semibold text-app-surface' : 'rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text'}>{action.label}</Link>)}
             <button type="button" onClick={() => void refresh()} className="rounded-lg border border-app-border px-4 py-2 font-semibold text-app-text">Refresh status</button>
           </div>
         </section>
