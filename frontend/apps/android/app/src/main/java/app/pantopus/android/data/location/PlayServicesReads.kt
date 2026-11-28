@@ -18,7 +18,10 @@ internal suspend fun <T> Task<T>.awaitLocationOrNull(): T? =
         throw denied
     } catch (cancelled: CancellationException) {
         throw cancelled
-    } catch (failure: Exception) {
+    } catch (
+        // Any failed Task counts: ApiException is only the one seen; a Task can fail with any exception.
+        @Suppress("TooGenericExceptionCaught") failure: Exception,
+    ) {
         Timber.w(failure, "Play services location read failed")
         null
     }
