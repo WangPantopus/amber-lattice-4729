@@ -26,11 +26,14 @@ internal enum class SendStep { Ready, Inserting, In, Closing, Seal, Sealing, Add
 /**
  * Who the sending moment is for, and what it does at the seal. [toFirst] is printed in the words ("For Hazel."); null
  * for a card sent by link. [several] cards go on a list (the moment plays once, with a stack behind the envelope).
- * [onSeal] sends the card, at the instant the seal takes.
+ * [onSeal] sends the card, at the instant the seal takes. [quickSeal]: "Quick seal" is offered under the first button
+ * (the card improvements, Wave 3.5); [onRitualEnded] once a card was sealed the whole way by hand.
  */
 internal class CardTableSendingCalls(
     val toFirst: String?,
     val several: Int,
+    val quickSeal: Boolean = false,
+    val onRitualEnded: () -> Unit = {},
     val onSeal: () -> Unit,
 )
 
@@ -90,6 +93,9 @@ internal class SendingMoment(
 
     private var gone = ""
     private var goneLine = ""
+
+    /** "Quick seal" was tapped: one short beat instead of the ritual. */
+    private var quick = false
     private var refusedWords: String? = null
     private var sealedAtMs = 0L
     private var holding = false
@@ -104,6 +110,9 @@ internal class SendingMoment(
         table.lay.jump(1f)
         table.turn.jump(180f)
     }
+
+    /** "Quick seal" under the first button (Wave 3.5): only before the card goes in. */
+    val offersQuickSeal: Boolean get() = calls.quickSeal && step == SendStep.Ready
 
     val words: String
         get() =
@@ -148,9 +157,13 @@ internal class SendingMoment(
 
     // ---- The buttons ----
 
-    fun primary() {
+    /**
+     * The main button. [quick]: "Quick seal" (Wave 3.5) instead, from the first step: into the envelope, shut, sealed and
+     * sent in one short beat, into the same send the ritual ends in.
+     */
+    fun primary(quick: Boolean = false) {
         when (step) {
-            SendStep.Ready -> if (reduceMotion) sealAtOnce() else putIn()
+            SendStep.Ready -> if (reduceMotion || quick) sealAtOnce(quick) else putIn()
             SendStep.In -> closeFlap()
             SendStep.Seal -> {
                 // "Seal it" does the hold for them.
@@ -175,10 +188,16 @@ internal class SendingMoment(
         changed()
     }
 
-    /** With animations off: one button does all of it, the steps swap without moving. */
-    private fun sealAtOnce() {
-        table.lay.jump(0f)
-        table.pull.jump(0f)
+    /** With animations off: one button does all of it, the steps swap without moving. Quick seal: the same, in one beat. */
+    private fun sealAtOnce(quick: Boolean = false) {
+        this.quick = quick
+        if (quick && !reduceMotion) {
+            table.lay.target = 0f
+            table.pull.target = 0f
+        } else {
+            table.lay.jump(0f)
+            table.pull.jump(0f)
+        }
         sealShown = true
         sealedAtMs = nowMs()
         refusedWords = null
@@ -356,8 +375,21 @@ internal class SendingMoment(
         addressing =
             scope.launch {
                 // The seal stays in sight a moment, however fast the server answered.
-                delay(max(0L, SEAL_SHOWN_MS - (nowMs() - sealedAtMs)))
-                if (reduceMotion) {
+                delay(max(0L, (if (quick) QUICK_SEAL_SHOWN_MS else SEAL_SHOWN_MS) - (nowMs() - sealedAtMs)))
+                if (quick && !reduceMotion) {
+                    // Quick seal's beat: the envelope turns over already addressed, stamped and postmarked, and slides away.
+                    table.envelopeTurn.target = 0f
+                    table.wake()
+                    delay(QUICK_BEAT_MS)
+                    nameReveal = 1f
+                    stampOn = 1f
+                    postmarkOn = 1f
+                    sealedMarkOn = 1f
+                    table.onTap(TableTap.Land)
+                    changed()
+                    delay(QUICK_BEAT_MS)
+                    away.target = 1f
+                } else if (reduceMotion) {
                     // Everything at once; after a moment step 5 takes its place, without moving.
                     table.envelopeTurn.jump(0f)
                     nameReveal = 1f
@@ -373,6 +405,7 @@ internal class SendingMoment(
                 }
                 step = SendStep.Gone
                 changed()
+                if (!quick) calls.onRitualEnded()
             }
     }
 
@@ -407,6 +440,8 @@ internal class SendingMoment(
     private companion object {
         const val HOLD_SECONDS = 0.6f
         const val SEAL_SHOWN_MS = 800L
+        const val QUICK_SEAL_SHOWN_MS = 300L
+        const val QUICK_BEAT_MS = 350L
 
         /** The soft ticks while the finger holds, closer together as the seal comes (as on the web). */
         val TICKS = floatArrayOf(0.3f, 0.55f, 0.72f, 0.84f, 0.93f)
