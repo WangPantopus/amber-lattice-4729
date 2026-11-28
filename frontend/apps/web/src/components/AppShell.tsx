@@ -575,7 +575,7 @@ function AppShellInner({ children, publicPage = false }: { children: React.React
           }}
           onMouseLeave={() => sidebarDispatch({ type: 'SET_HOVER_EXPANDED', value: false })}
           onFocus={() => { if (reinventedPulse && showCollapsed) sidebarDispatch({ type: 'SET_HOVER_EXPANDED', value: true }); }}
-          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null) && !e.currentTarget.matches(':hover')) sidebarDispatch({ type: 'SET_HOVER_EXPANDED', value: false }); }}
+          onBlur={(e) => { if (hoverExpanded && !e.currentTarget.contains(e.relatedTarget as Node | null) && !e.currentTarget.matches(':hover')) sidebarDispatch({ type: 'SET_HOVER_EXPANDED', value: false }); }}
         >
           {/* ── Brand ── */}
           <div className="h-14 flex items-center gap-3 flex-shrink-0 border-b border-app overflow-hidden" style={sidebarHeaderPadStyle}>
