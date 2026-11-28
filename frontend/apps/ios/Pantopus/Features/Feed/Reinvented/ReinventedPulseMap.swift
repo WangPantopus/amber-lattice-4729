@@ -187,6 +187,9 @@ final class ReinventedMapModel {
 struct ReinventedPulseMap: View {
     let model: ReinventedMapModel
     let onOpen: (ReinventedMapModel.Item) -> Void
+    /// Zoomed far out, the satellite globe you can turn, as today's Pulse and Moments maps (`MapGlobe`; founder,
+    /// 2026-11-28: the globe stays everywhere). Close in, the map's own look and its living layers are unchanged.
+    @State private var globe = MapGlobe()
 
     var body: some View {
         Map(position: Binding(get: { model.position }, set: { model.position = $0 })) {
@@ -199,8 +202,11 @@ struct ReinventedPulseMap: View {
             }
             ReinventedBeamsContent(beams: model.atlas ? [] : ReinventedLivingMap.shared.beams, night: ReinventedLivingMap.shared.night)
         }
+        .mapGlobe(globe, closeIn: .standard)
         .reinventedNight() // phase 4: the map turns dark when the sun is down over it
         .mapControls {}
+        // The globe follows the zoom as it happens, not after the map stops.
+        .onMapCameraChange(frequency: .continuous) { context in globe.follow(context.region) }
         .onMapCameraChange(frequency: .onEnd) { context in model.moved(to: context.region) }
         .accessibilityIdentifier("reinventedPulse.map")
     }
