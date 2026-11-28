@@ -257,6 +257,9 @@ final class HolidayCardFlowViewModel {
     var stampShort: StampShort?
     /// The stamp books opened for the card's photo or greeting, which go only with a bought stamp.
     var stampsForMedia = false
+    /// A list's "needs N bought stamps" sentence from the server (`improved`), shown under the choices until stamps are
+    /// bought.
+    @ObservationIgnored private var listMediaRefusal: String?
 
     // A list (digital stamps on): who's on it, a request ID for each (kept
     // for the whole card, so every look and retry of the list finds the
@@ -519,11 +522,23 @@ final class HolidayCardFlowViewModel {
         guard Self.refusalCode(error) == "CARD_MEDIA_NEEDS_STAMP" else { return false }
         // Seal it for the day says it in the app's words, whatever an older server says, and clears it once bought. A
         // list (`improved`) keeps the server's sentence: it says how many bought stamps the list needs.
-        if previewError != nil, !(improved && recipient?.entries != nil) { previewError = HolidayCardMediaRow.needsStampLine }
+        if improved, recipient?.entries != nil {
+            listMediaRefusal = previewError ?? sendError
+        } else if previewError != nil {
+            previewError = HolidayCardMediaRow.needsStampLine
+        }
         openStampsForMedia()
         await stamps.refresh()
         await rereadCards()
         return true
+    }
+
+    /// Bought stamps came (or went): a list's "needs N bought stamps" sentence no longer holds.
+    func boughtStampsChanged() {
+        guard let said = listMediaRefusal else { return }
+        listMediaRefusal = nil
+        if previewError == said { previewError = nil }
+        if sendError == said { sendError = nil }
     }
 
     /// The season's answer again, keeping what's shown when it can't be read: after stamps were bought, a photo and
