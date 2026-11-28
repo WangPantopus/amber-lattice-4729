@@ -299,6 +299,12 @@
   color: var(--rp-muted);
 }
 
+/* The flat map's zoom buttons (the map without a globe) sit left of the rail, under the top line. */
+.rp-board .leaflet-top.leaflet-right {
+  top: 56px;
+  right: 48px;
+}
+
 /* The rail: 36 px circles of frosted glass, 8 px apart, 12 px under the top line; it fades while the map moves. */
 .rp-rail {
   position: absolute;
