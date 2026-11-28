@@ -428,6 +428,51 @@ router.delete('/moments/:id/sound', async (req, res) => {
   }
 });
 
+// ─── A Live Photo's motion (CONTRACT 10b) ───────────────────────────────────
+
+const motionMedia = require('../services/pulse/motion');
+
+const motionUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: motionMedia.MAX_BYTES, files: 3, fields: 4, parts: 8, fieldSize: 1024, fieldNameSize: 40 },
+}).fields([{ name: 'file', maxCount: 1 }, { name: 'frames[]', maxCount: 2 }, { name: 'frames', maxCount: 2 }]);
+
+function receiveMotion(req, res, next) {
+  motionUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'This motion clip is too large to post.', code: 'MEDIA_TOO_LARGE' });
+    return res.status(400).json({ error: 'Send the motion clip as "file", with one or two "frames[]".', code: 'MOTION_INVALID' });
+  });
+}
+
+const MOMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** POST /moments/:id/motion — the motion clip of the author's own photo Moment, beside its photo. */
+router.post('/moments/:id/motion', contentCreationLimiter, receiveMotion, async (req, res) => {
+  try {
+    if (!MOMENT_ID.test(req.params.id)) return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    const files = req.files || {};
+    const row = await motionMedia.upload(req.params.id, req.user, {
+      file: files.file?.[0] || null, frames: [...(files['frames[]'] || []), ...(files.frames || [])],
+    });
+    const [moment] = await store.serializeMoments([row], req.user.id);
+    return res.json({ moment });
+  } catch (error) {
+    return sendError(res, error, 'motion');
+  }
+});
+
+/** DELETE /moments/:id/motion — the author takes the motion off; the photo stays. */
+router.delete('/moments/:id/motion', async (req, res) => {
+  try {
+    if (!MOMENT_ID.test(req.params.id)) return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    await motionMedia.remove(req.params.id, req.user);
+    return res.status(204).end();
+  } catch (error) {
+    return sendError(res, error, 'motion_remove');
+  }
+});
+
 // ─── "Save the steps" of a step deck (CONTRACT 7g) ───────────────────────────
 
 const stepDeck = require('../services/pulse/deck');
