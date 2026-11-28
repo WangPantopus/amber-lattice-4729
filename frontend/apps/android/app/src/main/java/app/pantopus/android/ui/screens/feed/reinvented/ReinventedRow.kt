@@ -1,9 +1,9 @@
 package app.pantopus.android.ui.screens.feed.reinvented
 
 import app.pantopus.android.data.api.models.moments.MomentDto
-import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent

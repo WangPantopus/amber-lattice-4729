@@ -3,7 +3,6 @@
 package app.pantopus.android.ui.screens.feed.reinvented
 
 import androidx.compose.foundation.background
-import app.pantopus.android.data.api.models.reinvented.shownRetake
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard

@@ -3,7 +3,6 @@
 package app.pantopus.android.ui.screens.feed.reinvented.after
 
 import androidx.compose.foundation.background
-import app.pantopus.android.data.api.models.reinvented.shownRetake
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.pulse.TogetherRepository
