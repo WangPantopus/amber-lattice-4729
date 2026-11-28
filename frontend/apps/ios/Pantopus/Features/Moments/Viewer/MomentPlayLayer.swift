@@ -408,11 +408,13 @@ struct MomentPlayWriteSheet: View {
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
-            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Color.white.opacity(0.55)), axis: .vertical)
+            // One line, and the keyboard's own key sends: a first tap on Send while the keyboard is up only lowers it.
+            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Color.white.opacity(0.55)))
                 .font(.system(size: 15))
                 .foregroundStyle(.white)
                 .tint(.white)
-                .lineLimit(1...4)
+                .submitLabel(sendWords == "Send" ? .send : .done)
+                .onSubmit(submit)
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
                 .focused($typing)
@@ -421,18 +423,11 @@ struct MomentPlayWriteSheet: View {
             HStack {
                 if let problem { MomentPlayNote(words: problem) }
                 Spacer(minLength: 0)
-                Button(sendWords) {
-                    Task {
-                        sending = true
-                        problem = await send()
-                        sending = false
-                        if problem == nil { onDone() }
-                    }
-                }
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityIdentifier("moments.play.write.send")
+                Button(sendWords, action: submit)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("moments.play.write.send")
             }
             Spacer(minLength: 0)
         }
@@ -443,5 +438,15 @@ struct MomentPlayWriteSheet: View {
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
         .onAppear { typing = true }
+    }
+
+    private func submit() {
+        guard !sending, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        Task {
+            sending = true
+            problem = await send()
+            sending = false
+            if problem == nil { onDone() }
+        }
     }
 }
