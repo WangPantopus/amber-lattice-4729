@@ -159,7 +159,7 @@ internal object MomentSubjects {
         }
 
     /** The model is on the phone: asked for from Play services now if it isn't (the one time it is fetched). */
-    private suspend fun ready(
+    internal suspend fun ready(
         context: Context,
         segmenter: SubjectSegmenter,
     ): Boolean {
@@ -190,7 +190,7 @@ internal object MomentSubjects {
     }
 
     /** What the marks are on, as one upright picture: the photo, or its canvas when placed. */
-    private fun surface(
+    internal fun surface(
         picture: Bitmap,
         placement: MomentPlacement?,
     ): Bitmap {

@@ -111,9 +111,14 @@ data class MomentMarks(
     val look: MomentLook = MomentLook.Original,
     /** "Pulse, reinvented"'s Studio: the photo's subject, for labels set behind it; none everywhere else. */
     val subject: MomentSubject? = null,
+    /** "Pulse, reinvented"'s Studio: things lifted from the photo, as objects on it ([MomentCutouts]); none elsewhere. */
+    val cutouts: List<MomentCutout> = emptyList(),
 ) {
     /** Nothing that would show: no line, no label with words, and no look. */
-    val isEmpty: Boolean get() = strokes.isEmpty() && labels.none { it.text.isNotBlank() } && look == MomentLook.Original
+    val isEmpty: Boolean get() = strokes.isEmpty() && labels.none { it.text.isNotBlank() } && noStudioMarks
+
+    /** "Pulse, reinvented"'s Studio: no look and no cutout (always so in today's composer). */
+    private val noStudioMarks: Boolean get() = look == MomentLook.Original && cutouts.isEmpty()
 
     /** As they are kept: a label left empty is removed. */
     val kept: MomentMarks

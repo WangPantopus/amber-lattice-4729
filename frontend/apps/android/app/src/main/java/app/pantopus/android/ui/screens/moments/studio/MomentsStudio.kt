@@ -102,6 +102,7 @@ import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.File
 
 /** The two "who sees it" choices on the Studio's bar, as the server names them (today's Post sheet's two). */
 private val AUDIENCES = listOf("nearby" to "Nearby", "connections" to "Friends")
@@ -144,6 +145,9 @@ internal fun MomentsStudioStep(
     onPhotostrip: () -> Unit = {},
     onTrayOpen: () -> Unit = {},
     lookPicture: StateFlow<Bitmap?> = NO_LOOK_PICTURE,
+    // Cutouts (step 4): a long press on the photo lifts one; "Your cutouts" in the tray places one.
+    onLiftCutout: (Float, Float) -> Unit = { _, _ -> },
+    onPlaceCutout: (File) -> Unit = {},
     // Mentions (step 5, CONTRACT 7h): a person picked after "@" in the caption.
     onMention: (StudioMention) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
@@ -175,6 +179,7 @@ internal fun MomentsStudioStep(
                 .then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
         StudioPicture(state)
+        StudioCutoutPress(state, onLift = onLiftCutout)
         // The stamps sit on the picture, under the X, the tools, the caption and the bar.
         StudioStampLayer(state = state, onStamps = onStamps)
         // The fades keep the rail and the caption readable over a bright picture.
@@ -335,6 +340,11 @@ internal fun MomentsStudioStep(
                 tray = false
                 onPhotostrip()
             },
+            onPlaceCutout = { file ->
+                tray = false
+                onPlaceCutout(file)
+            },
+            cutoutsAccount = gate.account,
         )
         if (fullMap) {
             state.postMapSpot?.let { spot ->
