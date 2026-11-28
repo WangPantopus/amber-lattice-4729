@@ -229,6 +229,7 @@ struct ReinventedMapPin: View {
             }
         }
         .scaleEffect(focused ? 1.18 : 1, anchor: .bottom)
+        .reinventedLit(item.id) // phase 4: lit or dimmed while the map shows what it was asked
         .animation(.spring(response: 0.3), value: focused)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("reinventedPulse.pin.\(item.id)")
