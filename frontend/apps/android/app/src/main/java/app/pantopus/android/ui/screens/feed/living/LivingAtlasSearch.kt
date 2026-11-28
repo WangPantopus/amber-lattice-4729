@@ -155,8 +155,7 @@ internal fun LivingAtlasSearch(
         LivingSearchBox(
             text = text,
             look = ATLAS_LOOK,
-            busy = false,
-            showsClear = state.q != null || text.isNotEmpty(),
+            mode = if (state.q != null || text.isNotEmpty()) LivingSearchMode.CLEARABLE else LivingSearchMode.PLAIN,
             onText = { text = it },
             onSearch = {
                 viewModel.search(text)

@@ -298,8 +298,12 @@ internal fun LivingAskBar(
             LivingSearchBox(
                 text = text,
                 look = ASK_LOOK,
-                busy = state.asking,
-                showsClear = state.lit != null || text.isNotEmpty(),
+                mode =
+                    when {
+                        state.asking -> LivingSearchMode.BUSY
+                        state.lit != null || text.isNotEmpty() -> LivingSearchMode.CLEARABLE
+                        else -> LivingSearchMode.PLAIN
+                    },
                 onText = { text = it },
                 onSearch = {
                     viewModel.ask(text)
@@ -338,6 +342,9 @@ private val ASK_LOOK =
         pill = true,
     )
 
+/** A search box asking (a spinner, no typing), holding words or a result (a clear button), or empty. */
+internal enum class LivingSearchMode { PLAIN, CLEARABLE, BUSY }
+
 /** How a search box looks and is named: its hint, its tags and the words for its clear button. */
 internal data class LivingSearchLook(
     val hint: String,
@@ -353,8 +360,7 @@ internal data class LivingSearchLook(
 internal fun LivingSearchBox(
     text: String,
     look: LivingSearchLook,
-    busy: Boolean,
-    showsClear: Boolean,
+    mode: LivingSearchMode,
     onText: (String) -> Unit,
     onSearch: () -> Unit,
     onClear: () -> Unit,
@@ -365,7 +371,7 @@ internal fun LivingSearchBox(
         value = text,
         onValueChange = onText,
         singleLine = true,
-        enabled = !busy,
+        enabled = mode != LivingSearchMode.BUSY,
         textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
         cursorBrush = SolidColor(PantopusColors.appText),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -394,8 +400,8 @@ internal fun LivingSearchBox(
                     inner()
                 }
                 when {
-                    busy -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    showsClear ->
+                    mode == LivingSearchMode.BUSY -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    mode == LivingSearchMode.CLEARABLE ->
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier =
