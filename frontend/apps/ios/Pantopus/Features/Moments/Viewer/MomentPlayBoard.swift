@@ -54,6 +54,7 @@ struct MomentBoardCard: View {
                     if note.isEmpty { note = item.mine?.note ?? "" }
                     writing = true
                 }
+                .onChange(of: writing) { _, open in MomentPlayStore.shared.writingOn = open ? moment.id : nil }
                 .sheet(isPresented: $writing) {
                     MomentPlayWriteSheet(
                         title: item.question ?? "",
