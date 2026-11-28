@@ -22,6 +22,7 @@ import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.location.HeightReading
+import app.pantopus.android.data.moments.MomentBeforeAfterPicture
 import app.pantopus.android.data.moments.MomentHeight
 import app.pantopus.android.data.moments.MomentLimits
 import app.pantopus.android.data.moments.MomentMedia
@@ -56,11 +57,14 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
 import app.pantopus.android.ui.screens.moments.studio.StudioMention
+import app.pantopus.android.ui.screens.moments.studio.StudioPair
 import app.pantopus.android.ui.screens.moments.studio.holdsStudioChoices
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
 import app.pantopus.android.ui.screens.moments.studio.sentMentions
+import app.pantopus.android.ui.screens.moments.studio.sentPlay
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
+import app.pantopus.android.ui.screens.moments.studio.studioPair
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -237,6 +241,8 @@ data class MomentsComposeUiState(
     val guess: Boolean = false,
     /** "Pulse, reinvented"'s Studio: people picked after "@" in the caption (CONTRACT 7h). Only the Studio sets it. */
     val mentions: List<StudioMention> = emptyList(),
+    /** "Pulse, reinvented"'s Studio: before and after (CONTRACT 7g). Only the Studio sets it. */
+    val pair: StudioPair? = null,
 ) {
     val kind: String
         get() =
@@ -984,6 +990,51 @@ class MomentsComposeViewModel
          * up to three photos picked with it that still wait, each cropped 4:3, one under the other on white, become one
          * picture and one Moment; the photos in the strip leave the queue (videos waiting stay). Its marks are drawn in.
          */
+
+        /**
+         * "Pulse, reinvented"'s Studio tray: before and after (CONTRACT 7g). The photo in the Studio (as Text, Draw and a
+         * look left it) and the next photo picked with it that waits become one side-by-side picture and one Moment; the
+         * after leaves the queue. Its words and drawings are drawn in; the before as drawn is kept for "Take apart".
+         */
+        fun beforeAfter() {
+            val current = _state.value
+            if (current.media !is MomentMediaFile.Photo || current.studioPair != null || current.placement != null) return
+            if (current.posting || current.marking != null || current.marks.cutouts.isNotEmpty()) return
+            viewModelScope.launch {
+                if (marksKeeper.busy && !marksKeeper.awaitDrawn()) return@launch
+                val shown = (_state.value.media as? MomentMediaFile.Photo)?.file ?: return@launch
+                val next = waiting.firstOrNull { !MomentMedia.isVideo(context, it) } ?: return@launch
+                val copy = MomentMedia.copyIn(context, next, "jpg")
+                val made = copy?.let { withContext(Dispatchers.Default) { MomentBeforeAfterPicture.make(context, shown, it) } }
+                copy?.let { runCatching { it.delete() } }
+                if (made == null) {
+                    _state.update { it.copy(notice = "Couldn't open the after photo. Try another one.") }
+                    return@launch
+                }
+                waiting = waiting - next
+                forgetMarks()
+                val pair = StudioPair(made = made, before = shown, after = next)
+                _state.update { it.copy(media = MomentMediaFile.Photo(made), pickedTogether = it.pickedTogether - 1, pair = pair) }
+            }
+        }
+
+        /** "Pulse, reinvented"'s Studio tray: "Take apart". The before back (its words and drawings drawn in), the after next. */
+        fun takeApartBeforeAfter() {
+            val current = _state.value
+            val pair = current.studioPair ?: return
+            if (current.posting || current.marking != null) return
+            waiting = listOf(pair.after) + waiting
+            forgetMarks()
+            runCatching { pair.made.delete() }
+            _state.update { it.copy(media = MomentMediaFile.Photo(pair.before), pickedTogether = it.pickedTogether + 1, pair = null) }
+        }
+
+        /** "Pulse, reinvented"'s Studio tray: the two words over before and after's halves. */
+        fun setPairWords(
+            before: String,
+            after: String,
+        ) = _state.update { it.copy(pair = it.pair?.copy(beforeWords = before, afterWords = after)) }
+
         fun photostrip() {
             val current = _state.value
             if (current.media !is MomentMediaFile.Photo || waiting.isEmpty()) return
@@ -1110,7 +1161,11 @@ class MomentsComposeViewModel
          */
         fun leaveStudio() =
             _state.update {
-                if (!it.holdsStudioChoices) it else it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList())
+                if (!it.holdsStudioChoices) {
+                    it
+                } else {
+                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList(), pair = null)
+                }
             }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
@@ -1224,6 +1279,7 @@ class MomentsComposeViewModel
                         guess = current.sentGuess,
                         explore = current.sentExplore,
                         mentions = current.sentMentions,
+                        play = current.sentPlay,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -1410,6 +1466,7 @@ class MomentsComposeViewModel
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
                         shareLater = current.shareLaterChoice?.key,
                         mentions = current.sentMentions,
+                        play = current.sentPlay,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()

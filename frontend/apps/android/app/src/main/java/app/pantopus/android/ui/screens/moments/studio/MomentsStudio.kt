@@ -152,6 +152,8 @@ internal fun MomentsStudioStep(
     onPlaceCutout: (File) -> Unit = {},
     // Mentions (step 5, CONTRACT 7h): a person picked after "@" in the caption.
     onMention: (StudioMention) -> Unit = {},
+    // Before and after (step 5, CONTRACT 7g): make one from the next photo picked, its two words, take it apart.
+    beforeAfter: StudioBeforeAfterActions = StudioBeforeAfterActions(),
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
@@ -180,8 +182,9 @@ internal fun MomentsStudioStep(
                 .testTag("moments.studio")
                 .then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
-        StudioPicture(state)
-        StudioCutoutPress(state, onLift = onLiftCutout)
+        val pair = state.studioPair
+        if (pair != null) StudioBeforeAfterPicture(pair) else StudioPicture(state)
+        if (pair == null) StudioCutoutPress(state, onLift = onLiftCutout)
         // The stamps sit on the picture, under the X, the tools, the caption and the bar.
         StudioStampLayer(state = state, onStamps = onStamps)
         // The fades keep the rail and the caption readable over a bright picture.
@@ -212,7 +215,8 @@ internal fun MomentsStudioStep(
         // card has only Stamps and Play).
         StudioRail(
             enabled = !state.posting,
-            media = state.media,
+            // Before and after takes stamps only: its words and drawings are drawn in.
+            media = state.media.takeIf { pair == null },
             onOpen = onMarks,
             onStamps =
                 {
@@ -349,6 +353,13 @@ internal fun MomentsStudioStep(
                 onPlaceCutout(file)
             },
             cutoutsAccount = gate.account,
+            beforeAfter =
+                beforeAfter.copy(
+                    make = {
+                        tray = false
+                        beforeAfter.make()
+                    },
+                ),
         )
         if (fullMap) {
             state.postMapSpot?.let { spot ->

@@ -152,7 +152,9 @@ import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanOffer
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesChip
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesState
 import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
+import app.pantopus.android.ui.screens.moments.components.MomentBeforeAfterLayer
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
+import app.pantopus.android.ui.screens.moments.components.MomentCurtainGrab
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
@@ -665,6 +667,7 @@ fun MomentsViewerScreen(
                                 },
                                 onFailed = viewModel::next,
                             )
+                            if (studio) MomentBeforeAfterLayer(load.moment)
                             if (studio) MomentStampsOverlay(load.moment)
                             if (studio) MomentPinsOverlay(load.moment)
                         }
@@ -2023,6 +2026,15 @@ private fun Modifier.viewerGestures(
             val swipe = SWIPE_DP * density
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
+                // "Pulse, reinvented": before and after's curtain took this finger; the Moment only holds still.
+                if (MomentCurtainGrab.held) {
+                    onHold(true)
+                    do {
+                        val moved = awaitPointerEvent()
+                    } while (moved.changes.any { it.pressed })
+                    onHold(false)
+                    return@awaitEachGesture
+                }
                 val start = down.position
                 val startOnScreen = place.onScreen(start)
                 val startedAt = down.uptimeMillis

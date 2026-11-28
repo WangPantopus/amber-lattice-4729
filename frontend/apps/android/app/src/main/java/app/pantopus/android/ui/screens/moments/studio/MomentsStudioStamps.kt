@@ -25,15 +25,22 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,6 +97,7 @@ import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.moments.components.MomentStampView
 import app.pantopus.android.ui.screens.moments.components.MomentStampWords
 import app.pantopus.android.ui.screens.moments.components.StampSized
+import app.pantopus.android.ui.screens.moments.components.halfOf
 import app.pantopus.android.ui.screens.moments.components.stampFrame
 import app.pantopus.android.ui.screens.moments.components.stampHalf
 import app.pantopus.android.ui.screens.moments.components.stampPlaced
@@ -256,11 +264,12 @@ private val MomentsComposeUiState.stampsWet: Boolean get() = offersLive && share
 private fun rememberStudioPicture(state: MomentsComposeUiState): IntSize? {
     val media = state.media
     val placed = state.placement != null
-    val size by produceState<IntSize?>(null, media?.file, placed) {
+    val half = state.studioPair != null
+    val size by produceState<IntSize?>(null, media?.file, placed, half) {
         value =
             when {
                 media is MomentMediaFile.Video && placed -> MomentPlacement.CANVAS
-                media != null -> withContext(Dispatchers.IO) { uprightSize(media) }
+                media != null -> withContext(Dispatchers.IO) { uprightSize(media) }?.let { if (half) halfOf(it) else it }
                 else -> null
             }
     }
@@ -538,16 +547,20 @@ internal fun StudioStampTray(
     onPhotostrip: () -> Unit = {},
     onPlaceCutout: (File) -> Unit = {},
     cutoutsAccount: String? = null,
+    beforeAfter: StudioBeforeAfterActions = StudioBeforeAfterActions(),
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
     val screen = rememberScreenSize()
     val picture = rememberStudioPicture(state)
     // Film looks (step 5): for a photo, with the photo as it came once it's read.
-    val looks = state.media is MomentMediaFile.Photo && lookPicture != null
+    val pair = state.studioPair
+    val looks = state.media is MomentMediaFile.Photo && lookPicture != null && pair == null
     val asItCame = lookPicture?.collectAsStateWithLifecycle()?.value
     // The photostrip (step 5): this photo and up to three picked with it that still wait.
     val strip = if (looks) (state.pickedTogether - state.pickedAt).coerceAtMost(MomentPhotostrip.MOST - 1) else 0
+    // Before and after (step 5): this photo and the next one picked with it; once made, its words and "Take apart".
+    val offersPair = lookPicture != null && state.offersBeforeAfter(strip)
     StampTray(
         visible = visible,
         reading = ui.reading,
@@ -557,12 +570,13 @@ internal fun StudioStampTray(
         onDone = onDone,
         // Play: "Guess the spot", for a photo or video with a place away from home; film looks, for a photo.
         play =
-            if (state.offersGuess || looks) {
+            if (state.offersGuess || looks || pair != null) {
                 {
                     if (state.offersGuess) StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) })
                     if (looks) StudioLooksRow(picture = asItCame, picked = state.marks.look, onPick = onLook)
                     if (strip > 0) StudioPhotostripRow(more = strip, onMake = onPhotostrip)
                     if (looks) StudioYourCutoutsRow(account = cutoutsAccount, onPlace = onPlaceCutout)
+                    StudioBeforeAfterRow(pair, offersPair, beforeAfter.make, beforeAfter.words, beforeAfter.takeApart)
                 }
             } else {
                 null
@@ -624,11 +638,14 @@ internal fun StampTray(
             Column(
                 modifier =
                     Modifier
+                        // Above the keyboard while a word in the tray is typed (before and after's words).
+                        .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars))
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         // The bar's colour, over black so nothing under the tray shows through.
                         .background(Color.Black)
                         .background(PantopusColors.studioBar)
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
                         .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s5, bottom = Spacing.s5)
                         .heightIn(min = 180.dp)
