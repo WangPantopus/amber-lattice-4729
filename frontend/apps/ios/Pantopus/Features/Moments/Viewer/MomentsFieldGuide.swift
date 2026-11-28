@@ -151,3 +151,18 @@ struct MomentsFieldGuide: View {
         }
     }
 }
+
+extension MomentsFieldGuide {
+    /// How tall the guide opens over the viewer. Shown from inside the viewer, a sheet at full height closed by itself
+    /// right after it opened (the new Pulse shows the viewer from inside its tab's navigation stack; the Pulse track
+    /// moves it out). Until then it opens at half height and can be pulled up to nearly the whole screen.
+    static let overViewerDetents: Set<PresentationDetent> = [.medium, .fraction(0.92)]
+}
+
+extension View {
+    /// The field guide's sheet over the viewer (`MomentsFieldGuide.overViewerDetents`).
+    func overViewerSheet() -> some View {
+        presentationDetents(MomentsFieldGuide.overViewerDetents)
+            .presentationDragIndicator(.visible)
+    }
+}

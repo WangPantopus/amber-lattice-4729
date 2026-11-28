@@ -154,6 +154,9 @@ struct MomentsStudioComposer: View {
         } message: {
             Text(model.marking.marks.isEmpty ? "How you resized it won't be saved." : "What you drew or wrote on it won't be saved.")
         }
+        // Retake: what was made on that picture goes with it (`dropPictureTools`). Here, not on the stage, which leaves
+        // the screen while the camera shows.
+        .onChange(of: model.draft == nil) { _, gone in if gone { model.dropPictureTools() } }
         .readsMomentsDuoScreen(Binding(get: { duo }, set: { screen in
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -164,6 +167,8 @@ struct MomentsStudioComposer: View {
     }
 
     private func posted() {
+        // The next picture starts without this one's dots, items and sound.
+        model.dropPictureTools()
         Task { if await !model.moveOn() { onClose() } }
     }
 
