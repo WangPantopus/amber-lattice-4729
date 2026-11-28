@@ -268,10 +268,7 @@ internal fun MomentsMarksEditor(
     // "Pulse, reinvented"'s Studio: up to five colours from the picture, under the six inks.
     val photo = remember(picture, studio) { picture?.takeIf { studio }?.let(MomentPhotoColors::of).orEmpty() }
     // "Pulse, reinvented"'s Studio on a photo: its subject, lifted on the phone for words behind it.
-    val context = LocalContext.current
-    val lift: SubjectLift? =
-        if (studio && video == null && picture != null) { placement -> MomentSubjects.lift(context, picture, placement) } else null
-    lift?.let { KeepSubjectInStep(editing, onEdit, it) }
+    val lift = rememberSubjectLift(picture.takeIf { studio && video == null }, editing, onEdit)
     val cancel = { if (editing.changed) asksDiscard = true else onClose(false) }
     BackHandler(onBack = cancel)
     Box(

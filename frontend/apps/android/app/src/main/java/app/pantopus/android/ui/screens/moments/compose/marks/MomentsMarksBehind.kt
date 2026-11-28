@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.moments.compose.marks
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -49,6 +51,22 @@ private const val RESTED_MS = 500L
 
 /** Lifts the subject of the editor's picture at a placement (null: as taken); null when there is none. */
 internal typealias SubjectLift = suspend (MomentPlacement?) -> MomentSubject?
+
+/**
+ * The Studio's lift for the editor's [picture] (null: none, as in today's composer or on a video), which also keeps a
+ * subject in step when Resize moves the picture.
+ */
+@Composable
+internal fun rememberSubjectLift(
+    picture: Bitmap?,
+    editing: MomentMarksEditing,
+    onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
+): SubjectLift? {
+    val context = LocalContext.current
+    val lift: SubjectLift? = if (picture != null) { placement -> MomentSubjects.lift(context, picture, placement) } else null
+    lift?.let { KeepSubjectInStep(editing, onEdit, it) }
+    return lift
+}
 
 /** The picked label goes behind [subject] (kept with the marks), or comes back in front. */
 internal fun MomentMarksEditing.behind(

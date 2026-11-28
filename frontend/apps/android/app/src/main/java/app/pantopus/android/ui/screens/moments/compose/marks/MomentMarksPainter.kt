@@ -79,8 +79,9 @@ object MomentMarksPainter {
             }
         }
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
-        for (label in marks.labels) {
-            if (label.id == skip || label.text.isBlank() || (subject != null && label.behind)) continue
+        // Labels behind the subject were drawn first.
+        for (label in marks.labels.filterNot { subject != null && it.behind }) {
+            if (label.id == skip || label.text.isBlank()) continue
             val laid = layout(label, width, height, shape)
             val restore = canvas.save()
             // Laid out upright, then turned about its middle.
